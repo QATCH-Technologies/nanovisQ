@@ -25,9 +25,18 @@ class QatchTagger():
 
     # MOVE TRUNK TO TAG (IF NOT EXISTS)
     try:
-      shutil.copytree(path_to_trunk, path_to_tag)
+      os.makedirs(path_to_tag) # may raise OSError
+      for f in os.listdir(path_to_trunk):
+        if f.startswith(".git"):
+          continue
+        src = os.path.join(path_to_trunk, f)
+        dst = os.path.join(path_to_tag, f)
+        if os.path.isdir(src):
+            shutil.copytree(src, dst)
+        else:
+            shutil.copy2(src, dst)
 
-    except FileExistsError as e:
+    except OSError as e:
       logging.error(f"Tag already exists: {tag_name}. Cannot continue.")
       return
     
@@ -151,6 +160,11 @@ class QatchTagger():
     except Exception as e:
       logging.error(e)
       return
+
+    # CREATE DEFAULT TARGETS FILE
+    targets_path = os.path.join(installer_dst, 'targets.csv')
+    with open(targets_path, 'w') as f:
+      f.write("ALL")
     
 if __name__ == '__main__':
     QatchTagger().run()
