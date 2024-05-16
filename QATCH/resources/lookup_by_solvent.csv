@@ -1,0 +1,93 @@
+Fluid	Surface Tension (N/m)	Density (g/ml)
+Acetaldehyde	0.021	0.785
+Acetic acid, Ethanoic acid	0.027	1.0446
+Acetic anhydride, Acetyl acetat	0.032	1.08
+Acetone, 2-Propanone	0.024	0.7845
+Acetonitrile, Methyl cyanide	0.287	0.7857
+Allyl alcohol	0.025	0.854
+Ammonia, R-717	0.021	0.9
+Aniline, Benzenamine	0.042	1.022
+Anisole, Methoxybenzene	0.035	1.04
+Benzene, Annulene	0.028	0.8765
+Benzonitrile, Phenyl cyanide	0.039	1
+Benzylamine	0.039	0.981
+Bromine	0.041	3.119
+Bromobenzene	0.035	1.491
+Bromoethane	0.024	1.46
+n-Butane	0.023	0.573
+1-Butanol, Butyl alcohol	0.025	0.8095
+Butyl acetat	0.025	0.88
+Butylamine	0.023	0.74
+Diethyl ether	0.017	0.706
+Carbon dioxide	0.00056	0.001977
+Carbon disulfide	0.032	1.266
+Carbon tetrachloride	0.027	1.594
+Clorobenzene, Phenyl chloride	0.033	1.1058
+Chlorodifluoromethane, HCFC-22	0.008	0.00482
+Chloroform	0.0271	1.4832
+1-Chlorohexane, Hexyl chloride	0.026	0.879
+1-Chloropentane	0.024	0.882
+p-Cresol	0.035	1.0347
+Cyclohexane	0.024	0.779
+Cyclohexanol	0.033	0.948
+Cyclohexene	0.026	0.7739
+Cyclopentane	0.022	0.7454
+Decane	0.024	0.73
+Dibutylamine	0.024	0.767
+Dichlorodifluoromethane, CFC-12	0.0086	1.4883
+Diethylene glycol	0.045	1.1197
+Diethyl ether, Ethyl ether	0.017	0.713
+Diethyl sulfide, Ethyl sulfide	0.025	0.837
+Ethane	0.00048	0.362
+Ethanol, Ethyl alcohol, Pure alcohol, Grain alcohol, Drinking alcohol	0.022	0.789
+Ethanolamine, Glycinol	0.048	1.012
+Ethyl acetate	0.024	0.895
+Ethylamine, Ethanamine	0.019	0.68
+Ethylbenzene, Phenylethane	0.029	0.867
+Ethyl benzoate	0.035	1.045
+Ethyl bromide	0.025	1.46
+Ethyl mercaptan	0.024	0.846
+Ethylene glycol	0.0477	1.115
+Formamide	0.057	1.134
+Formixc acid, Methanoic acid	0.037	1.22
+Furfural	0.043	1.16
+n-Heptane	0.02	0.684
+Heptanoic acid, Enanthic acid	0.028	0.918
+Hexadekane, Cetane	0.027	0.773
+n-Hexane	0.018	0.659
+Hexanenitrile, Capronitrile	0.027	0.809
+1-Hexanol, Caproyl alcohol	0.026	0.814
+1-Hexene	0.018	0.678
+Hydrazine	0.066	1.032
+Glycerol	0.064	1.261
+Isobenzene, Phenyl iodide	0.039	1.823
+Isobutane, 2-Methylpropane	0.01	2.064
+Isobutyl acetat, 2-Methylpropyl acetat	0.023	0.867
+Isobutyric acid	0.025	0.95
+Isopropanol, 2-propanol, Isopropyl alcohol, Rubbing alcohol, Sec-propyl alcohol, s-Propanol	0.022	0.785
+Mercury, Quicksilver	0.485	13.5
+Methanol, Methyl alcohol	0.022	0.791
+Methyl acetat	0.025	0.934
+Methyl formate	0.025	0.974
+Nitrobenzene (50C)	0.041	1.253
+Nitromethane, Nitrocarbol	0.036	1.382
+Nonane	0.022	0.718
+Octane	0.021	0.703
+Pentane	0.015	0.626
+Pentyl acetat	0.025	0.876
+Propane, LPG	0.007	0.564
+1-Propanol, Propyl alcohol	0.023	0.803
+n-Propyl alcohol	0.024	0.785
+n-Propyl benzene	0.03	0.862
+Pyridine	0.037	0.982
+Trichloromethane, Chloroform	0.023	1.4892
+Toluene, Methylbenzene	0.028	0.867
+Trifluormethane, Fluoroform	0.00003	0.002946
+Undecane, Hendecane	0.025	0.74
+Water (25C)	0.072	0.998
+Soapy water (25C)	0.035	1.01
+Water-d2, Heavy water, Deuterium oxide	0.071	1.107
+Xenon (10C)	0.00044	3.1
+o-Xylene	0.029	0.897
+m-Xylene	0.028	0.868
+p-Xylene	0.028	0.861

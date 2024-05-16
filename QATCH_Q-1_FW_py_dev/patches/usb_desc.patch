@@ -1,0 +1,27 @@
+diff -r C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\dev\QATCH_Q-1_FW_py_dev\patches\usb_desc-original.h C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\dev\QATCH_Q-1_FW_py_dev\patches\usb_desc-patched.h
+117,120c117,120
+<   #define MANUFACTURER_NAME	{'T','e','e','n','s','y','d','u','i','n','o'}
+<   #define MANUFACTURER_NAME_LEN	11
+<   #define PRODUCT_NAME		{'U','S','B',' ','S','e','r','i','a','l'}
+<   #define PRODUCT_NAME_LEN	10
+---
+>   #define MANUFACTURER_NAME	{'Q','A','T','C','H'}
+>   #define MANUFACTURER_NAME_LEN	5
+>   #define PRODUCT_NAME		{'Q','A','T','C','H',' ','n','a','n','o','v','i','s','Q'}
+>   #define PRODUCT_NAME_LEN	14
+592,595c592,595
+<   #define MANUFACTURER_NAME	{'T','e','e','n','s','y','d','u','i','n','o'}
+<   #define MANUFACTURER_NAME_LEN	11
+<   #define PRODUCT_NAME		{'T','e','e','n','s','y','d','u','i','n','o',' ','R','a','w','H','I','D'}
+<   #define PRODUCT_NAME_LEN	18
+---
+>   #define MANUFACTURER_NAME	{'Q','A','T','C','H'}
+>   #define MANUFACTURER_NAME_LEN	5
+>   #define PRODUCT_NAME		{'Q','A','T','C','H',' ','n','a','n','o','v','i','s','Q'}
+>   #define PRODUCT_NAME_LEN	14
+611,612c611,612
+<   #define SEREMU_RX_SIZE        32
+<   #define SEREMU_RX_INTERVAL    2	 // TODO: is this ok for 480 Mbit speed
+---
+>   #define SEREMU_RX_SIZE        64
+>   #define SEREMU_RX_INTERVAL    1	 // TODO: is this ok for 480 Mbit speed

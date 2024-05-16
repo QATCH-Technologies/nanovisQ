@@ -1,0 +1,8 @@
+diff -r C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\dev\QATCH_Q-1_FW_py_dev\patches\usb_seremu-original.c C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\dev\QATCH_Q-1_FW_py_dev\patches\usb_seremu-patched.c
+45a46,48
+> #ifdef SEREMU_TX_INTERVAL
+> #define TRANSMIT_FLUSH_TIMEOUT  1000 * SEREMU_TX_INTERVAL   /* in microseconds */
+> #else
+46a50,51
+> #endif
+> 

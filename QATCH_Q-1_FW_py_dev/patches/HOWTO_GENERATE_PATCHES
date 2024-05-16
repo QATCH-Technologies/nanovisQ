@@ -1,0 +1,9 @@
+Using Beyond Compare 4:
+
+1. Open to compare both files ("usb_xxx-original.x" on left and "usb_xxx-patched.x" on right)
+2. Session -> Text Compare Report
+	Report Layout: Patch
+	Report Options: Normal Diff
+	Output Options: Plain text
+	Click "Copy to Clipboard"
+3. Paste DIFF to "patches\usb_xxx.patch" file
