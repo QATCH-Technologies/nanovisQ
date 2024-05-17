@@ -327,7 +327,7 @@ MAX31855 max31855 = MAX31855(MAX31855_CLK_1, MAX31855_CS, MAX31855_SO_1, MAX3185
 #endif
 MCP9808 mcp9808 = MCP9808(); // always define (shutdown if unused)
 float temperature = NAN;
-float ambient;
+float ambient = NAN;
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
