@@ -1293,10 +1293,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.renameWorker.finished.connect(self.renameThread.quit)
             self.renameThread.start()
 
-            if not all(self._drop_applied):
-                for i,v in enumerate(self._drop_applied):
-                    if v == False and self._text4[i] != None:
-                        self._text4[i].setText(' ') # clear message
+            for i in range(len(self._drop_applied)):
+                if self._text4[i] != None:
+                    self._text4[i].setText(' ') # clear plot status message
 
 
     ###########################################################################
@@ -2610,7 +2609,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
                     else:
                         time_running = _plt2.getViewBox().viewRange()[0][1]
-                        current_y_range = _plt2.getViewBox().viewRange()[1]
+                        current_y_range = [_plt2.getViewBox().viewRange()[1], _plt3.viewRange()[1]]
                         if self._last_y_range[i] != current_y_range:                           
                             self._last_y_range[i] = current_y_range
                             self._last_y_delta[i] = time_running # time of last delta
