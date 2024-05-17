@@ -178,16 +178,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar.append(target.menuBar().addMenu("&View"))
         self.chk1 = self.menubar[2].addAction('&Console', self.toggle_console)
         self.chk1.setCheckable(True)
-        self.chk1.setChecked(True)
+        self.chk1.setChecked(self.parent.AppSettings.value("viewState_Console", "True").lower() == "true")
         self.chk2 = self.menubar[2].addAction('&Amplitude', self.toggle_amplitude)
         self.chk2.setCheckable(True)
-        self.chk2.setChecked(True)
+        self.chk2.setChecked(self.parent.AppSettings.value("viewState_Amplitude", "True").lower() == "true")
         self.chk3 = self.menubar[2].addAction('&Temperature', self.toggle_temperature)
         self.chk3.setCheckable(True)
-        self.chk3.setChecked(True)
+        self.chk3.setChecked(self.parent.AppSettings.value("viewState_Temperature", "True").lower() == "true")
         self.chk4 = self.menubar[2].addAction('&Resonance/Dissipation', self.toggle_RandD)
         self.chk4.setCheckable(True)
-        self.chk4.setChecked(True)
+        self.chk4.setChecked(self.parent.AppSettings.value("viewState_Resonance_Dissipation", "True").lower() == "true")
         self.menubar.append(target.menuBar().addMenu("&Help"))
         self.chk5 = self.menubar[3].addAction('View &Tutorials', self.view_tutorials)
         self.chk5.setCheckable(False)
@@ -201,6 +201,17 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         version = self.menubar[3].addAction('{} ({})'.format(Constants.app_version, Constants.app_date))
         version.setEnabled(False)
+
+        # update application UI states to reflect viewStates from AppSettings
+        if not self.chk1.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_console)
+        if not self.chk2.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_amplitude)
+        if not self.chk3.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_temperature)
+        if not self.chk4.isChecked():
+            QtCore.QTimer.singleShot(100, self.toggle_RandD)
+            
 
     def analyze_data(self):
         self.parent.MainWin.ui0.setAnalyzeMode(self)
@@ -304,6 +315,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Console window")
             self.parent.MainWin.ui0.logview.setVisible(True)
             # self.parent.LogWin.ui4.centralwidget.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Console", self.chk1.isChecked())
 
     def toggle_amplitude(self):
         tc = self.show_top_plot()
@@ -320,6 +332,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
         self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Amplitude", self.chk2.isChecked())
 
     def toggle_temperature(self):
         tc = self.show_top_plot()
@@ -330,6 +343,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Temperature plot")
             self.parent._plt4.setVisible(True)
         self.hide_top_plot(tc)
+        self.parent.AppSettings.setValue("viewState_Temperature", self.chk3.isChecked())
 
     def toggle_RandD(self):
         if self.current_timer.isActive():
@@ -340,6 +354,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         else:
             Log.d("Showing Resonance/Dissipation plot(s)")
             self.parent.PlotsWin.ui2.pltB.setVisible(True)
+        self.parent.AppSettings.setValue("viewState_Resonance_Dissipation", self.chk4.isChecked())
 
     def show_top_plot(self):
         toggle_console = False
@@ -675,6 +690,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # to be always placed at the beginning, initializes some important methods
         QtWidgets.QMainWindow.__init__(self)
 
+        # Check application settings global variable to get/set elsewhere
+        self.AppSettings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
+
         # Sets up the user interface from the generated Python script using Qt Designer
         # Instantiates Ui classes
 
@@ -695,6 +713,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tecWorker = TECTask()
 
         self.MainWin = _MainWindow(self)
+
+        Log.d("AppSettings = ", self.AppSettings.fileName())
 
         # Shared variables, initial values
         self._plt0_1 = None # amplitude / calibration curve (split for multi below)
@@ -727,7 +747,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self._selected_port = ''
 
         # Reference variables
-        self._drop_applied = False
+        self._text4 = [None, None, None, None]
+        self._drop_applied = [False, False, False, False]
+        self._last_y_range = [[0,0], [0,0], [0,0], [0,0]]
+        self._last_y_delta = [0, 0, 0, 0]
         self._reference_flag = False
         self._vector_reference_frequency = [None]
         self._vector_reference_dissipation = [None]
@@ -1148,7 +1171,10 @@ class MainWindow(QtWidgets.QMainWindow):
             # Gets frequency range
             self._readFREQ = self.worker.get_frequency_range()
             # Duplicate frequencies
-            self._drop_applied = False
+            self._text4 = [None, None, None, None]
+            self._drop_applied = [False, False, False, False]
+            self._last_y_range = [[0,0], [0,0], [0,0], [0,0]]
+            self._last_y_delta = [0, 0, 0, 0]
             self._reference_flag = False
             self._vector_reference_frequency = [list(self._readFREQ)]
             self._reference_value_frequency = [0]
@@ -1266,6 +1292,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self.renameThread.started.connect(self.renameWorker.run)
             self.renameWorker.finished.connect(self.renameThread.quit)
             self.renameThread.start()
+
+            if not all(self._drop_applied):
+                for i,v in enumerate(self._drop_applied):
+                    if v == False and self._text4[i] != None:
+                        self._text4[i].setText(' ') # clear message
 
 
     ###########################################################################
@@ -1542,6 +1573,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_Stop.clicked.connect(self.stop)
         self.ControlsWin.ui1.pButton_Clear.clicked.connect(self.clear)
         self.ControlsWin.ui1.pButton_Reference.clicked.connect(self.reference)
+        self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
         self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
         self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
@@ -1626,16 +1658,14 @@ class MainWindow(QtWidgets.QMainWindow):
             QtCore.Qt.DockWidgetArea.RightDockWidgetArea, 
             self.TutorialWin)
         # check application settings and set visibility on startup
-        settings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
-        Log.d("Settings = ", settings.fileName())
-        if settings.contains("showTutorialsOnStartup"):
-            if not settings.value("showTutorialsOnStartup").lower() == "true":
+        if self.AppSettings.contains("showTutorialsOnStartup"):
+            if not self.AppSettings.value("showTutorialsOnStartup").lower() == "true":
                 self.TutorialWin.setVisible(False)
         else:
-            settings.setValue("showTutorialsOnStartup", True)
+            self.AppSettings.setValue("showTutorialsOnStartup", True)
         # update checkbox to reflect application settings state
-        self.ControlsWin.chk5.setChecked(settings.value("showTutorialsOnStartup").lower() == "true")
-        self.TutorialCheckbox.setChecked(settings.value("showTutorialsOnStartup").lower() == "true")
+        self.ControlsWin.chk5.setChecked(self.AppSettings.value("showTutorialsOnStartup").lower() == "true")
+        self.TutorialCheckbox.setChecked(self.AppSettings.value("showTutorialsOnStartup").lower() == "true")
         self.TutorialCheckbox.clicked.connect(self.toggleTutorialOnStartup)
         # force widget to minimum width, determined by length of checkbox text
         min_size = self.TutorialWin.minimumSizeHint()
@@ -1684,9 +1714,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
 
     def toggleTutorialOnStartup(self):
-        settings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
         currentState = self.TutorialCheckbox.isChecked()
-        settings.setValue("showTutorialsOnStartup", currentState)
+        self.AppSettings.setValue("showTutorialsOnStartup", currentState)
             
 
     ###########################################################################
@@ -2218,26 +2247,30 @@ class MainWindow(QtWidgets.QMainWindow):
                           color_err = '#008000'
                           self.ControlsWin.ui1.infostatus.setStyleSheet('background: #00ff80; padding: 1px; border: 1px solid #cccccc')
 
-                          if not self._drop_applied:
-                            try:
-                                vector0 = self.worker.get_t2_buffer(0)
-                                time_running = vector0[0]
-                                if time_running < 3.0:
-                                    labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
-                                    idx = int(len(list(vector0)) / 3) # next(x for x,y in list(vector0) if y <= 1.0)
-                                    if idx > 0:
-                                        self._baseline_freq_avg = np.average(vector1[:-idx])
-                                        self._baseline_freq_noise = np.amax(vector1[:-idx]) - np.amin(vector1[:-idx])
-                                        self._baseline_diss_avg = np.average(vector2[:-idx])
-                                        self._baseline_diss_noise = np.amax(vector2[:-idx]) - np.amin(vector2[:-idx])
-                                else:
-                                    labelbar = 'Capturing data... Apply drop when ready...'
-                                    if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
-                                    and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
-                                        self._drop_applied = True
-                            except:
-                                Log.e("Error 'calibrating baselines' for drop detection. Apply drop when ready.")
-                                self._drop_applied = True
+                          if not all(self._drop_applied):
+                            for i,p in enumerate(self._plt2_arr):
+                                if p == None: 
+                                    self._drop_applied[i] = True
+                                    continue
+                                try:
+                                    vector0 = self.worker.get_t2_buffer(0)
+                                    time_running = vector0[0]
+                                    if time_running < 3.0:
+                                        labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
+                                        idx = int(len(list(vector0)) / 3) # next(x for x,y in list(vector0) if y <= 1.0)
+                                        if idx > 0:
+                                            self._baseline_freq_avg = np.average(vector1[:-idx])
+                                            self._baseline_freq_noise = np.amax(vector1[:-idx]) - np.amin(vector1[:-idx])
+                                            self._baseline_diss_avg = np.average(vector2[:-idx])
+                                            self._baseline_diss_noise = np.amax(vector2[:-idx]) - np.amin(vector2[:-idx])
+                                    else:
+                                        labelbar = 'Capturing data... Apply drop when ready...'
+                                        if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
+                                        and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
+                                            self._drop_applied[i] = True
+                                except:
+                                    Log.e("Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                    self._drop_applied[i] = True
                           else:
                             labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
                             
@@ -2562,6 +2595,28 @@ class MainWindow(QtWidgets.QMainWindow):
                     updateViews2(_plt2, _plt3)
                     #_plt2.vb.sigResized.connect(updateViews2)
                     _plt2.plot(x= self.worker.get_t1_buffer(i)[:numPoints],y=self.worker.get_d1_buffer(i)[:numPoints],pen=Constants.plot_colors[2])
+
+                    #Add apply drop message to those still pending drop
+                    if self._text4[i] == None:
+                        self._text4[i] = pg.LabelItem(size='11pt', bold=True) # 'size' and 'bold' retained when calling 'setText()'
+                        self._text4[i].setParentItem(_plt2.graphicsItem())
+                        self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
+                    elif not self._drop_applied[i]:
+                        if "vector0" in locals():
+                            time_running = vector0[0]
+                            if time_running < 3.0: 
+                                self._text4[i].setText('Calibrating...', color=(0, 0, 200))
+                            else:
+                                self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
+                    else:
+                        time_running = _plt2.getViewBox().viewRange()[0][1]
+                        current_y_range = _plt2.getViewBox().viewRange()[1]
+                        if self._last_y_range[i] != current_y_range:                           
+                            self._last_y_range[i] = current_y_range
+                            self._last_y_delta[i] = time_running # time of last delta
+                            self._text4[i].setText(' ') # hide message once drop is applied
+                        elif time_running - self._last_y_delta[i] > 15.0: 
+                            self._text4[i].setText('Press \"Stop\"', color=(200, 0, 0)) # range unchanging / probably finished
 
                     #Prevent the user from zooming/panning out of this specified region
                     if self._get_source() == OperationType.measurement:
@@ -3002,6 +3057,59 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._vector_reference_dissipation.append(xs-self._reference_value_dissipation[i])
 
 
+    def factory_defaults(self):
+
+        action_role = UserRoles.ADMIN
+        check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+
+        if not check_result:
+            PopUp.critical(self, "Insufficient User Rights", 
+                           "A user with ADMIN rights is required to perform this action.\nPlease try again with sufficient user rights.", ok_only = True)
+            Log.w("Factory Default aborted: Insufficient User Rights.")
+            return
+        
+        do_default = PopUp.question(self, "Restore Factory Defaults",
+                    "WARNING: Are you sure you want to restore factory defaults?\n\nThis will invalidate the 'config' folder and delete all registry keys that are associated with this application.")
+        
+        if not do_default:
+            Log.d("Factory Default aborted: User Canceled Confirmation.")
+            return
+        
+        try:
+            # invalidate 'config' folder
+            i = 1
+            while os.path.exists(Constants.csv_calibration_export_path):
+                try:
+                    os.rename(Constants.csv_calibration_export_path, f"{Constants.csv_calibration_export_path}-{i}")
+                except:
+                    Log.d("Folder already exists, looking for non-existent directory:", i)
+                    i += 1
+            Log.w("Factory Default: Invalidated 'config' folder successfully.")
+
+            # restore viewStates to True
+            self.ControlsWin.chk1.setChecked(True)
+            self.ControlsWin.chk2.setChecked(True)
+            self.ControlsWin.chk3.setChecked(True)
+            self.ControlsWin.chk4.setChecked(True)
+            Log.w("Factory Default: Restore viewStates in application.")
+
+            # reload UI states to match viewStates
+            self.ControlsWin.toggle_console()
+            self.ControlsWin.toggle_amplitude()
+            self.ControlsWin.toggle_temperature()
+            self.ControlsWin.toggle_RandD()
+            Log.w("Factory Default: Reloaded UI states to sync.")
+
+            # remove all keys
+            self.AppSettings.clear()
+            Log.w("Factory Default: Removed all application registry keys.")
+
+            Log.i("Factory Default finished successfully.")
+
+        except Exception as e:
+            Log.e("Factory Default: Error occurred!", e)
+        
+
     ###########################################################################
     # TEC Temperature Update Task
     ###########################################################################
@@ -3371,8 +3479,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     build = {   "date": entry.server_modified,
                                 "name": entry.name, #.replace("_exe", "").replace("_py", ""),
                                 "path": entry.path_display,
-                                "size": entry.size,
-                                "targets": targets  }
+                                "size": entry.size    }
                     builds.append(build)
             def get_dates(build):
                 return build.get('date')
@@ -3407,11 +3514,16 @@ class MainWindow(QtWidgets.QMainWindow):
                         most_recent = build
                         break # found, stop searching
             elif len(builds) > 0:
-                    for build in builds:
-                        is_target_build = target_build(build["path"])
-                        if is_target_build:
-                            most_recent = build
-                            break # found, stop searching
+                for build in builds:
+                    is_release_build = branch.replace('x', 'r') in build["name"]
+                    is_target_build = target_build(build["path"])
+                    if is_release_build and enabled and not running_release_build:
+                        # Do NOT offer a B-dev build an update to R build
+                        # (user must turn off dev mode 1st to get R build)
+                        continue # keep searching
+                    if is_target_build:
+                        most_recent = build
+                        break # found, stop searching
             if most_recent == None:
                 Log.d(f'requires EXE: {require_EXE}')
                 Log.d(f'release ONLY: {release_builds_only}')

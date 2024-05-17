@@ -605,6 +605,14 @@ class Ui_Controls(object): #QtWidgets.QMainWindow
            self.pButton_Reference.setFixedHeight(50)
         self.Layout_controls.addWidget(self.pButton_Reference, 3, 5, 1, 1)
 
+        # restore factory defaults --------------------------------------------
+        self.pButton_ResetApp = QtWidgets.QPushButton()
+        self.pButton_ResetApp.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_ResetApp.setObjectName("pButton_ResetApp")
+        if USE_FULLSCREEN:
+           self.pButton_ResetApp.setFixedHeight(50)
+        self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 5, 1, 1)
+
         # samples SpinBox -----------------------------------------------------
         self.sBox_Samples = QtWidgets.QSpinBox()
         self.sBox_Samples.setMinimum(1)
@@ -771,7 +779,7 @@ class Ui_Controls(object): #QtWidgets.QMainWindow
         self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
         if USE_FULLSCREEN:
            self.infostatus.setFixedHeight(50)
-        self.Layout_controls.addWidget(self.infostatus, 4, 5, 1, 2)
+        self.Layout_controls.addWidget(self.infostatus, 5, 5, 1, 2)
 
         # Infobar -------------------------------------------------------------
         self.infobar = QtWidgets.QLineEdit()
@@ -1076,6 +1084,7 @@ class Ui_Controls(object): #QtWidgets.QMainWindow
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
         self.pButton_Reference.setText(_translate("MainWindow", "Set/Reset Reference"))
+        self.pButton_ResetApp.setText(_translate("MainWindow", "Factory Defaults"))
         self.sBox_Samples.setSuffix(_translate("MainWindow", " / 5 min"))
         self.sBox_Samples.setPrefix(_translate("MainWindow", ""))
         self.chBox_export.setText(_translate("MainWindow", "Txt Export Sweep File"))

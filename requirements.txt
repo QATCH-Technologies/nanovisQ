@@ -36,7 +36,7 @@ google-auth-oauthlib==1.2.0
     # via tensorboard
 google-pasta==0.2.0
     # via tensorflow-intel
-grpcio==1.62.1
+grpcio==1.63.0
     # via
     #   tensorboard
     #   tensorflow-intel
@@ -145,7 +145,7 @@ six==1.16.0
     #   stone
     #   tensorboard
     #   tensorflow-intel
-stone==3.3.3
+stone==3.3.6
     # via dropbox
 tensorboard==2.15.2
     # via tensorflow-intel
@@ -169,7 +169,7 @@ typing-extensions==4.11.0
     # via tensorflow-intel
 urllib3==2.2.1
     # via requests
-werkzeug==3.0.2
+werkzeug==3.0.3
     # via tensorboard
 wheel==0.43.0
     # via astunparse
