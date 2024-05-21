@@ -3021,6 +3021,14 @@ class AnalyzerWorker(QtCore.QObject):
             poi_path = os.path.join(os.path.split(data_path)[0], f"{data_title}_poi.csv")
             cal_path = os.path.join(os.path.split(data_path)[0], f"{data_title}_cal.csv")
 
+            # calculate and apply temperature adjusted contact angle offset
+            avg_run_temp = round(np.average(temperature), 1)
+            CA_temp_factor = round((avg_run_temp - 25.0) * Constants.temp_adjusted_CA_factor, 1)
+            Log.d(f"Applying temperature adjusted CA offset:")
+            Log.d(f"Temp CA offset = ({avg_run_temp}-25.0)*{Constants.temp_adjusted_CA_factor} = {CA_temp_factor}")
+            Log.d(f"Changing CA from {CA} to {CA + CA_temp_factor} with temperature offset {CA_temp_factor}")
+            CA += CA_temp_factor
+
             START_IDX = 0     # start-of-fill
             FILL_IDX = 1      # end-of-fill
             # NORMAL_PTS: 2-5 # 20%, 40%, 60%, 80%

@@ -749,7 +749,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
-        self._last_y_range = [[0,0], [0,0], [0,0], [0,0]]
+        self._run_finished = [False, False, False, False]
+        self._baselinedata = [[[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]]]
+        self._last_y_range = [[[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]]]
         self._last_y_delta = [0, 0, 0, 0]
         self._reference_flag = False
         self._vector_reference_frequency = [None]
@@ -1173,7 +1175,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
-            self._last_y_range = [[0,0], [0,0], [0,0], [0,0]]
+            self._run_finished = [False, False, False, False]
+            self._baselinedata = [[[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]]]
+            self._last_y_range = [[[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]], [[0,0], [0,0]]]
             self._last_y_delta = [0, 0, 0, 0]
             self._reference_flag = False
             self._vector_reference_frequency = [list(self._readFREQ)]
@@ -2250,6 +2254,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             for i,p in enumerate(self._plt2_arr):
                                 if p == None: 
                                     self._drop_applied[i] = True
+                                    self._run_finished[i] = True
                                     continue
                                 try:
                                     vector0 = self.worker.get_t2_buffer(0)
@@ -2596,26 +2601,42 @@ class MainWindow(QtWidgets.QMainWindow):
                     _plt2.plot(x= self.worker.get_t1_buffer(i)[:numPoints],y=self.worker.get_d1_buffer(i)[:numPoints],pen=Constants.plot_colors[2])
 
                     #Add apply drop message to those still pending drop
-                    if self._text4[i] == None:
-                        self._text4[i] = pg.LabelItem(size='11pt', bold=True) # 'size' and 'bold' retained when calling 'setText()'
-                        self._text4[i].setParentItem(_plt2.graphicsItem())
-                        self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
-                    elif not self._drop_applied[i]:
-                        if "vector0" in locals():
-                            time_running = vector0[0]
-                            if time_running < 3.0: 
-                                self._text4[i].setText('Calibrating...', color=(0, 0, 200))
-                            else:
-                                self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
-                    else:
-                        time_running = _plt2.getViewBox().viewRange()[0][1]
-                        current_y_range = [_plt2.getViewBox().viewRange()[1], _plt3.viewRange()[1]]
-                        if self._last_y_range[i] != current_y_range:                           
-                            self._last_y_range[i] = current_y_range
-                            self._last_y_delta[i] = time_running # time of last delta
-                            self._text4[i].setText(' ') # hide message once drop is applied
-                        elif time_running - self._last_y_delta[i] > 15.0: 
-                            self._text4[i].setText('Press \"Stop\"', color=(200, 0, 0)) # range unchanging / probably finished
+                    try:
+                        if self._text4[i] == None:
+                            self._text4[i] = pg.LabelItem(size='11pt', bold=True) # 'size' and 'bold' retained when calling 'setText()'
+                            self._text4[i].setParentItem(_plt2.graphicsItem())
+                            self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
+                        elif not self._drop_applied[i]:
+                            if "vector0" in locals():
+                                time_running = vector0[0]
+                                if time_running < 3.0: 
+                                    self._text4[i].setText('Calibrating...', color=(0, 0, 200))
+                                    self._baselinedata[i] = [
+                                        [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(self.worker.get_d1_buffer(i)[:numPoints])],
+                                        [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
+                                else:
+                                    self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
+                        else:
+                            time_running = _plt2.getViewBox().viewRange()[0][1]
+                            current_y_range = [_plt2.getViewBox().viewRange()[1], _plt3.viewRange()[1]]
+                            current_deltas = np.diff(current_y_range)[:,0]
+                            last_y_deltas = np.diff(self._last_y_range[i])[:,0]
+                            baseline_deltas = np.diff(self._baselinedata[i])[:,0]
+                            if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas): # self._last_y_range[i] != current_y_range:                           
+                                self._last_y_range[i] = current_y_range
+                                self._last_y_delta[i] = time_running # time of last delta
+                                self._text4[i].setText(' ') # hide message once drop is applied
+                                self._run_finished[i] = False
+                            elif time_running - self._last_y_delta[i] > 10.0:
+                                self._run_finished[i] = True
+                                if all(self._run_finished):
+                                    status_text = 'Press \"Stop\"'
+                                else:
+                                    status_text = "Run Complete, waiting on other channels..."
+                                self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
+                    except Exception as e:
+                        Log.e("Error handling plot status label text!")
+                        # Log.e(e)
 
                     #Prevent the user from zooming/panning out of this specified region
                     if self._get_source() == OperationType.measurement:
