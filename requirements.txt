@@ -36,7 +36,7 @@ google-auth-oauthlib==1.2.0
     # via tensorboard
 google-pasta==0.2.0
     # via tensorflow-intel
-grpcio==1.63.0
+grpcio==1.64.0
     # via
     #   tensorboard
     #   tensorflow-intel
@@ -118,7 +118,7 @@ python-dateutil==2.9.0.post0
     # via matplotlib
 pyzipper==0.3.6
     # via -r requirements.in
-requests==2.31.0
+requests==2.32.2
     # via
     #   -r requirements.in
     #   dropbox
