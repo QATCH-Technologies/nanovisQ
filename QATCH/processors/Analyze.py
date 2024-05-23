@@ -203,7 +203,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 #ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
 
                 baseline = np.average(dissipation[t_0p5:t_1p0])
-                diff_factor = 2.0 # 1.0 if baseline < 50e-6 else 1.5
+                diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
                 # if hasattr(self, "diff_factor"):
                 #     diff_factor = self.diff_factor
                 ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
@@ -2500,7 +2500,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 ys_freq_fit = np.concatenate((ys_freq_fit, ys_freq_fit_ext))
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
-            diff_factor = 2.0 # 1.0 if baseline < 50e-6 else 1.5
+            diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
@@ -2619,7 +2619,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 if not 'ys_freq_fit' in locals():
                     ys_freq_fit = ys_freq
                 if not 'ys_diff' in locals():
-                    diff_factor = 2.0
+                    diff_factor = Constants.default_diff_factor
                     ys_diff = ys_freq - diff_factor*ys
                 if not 'ys_diff_fit' in locals():
                     ys_diff_fit = ys_diff
@@ -3140,7 +3140,7 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
-            diff_factor = 2.0 # 1.0 if baseline < 50e-6 else 1.5
+            diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
@@ -3357,7 +3357,7 @@ class AnalyzerWorker(QtCore.QObject):
             ###          WHEN FILLING TIME IS GREATER THAN 1 SECOND.  ###
             ### DATE ADDED: 2024-01-14                                ###
             #############################################################
-            enable_bandaid_code = True # Use to disable modified behavior
+            enable_bandaid_code = False # Use to disable modified behavior
             line1_x = normal_x
             t_filling = line1_x[-1]
             Log.i(f"t_filling = {t_filling} secs")
@@ -3905,7 +3905,7 @@ class AnalyzerWorker(QtCore.QObject):
             #######################################
             ### Band-Aid #2: Drop more initial fill
             ### To disable: Comment out line below:
-            dropBelowPct = 0.15 if BIOFORMULATION else 0.40
+            dropBelowPct = 0.10 # 0.15 if BIOFORMULATION else 0.40
             Log.w(f"Dropping {int(dropBelowPct * 100)}% of initial fill region...")
             ### END Band-Aid #2 ###################
             dropFreqBelow = max(5, initial_fill[-1] * dropBelowPct)
@@ -4087,15 +4087,22 @@ class AnalyzerWorker(QtCore.QObject):
                 else:
                     diss_factor1_15MHz = float(Constants.get_batch_param(batch, "diss_factor1_15MHz"))
                     diss_factor2_15MHz = float(Constants.get_batch_param(batch, "diss_factor2_15MHz"))
-                    E3 = ys_freq[all_times[FILL_IDX]]-ys_freq[all_times[START_IDX]] # from CAL file (Freq_fill)
-                    D = (d2-d0)-((0.023112*(E3)/DENSITY-4.6868)*1e-6)
-                    high_shear_15y = ((D * diss_factor1_15MHz-diss_factor2_15MHz) ** 2) / DENSITY
+                    bandaid_compensate_high_shear_viscosity = False
+                    if bandaid_compensate_high_shear_viscosity:
+                        E3 = ys_freq[all_times[FILL_IDX]]-ys_freq[all_times[START_IDX]] # from CAL file (Freq_fill)
+                        D = (d2-d0)-((0.023112*(E3)/DENSITY-4.6868)*1e-6)
+                        high_shear_15y = ((D * diss_factor1_15MHz-diss_factor2_15MHz) ** 2) / DENSITY
+                    else:
+                        high_shear_15y = (((d2 - d0) * diss_factor1_15MHz-diss_factor2_15MHz) ** 2) / DENSITY
                     Log.i(f"d0 = {d0:1.4E}")
                     Log.i(f"d2 = {d2:1.4E}")
                     Log.i(f"d2-d0 = {d2-d0:1.4E}")
-                    Log.i(f"E3 = {E3}")
-                    Log.i(f"D = {D}")
-                    Log.i(f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP")
+                    if bandaid_compensate_high_shear_viscosity:
+                        Log.i(f"E3 = {E3}")
+                        Log.i(f"D = {D}")
+                        Log.i(f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP")
+                    else:
+                        Log.i(f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP")
                 ax7.plot(high_shear_15x, high_shear_15y, "bd")
                 ax7.errorbar(high_shear_15x, high_shear_15y, 0.30*high_shear_15y, fmt='b.', ecolor='blue', capsize=3)
 
