@@ -20,7 +20,7 @@ data_files = [
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[ ('C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd', '.') ],
+    binaries=[], # [ ('C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd', '.') ],
     datas=data_files,
     hiddenimports=['charset_normalizer.md__mypyc'],
     hookspath=[],
