@@ -2629,11 +2629,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self._run_finished[i] = False
                             elif time_running - self._last_y_delta[i] > 10.0:
                                 self._run_finished[i] = True
-                                if all(self._run_finished):
-                                    status_text = 'Press \"Stop\"'
-                                else:
-                                    status_text = "Run Complete, waiting on other channels..."
-                                self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
+                                Log.d(f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)")
+                                # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
+                                # if all(self._run_finished):
+                                #     status_text = 'Press \"Stop\"'
+                                # else:
+                                #     status_text = "Run Complete, waiting on other channels..."
+                                # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
                     except Exception as e:
                         Log.e("Error handling plot status label text!")
                         # Log.e(e)
@@ -3298,7 +3300,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     color, labelweb3 = self.update_found(self.build_descr)
 
-                self._dbx_connection.close()
+                if hasattr(self, "_dbx_connection"):
+                    self._dbx_connection.close()
                 return color, labelweb2
             
             self.web_thread = threading.Thread(target=self.update_check) # non-blocking
@@ -3343,7 +3346,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 color, labelweb3 = self.update_found(self.build_descr)
 
-            self._dbx_connection.close()
+            if hasattr(self, "_dbx_connection"):
+                self._dbx_connection.close()
 
         except Exception as e:
             Log.e("Update Task error:", e)
@@ -3387,6 +3391,10 @@ class MainWindow(QtWidgets.QMainWindow):
             color = '#ffa500'
             labelweb2 = 'ONLINE'
             labelweb3 = 'UNKNOWN!'
+
+            # init 'res_download' if not set
+            if not hasattr(self, "res_download"):
+                self.res_download = False
 
             import requests
             import dropbox
@@ -3471,18 +3479,27 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(all_targets_path)
-                targets = []
+                targets = {}
                 response_data = ""
                 for line in response.iter_lines():
                     response_data += f"{line.decode()}\n"
-                    targets.append(line.decode().strip().split(',')[0])
+                    uuid, uuip = line.decode().strip().split(',')
+                    targets[uuid] = uuip
                 response.close() # release connection, we are done reading 'targets'
+                # get unique user id (PC name) and universal user ip (WANIP address)
                 uuid = Architecture.get_os_name()
-                if not uuid in targets:
-                    r = requests.get("https://checkip.amazonaws.com")
-                    r.raise_for_status()
-                    uuip = r.text.strip()
+                r = requests.get("https://checkip.amazonaws.com")
+                r.raise_for_status()
+                uuip = r.text.strip()
+                if not uuid in targets.keys(): # UUID not registered in targets, add it
                     response_data += f"{uuid},{uuip}\n"
+                    self._dbx_connection.files_upload(response_data.encode(), all_targets_path, dropbox.files.WriteMode.overwrite)
+                elif targets[uuid] != uuip: ## UUIP has changed for existing UUID, update it
+                    start_idx = response_data.index(uuid)
+                    end_idx = response_data.index('\n', start_idx)
+                    old_entry = response_data[start_idx:end_idx+1]
+                    new_entry = f"{uuid},{uuip}\n"
+                    response_data = response_data.replace(old_entry, new_entry)
                     self._dbx_connection.files_upload(response_data.encode(), all_targets_path, dropbox.files.WriteMode.overwrite)
             except Exception as e:
                 Log.w("Unable to check the list of targets on Dropbox.")

@@ -164,7 +164,7 @@ class QatchTagger():
     # CREATE DEFAULT TARGETS FILE
     targets_path = os.path.join(installer_dst, 'targets.csv')
     with open(targets_path, 'w') as f:
-      f.write("ALL")
+      f.write("WINDOWS-AN4Q851") # change file contents to "ALL" after tag verification tests PASS
     
 if __name__ == '__main__':
     QatchTagger().run()

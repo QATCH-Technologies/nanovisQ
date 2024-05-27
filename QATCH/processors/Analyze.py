@@ -59,9 +59,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def Lookup_CA(surfactant, concentration):
         CA = 55
         if concentration > 10:
-            CA = CA - 7
-        else:
             CA = CA - 5
+        else:
+            CA = CA - 3
         return CA # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_CA.csv", surfactant, concentration)
 
     @staticmethod
