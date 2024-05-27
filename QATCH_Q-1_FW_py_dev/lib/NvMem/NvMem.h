@@ -29,7 +29,7 @@
 /// @note Add new HW revisions here...
 
 /// @note Increment NVMEM_VERSION each time you change NvMem_RAM structure!
-#define NVMEM_VERSION 1
+#define NVMEM_VERSION 2
 
 struct NvMem_RAM
 {
@@ -38,6 +38,7 @@ struct NvMem_RAM
   byte OffsetA;     // 1: always (FW fixed offset, in EEPROM)
   byte HW_Revision; // 2: see 'HW_REVISION_[#]' #defines for supported values
   byte OffsetM;     // 3: measuring (FW fixed offset, in EEPROM)
+  byte Ethernet_EN; // 4: enable Ethernet PHY to report an IP (if chip present) - default: disable
   // byte NewValue;
   /// @note Add new entries here, even if inverted!
   /// @note Also increment NVMEM_VERSION, add a value in defaults(), and add logic in update()

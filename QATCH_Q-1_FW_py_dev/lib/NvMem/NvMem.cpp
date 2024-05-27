@@ -32,6 +32,7 @@ NvMem_RAM NvMem::defaults(void)
   defaults.OffsetA = 0;
   defaults.HW_Revision = HW_REVISION_X;
   defaults.OffsetM = 0;
+  defaults.Ethernet_EN = 0;
   // defaults.NewValue = 42;
 
   struct_is_valid = true; // required for saving defaults, which is required to come soon after this call
@@ -114,6 +115,11 @@ byte NvMem::update(void)
   if (mem.OffsetM == 0xFF && DEFAULT.OffsetM != 0xFF)
   {
     mem.OffsetM = DEFAULT.OffsetM;
+    modified_entries++;
+  }
+  if (mem.Ethernet_EN == 0xFF && DEFAULT.Ethernet_EN != 0xFF)
+  {
+    mem.Ethernet_EN = DEFAULT.Ethernet_EN;
     modified_entries++;
   }
   // if (mem.NewValue == 0xFF && DEFAULT.NewValue != 0xFF)

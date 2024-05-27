@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r36"
-#define RELEASE_DATE "2024-05-23"
+#define CODE_VERSION "v2.6b37"
+#define RELEASE_DATE "2024-05-27"
 
 /************************** LIBRARIES **************************/
 
@@ -4947,6 +4947,13 @@ bool connect_to_ethernet()
   {
     client->println("HW Variant: TEENSY41 (With Ethernet Chip)");
     // continue;
+  }
+
+  // Check 'Ethernet_EN' feature bit in NVMEM
+  if (NVMEM.Ethernet_EN == 0) // not enabled (aka: disabled)
+  {
+    client->println("Ethernet_EN is not set in NVMEM. Not initializing Ethernet chip.");
+    return false;
   }
 
   // start the Ethernet connection and the server:
