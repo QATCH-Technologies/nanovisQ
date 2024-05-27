@@ -4953,6 +4953,8 @@ bool connect_to_ethernet()
   if (NVMEM.Ethernet_EN == 0) // not enabled (aka: disabled)
   {
     client->println("Ethernet_EN is not set in NVMEM. Not initializing Ethernet chip.");
+    delay(3000); // pause to show boot screen
+    net_error = true;
     return false;
   }
 
