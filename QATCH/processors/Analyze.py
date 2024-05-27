@@ -3671,7 +3671,7 @@ class AnalyzerWorker(QtCore.QObject):
             ax2.plot(normal_x, initial_smooth, '-', label="fit")
             leg = ax2.legend(["Initial Fill"],
             handlelength=0, handletextpad=0, fancybox=True)
-            for item in leg.legendHandles:
+            for item in leg.legend_handles:
                 item.set_visible(False)
 
             self.update(status_label)
@@ -3681,7 +3681,7 @@ class AnalyzerWorker(QtCore.QObject):
             ax3.plot(normal_x, best_fit_pts, '-', label="fit")
             leg = ax3.legend(["Normalized"],
             handlelength=0, handletextpad=0, fancybox=True)
-            for item in leg.legendHandles:
+            for item in leg.legend_handles:
                 item.set_visible(False)
 
             mask = np.where( line1_y >= 0 )
@@ -3690,7 +3690,7 @@ class AnalyzerWorker(QtCore.QObject):
             # ax4.plot(line1_x, line1_smooth, ':', label="fit")
             leg = ax4.legend(["Position"],
             handlelength=0, handletextpad=0, fancybox=True)
-            for item in leg.legendHandles:
+            for item in leg.legend_handles:
                 item.set_visible(False)
 
             self.update(status_label)
