@@ -469,8 +469,8 @@ class SerialProcess(multiprocessing.Process):
                                     Log.d("Port {} stopping...".format(i+1))
                                     if s[i].is_open:
                                         sleep(0.25*(4-i)) # TODO: Testing only, remove ideally
-                                        # s[i].write("STOP\n".encode())
-                                        # s[i].flush()
+                                        s[i].write("STOP\n".encode())
+                                        s[i].flush()
                                         s[i].close()
                                     Log.d("Port {} stopped".format(i+1))
 

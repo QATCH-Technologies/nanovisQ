@@ -2149,6 +2149,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.worker.consume_queue5()
         self.worker.consume_queue6()
 
+        labelbar = "Status: Unknown"
+
         # MEASUREMENT: dynamic frequency and dissipation labels at run-time
         ###################################################################
         if  self._get_source() == OperationType.measurement:
@@ -2257,8 +2259,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                     self._run_finished[i] = True
                                     continue
                                 try:
-                                    vector0 = self.worker.get_t2_buffer(0)
+                                    vector0 = self.worker.get_t2_buffer(i)
                                     time_running = vector0[0]
+                                    if time_running == 0:
+                                        labelbar = 'Waiting for start...'
+                                        continue
                                     if time_running < 3.0:
                                         labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
                                         idx = int(len(list(vector0)) / 3) # next(x for x,y in list(vector0) if y <= 1.0)
@@ -2574,6 +2579,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 _plt2 = self._plt2_arr[i]
                 _plt3 = self._plt3_arr[i]
                 self._readFREQ = self.worker.get_value0_buffer(i)
+                vector1 = self.worker.get_d1_buffer(i)
 
                 if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
                     self._amps[i] = self.worker.get_value1_buffer(i)
@@ -2607,15 +2613,18 @@ class MainWindow(QtWidgets.QMainWindow):
                             self._text4[i].setParentItem(_plt2.graphicsItem())
                             self._text4[i].anchor(itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
                         elif not self._drop_applied[i]:
-                            if "vector0" in locals():
-                                time_running = vector0[0]
-                                if time_running < 3.0: 
-                                    self._text4[i].setText('Calibrating...', color=(0, 0, 200))
-                                    self._baselinedata[i] = [
-                                        [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(self.worker.get_d1_buffer(i)[:numPoints])],
-                                        [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
-                                else:
-                                    self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
+                            vector0 = self.worker.get_t2_buffer(i)
+                            time_running = vector0[0]
+                            if time_running == 0:
+                                labelbar = 'Waiting for start...'
+                                continue
+                            if time_running < 3.0: 
+                                self._text4[i].setText('Calibrating...', color=(0, 0, 200))
+                                self._baselinedata[i] = [
+                                    [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(self.worker.get_d1_buffer(i)[:numPoints])],
+                                    [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
+                            else:
+                                self._text4[i].setText('Apply drop now!', color=(0, 200, 0))
                         else:
                             time_running = _plt2.getViewBox().viewRange()[0][1]
                             current_y_range = [_plt2.getViewBox().viewRange()[1], _plt3.viewRange()[1]]
@@ -2627,7 +2636,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self._last_y_delta[i] = time_running # time of last delta
                                 self._text4[i].setText(' ') # hide message once drop is applied
                                 self._run_finished[i] = False
-                            elif time_running - self._last_y_delta[i] > 10.0:
+                            elif time_running - self._last_y_delta[i] > 10.0 and not self._run_finished[i]:
                                 self._run_finished[i] = True
                                 Log.d(f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)")
                                 # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
@@ -2642,7 +2651,14 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     #Prevent the user from zooming/panning out of this specified region
                     if self._get_source() == OperationType.measurement:
-                        _plt2.setLimits(yMax=self._readFREQ[-1],yMin=self._readFREQ[0], minYRange=Constants.plot_min_range_freq, maxYRange=10000)
+                        _ymin = np.amin(vector1)
+                        _ymax = np.amax(vector1)
+                        if _ymax - _ymin < Constants.plot_min_range_freq:
+                            _yavg = int(np.average(vector1))
+                            _ymin = _yavg - (Constants.plot_min_range_freq / 2)
+                            _ymax = _yavg + (Constants.plot_min_range_freq / 2)
+
+                        _plt2.setLimits(yMax=_ymax,yMin=_ymin, minYRange=Constants.plot_min_range_freq, maxYRange=10000)
                         _plt3.setLimits(yMax=(self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0],yMin=0, minYRange=Constants.plot_min_range_diss)
 
                         _plt2.enableAutoRange(axis='x', enable=True)
@@ -3879,7 +3895,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def thread_is_finished(self):
         Log.e("Web Thread is finished!")
-        
+
     def update_progress(self, label_str, progress_pct):
         # size = self.url_download["size"]
         # last_pct = self.progressBar.value()
