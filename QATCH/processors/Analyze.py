@@ -60,7 +60,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         CA = 55
         if concentration > 10:
             CA = CA - 5
-        else:
+        elif concentration >= 1:
             CA = CA - 3
         return CA # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_CA.csv", surfactant, concentration)
 
