@@ -660,6 +660,12 @@ class SerialProcess(multiprocessing.Process):
                                         mag_result_fit -= self._convertADCtoMagnitude(0) # zero offset
                                         filtered_mag = mag_result_fit
 
+                                        # Make sure peaks on Amplitudes plot for MULTI are not clipped at edges
+                                        if filtered_mag[0] != 0:
+                                            self._minFREQ -= 1
+                                        if filtered_mag[-1] != 0:
+                                            self._maxFREQ += 1
+
                                         w_time /= 1e4;
 
                                         LogBuffer.put([device,sequence,overtone,w_time,data_temp,peak_mag,peak_freq,dissipation,tec_temp])
