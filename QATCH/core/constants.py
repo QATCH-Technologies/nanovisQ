@@ -22,6 +22,14 @@ class MinimalPython:
 
 
 ###############################################################################
+# Enum for the types of UpdateEngines supported by the UpdaterTask class
+###############################################################################
+class UpdateEngines(Enum):
+    DropboxAPI = 0
+    GitHub = 1
+
+
+###############################################################################
 # Common constants and parameters for the application.
 ###############################################################################
 class Constants:
@@ -258,6 +266,13 @@ class Constants:
     diss_factor1_5MHz = 0.2222e6
     diss_factor2_5MHz = 1.67
     distances = "[1.15, 1.61, 2.17, 2.67, 3.23, 5.00, 10.90, 16.2]"
+
+    ######################
+    # UPDATER parameters #
+    ######################
+    UpdateEngine = UpdateEngines.GitHub
+    UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
+    UpdateGitBranch = "main"
 
     @staticmethod
     def get_batch_param(batch, param = ""):

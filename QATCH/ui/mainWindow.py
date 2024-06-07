@@ -3,7 +3,7 @@ from pyqtgraph import AxisItem
 import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.core.worker import Worker
-from QATCH.core.constants import Constants, OperationType
+from QATCH.core.constants import Constants, OperationType, UpdateEngines
 from QATCH.ui.popUp import PopUp, QueryComboBox, QueryRunInfo
 from QATCH.ui.export import Ui_Export
 from QATCH.common.logger import Logger as Log
@@ -16,6 +16,7 @@ from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.processors.Analyze import AnalyzeProcess
 from time import time, mktime, strftime, strptime, localtime
+from dateutil import parser
 import threading
 import multiprocessing
 import datetime
@@ -28,6 +29,7 @@ import os
 import io
 import pyzipper
 import hashlib
+import requests
 import stat
 import subprocess
 
@@ -3412,7 +3414,6 @@ class MainWindow(QtWidgets.QMainWindow):
             if not hasattr(self, "res_download"):
                 self.res_download = False
 
-            import requests
             import dropbox
             import base64
             import json
@@ -3522,34 +3523,63 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.d("Exception details:", e)
 
             builds= []
-            for entry in self._dbx_connection.files_list_folder(f'/{branch}', recursive = True).entries:
-                if (
-                    entry.name.lower().startswith("nanovisq") and
-                    entry.name.lower().endswith(".zip") and 
-                    entry.name.lower().find("installer") == -1 and
-                   (entry.name.lower().find("exe") >= 0) == require_EXE # build type matches (python vs EXE)
-                ):
-                    build = {   "date": entry.server_modified,
-                                "name": entry.name, #.replace("_exe", "").replace("_py", ""),
-                                "path": entry.path_display,
-                                "size": entry.size    }
-                    builds.append(build)
+            if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                for entry in self._dbx_connection.files_list_folder(f'/{branch}', recursive = True).entries:
+                    if (
+                        entry.name.lower().startswith("nanovisq") and
+                        entry.name.lower().endswith(".zip") and 
+                        entry.name.lower().find("installer") == -1 and
+                    (entry.name.lower().find("exe") >= 0) == require_EXE # build type matches (python vs EXE)
+                    ):
+                        build = {   "date": entry.server_modified,
+                                    "name": entry.name, #.replace("_exe", "").replace("_py", ""),
+                                    "path": entry.path_display,
+                                    "size": entry.size    } #,
+                        builds.append(build)
+            if Constants.UpdateEngine == UpdateEngines.GitHub:
+                latest_release_url = Constants.UpdateGitRepo + "/releases/latest"
+                resp = requests.get(latest_release_url) # url redirects to latest tag
+                tags_url = resp.url.replace("tag", "download") + "/tags.txt"
+                resp = requests.get(tags_url)
+                if resp.ok:
+                    all_tags = resp.content.decode().split()[::-1] # newest to oldest
+                    date_order = parser.parse(resp.headers['Last-Modified'])
+                    for entry in all_tags:
+                        build_type = "exe" if require_EXE else "py"
+                        date_order -= datetime.timedelta(days=1)
+                        build = {   "date": date_order, # updated to actual release date when calling target_build()
+                                    "name": f"nanovisQ_SW_{entry}_{build_type}.zip",
+                                    "path": latest_release_url.replace("latest", f"download/{entry}/nanovisQ_SW_{entry}_{build_type}.zip"),
+                                    "size": 0   }
+                        builds.append(build)
             def get_dates(build):
                 return build.get('date')
             def target_build(path):
                 try:
-                    build_targets_path = f"{os.path.split(path)[0]}/targets.csv"
-                    metadata, response = self._dbx_connection.files_download(build_targets_path)
                     targets = []
-                    for line in response.iter_lines():
-                        targets.append(line.decode().strip())
-                    response.close() # release connection, we are done reading 'targets'
+                    response = None
+                    actual_date = None
+                    install_check_path = f"{os.path.split(path)[0]}/installer.checksum"
+                    build_targets_path = f"{os.path.split(path)[0]}/targets.csv"
+                    if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                        metadata, response = self._dbx_connection.files_download(build_targets_path)
+                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                        metadata = requests.get(install_check_path)
+                        response = requests.get(build_targets_path)
+                        if metadata.ok:
+                            actual_date = parser.parse(metadata.headers['Last-Modified']) # prefer time from 'installer.checksum'
+                        elif response.ok:
+                            actual_date = parser.parse(response.headers['Last-Modified']) # fallback to time from 'targets.csv'
+                    if response:
+                        for line in response.iter_lines():
+                            targets.append(line.decode().strip())
+                        response.close() # release connection, we are done reading 'targets'
                 except Exception as e:
                     targets = ["ALL"]
                 if "ALL" in targets or Architecture.get_os_name() in targets:
-                    return True
+                    return True, actual_date
                 else:
-                    return False
+                    return False, actual_date
             # sort by name (descending order)
             builds.sort(key=get_dates, reverse=True)
 
@@ -3562,14 +3592,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
                     is_release_build = branch.replace('x', 'r') in build["name"]
-                    is_target_build = target_build(build["path"])
+                    is_target_build, _d = target_build(build["path"])
+                    if _d:
+                        build["date"] = _d
                     if is_release_build and is_target_build:
                         most_recent = build
                         break # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
                     is_release_build = branch.replace('x', 'r') in build["name"]
-                    is_target_build = target_build(build["path"])
+                    is_target_build, _d = target_build(build["path"])
+                    if _d:
+                        build["date"] = _d
                     if is_release_build and enabled and not running_release_build:
                         # Do NOT offer a B-dev build an update to R build
                         # (user must turn off dev mode 1st to get R build)
@@ -3663,6 +3697,7 @@ class MainWindow(QtWidgets.QMainWindow):
             download_resources = False
             current_version = "0,None"
             latest_version = "-1,Unknown"
+            server_file_size = 0
 
             self.res_download = download_resources
             self.res_current_version = current_version
@@ -3677,8 +3712,11 @@ class MainWindow(QtWidgets.QMainWindow):
             bundled_file_compare = os.path.join(bundled_resource_path, "lookup_resources.csv")
 
             resources = []
-            for resource in self._dbx_connection.files_list_folder(remote_resource_path, recursive = False).entries:
-                resources.append(resource.name)
+            if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                for resource in self._dbx_connection.files_list_folder(remote_resource_path, recursive = False).entries:
+                    resources.append(resource.name)
+            if Constants.UpdateEngine == UpdateEngines.GitHub:
+                resources = os.listdir(bundled_resource_path)
             self.res_files = resources.copy()
 
             try:
@@ -3707,12 +3745,20 @@ class MainWindow(QtWidgets.QMainWindow):
             except Exception as e:
                 Log.e("An error occurred while extracting bundled resources to working directory. Checking server for updates.")
 
-            metadata, response = self._dbx_connection.files_download(remote_file_compare)
-            for line in response.iter_lines():
-                    latest_version = line.decode().strip() # last line saved
+            if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                metadata, response = self._dbx_connection.files_download(remote_file_compare)
+                for line in response.iter_lines():
+                        latest_version = line.decode().strip() # last line saved
+                server_file_size = metadata.size
+            if Constants.UpdateEngine == UpdateEngines.GitHub:
+                resource_file_url = Constants.UpdateGitRepo + "/raw/" + Constants.UpdateGitBranch + remote_file_compare.replace(branch, "QATCH")
+                response = requests.get(resource_file_url)
+                if response.ok:
+                    latest_version = response.text.split()[-1].strip() # last line saved
+                    server_file_size = int(response.headers['Content-Length'])+112
             response.close() # release connection, we are done reading 'remote file compare'
             if os.path.exists(working_file_compare):
-                if metadata.size != os.stat(working_file_compare).st_size:
+                if server_file_size != os.stat(working_file_compare).st_size:
                     with open(working_file_compare, 'r') as f:
                         lines = f.read().splitlines()
                         current_version = lines[-1].strip()
@@ -3737,6 +3783,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             remote_resource_path = f'/{branch}/resources/'
             working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_file_compare = os.path.join(working_resource_path, "lookup_resources.csv")
 
             download_resources = self.res_download
             resources = self.res_files
@@ -3755,9 +3802,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 return
 
             if download_resources:
+                # Show progress bar
+                self.progressBar = QtWidgets.QProgressDialog(f"Downloading resources...", "Cancel", 0, 100, self)
+                icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+                self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+                self.progressBar.setWindowTitle("QATCH nanovisQ")
+                self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+                self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+                self.progressBar.setFixedSize(int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+                self.progressBar.show()
+                _cancel = False
+
                 # DOWNLOAD RESOURCES FROM SERVER
                 detail_text = []
-                for resource in resources:
+                num_files = len(resources)
+                for i, resource in enumerate(resources):
+                    pct = int(100 * i / num_files)
+                    self.progressBar.setValue(pct)
+                    self.progressBar.repaint() # force update
+                    QtCore.QCoreApplication.processEvents() # process repaint and cancel signals in synchronous thread
+                    if self.progressBar.wasCanceled():
+                        # stop prematurely due to user cancel
+                        _cancel = True
+                        break
                     detail_text.append(f"Updating \"{resource}\"...")
                     file_local = os.path.join(working_resource_path, resource)
                     file_remote = os.path.join(remote_resource_path, resource)
@@ -3765,13 +3832,33 @@ class MainWindow(QtWidgets.QMainWindow):
                         Log.d(f"Deleting {file_local}...")
                         os.remove(file_local)
                     Log.d(f"Downloading {file_remote} to {file_local}...")
-                    self._dbx_connection.files_download_to_file(file_local, file_remote)
+                    if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                        self._dbx_connection.files_download_to_file(file_local, file_remote)
+                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                        git_mapped_url = Constants.UpdateGitRepo + '/raw/' + Constants.UpdateGitBranch + file_remote.replace(branch, "QATCH")
+                        response = requests.get(git_mapped_url)
+                        response.raise_for_status()
+                        with open(file_local, 'wb') as f:
+                            f.write(response.content)
+                        response.close()
                     detail_text[-1] += "\tDONE!"
 
-                # Update successful
-                PopUp.question_FW(self, "Resource Update Successful",
-                    "Resource files are now updated to their latest versions.",
-                    "Updated from \"{}\" to \"{}\".\n\nDETAILS:\n{}".format(current_version, latest_version, "\n".join(detail_text)), True)
+                # Update finished
+                self.progressBar.close() # finish progress bar @ 100%
+                if _cancel:
+                    # Partial success
+                    Log.w(f"User canceled resource download: Updated {i} of {num_files} files.")
+                    with open(working_file_compare, "a") as f:
+                        f.write("* (Partial download)")
+                    Log.w("Marked resources for future update again.")
+                    PopUp.question_FW(self, "Resource Update Canceled",
+                        "Resource files are partially updated to their latest versions.\nPlease update again to fully update.",
+                        "Updated {} of {} files from \"{}\" to \"{}\".\n\nDETAILS:\n{}".format(i, num_files, current_version, latest_version, "\n".join(detail_text)), True)
+                else:
+                    # Update successful
+                    PopUp.question_FW(self, "Resource Update Successful",
+                        "Resource files are now updated to their latest versions.",
+                        "Updated all {} files from \"{}\" to \"{}\".\n\nDETAILS:\n{}".format(num_files, current_version, latest_version, "\n".join(detail_text)), True)
                 
             else:
                 Log.d("User declined resource update. Skipping download.")
@@ -3852,7 +3939,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.progressBar.setFixedSize(int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
 
                     self.upd_thread = QtCore.QThread()
-                    self.updater = UpdaterTask(self._dbx_connection, save_to, path, size) # InstallWorker(proceed, copy_src, copy_dst)
+                    self.updater = self.newUpdaterTask(path, save_to, size)
                     self.updater.moveToThread(self.upd_thread)
 
                     self.upd_thread.started.connect(self.updater.run)
@@ -3881,7 +3968,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # NOTE: post_download_check() called upon task completion (but not on cancel)
                 else:
-                    Log.d(f"Build {name} already downloaded from Dropbox. Ready to update.")
+                    engine = "Dropbox" if Constants.UpdateEngine == UpdateEngines.DropboxAPI else "GitHub"
+                    Log.d(f"Build {name} already downloaded from {engine}. Ready to update.")
                     self.post_download_check(do_install, setup_finished, save_to, new_install_path, do_launch_inline)
             else:
                 self.post_download_check(do_install, setup_finished, save_to, new_install_path, do_launch_inline)
@@ -3892,6 +3980,15 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             return self.get_web_info(return_info)
 
+    def newUpdaterTask(self, src, dest, size):
+        _updaterTask = None
+        if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+            _updaterTask = UpdaterTask_Dbx(self._dbx_connection, dest, src, size) # InstallWorker(proceed, copy_src, copy_dst)
+        if Constants.UpdateEngine == UpdateEngines.GitHub:
+            _updaterTask = UpdaterTask_Git(dest, src, size)
+        if not _updaterTask:
+            Log.e("No valid UpdateEngine found. Cannot check for updates.")
+        return _updaterTask
 
     def thread_is_finished(self):
         Log.e("Web Thread is finished!")
@@ -3997,7 +4094,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 setup_finished = True
         else:
-            Log.e(f"ERROR: File {save_to} does not exist. Failed to download from Dropbox server.")
+            engine = "Dropbox" if Constants.UpdateEngine == UpdateEngines.DropboxAPI else "GitHub"
+            Log.e(f"ERROR: File {save_to} does not exist. Failed to download from {engine} server.")
 
         if setup_finished or not do_install:
             if PopUp.question_FW(self, "QATCH Software Ready!", "Would you like to close this instance and\nlaunch the new application now?"):
@@ -4019,7 +4117,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Log.d("GUI: Normal repaint events") # no longer needed
             
 
-class UpdaterProcess(multiprocessing.Process):
+class UpdaterProcess_Dbx(multiprocessing.Process):
     def __init__(self, dbx_conn, local, remote):
         super().__init__()
         self._dbx_conn = dbx_conn
@@ -4033,7 +4131,7 @@ class UpdaterProcess(multiprocessing.Process):
         md = self._dbx_conn.files_download_to_file(file_local, file_remote)
 
 
-class UpdaterTask(QtCore.QThread):
+class UpdaterTask_Dbx(QtCore.QThread):
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(str, int)
@@ -4062,7 +4160,7 @@ class UpdaterTask(QtCore.QThread):
             size = self.total_size
             last_pct = -1
 
-            self.progressTaskHandle = UpdaterProcess(self._dbx_connection, save_to, path) 
+            self.progressTaskHandle = UpdaterProcess_Dbx(self._dbx_connection, save_to, path) 
             self.progressTaskHandle.start()
 
             while True:
@@ -4090,6 +4188,69 @@ class UpdaterTask(QtCore.QThread):
                 Log.i(TAG1, "Finshed downloading!")
             else:
                 self.progressTaskHandle.join()
+                if os.path.exists(save_to):
+                    Log.d(f"Removing partial file download: {save_to}")
+                    os.remove(save_to)
+        except Exception as e:
+            Log.e(TAG1, f"ERROR: {e}")
+            self.exception.emit(str(e))
+        self.finished.emit()
+
+
+class UpdaterTask_Git(QtCore.QThread):
+    finished = QtCore.pyqtSignal()
+    exception = QtCore.pyqtSignal(str)
+    progress = QtCore.pyqtSignal(str, int)
+    _cancel = False
+
+    def __init__(self, local_file, remote_file, total_size):
+        super().__init__()
+        self.local_file = local_file
+        self.remote_file = remote_file
+        self.total_size = total_size
+
+    def cancel(self):
+        Log.d("GUI: Toggle progress mode")
+        # Log.w("Process kill request")
+        self._cancel = True
+
+    def run(self):
+        try:
+            TAG1 = "[UpdaterTask]"
+            save_to = self.local_file
+            path = self.remote_file
+            size = self.total_size
+            last_pct = -1
+
+            status_str = f"Starting Download: {os.path.basename(path)} (0%)"
+            Log.i(TAG1, status_str)
+            self.progress.emit(status_str[:status_str.rfind(' (')], 0)
+
+            file_remote = path
+            file_local = save_to
+            with requests.get(file_remote, stream=True) as r:
+                r.raise_for_status()
+                size = int(r.headers['Content-Length'])
+                with open(file_local, 'wb') as f:
+                    curr_size = 0
+                    for chunk in r.iter_content(chunk_size=8192): 
+                        if self._cancel:
+                            break
+
+                        f.write(chunk)
+                        curr_size += len(chunk)
+
+                        pct = int(100 * curr_size / size)
+                        if pct != last_pct or curr_size == size:
+                            status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
+                            Log.i(TAG1, status_str)
+                            self.progress.emit(status_str[:status_str.rfind(' (')], pct)
+                            last_pct = pct
+
+            if not self._cancel:
+                Log.d("GUI: Toggle progress mode")
+                Log.i(TAG1, "Finshed downloading!")
+            else:
                 if os.path.exists(save_to):
                     Log.d(f"Removing partial file download: {save_to}")
                     os.remove(save_to)
