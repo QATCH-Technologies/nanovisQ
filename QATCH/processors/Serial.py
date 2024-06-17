@@ -399,7 +399,66 @@ class SerialProcess(multiprocessing.Process):
                             if len(self._serial) > 1:
                                 ### MULTIPLEX CODE START ###
 
+                                self._maxDriftLeft = []
+                                self._maxDriftRight = []
+                                for i in range(len(self._serial)):
+                                    self._maxDriftLeft.append(Constants.max_drift_l_hz)
+                                    self._maxDriftRight.append(Constants.max_drift_r_hz)
+
+                                try:
+                                    # look for and avoid any sweep overlap between ports
+                                    # strategy: move max drift to midpoint of center frequencies found during calibration
+                                    freqRanges = []
+                                    for x in range(len(self._serial)):
+                                        freqRanges.append(range(int(self._startFreqs[x] - Constants.max_drift_l_hz), 
+                                                                int(self._stopFreqs[x] + Constants.max_drift_r_hz)))
+                                    for x in range(len(self._serial)):
+                                        for y in range(len(self._serial)):
+                                            if x == y:
+                                                continue
+                                            start = int(self._startFreqs[y] - Constants.max_drift_l_hz)
+                                            stop = int(self._stopFreqs[y] + Constants.max_drift_r_hz)
+                                            if start in freqRanges[x]:
+                                                midpt = int(np.average([self._startFreqs[y], self._stopFreqs[x]]))
+                                                freqRanges[x] = range(freqRanges[x][0], midpt - 1)
+                                                freqRanges[y] = range(midpt + 1, freqRanges[y][-1])
+                                            if stop in freqRanges[x]:
+                                                midpt = int(np.average([self._startFreqs[x], self._stopFreqs[y]]))
+                                                freqRanges[x] = range(midpt + 1, freqRanges[x][-1])
+                                                freqRanges[y] = range(freqRanges[y][0], midpt - 1)
+
+                                    self._maxDriftLeft = []
+                                    self._maxDriftRight = []
+                                    peaks_too_close = False
+                                    for i in range(len(self._serial)):
+                                        self._maxDriftLeft.append(abs(self._startFreqs[i] - freqRanges[i][0]))
+                                        self._maxDriftRight.append(abs(freqRanges[i][-1] - self._stopFreqs[i]))
+                                        minLimit_L = int(Constants.max_drift_l_hz / 2)
+                                        if self._maxDriftLeft[i] < minLimit_L:
+                                            Log.w(f"Port {i}: (Left Drift) " +
+                                                f"Actual = {self._maxDriftLeft[i]}, Min-Limit = {minLimit_L}")
+                                            self._maxDriftLeft[i] = minLimit_L
+                                            peaks_too_close = True
+                                        minLimit_R = int(Constants.max_drift_r_hz / 2)
+                                        if self._maxDriftRight[i] < minLimit_R:
+                                            Log.w(f"Port {i}: (Right Drift) " +
+                                                f"Actual = {self._maxDriftRight[i]}, Min-Limit = {minLimit_R}")
+                                            self._maxDriftRight[i] = minLimit_R
+                                            peaks_too_close = True
+
+                                    if peaks_too_close:
+                                        Log.w("Peaks may be too close to reliably track.")
+                                        Log.w("If you experience tracking issues, please re-calibrate or try another crystal.")
+
+                                except Exception as e:
+                                    Log.e("Error checking peak proximity and tracking reliability prior to start.")
+                                    Log.w("If you experience tracking issues, please re-calibrate or try another crystal.")
+
                                 cmd_split = cmd.splitlines()
+                                avg_parts = cmd_split[0].split(";")
+                                avg_parts[3] = "{}"
+                                avg_parts[4] = "{}"
+                                cmd_split[0] = ";".join(avg_parts)
                                 cmd_format_len = 10 if self._freq_hopping else 3
                                 cmd_split[-1] = ";".join(["{}" for i in range(cmd_format_len)])
                                 cmd = "\n".join(cmd_split)
@@ -419,12 +478,14 @@ class SerialProcess(multiprocessing.Process):
                                         Log.d("Port {} read: {}!".format(i+1, bs))
                                     if self._freq_hopping:
                                         this_cmd = cmd.format(
+                                            self._maxDriftLeft[i], self._maxDriftRight[i],
                                             self._startFreqs[i], self._stopFreqs[i], self._baselines[i],
                                             self._startFreqs_up[i], self._stopFreqs_up[i], self._baselines_up[i],
                                             self._startFreqs_down[i], self._stopFreqs_down[i], self._baselines_down[i],
                                             base_overtones_per_cycle).encode()
                                     else:
-                                        this_cmd = cmd.format(self._startFreqs[i], self._stopFreqs[i], self._baselines[i]).encode()
+                                        this_cmd = cmd.format(self._maxDriftLeft[i], self._maxDriftRight[i],
+                                                              self._startFreqs[i], self._stopFreqs[i], self._baselines[i]).encode()
                                     Log.d("Port {} write: {}".format(i+1, this_cmd))
                                     self._serial[i].write(this_cmd)
                                     bs = self._serial[i].read_until().decode() # byte stream

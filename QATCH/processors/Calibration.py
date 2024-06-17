@@ -916,6 +916,14 @@ class CalibrationProcess(multiprocessing.Process):
                                 for x in range(len(left_bounds)):
                                     left_bounds[x] += 5000 # offset (in Hz) between calibration and measurement modes (due to step_size differences)
 
+                                # Narrow left and right bounds for MULTIPLEX system performance to avoid overscanning when peaks are too close
+                                # NOTE: This performance modification only affects the calibration of MULTI systems
+                                if len(self._serial) > 1:
+                                    for x in range(len(left_bounds)):
+                                        left_bounds[x] /= 3
+                                    for x in range(len(right_bounds)):
+                                        right_bounds[x] /= 3
+
                                 if data_ph is None:
                                     FileStorage.TXT_sweeps_save(j+1, filename_calib, Constants.csv_calibration_export_path, readFREQ, data_mag)
                                     np.savetxt(path, np.column_stack([max_freq_mag, max_freq_mag, left_bounds, right_bounds, max_baselines]))

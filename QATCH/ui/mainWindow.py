@@ -455,6 +455,7 @@ class Rename_Output_Files(QtCore.QObject):
         super().__init__(parent)
         self.parent = parent
         self.finished.connect(self.indicate_done)
+        self.DockingWidgets = []
         self.bThread = []
         self.bWorker = []
 
@@ -487,6 +488,8 @@ class Rename_Output_Files(QtCore.QObject):
         if remaining_threads > 1:
             Log.d(f"Waiting on {remaining_threads} Run Info threads to close...")
             return # not done yet
+        if len(self.bThread) > 1:
+            self.RunInfoWindow.close() # close multi run info window when all saved
         color_err = '#333333'
         labelbar = "Run Stopped. Saved to local data."
         self.infobar_write(color_err, labelbar)
@@ -524,7 +527,7 @@ class Rename_Output_Files(QtCore.QObject):
                     copy_file = None
                     if thisDir != currDir:
                         currDir = thisDir
-                        text = "" # clear prior value
+                        # text = "" # clear prior value
                         path_split = os.path.split(thisDir)
                         path_root = path_split[0]
                         dev_name = path_split[1]
@@ -537,13 +540,14 @@ class Rename_Output_Files(QtCore.QObject):
                                 _dev_name = _dev_parts[1] # do not override 'dev_name'
                             dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
                             if 'NAME' in dev_info:
-                                dev_name = dev_info['NAME']
+                                if dev_info['NAME'] != _dev_name:
+                                    dev_name = dev_info['NAME']
                         except:
                             Log.e(f"Unable to lookup device info for: {dev_name}")
                         save_anyways = True
 
                         is_good = AnalyzeProcess.Model_Data(old_path)
-                        if not is_good:
+                        if text == "" and not is_good:
                             save_anyways = PopUp.critical(self.parent,
                                 "Capture Run",
                                 "Are you sure you want to save this run?",
@@ -551,12 +555,13 @@ class Rename_Output_Files(QtCore.QObject):
                                 True)
                         self.indicate_saving()
                         while True:
-                            if save_anyways:
-                                text, ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
-                                            'Enter a run name for device "{}":'.format(dev_name),
-                                            text=text)
-                            else:
-                                ok = False # bad run, don't save with custom name
+                            if text == "":
+                                if save_anyways:
+                                    text, ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
+                                                'Enter a run name:', # for device "{}":'.format(dev_name),
+                                                text=text)
+                                else:
+                                    ok = False # bad run, don't save with custom name
                             if ok:
                                 ask4info = True
                                 # remove any invalid characters from user input
@@ -564,6 +569,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 for invalidChar in invalidChars:
                                     text = text.replace(invalidChar, '')
                                 subDir = text
+                                if _dev_pid != 0: # append Port ID 1-4
+                                    subDir += f"_{self._portIDfromIndex(_dev_pid)}"
                                 try:
                                     os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=False)
                                     # break (done below)
@@ -576,6 +583,7 @@ class Rename_Output_Files(QtCore.QObject):
                                         PopUp.warning(self.parent,
                                             "Enter a Run Name",
                                             "Please enter a run name to save this run...\nPlease try again with a valid name.")
+                                    text = ""
                                     continue # no break (try again)
                                 text = text.strip().replace(' ', '_') # word spaces -> underscores
                                 # break (done below)
@@ -653,12 +661,53 @@ class Rename_Output_Files(QtCore.QObject):
                         self.indicate_finalizing()
                         self.bThread.append(QtCore.QThread())
                         user_name = None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
-                        self.bWorker.append(QueryRunInfo(text, new_path, is_good, user_name, parent = self.parent)) # TODO: more secure to pass user_hash (filename)
+                        self.bWorker.append(QueryRunInfo(subDir, new_path, is_good, user_name, parent = self.parent)) # TODO: more secure to pass user_hash (filename)
                         self.bThread[-1].started.connect(self.bWorker[-1].show)
                         self.bWorker[-1].finished.connect(self.bThread[-1].quit)
                         self.bWorker[-1].finished.connect(self.indicate_done) # add here
                         # self.finished.disconnect(self.indicate_done) # remove here
+
+                num_runs_saved = len(self.bThread)
+                if num_runs_saved == 0:
+                    pass # do nothing
+                elif num_runs_saved == 1:
                         self.bThread[-1].start()
+                else: 
+                    # if more than 1 run to save...
+                        
+                    # All QueryRunInfo loaded into bThreads, now show the RunInfoWindow for multi
+                    self.RunInfoWindow = QtWidgets.QWidget()
+                    self.RunInfoLayout = QtWidgets.QGridLayout()
+                    self.RunInfoWindow.setLayout(self.RunInfoLayout)
+                    self.DockingWidgets = []
+                    for i in range(num_runs_saved):    
+                        if num_runs_saved == 4:
+                            row = 0 # int(i / 2)
+                            col = i # int(i % 2)
+                        else: # default, fallback grid layout
+                            row = int(i % 4)
+                            col = int(i / 4)
+                        self.DockingWidgets.append(QtWidgets.QDockWidget(f"Enter Run Info (Port {self._portIDfromIndex(i+1)})", self.RunInfoWindow))
+                        self.DockingWidgets[-1].setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable)
+                        self.DockingWidgets[-1].setWidget(self.bWorker[i])
+                        self.RunInfoLayout.addWidget(self.DockingWidgets[-1], row, col)
+                        self.bThread[i].start()
+                    icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/info.png')
+                    self.RunInfoWindow.setWindowIcon(QtGui.QIcon(icon_path)) #.png
+                    self.RunInfoWindow.setWindowTitle("Enter Run Info (Multiple Runs)")
+                    self.RunInfoWindow.show()
+                    self.RunInfoWindow.raise_()
+                    self.RunInfoWindow.activateWindow()
+                    # set min sizes for docking widgets to prevent layout changes on 'save'
+                    for dw in self.DockingWidgets:
+                        dw.setMinimumSize(dw.width(), dw.height())
+                    # center window in desktop geometry
+                    width = self.RunInfoWindow.width()
+                    height = self.RunInfoWindow.height()
+                    area = QtWidgets.QDesktopWidget().availableGeometry()
+                    left = int((area.width() - width) / 2)
+                    top = int((area.height() - height) / 2)
+                    self.RunInfoWindow.move(left, top)
 
         except:
             limit = None
@@ -674,6 +723,11 @@ class Rename_Output_Files(QtCore.QObject):
             if os.path.exists(Constants.new_files_path):
                 os.remove(Constants.new_files_path)
             self.finished.emit()
+
+    def _portIDfromIndex(self, pid): # convert ASCII byte to character
+        # For 4x1 system: expect pid 1-4, return "1" thru "4"
+        # For 4x6 system: expect pid 0x1A-0x6D, return "1A" thru "6D"
+        return hex(pid)[2:].upper()
 
 #------------------------------------------------------------------------------
 
