@@ -11,25 +11,31 @@ absl-py==2.1.0
     #   tensorflow-intel
 astunparse==1.6.3
     # via tensorflow-intel
-certifi==2024.2.2
+certifi==2024.6.2
     # via requests
 charset-normalizer==3.3.2
     # via requests
+cloudpickle==3.0.0
+    # via hyperopt
+colorama==0.4.6
+    # via tqdm
 contourpy==1.2.1
     # via matplotlib
 cycler==0.12.1
     # via matplotlib
-dropbox==12.0.0
+dropbox==12.0.2
     # via -r requirements.in
 flatbuffers==24.3.25
     # via tensorflow-intel
-fonttools==4.52.4
+fonttools==4.53.0
     # via matplotlib
+future==1.0.0
+    # via hyperopt
 gast==0.5.4
     # via tensorflow-intel
 google-pasta==0.2.0
     # via tensorflow-intel
-grpcio==1.64.0
+grpcio==1.64.1
     # via
     #   tensorboard
     #   tensorflow-intel
@@ -39,9 +45,13 @@ h5py==3.11.0
     #   tensorflow-intel
 hid==1.0.6
     # via -r requirements.in
+hyperopt==0.2.7
+    # via -r requirements.in
 idna==3.7
     # via requests
-keras==3.3.3
+joblib==1.4.2
+    # via scikit-learn
+keras==3.4.0
     # via tensorflow-intel
 kiwisolver==1.4.5
     # via matplotlib
@@ -63,29 +73,38 @@ ml-dtypes==0.3.2
     #   tensorflow-intel
 namex==0.0.8
     # via keras
+networkx==3.3
+    # via hyperopt
 numpy==1.26.4
     # via
     #   -r requirements.in
     #   contourpy
     #   h5py
+    #   hyperopt
     #   keras
     #   matplotlib
     #   ml-dtypes
     #   opt-einsum
+    #   pandas
     #   pyqtgraph
+    #   scikit-learn
     #   scipy
     #   simdkalman
     #   tensorboard
     #   tensorflow-intel
     #   tsmoothie
+    #   xgboost
 opt-einsum==3.3.0
     # via tensorflow-intel
 optree==0.11.0
     # via keras
-packaging==24.0
+packaging==24.1
     # via
+    #   keras
     #   matplotlib
     #   tensorflow-intel
+pandas==2.2.2
+    # via -r requirements.in
 pillow==10.3.0
     # via matplotlib
 ply==3.11
@@ -96,6 +115,8 @@ protobuf==4.25.3
     # via
     #   tensorboard
     #   tensorflow-intel
+py4j==0.10.9.7
+    # via hyperopt
 pycryptodomex==3.20.0
     # via pyzipper
 pygments==2.18.0
@@ -115,20 +136,30 @@ pyqtgraph==0.13.7
 pyserial==3.5
     # via -r requirements.in
 python-dateutil==2.9.0.post0
-    # via matplotlib
+    # via
+    #   -r requirements.in
+    #   matplotlib
+    #   pandas
+pytz==2024.1
+    # via pandas
 pyzipper==0.3.6
     # via -r requirements.in
-requests==2.29.0
+requests==2.32.3
     # via
     #   -r requirements.in
     #   dropbox
     #   tensorflow-intel
 rich==13.7.1
     # via keras
-scipy==1.13.1
+scikit-learn==1.5.0
+    # via -r requirements.in
+scipy==1.14.0
     # via
     #   -r requirements.in
+    #   hyperopt
+    #   scikit-learn
     #   tsmoothie
+    #   xgboost
 send2trash==1.8.3
     # via -r requirements.in
 simdkalman==1.0.4
@@ -138,6 +169,7 @@ six==1.16.0
     #   astunparse
     #   dropbox
     #   google-pasta
+    #   hyperopt
     #   python-dateutil
     #   stone
     #   tensorboard
@@ -158,22 +190,28 @@ tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
 termcolor==2.4.0
     # via tensorflow-intel
+threadpoolctl==3.5.0
+    # via scikit-learn
+tqdm==4.66.4
+    # via hyperopt
 tsmoothie==1.0.5
     # via -r requirements.in
-typing-extensions==4.12.0
+typing-extensions==4.12.2
     # via
     #   optree
     #   tensorflow-intel
-urllib3==1.26.18
-    # via
-    #   dropbox
-    #   requests
+tzdata==2024.1
+    # via pandas
+urllib3==2.2.2
+    # via requests
 werkzeug==3.0.3
     # via tensorboard
 wheel==0.43.0
     # via astunparse
 wrapt==1.16.0
     # via tensorflow-intel
+xgboost==2.1.0
+    # via -r requirements.in
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools
