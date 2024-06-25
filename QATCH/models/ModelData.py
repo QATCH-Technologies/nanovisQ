@@ -559,7 +559,8 @@ class ModelData():
                     max_allowed_start = avg_start + int((avg_stop - avg_start) / 10)
                     min_allowed_stop = avg_stop
                     if t_start < min_allowed_start:
-                        Log.w("WARN: It looks like the run may have started prior to 3 seconds (during baseline period).")
+                        if first_loop:
+                            Log.w("WARN: It looks like the run may have started prior to 3 seconds (during baseline period).")
                     if min_allowed_start < t_start < xs[max_allowed_start] and t_blip3 > xs[min_allowed_stop]:
                         if first_loop:
                             break
@@ -728,7 +729,11 @@ class ModelData():
                 b2 = self.line_fit(p2, m2)
                 post_pointfit = (m2, b2)
                 x_intersection, y_intersection = self.find_intersect(max_pointfit, post_pointfit)
-                end_idx = next(x for x,y in enumerate(xs_extend) if y >= x_intersection)
+                try:
+                    end_idx = next(x for x,y in enumerate(xs_extend) if y >= x_intersection)
+                except StopIteration as e:
+                    Log.e("ModelError:", e)
+                    raise InterruptedError("Model failed to find points for this run.")
                 post_idx = max_idx
                 num_fill_pts = end_idx - start_idx
                 smf = max(3, int(num_fill_pts/10))
@@ -916,80 +921,84 @@ class ModelData():
                     zone3_possibilities.append(p)
                 if t_now > t_quad5 and t_now < t_quad6:
                     zone4_possibilities.append(p)
-            idx_quad1 = next(x for x,y in enumerate(xs) if y >= t_quad1)
-            idx_quad2 = next(x for x,y in enumerate(xs) if y >= t_quad2)
-            min_diss_zone2_1 = np.argmin(super_smooth_diss_1st[idx_quad1:idx_quad2])
-            min_freq_zone2_1 = np.argmin(super_smooth_freq_1st[idx_quad1:idx_quad2])
-            min_diff_zone2_1 = np.argmin(super_smooth_diff_1st[idx_quad1:idx_quad2])
-            if min_diss_zone2_1 in [0, idx_quad2-idx_quad1-1]:
-                min_diss_zone2_1 = -1
-            if min_freq_zone2_1 in [0, idx_quad2-idx_quad1-1]:
-                min_freq_zone2_1 = -1
-            if min_diff_zone2_1 in [0, idx_quad2-idx_quad1-1]:
-                min_diff_zone2_1 = -1
-            min_diss_zone2_2 = np.argmin(super_smooth_diss_2nd[idx_quad1:idx_quad2])
-            min_freq_zone2_2 = np.argmin(super_smooth_freq_2nd[idx_quad1:idx_quad2])
-            min_diff_zone2_2 = np.argmin(super_smooth_diff_2nd[idx_quad1:idx_quad2])
-            if min_diss_zone2_2 in [0, idx_quad2-idx_quad1-1]:
-                min_diss_zone2_2 = -1
-            if min_freq_zone2_2 in [0, idx_quad2-idx_quad1-1]:
-                min_freq_zone2_2 = -1
-            if min_diff_zone2_2 in [0, idx_quad2-idx_quad1-1]:
-                min_diff_zone2_2 = -1
-            num_count = 0
-            num_sum = 0
-            for i in [min_diss_zone2_1, min_freq_zone2_1, min_diff_zone2_1]:
-                if i != -1:
-                    num_sum += i
-                    num_count += 1
-            if num_count > 0:
-                min_peak_zone2 = int(num_sum / num_count)
-            else:
-                min_peak_zone2 = int(idx_quad2/2-idx_quad1/2)
-            idx_quad3 = next(x for x,y in enumerate(xs) if y >= t_quad3)
-            idx_quad4 = next(x for x,y in enumerate(xs) if y >= t_quad4)
-            min_diss_zone3 = np.argmin(super_smooth_diss_1st[idx_quad3:idx_quad4])
-            min_freq_zone3 = np.argmin(super_smooth_freq_1st[idx_quad3:idx_quad4])
-            min_diff_zone3 = np.argmin(super_smooth_diff_1st[idx_quad3:idx_quad4])
-            if min_diss_zone3 in [0, idx_quad4-idx_quad3-1]:
-                min_diss_zone3 = int(idx_quad4/2-idx_quad3/2)
-            if min_freq_zone3 in [0, idx_quad4-idx_quad3-1]:
-                min_freq_zone3 = int(idx_quad4/2-idx_quad3/2)
-            if min_diff_zone3 in [0, idx_quad4-idx_quad3-1]:
-                min_diff_zone3 = int(idx_quad4/2-idx_quad3/2)
-            min_peak_zone3 = int(np.average([min_diss_zone3, min_freq_zone3, min_diff_zone3]))
-            idx_quad5 = next(x for x,y in enumerate(xs) if y >= t_quad5)
             try:
-                idx_quad6 = next(x for x,y in enumerate(xs) if y >= t_quad6)
-            except:
-                idx_quad6 = len(xs)-1
-            max_diss_zone4_1 = np.argmax(super_smooth_diss_1st[idx_quad5:idx_quad6])
-            max_freq_zone4_1 = np.argmax(super_smooth_freq_1st[idx_quad5:idx_quad6])
-            max_diff_zone4_1 = np.argmax(super_smooth_diff_1st[idx_quad5:idx_quad6])
-            if max_diss_zone4_1 in [0, idx_quad6-idx_quad5-1]:
-                max_diss_zone4_1 = -1
-            if max_freq_zone4_1 in [0, idx_quad6-idx_quad5-1]:
-                max_freq_zone4_1 = -1
-            if max_diff_zone4_1 in [0, idx_quad6-idx_quad5-1]:
-                max_diff_zone4_1 = -1
-            max_diss_zone4_2 = np.argmax(super_smooth_diss_2nd[idx_quad5:idx_quad6])
-            max_freq_zone4_2 = np.argmax(super_smooth_freq_2nd[idx_quad5:idx_quad6])
-            max_diff_zone4_2 = np.argmax(super_smooth_diff_2nd[idx_quad5:idx_quad6])
-            if max_diss_zone4_2 in [0, idx_quad6-idx_quad5-1]:
-                max_diss_zone4_2 = -1
-            if max_freq_zone4_2 in [0, idx_quad6-idx_quad5-1]:
-                max_freq_zone4_2 = -1
-            if max_diff_zone4_2 in [0, idx_quad6-idx_quad5-1]:
-                max_diff_zone4_2 = -1
-            min_diss_zone4_2 = np.argmin(super_smooth_diss_2nd[idx_quad5:idx_quad6])
-            min_freq_zone4_2 = np.argmin(super_smooth_freq_2nd[idx_quad5:idx_quad6])
-            min_diff_zone4_2 = np.argmin(super_smooth_diff_2nd[idx_quad5:idx_quad6])
-            if min_diss_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_diss_zone4_2 < max_diss_zone4_2:
-                min_diss_zone4_2 = -1
-            if min_freq_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_freq_zone4_2 < max_freq_zone4_2:
-                min_freq_zone4_2 = -1
-            if min_diff_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_diff_zone4_2 < max_diff_zone4_2:
-                min_diff_zone4_2 = -1
+                idx_quad1 = next(x for x,y in enumerate(xs) if y >= t_quad1)
+                idx_quad2 = next(x for x,y in enumerate(xs) if y >= t_quad2)
+                min_diss_zone2_1 = np.argmin(super_smooth_diss_1st[idx_quad1:idx_quad2])
+                min_freq_zone2_1 = np.argmin(super_smooth_freq_1st[idx_quad1:idx_quad2])
+                min_diff_zone2_1 = np.argmin(super_smooth_diff_1st[idx_quad1:idx_quad2])
+                if min_diss_zone2_1 in [0, idx_quad2-idx_quad1-1]:
+                    min_diss_zone2_1 = -1
+                if min_freq_zone2_1 in [0, idx_quad2-idx_quad1-1]:
+                    min_freq_zone2_1 = -1
+                if min_diff_zone2_1 in [0, idx_quad2-idx_quad1-1]:
+                    min_diff_zone2_1 = -1
+                min_diss_zone2_2 = np.argmin(super_smooth_diss_2nd[idx_quad1:idx_quad2])
+                min_freq_zone2_2 = np.argmin(super_smooth_freq_2nd[idx_quad1:idx_quad2])
+                min_diff_zone2_2 = np.argmin(super_smooth_diff_2nd[idx_quad1:idx_quad2])
+                if min_diss_zone2_2 in [0, idx_quad2-idx_quad1-1]:
+                    min_diss_zone2_2 = -1
+                if min_freq_zone2_2 in [0, idx_quad2-idx_quad1-1]:
+                    min_freq_zone2_2 = -1
+                if min_diff_zone2_2 in [0, idx_quad2-idx_quad1-1]:
+                    min_diff_zone2_2 = -1
+                num_count = 0
+                num_sum = 0
+                for i in [min_diss_zone2_1, min_freq_zone2_1, min_diff_zone2_1]:
+                    if i != -1:
+                        num_sum += i
+                        num_count += 1
+                if num_count > 0:
+                    min_peak_zone2 = int(num_sum / num_count)
+                else:
+                    min_peak_zone2 = int(idx_quad2/2-idx_quad1/2)
+                idx_quad3 = next(x for x,y in enumerate(xs) if y >= t_quad3)
+                idx_quad4 = next(x for x,y in enumerate(xs) if y >= t_quad4)
+                min_diss_zone3 = np.argmin(super_smooth_diss_1st[idx_quad3:idx_quad4])
+                min_freq_zone3 = np.argmin(super_smooth_freq_1st[idx_quad3:idx_quad4])
+                min_diff_zone3 = np.argmin(super_smooth_diff_1st[idx_quad3:idx_quad4])
+                if min_diss_zone3 in [0, idx_quad4-idx_quad3-1]:
+                    min_diss_zone3 = int(idx_quad4/2-idx_quad3/2)
+                if min_freq_zone3 in [0, idx_quad4-idx_quad3-1]:
+                    min_freq_zone3 = int(idx_quad4/2-idx_quad3/2)
+                if min_diff_zone3 in [0, idx_quad4-idx_quad3-1]:
+                    min_diff_zone3 = int(idx_quad4/2-idx_quad3/2)
+                min_peak_zone3 = int(np.average([min_diss_zone3, min_freq_zone3, min_diff_zone3]))
+                idx_quad5 = next(x for x,y in enumerate(xs) if y >= t_quad5)
+                try:
+                    idx_quad6 = next(x for x,y in enumerate(xs) if y >= t_quad6)
+                except:
+                    idx_quad6 = len(xs)-1
+                max_diss_zone4_1 = np.argmax(super_smooth_diss_1st[idx_quad5:idx_quad6])
+                max_freq_zone4_1 = np.argmax(super_smooth_freq_1st[idx_quad5:idx_quad6])
+                max_diff_zone4_1 = np.argmax(super_smooth_diff_1st[idx_quad5:idx_quad6])
+                if max_diss_zone4_1 in [0, idx_quad6-idx_quad5-1]:
+                    max_diss_zone4_1 = -1
+                if max_freq_zone4_1 in [0, idx_quad6-idx_quad5-1]:
+                    max_freq_zone4_1 = -1
+                if max_diff_zone4_1 in [0, idx_quad6-idx_quad5-1]:
+                    max_diff_zone4_1 = -1
+                max_diss_zone4_2 = np.argmax(super_smooth_diss_2nd[idx_quad5:idx_quad6])
+                max_freq_zone4_2 = np.argmax(super_smooth_freq_2nd[idx_quad5:idx_quad6])
+                max_diff_zone4_2 = np.argmax(super_smooth_diff_2nd[idx_quad5:idx_quad6])
+                if max_diss_zone4_2 in [0, idx_quad6-idx_quad5-1]:
+                    max_diss_zone4_2 = -1
+                if max_freq_zone4_2 in [0, idx_quad6-idx_quad5-1]:
+                    max_freq_zone4_2 = -1
+                if max_diff_zone4_2 in [0, idx_quad6-idx_quad5-1]:
+                    max_diff_zone4_2 = -1
+                min_diss_zone4_2 = np.argmin(super_smooth_diss_2nd[idx_quad5:idx_quad6])
+                min_freq_zone4_2 = np.argmin(super_smooth_freq_2nd[idx_quad5:idx_quad6])
+                min_diff_zone4_2 = np.argmin(super_smooth_diff_2nd[idx_quad5:idx_quad6])
+                if min_diss_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_diss_zone4_2 < max_diss_zone4_2:
+                    min_diss_zone4_2 = -1
+                if min_freq_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_freq_zone4_2 < max_freq_zone4_2:
+                    min_freq_zone4_2 = -1
+                if min_diff_zone4_2 in [0, idx_quad6-idx_quad5-1] or min_diff_zone4_2 < max_diff_zone4_2:
+                    min_diff_zone4_2 = -1
+            except ValueError as e:
+                Log.e("ModelError:", e)
+                raise InterruptedError("Model failed to find zones for this run.")
             num_count = 0
             num_sum = 0
             for i in [max_diss_zone4_1, max_freq_zone4_1, max_diff_zone4_1,
@@ -1530,7 +1539,11 @@ class ModelData():
                 return poi_vals
             fill_time_d = xs_extend[poi_vals[1]] - xs_extend[poi_vals[0][0][0]]
             exit_time_d = xs_extend[-1]- xs_extend[poi_vals[0][0][0]]
-            xs_factor_d = int(exit_time_d / fill_time_d)
+            try:
+                xs_factor_d = int(exit_time_d / fill_time_d)
+            except OverflowError as e:
+                Log.e("ModelError:", e)
+                raise InterruptedError("Model failed to find points for this run.")
             Log.d(f"FILL_TIME: {fill_time_d}s")
             Log.d(f"EXIT_TIME: {exit_time_d}s")
             Log.d(f"XS_FACTOR: {xs_factor_d}x")
@@ -1568,7 +1581,8 @@ class ModelData():
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
-            raise e
+            # Do NOT raise e
+            poi_vals = -1 # return nothing from Model
         finally:
             if global_index == -1:
                 return poi_vals

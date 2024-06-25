@@ -6,7 +6,9 @@ from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp, QueryRunInfo
+from QATCH.QModel.QModel import QModelPredict
 from PyQt5 import QtCore, QtGui, QtWidgets
+from io import BytesIO
 import numpy as np
 from numpy import loadtxt
 from xml.dom import minidom
@@ -39,6 +41,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     @staticmethod
     def Lookup_ST(surfactant, concentration):
+        ST1 = 72
+        return ST1 # always
+
         if concentration < 0.01:
             ST1 = 71
         else:
@@ -59,9 +64,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def Lookup_CA(surfactant, concentration):
         CA = 55
         if concentration > 10:
-            CA = CA - 5
+            CA = CA - 0
         elif concentration >= 1:
-            CA = CA - 3
+            CA = CA - 0
         return CA # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_CA.csv", surfactant, concentration)
 
     @staticmethod
@@ -1680,46 +1685,71 @@ class AnalyzeProcess(QtWidgets.QWidget):
             poi_vals = []
             if len(self.poi_markers) != 6:
                 self.model_result = -1
-                try:
-                    start_time = min(self.poi_markers[0].value(), self.poi_markers[-1].value())
-                    start_time = next(x for x,y in enumerate(self.xs) if y >= start_time)
-                    stop_time = max(self.poi_markers[0].value(), self.poi_markers[-1].value())
-                    stop_time = next(x for x,y in enumerate(self.xs) if y >= stop_time)
+                self.model_engine = "None"
 
-                    model_starting_points = [start_time, None, None, None, None, stop_time]
-                    self.model_result = self.dataModel.IdentifyPoints(data_path=self.loaded_datapath, 
-                                                                      times=self.data_time,
-                                                                      freq=self.data_freq,
-                                                                      diss=self.data_diss,
-                                                                      start_at=model_starting_points)
-                    if isinstance(self.model_result, list):
-                        poi_vals.clear()
-                        # show point with highest confidence for each:
-                        self.model_select = []
-                        for point in self.model_result:
-                            self.model_select.append(0)
-                            if isinstance(point, list):
-                                select_point = point[self.model_select[-1]]
-                                select_index = select_point[0]
-                                select_confidence = select_point[1]
-                                poi_vals.append(select_index)
-                            else:
-                                poi_vals.append(point)
-                    elif self.model_result == -1:
-                        Log.w("Model failed to auto-calculate points of interest for this run!")
-                        pass
+                try:
+                    qpreditor = QModelPredict(
+                        pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
+                        discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
+                    )
+                    with secure_open(self.loaded_datapath, 'r', "capture") as f:
+                        fh = BytesIO(f.read())
+                        qpredictions = qpreditor.predict(fh)
+                        peaks = qpredictions[0]
+                        self.model_result = peaks
+                        self.model_engine = "QModel"
+                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                        poi_vals = self.model_result
                     else:
-                        Log.e("Model encountered an unexpected response. Please manually select points.")
-                        pass
-                except:
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-                    a_list = ['Traceback (most recent call last):']
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.e(line)
+                        self.model_result = -1 # try fallback model
+                except Exception as e:
+                    Log.e(e)
+                    Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
+                    # raise e # debug only
+                    self.model_result = -1 # try fallback model
+
+                start_time = min(self.poi_markers[0].value(), self.poi_markers[-1].value())
+                start_time = next(x for x,y in enumerate(self.xs) if y >= start_time)
+                stop_time = max(self.poi_markers[0].value(), self.poi_markers[-1].value())
+                stop_time = next(x for x,y in enumerate(self.xs) if y >= stop_time)
+
+                if self.model_result == -1:
+                    try:
+                        model_starting_points = [start_time, None, None, None, None, stop_time]
+                        self.model_result = self.dataModel.IdentifyPoints(data_path=self.loaded_datapath, 
+                                                                        times=self.data_time,
+                                                                        freq=self.data_freq,
+                                                                        diss=self.data_diss,
+                                                                        start_at=model_starting_points)
+                        self.model_engine = "ModelData"
+                        if isinstance(self.model_result, list):
+                            poi_vals.clear()
+                            # show point with highest confidence for each:
+                            self.model_select = []
+                            for point in self.model_result:
+                                self.model_select.append(0)
+                                if isinstance(point, list):
+                                    select_point = point[self.model_select[-1]]
+                                    select_index = select_point[0]
+                                    select_confidence = select_point[1]
+                                    poi_vals.append(select_index)
+                                else:
+                                    poi_vals.append(point)
+                        elif self.model_result == -1:
+                            Log.w("Model failed to auto-calculate points of interest for this run!")
+                            pass
+                        else:
+                            Log.e("Model encountered an unexpected response. Please manually select points.")
+                            pass
+                    except:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+                        a_list = ['Traceback (most recent call last):']
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.e(line)
 
                 try: #if isinstance(self.model_result, list):
                     poi2_time = self.xs[poi_vals[1]] # end of fill
@@ -1788,66 +1818,72 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_idx = next(x for x,y in enumerate(self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
-                try:
-                    # Run Model again, to get an initial automatic fine tuning of points prior to user input
-                    model_starting_points = poi_vals.copy() # NOTE: len(poi_vals) must equal 6
-                    self.model_result = self.dataModel.IdentifyPoints(data_path=self.loaded_datapath, 
-                                                                times=self.data_time,
-                                                                freq=self.data_freq,
-                                                                diss=self.data_diss,
-                                                                start_at=model_starting_points)
-                    if isinstance(self.model_result, list):
-                        poi_vals.clear()
-                        # show point with highest confidence for each:
-                        self.model_select = []
-                        for idx,point in enumerate(self.model_result):
-                            self.model_select.append(0)
-                            if self.moved_markers[idx] == False:
-                                poi_vals.append(model_starting_points[idx])
-                            else:
-                                self.moved_markers[idx] = False
-                                if isinstance(point, list):
-                                    select_point = point[self.model_select[-1]]
-                                    select_index = select_point[0]
-                                    select_confidence = select_point[1]
-                                    poi_vals.append(select_index)
+                if self.model_engine == "ModelData":
+                    try:
+                        # Run Model again, to get an initial automatic fine tuning of points prior to user input
+                        model_starting_points = poi_vals.copy() # NOTE: len(poi_vals) must equal 6
+                        self.model_result = self.dataModel.IdentifyPoints(data_path=self.loaded_datapath, 
+                                                                    times=self.data_time,
+                                                                    freq=self.data_freq,
+                                                                    diss=self.data_diss,
+                                                                    start_at=model_starting_points)
+                        self.model_engine = "ModelData"
+                        if isinstance(self.model_result, list):
+                            poi_vals.clear()
+                            # show point with highest confidence for each:
+                            self.model_select = []
+                            for idx,point in enumerate(self.model_result):
+                                self.model_select.append(0)
+                                if self.moved_markers[idx] == False:
+                                    poi_vals.append(model_starting_points[idx])
                                 else:
-                                    poi_vals.append(point)
-                        # Track which markers have been moved and only update model for those points, otherwise take starting point
-                        if poi_vals != model_starting_points:
-                            # Updating custom POIs also re-writes the POI markers
+                                    self.moved_markers[idx] = False
+                                    if isinstance(point, list):
+                                        select_point = point[self.model_select[-1]]
+                                        select_index = select_point[0]
+                                        select_confidence = select_point[1]
+                                        poi_vals.append(select_index)
+                                    else:
+                                        poi_vals.append(point)
+                            # Track which markers have been moved and only update model for those points, otherwise take starting point
+                            if poi_vals != model_starting_points:
+                                # Updating custom POIs also re-writes the POI markers
+                                self.custom_poi_text.setText(f"{poi_vals}")
+                                self.update_custom_pois() # write POI markers in correct order
+                                self.moved_markers = [False, False, False, False, False, False]
+                        elif self.model_result == -1:
+                            Log.w("Model failed to auto-calculate points of interest for this run!")
+                            pass
+                        else:
+                            Log.e("Model encountered an unexpected response. Please manually select points.")
+                            pass
+                    except:
+                        Log.e("An error occurred while running the model and organizing markers.")
+
+                    # sort poi_markers one more time, just in case model returned out-of-order points (which should never happen)
+                    out_of_order = False
+                    for i in range(1, len(self.poi_markers)):
+                        if self.poi_markers[i-1].value() > self.poi_markers[i].value():
+                            Log.d("Detected POI markers are out-of-order... sorting...")
+                            out_of_order = True
+                            break # no need to keep searching, the order is wrong, so fix it
+                    if out_of_order:
+                        try:
+                            poi_vals = []
+                            for pm in self.poi_markers:
+                                cur_val = pm.value()
+                                cur_idx = next(x for x,y in enumerate(self.xs) if y >= cur_val)
+                                poi_vals.append(cur_idx)
+                            poi_vals.sort()
                             self.custom_poi_text.setText(f"{poi_vals}")
                             self.update_custom_pois() # write POI markers in correct order
-                            self.moved_markers = [False, False, False, False, False, False]
-                    elif self.model_result == -1:
-                        Log.w("Model failed to auto-calculate points of interest for this run!")
-                        pass
-                    else:
-                        Log.e("Model encountered an unexpected response. Please manually select points.")
-                        pass
-                except:
-                    Log.e("An error occurred while running the model and organizing markers.")
+                        except Exception as e:
+                            Log.e("Error: An exception occurred while sorting POI markers.")
+                            Log.e(f"Error Details: {str(e)}")
 
-                # sort poi_markers one more time, just in case model returned out-of-order points (which should never happen)
-                out_of_order = False
-                for i in range(1, len(self.poi_markers)):
-                    if self.poi_markers[i-1].value() > self.poi_markers[i].value():
-                        Log.d("Detected POI markers are out-of-order... sorting...")
-                        out_of_order = True
-                        break # no need to keep searching, the order is wrong, so fix it
-                if out_of_order:
-                    try:
-                        poi_vals = []
-                        for pm in self.poi_markers:
-                            cur_val = pm.value()
-                            cur_idx = next(x for x,y in enumerate(self.xs) if y >= cur_val)
-                            poi_vals.append(cur_idx)
-                        poi_vals.sort()
-                        self.custom_poi_text.setText(f"{poi_vals}")
-                        self.update_custom_pois() # write POI markers in correct order
-                    except Exception as e:
-                        Log.e("Error: An exception occurred while sorting POI markers.")
-                        Log.e(f"Error Details: {str(e)}")
+                else: # self.model_engine != "ModelData":
+                    # do nothing here if "QModel" or "None"
+                    pass
 
             elif self.stateStep != 7: # in stateStep 2 thru 6 (Steps 4 thru 8 of 8)
                 if self.poi_markers[self.stateStep - 1].value() < self.poi_markers[self.stateStep - 2].value():
@@ -2379,37 +2415,61 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.askForPOIs and len(self.poi_markers) != 0:
                 self.askForPOIs = False # re-analyze Step 1, don't auto advance to Summary
             if self.stateStep != 6:
+                self.model_result = -1
+                self.model_engine = "None"
                 try:
-                    self.model_run_this_load = True
-                    self.model_result = self.dataModel.IdentifyPoints(data_path, relative_time, resonance_frequency, dissipation)
-                    if isinstance(self.model_result, list):
-                        poi_vals.clear()
-                        # show point with highest confidence for each:
-                        self.model_select = []
-                        for point in self.model_result:
-                            self.model_select.append(0)
-                            if isinstance(point, list):
-                                select_point = point[self.model_select[-1]]
-                                select_index = select_point[0]
-                                select_confidence = select_point[1]
-                                poi_vals.append(select_index)
-                            else:
-                                poi_vals.append(point)
-                    elif self.model_result == -1:
-                        Log.w("Model failed to auto-calculate points of interest for this run!")
-                        pass
+                    qpreditor = QModelPredict(
+                        pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
+                        discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
+                    )
+                    with secure_open(data_path, 'r', "capture") as f:
+                        fh = BytesIO(f.read())
+                        qpredictions = qpreditor.predict(fh)
+                        peaks = qpredictions[0]
+                        self.model_run_this_load = True
+                        self.model_result = peaks
+                        self.model_engine = "QModel"
+                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                        poi_vals = self.model_result
                     else:
-                        Log.e("Model encountered an unexpected response. Please manually select points.")
-                        pass
-                except:
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-                    a_list = ['Traceback (most recent call last):']
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.e(line)
+                        self.model_result = -1 # try fallback model
+                except Exception as e:
+                    Log.e(e)
+                    Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
+                    self.model_result = -1 # try fallback model
+                if self.model_result == -1:
+                    try:
+                        self.model_run_this_load = True
+                        self.model_result = self.dataModel.IdentifyPoints(data_path, relative_time, resonance_frequency, dissipation)
+                        self.model_engine = "ModelData"
+                        if isinstance(self.model_result, list):
+                            poi_vals.clear()
+                            # show point with highest confidence for each:
+                            self.model_select = []
+                            for point in self.model_result:
+                                self.model_select.append(0)
+                                if isinstance(point, list):
+                                    select_point = point[self.model_select[-1]]
+                                    select_index = select_point[0]
+                                    select_confidence = select_point[1]
+                                    poi_vals.append(select_index)
+                                else:
+                                    poi_vals.append(point)
+                        elif self.model_result == -1:
+                            Log.w("Model failed to auto-calculate points of interest for this run!")
+                            pass
+                        else:
+                            Log.e("Model encountered an unexpected response. Please manually select points.")
+                            pass
+                    except:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+                        a_list = ['Traceback (most recent call last):']
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.e(line)
 
                 if len(self.poi_markers) != 0:
                     poi_vals = [poi_vals[0], poi_vals[-1]] # take first and last only, allow user input
@@ -2431,6 +2491,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             extend_data = True if total_runtime > 90 else False
             extend_smf = int(smooth_factor / 20) # downsample factor for extended data > 90s
             extend_smf += (int(extend_smf + 1) % 2) # force to odd number
+
+            if extend_data and len(xs) < t_first_90_split + 2*extend_smf:
+                Log.w("Not enough points after 90s to downsample effectively when plotting. Not downsampling this dataset!")
+                t_first_90_split = len(xs)
+                extend_data = False
 
             ys_fit = savgol_filter(ys[:t_first_90_split], smooth_factor, 1)
             if extend_data:
@@ -2756,6 +2821,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if self.model_run_this_load:
             if len(poi_vals) == 6:
                 Log.i("Model successfully calculated points of interest for this dataset.")
+                Log.d(f"Model Result = {self.model_engine}: {self.model_result}")
                 self.stateStep = 6 # show summary
             else:
                 Log.e("Please manually select points of interest to Analyze this dataset.")
@@ -3067,6 +3133,11 @@ class AnalyzerWorker(QtCore.QObject):
             extend_data = True if total_runtime > 90 else False
             extend_smf = int(smooth_factor / 20) # downsample factor for extended data > 90s
             extend_smf += (int(extend_smf + 1) % 2) # force to odd number
+
+            if extend_data and len(xs) < t_first_90_split + 2*extend_smf:
+                Log.w("Not enough points after 90s to downsample effectively when analyzing. Not downsampling this dataset!")
+                t_first_90_split = len(xs)
+                extend_data = False
 
             ys_fit = savgol_filter(ys[:t_first_90_split], smooth_factor, 1)
             if extend_data:
@@ -4053,10 +4124,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             Log.d(f"Channel thickness = {Constants.channel_thickness}")
             viscosity = ST*np.cos(np.radians(CA))*all_time*Constants.channel_thickness/6/(all_pos**2)*1e6*(3*(n+1)/(2*n+1))
-            shear_rate = 6*all_velocity/Constants.channel_thickness*(2/3+1/3/n)*1e-3
+            shear_rate = 6*all_velocity/Constants.channel_thickness*(2/3+1/3/n)*1e-3/(n+1)*n
 
             fill_visc = ST*np.cos(np.radians(CA))*fill_time*Constants.channel_thickness/6/(fill_pos**2)*1e6*(3*(n+1)/(2*n+1))
-            fill_shear = 6*fill_velocity/Constants.channel_thickness*(2/3+1/3/n)*1e-3
+            fill_shear = 6*fill_velocity/Constants.channel_thickness*(2/3+1/3/n)*1e-3/(n+1)*n
 
             self.update(status_label)
 
@@ -4250,6 +4321,34 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.w("Please check the first 2 points of interest for accuracy.")
 
             viscosity_at_1p15 = viscosity[-len(distances)]
+
+            try:
+                idx0 = -6
+                idx1 = -5
+                idx2 = -4
+                idx3 = -3
+                avg_viscosity = np.average( [in_viscosity[idx0], in_viscosity[idx3]] )
+                std_viscosity = np.std(np.delete(in_viscosity, [idx1, idx2])) # all of in_viscosity, just not 2 points
+                min_visc = min(np.min(avg_viscosity), np.min(fill_visc)) - std_viscosity
+                max_visc = max(np.max(avg_viscosity), np.max(fill_visc)) + std_viscosity
+                Log.d(f"Expected viscosity = {avg_viscosity} +/- {std_viscosity}, min = {min_visc}, max = {max_visc}")
+                Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
+                for i in range(idx1, idx3):
+                    if min_visc <= viscosity[i] <= max_visc:
+                        continue
+                    Log.d(f"Removed point '{viscosity[i]}' for being outside the standard deviation of expected viscosity.")
+                    in_shear_rate = np.delete(in_shear_rate, i)
+                    in_viscosity = np.delete(in_viscosity, i)
+                    in_temp = np.delete(in_temp, i)
+                    viscosity = np.delete(viscosity, i)
+                    shear_rate = np.delete(shear_rate, i)
+                    fill_visc = np.delete(fill_visc, i)
+                    fill_shear = np.delete(fill_shear, i)
+            except Exception as e:
+                Log.e("ERROR:", e)
+                Log.e("Unable to remove outliers from the dataset prior to plotting.")
+
+            self.update(status_label)
 
             fit_shear = fill_shear #np.linspace(lin_shear_rate[0], lin_shear_rate[-1]) # default: 50 points
             fit_visc = fill_visc #cube_fit(fit_shear) # plot this one, evenly spaced points

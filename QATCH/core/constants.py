@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b39"
-    app_date = "2024-06-17"
+    app_version = "v2.6b40"
+    app_date = "2024-06-25"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -55,7 +55,7 @@ class Constants:
     ###########################
     # FREQ HOPPING parameters #
     ###########################
-    base_overtone_freq = 25 # Number of baseline frequencies to collect before collecting upper and lower freqs.
+    base_overtone_freq = 20 # Number of baseline frequencies to collect before collecting upper and lower freqs.
     initial_settle_samples = 100 # Throw away this many samples before allowing calculated data to be displayed.
     downsample_after = 90 # Downsample captures after this many seconds
     downsample_file_count = 20 # Downsample at least this many sample captures (with averaging)
@@ -78,10 +78,10 @@ class Constants:
     ###########################
     avg_in = 35               # raw input averaging (value too low will cause false peaks)
     avg_out = 5               # raw averaging of peak, left, right and magnitude outputs
-    step_size = 2             # frequency sweep step size (smaller = more accurate, but slower)   step 3: 4 Hz noise, 4 ms speed
+    step_size = 3             # frequency sweep step size (smaller = more accurate, but slower)   step 3: 4 Hz noise, 4 ms speed
     max_drift_l_hz = 10000    # allowed frequency drift LEFT from initial peak detection (in Hz)
     max_drift_r_hz = 10000    # allowed frequency drift RIGHT from initial peak detection (in Hz)
-    track_width_db = -1.50    # how far left-and-right of peak to track (in dB) before switching
+    track_width_db = -1.25    # how far left-and-right of peak to track (in dB) before switching
 
     ###########################
     # MAX dissipation by mode #
@@ -251,7 +251,7 @@ class Constants:
     baseline_smooth = 9 # must be an odd integer, greater than 1
     consider_points_above_pct = 0.60
     default_diff_factor = 2.0
-    temp_adjusted_CA_factor = -1.15
+    temp_adjusted_CA_factor = 0
 
     ######################
     # BATCH # parameters #

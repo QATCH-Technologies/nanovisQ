@@ -410,8 +410,12 @@ class FileStorage:
             else:
                 # The config folder does not yet exist (first run)
                 pass # ignore
+        except ValueError as e:
+            Log.e("ERROR:", str(e)) # Log error to user
+            Log.w(TAG, "WARN: Failed to get active device name.")
         except IndexError as e:
-            Log.d("ERROR:", str(e)) # Log error as debug message
+            Log.e("ERROR:", str(e)) # Log error to user
+            Log.w(TAG, "WARN: Failed to get active device name.")
         except Exception as e:
             Log.w(TAG, "WARN: Failed to get active device name.")
 

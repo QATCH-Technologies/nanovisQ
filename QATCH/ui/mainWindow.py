@@ -558,7 +558,7 @@ class Rename_Output_Files(QtCore.QObject):
                             if text == "":
                                 if save_anyways:
                                     text, ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
-                                                'Enter a run name:', # for device "{}":'.format(dev_name),
+                                                'Enter a name for this run:',
                                                 text=text)
                                 else:
                                     ok = False # bad run, don't save with custom name

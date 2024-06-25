@@ -440,12 +440,12 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addLayout(self.q1)
         layout_v.addLayout(self.q_batch)
         layout_v.addLayout(self.q2)
-        layout_v.addLayout(self.q3)
+        # layout_v.addLayout(self.q3) # hide Surfactant
         layout_v.addLayout(self.q4)
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
         layout_v.addWidget(self.l5)
-        layout_v.addLayout(self.r1)
+        # layout_v.addLayout(self.r1) # hide Surface Tension
         layout_v.addLayout(self.r2)
         layout_v.addLayout(self.r3)
         self.q5 = QtWidgets.QCheckBox("Remember for next run")
@@ -767,13 +767,13 @@ class QueryRunInfo(QtWidgets.QWidget):
             solvent = self.t0.text()
             if solvent in self.fluids:
                 idx = self.fluids.index(solvent)
-                surface_tension = self.surface_tensions[idx]
+                surface_tension = 72 # self.surface_tensions[idx]
+                contact_angle = 55 # 20
                 density = self.densities[idx]
-                special_CAs = ["water", "deuterium", "glycerol"]
-                contact_angle = 20
-                for s in special_CAs:
-                    if solvent.lower().find(s) >= 0:
-                        contact_angle = 55
+                # special_CAs = ["water", "deuterium", "glycerol"]
+                # for s in special_CAs:
+                #     if solvent.lower().find(s) >= 0:
+                #         contact_angle = 55
                 self.t1.setText("{:3.3f}".format(surface_tension))
                 self.t2.setText("{:2.1f}".format(contact_angle))
                 self.t5.setText("{:1.3f}".format(density))
@@ -845,6 +845,9 @@ class QueryRunInfo(QtWidgets.QWidget):
     def calc_params(self):
         from QATCH.processors.Analyze import AnalyzeProcess
 
+        if self.t3.text() != "0":
+            self.t3.setText("0") # Surfactant locked
+
         try:
             surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
             concentration = float(self.t4.text()) if len(self.t4.text()) else 0
@@ -902,10 +905,12 @@ class QueryRunInfo(QtWidgets.QWidget):
         return super().eventFilter(obj, event)
 
     def confirm(self, force=False):
-        st = float(self.t1.text()) if len(self.t1.text()) else 0
-        ca = float(self.t2.text()) if len(self.t2.text()) else 0
-        surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
+        from QATCH.processors.Analyze import AnalyzeProcess
+
+        surfactant = 0 # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
+        st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
+        ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
         manual_st = (st != self.auto_st)
         manual_ca = (ca != self.auto_ca)
