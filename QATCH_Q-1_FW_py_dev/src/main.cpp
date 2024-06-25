@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r37"
-#define RELEASE_DATE "2024-05-27"
+#define CODE_VERSION "v2.6b40"
+#define RELEASE_DATE "2024-06-25"
 
 /************************** LIBRARIES **************************/
 
@@ -3005,7 +3005,7 @@ void calibrate(long start, long stop, long step)
     // averaging (cast to double)
     double measure_mag = 1.0 * app_mag / AVERAGE_SAMPLE;
 
-    if (count >= start + step)
+    if (count >= start + step) // not the first freq in the sweep
     {
       // serial write data (all values)
       if (USE_DELTAS)
@@ -4724,7 +4724,12 @@ void tft_tempcontrol()
 void tft_initialize()
 {
   if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  {
+    // NOTE: a small delay is still required here to
+    //       allow the DAC to settle after waking up
+    delayMicroseconds(750);
     return;
+  }
 
   //  tft_initialize_styleB();
   //}
