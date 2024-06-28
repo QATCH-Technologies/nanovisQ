@@ -4747,6 +4747,8 @@ void tft_initialize()
 
   // void tft_initialize_styleB()
   //{
+
+  //unsigned long start = micros();
   uint16_t x, y, w, h; // , pad;
 
   tft_wakeup();
@@ -4779,6 +4781,11 @@ void tft_initialize()
   x = ICON_X;
   y = ICON_Y;
   tft.writeRect(x, y, initialize_icon.width, initialize_icon.height, (uint16_t *)(initialize_icon.pixel_data));
+
+  // unsigned long stop = micros();
+  // client->print("TFT Wakeup Duration: ");
+  // client->print(stop - start);
+  // client->println("us");
 }
 
 void tft_measure()
