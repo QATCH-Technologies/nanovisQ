@@ -1212,11 +1212,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.progressBar.repaint()
 
             # set variable to preload tensorflow module, if desired
-            preload_tensorflow = False # otherwise, it will be loaded if/when needed
             os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf # lazy load
             import logging
             logging.getLogger("tensorflow").setLevel(logging.ERROR) # suppress AutoGraph warnings
-            if preload_tensorflow:
+            if Constants.preload_tensorflow and Constants.Tensorflow_predict:
                 # load tensorflow library once per session
                 Log.d("GUI: Force repaint events")
                 Log.w("Loading tensorflow modules...")

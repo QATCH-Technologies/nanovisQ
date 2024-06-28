@@ -176,74 +176,76 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 resonance_frequency = data[:,2]
                 dissipation = data[:,3]
 
-                try:
-                    dataModel = ModelData()
-                    model_result = dataModel.IdentifyPoints(data_path=data_path, 
-                                                            times=relative_time,
-                                                            freq=resonance_frequency,
-                                                            diss=dissipation)
-                    if model_result != -1:
-                        val = True
+                if Constants.ModelData_predict:
+                    try:
+                        dataModel = ModelData()
+                        model_result = dataModel.IdentifyPoints(data_path=data_path, 
+                                                                times=relative_time,
+                                                                freq=resonance_frequency,
+                                                                diss=dissipation)
+                        if model_result != -1:
+                            val = True
 
-                    return val # if we got here, skip the rest of this method, return now
-                except:
-                    Log.e("Error modeling data... Using 'tensorflow' as a backup (slow).")
+                        return val # if we got here, skip the rest of this method, return now
+                    except:
+                        Log.e("Error modeling data... Using 'tensorflow' as a backup (slow).")
 
-                # raw data
-                xs = relative_time
-                ys = dissipation
+                if Constants.Tensorflow_predict:
+                    # raw data
+                    xs = relative_time
+                    ys = dissipation
 
-                t_0p5 = 0       if (xs[-1] < 0.5)    else next(x for x,t in enumerate(xs) if t > 0.5)
-                t_1p0 = 100     if (len(xs) < 500)   else next(x for x,t in enumerate(xs) if t > 1.0)
+                    t_0p5 = 0       if (xs[-1] < 0.5)    else next(x for x,t in enumerate(xs) if t > 0.5)
+                    t_1p0 = 100     if (len(xs) < 500)   else next(x for x,t in enumerate(xs) if t > 1.0)
 
-                #t_1p0, done = QtWidgets.QInputDialog.getDouble(None, 'Input Dialog', 'Confirm rough start index:', value=t_1p0)
+                    #t_1p0, done = QtWidgets.QInputDialog.getDouble(None, 'Input Dialog', 'Confirm rough start index:', value=t_1p0)
 
-                # new maths for resonance and dissipation (scaled)
-                avg = np.average(resonance_frequency[t_0p5:t_1p0])
-                ys = ys * avg / 2
-                #ys_fit = ys_fit * avg / 2
-                ys = ys - np.amin(ys)
-                #ys_fit = ys_fit - np.amin(ys_fit)
-                ys_freq = avg - resonance_frequency
-                #ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
+                    # new maths for resonance and dissipation (scaled)
+                    avg = np.average(resonance_frequency[t_0p5:t_1p0])
+                    ys = ys * avg / 2
+                    #ys_fit = ys_fit * avg / 2
+                    ys = ys - np.amin(ys)
+                    #ys_fit = ys_fit - np.amin(ys_fit)
+                    ys_freq = avg - resonance_frequency
+                    #ys_freq_fit = savgol_filter(ys_freq, smooth_factor, 1)
 
-                baseline = np.average(dissipation[t_0p5:t_1p0])
-                diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
-                # if hasattr(self, "diff_factor"):
-                #     diff_factor = self.diff_factor
-                ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
-                # ys_diff_fit = savgol_filter(ys_diff, smooth_factor, 1)
-                Log.d(f"Difference factor: {diff_factor:1.1f}x")
+                    baseline = np.average(dissipation[t_0p5:t_1p0])
+                    diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
+                    # if hasattr(self, "diff_factor"):
+                    #     diff_factor = self.diff_factor
+                    ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+                    # ys_diff_fit = savgol_filter(ys_diff, smooth_factor, 1)
+                    Log.d(f"Difference factor: {diff_factor:1.1f}x")
 
-                lin_xs = np.linspace(xs[0], xs[-1], 1000) # model trained with 1000 points
-                lin_ys = np.interp(lin_xs, xs, ys)
-                lin_ys_freq = np.interp(lin_xs, xs, ys_freq)
-                lin_ys_diff = np.interp(lin_xs, xs, ys_diff)
+                    lin_xs = np.linspace(xs[0], xs[-1], 1000) # model trained with 1000 points
+                    lin_ys = np.interp(lin_xs, xs, ys)
+                    lin_ys_freq = np.interp(lin_xs, xs, ys_freq)
+                    lin_ys_diff = np.interp(lin_xs, xs, ys_diff)
 
-                # lazy load tensorflow module
-                os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf
-                import tensorflow as tf
+                    # lazy load tensorflow module
+                    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf
+                    import tensorflow as tf
 
-                # import tensorflow, load model, and predict good or bad
-                model_path = os.path.join(Architecture.get_path(), "QATCH/models/")
-                time_model = tf.keras.models.load_model(os.path.join(model_path, "time_model"))
-                diss_model = tf.keras.models.load_model(os.path.join(model_path, "diss_model"))
-                freq_model = tf.keras.models.load_model(os.path.join(model_path, "freq_model"))
-                diff_model = tf.keras.models.load_model(os.path.join(model_path, "diff_model"))
+                    # import tensorflow, load model, and predict good or bad
+                    model_path = os.path.join(Architecture.get_path(), "QATCH/models/")
+                    time_model = tf.keras.models.load_model(os.path.join(model_path, "time_model"))
+                    diss_model = tf.keras.models.load_model(os.path.join(model_path, "diss_model"))
+                    freq_model = tf.keras.models.load_model(os.path.join(model_path, "freq_model"))
+                    diff_model = tf.keras.models.load_model(os.path.join(model_path, "diff_model"))
 
-                data_time = lin_xs
-                data_diss = lin_ys
-                data_freq = lin_ys_freq
-                data_diff = lin_ys_diff
+                    data_time = lin_xs
+                    data_diss = lin_ys
+                    data_freq = lin_ys_freq
+                    data_diff = lin_ys_diff
 
-                predict_time = 0 #max(0, min(1, time_model([data_time]).numpy()[0][0]))
-                predict_diss = max(0, min(1, diss_model([data_diss]).numpy()[0][0]))
-                predict_freq = max(0, min(1, freq_model([data_freq]).numpy()[0][0]))
-                predict_diff = max(0, min(1, diff_model([data_diff]).numpy()[0][0]))
+                    predict_time = 0 #max(0, min(1, time_model([data_time]).numpy()[0][0]))
+                    predict_diss = max(0, min(1, diss_model([data_diss]).numpy()[0][0]))
+                    predict_freq = max(0, min(1, freq_model([data_freq]).numpy()[0][0]))
+                    predict_diff = max(0, min(1, diff_model([data_diff]).numpy()[0][0]))
 
-                predictors_count = 3 #ignore time
-                predict_data = (predict_time + predict_diss + predict_freq + predict_diff) / predictors_count
-                val =  max(0, min(1, np.round(predict_data).astype(int)))
+                    predictors_count = 3 #ignore time
+                    predict_data = (predict_time + predict_diss + predict_freq + predict_diff) / predictors_count
+                    val =  max(0, min(1, np.round(predict_data).astype(int)))
         except Exception as e:
             # raise e
             Log.e("ERROR: Model encountered an exception while analyzing run data.")
@@ -1687,33 +1689,34 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_engine = "None"
 
-                try:
-                    qpreditor = QModelPredict(
-                        pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
-                        discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
-                    )
-                    with secure_open(self.loaded_datapath, 'r', "capture") as f:
-                        fh = BytesIO(f.read())
-                        qpredictions = qpreditor.predict(fh)
-                        peaks = qpredictions[0]
-                        self.model_result = peaks
-                        self.model_engine = "QModel"
-                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                        poi_vals = self.model_result
-                    else:
+                if Constants.QModel_predict:
+                    try:
+                        qpreditor = QModelPredict(
+                            pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
+                            discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
+                        )
+                        with secure_open(self.loaded_datapath, 'r', "capture") as f:
+                            fh = BytesIO(f.read())
+                            qpredictions = qpreditor.predict(fh)
+                            peaks = qpredictions[0]
+                            self.model_result = peaks
+                            self.model_engine = "QModel"
+                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                            poi_vals = self.model_result
+                        else:
+                            self.model_result = -1 # try fallback model
+                    except Exception as e:
+                        Log.e(e)
+                        Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
+                        # raise e # debug only
                         self.model_result = -1 # try fallback model
-                except Exception as e:
-                    Log.e(e)
-                    Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
-                    # raise e # debug only
-                    self.model_result = -1 # try fallback model
 
                 start_time = min(self.poi_markers[0].value(), self.poi_markers[-1].value())
                 start_time = next(x for x,y in enumerate(self.xs) if y >= start_time)
                 stop_time = max(self.poi_markers[0].value(), self.poi_markers[-1].value())
                 stop_time = next(x for x,y in enumerate(self.xs) if y >= stop_time)
 
-                if self.model_result == -1:
+                if self.model_result == -1 and Constants.ModelData_predict:
                     try:
                         model_starting_points = [start_time, None, None, None, None, stop_time]
                         self.model_result = self.dataModel.IdentifyPoints(data_path=self.loaded_datapath, 
@@ -1818,7 +1821,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_idx = next(x for x,y in enumerate(self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
-                if self.model_engine == "ModelData":
+                if self.model_engine == "ModelData" and Constants.ModelData_predict:
                     try:
                         # Run Model again, to get an initial automatic fine tuning of points prior to user input
                         model_starting_points = poi_vals.copy() # NOTE: len(poi_vals) must equal 6
@@ -2417,27 +2420,29 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.stateStep != 6:
                 self.model_result = -1
                 self.model_engine = "None"
-                try:
-                    qpreditor = QModelPredict(
-                        pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
-                        discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
-                    )
-                    with secure_open(data_path, 'r', "capture") as f:
-                        fh = BytesIO(f.read())
-                        qpredictions = qpreditor.predict(fh)
-                        peaks = qpredictions[0]
-                        self.model_run_this_load = True
-                        self.model_result = peaks
-                        self.model_engine = "QModel"
-                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                        poi_vals = self.model_result
-                    else:
+                if Constants.QModel_predict:
+                    try:
+                        qpreditor = QModelPredict(
+                            pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
+                            discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
+                        )
+                        with secure_open(data_path, 'r', "capture") as f:
+                            fh = BytesIO(f.read())
+                            qpredictions = qpreditor.predict(fh)
+                            peaks = qpredictions[0]
+                            self.model_run_this_load = True
+                            self.model_result = peaks
+                            self.model_engine = "QModel"
+                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                            poi_vals = self.model_result
+                        else:
+                            self.model_result = -1 # try fallback model
+                    except Exception as e:
+                        Log.e(e)
+                        Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
+                        # raise e # debug only
                         self.model_result = -1 # try fallback model
-                except Exception as e:
-                    Log.e(e)
-                    Log.e("Error using 'QModel'... Using 'ModelData' as fallback (less accurate).")
-                    self.model_result = -1 # try fallback model
-                if self.model_result == -1:
+                if self.model_result == -1 and Constants.ModelData_predict:
                     try:
                         self.model_run_this_load = True
                         self.model_result = self.dataModel.IdentifyPoints(data_path, relative_time, resonance_frequency, dissipation)

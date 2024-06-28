@@ -5,7 +5,7 @@ import random
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import loadtxt
-from scipy.optimize import curve_fit
+# from scipy.optimize import curve_fit
 from scipy.signal import argrelextrema
 from scipy.signal import savgol_filter
 from tsmoothie.smoother import *
@@ -244,7 +244,7 @@ class ModelData():
                 Log.e("ERROR: Data run must be at least 3 seconds in total runtime to analyze.")
                 return -1
             t_0p5 = next(x+0 for x,t in enumerate(xs) if t > 0.5)
-            t_1p0 = next(x+1 for x,t in enumerate(xs) if t > 2.0)
+            t_1p0 = next(x+1 for x,t in enumerate(xs) if t > 2.5)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
             ys = ys * avg / 2
             ys_fit = ys_fit * avg / 2

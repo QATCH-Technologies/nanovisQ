@@ -20,7 +20,11 @@ data_files = [
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[], # [ ('C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd', '.') ],
+    binaries=[ # these may be required if the PyInstaller hooks for these modules get removed or change unexpectedly
+		# ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd", "." ),
+		# ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\xgboost\\lib\\xgboost.dll", "xgboost\\lib" ),
+		# ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
+	],
     datas=data_files,
     hiddenimports=['charset_normalizer.md__mypyc'],
     hookspath=[],
