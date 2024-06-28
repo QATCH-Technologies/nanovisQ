@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b40"
-    app_date = "2024-06-25"
+    app_version = "v2.6b41"
+    app_date = "2024-06-28"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -240,6 +240,18 @@ class Constants:
     bitmax = 8191 #1023 # 10-bit ADC
     ADCtoVolt = vmax / bitmax
     VCP = 0.9
+
+    ######################
+    # MODEL # parameters #
+    ######################
+    QModel_predict = False
+    ModelData_predict = True
+    Tensorflow_predict = True
+    # NOTE: If multiple models are enabled, they will be run 
+    # in the same priority order as they are listed above.
+    # In general, the first model to return a valid result will 
+    # prevent the execution of lower priority order model(s).
+    preload_tensorflow = False # otherwise, it will be loaded if/when needed
 
     ######################
     # ANALYZE parameters #
