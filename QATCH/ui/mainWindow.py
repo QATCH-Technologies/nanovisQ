@@ -4,7 +4,8 @@ import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.core.worker import Worker
 from QATCH.core.constants import Constants, OperationType, UpdateEngines
-from QATCH.ui.popUp import PopUp, QueryComboBox, QueryRunInfo
+from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
 from QATCH.ui.export import Ui_Export
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
@@ -483,13 +484,11 @@ class Rename_Output_Files(QtCore.QObject):
         # are we really done?
         remaining_threads = 0
         for i in range(len(self.bThread)):
-            if self.bThread[i].isRunning():
+            if self.bWorker[i].isVisible():
                 remaining_threads += 1
-        if remaining_threads > 1:
+        if remaining_threads > 0:
             Log.d(f"Waiting on {remaining_threads} Run Info threads to close...")
             return # not done yet
-        if len(self.bThread) > 1:
-            self.RunInfoWindow.close() # close multi run info window when all saved
         color_err = '#333333'
         labelbar = "Run Stopped. Saved to local data."
         self.infobar_write(color_err, labelbar)
@@ -508,206 +507,175 @@ class Rename_Output_Files(QtCore.QObject):
                 self.finished.emit()
                 return
             # Rename log files to include a user-defined run name string
+            content = []
             with open(Constants.new_files_path, 'r') as file:
                 self.indicate_analyzing()
                 new_file_time = strftime(Constants.csv_default_prefix, localtime())
                 content = file.readlines()
                 content.sort() # in alphabetical order
-                currDir = "" # current device directory
-                subDir = ""
-                text = ""
-                ok = False
-                ask4info = False
-                for line in content:
-                    old_path = line.rstrip() # remove newline
-                    path_parts = os.path.split(old_path)
-                    thisDir = path_parts[0]
-                    thisFile = path_parts[1]
-                    thisName = thisFile[:thisFile.rindex('_')]
-                    copy_file = None
-                    if thisDir != currDir:
-                        currDir = thisDir
-                        # text = "" # clear prior value
-                        path_split = os.path.split(thisDir)
-                        path_root = path_split[0]
-                        dev_name = path_split[1]
-                        try:
-                            _dev_pid = 0
-                            _dev_name = dev_name
-                            if _dev_name.count('_') > 0:
-                                _dev_parts = _dev_name.split('_')
-                                _dev_pid = int(_dev_parts[0])
-                                _dev_name = _dev_parts[1] # do not override 'dev_name'
-                            dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
-                            if 'NAME' in dev_info:
-                                if dev_info['NAME'] != _dev_name:
-                                    dev_name = dev_info['NAME']
-                        except:
-                            Log.e(f"Unable to lookup device info for: {dev_name}")
-                        save_anyways = True
-
-                        is_good = AnalyzeProcess.Model_Data(old_path)
-                        if text == "" and not is_good:
-                            save_anyways = PopUp.critical(self.parent,
-                                "Capture Run",
-                                "Are you sure you want to save this run?",
-                                "This software contains AI technology that is trained to detect run quality and it has determined this run does not match the standard characteristics of a complete run. Analysis of this run data may enocunter issues. If so, trying again with a different crystal may yield better results.",
-                                True)
-                        self.indicate_saving()
-                        while True:
-                            if text == "":
-                                if save_anyways:
-                                    text, ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
-                                                'Enter a name for this run:',
-                                                text=text)
-                                else:
-                                    ok = False # bad run, don't save with custom name
-                            if ok:
-                                ask4info = True
-                                # remove any invalid characters from user input
-                                invalidChars = "\\/:*?\"'<>|"
-                                for invalidChar in invalidChars:
-                                    text = text.replace(invalidChar, '')
-                                subDir = text
-                                if _dev_pid != 0: # append Port ID 1-4
-                                    subDir += f"_{self._portIDfromIndex(_dev_pid)}"
-                                try:
-                                    os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=False)
-                                    # break (done below)
-                                except:
-                                    if len(subDir) > 0:
-                                        PopUp.warning(self.parent,
-                                            "Duplicate Run Name",
-                                            "A run with this name already exists...\nPlease try again with a different name.")
-                                    else:
-                                        PopUp.warning(self.parent,
-                                            "Enter a Run Name",
-                                            "Please enter a run name to save this run...\nPlease try again with a valid name.")
-                                    text = ""
-                                    continue # no break (try again)
-                                text = text.strip().replace(' ', '_') # word spaces -> underscores
-                                # break (done below)
-                            else:
-                                ask4info = False
-                                subDir = "_unnamed"
-                                os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=True)
-                                text = new_file_time # uniquify
-                                if not save_anyways:
-                                    text += "_BAD"
-                                # break (done below)
-                            break
-                    new_path = os.path.join(path_root, dev_name, subDir, thisFile.replace(thisName, text))
+            currDir = "" # current device directory
+            subDir = ""
+            text = ""
+            ok = False
+            ask4info = False
+            for line in content:
+                old_path = line.rstrip() # remove newline
+                path_parts = os.path.split(old_path)
+                thisDir = path_parts[0]
+                thisFile = path_parts[1]
+                thisName = thisFile[:thisFile.rindex('_')]
+                copy_file = None
+                if thisDir != currDir:
+                    currDir = thisDir
+                    # text = "" # clear prior value
+                    path_split = os.path.split(thisDir)
+                    path_root = path_split[0]
+                    dev_name = path_split[1]
                     try:
-                        os.rename(old_path, new_path)
-                        Log.i(' Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
-                        copy_file = new_path
-                    except Exception as e:
-                        # raise e
-                        Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(old_path, new_path))
-                        self.finished.connect(self.indicate_error)
-                        if os.path.isfile(old_path):
-                            copy_file = old_path
-                        if os.path.isfile(new_path):
-                            copy_file = new_path
-                    old_path_parts = os.path.split(old_path)
-                    try:
-                        if len(os.listdir(old_path_parts[0])) == 0: # only try if empty
-                            os.rmdir(old_path_parts[0]) # delete old path folder (throws error if not empty)
+                        _dev_pid = 0
+                        _dev_name = dev_name
+                        if _dev_name.count('_') > 0:
+                            _dev_parts = _dev_name.split('_')
+                            _dev_pid = int(_dev_parts[0])
+                            _dev_name = _dev_parts[1] # do not override 'dev_name'
+                        dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
+                        if 'NAME' in dev_info:
+                            if dev_info['NAME'] != _dev_name:
+                                dev_name = dev_info['NAME']
                     except:
-                        Log.e(' ERROR: Failed to clean-up after renaming "{}"!!!'.format(old_path_parts[1]))
-                        self.finished.connect(self.indicate_error)
+                        Log.e(f"Unable to lookup device info for: {dev_name}")
+                    save_anyways = True
 
-                    if copy_file != None: # require access controls
-                        file_parts = os.path.split(copy_file)
-                        folder = os.path.split(file_parts[0])[0]
-                        if subDir == "_unnamed":
-                            zn = copy_file[:copy_file.rfind("_")] + ".zip"
-                        else:
-                            zn = os.path.join(file_parts[0], f"capture.zip")
-                        archive_file = file_parts[1]
-                        crc_file = archive_file[:-4] + ".crc"
-
-                        # Create a new zip file with a password
-                        with pyzipper.AESZipFile(zn, 'a',
-                                                 compression=pyzipper.ZIP_DEFLATED,
-                                                 allowZip64=True,
-                                                 encryption=pyzipper.WZ_AES) as zf:
-                            # Add a protected file to the zip archive
-                            friendly_name = f"{subDir} ({datetime.date.today()})"
-                            zf.comment = friendly_name.encode() # run name
-
-                            enabled, error, expires = UserProfiles.checkDevMode()
-                            if enabled == False and (error == True or expires != ""):
-                                PopUp.warning(self, "Developer Mode Expired",
-                                    "Developer Mode has expired and this data capture will now be encrypted.\n" +
-                                    "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
-
-                            if UserProfiles.count() > 0 and enabled == False:
-                                # create a protected archive
-                                zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                    is_good = AnalyzeProcess.Model_Data(old_path)
+                    if text == "" and not is_good:
+                        save_anyways = PopUp.critical(self.parent,
+                            "Capture Run",
+                            "Are you sure you want to save this run?",
+                            "This software contains AI technology that is trained to detect run quality and it has determined this run does not match the standard characteristics of a complete run. Analysis of this run data may enocunter issues. If so, trying again with a different crystal may yield better results.",
+                            True)
+                    self.indicate_saving()
+                    while True:
+                        if text == "":
+                            if save_anyways:
+                                text, ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
+                                            'Enter a name for this run:', # for device "{}":'.format(dev_name),
+                                            text=text)
                             else:
-                                zf.setencryption(None)
-                                if enabled:
-                                    Log.w("Developer Mode is ENABLED - NOT encrypting ZIP file")
+                                ok = False # bad run, don't save with custom name
+                        if ok:
+                            ask4info = True
+                            # remove any invalid characters from user input
+                            invalidChars = "\\/:*?\"'<>|"
+                            for invalidChar in invalidChars:
+                                text = text.replace(invalidChar, '')
+                            subDir = text
+                            if _dev_pid != 0: # append Port ID 1-4
+                                subDir += f"_{self._portIDfromIndex(_dev_pid)}"
+                            try:
+                                os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=False)
+                                # break (done below)
+                            except:
+                                if len(subDir) > 0:
+                                    PopUp.warning(self.parent,
+                                        "Duplicate Run Name",
+                                        "A run with this name already exists...\nPlease try again with a different name.")
+                                else:
+                                    PopUp.warning(self.parent,
+                                        "Enter a Run Name",
+                                        "Please enter a run name to save this run...\nPlease try again with a valid name.")
+                                text = ""
+                                continue # no break (try again)
+                            text = text.strip().replace(' ', '_') # word spaces -> underscores
+                            # break (done below)
+                        else:
+                            ask4info = False
+                            subDir = "_unnamed"
+                            os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=True)
+                            text = new_file_time # uniquify
+                            if not save_anyways:
+                                text += "_BAD"
+                            # break (done below)
+                        break
+                new_path = os.path.join(path_root, dev_name, subDir, thisFile.replace(thisName, text))
+                try:
+                    os.rename(old_path, new_path)
+                    Log.i(' Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
+                    copy_file = new_path
+                except Exception as e:
+                    # raise e
+                    Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(old_path, new_path))
+                    self.finished.connect(self.indicate_error)
+                    if os.path.isfile(old_path):
+                        copy_file = old_path
+                    if os.path.isfile(new_path):
+                        copy_file = new_path
+                old_path_parts = os.path.split(old_path)
+                try:
+                    if len(os.listdir(old_path_parts[0])) == 0: # only try if empty
+                        os.rmdir(old_path_parts[0]) # delete old path folder (throws error if not empty)
+                except:
+                    Log.e(' ERROR: Failed to clean-up after renaming "{}"!!!'.format(old_path_parts[1]))
+                    self.finished.connect(self.indicate_error)
 
-                            zf.write(copy_file, arcname=archive_file)
-                            if archive_file.endswith(".csv"):
-                                zf.writestr(crc_file, str(hex(zf.getinfo(archive_file).CRC)))
+                if copy_file != None: # require access controls
+                    file_parts = os.path.split(copy_file)
+                    folder = os.path.split(file_parts[0])[0]
+                    if subDir == "_unnamed":
+                        zn = copy_file[:copy_file.rfind("_")] + ".zip"
+                    else:
+                        zn = os.path.join(file_parts[0], f"capture.zip")
+                    archive_file = file_parts[1]
+                    crc_file = archive_file[:-4] + ".crc"
 
-                        os.remove(copy_file)
+                    # Create a new zip file with a password
+                    with pyzipper.AESZipFile(zn, 'a',
+                                                compression=pyzipper.ZIP_DEFLATED,
+                                                allowZip64=True,
+                                                encryption=pyzipper.WZ_AES) as zf:
+                        # Add a protected file to the zip archive
+                        friendly_name = f"{subDir} ({datetime.date.today()})"
+                        zf.comment = friendly_name.encode() # run name
 
-                    if ask4info:
-                        ask4info = False
-                        self.indicate_finalizing()
-                        self.bThread.append(QtCore.QThread())
-                        user_name = None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
-                        self.bWorker.append(QueryRunInfo(subDir, new_path, is_good, user_name, parent = self.parent)) # TODO: more secure to pass user_hash (filename)
-                        self.bThread[-1].started.connect(self.bWorker[-1].show)
-                        self.bWorker[-1].finished.connect(self.bThread[-1].quit)
-                        self.bWorker[-1].finished.connect(self.indicate_done) # add here
-                        # self.finished.disconnect(self.indicate_done) # remove here
+                        enabled, error, expires = UserProfiles.checkDevMode()
+                        if enabled == False and (error == True or expires != ""):
+                            PopUp.warning(self, "Developer Mode Expired",
+                                "Developer Mode has expired and this data capture will now be encrypted.\n" +
+                                "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
 
-                num_runs_saved = len(self.bThread)
-                if num_runs_saved == 0:
-                    pass # do nothing
-                elif num_runs_saved == 1:
-                        self.bThread[-1].start()
-                else: 
-                    # if more than 1 run to save...
-                        
-                    # All QueryRunInfo loaded into bThreads, now show the RunInfoWindow for multi
-                    self.RunInfoWindow = QtWidgets.QWidget()
-                    self.RunInfoLayout = QtWidgets.QGridLayout()
-                    self.RunInfoWindow.setLayout(self.RunInfoLayout)
-                    self.DockingWidgets = []
-                    for i in range(num_runs_saved):    
-                        if num_runs_saved == 4:
-                            row = 0 # int(i / 2)
-                            col = i # int(i % 2)
-                        else: # default, fallback grid layout
-                            row = int(i % 4)
-                            col = int(i / 4)
-                        self.DockingWidgets.append(QtWidgets.QDockWidget(f"Enter Run Info (Port {self._portIDfromIndex(i+1)})", self.RunInfoWindow))
-                        self.DockingWidgets[-1].setFeatures(QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable)
-                        self.DockingWidgets[-1].setWidget(self.bWorker[i])
-                        self.RunInfoLayout.addWidget(self.DockingWidgets[-1], row, col)
-                        self.bThread[i].start()
-                    icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/info.png')
-                    self.RunInfoWindow.setWindowIcon(QtGui.QIcon(icon_path)) #.png
-                    self.RunInfoWindow.setWindowTitle("Enter Run Info (Multiple Runs)")
-                    self.RunInfoWindow.show()
-                    self.RunInfoWindow.raise_()
-                    self.RunInfoWindow.activateWindow()
-                    # set min sizes for docking widgets to prevent layout changes on 'save'
-                    for dw in self.DockingWidgets:
-                        dw.setMinimumSize(dw.width(), dw.height())
-                    # center window in desktop geometry
-                    width = self.RunInfoWindow.width()
-                    height = self.RunInfoWindow.height()
-                    area = QtWidgets.QDesktopWidget().availableGeometry()
-                    left = int((area.width() - width) / 2)
-                    top = int((area.height() - height) / 2)
-                    self.RunInfoWindow.move(left, top)
+                        if UserProfiles.count() > 0 and enabled == False:
+                            # create a protected archive
+                            zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                        else:
+                            zf.setencryption(None)
+                            if enabled:
+                                Log.w("Developer Mode is ENABLED - NOT encrypting ZIP file")
+
+                        zf.write(copy_file, arcname=archive_file)
+                        if archive_file.endswith(".csv"):
+                            zf.writestr(crc_file, str(hex(zf.getinfo(archive_file).CRC)))
+
+                    os.remove(copy_file)
+
+                if ask4info:
+                    ask4info = False
+                    self.indicate_finalizing()
+                    self.bThread.append(QtCore.QThread())
+                    user_name = None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                    self.bWorker.append(QueryRunInfo(subDir, new_path, is_good, user_name, parent = self.parent)) # TODO: more secure to pass user_hash (filename)
+                    self.bThread[-1].started.connect(self.bWorker[-1].show)
+                    self.bWorker[-1].finished.connect(self.bThread[-1].quit)
+                    self.bWorker[-1].finished.connect(self.indicate_done) # add here
+                    # self.finished.disconnect(self.indicate_done) # remove here
+
+            num_runs_saved = len(self.bThread)
+            for i in range(num_runs_saved):
+                self.bWorker[i].setRuns(num_runs_saved, i) # if '1' more fields shown in QueryRunInfo
+            if num_runs_saved == 0:
+                pass # do nothing
+            elif num_runs_saved == 1:
+                self.bThread[-1].start() # only 1 run to save
+            else: 
+                self.RunInfoWindow = RunInfoWindow(self.bWorker, self.bThread) # more than 1 run to save
 
         except:
             limit = None

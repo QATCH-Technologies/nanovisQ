@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6r41"
-    app_date = "2024-06-28"
+    app_version = "v2.6b42"
+    app_date = "2024-07-09"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -48,7 +48,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6r41"
+    best_fw_version = "v2.6b40"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False # only use on FW v2.5b23 or older; will break newer devices!
 
@@ -150,7 +150,7 @@ class Constants:
     # MAX SPEED parameters #
     ########################
     max_speed_single = 3000 # 3000 = 3 ms; 0 means full speed ahead, fast as you can
-    max_speed_multi4 = 25000 # 30 ms for multi (4x) systems
+    max_speed_multi4 = 3000 # 30 ms for multi (4x) systems
 
     ##################
     # LOG parameters #

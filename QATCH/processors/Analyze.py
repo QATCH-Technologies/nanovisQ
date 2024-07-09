@@ -5,7 +5,8 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
-from QATCH.ui.popUp import PopUp, QueryRunInfo
+from QATCH.ui.popUp import PopUp
+from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.QModel.QModel import QModelPredict
 from PyQt5 import QtCore, QtGui, QtWidgets
 from io import BytesIO
@@ -262,6 +263,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.scan_for_most_recent_run = True
         self.run_timestamps = {}
         self.run_devices = {}
+        self.run_names = {}
         self.step_direction = "forwards"
         self.allow_modify = False
         self.moved_markers = [False, False, False, False, False, False]
@@ -365,6 +367,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load = QtWidgets.QToolBar()
         self.tool_Load.setIconSize(QtCore.QSize(50, 30))
         self.tool_Load.setStyleSheet("color: #333333;")
+
         icon_load = QtGui.QIcon()
         icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/load.png')
         icon_load.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
@@ -375,6 +378,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setText("Load")
         self.tBtn_Load.clicked.connect(self.loadRun)
         self.tool_Load.addWidget(self.tBtn_Load)
+
+        icon_reset = QtGui.QIcon()
+        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/reset.png')
+        icon_reset.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
+        # icon_reset.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
+        self.tBtn_Rescan = QtWidgets.QToolButton()
+        self.tBtn_Rescan.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tBtn_Rescan.setIcon(icon_reset) # normal and disabled pixmaps
+        self.tBtn_Rescan.setText("Rescan")
+        self.tBtn_Rescan.clicked.connect(self.rescanRuns)
+        self.tool_Load.addWidget(self.tBtn_Rescan)
 
         self.tool_Load.addSeparator()
 
@@ -1199,6 +1213,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             return False
 
+    def rescanRuns(self):
+        if self.hasUnsavedChanges():
+            if not PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to refresh without saving?"):
+                return
+            
+        self.scan_for_most_recent_run = True
+        self.reset()
+
     def reset(self):
         self.cBox_Devices.clear()
         self.cBox_Devices.addItems(self.parent.data_devices)
@@ -1449,6 +1471,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 data_folder = run
                 data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
                 dict_key = f"{data_folder}:{data_device}"
+                self.run_names[dict_key] = data_folder
                 if self.run_timestamps.get(dict_key) == None:
                     doc = None
                     zn = os.path.join(Constants.log_export_path, data_device, data_folder, "audit.zip")
@@ -1488,6 +1511,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             if name == "start":
                                 captured_datetime = value # value[0:value.find("T")]
                                 self.run_timestamps[dict_key] = captured_datetime
+                        params = doc.getElementsByTagName("param")
+                        for p in params:
+                            name = p.getAttribute("name")
+                            value = p.getAttribute("value")
+                            if name == "run_name":
+                                self.run_names[dict_key] = value
+                                self.run_devices[value] = data_device
                 # folder exists, but does a file still exist?
                 if len(data_files) > 0: # files exist
                     if dict_key in unchecked_runs:
@@ -1516,7 +1546,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         for run in self.sorted_runs:
             run_name = run[0]
             device_name = run_name[run_name.find(":")+1:]
-            run_name = run_name[0:run_name.find(":")]
+            run_name = self.run_names[run_name] # run_name[0:run_name.find(":")]
             captured_datetime = run[1]
             if captured_datetime == "0 / No Date":
                 captured_date = "Undated"
@@ -1590,6 +1620,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             folder = run_string[0:idx-1]
         else:
             folder = run_string
+        dict_key = list(self.run_names.keys())[list(self.run_names.values()).index(folder)]
+        folder = dict_key[0:dict_key.find(":")]
         # Log.w(f"folder from run = '{folder}'")
         return folder
 
@@ -2324,6 +2356,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             self.bThread = QtCore.QThread()
             self.bWorker = QueryRunInfo(run_name, run_path, is_good, user_name, self.xml_path, self.parent) # TODO: more secure to pass user_hash (filename)
+            self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
             self.bThread.start()
