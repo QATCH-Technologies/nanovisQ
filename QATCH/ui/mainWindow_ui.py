@@ -1179,15 +1179,20 @@ class Ui_Controls(object): #QtWidgets.QMainWindow
 
         # Dynamically specify plate dimensions and number of devices connected to constructor
         num_ports = self.cBox_Port.count() - 1 # num port currently detected / connected
-        well_width = 4 # number of well on a single device sensor for a multiplex device
-        well_height = math.ceil(num_ports / well_width) # num of multiplex devices, ceil
+        i = self.cBox_Port.currentText()
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
+        if i % 9 == i:  # 4x1 system
+            well_width = 4 # number of well on a single device sensor for a multiplex device
+            well_height = 1 # num of multiplex devices, ceil
+        else:           # 4x6 system
+            well_width = 6
+            well_height = 4
         num_channels = self.cBox_MultiMode.currentIndex() + 1 # user define device count
-
-        if num_ports < well_width:
+        if num_ports not in [well_width, well_height] and num_ports != 1:
             PopUp.warning(self, "Plate Configuration", 
                 f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
-                f"You must have {well_width} or more port connected for this mode.<br/>" +
-                f"Currently connected port count is: {num_ports} (less than {well_width})")
+                f"You must have exactly 4 device ports connected for this mode.<br/>" +
+                f"Currently connected device port count is: {num_ports} (not 4)")
         else:
              # creation of widget also shows UI to user
             self.wellPlateUI = WellPlate(well_width, well_height, num_channels)

@@ -694,7 +694,7 @@ class Rename_Output_Files(QtCore.QObject):
 
     def _portIDfromIndex(self, pid): # convert ASCII byte to character
         # For 4x1 system: expect pid 1-4, return "1" thru "4"
-        # For 4x6 system: expect pid 0x1A-0x6D, return "1A" thru "6D"
+        # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
         return hex(pid)[2:].upper()
 
 #------------------------------------------------------------------------------
@@ -1760,7 +1760,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: yellow;")
             self._identifying = True
             if True: # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
-                if True: # selected_port.count('.') == 3:
+                if not len(selected_port) == 0: # selected_port.count('.') == 3:
                     IDENTIFY_serial = serial.Serial()
                     IDENTIFY_serial.port = selected_port
                     IDENTIFY_serial.write("identify\n".encode())
@@ -1785,7 +1785,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # close port to stop LED blink
             self.fwUpdater.close()
             if True: # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
-                if True: # selected_port.count('.') == 3:
+                if not len(selected_port) == 0: # selected_port.count('.') == 3:
                     IDENTIFY_serial = serial.Serial()
                     IDENTIFY_serial.port = selected_port
                     IDENTIFY_serial.write("identify\n".encode())
@@ -1852,7 +1852,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def setMultiMode(self):
         try:
-            self.multiplex_plots = 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
+            self.multiplex_plots = max(1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()))
             self.PlotsWin.ui2.plt.clear()
             self.PlotsWin.ui2.pltB.clear()
             self.clear() # erase any saved data shown on plots
@@ -1961,7 +1961,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     friendly_name = dev_info['NAME']
                     dev_handle = dev_name
                     if 'PID' in dev_info:
-                        pid_old = int(dev_info['PID'], 16)
+                        pid_old = int(dev_info['PID'], base=16)
                     break
 
         # confirm PID in DEV_INFO matches COM Port listed text
@@ -1970,21 +1970,21 @@ class MainWindow(QtWidgets.QMainWindow):
             if idx >= 0:
                 device_text = self.ControlsWin.ui1.cBox_Port.itemText(idx)
                 if ":" in device_text:
-                    dev_i = device_text.split(":")[0]
+                    dev_i = int(device_text.split(":")[0], base=16)
                     if dev_i != pid_old:
                         Log.e(f'Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!')
-                        pid_old = int(dev_i, 16)
+                        pid_old = int(dev_i, base=16)
         except:
             Log.e("ERROR: Unable to check if PID in COM Port list matches DEV_INFO.")
 
         text, ok = QtWidgets.QInputDialog.getText(self,
                     self.ControlsWin.ui1.cBox_Port.currentText(),
                     "Enter a 'Position ID' for device '{}':".format(friendly_name),
-                    text=hex(pid_old)[2:])
+                    text=hex(pid_old)[2:].upper())
         if ok:
             try:
-                pid_new = int(text)
-                if not pid_new in range (1,5): # valid values: 1, 2, 3, 4
+                pid_new = int(text, base=16)
+                if not pid_new in [0x1, 0x2, 0x3, 0x4, 0xA, 0xB, 0xC, 0xD]: # valid values: 1-4, A-D
                     Log.w("Out-of-range PID entered by user. Using default: 0xFF")
                     pid_new = 0xFF
             except:
@@ -3228,6 +3228,11 @@ class MainWindow(QtWidgets.QMainWindow):
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
             if selected_port == None: selected_port = '' # Dissallow None
             if selected_port == "CMD_DEV_INFO": selected_port = '' # Dissallow Action
+
+            if len(self._selected_port) == 0:
+                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("Please connect a device, hit \"Reset\", and try \"Temp Control\" again.")
+                return
 
             # turn temp control on
             self.ControlsWin.ui1.pTemp.setText("Stop Temp Control")

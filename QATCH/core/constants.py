@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b42"
-    app_date = "2024-07-09"
+    app_version = "v2.6b43"
+    app_date = "2024-07-26"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -244,7 +244,7 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    QModel_predict = False
+    QModel_predict = True
     ModelData_predict = True
     Tensorflow_predict = True
     # NOTE: If multiple models are enabled, they will be run 

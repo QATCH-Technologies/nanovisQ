@@ -1723,14 +1723,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                 if Constants.QModel_predict:
                     try:
-                        qpreditor = QModelPredict(
-                            pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
-                            discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
-                        )
+                        model_paths = []
+                        for i in np.linspace(1, 6, 6).astype(int):
+                            model_paths.append(f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                        qpredictor = QModelPredict(model_paths[0], 
+                                                   model_paths[1], 
+                                                   model_paths[2], 
+                                                   model_paths[3], 
+                                                   model_paths[4], 
+                                                   model_paths[5])
                         with secure_open(self.loaded_datapath, 'r', "capture") as f:
                             fh = BytesIO(f.read())
-                            qpredictions = qpreditor.predict(fh)
-                            peaks = qpredictions[0]
+                            peaks = qpredictor.predict(fh)
                             self.model_result = peaks
                             self.model_engine = "QModel"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
@@ -2455,14 +2459,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_engine = "None"
                 if Constants.QModel_predict:
                     try:
-                        qpreditor = QModelPredict(
-                            pooler_path="QATCH/QModel/SavedModels/QModelPooler.json",
-                            discriminator_path="QATCH/QModel/SavedModels/QModelDiscriminator.json",
-                        )
+                        model_paths = []
+                        for i in np.linspace(1, 6, 6).astype(int):
+                            model_paths.append(f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                        qpredictor = QModelPredict(model_paths[0], 
+                                                   model_paths[1], 
+                                                   model_paths[2], 
+                                                   model_paths[3], 
+                                                   model_paths[4], 
+                                                   model_paths[5])
                         with secure_open(data_path, 'r', "capture") as f:
                             fh = BytesIO(f.read())
-                            qpredictions = qpreditor.predict(fh)
-                            peaks = qpredictions[0]
+                            peaks = qpredictor.predict(fh)
                             self.model_run_this_load = True
                             self.model_result = peaks
                             self.model_engine = "QModel"
@@ -4212,6 +4220,7 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(f"15MHz High shear = ({D} * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP")
                     else:
                         Log.i(f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP")
+                high_shear_15x = self.correctHighShear(high_shear_15x, high_shear_15y)
                 ax7.plot(high_shear_15x, high_shear_15y, "bd")
                 ax7.errorbar(high_shear_15x, high_shear_15y, 0.30*high_shear_15y, fmt='b.', ecolor='blue', capsize=3)
 
@@ -4297,6 +4306,7 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(f"d2 = {d2:1.4E}")
                         Log.i(f"d2-d0 = {d2-d0:1.4E}")
                         Log.i(f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP")
+                    high_shear_5x = self.correctHighShear(high_shear_5x, high_shear_5y)
                     ax7.plot(high_shear_5x, high_shear_5y, "bd")
                     ax7.errorbar(high_shear_5x, high_shear_5y, 0.30*high_shear_5y, fmt='b.', ecolor='blue', capsize=3)
                 else:
@@ -4410,7 +4420,28 @@ class AnalyzerWorker(QtCore.QObject):
             #    textcoords="offset points", xytext=(0,-15), ha='center')
             #ax7.plot(out_shear_rate, out_viscosity, 'rx')
             #ax7.plot(shear_rate, viscosity, 'r:')
-            if initial_fill[-1] >= 90:
+
+            ### BANDAID #3 ###
+            ### PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+            enable_bandaid_3 = True
+            hide_initial_fill = False # if disabled, never force hide initial fill
+            remove_initial_fill = False
+            point_factor_limit = 1.25
+            if enable_bandaid_3:
+                if high_shear_15y < fit_visc[0]: # Point 2 (right) is less than Point 1 (left)
+                    point_factor = np.amax(fit_visc) / high_shear_15y
+                    if point_factor > point_factor_limit:
+                        hide_initial_fill = True
+                else: # Point 1 (left) is less than Point 2 (right)
+                    point_factor = high_shear_15y / np.amin(fit_visc)
+                    if point_factor > point_factor_limit:
+                        hide_initial_fill = True
+                Log.d(f"Point Factor in Initial Fill is: {point_factor:2.2f}x")
+                if hide_initial_fill:
+                    Log.d(f"Hiding initial fill region due exceeded point factor limit ({point_factor_limit:2.2f}x)")
+            ##################
+
+            if initial_fill[-1] >= 90 and not hide_initial_fill:
                 mlen = int(np.floor((len(in_shear_rate)-len(distances))/5))
                 ax7.scatter(in_shear_rate[:mlen], in_viscosity[:mlen], marker='.', s=15, c="blue")
                 ax7.scatter(in_shear_rate[mlen:], in_viscosity[mlen:], marker='d', s=1, c="blue")
@@ -4421,6 +4452,9 @@ class AnalyzerWorker(QtCore.QObject):
                     stdev = np.std(in_viscosity[hh*mlen:(hh+1)*mlen-1])
                     # ax7.plot(xp, yp, 'b.')
                     ax7.errorbar(xp, yp, stdev, fmt='b.', ecolor='blue', capsize=3)
+            else:
+                # Remove initial fill points from output table later
+                remove_initial_fill = True
 
             self.update(status_label)
 
@@ -4441,6 +4475,13 @@ class AnalyzerWorker(QtCore.QObject):
             if len(lin_viscosity) == len(in_shear_rate) - 1:
                 # re-add the skipped viscosity point if the lengths do not match
                 lin_viscosity = np.insert(lin_viscosity, -len(distances), viscosity[-len(distances)])
+
+            if remove_initial_fill:
+                # Remove initial fill points from output table
+                in_shear_rate = in_shear_rate[-len(distances):]
+                in_viscosity = in_viscosity[-len(distances):]
+                lin_viscosity = lin_viscosity[-len(distances):]
+                in_temp = in_temp[-len(distances):]
 
             in_shear_rate = np.flip(in_shear_rate)
             in_viscosity = np.flip(in_viscosity)
@@ -4810,6 +4851,21 @@ class AnalyzerWorker(QtCore.QObject):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+    def correctHighShear(self, initial, visc):
+        output = initial
+        try:
+            with open("QATCH/resources/lookup_shear_correction.csv", 'r') as f:
+                data  = np.loadtxt(f.readlines(), delimiter = ',', skiprows = 1)
+                col = 1 if initial == 5e6 else 2
+                lookup_visc = data[:,0]
+                lookup_freq = data[:,col]
+                nearest_idx = (np.abs(lookup_visc - visc)).argmin()
+                correction_factor = lookup_freq[nearest_idx]
+                output *= correction_factor
+        except Exception as e:
+            Log.e("ERROR:", e)
+        return np.round(output, 2)
 
 
 class TableView(QtWidgets.QTableWidget):

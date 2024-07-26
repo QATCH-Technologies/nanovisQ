@@ -7,17 +7,23 @@ import sys
 import json
 import os
 
-from QATCH.common.logger import Logger as Log
-from QATCH.common.architecture import Architecture
-# class Log():
-#     @staticmethod
-#     def d(s):
-#         print(s)
+try:
+    from QATCH.common.logger import Logger as Log
+    from QATCH.common.architecture import Architecture
+except:
+    class Log():
+        @staticmethod
+        def d(s):
+            print(s)
+    class Architecture():
+        @staticmethod
+        def get_path():
+            return os.getcwd()
 
 class Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.wellWidget = WellPlate(4, 1, 4)
+        self.wellWidget = WellPlate(6, 4, 4)
         
 class WellPlate(QWidget):
     pressPos = None
@@ -101,7 +107,7 @@ class WellPlate(QWidget):
             msg.setWindowTitle("WARN: Plate Configuration")
             msg.setText("You cannot select more wells on the plate than are currently detected.")
             msg.setInformativeText(f"Number of selected wells:\t{self.wells_selected}\n" +
-                                   f"Number of detected wells:\t{self.default_selected} (COM port count)\n\n" +
+                                   f"Number of detected wells:\t{self.default_selected} (channel count)\n\n" +
                                    "To re-detect well count, click \"Reset\" on the main \"Run\" mode window.")
             msg.setIcon(QMessageBox.Warning)
             msg.exec_()
@@ -109,7 +115,7 @@ class WellPlate(QWidget):
             msg.setWindowTitle("WARN: Plate Configuration")
             msg.setText("Please select at least one well to save a valid plate configuration.")
             msg.setInformativeText(f"Number of selected wells:\t{self.wells_selected}\n" +
-                                   f"Number of detected wells:\t{self.default_selected} (COM port count)\n\n" +
+                                   f"Number of detected wells:\t{self.default_selected} (channel count)\n\n" +
                                    "Click on \"?\" for help with managing your plate configuration.")
             msg.setIcon(QMessageBox.Warning)
             msg.exec_()
