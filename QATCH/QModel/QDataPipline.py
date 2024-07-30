@@ -121,6 +121,24 @@ class QDataPipeline:
     def apply_lda(self, target):
         pass
 
+    def find_time_delta(self):
+        time_df = pd.DataFrame()
+        time_df["Delta"] = self.__dataframe__["Relative_time"].diff()
+
+        threshold = 0.032
+
+        rolling_avg = time_df["Delta"].expanding(min_periods=2).mean()
+
+        time_df["Significant_change"] = (
+            time_df["Delta"] - rolling_avg
+        ).abs() > threshold
+        change_indices = time_df.index[time_df["Significant_change"]].tolist()
+        has_significant_change = len(change_indices) > 0
+        idx = -1
+        if has_significant_change:
+            idx = change_indices[0]
+        return idx
+
     def get_dataframe(self):
         """
         Returns the DataFrame containing the loaded data.

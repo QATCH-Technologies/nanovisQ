@@ -43,6 +43,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
+        if concentration > 20:
+            ST1 = 60
         return ST1 # always
 
         if concentration < 0.01:
@@ -4426,19 +4428,24 @@ class AnalyzerWorker(QtCore.QObject):
             enable_bandaid_3 = True
             hide_initial_fill = False # if disabled, never force hide initial fill
             remove_initial_fill = False
-            point_factor_limit = 1.25
+            point_factor_limit = 0.25
+            if point_factor_limit < 0 or point_factor_limit > 1:
+                Log.e(f"Invalid 'point_factor_limit' set: {point_factor_limit:2.2f} (Must be between zero and one)")
+                Log.e("Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'")
+                enable_bandaid_3 = False
             if enable_bandaid_3:
-                if high_shear_15y < fit_visc[0]: # Point 2 (right) is less than Point 1 (left)
-                    point_factor = np.amax(fit_visc) / high_shear_15y
-                    if point_factor > point_factor_limit:
-                        hide_initial_fill = True
-                else: # Point 1 (left) is less than Point 2 (right)
-                    point_factor = high_shear_15y / np.amin(fit_visc)
-                    if point_factor > point_factor_limit:
-                        hide_initial_fill = True
-                Log.d(f"Point Factor in Initial Fill is: {point_factor:2.2f}x")
-                if hide_initial_fill:
-                    Log.d(f"Hiding initial fill region due exceeded point factor limit ({point_factor_limit:2.2f}x)")
+                P1_value = fit_visc[-1]
+                P2_value = high_shear_15y
+                lower_factor = 1 - point_factor_limit
+                upper_factor = 1 + point_factor_limit
+                min_fit_end = min(P1_value, P2_value) * lower_factor
+                max_fit_end = max(P1_value, P2_value) * upper_factor
+                Log.d(f"Point Factor Limit for Initial Fill is: {point_factor_limit:2.2f}x")
+                Log.d(f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}")
+                Log.d(f"Initial Fill Trendline ends at: {fit_visc[0]:2.2f}")
+                if min_fit_end > fit_visc[0] or max_fit_end < fit_visc[0]: # Point 2 (right) is less than Point 1 (left)
+                    Log.w(f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)")
+                    hide_initial_fill = True
             ##################
 
             if initial_fill[-1] >= 90 and not hide_initial_fill:
