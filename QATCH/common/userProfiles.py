@@ -24,7 +24,8 @@ class UserRoles(Enum):
 
 class UserConstants:
     # Specify how long until dev mode expires
-    DEV_EXPIRE_LEN = 90 # days
+    DEV_EXPIRE_LEN = 365 # days
+    DEV_PERSIST_VER = True # DevMode will remain active across multiple SW versions, without requiring re-activation
     REQ_ADMIN_UPDATES = False # set dynamically as well
 
     try:
@@ -193,9 +194,9 @@ class UserProfilesManager(QtWidgets.QWidget):
                     self.developerExpires.setText(f"(Expires on {expires_at})")
                     PopUp.information(self, "Developer Mode Status", "<b>Developer Mode: ENABLED.</b><br/>" +
                         f"This feature will require renewal in {UserConstants.DEV_EXPIRE_LEN} days<br/>" +
-                        "and applies only to this build version.<br/>" +
-                        # "and it will be applied to all build versions<br/>" +
-                        # "on this PC unless you explicitly turn it off.<br/>" +
+                        ("and applies only to this build version.<br/>" if not UserConstants.DEV_PERSIST_VER else
+                        "and it will be applied to all build versions<br/>" +
+                        "on this PC unless you explicitly turn it off.<br/>") +
                         f"<i>Expires on {expires_at}</i>")
             else:
                 if os.path.exists(dev_path):
@@ -1266,7 +1267,7 @@ class UserProfiles:
                     if expires_on == "invalid" or expires_on == "exception":
                         Log.e(f"Developer Mode encoded expiration value could not be parsed ({expires_on})! Please renew or disable.")
                         is_error = True
-                    elif build_date != Constants.app_date:
+                    elif build_date != Constants.app_date and not UserConstants.DEV_PERSIST_VER:
                         Log.e("Developer Mode was enabled for another SW version and is invalid here. Please renew or disable.")
                         is_error = True
                         expires_at = ""

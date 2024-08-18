@@ -452,6 +452,27 @@ class Ui_Login(object):
             else:
                 self.parent.MainWin.ui0.setAnalyzeMode(self.user_label)
 
+            action_role = UserRoles.ADMIN
+            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result:
+                enabled, error, expires = UserProfiles.checkDevMode()
+                if enabled != True and error != False:
+                    is_expired = True if expires != "" else False
+                    messagebox_description = ("<b>Developer Mode " + 
+                                              ("has expired" if is_expired else "is invalid") + 
+                                              " and is no longer active!</b>") # requires renewal to use.")
+                    from QATCH.common.userProfiles import UserProfilesManager, UserConstants
+                    if PopUp.question(self.parent, "Developer Mode " + ("Expired" if is_expired else "Error"), 
+                                      messagebox_description + "<br/>" +
+                                      f"Renewal Period: Every {UserConstants.DEV_EXPIRE_LEN} days<br/><br/>" + 
+                                      "Would you like to renew Developer Mode now?<br/><br/>" +
+                                      "<small>NOTE: This setting can be changed in the \"Manage Users\" window.</small>"):
+                        temp_upm = UserProfilesManager(self.parent, name)
+                        temp_upm.developerModeChk.setChecked(True) # triggers call to 'toggleDevMode' on state change
+                        Log.i("Developer Mode renewed!")
+                    else:
+                        Log.w("Developer Mode NOT renewed!")
+
             # check for updates, if and only if ADMIN (as required)
             if hasattr(self.parent, "url_download"):
                 delattr(self.parent, "url_download") # require re-ask

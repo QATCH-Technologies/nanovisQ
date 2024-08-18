@@ -269,6 +269,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.step_direction = "forwards"
         self.allow_modify = False
         self.moved_markers = [False, False, False, False, False, False]
+        self.signed_at = "[NEVER]"
+        self.model_result = -1
+        self.model_engine = "None"
 
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
@@ -326,6 +329,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign = QtWidgets.QLineEdit()
         self.sign.installEventFilter(self)
         layout_sign.addWidget(self.sign)
+        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
+        self.sign_do_not_ask.setEnabled(False)
+        if UserProfiles.checkDevMode()[0]: # DevMode enabled
+            auto_sign_key = None
+            session_key = None
+            if os.path.exists(Constants.auto_sign_key_path):
+                with open(Constants.auto_sign_key_path, 'r') as f:
+                    auto_sign_key = f.readline()
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, 'r') as f:
+                    session_key = f.readline()
+            if auto_sign_key == session_key and session_key != None:
+                self.sign_do_not_ask.setChecked(True)
+            else:
+                self.sign_do_not_ask.setChecked(False)
+                if os.path.exists(Constants.auto_sign_key_path):
+                    os.remove(Constants.auto_sign_key_path)
+            layout_sign.addWidget(self.sign_do_not_ask)
         self.sign_ok = QtWidgets.QPushButton("OK")
         self.sign_ok.clicked.connect(self.signForm.hide)
         self.sign_ok.clicked.connect(self.action_analyze)
@@ -1001,6 +1023,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def action_analyze(self):
         if self.signature_required and (self.unsaved_changes or self.model_run_this_load):
+            if self.signature_received == False and self.sign_do_not_ask.isChecked():
+                Log.w(f"Signing ANALYZE with initials {self.initials} (not asking again)")
+                self.signed_at = dt.datetime.now().isoformat()
+                self.signature_received = True # Do not ask again this session
             if not self.signature_received:
                 if self.signForm.isVisible():
                     self.signForm.hide()
@@ -1013,6 +1039,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.signForm.setVisible(True)
                 self.sign.setFocus()
                 return
+
+        if self.sign_do_not_ask.isChecked():
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, 'r') as f:
+                    session_key = f.readline()
+                if not os.path.exists(Constants.auto_sign_key_path):
+                    with open(Constants.auto_sign_key_path, 'w') as f:
+                        f.write(session_key)
 
         try:
             self.moved_markers = [False, False, False, False, False, False]
@@ -1298,6 +1333,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.signed_at = "[NEVER]"
         self.signature_required = True # secure assumption, set on load
         self.signature_received = False
+        self.model_result = -1
+        self.model_engine = "None"
 
         self._annotate_welcome_text()
         self.check_user_info()
@@ -1350,6 +1387,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.sign.setReadOnly(True)
             self.signed_at = dt.datetime.now().isoformat()
             self.signature_received = True
+            self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
         text = self.sign.text()
@@ -1575,6 +1613,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
             PopUp.warning(self, "Developer Mode Expired",
                 "Developer Mode has expired and these analysis results will be encrypted.\n" +
                 "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
+
+        if enabled: # DevMode enabled, check if auto-sign (do not ask again) key is active
+            auto_sign_key = None
+            session_key = None
+            if os.path.exists(Constants.auto_sign_key_path):
+                with open(Constants.auto_sign_key_path, 'r') as f:
+                    auto_sign_key = f.readline()
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, 'r') as f:
+                    session_key = f.readline()
+            if auto_sign_key == session_key and session_key != None:
+                self.sign_do_not_ask.setChecked(True)
+            else:
+                self.sign_do_not_ask.setChecked(False)
+                if os.path.exists(Constants.auto_sign_key_path):
+                    os.remove(Constants.auto_sign_key_path)
+
+            # NOTE: This check is needed for Analyze since it persists across run loads
+            #       and is only init'd once per application instance (across sessions).
+            self.sign_do_not_ask.setVisible(True)  # just in case, make it visible
+        else: # DevMode may have been manually disabled since last run load
+            # Force compliance by removing auto-sign feature support
+            self.sign_do_not_ask.setChecked(False) # uncheck
+            self.sign_do_not_ask.setEnabled(False) # disable
+            self.sign_do_not_ask.setVisible(False) # hide
 
         self.askForPOIs = True
         self.btn_Next.setText("Next")

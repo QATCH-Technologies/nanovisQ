@@ -440,7 +440,7 @@ class FW_Updater:
                         self._com = self._port
                         self._net = None
                     name = self.__getDeviceName__(usb, self._com)
-                    idx = 0 if pid in [None, 'FF'] else int(pid)
+                    idx = 0 if pid in [None, 'FF'] else int(pid, base=16) % 9
                     # write dev info file after conflict resolution
 
                     # check for and resolve any conflicting device infos

@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r41"
-#define RELEASE_DATE "2024-06-28"
+#define CODE_VERSION "v2.6b46"
+#define RELEASE_DATE "2024-08-18"
 
 /************************** LIBRARIES **************************/
 
@@ -167,6 +167,9 @@
 #define NVMEM nv.mem
 #define HW_REV_MATCH(t) (NVMEM.HW_Revision == t)
 #define PID_IN_RANGE(pid, lo, hi) (pid >= lo && pid <= hi)
+#define PID_IS_SECONDARY(pid) (PID_IN_RANGE(pid, 0x2, 0x4) || PID_IN_RANGE(pid, 0xB, 0xD))
+// NOTE: Primary devices are PID = 0x00, 0x01, 0x0A, and/or 0xFF (default, when other)
+// NOTE: Secondary devices are PID = 0x02, 0x03, 0x04, 0x0B, 0x0C and/or 0x0D
 
 // Determine external voltage condition
 #define L298NHB_VOLTAGE_EXPECTED 5.0                    // volts
@@ -834,7 +837,7 @@ void QATCH_setup()
 #endif
 
 #if USE_MAX31855
-  if (PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (PID_IS_SECONDARY(NVMEM.pid))
     Serial.printf("Skipping temperature hardware checks. PID=%u\n", EEPROM_pid);
   else
   {
@@ -1315,7 +1318,7 @@ void QATCH_loop()
       client->printf("REV: %u\n", NVMEM.HW_Revision);
 
       client->print("ERR: ");
-      bool ignore_temp_errors = PID_IN_RANGE(NVMEM.pid, 2, 4);
+      bool ignore_temp_errors = PID_IS_SECONDARY(NVMEM.pid);
       if (ignore_temp_errors)
         hw_error = false; // prevent temp sensor errors on secondary multiplex devices
       else
@@ -1622,7 +1625,7 @@ void QATCH_loop()
         max_mag = ad8302.read();
         t_check = max31855.readCelsius();
         check_pass = abs(t_start - t_check) < 1.0;
-        if (PID_IN_RANGE(NVMEM.pid, 2, 4))
+        if (PID_IS_SECONDARY(NVMEM.pid))
           check_pass = true;
         ad9851.shutdown();
         // report temp check results (detect sensor fault)
@@ -3260,7 +3263,7 @@ void stopStreaming(void)
 
 void tft_wakeup()
 {
-  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   // Serial.println("Writing LCD!"); // debug ONLY
@@ -3271,7 +3274,7 @@ void tft_wakeup()
 
 void tft_screensaver()
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   // This will auto-enable after 15 minutes of no activity
@@ -3297,7 +3300,7 @@ void tft_screensaver()
 
 void tft_splash(bool dp)
 {
-  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   uint16_t x, y, h, w, pad;
@@ -3314,7 +3317,7 @@ void tft_splash(bool dp)
   tft_wakeup();
   tft.fillScreen(QATCH_GREY_BG);
 
-  if (dp && !PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (dp && !PID_IS_SECONDARY(NVMEM.pid))
   {
     tft_error = (tft.readPixel(tft.width() / 2, tft.height() / 2) != QATCH_GREY_BG);
   }
@@ -3359,7 +3362,7 @@ void tft_splash(bool dp)
 
 void tft_identify(bool identifying)
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   tft_wakeup();
@@ -3392,7 +3395,7 @@ void tft_identify(bool identifying)
 
 void tft_idle()
 {
-  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0)) // || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   //  tft_idle_styleB();
@@ -3464,7 +3467,7 @@ void tft_idle()
   // hw_error = true;
   // tft_error = true;
   bool transient_error = (max31855.error() != "OK[NONE]");
-  if (hw_error || tft_error || transient_error || tft_msgbox || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (hw_error || tft_error || transient_error || tft_msgbox || PID_IS_SECONDARY(NVMEM.pid))
   {
     if (tft_msgbox && msgbox_icon == 2)
       tft.setTextColor(ILI9341_GREEN);
@@ -3550,8 +3553,8 @@ void tft_idle()
     //      client->println(line2);
     //    }
 
-    String line2 = tft_msgbox ? String(msgbox_text) : PID_IN_RANGE(NVMEM.pid, 2, 4) ? "PID IS INCORRECT"
-                                                                                    : "SERVICE REQUIRED";
+    String line2 = tft_msgbox ? String(msgbox_text) : PID_IS_SECONDARY(NVMEM.pid) ? "PID IS INCORRECT"
+                                                                                  : "SERVICE REQUIRED";
     if (l298nhb_auto_off_at != 0)
       line2 = "";                   // in cooldown mode: wait to show msgbox text (title only)
     char buff2[line2.length() + 1]; // trailing NULL
@@ -3966,7 +3969,7 @@ void tft_cooldown_drawRing(int step, uint16_t color)
 
 void tft_cooldown()
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   tft_wakeup();
@@ -4115,7 +4118,7 @@ void tft_cooldown()
 
 void tft_tempcontrol()
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   //  tft_tempcontrol_styleB();
@@ -4723,7 +4726,7 @@ void tft_tempcontrol()
 
 void tft_initialize()
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
   {
     // NOTE: a small delay is still required here to
     //       allow the DAC to settle after waking up
@@ -4790,7 +4793,7 @@ void tft_initialize()
 
 void tft_measure()
 {
-  if (HW_REV_MATCH(HW_REVISION_0) || PID_IN_RANGE(NVMEM.pid, 2, 4))
+  if (HW_REV_MATCH(HW_REVISION_0) || PID_IS_SECONDARY(NVMEM.pid))
     return;
 
   //  tft_measure_styleB();

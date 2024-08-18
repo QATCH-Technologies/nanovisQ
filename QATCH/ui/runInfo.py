@@ -627,6 +627,25 @@ class QueryRunInfo(QtWidgets.QWidget):
         # self.sign = QtWidgets.QLineEdit() # declared prior
         self.sign.installEventFilter(self)
         layout_sign.addWidget(self.sign)
+        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
+        self.sign_do_not_ask.setEnabled(False)
+        if UserProfiles.checkDevMode()[0]: # DevMode enabled
+            auto_sign_key = None
+            session_key = None
+            if os.path.exists(Constants.auto_sign_key_path):
+                with open(Constants.auto_sign_key_path, 'r') as f:
+                    auto_sign_key = f.readline()
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, 'r') as f:
+                    session_key = f.readline()
+            if auto_sign_key == session_key and session_key != None:
+                self.sign_do_not_ask.setChecked(True)
+            else:
+                self.sign_do_not_ask.setChecked(False)
+                if os.path.exists(Constants.auto_sign_key_path):
+                    os.remove(Constants.auto_sign_key_path)
+            layout_sign.addWidget(self.sign_do_not_ask)
         self.sign_ok = QtWidgets.QPushButton("OK")
         self.sign_ok.clicked.connect(self.signForm.hide)
         self.sign_ok.clicked.connect(self.confirm)
@@ -794,6 +813,24 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 self.notes.setPlainText(str(value)
                                                         .replace('\\n', '\n') # unescape new lines
                                                         .replace("''", '"'))  # unescape double quotes
+                            try:
+                                notes_path = os.path.join(os.path.dirname(self.run_path), "notes.txt")
+                                notes_txt = self.notes.toPlainText()
+                                if os.path.exists(notes_path):
+                                    with open(notes_path, 'r') as f:
+                                        file_txt = "\n".join(f.readlines())
+                                    if file_txt != notes_txt:
+                                        if Constants.import_notes_from_txt_file:
+                                            Log.w("Importing modified Notes.txt file to Run Info...")
+                                            self.notes.setPlainText(file_txt)
+                                        else:
+                                            Log.w("Notes.txt seems to have been modified outside of the application!")
+                                            Log.w("Please only make changes to Notes from within this application...")
+                                            Log.w("If you want to keep the file contents please copy & paste it now.")
+                                            os.open(notes_path)
+                                        self.detect_change()
+                            except Exception as e:
+                                Log.e("ERROR:", e)
                     if name == "solvent":
                         self.t0.setText(value)
                         self.lookup_completer() # store auto_st, auto_ca, auto_dn
@@ -959,6 +996,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.signed.setText(f"CAPTURE by\t=")
             self.signed_at = dt.datetime.now().isoformat()
             self.signature_received = True
+            self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
         text = self.sign.text()
@@ -1173,6 +1211,10 @@ class QueryRunInfo(QtWidgets.QWidget):
             Log.w("Input error: Not saving Run Info.")
             return False
 
+        if self.signature_received == False and self.sign_do_not_ask.isChecked():
+            Log.w(f"Signing CAPTURE with initials {self.initials} (not asking again)")
+            self.signed_at = dt.datetime.now().isoformat()
+            self.signature_received = True # Do not ask again this session
         if self.signature_required and not self.signature_received: # missing initials
             if force or self.run_idx != 0:
                 Log.w(f"Auto-signing CAPTURE with initials {self.initials}")
@@ -1201,6 +1243,15 @@ class QueryRunInfo(QtWidgets.QWidget):
                     Log.d("Nothing to save, closing Run Info.")
                     self.close() # nothing to save
                 return False
+
+        if self.sign_do_not_ask.isChecked():
+            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, 'r') as f:
+                    session_key = f.readline()
+                if not os.path.exists(Constants.auto_sign_key_path):
+                    with open(Constants.auto_sign_key_path, 'w') as f:
+                        f.write(session_key)
 
         if secure_open.file_exists(self.xml_path):
             audit_action = "PARAMS"
@@ -1334,6 +1385,18 @@ class QueryRunInfo(QtWidgets.QWidget):
                                  .replace('"', "''"))  # escape double quotes
         param_notes.setAttribute('source', 'single' if self.run_count == 1 else f"multi_{self.run_count}")
         params.appendChild(param_notes)
+
+        try:
+            if Constants.export_notes_to_txt_file:
+                notes_path = os.path.join(os.path.dirname(self.run_path), "notes.txt")
+                notes_txt = self.notes.toPlainText()
+                if notes_txt != self.notes.placeholderText() and len(notes_txt) > 0:
+                    with open(notes_path, 'w') as f:
+                        f.write(notes_txt)
+                elif os.path.exists(notes_path):
+                    os.remove(notes_path)
+        except Exception as e:
+            Log.e("ERROR:", e)
 
         if self.b2.isChecked(): # is NOT bioformulation
             param2 = run.createElement('param')

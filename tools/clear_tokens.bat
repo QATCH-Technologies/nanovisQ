@@ -1,7 +1,7 @@
 @ECHO OFF
 cd %LOCALAPPDATA%\QATCH\nanovisQ\tokens
 if %errorlevel% == 1 goto dirnotfound
-ECHO Searching for dbx access tokens in QATCH application data...
+ECHO Searching for existing tokens in QATCH application data...
 
 set cnt=0
 for %%A in (*.pem) do set /a cnt+=1

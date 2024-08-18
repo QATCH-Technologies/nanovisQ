@@ -536,7 +536,7 @@ class Rename_Output_Files(QtCore.QObject):
                         _dev_name = dev_name
                         if _dev_name.count('_') > 0:
                             _dev_parts = _dev_name.split('_')
-                            _dev_pid = int(_dev_parts[0])
+                            _dev_pid = int(_dev_parts[0], base=16) % 9
                             _dev_name = _dev_parts[1] # do not override 'dev_name'
                         dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
                         if 'NAME' in dev_info:
@@ -569,13 +569,18 @@ class Rename_Output_Files(QtCore.QObject):
                             for invalidChar in invalidChars:
                                 text = text.replace(invalidChar, '')
                             subDir = text
-                            if _dev_pid != 0: # append Port ID 1-4
+                            if _dev_pid != 0: # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
+                                if self.has_active_multi_port(): # 4x6 system
+                                    _dev_pid = ((_dev_pid + 9) << 4) | self.get_active_multi_port() # mask in port, e.g. "A" -> "A1"
+                                # else: 4x1 system, nothing to do
                                 subDir += f"_{self._portIDfromIndex(_dev_pid)}"
                             try:
+                                if len(text) == 0:
+                                    raise Exception("No text entered. Please try again.")
                                 os.makedirs(os.path.join(path_root, dev_name, subDir), exist_ok=False)
                                 # break (done below)
                             except:
-                                if len(subDir) > 0:
+                                if len(text) > 0:
                                     PopUp.warning(self.parent,
                                         "Duplicate Run Name",
                                         "A run with this name already exists...\nPlease try again with a different name.")
@@ -697,6 +702,17 @@ class Rename_Output_Files(QtCore.QObject):
         # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
         return hex(pid)[2:].upper()
 
+    def has_active_multi_port(self):
+        i = self.parent.ControlsWin.ui1.cBox_Port.currentText()
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
+        if i != i % 9: # 4x6 system detected, PID A-D, not 1-4
+            return os.path.exists("plate-config.json")
+        return False
+
+    def get_active_multi_port(self):
+        return self.parent.active_multi_ch # returns 1-6, depending on active 4x6 port on MUX of active device
+        # NOTE: setting 'active_multi_ch' is not implemented, only defined as 1 (always)
+
 #------------------------------------------------------------------------------
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -759,6 +775,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plt3_arr = [self._plt3_1, self._plt3_2, self._plt3_3, self._plt3_4] # array of all _plt3 plots
         self._plt4 = None # temperature (combined)
         self.multiplex_plots = 1
+        self.active_multi_ch = 1 # TODO: update this variable on write to MUX state of primary device
         self._timer_plot = None
         self._readFREQ = None
         self._QCS_installed = None
@@ -2972,12 +2989,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.cBox_Port.setCurrentIndex(0)
                 self._port_changed();
 
+        restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
+        self.ControlsWin.ui1.cBox_MultiMode.clear()
+        multi_channel_count = 4*1
+        if "A" in dev_pids:
+            multi_channel_count = 4*6
+        multi_channel_items = [f"{i+1} Channel" + ("s" if i > 0 else "") for i in range(multi_channel_count)]
+        self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
         if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
-            idx = max(0, len(dev_pids) - 1)
+            idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
             Log.d(f"Auto-Detect Channel Count: {idx + 1}")
-            self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
+        else:
+            if self.ControlsWin.ui1.cBox_MultiMode.count() > restore_idx:
+                idx = restore_idx
+            else:
+                Log.w("Too few channels to restore prior selection.")
+                idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
+        self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
-            if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
+            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
                 enable = True
             else:
                 enable = False
@@ -2992,7 +3022,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Gets the current source type
         source = self._get_source()
         i = self.ControlsWin.ui1.cBox_Port.currentText()
-        i = 0 if i.find(":") == -1 else int(i.split(":")[0])
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16) % 9
         speeds = self.worker.get_source_speeds(source, i)
 
         # Store and get the restore index

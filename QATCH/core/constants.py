@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6r45"
-    app_date = "2024-08-01"
+    app_version = "v2.6b46"
+    app_date = "2024-08-18"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -182,6 +182,9 @@ class Constants:
     csv_sweeps_export_path = "{}{}{}{}{}".format(csv_export_path,slash,tbd_active_device_name_path,slash,csv_filename)
     csv_sweeps_filename = "sweep"
 
+    export_notes_to_txt_file = True
+    import_notes_from_txt_file = True
+
     # Calibration: scan (WRITE for @5MHz and @10MHz QCS) path: 'common\'
     csv_calibration_filename    = "Calibration_5MHz"
     csv_calibration_filename10  = "Calibration_10MHz"
@@ -192,6 +195,7 @@ class Constants:
     run_profiles_path = os.path.join(local_app_data_path, "profiles", "runs") # future use
     query_info_recall_path = os.path.join(local_app_data_path, "recall.xml")
     user_constants_path = os.path.join(local_app_data_path, "settings", "userConstants.py")
+    auto_sign_key_path = os.path.join(local_app_data_path, "tokens", "auto_sign_key.pem")
 
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'
