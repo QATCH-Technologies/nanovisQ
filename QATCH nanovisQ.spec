@@ -12,6 +12,7 @@ data_files = [
     ( "QATCH\\*.pdf", "QATCH" ),
     ( "QATCH\\icons", "QATCH\\icons" ),
     ( "QATCH\\models", "QATCH\\models" ),
+	( "QATCH\\QModel\\SavedModels", "QATCH\\QModel\\SavedModels" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),

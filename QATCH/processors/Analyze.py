@@ -1791,7 +1791,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         model_paths = []
                         for i in np.linspace(1, 6, 6).astype(int):
-                            model_paths.append(f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                            model_paths.append(
+                                os.path.join(Architecture.get_path(), 
+                                             f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                            )
                         qpredictor = QModelPredict(model_paths[0], 
                                                    model_paths[1], 
                                                    model_paths[2], 
@@ -2527,7 +2530,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         model_paths = []
                         for i in np.linspace(1, 6, 6).astype(int):
-                            model_paths.append(f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                            model_paths.append(
+                                os.path.join(Architecture.get_path(), 
+                                             f"QATCH/QModel/SavedModels/QModel_{i}.json")
+                            )
                         qpredictor = QModelPredict(model_paths[0], 
                                                    model_paths[1], 
                                                    model_paths[2], 
