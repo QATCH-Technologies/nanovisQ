@@ -44,19 +44,19 @@ if not ModelData_found:
 QDataPipeline_found = False
 try:
     if not QDataPipeline_found:
-        from QDataPipline import QDataPipeline
+        from QDataPipeline import QDataPipeline
     QDataPipeline_found = True
 except:
     QDataPipeline_found = False
 try:
     if not QDataPipeline_found:
-        from QModel.QDataPipline import QDataPipeline
+        from QModel.QDataPipeline import QDataPipeline
     QDataPipeline_found = True
 except:
     QDataPipeline_found = False
 try:
     if not QDataPipeline_found:
-        from QATCH.QModel.QDataPipline import QDataPipeline
+        from QATCH.QModel.QDataPipeline import QDataPipeline
     QDataPipeline_found = True
 except:
     QDataPipeline_found = False
