@@ -48,8 +48,8 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    # best_fw_version = "v2.6b40"
-    best_fw_version = app_version # may specify an exact version if needed
+    best_fw_version = "v2.6b46"
+    # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False # only use on FW v2.5b23 or older; will break newer devices!
 
     ###########################
