@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6r46"
-    app_date = "2024-08-18"
+    app_version = "v2.6b47"
+    app_date = "2024-10-03"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -281,6 +281,7 @@ class Constants:
     freq_factor_5MHz = 0.0147 # never used
     diss_factor1_5MHz = 0.2222e6
     diss_factor2_5MHz = 1.67
+    # NOTE: pts= start, eof, mid1, blip1, mid2, blip2, mid3, blip3
     distances = "[1.15, 1.61, 2.17, 2.67, 3.23, 5.00, 10.90, 16.2]"
 
     ######################

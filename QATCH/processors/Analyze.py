@@ -7,7 +7,13 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
-from QATCH.QModel.QModel import QModelPredict
+# from QATCH.QModel.QModel import QModelPredict
+# import joblib
+# from QATCH.QModel.q_data_pipeline import QDataPipeline
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf # lazy load
+from QATCH.QModel.q_multi_model import QPredictor
+from QATCH.QModel.q_image_clusterer import QClusterer
 from PyQt5 import QtCore, QtGui, QtWidgets
 from io import BytesIO
 import numpy as np
@@ -22,7 +28,6 @@ import datetime as dt
 import pyqtgraph as pg
 # import matplotlib.backends.backend_pdf # lazy load
 # import matplotlib.pyplot as plt # lazy load
-import os
 import sys
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf # lazy load
 # import tensorflow as tf # lazy load
@@ -217,6 +222,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # if hasattr(self, "diff_factor"):
                     #     diff_factor = self.diff_factor
                     ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+
+                    # Invert difference curve if drop applied to outlet
+                    if np.average(ys_diff) < 0:
+                        Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
+                        ys_diff *= -1
+
                     # ys_diff_fit = savgol_filter(ys_diff, smooth_factor, 1)
                     Log.d(f"Difference factor: {diff_factor:1.1f}x")
 
@@ -271,10 +282,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.moved_markers = [False, False, False, False, False, False]
         self.signed_at = "[NEVER]"
         self.model_result = -1
+        self.model_candidates = None
         self.model_engine = "None"
 
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
+
+        # lazy load these modules on 'loadRun()' call
+        self.QModel_modules_loaded = False
+        self.QModel_clusterer = None # QClusterer(model_path=cluster_model_path)
+        self.QModel_predict_0 = None # QPredictor(model_path=predict_model_path.format(0))
+        self.QModel_predict_1 = None # QPredictor(model_path=predict_model_path.format(1))
+        self.QModel_predict_2 = None # QPredictor(model_path=predict_model_path.format(2))
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = (screen.width() == 2880)
@@ -837,6 +856,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.textEdited.connect(self.sign_edit)
         self.sign.textEdited.connect(self.text_transform)
         self.btn_Info.pressed.connect(self.getRunInfo)
+        self.graphWidget.scene().sigMouseClicked.connect(self.summaryClick)
         self.graphWidget1.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget2.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget3.scene().sigMouseClicked.connect(self.onClick)
@@ -845,10 +865,79 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.askForPOIs = True
 
+        # create main graph summary point selection tool (initially hidden)
+        self.AI_SelectTool_At = 0
+        self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
+        self.AI_Guess_Maxs = [5, 5, 5, 5, 5, 5]
+        self.AI_Start_Vals = []
+        self.AI_has_starting_values = False
+        self.AI_moving_marker = False
+
+        self.AI_SelectTool_Frame = QtWidgets.QWidget(self)
+        self.AI_SelectTool_Layout = QtWidgets.QVBoxLayout()
+        self.AI_SelectTool_Layout.setSpacing(0)
+        self.AI_SelectTool_TitleBar = QtWidgets.QWidget()
+        self.ai_layout_t = QtWidgets.QHBoxLayout()
+        self.ai_layout_t.setSpacing(5)
+        self.ai_layout_t.setContentsMargins(5, 0, 5, 0)
+        self.AI_SelectTool_TitleBar.setLayout(self.ai_layout_t)
+        self.ai_title = QtWidgets.QLabel("AI Point Selection Tool")
+        self.ai_layout_t.addWidget(self.ai_title)
+        self.ai_layout_t.addStretch()
+        self.ai_close = QtWidgets.QLabel("X")
+        self.ai_close.mouseReleaseEvent = self.hideSelectTool
+        self.ai_layout_t.addWidget(self.ai_close)
+        self.AI_SelectTool_TitleBar.setObjectName("AI_TitleBar")
+        self.AI_SelectTool_TitleBar.setStyleSheet("#AI_TitleBar { background: #DDDDDD; border: 1px solid black; border-bottom: 0; }")
+        self.AI_SelectTool_Layout.addWidget(self.AI_SelectTool_TitleBar)
+        self.AI_SelectTool_Body = QtWidgets.QWidget()
+        self.AI_SelectTool_Layout.addWidget(self.AI_SelectTool_Body)
+        self.AI_SelectTool_Frame.setLayout(self.AI_SelectTool_Layout)
+        self.AI_SelectTool_Frame.setVisible(False)
+        self.layout.addChildWidget(self.AI_SelectTool_Frame)
+
+        self.ai_layout = QtWidgets.QGridLayout()
+        self.ai_layout.setSpacing(5)
+        self.ai_layout.setContentsMargins(0, 0, 0, 0)
+        self.ai_layout.setRowMinimumHeight(0, self.ai_layout.spacing())
+        self.ai_layout.setRowMinimumHeight(5, self.ai_layout.spacing())
+        self.AI_SelectTool_Body.setLayout(self.ai_layout)
+        self.ai_backBtn = QtWidgets.QToolButton()
+        self.ai_backBtn.setArrowType(QtCore.Qt.LeftArrow)
+        self.ai_backBtn.adjustSize()
+        self.ai_backBtn.clicked.connect(self.AI_Prev_Guess) # (self.summaryBack)
+        self.ai_layout.addWidget(self.ai_backBtn, 0, 0, 6, 1)
+        self.ai_nextBtn = QtWidgets.QToolButton()
+        self.ai_nextBtn.setArrowType(QtCore.Qt.RightArrow)
+        self.ai_nextBtn.adjustSize()
+        self.ai_nextBtn.clicked.connect(self.AI_Next_Guess) # (self.summaryNext)
+        self.ai_layout.addWidget(self.ai_nextBtn, 0, 3, 6, 1)
+        self.ai_label = QtWidgets.QLabel("Point [Unknown]")
+        self.ai_layout.addWidget(self.ai_label, 1, 1, 1, 2, QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.ai_score = QtWidgets.QLabel("Confidence Score: 95%")
+        self.ai_layout.addWidget(self.ai_score, 2, 1, 1, 2, QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.ai_guess = QtWidgets.QLabel("Guess #: 1 of 5")
+        self.ai_layout.addWidget(self.ai_guess, 3, 1, 1, 2, QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.ai_prev = QtWidgets.QPushButton("&Prev")
+        self.ai_prev.setFixedWidth(50)
+        self.ai_prev.clicked.connect(self.AI_Prev_Guess)
+        self.ai_layout.addWidget(self.ai_prev, 4, 1, 1, 1, QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.ai_next = QtWidgets.QPushButton("&Next")
+        self.ai_next.setFixedWidth(50)
+        self.ai_next.clicked.connect(self.AI_Next_Guess)
+        self.ai_layout.addWidget(self.ai_next, 4, 2, 1, 1, QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.AI_SelectTool_Body.setObjectName("AI_Tool")
+        self.AI_SelectTool_Body.setStyleSheet("#AI_Tool { background: #A9E1FA; border: 1px solid black; }")
+        self.ai_prev.setVisible(False)
+        self.ai_next.setVisible(False)
+
         self.progressValue.connect(lambda value: self.progressBar.setValue(value))
         self.progressFormat.connect(lambda value: self.progressBar.setFormat(value))
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
+
+    def hideSelectTool(self, event):
+        self.AI_SelectTool_Frame.hide()
 
     def get_results_split_auto_sizes(self, setMinimumWidth = True):
         tableWidget = self.results_split.widget(0)
@@ -1334,6 +1423,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.signature_required = True # secure assumption, set on load
         self.signature_received = False
         self.model_result = -1
+        self.model_candidates = None
         self.model_engine = "None"
 
         self._annotate_welcome_text()
@@ -1393,6 +1483,162 @@ class AnalyzeProcess(QtWidgets.QWidget):
         text = self.sign.text()
         if len(text) in [1, 2, 3, 4]: # are these initials?
             self.sign.setText(text.upper()) # will not fire 'textEdited' signal again
+
+    def AI_Prev_Guess(self):
+        min_val = 0 if not self.AI_has_starting_values else -1
+        cur_val = self.AI_Guess_Idxs[self.AI_SelectTool_At]
+        new_val = max(min_val, cur_val - 1)
+        self.AI_Guess_Idxs[self.AI_SelectTool_At] = new_val
+        self.ai_guess_write_summary_from_cache()
+
+    def AI_Next_Guess(self):
+        min_val = 0 if not self.AI_has_starting_values else -1
+        max_val = self.AI_Guess_Maxs[self.AI_SelectTool_At]
+        cur_val = self.AI_Guess_Idxs[self.AI_SelectTool_At]
+        if cur_val < min_val:
+            # manually selected point will be lost
+            Log.w("Manually selected point was replaced with an AI guess!")
+            # Log.w("You will need to re-select the manual point if you want it back.")
+            # TODO: Offer warning dialog, and allow to abort if not wanted
+        new_val = min(max_val - 1, cur_val + 1)
+        self.AI_Guess_Idxs[self.AI_SelectTool_At] = new_val
+        self.ai_guess_write_summary_from_cache()
+
+    def ai_guess_write_summary_from_cache(self):
+        error = False
+        px = self.AI_SelectTool_At
+        try:
+            min_val = 0 if not self.AI_has_starting_values else -1
+            cur_val = self.AI_Guess_Idxs[px]
+            max_val = self.AI_Guess_Maxs[px]
+            if cur_val == -1:
+                if self.AI_has_starting_values:
+                    marker_xs = self.AI_Start_Vals[px]
+                else:
+                    marker_xs = self.poi_markers[px].value()
+            elif self.moved_markers[px] and "manual" not in self.ai_score.text().lower(): # custom point
+                self.moved_markers[px] = False
+                cur_val = -1
+                self.AI_Guess_Idxs[px] = -1
+                marker_xs = self.poi_markers[px].value()
+            else:
+                try:
+                    marker_xs = self.xs[self.model_candidates[px][0][cur_val]]
+                except Exception as e:
+                    Log.e("ERROR:", e)
+                    Log.e(f"Failed to update prediction for POI{px} to guess #{cur_val}")
+            try:
+                t_idx = next(x for x,y in enumerate(self.xs) if y >= marker_xs)
+                index = self.xs[int(t_idx)]
+                if self.poi_markers[px].value() != index:
+                    Log.d(f"Moving marker {px} to position {index}")
+                    # self.detect_change() # not needed if calling 'sigPositionChangeFinished' on marker move
+                    self.AI_moving_marker = True
+                    self.poi_markers[px].setValue(index)
+                    self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
+                    self.summaryAt(px) # will recall this function after moving tool to new marker location
+                    self.AI_moving_marker = False
+                    return
+                else:
+                    Log.d(f"Moving marker {px} not required. Already there.")
+            except Exception as e:
+                Log.e(f"Moving marker {px} failed: {str(e)}")
+        except Exception as e:
+            error = True
+            Log.e("AI ERROR:", e)
+            cur_val == -1
+            min_val = -1
+            max_val = 0
+            marker_xs = self.poi_markers[px].value()
+        if cur_val == -1:
+            if self.AI_has_starting_values:
+                # marker_xs = self.AI_Start_Vals[px]
+                self.ai_score.setText("ERROR!" if error else "Loaded from prior run")
+            else:
+                self.ai_score.setText("Manually selected point")
+            self.ai_score.adjustSize()
+            self.ai_guess.setText(f"AI has {max_val} guesses")
+            self.ai_guess.adjustSize()
+        else:
+            # marker_xs = self.poi_markers[px].value()
+            confidence = int(100*(self.model_candidates[px][1][cur_val]))
+            self.ai_score.setText(f"Confidence Score: {confidence}%")
+            self.ai_score.adjustSize()
+            self.ai_guess.setText(f"Guess #: {cur_val + 1} of {max_val}")
+            self.ai_guess.adjustSize()
+        self.ai_label.setText(f"Point {px+1} @ {marker_xs:.1f}s")
+        self.ai_label.adjustSize()
+        enable_prev = (cur_val > min_val)
+        enable_next = (cur_val < max_val - 1)
+        self.ai_backBtn.setEnabled(enable_prev) # was 'ai_prev'
+        self.ai_nextBtn.setEnabled(enable_next) # was 'ai_next'
+        self.graphWidget2.setFocus() # allow arrow keys to work immediately
+
+    def summaryBack(self):
+        if self.stateStep in range(1, 7):
+            self.action_back()
+        else:
+            self.summaryAt(max(0, self.AI_SelectTool_At - 1))
+
+    def summaryNext(self):
+        if self.stateStep in range(1, 7):
+            self.action_next()
+        else:
+            self.summaryAt(min(5, self.AI_SelectTool_At + 1))
+
+    def summaryClick(self, event):
+        if self.stateStep in range(1, 7):
+            if not self.AI_SelectTool_Frame.isVisible():
+                self.summaryAt(self.AI_SelectTool_At)
+            else:
+                Log.d("Ignoring main graph click while not in 'summary' step.")
+            return
+        mousePoint = None
+        if self.graphWidget.sceneBoundingRect().contains(event._scenePos):
+            mousePoint = self.graphWidget.getPlotItem().vb.mapSceneToView(event._scenePos)
+        closest_marker = None
+        if mousePoint != None:
+            index = mousePoint.x()
+            Log.d(f"Mouse click @ xs = {index}")
+            # find nearest POI by X value, show popup there
+            closest_delta_xs = self.poi_markers[-1].value()
+            for idx, marker in enumerate(self.poi_markers):
+                this_delta_xs = abs(marker.value() - index)
+                if this_delta_xs < closest_delta_xs:
+                    closest_marker = idx
+                    closest_delta_xs = this_delta_xs
+        if closest_marker != None:
+            Log.d(f"Closest marker @ poi = {closest_marker}")
+            if self.AI_has_starting_values and not any(self.AI_Guess_Idxs):
+                self.AI_Guess_Idxs = [-1, -1, -1, -1, -1, -1]
+                self.AI_Start_Vals = []
+                for marker in self.poi_markers:
+                    self.AI_Start_Vals.append(marker.value())
+                self.AI_Start_Vals.sort()
+            self.summaryAt(closest_marker)
+
+    def summaryAt(self, idx):
+        if not self.AI_SelectTool_Frame.isVisible():
+            self.AI_Guess_Maxs = []
+            for candidates, confidences in self.model_candidates:
+                self.AI_Guess_Maxs.append(len(candidates))
+        self.AI_SelectTool_At = idx
+        marker_xs = self.poi_markers[idx].value()
+        self.ai_guess_write_summary_from_cache()
+        self.AI_SelectTool_Body.adjustSize()
+        self.ai_backBtn.setFixedHeight(self.AI_SelectTool_Body.height())
+        self.ai_nextBtn.setFixedHeight(self.AI_SelectTool_Body.height())
+        self.AI_SelectTool_Frame.setVisible(True)
+        self.AI_SelectTool_Frame.adjustSize()
+        scene_pos_x = (
+            self.graphWidget.getPlotItem().vb.mapViewToScene(QtCore.QPointF(marker_xs, 0)).x() - 
+            (self.AI_SelectTool_Frame.width() / 2.5) )
+        scene_pos_y = 153 + ((self.graphWidget.height() - self.AI_SelectTool_Frame.height()) / 2)
+        self.AI_SelectTool_Frame.move(int(scene_pos_x), int(scene_pos_y))
+        # enable_back = (self.AI_SelectTool_At > 0) # repurposed these buttons for prev/next guess
+        # self.ai_backBtn.setEnabled(enable_back)
+        # enable_next = (self.AI_SelectTool_At < 5)
+        # self.ai_nextBtn.setEnabled(enable_next)
 
     def onClick(self, event):
         ax1 = self.graphWidget1
@@ -1608,6 +1854,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("User declined load action. There are unsaved changes.")
             return
 
+        if self.AI_SelectTool_Frame.isVisible():
+            self.AI_SelectTool_Frame.setVisible(False) # require re-click to show popup tool incorrect position
+
+        try:
+            if not self.QModel_modules_loaded:  
+                cluster_model_path = os.path.join(Architecture.get_path(), 
+                                                "QATCH/QModel/SavedModels/cluster.joblib")
+                self.QModel_clusterer = QClusterer(model_path=cluster_model_path)
+
+                predict_model_path = os.path.join(Architecture.get_path(), 
+                                                "QATCH/QModel/SavedModels/QMultiType_{}.json")
+                self.QModel_predict_0 = QPredictor(model_path=predict_model_path.format(0))
+                self.QModel_predict_1 = QPredictor(model_path=predict_model_path.format(1))
+                self.QModel_predict_2 = QPredictor(model_path=predict_model_path.format(2))
+            self.QModel_modules_loaded = True
+        except:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'QModel' modules at load of run.")
+            
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(self, "Developer Mode Expired",
@@ -1698,7 +1963,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.enable_buttons()
         except Exception as e:
             Log.e(f"An error occurred while loading the selected run: {str(e)}")
-            raise e
             self.action_cancel()
 
     def goBack(self):
@@ -1725,7 +1989,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if ws > len(self.xs) / 2:
             ws = int(len(self.xs) / 20)
         px = self.stateStep - 1
-        tt1 = self.poi_markers[px].value()
+        if px in range(len(self.poi_markers)):
+            tt1 = self.poi_markers[px].value()
+        else:
+            tt1 = self.poi_markers[self.AI_SelectTool_At].value()
         tx1 = next(x for x,y in enumerate(self.xs) if y >= tt1)
         if tx1 - ws < 0:
             clipped = True
@@ -1785,26 +2052,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
             poi_vals = []
             if len(self.poi_markers) != 6:
                 self.model_result = -1
+                self.model_candidates = None
                 self.model_engine = "None"
 
                 if Constants.QModel_predict:
                     try:
-                        model_paths = []
-                        for i in np.linspace(1, 6, 6).astype(int):
-                            model_paths.append(
-                                os.path.join(Architecture.get_path(), 
-                                             f"QATCH/QModel/SavedModels/QModel_{i}.json")
-                            )
-                        qpredictor = QModelPredict(model_paths[0], 
-                                                   model_paths[1], 
-                                                   model_paths[2], 
-                                                   model_paths[3], 
-                                                   model_paths[4], 
-                                                   model_paths[5])
                         with secure_open(self.loaded_datapath, 'r', "capture") as f:
                             fh = BytesIO(f.read())
-                            peaks = qpredictor.predict(fh)
-                            self.model_result = peaks
+                            label = self.QModel_clusterer.predict_label(fh)
+                            fh.seek(0)
+                            act_poi = [None]*6 # no initial guesses
+                            candidates = getattr(self, f"QModel_predict_{label}").predict(
+                                fh, type=label, act=act_poi
+                            )
+                            predictions = []
+                            for p, c in candidates:
+                                predictions.append(p[0]) # assumes 1st point is best point
+                            self.model_result = predictions
+                            self.model_candidates = candidates
                             self.model_engine = "QModel"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result
@@ -1834,14 +2099,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             poi_vals.clear()
                             # show point with highest confidence for each:
                             self.model_select = []
+                            self.model_candidates = []
                             for point in self.model_result:
                                 self.model_select.append(0)
                                 if isinstance(point, list):
+                                    self.model_candidates.append(point)
                                     select_point = point[self.model_select[-1]]
                                     select_index = select_point[0]
                                     select_confidence = select_point[1]
                                     poi_vals.append(select_index)
                                 else:
+                                    self.model_candidates.append([point])
                                     poi_vals.append(point)
                         elif self.model_result == -1:
                             Log.w("Model failed to auto-calculate points of interest for this run!")
@@ -1897,6 +2165,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(True)
                 marker.setPen(color="blue")
                 marker.addMarker('<|>')
+            self.AI_SelectTool_Frame.setVisible(False) # Hide AI Tool
         elif self.stateStep in range(1, 7):
             if self.stateStep + 2 == 3: # stateStep 1 = Step 3 of 8
                 # sort poi_markers by time, in case the user messed up the order moving things around manually in Step 2
@@ -1940,7 +2209,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             poi_vals.clear()
                             # show point with highest confidence for each:
                             self.model_select = []
+                            self.model_candidates = []
                             for idx,point in enumerate(self.model_result):
+                                if isinstance(point, list):
+                                    self.model_candidates.append(point)
+                                else:
+                                    self.model_candidates.append([point])
                                 self.model_select.append(0)
                                 if self.moved_markers[idx] == False:
                                     poi_vals.append(model_starting_points[idx])
@@ -2098,6 +2372,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.gstars1.setData(pos=pos1)
             self.gstars2.setData(pos=pos2)
             self.gstars3.setData(pos=pos3)
+            # Show AI Tool on current point marker after everything settles:
+            QtCore.QTimer.singleShot(1, lambda : self.summaryAt(max(0, min(5, self.stateStep - 1)))) 
         elif self.stateStep == 7:
             self._update_progress_value(100, f"Summary: Press \"Analyze\" to compute results for these selected points")
             # ax.setTitle(f"Summary: All Selected Points of Interest")
@@ -2116,10 +2392,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x,y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
+            mn = min(np.amin(self.ys_freq_fit[tx0:tx2]), np.amin(self.ys_fit[tx0:tx2]), np.amin(self.ys_diff_fit[tx0:tx2]))
+            mx = max(np.amax(self.ys_freq_fit[tx0:tx2]), np.amax(self.ys_fit[tx0:tx2]), np.amax(self.ys_diff_fit[tx0:tx2]))
+            ax.setYRange(mn, mx, padding=0.05)
             for i, marker in enumerate(self.poi_markers):
                 Log.d(f"Marker {i} = ", marker.value())
             self.btn_Next.setText("Analyze")
-
+            self.AI_SelectTool_Frame.setVisible(False) # Hide AI Tool
         else:
             self.stateStep = 8
             if self.unsaved_changes:
@@ -2193,6 +2472,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if d.underMouse():
                 step_num = i + 1
                 break
+
+        if self.AI_SelectTool_Frame.isVisible():
+            self.AI_SelectTool_Frame.setVisible(False)
 
         if self.allow_modify == False and step_num < 9:
             self.tool_Modify.setChecked(True)
@@ -2373,8 +2655,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 break
         if self.moved_markers[marker_idx] == False:
             Log.d(f"Marker {marker_idx} has been moved by the user! Flagged for model tuning.")
-        self.moved_markers[marker_idx] = True
+        # clear flag if it moved from AI directive; only set on manual movement
+        self.moved_markers[marker_idx] = True if not self.AI_moving_marker else False
         self.detect_change()
+        # setXRange for 'ax' all the time on marker move to keep markers in view (except for Step 2)
+        if self.stateStep > 0:
+            tt0 = self.poi_markers[0].value()
+            tx0 = next(x for x,y in enumerate(self.xs) if y >= tt0)
+            tt2 = self.poi_markers[-1].value()
+            tx2 = next(x for x,y in enumerate(self.xs) if y >= tt2)
+            ax.setXRange(tt0, tt2, padding=0.12)
+            mn = min(np.amin(self.ys_freq_fit[tx0:tx2]), np.amin(self.ys_fit[tx0:tx2]), np.amin(self.ys_diff_fit[tx0:tx2]))
+            mx = max(np.amax(self.ys_freq_fit[tx0:tx2]), np.amax(self.ys_fit[tx0:tx2]), np.amax(self.ys_diff_fit[tx0:tx2]))
+            ax.setYRange(mn, mx, padding=0.05)
         if self.stateStep in range(1, 7):
             cur_val = marker.value()
             cur_idx = next(x for x,y in enumerate(self.xs) if y >= cur_val)
@@ -2404,6 +2697,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.star1.setData(pos=pos1)
             self.star2.setData(pos=pos2)
             self.star3.setData(pos=pos3)
+        if self.moved_markers[self.AI_SelectTool_At] and self.AI_SelectTool_Frame.isVisible():
+            self.summaryAt(self.AI_SelectTool_At) # move AI Tool to new marker location
 
     def getRunInfo(self):
         if self.xml_path != None:
@@ -2523,28 +2818,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.stateStep = 6 # show summary
             if self.askForPOIs and len(self.poi_markers) != 0:
                 self.askForPOIs = False # re-analyze Step 1, don't auto advance to Summary
-            if self.stateStep != 6:
+            if self.model_result == -1: # self.stateStep != 6:
                 self.model_result = -1
+                self.model_candidates = None
                 self.model_engine = "None"
                 if Constants.QModel_predict:
                     try:
-                        model_paths = []
-                        for i in np.linspace(1, 6, 6).astype(int):
-                            model_paths.append(
-                                os.path.join(Architecture.get_path(), 
-                                             f"QATCH/QModel/SavedModels/QModel_{i}.json")
-                            )
-                        qpredictor = QModelPredict(model_paths[0], 
-                                                   model_paths[1], 
-                                                   model_paths[2], 
-                                                   model_paths[3], 
-                                                   model_paths[4], 
-                                                   model_paths[5])
                         with secure_open(data_path, 'r', "capture") as f:
                             fh = BytesIO(f.read())
-                            peaks = qpredictor.predict(fh)
+                            label = self.QModel_clusterer.predict_label(fh)
+                            fh.seek(0)
+                            act_poi = [None]*6 # no initial guesses
+                            candidates = getattr(self, f"QModel_predict_{label}").predict(
+                                fh, type=label, act=act_poi
+                            )
+                            predictions = []
+                            for p, c in candidates:
+                                predictions.append(p[0]) # assumes 1st point is best point
                             self.model_run_this_load = True
-                            self.model_result = peaks
+                            self.model_result = predictions
+                            self.model_candidates = candidates
                             self.model_engine = "QModel"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             poi_vals = self.model_result
@@ -2564,14 +2857,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             poi_vals.clear()
                             # show point with highest confidence for each:
                             self.model_select = []
+                            self.model_candidates = []
                             for point in self.model_result:
                                 self.model_select.append(0)
                                 if isinstance(point, list):
+                                    self.model_candidates.append(point)
                                     select_point = point[self.model_select[-1]]
                                     select_index = select_point[0]
                                     select_confidence = select_point[1]
                                     poi_vals.append(select_index)
                                 else:
+                                    self.model_candidates.append([point])
                                     poi_vals.append(point)
                         elif self.model_result == -1:
                             Log.w("Model failed to auto-calculate points of interest for this run!")
@@ -2687,6 +2983,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+
+            # Invert difference curve if drop applied to outlet
+            if np.average(ys_diff) < 0:
+                Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
+                ys_diff *= -1
+
             ys_diff_fit = savgol_filter(ys_diff[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(ys_diff[t_first_90_split:], min(len(ys_diff[t_first_90_split:]), extend_smf), 1)
@@ -2936,7 +3238,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.data_freq = resonance_frequency
         self.data_diss = dissipation
 
-        if self.model_run_this_load:
+        self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
+        self.AI_has_starting_values = False
+        if self.model_run_this_load and self.stateStep != 6: # model has guess(es) and there is no prior run
             if len(poi_vals) == 6:
                 Log.i("Model successfully calculated points of interest for this dataset.")
                 Log.d(f"Model Result = {self.model_engine}: {self.model_result}")
@@ -2946,7 +3250,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             # model not run this load
             if self.stateStep == 6:
+                self.AI_has_starting_values = True
                 Log.i("Loaded points of interest from a prior run of Analyze tool.")
+            else:
+                Log.e("Please manually select points of interest to Analyze this dataset.")
         # if len(poi_vals) > 0:
         #     self.getPoints() # show summary page if they want to view previous results or rough step 2 if they said re-analyze
         if self.stateStep == 6:
@@ -2955,6 +3262,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if self.show_analysis_immediately:
             Log.d("Showing analysis immediately")
             self.getPoints() # confirm and analyze only if they want to view previous results
+
+
+    def resizeEvent(self, event):
+        if self.AI_SelectTool_Frame.isVisible():
+            self.AI_SelectTool_Frame.setVisible(False) # require re-click to show popup tool incorrect position
 
 
 class AnalyzerWorker(QtCore.QObject):
@@ -3222,7 +3534,7 @@ class AnalyzerWorker(QtCore.QObject):
             # MIDP3_IDX = 8   # not used
             BLIP3_IDX = 8     # ch 3 fill
 
-            # NOTE:      start,                        blip1,mid2, blip2, mid3,  blip3
+            # NOTE: start, eof, mid1, blip1, mid2, blip2, mid3, blip3
             # Support flexible array formatting in batch params lookup file:
             # [1.15, 1.61, 2.17, 2.67, 3.23, 5.00, 10.90, 16.2]  -or-
             # [1.15,1.61,2.17,2.67,3.23,5.00,10.90,16.2] -or-
@@ -3333,6 +3645,12 @@ class AnalyzerWorker(QtCore.QObject):
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+
+            # Invert difference curve if drop applied to outlet
+            if np.average(ys_diff) < 0:
+                Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
+                ys_diff *= -1
+
             ys_diff_fit = savgol_filter(ys_diff[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(ys_diff[t_first_90_split:], min(len(ys_diff[t_first_90_split:]), extend_smf), 1)
