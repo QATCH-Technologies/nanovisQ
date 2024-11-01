@@ -38,8 +38,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b47"
-    app_date = "2024-10-03"
+    app_version = "v2.6b48"
+    app_date = "2024-11-01"
     app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
@@ -268,6 +268,9 @@ class Constants:
     consider_points_above_pct = 0.60
     default_diff_factor = 2.0
     temp_adjusted_CA_factor = 0
+    drop_effect_multiplier_low = 1.025
+    drop_effect_multiplier_high = 1.299
+    drop_effect_cutoff_freq = 32
 
     ######################
     # BATCH # parameters #

@@ -867,36 +867,43 @@ class QPredictor:
         else:
             return guess
 
-    def adjustment_poi_6(self, guess, signal, diff, diss, actual, poi_5_guess):
+    def adjustment_poi_6(
+        self,
+        poi_6_guess,
+        poi_5_guess,
+        candidates,
+        actual,
+        t_delta,
+        dissipation,
+        difference,
+        rf,
+        signal,
+    ):
+        candidates = candidates[candidates > poi_5_guess]
+        rf = self.normalize(rf)
+        dissipation = self.normalize(dissipation)
+        difference = self.normalize(difference)
+        signal = self.normalize(signal)
+        rf_peaks, _ = find_peaks(rf)
+        diff_peaks, _ = find_peaks(difference)
+        diss_peaks, _ = find_peaks(difference)
+        rf_max = np.argmax(rf[poi_5_guess:]) + poi_5_guess
+        diff_max = np.argmax(difference[poi_5_guess:]) + poi_5_guess
+        average_conf = np.average(signal)
+        if t_delta > 0:
+            if rf_max > t_delta - (0.1 * t_delta) and diff_max > t_delta - (
+                0.1 * t_delta
+            ):
+                nearest_diff_peaks = min(diff_peaks, key=lambda x: abs(x - rf_max))
+                target = (rf_max + diff_max) / 2
+                nearest_candidate = min(candidates, key=lambda x: abs(x - target))
+            else:
+                nearest_candidate = poi_6_guess
+        else:
+            target = (rf_max + diff_max) / 2
+            nearest_candidate = min(candidates, key=lambda x: abs(x - rf_max))
 
-        combo = self.normalize(signal[poi_5_guess:]) + self.normalize(
-            diff[poi_5_guess:]
-        )
-        adjustment = np.argmax(combo) + poi_5_guess
-
-        def nearest_peak(peaks, point):
-            nearest_peak_idx = np.argmin(np.abs(peaks - point))
-            return peaks[nearest_peak_idx]
-
-        def envelope(signal):
-            data = np.array(signal)
-            maxima_indices = argrelextrema(data, np.greater)[0]
-            upper_envelope = np.interp(
-                np.arange(len(data)), maxima_indices, data[maxima_indices]
-            )
-
-            return upper_envelope, maxima_indices
-
-        # if abs(adjustment - actual[5]) > 300:
-        #     fig, ax = plt.subplots()
-        #     ax.plot(self.normalize(diff), label="diff", color="brown")
-        #     ax.plot(self.normalize(diss), label="diss", color="grey")
-        #     ax.plot(combo, label="combo", color="black")
-        #     ax.axvline(adjustment, label="Adjustment", color="red")
-        #     ax.axvline(actual[5], label="Actual", color="red", linestyle="--")
-        #     plt.legend()
-        #     plt.show()
-        return adjustment
+        return nearest_candidate
 
     def predict(self, file_buffer, type=-1, start=-1, stop=-1, act=[None] * 6):
         # Load CSV data and drop unnecessary columns
@@ -972,6 +979,7 @@ class QPredictor:
 
         # Process data using QDataPipeline
         qdp = QDataPipeline(file_buffer_2)
+        t_delta = qdp.find_time_delta()
         diss_raw = qdp.__dataframe__["Dissipation"]
         rel_time = qdp.__dataframe__["Relative_time"]
         qdp.preprocess(poi_filepath=None)
@@ -1066,6 +1074,11 @@ class QPredictor:
         )
         # poi_2 = emp_points[1]
         poi_4 = self.adjustmet_poi_4(df, candidates_4, extracted_4, act[3], bounds_4)
+        # Hot fix to prevent out of order poi_4 and poi_5
+        if bounds_5[0] < poi_4:
+            lst = list(bounds_5)
+            lst[0] = poi_4 + 1
+            bounds_5 = tuple(lst)
         poi_5 = self.adjustmet_poi_5(
             df, candidates_5, extracted_5, start_5, act[4], bounds_5
         )
@@ -1078,12 +1091,15 @@ class QPredictor:
             poi_6 = start_6
         else:
             poi_6 = self.adjustment_poi_6(
-                np.argmax(adj_6),
-                adj_6,
-                df["Difference"],
-                df["Dissipation"],
-                act[5],
-                poi_5,
+                poi_6_guess=np.argmax(adj_6),
+                poi_5_guess=poi_5,
+                candidates=candidates_6,
+                actual=act,
+                t_delta=t_delta,
+                dissipation=df["Dissipation"],
+                difference=df["Difference"],
+                rf=df["Resonance_Frequency"],
+                signal=adj_6,
             )
 
         def sort_and_remove_point(arr, point):

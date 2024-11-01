@@ -229,7 +229,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         ys_diff *= -1
 
                     # ys_diff_fit = savgol_filter(ys_diff, smooth_factor, 1)
-                    Log.d(f"Difference factor: {diff_factor:1.1f}x")
+                    Log.d(f"Difference factor: {diff_factor:1.3f}x")
 
                     lin_xs = np.linspace(xs[0], xs[-1], 1000) # model trained with 1000 points
                     lin_ys = np.interp(lin_xs, xs, ys)
@@ -646,7 +646,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(self.l1, 4, 1, 1, 4)
 
         self.gridLayout.addWidget(QtWidgets.QLabel("Difference Factor:"), 5, 1)
-        self.validFactor = QtGui.QDoubleValidator(0.5, 2, 2) # allow exponential notation
+        self.validFactor = QtGui.QDoubleValidator(0.5, 2, 3) # allow exponential notation
         self.tbox_diff_factor = QtWidgets.QLineEdit()
         self.tbox_diff_factor.setValidator(self.validFactor)
         self.tbox_diff_factor.setFixedWidth(75)
@@ -688,6 +688,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.option_remove_dups = QtWidgets.QCheckBox("Remove duplicate analysis output files")
         self.option_remove_dups.setChecked(True)
         self.gridLayout.addWidget(self.option_remove_dups, 2, 5, 1, 3)
+        self.correct_drop_effect = QtWidgets.QCheckBox("Apply drop effect vectors")
+        self.correct_drop_effect.setChecked(True)
+        self.correct_drop_effect.clicked.connect(self.change_drop_effect)
+        self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
@@ -1215,6 +1219,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Analyze.setEnabled(enable_analyze)
         if refocus:
             self.graphWidget2.setFocus()
+
+    def change_drop_effect(self, object):
+        if not self.correct_drop_effect.isChecked():
+            self.tbox_diff_factor.setText(f"{Constants.default_diff_factor:1.3f}")
+        self.set_new_diff_factor()
 
     def set_new_diff_factor(self):
         try:
@@ -2978,11 +2987,40 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 ys_freq_fit_ext = savgol_filter(ys_freq[t_first_90_split:], min(len(ys_freq[t_first_90_split:]), extend_smf), 1)
                 ys_freq_fit = np.concatenate((ys_freq_fit, ys_freq_fit_ext))
 
+            # APPLY DROP EFFECT VECTORS
+            drop_offsets = np.zeros(ys.shape)
+            try:
+                if self.correct_drop_effect.isChecked():
+                    baseline = np.average(ys[t_0p5:t_1p0])
+                    base_std = np.std(ys[t_0p5:t_1p0])
+                    drop_start = next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_diss = ys[drop_start + 3] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    if drop_diss > Constants.drop_effect_cutoff_freq:
+                        self.diff_factor = Constants.drop_effect_multiplier_high
+                    else:
+                        self.diff_factor = Constants.drop_effect_multiplier_low
+                    with open("QATCH/resources/lookup_drop_effect.csv", 'r') as f:
+                        data  = np.loadtxt(f.readlines(), delimiter = ',', skiprows = 1)
+                        col = 1 if self.diff_factor == Constants.drop_effect_multiplier_low else 2
+                        RR_offset = data[:,col]
+                        if drop_start+len(RR_offset) > len(drop_offsets):
+                            # RR vector is longer than the actual run data, truncate it
+                            drop_offsets[drop_start:] = RR_offset[:len(drop_offsets)-drop_start]
+                        else:
+                            # RR vector is shorter and needs to be padded with the final value
+                            drop_offsets[drop_start:drop_start+len(RR_offset)] = RR_offset
+                            drop_offsets[drop_start+len(RR_offset):] = RR_offset[-1]
+                    Log.d(f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'")
+                    Log.d(f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz")
+                    Log.d(f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector")
+            except Exception as e:
+                Log.e("ERROR:", e)
+
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
-            ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+            ys_diff = ys_freq - (diff_factor*ys + drop_offsets)
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
@@ -2993,10 +3031,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(ys_diff[t_first_90_split:], min(len(ys_diff[t_first_90_split:]), extend_smf), 1)
                 ys_diff_fit = np.concatenate((ys_diff_fit, ys_diff_fit_ext))
-            Log.d(f"Difference factor: {diff_factor:1.1f}x")
+            Log.d(f"Difference factor: {diff_factor:1.3f}x")
 
             Log.d(f"Setting diff_factor on Advanced Settings menu")
-            self.tbox_diff_factor.setText(f"{diff_factor:1.1f}")
+            self.tbox_diff_factor.setText(f"{diff_factor:1.3f}")
 
             smf = max(3, int(smooth_factor/10))
             if smf % 2 == 0: smf += 1 # force odd number
@@ -3640,11 +3678,40 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
+            # APPLY DROP EFFECT VECTORS
+            drop_offsets = np.zeros(ys.shape)
+            try:
+                if self.parent.correct_drop_effect.isChecked():
+                    # baseline = np.average(ys[t_0p5:t_1p0])
+                    # base_std = np.std(ys[t_0p5:t_1p0])
+                    drop_start = poi_vals[0] - 1 # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_diss = ys[drop_start + 3] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    if drop_diss > Constants.drop_effect_cutoff_freq:
+                        self.diff_factor = Constants.drop_effect_multiplier_high
+                    else:
+                        self.diff_factor = Constants.drop_effect_multiplier_low
+                    with open("QATCH/resources/lookup_drop_effect.csv", 'r') as f:
+                        data  = np.loadtxt(f.readlines(), delimiter = ',', skiprows = 1)
+                        col = 1 if self.diff_factor == Constants.drop_effect_multiplier_low else 2
+                        RR_offset = data[:,col]
+                        if drop_start+len(RR_offset) > len(drop_offsets):
+                            # RR vector is longer than the actual run data, truncate it
+                            drop_offsets[drop_start:] = RR_offset[:len(drop_offsets)-drop_start]
+                        else:
+                            # RR vector is shorter and needs to be padded with the final value
+                            drop_offsets[drop_start:drop_start+len(RR_offset)] = RR_offset
+                            drop_offsets[drop_start+len(RR_offset):] = RR_offset[-1]
+                    Log.d(f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'")
+                    Log.d(f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz")
+                    Log.d(f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector")
+            except Exception as e:
+                Log.e("ERROR:", e)
+
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = Constants.default_diff_factor # 1.0 if baseline < 50e-6 else 1.5
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
-            ys_diff = ys_freq - diff_factor*ys # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
+            ys_diff = ys_freq - (diff_factor*ys + drop_offsets)
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
@@ -3655,7 +3722,7 @@ class AnalyzerWorker(QtCore.QObject):
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(ys_diff[t_first_90_split:], min(len(ys_diff[t_first_90_split:]), extend_smf), 1)
                 ys_diff_fit = np.concatenate((ys_diff_fit, ys_diff_fit_ext))
-            Log.d(f"Difference factor: {diff_factor:1.1f}x")
+            Log.d(f"Difference factor: {diff_factor:1.3f}x")
 
             self.update(status_label)
 
