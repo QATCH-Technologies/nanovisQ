@@ -17,7 +17,7 @@ class OperationType(Enum):
 ###############################################################################
 class MinimalPython:
     major = 3
-    minor = 10
+    minor = 11
     release = 0
 
 

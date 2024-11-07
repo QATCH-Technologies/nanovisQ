@@ -42,6 +42,13 @@ class QATCH:
             self.flashSplashShow()
         print("Launching application...")
         if Architecture.get_os() is OSType.windows:
+            myappid = "{} {} {} ({})".format(
+                Constants.app_publisher,
+                Constants.app_name,
+                Constants.app_version,
+                Constants.app_date
+            ) # arbitrary string, required for Windows Toolbar to display QATCH iocn
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             ctypes.windll.kernel32.SetConsoleTitleW("QATCH Q-1 Real-Time GUI - command line")
         self._args = self._init_logger()
         self._app = QApplication(argv)
