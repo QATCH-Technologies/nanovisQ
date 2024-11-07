@@ -2849,7 +2849,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_candidates = candidates
                             self.model_engine = "QModel"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                            poi_vals = self.model_result
+                            if len(poi_vals) != 6:
+                                Log.d("Model ran, updating 'poi_vals' since we DO NOT have prior points")
+                                poi_vals = self.model_result
+                            else:
+                                Log.d("Model ran, but not updating 'poi_vals' since we DO have prior points")
                         else:
                             self.model_result = -1 # try fallback model
                     except Exception as e:
