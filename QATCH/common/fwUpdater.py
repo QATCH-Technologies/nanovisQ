@@ -431,8 +431,8 @@ class FW_Updater:
                     info_reply = info_reply.decode().split('\n')
                     length = len(info_reply)
 
-                    # Flag inidicating the prescence of a [TRANSIENT] error in the error message.
-                    # Errors are surpressed in error popup but collected fro device info.
+                    # Flag indicating the presence of a [TRANSIENT] error in the error message.
+                    # Errors are suppressed in error popup but collected for Device Info.
                     transient_err_flag = False
 
                     hw = ip = uid = mac = usb = pid = rev = err = None
@@ -455,7 +455,7 @@ class FW_Updater:
                         if line[0] == "ERR":
 
                             # Presuming line[1] contains the remaining error message and does not need to be
-                            # parsed further, simply indicate a transient error is present and surpress the message
+                            # parsed further, simply indicate a transient error is present and suppress the message
                             # later.
                             if "[TRANSIENT]" in line[1].strip():
                                 transient_err_flag = True
