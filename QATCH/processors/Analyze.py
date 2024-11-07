@@ -2994,7 +2994,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     baseline = np.average(ys[t_0p5:t_1p0])
                     base_std = np.std(ys[t_0p5:t_1p0])
                     drop_start = next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_diss = ys[drop_start + 3] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_start = next(x for x,t in enumerate(xs) if t > xs[drop_start] + 0.1)
+                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
@@ -3684,8 +3685,8 @@ class AnalyzerWorker(QtCore.QObject):
                 if self.parent.correct_drop_effect.isChecked():
                     # baseline = np.average(ys[t_0p5:t_1p0])
                     # base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = poi_vals[0] - 1 # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_diss = ys[drop_start + 3] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_start = poi_vals[0] # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
