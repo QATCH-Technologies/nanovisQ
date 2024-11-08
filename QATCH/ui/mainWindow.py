@@ -202,8 +202,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
-        version = self.menubar[3].addAction('{} ({})'.format(Constants.app_version, Constants.app_date))
-        version.setEnabled(False)
+        sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
+            Constants.app_version, 
+            "exe" if getattr(sys, 'frozen', False) else "py",
+            Constants.app_date))
+        sw_version.setEnabled(False)
+        from QATCH.QModel.__version__ import __version__ as QModel_version
+        from QATCH.QModel.__version__ import __release__ as QModel_release
+        q_version = self.menubar[3].addAction('QModel v{} ({})'.format(
+            QModel_version, QModel_release))
+        q_version.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -3950,6 +3958,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass # found directories in install path, not relative to CWD()
             elif getattr(sys, 'frozen', False): # frozen cannot do relative path
                 cur_install_path = os.path.dirname(sys.executable)
+            elif len(cur_install_path) == 0: # argv[0] contains a file name only, no relative path
+                cur_install_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if name[0:-4].endswith("_py") and os.path.split(cur_install_path)[1] == "QATCH":
                 cur_install_path = os.path.dirname(cur_install_path)
             save_to = os.path.join(os.path.dirname(cur_install_path), name[0:-4], name)
@@ -4094,7 +4104,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if os.path.exists(save_to):
             # Extract ZIP and launch new build
             with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(new_install_path)
+                zf.extractall(os.path.dirname(new_install_path))
             os.remove(save_to)
 
             Log.w("Launching setup script for new build...")

@@ -2417,7 +2417,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             act_poi = [None] * 6  # no initial guesses
                             candidates = getattr(
                                 self, f"QModel_predict_{label}"
-                            ).predict(fh, type=label, act=act_poi)
+                            ).predict(fh, run_type=label, act=act_poi)
                             predictions = []
                             for p, c in candidates:
                                 predictions.append(
@@ -3436,7 +3436,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             act_poi = [None] * 6  # no initial guesses
                             candidates = getattr(
                                 self, f"QModel_predict_{label}"
-                            ).predict(fh, type=label, act=act_poi)
+                            ).predict(fh, run_type=label, act=act_poi)
                             predictions = []
                             for p, c in candidates:
                                 predictions.append(
@@ -3446,11 +3446,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_result = predictions
                             self.model_candidates = candidates
                             self.model_engine = "QModel"
-                        if (
-                            isinstance(self.model_result, list)
-                            and len(self.model_result) == 6
-                        ):
-                            poi_vals = self.model_result
+                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                            if len(poi_vals) != 6:
+                                Log.d("Model ran, updating 'poi_vals' since we DO NOT have prior points")
+                                poi_vals = self.model_result
+                            else:
+                                Log.d("Model ran, but not updating 'poi_vals' since we DO have prior points")
                         else:
                             self.model_result = -1  # try fallback model
                     except Exception as e:
@@ -3656,14 +3657,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 if self.correct_drop_effect.isChecked():
                     baseline = np.average(ys[t_0p5:t_1p0])
                     base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = next(
-                        x - 1
-                        for x, y in enumerate(ys)
-                        if y > baseline + 4 * base_std and x > t_1p0
-                    )
-                    drop_diss = ys[
-                        drop_start + 3
-                    ]  # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_start = next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_start = next(x for x,t in enumerate(xs) if t > xs[drop_start] + 0.1)
+                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
@@ -4545,12 +4541,8 @@ class AnalyzerWorker(QtCore.QObject):
                 if self.parent.correct_drop_effect.isChecked():
                     # baseline = np.average(ys[t_0p5:t_1p0])
                     # base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = (
-                        poi_vals[0] - 1
-                    )  # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_diss = ys[
-                        drop_start + 3
-                    ]  # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_start = poi_vals[0] # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
