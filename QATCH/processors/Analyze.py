@@ -2072,7 +2072,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh.seek(0)
                             act_poi = [None]*6 # no initial guesses
                             candidates = getattr(self, f"QModel_predict_{label}").predict(
-                                fh, type=label, act=act_poi
+                                fh, run_type=label, act=act_poi
                             )
                             predictions = []
                             for p, c in candidates:
@@ -2839,7 +2839,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh.seek(0)
                             act_poi = [None]*6 # no initial guesses
                             candidates = getattr(self, f"QModel_predict_{label}").predict(
-                                fh, type=label, act=act_poi
+                                fh, run_type=label, act=act_poi
                             )
                             predictions = []
                             for p, c in candidates:
