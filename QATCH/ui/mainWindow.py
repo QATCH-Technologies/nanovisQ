@@ -3958,6 +3958,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass # found directories in install path, not relative to CWD()
             elif getattr(sys, 'frozen', False): # frozen cannot do relative path
                 cur_install_path = os.path.dirname(sys.executable)
+            elif len(cur_install_path) == 0: # argv[0] contains a file name only, no relative path
+                cur_install_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             if name[0:-4].endswith("_py") and os.path.split(cur_install_path)[1] == "QATCH":
                 cur_install_path = os.path.dirname(cur_install_path)
             save_to = os.path.join(os.path.dirname(cur_install_path), name[0:-4], name)
@@ -4102,7 +4104,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if os.path.exists(save_to):
             # Extract ZIP and launch new build
             with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(new_install_path)
+                zf.extractall(os.path.dirname(new_install_path))
             os.remove(save_to)
 
             Log.w("Launching setup script for new build...")
