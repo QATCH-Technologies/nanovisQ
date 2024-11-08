@@ -907,6 +907,7 @@ class QPredictor:
 
     def predict(self, file_buffer, type=-1, start=-1, stop=-1, act=[None] * 6):
         # Load CSV data and drop unnecessary columns
+        print(file_buffer)
         df = pd.read_csv(file_buffer)
         columns_to_drop = ["Date", "Time", "Ambient", "Temperature"]
         if not all(col in df.columns for col in columns_to_drop):
@@ -1105,7 +1106,7 @@ class QPredictor:
         def sort_and_remove_point(arr, point):
             arr = np.array(arr)
             if len(arr) > MAX_GUESSES - 1:
-                arr = arr[:MAX_GUESSES - 1]
+                arr = arr[: MAX_GUESSES - 1]
             arr.sort()
             return arr[arr != point]
 

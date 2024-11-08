@@ -214,7 +214,7 @@ tensorflow-intel==2.18.0
     # via
     #   -r requirements.in
     #   tensorflow
-tensorflow-io-gcs-filesystem==0.31.0
+# tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
 termcolor==2.5.0
     # via tensorflow-intel
