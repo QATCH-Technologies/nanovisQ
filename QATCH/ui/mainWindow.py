@@ -202,8 +202,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
-        version = self.menubar[3].addAction('{} ({})'.format(Constants.app_version, Constants.app_date))
-        version.setEnabled(False)
+        sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
+            Constants.app_version, 
+            "exe" if getattr(sys, 'frozen', False) else "py",
+            Constants.app_date))
+        sw_version.setEnabled(False)
+        from QATCH.QModel.__version__ import __version__ as QModel_version
+        from QATCH.QModel.__version__ import __release__ as QModel_release
+        q_version = self.menubar[3].addAction('QModel v{} ({})'.format(
+            QModel_version, QModel_release))
+        q_version.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
