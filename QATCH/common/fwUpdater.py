@@ -68,6 +68,10 @@ class FW_Updater:
     _port_changed = False
     _port = None
 
+    # Flag indicating the presence of a [TRANSIENT] error in the error message.
+    # Errors are suppressed in error popup but collected for Device Info.
+    transient_err_cnt = 0
+
     ###########################################################################
     # Check for firmware update and (if user agrees) push update to the device
     ###########################################################################
@@ -519,10 +523,6 @@ class FW_Updater:
                     info_reply = info_reply.decode().split("\n")
                     length = len(info_reply)
 
-                    # Flag indicating the presence of a [TRANSIENT] error in the error message.
-                    # Errors are suppressed in error popup but collected for Device Info.
-                    transient_err_flag = 0
-
                     hw = ip = uid = mac = usb = pid = rev = err = None
                     for line in info_reply:
                         line = line.split(":", 1)
@@ -544,8 +544,11 @@ class FW_Updater:
                             # Presuming line[1] contains the remaining error message and does not need to be
                             # parsed further, simply indicate a transient error is present and suppress the message
                             # later.
+                            # If/when the transient error is cleared or another one appears instead, reset the flag
                             if "[TRANSIENT]" in line[1].strip():
-                                transient_err_flag += 1
+                                self.transient_err_cnt += 1
+                            else:
+                                self.transient_err_cnt = 0
                             err = line[1].strip()
                     Log.d(TAG, "Detected HW TYPE is {}.".format(hw))
                     self._hw = HW_TYPE.parse(hw)
@@ -658,7 +661,7 @@ class FW_Updater:
                     # Modified conditional to not display pop-up if transient error appeared in message.
                     if (
                         err not in {None, "NONE"}
-                        and transient_err_flag <= 1
+                        and self.transient_err_cnt <= 1
                         and parent.ReadyToShow
                     ):
                         if PopUp.critical(
