@@ -13,6 +13,7 @@ from QATCH.common.fileManager import FileManager
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 
+
 class UserRoles(Enum):
     NONE = 0x00
     CAPTURE = 0x01
@@ -22,11 +23,13 @@ class UserRoles(Enum):
     ANY = NONE
     INVALID = NONE
 
+
 class UserConstants:
     # Specify how long until dev mode expires
-    DEV_EXPIRE_LEN = 365 # days
-    DEV_PERSIST_VER = True # DevMode will remain active across multiple SW versions, without requiring re-activation
-    REQ_ADMIN_UPDATES = False # set dynamically as well
+    DEV_EXPIRE_LEN = 365  # days
+    # DevMode will remain active across multiple SW versions, without requiring re-activation
+    DEV_PERSIST_VER = True
+    REQ_ADMIN_UPDATES = False  # set dynamically as well
 
     try:
         if os.path.isfile(Constants.user_constants_path):
@@ -63,27 +66,31 @@ class UserProfilesManager(QtWidgets.QWidget):
                     newitem = QtWidgets.QTableWidgetItem(item)
                     newitem.setFlags(QtCore.Qt.ItemIsEnabled)
                     if error_cell:
-                        newitem.setForeground(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
+                        newitem.setForeground(
+                            QtGui.QBrush(QtGui.QColor(255, 0, 0)))
                     self.setItem(m, n, newitem)
             self.setHorizontalHeaderLabels(horHeaders)
             header = self.horizontalHeader()
-            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents) # refactored for Python 3.11: was setResizeMode()
+            # refactored for Python 3.11: was setResizeMode()
+            header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
             header.setStretchLastSection(False)
             # for i in range(len(horHeaders)):
             #     header.setResizeMode(i, QtWidgets.QHeaderView.ResizeToContents
             #               if i < 3 else QtWidgets.QHeaderView.Stretch)
 
-    def __init__(self, parent = None, admin_name = None):
+    def __init__(self, parent=None, admin_name=None):
         super(UserProfilesManager, self).__init__(None)
         self.parent = parent
         # self.admin = admin_name
-        self.admin_file = UserProfiles.find(admin_name, None)[1] # filename
+        self.admin_file = UserProfiles.find(admin_name, None)[1]  # filename
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         pct_width = 50
         pct_height = 50
-        self.resize(int(screen.width()*pct_width/100), int(screen.height()*pct_height/100))
-        self.move(int(screen.width()*(100-pct_width)/200), int(screen.height()*(100-pct_width)/200))
+        self.resize(int(screen.width()*pct_width/100),
+                    int(screen.height()*pct_height/100))
+        self.move(int(screen.width()*(100-pct_width)/200),
+                  int(screen.height()*(100-pct_width)/200))
 
         self.layout = QtWidgets.QHBoxLayout(self)
 
@@ -131,7 +138,8 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.sorting.addWidget(self.sortNow)
 
         self.developerLayout = QtWidgets.QHBoxLayout()
-        self.developerModeChk = QtWidgets.QCheckBox("Enable Developer Mode (stores data unencrypted) - NOT compliant with FDA 21 CFR Part 11")
+        self.developerModeChk = QtWidgets.QCheckBox(
+            "Enable Developer Mode (stores data unencrypted) - NOT compliant with FDA 21 CFR Part 11")
         self.developerExpires = QtWidgets.QLabel("")
 
         enabled, error, expires = UserProfiles.checkDevMode()
@@ -152,19 +160,20 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.developerLayout.addWidget(self.developerExpires)
         self.developerLayout.addStretch()
 
-        self.reqAdminUpd_chkbox = QtWidgets.QCheckBox("Require Administrative role to install SW/FW updates")
+        self.reqAdminUpd_chkbox = QtWidgets.QCheckBox(
+            "Require Administrative role to install SW/FW updates")
         self.reqAdminUpd_chkbox.setChecked(UserConstants.REQ_ADMIN_UPDATES)
-        self.reqAdminUpd_chkbox.stateChanged.connect(self.toggleReqAdminUpdates)
+        self.reqAdminUpd_chkbox.stateChanged.connect(
+            self.toggleReqAdminUpdates)
 
         self.sortNow.pressed.connect(self.sort_user_table)
-        self.sort_user_table() # sort once now at load
+        self.sort_user_table()  # sort once now at load
 
         self.layout_r = QtWidgets.QVBoxLayout()
         self.layout_r.addWidget(self.table)
         self.layout_r.addLayout(self.sorting)
         self.layout_r.addLayout(self.developerLayout)
         self.layout_r.addWidget(self.reqAdminUpd_chkbox)
-
 
         # Add widgets to layout
         self.layout.addLayout(self.buttons)
@@ -174,35 +183,39 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.setLayout(self.layout)
         self.setWindowTitle("Manage Users")
 
-
     def toggleDevMode(self, arg):
         try:
             dev_path = os.path.join(Constants.local_app_data_path, ".dev_mode")
             if self.developerModeChk.isChecked():
                 with open(dev_path, 'w') as dev:
-                    expires_at = str((dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date())
+                    expires_at = str(
+                        (dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date())
                     hexify_str1 = expires_at.encode().hex()
                     hexify_str2 = Constants.app_date.encode().hex()
                     encode_key = "DEADBEEFDEADBEEFDEAD"
-                    encode_str1 = bytes([(ord(a) ^ ord(b)) for a,b in zip(hexify_str1, encode_key)]).decode()
-                    encode_str2 = bytes([(ord(a) ^ ord(b)) for a,b in zip(hexify_str2, encode_key)]).decode()
-                    dev.write(encode_str1) # expiration
+                    encode_str1 = bytes(
+                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str1, encode_key)]).decode()
+                    encode_str2 = bytes(
+                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str2, encode_key)]).decode()
+                    dev.write(encode_str1)  # expiration
                     dev.write('\n')
-                    dev.write(encode_str2) # app_date
+                    dev.write(encode_str2)  # app_date
                     self.developerModeChk.setStyleSheet("color:green;")
-                    self.developerExpires.setStyleSheet("QLabel {color:green;}")
+                    self.developerExpires.setStyleSheet(
+                        "QLabel {color:green;}")
                     self.developerExpires.setText(f"(Expires on {expires_at})")
                     PopUp.information(self, "Developer Mode Status", "<b>Developer Mode: ENABLED.</b><br/>" +
-                        f"This feature will require renewal in {UserConstants.DEV_EXPIRE_LEN} days<br/>" +
-                        ("and applies only to this build version.<br/>" if not UserConstants.DEV_PERSIST_VER else
-                        "and it will be applied to all build versions<br/>" +
-                        "on this PC unless you explicitly turn it off.<br/>") +
-                        f"<i>Expires on {expires_at}</i>")
+                                      f"This feature will require renewal in {UserConstants.DEV_EXPIRE_LEN} days<br/>" +
+                                      ("and applies only to this build version.<br/>" if not UserConstants.DEV_PERSIST_VER else
+                                       "and it will be applied to all build versions<br/>" +
+                                       "on this PC unless you explicitly turn it off.<br/>") +
+                                      f"<i>Expires on {expires_at}</i>")
             else:
                 if os.path.exists(dev_path):
                     os.remove(dev_path)
                     self.developerModeChk.setStyleSheet("color:black;")
-                    self.developerExpires.setStyleSheet("QLabel {color:black;}")
+                    self.developerExpires.setStyleSheet(
+                        "QLabel {color:black;}")
                     self.developerExpires.setText("")
                 else:
                     Log.e(f"ERROR: Cannot Delete. File not found: {dev_path}")
@@ -227,7 +240,8 @@ class UserProfilesManager(QtWidgets.QWidget):
     def toggleReqAdminUpdates(self, arg):
         try:
             if not os.path.isfile(Constants.user_constants_path):
-                os.makedirs(os.path.split(Constants.user_constants_path)[0], exist_ok=True)
+                os.makedirs(os.path.split(
+                    Constants.user_constants_path)[0], exist_ok=True)
             with open(Constants.user_constants_path, 'w') as uc:
                 UserConstants.REQ_ADMIN_UPDATES = self.reqAdminUpd_chkbox.isChecked()
                 uc_state = str(UserConstants.REQ_ADMIN_UPDATES)
@@ -238,16 +252,17 @@ class UserProfilesManager(QtWidgets.QWidget):
     def add_user(self):
         action = "Add User"
         roles = [e.name for e in UserRoles]
-        roles = roles[1:] # skip NONE
+        roles = roles[1:]  # skip NONE
         roles[roles.index(UserRoles.OPERATE.name)] += " (Capture & Analyze)"
         role, ok = QtWidgets.QInputDialog().getItem(None, action,
-                                 "Role:", roles, 0, False)
-        if not ok: return
+                                                    "Role:", roles, 0, False)
+        if not ok:
+            return
         UserProfiles.create_new_user(UserRoles[role.split()[0]])
         self.update_table_data()
 
     def edit_user(self):
-        #re-validate user creds before change
+        # re-validate user creds before change
         # admin_name, _, _ = UserProfiles.change(UserRoles.ADMIN)
         # if admin_name != None:
         action = "Edit User"
@@ -255,8 +270,9 @@ class UserProfilesManager(QtWidgets.QWidget):
         ok = False
         while not ok:
             initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                 "Initials:", QtWidgets.QLineEdit.Normal)
-            if not ok: return
+                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            if not ok:
+                return
             initials = initials.upper()
             if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                 Log.w("Please enter user initials.")
@@ -267,10 +283,12 @@ class UserProfilesManager(QtWidgets.QWidget):
             return
         file = os.path.join(UserProfiles.PATH, filename)
 
-        actions = ["Change Role", "Change Password", "Change Initials", "Change Name"]
+        actions = ["Change Role", "Change Password",
+                   "Change Initials", "Change Name"]
         action, ok = QtWidgets.QInputDialog().getItem(None, f"{action} {initials}",
-                                     "Action:", actions, 0, False)
-        if not ok: return
+                                                      "Action:", actions, 0, False)
+        if not ok:
+            return
 
         doc = minidom.parse(file)
         xml = doc.documentElement
@@ -278,54 +296,66 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         for u in up:
             try:
-                role = UserRoles(int(u.getAttribute("role"))) # allow exception if missing
+                # allow exception if missing
+                role = UserRoles(int(u.getAttribute("role")))
             except:
                 role = UserRoles.INVALID
-            password = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
-            initials = u.getAttribute("initials") if u.hasAttribute("password") else "[Missing]"
-            name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
+            password = u.getAttribute("password") if u.hasAttribute(
+                "password") else "[Missing]"
+            initials = u.getAttribute("initials") if u.hasAttribute(
+                "password") else "[Missing]"
+            name = u.getAttribute("name") if u.hasAttribute(
+                "name") else "[Missing]"
             # if not u.hasAttribute("archived"):
             #     u.setAttribute('archived', 'True')
             if u.attributes["password"].value.find("X") < 0:
-                u.attributes["password"].value += "X" # invalidate password hash, but allow recovery for audits
+                # invalidate password hash, but allow recovery for audits
+                u.attributes["password"].value += "X"
             # u.attributes["signature"].value = "[redacted]" # retain for audits
 
         action_id = actions.index(action)
 
-        if action_id == 0: # role
+        if action_id == 0:  # role
             if self.admin_file == UserProfiles.find(None, initials)[1]:
                 Log.e(f"Cannot change role of active ADMIN user {initials}.")
-                Log.e(f"Create another ADMIN user and change this user role using their access.")
+                Log.e(
+                    f"Create another ADMIN user and change this user role using their access.")
                 return
 
             roles = [e.name for e in UserRoles]
-            roles = roles[1:] # skip NONE
+            roles = roles[1:]  # skip NONE
             curr_role = roles.index(role.name)
-            roles[roles.index(UserRoles.OPERATE.name)] += " (Capture & Analyze)"
+            roles[roles.index(UserRoles.OPERATE.name)
+                  ] += " (Capture & Analyze)"
             role, ok = QtWidgets.QInputDialog().getItem(None, action,
-                                     "Role:", roles, curr_role, False)
-            if not ok: return
+                                                        "Role:", roles, curr_role, False)
+            if not ok:
+                return
             role = UserRoles[role.split()[0]]
 
-        if action_id == 1: # password
+        if action_id == 1:  # password
             match = False
             while not match:
                 ok = False
                 while not ok:
                     pwd1, ok = QtWidgets.QInputDialog.getText(None, action,
-                                         "Password:", QtWidgets.QLineEdit.Password)
-                    if not ok: return
+                                                              "Password:", QtWidgets.QLineEdit.Password)
+                    if not ok:
+                        return
                     if len(pwd1) < 8:
-                        Log.w("Passwords must be at least 8 characters. Please try again.")
+                        Log.w(
+                            "Passwords must be at least 8 characters. Please try again.")
                         ok = False
 
                 ok = False
                 while not ok:
                     pwd2, ok = QtWidgets.QInputDialog.getText(None, action,
-                                         "Confirm Password:", QtWidgets.QLineEdit.Password)
-                    if not ok: return
+                                                              "Confirm Password:", QtWidgets.QLineEdit.Password)
+                    if not ok:
+                        return
                     if len(pwd2) < 8:
-                        Log.w("Passwords must be at least 8 characters. Please try again.")
+                        Log.w(
+                            "Passwords must be at least 8 characters. Please try again.")
                         ok = False
 
                 match = True if pwd1 == pwd2 else False
@@ -333,25 +363,27 @@ class UserProfilesManager(QtWidgets.QWidget):
                     Log.w("Passwords entered do not match. Please try again.")
             pwd = pwd1
 
-        if action_id == 2: # initials
+        if action_id == 2:  # initials
             ok = False
             while not ok:
                 initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                     "Initials:", QtWidgets.QLineEdit.Normal,
-                                     initials)
-                if not ok: return
+                                                              "Initials:", QtWidgets.QLineEdit.Normal,
+                                                              initials)
+                if not ok:
+                    return
                 initials = initials.upper()
                 if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                     Log.w("Please enter your initials.")
                     ok = False
 
-        if action_id == 3: # name
+        if action_id == 3:  # name
             ok = False
             while not ok:
                 name, ok = QtWidgets.QInputDialog.getText(None, action,
-                                     "Full name:", QtWidgets.QLineEdit.Normal,
-                                     name)
-                if not ok: return
+                                                          "Full name:", QtWidgets.QLineEdit.Normal,
+                                                          name)
+                if not ok:
+                    return
                 name = name.title()
                 if name.find(" ") < 0 or len(name) < 4:
                     Log.w("Please enter your First and Last name.")
@@ -395,22 +427,23 @@ class UserProfilesManager(QtWidgets.QWidget):
         ts1.setAttribute('signature', signature)
 
         # append new secure_user_info to xml
-        xml_str = doc.toxml() #indent ="\t")
+        xml_str = doc.toxml()  # indent ="\t")
         with open(file, "w") as f:
             f.write(xml_str)
             Log.d(f"Saved XML file: {file}")
 
         self.update_table_data()
 
-    def remove_user(self, filename = None):
+    def remove_user(self, filename=None):
         action = "Delete User"
 
         if filename == None:
             ok = False
             while not ok:
                 initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                     "Initials:", QtWidgets.QLineEdit.Normal)
-                if not ok: return
+                                                              "Initials:", QtWidgets.QLineEdit.Normal)
+                if not ok:
+                    return
                 initials = initials.upper()
                 if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                     Log.w("Please enter your initials.")
@@ -422,17 +455,19 @@ class UserProfilesManager(QtWidgets.QWidget):
             # found, fileself = UserProfiles.find(self.admin, None)
             if self.admin_file == filename:
                 if UserProfiles.count() > 1:
-                    Log.e(f"Cannot delete the active ADMIN user {initials} when other accounts exist.")
-                    Log.e("Create another ADMIN user and delete this user using their access.")
+                    Log.e(
+                        f"Cannot delete the active ADMIN user {initials} when other accounts exist.")
+                    Log.e(
+                        "Create another ADMIN user and delete this user using their access.")
                     # Log.e("If multiple admins exist: Change \"Role\" of other admins prior to deleting them.")
                     return
                 else:
                     if PopUp.question(self, "Remove Last User Account",
-                        "If you delete the only remaining user account, " +
-                        "anyone will be able to access this application.\n" +
-                        "\nWARNING: This operation cannot be undone!\n" +
-                        "You can add new users again in the future (if desired).\n" +
-                        "\nAre you sure you want to proceed?"):
+                                      "If you delete the only remaining user account, " +
+                                      "anyone will be able to access this application.\n" +
+                                      "\nWARNING: This operation cannot be undone!\n" +
+                                      "You can add new users again in the future (if desired).\n" +
+                                      "\nAre you sure you want to proceed?"):
                         UserProfiles.session_end()
                         name = self.parent.username.text()[6:]
                         Log.i(f"Goodbye, {name}! You have been signed out.")
@@ -462,7 +497,8 @@ class UserProfilesManager(QtWidgets.QWidget):
         signature = hash.hexdigest()
         with open(file, 'rb+') as f:
             f.seek(-15, 2)
-            f.write(f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+            f.write(
+                f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
 
         # delete user
         folder_name, file_name = os.path.split(file)
@@ -480,8 +516,9 @@ class UserProfilesManager(QtWidgets.QWidget):
         ok = False
         while not ok:
             initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                 "Initials:", QtWidgets.QLineEdit.Normal)
-            if not ok: return
+                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            if not ok:
+                return
             initials = initials.upper()
             if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                 Log.w("Please enter user initials.")
@@ -545,7 +582,8 @@ class UserProfilesManager(QtWidgets.QWidget):
                             col_times[-1] = time
                             if type != "accessed" and col_times[-2] == "[empty]":
                                 col_times[-2] = time
-                                col_notes[-2] = col_notes[-2].format(type.upper())
+                                col_notes[-2] = col_notes[-2].format(
+                                    type.upper())
                             col_notes[-1] = f"[{type.upper()}]"
                         if signature == value:
                             # Log.i(f"Signature audit PASS: {audit_text}")
@@ -556,12 +594,14 @@ class UserProfilesManager(QtWidgets.QWidget):
                         col_audit[-1] = "PASS" if audit_pass else "FAIL"
                     else:
                         try:
-                            val = UserRoles(int(value)).name if name == "role" else value
+                            val = UserRoles(
+                                int(value)).name if name == "role" else value
                             if name == "password":
                                 if value.find("X") > 0:
-                                    val = value[:-1] # remove "X" for audit
+                                    val = value[:-1]  # remove "X" for audit
                                 else:
-                                    passwords += 1 # non-archived user profile (only one can exist)
+                                    # non-archived user profile (only one can exist)
+                                    passwords += 1
                             if name == "type":
                                 type = val
                             if name == "value":
@@ -569,19 +609,24 @@ class UserProfilesManager(QtWidgets.QWidget):
                             if name in ["role", "password", "initials", "name"]:
                                 change_record = True
                                 if name == "role":
-                                    if val != last_role: change_role = True
+                                    if val != last_role:
+                                        change_role = True
                                     last_role = val
                                 if name == "password":
-                                    if val != last_password: change_password = True
+                                    if val != last_password:
+                                        change_password = True
                                     last_password = val
                                 if name == "initials":
-                                    if val != last_initials: change_initials = True
+                                    if val != last_initials:
+                                        change_initials = True
                                     last_initials = val
                                 if name == "name":
-                                    if val != last_name: change_name = True
+                                    if val != last_name:
+                                        change_name = True
                                     last_name = val
                         except:
-                            Log.w(f"Audit exception for element: '{name}', '{value}'")
+                            Log.w(
+                                f"Audit exception for element: '{name}', '{value}'")
                             val = value
                         Log.d(f"Processing audit element: '{name}', '{val}'")
                         hash.update(val.encode())
@@ -591,7 +636,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                     col_audit[-1] = "PASS" if audit_pass else "FAIL"
                     col_times[-1] = time
                     col_notes[-1] = f"MISSING signature: {i}"
-                if not audit_pass: # set color red for row
+                if not audit_pass:  # set color red for row
                     audit_failed = True
                     col_audit[-1] = f"*{col_audit[-1]}*"
                     col_times[-1] = f"*{col_times[-1]}*"
@@ -615,11 +660,12 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.table.setData(data)
         self.sortBy.clear()
         self.sortBy.addItems(list(data.keys()))
-        self.sortOrder.setCurrentIndex(0) # force ascending
+        self.sortOrder.setCurrentIndex(0)  # force ascending
         # self.sort_user_table()
 
         if audit_failed:
-            PopUp.warning(self, "Audit Result", "There are failures in this audit!") #TODO
+            PopUp.warning(self, "Audit Result",
+                          "There are failures in this audit!")  # TODO
 
         # Log.e("TODO: Show audit results in a QTableView format")
         # Log.e("TODO: Allow admin to acknowledge/ignore audit failures by creating a file: 'audit.ignore'")
@@ -629,11 +675,11 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         # Confirm user really wants this
         if not PopUp.question(self, "Remove All User Accounts",
-            "If you delete all of the user accounts, " +
-            "anyone will be able to access this application.\n" +
-            "\nWARNING: This operation cannot be undone!\n" +
-            "You can add new users again in the future (if desired).\n" +
-            "\nAre you sure you want to proceed?"):
+                              "If you delete all of the user accounts, " +
+                              "anyone will be able to access this application.\n" +
+                              "\nWARNING: This operation cannot be undone!\n" +
+                              "You can add new users again in the future (if desired).\n" +
+                              "\nAre you sure you want to proceed?"):
             Log.w("User does not really want to delete all users. Aborted.")
             return
 
@@ -644,13 +690,15 @@ class UserProfilesManager(QtWidgets.QWidget):
         ok = False
         while not ok:
             pwd, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Confirm Password:", QtWidgets.QLineEdit.Password)
-            if not ok: return None, None, 0
+                                                     "Confirm Password:", QtWidgets.QLineEdit.Password)
+            if not ok:
+                return None, None, 0
             if len(pwd) < 8:
                 Log.w("Passwords must be at least 8 characters. Please try again.")
                 ok = False
 
-        authenticated, filename, params = UserProfiles.auth(admin_initials, pwd, UserRoles.ADMIN)
+        authenticated, filename, params = UserProfiles.auth(
+            admin_initials, pwd, UserRoles.ADMIN)
         if not authenticated:
             Log.e("User did not authenticate action to delete all users. Aborted.")
             return
@@ -670,7 +718,7 @@ class UserProfilesManager(QtWidgets.QWidget):
         Log.w("Deleting all user accounts...")
         FileManager.create_dir(UserProfiles.PATH)
         user_files = os.listdir(UserProfiles.PATH)
-        user_files = [ x for x in user_files if ".xml" in x ] # remove folders
+        user_files = [x for x in user_files if ".xml" in x]  # remove folders
         for filename in user_files:
             self.remove_user(filename)
         Log.w("All user accounts deleted.")
@@ -713,7 +761,8 @@ class UserProfilesManager(QtWidgets.QWidget):
 
     def sort_user_table(self):
         sort_order = [QtCore.Qt.AscendingOrder, QtCore.Qt.DescendingOrder]
-        self.table.sortItems(self.sortBy.currentIndex(), sort_order[self.sortOrder.currentIndex()]) # sort by initials
+        self.table.sortItems(self.sortBy.currentIndex(
+        ), sort_order[self.sortOrder.currentIndex()])  # sort by initials
 
 
 ###############################################################################
@@ -730,7 +779,7 @@ class UserProfiles:
     def count():
         FileManager.create_dir(UserProfiles.PATH)
         user_files = os.listdir(UserProfiles.PATH)
-        user_files = [ x for x in user_files if ".xml" in x ] # remove folders
+        user_files = [x for x in user_files if ".xml" in x]  # remove folders
         if len(user_files) == 0:
             Log.d("No user profiles found.")
         return len(user_files)
@@ -739,7 +788,7 @@ class UserProfiles:
     def get_all_user_info():
         FileManager.create_dir(UserProfiles.PATH)
         user_files = os.listdir(UserProfiles.PATH)
-        user_files = [ x for x in user_files if ".xml" in x ] # remove folders
+        user_files = [x for x in user_files if ".xml" in x]  # remove folders
         user_info = []
         for filename in user_files:
             user_info.append(UserProfiles.get_user_info(filename))
@@ -754,12 +803,17 @@ class UserProfiles:
             xml = minidom.parse(file)
             up = xml.getElementsByTagName("secure_user_info")
             for u in up:
-                name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
-                initials = u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
-                p = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
-                s = u.getAttribute("signature") if u.hasAttribute("signature") else "[Missing]"
+                name = u.getAttribute("name") if u.hasAttribute(
+                    "name") else "[Missing]"
+                initials = u.getAttribute("initials") if u.hasAttribute(
+                    "initials") else "[Missing]"
+                p = u.getAttribute("password") if u.hasAttribute(
+                    "password") else "[Missing]"
+                s = u.getAttribute("signature") if u.hasAttribute(
+                    "signature") else "[Missing]"
                 try:
-                    role = UserRoles(int(u.getAttribute("role"))) # allow exception if missing
+                    # allow exception if missing
+                    role = UserRoles(int(u.getAttribute("role")))
                 except:
                     role = UserRoles.INVALID
 
@@ -770,10 +824,12 @@ class UserProfiles:
             modified = "[NEVER]"
             accessed = "[NEVER]"
             for t in ts:
-                x = t.getAttribute("type") if t.hasAttribute("type") else "[Missing]"
-                y = t.getAttribute("value") if t.hasAttribute("value") else "[Missing]"
+                x = t.getAttribute("type") if t.hasAttribute(
+                    "type") else "[Missing]"
+                y = t.getAttribute("value") if t.hasAttribute(
+                    "value") else "[Missing]"
                 if y != "[Missing]":
-                    y = y[0:y.find('.')] # remove subseconds
+                    y = y[0:y.find('.')]  # remove subseconds
                 # Log.w(f"processing ts: {x}, {y}")
                 if y.startswith(today):
                     y = y.replace(today, "Today, ")
@@ -781,7 +837,7 @@ class UserProfiles:
                     y = y.replace("T", " ")
                 if x == "created":
                     created = y
-                    modified = y # set both
+                    modified = y  # set both
                 if x == "modified":
                     modified = y
                 if x == "accessed":
@@ -799,9 +855,10 @@ class UserProfiles:
         name = QtCore.QDir().home().dirName()
         while not ok:
             name, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Full name:", QtWidgets.QLineEdit.Normal,
-                                 name)
-            if not ok: return
+                                                      "Full name:", QtWidgets.QLineEdit.Normal,
+                                                      name)
+            if not ok:
+                return
             name = name.title()
             if name.find(" ") < 0 or len(name) < 4:
                 Log.w("Please enter your First and Last name.")
@@ -811,9 +868,10 @@ class UserProfiles:
         initials = "".join([c for c in name if c.isupper()])
         while not ok:
             initials, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Initials:", QtWidgets.QLineEdit.Normal,
-                                 initials)
-            if not ok: return
+                                                          "Initials:", QtWidgets.QLineEdit.Normal,
+                                                          initials)
+            if not ok:
+                return
             initials = initials.upper()
             if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                 Log.w("Please enter your initials.")
@@ -824,8 +882,9 @@ class UserProfiles:
             ok = False
             while not ok:
                 pwd1, ok = QtWidgets.QInputDialog.getText(None, title,
-                                     "Password:", QtWidgets.QLineEdit.Password)
-                if not ok: return
+                                                          "Password:", QtWidgets.QLineEdit.Password)
+                if not ok:
+                    return
                 if len(pwd1) < 8:
                     Log.w("Passwords must be at least 8 characters. Please try again.")
                     ok = False
@@ -833,8 +892,9 @@ class UserProfiles:
             ok = False
             while not ok:
                 pwd2, ok = QtWidgets.QInputDialog.getText(None, title,
-                                     "Confirm Password:", QtWidgets.QLineEdit.Password)
-                if not ok: return
+                                                          "Confirm Password:", QtWidgets.QLineEdit.Password)
+                if not ok:
+                    return
                 if len(pwd2) < 8:
                     Log.w("Passwords must be at least 8 characters. Please try again.")
                     ok = False
@@ -846,7 +906,7 @@ class UserProfiles:
         UserProfiles.create(name, initials, role, pwd1)
 
     @staticmethod
-    def change(requiredRole = UserRoles.ANY):
+    def change(requiredRole=UserRoles.ANY):
         if UserProfiles.count() == 0:
             return None, None, 0
 
@@ -855,8 +915,9 @@ class UserProfiles:
         ok = False
         while not ok:
             initials, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Initials:", QtWidgets.QLineEdit.Normal)
-            if not ok: return None, None, 0
+                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            if not ok:
+                return None, None, 0
             initials = initials.upper()
             if initials.find(" ") >= 0 or len(initials) < 2 or len(initials) > 4:
                 Log.w("Please enter your initials.")
@@ -865,15 +926,18 @@ class UserProfiles:
         ok = False
         while not ok:
             pwd, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Password:", QtWidgets.QLineEdit.Password)
-            if not ok: return None, None, 0
+                                                     "Password:", QtWidgets.QLineEdit.Password)
+            if not ok:
+                return None, None, 0
             if len(pwd) < 8:
                 Log.w("Passwords must be at least 8 characters. Please try again.")
                 ok = False
 
-        authenticated, filename, params = UserProfiles.auth(initials, pwd, requiredRole)
+        authenticated, filename, params = UserProfiles.auth(
+            initials, pwd, requiredRole)
         if authenticated:
-            Log.i(f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
+            Log.i(
+                f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
             return params[0], params[1], params[2].value
         else:
             return None, None, 0
@@ -894,25 +958,32 @@ class UserProfiles:
 
         for u in up:
             try:
-                role = UserRoles(int(u.getAttribute("role"))) # allow exception if missing
+                # allow exception if missing
+                role = UserRoles(int(u.getAttribute("role")))
             except:
                 role = UserRoles.INVALID
-            password = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
-            initials = u.getAttribute("initials") if u.hasAttribute("password") else "[Missing]"
-            name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
+            password = u.getAttribute("password") if u.hasAttribute(
+                "password") else "[Missing]"
+            initials = u.getAttribute("initials") if u.hasAttribute(
+                "password") else "[Missing]"
+            name = u.getAttribute("name") if u.hasAttribute(
+                "name") else "[Missing]"
             if u.attributes["password"].value.find("X") < 0:
-                u.attributes["password"].value += "X" # invalidate password hash, but allow recovery for audits
+                # invalidate password hash, but allow recovery for audits
+                u.attributes["password"].value += "X"
 
         ok = False
         while not ok:
             current_password, ok = QtWidgets.QInputDialog.getText(None, title,
-                                 "Current Password:", QtWidgets.QLineEdit.Password)
-            if not ok: return
+                                                                  "Current Password:", QtWidgets.QLineEdit.Password)
+            if not ok:
+                return
             if len(current_password) < 8:
                 Log.w("Passwords must be at least 8 characters. Please try again.")
                 ok = False
 
-        authenticated, filename, params = UserProfiles.auth(initials, current_password, UserRoles.ANY)
+        authenticated, filename, params = UserProfiles.auth(
+            initials, current_password, UserRoles.ANY)
         if not authenticated:
             Log.e("User did not authenticate action to change their password. Aborted.")
             return
@@ -922,8 +993,9 @@ class UserProfiles:
             ok = False
             while not ok:
                 pwd1, ok = QtWidgets.QInputDialog.getText(None, title,
-                                     "New Password:", QtWidgets.QLineEdit.Password)
-                if not ok: return
+                                                          "New Password:", QtWidgets.QLineEdit.Password)
+                if not ok:
+                    return
                 if len(pwd1) < 8:
                     Log.w("Passwords must be at least 8 characters. Please try again.")
                     ok = False
@@ -931,8 +1003,9 @@ class UserProfiles:
             ok = False
             while not ok:
                 pwd2, ok = QtWidgets.QInputDialog.getText(None, title,
-                                     "Confirm Password:", QtWidgets.QLineEdit.Password)
-                if not ok: return
+                                                          "Confirm Password:", QtWidgets.QLineEdit.Password)
+                if not ok:
+                    return
                 if len(pwd2) < 8:
                     Log.w("Passwords must be at least 8 characters. Please try again.")
                     ok = False
@@ -944,7 +1017,7 @@ class UserProfiles:
 
         # recalculate security hashes and put in user profile
         salt = filename[:-4]
-        if True: # recalculate hash for new password
+        if True:  # recalculate hash for new password
             hash = hashlib.sha256()
             hash.update(salt.encode())
             hash.update(pwd.encode())
@@ -980,7 +1053,7 @@ class UserProfiles:
         ts1.setAttribute('signature', signature)
 
         # append new secure_user_info to xml
-        xml_str = doc.toxml() #indent ="\t")
+        xml_str = doc.toxml()  # indent ="\t")
         with open(file, "w") as f:
             f.write(xml_str)
             Log.d(f"Saved XML file: {file}")
@@ -1014,12 +1087,12 @@ class UserProfiles:
                     file_key = hash.hexdigest()
                     if file_key == session_key:
                         Log.d("User session is active.")
-                        return True, infos[i] # valid session
+                        return True, infos[i]  # valid session
             Log.d("User session is expired.")
-            return False, None # invalid session
+            return False, None  # invalid session
         else:
             Log.d("User session is NOT active.")
-            return False, None # no active session
+            return False, None  # no active session
 
     @staticmethod
     def session_end():
@@ -1039,7 +1112,7 @@ class UserProfiles:
                 user_files, user_info = UserProfiles.get_all_user_info()
                 admin_name = user_info[0][0]
         else:
-            #require auth from role 'admin'
+            # require auth from role 'admin'
             if UserProfiles.check(existingUserRole, UserRoles.ADMIN):
                 Log.d("Current User has required ADMIN role")
                 admin_name = existingUserName
@@ -1057,15 +1130,17 @@ class UserProfiles:
     @staticmethod
     def find(name, initials):
         user_files = os.listdir(UserProfiles.PATH)
-        user_files = [ x for x in user_files if ".xml" in x ] # remove folders
+        user_files = [x for x in user_files if ".xml" in x]  # remove folders
         for filename in user_files:
             file = os.path.join(UserProfiles.PATH, filename)
             if os.path.isfile(file):
                 xml = minidom.parse(file)
                 up = xml.getElementsByTagName("secure_user_info")
                 for u in up:
-                    n = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
-                    i = u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
+                    n = u.getAttribute("name") if u.hasAttribute(
+                        "name") else "[Missing]"
+                    i = u.getAttribute("initials") if u.hasAttribute(
+                        "initials") else "[Missing]"
                 if n == name or i == initials:  # only check most recent secure_user_info record
                     return True, filename
         return False, None
@@ -1075,7 +1150,8 @@ class UserProfiles:
         found, filename = UserProfiles.find(name, initials)
         sign_in_user = UserProfiles.count() == 0
         if not found:
-            Log.i(f"Create user, Name: {name}, initials: {initials}, role: {role.name} password: {'*'*len(pwd)}")
+            Log.i(
+                f"Create user, Name: {name}, initials: {initials}, role: {role.name} password: {'*'*len(pwd)}")
             while True:
                 salt = os.urandom(8).hex()
                 file = os.path.join(UserProfiles.PATH, f"{salt}.xml")
@@ -1125,16 +1201,18 @@ class UserProfiles:
             # ts2.setAttribute('value', ts)
 
             # Log.d(doc)
-            xml_str = doc.toxml() #indent ="\t")
+            xml_str = doc.toxml()  # indent ="\t")
             with open(file, "w") as f:
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
 
             if sign_in_user:
-                UserProfiles.auth(initials, pwd, UserRoles.ADMIN) # create session
+                # create session
+                UserProfiles.auth(initials, pwd, UserRoles.ADMIN)
 
         else:
-            Log.e(f"Failed to create user. User info conflicts with user profile '{filename[:-4]}'.")
+            Log.e(
+                f"Failed to create user. User info conflicts with user profile '{filename[:-4]}'.")
 
     ### check() ###
     # RETURNS: One of: [None, False, True]
@@ -1161,11 +1239,12 @@ class UserProfiles:
         except:
             maskedRole = UserRoles.INVALID
         result = True if maskedRole == requiredRole else False
-        Log.d(f"User role check: user={userRole.name}, required={requiredRole.name}, result={result}")
+        Log.d(
+            f"User role check: user={userRole.name}, required={requiredRole.name}, result={result}")
         return result
 
     @staticmethod
-    def auth(initials, pwd, requiredRole = UserRoles.ANY):
+    def auth(initials, pwd, requiredRole=UserRoles.ANY):
         found, filename = UserProfiles.find(None, initials)
         if found:
             file = os.path.join(UserProfiles.PATH, filename)
@@ -1173,19 +1252,26 @@ class UserProfiles:
                 xml = minidom.parse(file)
                 up = xml.getElementsByTagName("secure_user_info")
                 for u in up:
-                    name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
-                    initials = u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
-                    p = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
-                    s = u.getAttribute("signature") if u.hasAttribute("signature") else "[Missing]"
+                    name = u.getAttribute("name") if u.hasAttribute(
+                        "name") else "[Missing]"
+                    initials = u.getAttribute("initials") if u.hasAttribute(
+                        "initials") else "[Missing]"
+                    p = u.getAttribute("password") if u.hasAttribute(
+                        "password") else "[Missing]"
+                    s = u.getAttribute("signature") if u.hasAttribute(
+                        "signature") else "[Missing]"
 
                     try:
-                        role = UserRoles(int(u.getAttribute("role"))) # allow exception if missing
+                        # allow exception if missing
+                        role = UserRoles(int(u.getAttribute("role")))
                     except:
                         role = UserRoles.INVALID
 
                 UserProfiles.session_create(filename[:-4])
-                if not UserProfiles.check(role, requiredRole): # only check most recent secure_user_info record
-                    Log.e(f"User {initials} does not have the required {requiredRole.name} role privileges.")
+                # only check most recent secure_user_info record
+                if not UserProfiles.check(role, requiredRole):
+                    Log.e(
+                        f"User {initials} does not have the required {requiredRole.name} role privileges.")
                     UserProfiles.session_end()
                     return False, filename, None
 
@@ -1199,7 +1285,8 @@ class UserProfiles:
                 hash.update(name.encode())
                 hash.update(initials.encode())
                 hash.update(role.name.encode())
-                hash.update(p.encode()) # password hash from file, not what the user entered
+                # password hash from file, not what the user entered
+                hash.update(p.encode())
                 signature = hash.hexdigest()
 
                 if p == password and s == signature:
@@ -1212,24 +1299,30 @@ class UserProfiles:
                     signature = hash.hexdigest()
                     with open(file, 'rb+') as f:
                         f.seek(-15, 2)
-                        f.write(f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+                        f.write(
+                            f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
                         # f.write(f'</user_profile>\r\n'.encode())
                     Log.d(f"User {initials} authenticated successfully.")
                     return True, filename, [name, initials, role]
                 elif p != password and s == signature:
                     Log.e(f"Auth failure: Invalid credentials.")
-                    Log.d(f"Auth failure details: user={initials}, p={p == password}, s={s == signature}")
+                    Log.d(
+                        f"Auth failure details: user={initials}, p={p == password}, s={s == signature}")
                     UserProfiles.session_end()
                     return False, filename, None
-                else: # signature not valid
-                    Log.e(f"Auth failure: Corrupt user profile {initials}. See an administrator.")
-                    Log.e(f"File security checks indicate your profile is invalid or had unauthorized changes made to it.")
-                    Log.d(f"Auth failure details: file={filename}, p={p == password}, s={s == signature}")
+                else:  # signature not valid
+                    Log.e(
+                        f"Auth failure: Corrupt user profile {initials}. See an administrator.")
+                    Log.e(
+                        f"File security checks indicate your profile is invalid or had unauthorized changes made to it.")
+                    Log.d(
+                        f"Auth failure details: file={filename}, p={p == password}, s={s == signature}")
                     UserProfiles.session_end()
                     return False, filename, None
             else:
                 Log.e(f"Auth failure: Invalid user account.")
-                Log.d(f"Auth failure details: User profile is not a file! Not found: {file}")
+                Log.d(
+                    f"Auth failure details: User profile is not a file! Not found: {file}")
                 UserProfiles.session_end()
                 return False, filename, None
         else:
@@ -1252,8 +1345,10 @@ class UserProfiles:
                         encode_str1 = dev.readline()
                         encode_str2 = dev.readline()
                         encode_key = "DEADBEEFDEADBEEFDEAD"
-                        hexify_str1 = bytes([(ord(a) ^ ord(b)) for a,b in zip(encode_str1, encode_key)]).decode()
-                        hexify_str2 = bytes([(ord(a) ^ ord(b)) for a,b in zip(encode_str2, encode_key)]).decode()
+                        hexify_str1 = bytes(
+                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str1, encode_key)]).decode()
+                        hexify_str2 = bytes(
+                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str2, encode_key)]).decode()
                         time_stamp = bytearray.fromhex(hexify_str1).decode()
                         build_date = bytearray.fromhex(hexify_str2).decode()
                         expires_on = dt.datetime.fromisoformat(time_stamp)
@@ -1265,21 +1360,25 @@ class UserProfiles:
 
                     now = dt.datetime.now()
                     if expires_on == "invalid" or expires_on == "exception":
-                        Log.e(f"Developer Mode encoded expiration value could not be parsed ({expires_on})! Please renew or disable.")
+                        Log.e(
+                            f"Developer Mode encoded expiration value could not be parsed ({expires_on})! Please renew or disable.")
                         is_error = True
                     elif build_date != Constants.app_date and not UserConstants.DEV_PERSIST_VER:
-                        Log.e("Developer Mode was enabled for another SW version and is invalid here. Please renew or disable.")
+                        Log.e(
+                            "Developer Mode was enabled for another SW version and is invalid here. Please renew or disable.")
                         is_error = True
                         expires_at = ""
                     elif expires_on > now - dt.timedelta(days=1):
                         if expires_on < now + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN):
                             enabled = True
                         else:
-                            Log.e(f"Developer Mode expiration date ({expires_at}) is invalid! Please renew or disable.")
+                            Log.e(
+                                f"Developer Mode expiration date ({expires_at}) is invalid! Please renew or disable.")
                             is_error = True
                             expires_at = ""
                     else:
-                        Log.e(f"Developer Mode expired on {expires_at}. Please renew or disable.")
+                        Log.e(
+                            f"Developer Mode expired on {expires_at}. Please renew or disable.")
                         is_error = True
             else:
                 pass

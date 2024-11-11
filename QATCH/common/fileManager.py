@@ -1,9 +1,11 @@
 import os
-from QATCH.common.architecture import Architecture,OSType
+from QATCH.common.architecture import Architecture, OSType
 
 ###############################################################################
 # File operations: create directory, full path and check if the existing file
 ###############################################################################
+
+
 class FileManager:
 
     ###########################################################################
@@ -20,10 +22,10 @@ class FileManager:
                 os.makedirs(path)
         return os.path.isdir(path)
 
-
     ###########################################################################
     # Creates a file full path based on parameters
     ###########################################################################
+
     @staticmethod
     def create_full_path(filename, extension="txt", path=None):
         """
@@ -38,10 +40,10 @@ class FileManager:
             full_path = os.path.join(path, full_path)
         return full_path
 
+    ###########################################################################
+    # Checks if a file exists (True if file exists)
+    ###########################################################################
 
-    ###########################################################################
-    #Checks if a file exists (True if file exists)
-    ###########################################################################
     @staticmethod
     def file_exists(filename):
         """

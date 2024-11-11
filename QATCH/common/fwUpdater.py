@@ -103,7 +103,8 @@ class FW_Updater:
                 if not success:
                     return FW_UPDATE.RESULT_FAILED
 
-                result, version, target, written, abort = self.checkUpdate(parent, port)
+                result, version, target, written, abort = self.checkUpdate(
+                    parent, port)
 
                 if not result == FW_UPDATE.RESULT_FAILED:
                     if not result == FW_UPDATE.RESULT_UPTODATE:
@@ -178,7 +179,8 @@ class FW_Updater:
                             icon_path = os.path.join(
                                 Architecture.get_path(), "QATCH/icons/download_icon.ico"
                             )
-                            self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+                            self.progressBar.setWindowIcon(
+                                QtGui.QIcon(icon_path))
                             self.progressBar.setWindowTitle(
                                 f"Programming FW {target}{multistep}"
                             )
@@ -189,7 +191,8 @@ class FW_Updater:
                                 QtCore.Qt.WindowStaysOnTopHint, True
                             )
                             self.progressBar.canceled.disconnect()
-                            self.progressBar.canceled.connect(self.update_cancel)
+                            self.progressBar.canceled.connect(
+                                self.update_cancel)
                             self.progressBar.setFixedSize(
                                 int(self.progressBar.width() * 1.5),
                                 int(self.progressBar.height() * 1.1),
@@ -207,7 +210,8 @@ class FW_Updater:
 
                             self.upd_thread.started.connect(self.updater.run)
                             self.updater.finished.connect(self.upd_thread.quit)
-                            self.updater.finished.connect(self.updater.deleteLater)
+                            self.updater.finished.connect(
+                                self.updater.deleteLater)
                             self.upd_thread.finished.connect(
                                 self.upd_thread.deleteLater
                             )
@@ -237,7 +241,8 @@ class FW_Updater:
                                 box.setWindowTitle("Program FW Update")
                                 box.setText("Download canceled.")
                                 box.setDetailedText("")
-                                box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+                                box.setStandardButtons(
+                                    QtWidgets.QMessageBox.Ok)
                                 box.exec_()
 
                             result, output, error = self.updater.get_results()
@@ -451,7 +456,8 @@ class FW_Updater:
                     pass
                 if time() < timeoutAt:
                     version_reply = (
-                        self._serial.read(self._serial.in_waiting).decode().split("\n")
+                        self._serial.read(
+                            self._serial.in_waiting).decode().split("\n")
                     )
                     length = len(version_reply)
                     if length >= 3:
@@ -579,13 +585,16 @@ class FW_Updater:
                     # check for and resolve any conflicting device infos
                     try:
                         if FileStorage.DEV_get_active(idx) == "" and idx > 0:
-                            FileStorage.DEV_set_active(idx, name)  # for multiplex
-                        dev_folder = "{}_{}".format(idx, name) if idx > 0 else name
+                            FileStorage.DEV_set_active(
+                                idx, name)  # for multiplex
+                        dev_folder = "{}_{}".format(
+                            idx, name) if idx > 0 else name
                         # wrong dev selected, must be a conflict
                         if FileStorage.DEV_get_active(idx) != dev_folder:
                             device_list = FileStorage.DEV_get_device_list()
                             for i, dev_name in device_list:
-                                dev_info = FileStorage.DEV_info_get(i, dev_name)
+                                dev_info = FileStorage.DEV_info_get(
+                                    i, dev_name)
                                 if "USB" in dev_info and "PORT" in dev_info:
                                     if (
                                         dev_info["PORT"] == self._com
@@ -750,7 +759,8 @@ class FW_Updater:
                 need_repaint = True
                 delay = 500
                 if self.progressBar.labelText().find("Transfer") >= 0:
-                    cancelButton = self.progressBar.findChild(QtWidgets.QPushButton)
+                    cancelButton = self.progressBar.findChild(
+                        QtWidgets.QPushButton)
                     cancelButton.setEnabled(False)
                     status_str = "Programming device firmware...<br/><b>DO NOT POWER CYCLE DEVICE!</b>"
                     self.progressBar.setLabelText(status_str)
@@ -822,7 +832,8 @@ class UpdaterTask(QtCore.QThread):
         # self._dbx_connection.close() # force abort of active file download
 
     def run(self):
-        self._result, self._output, self._error = self.doUpdate(None, self._port)
+        self._result, self._output, self._error = self.doUpdate(
+            None, self._port)
         self.finished.emit()
 
     def get_results(self):
@@ -1042,7 +1053,8 @@ class UpdaterTask(QtCore.QThread):
                             # Log.w(f"dbg: {lines} : {x}")
                             self._serial.write(x)
                             if False:
-                                reply = self._serial.read(self._serial.in_waiting)
+                                reply = self._serial.read(
+                                    self._serial.in_waiting)
                                 # Log.d(">> {}".format(x.encode()))
                                 # Log.d("<< {}".format(reply))
                                 if b"abort -" in reply:
@@ -1080,7 +1092,8 @@ class UpdaterTask(QtCore.QThread):
                         waitFor = 45  # copy to RAM can take some time
                         while True:
                             try:
-                                reply = self._serial.read(self._serial.in_waiting)
+                                reply = self._serial.read(
+                                    self._serial.in_waiting)
                                 output += reply.decode().lstrip()
                             except Exception as e:
                                 Log.d(
@@ -1125,7 +1138,8 @@ class UpdaterTask(QtCore.QThread):
                                 # exit bootloader, if still stuck in it
                                 self._serial.write("\n".encode())
                         except serialutil.SerialException:
-                            self.progress.emit("Waiting for device to reboot...", None)
+                            self.progress.emit(
+                                "Waiting for device to reboot...", None)
                             Log.d(TAG, "Device reset!")
 
                         if self._port != self._primary:
@@ -1170,7 +1184,8 @@ class UpdaterTask(QtCore.QThread):
                             ):
                                 pass
                             if time() - stop < waitFor:
-                                reply = self._serial.read(self._serial.in_waiting)
+                                reply = self._serial.read(
+                                    self._serial.in_waiting)
                                 msg += reply.decode()
                                 if "QATCH" in msg:
                                     sleep(1)
@@ -1178,7 +1193,8 @@ class UpdaterTask(QtCore.QThread):
                                     break
                         if time() - stop >= waitFor:
                             error = "Failed to reboot within one minute."
-                            raise TimeoutError("Failed to reboot within one minute.")
+                            raise TimeoutError(
+                                "Failed to reboot within one minute.")
 
                 # common code for both COM and NET devices
                 status = f"Target build: {os.path.split(path_to_hex)[1]}\n"
@@ -1385,7 +1401,8 @@ class UpdaterTask(QtCore.QThread):
                         PopUp.warning(
                             parent,
                             "FW Recovery Tool",
-                            "The following error was reported:\n\n{}".format(error),
+                            "The following error was reported:\n\n{}".format(
+                                error),
                         )
             except:
                 result = FW_UPDATE.RESULT_FAILED
@@ -1420,7 +1437,7 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if os.path.basename(file).startswith("._"):
                     continue
-                if file[-len(ext) :] == ext:
+                if file[-len(ext):] == ext:
                     try:
                         file = shutil.copy(
                             file,
@@ -1434,7 +1451,8 @@ class UpdaterTask(QtCore.QThread):
                             ),
                         )
                         Log.d(
-                            TAG, 'Unpacking file "{}"...'.format(os.path.basename(file))
+                            TAG, 'Unpacking file "{}"...'.format(
+                                os.path.basename(file))
                         )
                         os.chmod(
                             file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
@@ -1471,8 +1489,9 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if os.path.basename(file).startswith("._"):
                     continue
-                if file[-len(ext) :] == ext:
-                    Log.d(TAG, 'Cleaning file: "{}"...'.format(os.path.basename(file)))
+                if file[-len(ext):] == ext:
+                    Log.d(TAG, 'Cleaning file: "{}"...'.format(
+                        os.path.basename(file)))
                     os.remove(file)
                     Log.d("DONE!")
 
@@ -1487,14 +1506,15 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if exec:
                     # remove ".safe" extension
-                    if file[-(len(ext) + 5) :] == "{}.safe".format(ext):
+                    if file[-(len(ext) + 5):] == "{}.safe".format(ext):
                         Log.d(
-                            TAG, 'Renaming file "{}" to "{}"'.format(file, file[0:-5])
+                            TAG, 'Renaming file "{}" to "{}"'.format(
+                                file, file[0:-5])
                         )
                         os.rename(file, file[0:-5])
                 else:
                     # add ".safe" extension
-                    if file[-len(ext) :] == ext:
+                    if file[-len(ext):] == ext:
                         Log.d(
                             TAG,
                             'Renaming file "{}" to "{}"'.format(

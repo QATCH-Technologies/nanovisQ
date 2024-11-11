@@ -7,15 +7,16 @@ from enum import Enum
 ###############################################################################
 # Architecture specific methods: OS types, Python version
 ###############################################################################
-class Architecture:
 
+
+class Architecture:
 
     ###########################################################################
     # Gets the current OS
     ###########################################################################
     @staticmethod
     def get_os():
-        #:return: OS type by OSType enum.
+        # :return: OS type by OSType enum.
         tmp = str(Architecture.get_os_type())
         if "Linux" in tmp:
             return OSType.linux
@@ -33,7 +34,7 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_os_name():
-        #:return: OS name :rtype: str.
+        # :return: OS name :rtype: str.
         return platform.node()
 
     ###########################################################################
@@ -41,7 +42,7 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_os_type():
-        #:return: OS type :rtype: str.
+        # :return: OS type :rtype: str.
         return platform.platform()
 
     ###########################################################################
@@ -50,9 +51,9 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_path():
-        #:return: Path of the PWD or CWD :rtype: str.
-        #:if EXE: Temporary path of extracted bundle.
-        #:if _PY: Working directory of parent module.
+        # :return: Path of the PWD or CWD :rtype: str.
+        # :if EXE: Temporary path of extracted bundle.
+        # :if _PY: Working directory of parent module.
         if getattr(sys, 'frozen', False):
             # we are running in a bundle from an EXE
             bundle_dir = sys._MEIPASS
@@ -66,14 +67,14 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_python_version():
-        #:return: Python version formatted as major.minor.release :rtype: str.
+        # :return: Python version formatted as major.minor.release :rtype: str.
         version = sys.version_info
         return str("{}.{}.{}".format(version[0], version[1], version[2]))
-
 
     ###########################################################################
     # Checks if the running Python version is >= than the specified version
     ###########################################################################
+
     @staticmethod
     def is_python_version(major, minor=0):
         """
@@ -90,6 +91,8 @@ class Architecture:
 ###############################################################################
 # Enum for OS types
 ###############################################################################
+
+
 class OSType(Enum):
     unknown = 0
     linux = 1

@@ -19,6 +19,8 @@ TAG2 = "[Import]"
 ###############################################################################
 # Export dialog
 ###############################################################################
+
+
 class Ui_Export(QtWidgets.QWidget):
     usb_add = QtCore.pyqtSignal()
     usb_remove = QtCore.pyqtSignal()
@@ -32,7 +34,7 @@ class Ui_Export(QtWidgets.QWidget):
     chk1 = False
     chk2 = False
 
-    def __init__(self, type = "item", parent = None):
+    def __init__(self, type="item", parent=None):
         super(Ui_Export, self).__init__(parent)
 
         USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
@@ -47,13 +49,13 @@ class Ui_Export(QtWidgets.QWidget):
         self.tab2 = QtWidgets.QWidget()
         self.tabAdv = QtWidgets.QWidget()
         self.tab3 = QtWidgets.QWidget()
-        #self.tabs.resize(300,200)
+        # self.tabs.resize(300,200)
 
         # Add tabs
-        self.tabs.addTab(self.tab1,"Import")
-        self.tabs.addTab(self.tab2,"Export")
+        self.tabs.addTab(self.tab1, "Import")
+        self.tabs.addTab(self.tab2, "Export")
         self.tabs.addTab(self.tabAdv, "Advanced")
-        self.tabs.addTab(self.tab3,"History")
+        self.tabs.addTab(self.tab3, "History")
 
         self.lbl1 = QtWidgets.QLabel("Import from...")
         self.btn6 = QtWidgets.QPushButton("Folder")
@@ -110,7 +112,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.checkChanged5(self.groupbox5.isChecked())
 
         self.tb1 = QtWidgets.QLabel()
-        self.tb1.setStyleSheet('background: white; padding: 1px; border: 1px solid #cccccc')
+        self.tb1.setStyleSheet(
+            'background: white; padding: 1px; border: 1px solid #cccccc')
         self.tb1.setAlignment(QtCore.Qt.AlignCenter)
         self.tb1.setFixedHeight(50)
 
@@ -131,7 +134,7 @@ class Ui_Export(QtWidgets.QWidget):
         layout_v1 = QtWidgets.QVBoxLayout()
         layout_v1.addWidget(self.groupbox4)
         layout_v1.addWidget(self.groupbox5)
-        #layout_v1.addWidget(self.groupbox1)
+        # layout_v1.addWidget(self.groupbox1)
         layout_v1.addWidget(self.tb1)
         layout_v1.addWidget(self.pb1)
         layout_v1.addLayout(layout_h11)
@@ -147,7 +150,8 @@ class Ui_Export(QtWidgets.QWidget):
         '''
 
         self.tb = QtWidgets.QLabel()
-        self.tb.setStyleSheet('background: white; padding: 1px; border: 1px solid #cccccc')
+        self.tb.setStyleSheet(
+            'background: white; padding: 1px; border: 1px solid #cccccc')
         self.tb.setAlignment(QtCore.Qt.AlignCenter)
         self.tb.setFixedHeight(50)
 
@@ -167,13 +171,13 @@ class Ui_Export(QtWidgets.QWidget):
         self.btn3.pressed.connect(self.erase)
 
         if USE_FULLSCREEN:
-           self.tb.setFixedHeight(100)
-           self.pb.setFixedHeight(25)
-           self.btn1.setFixedHeight(50)
-           self.btn2.setFixedHeight(50)
-           self.btn3.setFixedHeight(50)
-           self.btn4.setFixedHeight(50)
-           self.btn5.setFixedHeight(50)
+            self.tb.setFixedHeight(100)
+            self.pb.setFixedHeight(25)
+            self.btn1.setFixedHeight(50)
+            self.btn2.setFixedHeight(50)
+            self.btn3.setFixedHeight(50)
+            self.btn4.setFixedHeight(50)
+            self.btn5.setFixedHeight(50)
 
         layout_h1 = QtWidgets.QHBoxLayout()
         layout_h1.addWidget(self.btn1)
@@ -199,7 +203,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.filterOff = QtWidgets.QCheckBox("All Dates")
         self.filterToday = QtWidgets.QCheckBox("Today")
         self.filterLastXDays = QtWidgets.QCheckBox("Last:")
-        self.filterLastXDays.setFixedWidth(self.filterLastXDays.sizeHint().width())
+        self.filterLastXDays.setFixedWidth(
+            self.filterLastXDays.sizeHint().width())
         self.filterNumDays = QtWidgets.QLineEdit("7")
         self.filterNumDays.setAlignment(QtCore.Qt.AlignCenter)
         self.filterValid = QtGui.QIntValidator(1, 31)
@@ -207,8 +212,10 @@ class Ui_Export(QtWidgets.QWidget):
         self.filterNumDays.setFixedWidth(25)
         self.filterUnits = QtWidgets.QComboBox()
         self.filterUnits.addItems(["Hours", "Days", "Weeks"])
-        self.filterUnits.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
-        self.filterUnits.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.filterUnits.setSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred)
+        self.filterUnits.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToContents)
         self.filterUnits.setFixedWidth(self.filterUnits.sizeHint().width())
         self.filterUnits.setCurrentText("Days")
         self.filterOff.setChecked(True)
@@ -255,7 +262,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.selection = QtWidgets.QCheckBox("Selection:")
         self.selectRun = QtWidgets.QPushButton("[ALL]")
         self.exportAll.setChecked(True)
-        #self.selectRun.setEnabled(False)
+        # self.selectRun.setEnabled(False)
 
         self.btnGroup3 = QtWidgets.QButtonGroup()
         self.btnGroup3.addButton(self.exportAll)
@@ -297,7 +304,8 @@ class Ui_Export(QtWidgets.QWidget):
         # row 2: export as
         exportGridLayout.addWidget(QtWidgets.QLabel("Export as:"), 2, 1, 1, 1)
         exportGridLayout.addWidget(self.exportAsZIP, 2, 2, 1, 1)
-        exportGridLayout.addWidget(self.exportAsFolder, 2, 3, 1, 1) # row, col, rspan, cspan
+        # row, col, rspan, cspan
+        exportGridLayout.addWidget(self.exportAsFolder, 2, 3, 1, 1)
         exportGridLayout.addWidget(self.exportUnnamed, 2, 4, 1, 3)
         # row 3: export name
         exportGridLayout.addWidget(self.exportNameChk, 3, 1, 1, 1)
@@ -323,9 +331,9 @@ class Ui_Export(QtWidgets.QWidget):
 
         layout_h3 = QtWidgets.QVBoxLayout()
         erase_notice = QtWidgets.QLabel("<h1 style='color: #FF0000;'>WARNING</h1><br/>" +
-        "<br/>This operation will erase all locally logged data from this machine.<br/>" +
-        "<br/>NOTE: Erased runs can be recovered from the Recycle Bin (if applicable).<br/>" +
-        "<br/><b>To fully erase, empty your Recycle Bin too.</b>")
+                                        "<br/>This operation will erase all locally logged data from this machine.<br/>" +
+                                        "<br/>NOTE: Erased runs can be recovered from the Recycle Bin (if applicable).<br/>" +
+                                        "<br/><b>To fully erase, empty your Recycle Bin too.</b>")
         erase_notice.setAlignment(QtCore.Qt.AlignCenter)
         layout_h3.addWidget(erase_notice)
         layout_h3.addWidget(self.btn3)
@@ -423,12 +431,12 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox5.clicked.connect(self.checkChanged5)
         self.exportNoName.stateChanged.connect(self.noNameChanged)
 
-        self.exportAsZIP.setChecked(True) # emit signal now that it's set
+        self.exportAsZIP.setChecked(True)  # emit signal now that it's set
 
     def noNameChanged(self, arg):
         self.generateExportName()
 
-    def showNormal(self, tab_idx = 0):
+    def showNormal(self, tab_idx=0):
         super(Ui_Export, self).hide()
         super(Ui_Export, self).showNormal()
         self.tabs.setCurrentIndex(tab_idx)
@@ -438,21 +446,25 @@ class Ui_Export(QtWidgets.QWidget):
         self.do_close = False
         self.drive = None
 
-        self.progress.emit("<b>Insert USB drive...</b><br/>No USB drives detected.", 0, 'b', 0)
-        self.progress.emit("<b>Select an input location...</b><br/>No import selected.", 0, 'b', 1)
-        self.freeze_gui.emit(True) # Enable Erase only
+        self.progress.emit(
+            "<b>Insert USB drive...</b><br/>No USB drives detected.", 0, 'b', 0)
+        self.progress.emit(
+            "<b>Select an input location...</b><br/>No import selected.", 0, 'b', 1)
+        self.freeze_gui.emit(True)  # Enable Erase only
 
         self.main = Thread(target=self.mainTask)
         self.main.start()
 
     def do_clearAllHistory(self):
-        history_path = os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
+        history_path = os.path.join(
+            os.getcwd(), Constants.log_export_path, "export_history.log")
         send2trash.send2trash(history_path)
         self.tabChanged(2)
 
     def tabChanged(self, idx):
         if idx == 2:
-            history_path = os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
+            history_path = os.path.join(
+                os.getcwd(), Constants.log_export_path, "export_history.log")
             if os.path.exists(history_path):
                 self.clearAllHistory.setEnabled(True)
                 with open(history_path, 'r') as f:
@@ -462,7 +474,7 @@ class Ui_Export(QtWidgets.QWidget):
                 self.history.setText("No import/export history to show.")
 
     def checkChanged1(self, chk):
-        #Log.d(f"group1 clicked! {chk}")
+        # Log.d(f"group1 clicked! {chk}")
         self.chk1 = chk
         self.chk2 = False
         if chk and self.groupbox2.isChecked():
@@ -472,11 +484,12 @@ class Ui_Export(QtWidgets.QWidget):
     def checkChanged2(self, chk):
         self.chk1 = False
         self.chk2 = chk
-        #Log.d(f"group2 clicked! {chk}")
+        # Log.d(f"group2 clicked! {chk}")
         if chk and self.groupbox1.isChecked():
             self.groupbox1.setChecked(False)
         if chk:
-            self.drive = self.btn5.text() if self.btn5.text() != "[NONE]" else None
+            self.drive = self.btn5.text(
+            ) if self.btn5.text() != "[NONE]" else None
         self.freezeGUI(True)
 
     def checkChanged5(self, chk):
@@ -492,19 +505,21 @@ class Ui_Export(QtWidgets.QWidget):
             self.selectRun.setText("[ALL]")
             self.source_subfolder = ""
             self.generateExportName()
-        #if self.selection.isChecked():
-            #self.selectRun.setEnabled(True)
-        #else:
-            #self.selectRun.setEnabled(False)
+        # if self.selection.isChecked():
+            # self.selectRun.setEnabled(True)
+        # else:
+            # self.selectRun.setEnabled(False)
 
     def generateImportDescription(self):
         try:
             path_to_import = self.btn7.text()
-            if path_to_import == "[NONE]": return
+            if path_to_import == "[NONE]":
+                return
             self.importNow.setEnabled(False)
-            self.progress.emit("<b>Generating archive info...</b><br/>This may take a few seconds.", 0, 'b', 1)
+            self.progress.emit(
+                "<b>Generating archive info...</b><br/>This may take a few seconds.", 0, 'b', 1)
             path_split = os.path.split(path_to_import)
-            #Log.d(f"path = {path_to_import}")
+            # Log.d(f"path = {path_to_import}")
             show_files = self.groupbox5.isChecked()
             if path_split[1].count('.') and path_split[1][-4] == '.':
                 # ZIP archive
@@ -512,7 +527,8 @@ class Ui_Export(QtWidgets.QWidget):
                     names = f.namelist()
                     names.sort()
                     if names[0].find(Constants.log_export_path) == -1:
-                        Log.d("Archive does not contain \"logged_data\" folder. Must parse XMLs for relative path reconstruction.")
+                        Log.d(
+                            "Archive does not contain \"logged_data\" folder. Must parse XMLs for relative path reconstruction.")
                     to_show = []
                     for item in names:
                         split = os.path.split(item)
@@ -526,46 +542,53 @@ class Ui_Export(QtWidgets.QWidget):
                             tabwidth = 2
                             indent = ' ' * tabwidth * (level)
                             dash = '- '
-                            formatted_item = '{}{}{}'.format(indent, dash, split[1])
+                            formatted_item = '{}{}{}'.format(
+                                indent, dash, split[1])
                             to_show.append(formatted_item)
                     self.archiveInfo.setText("\n".join(to_show))
             else:
                 # folder
                 test1 = path_to_import.find(Constants.log_export_path) >= 0
-                test2 = os.path.exists(os.path.join(path_to_import, Constants.log_export_path))
-                #Log.d(f"tests = {test1}, {test2}")
-                self.archiveInfo.setText(self.list_files(path_to_import, show_files))
+                test2 = os.path.exists(os.path.join(
+                    path_to_import, Constants.log_export_path))
+                # Log.d(f"tests = {test1}, {test2}")
+                self.archiveInfo.setText(
+                    self.list_files(path_to_import, show_files))
                 if test1 or test2:
                     pass
                 else:
-                    Log.d("Archive does not contain \"logged_data\" folder. Must parse XMLs for relative path reconstruction.")
-            self.progress.emit("<b>Archive info generated!</b><br/>Ready to import.", 100, 'b', 1)
+                    Log.d(
+                        "Archive does not contain \"logged_data\" folder. Must parse XMLs for relative path reconstruction.")
+            self.progress.emit(
+                "<b>Archive info generated!</b><br/>Ready to import.", 100, 'b', 1)
             self.importNow.setEnabled(True)
         except Exception as e:
-            self.progress.emit("<b>Error reading archive info!</b><br/>This archive might be corrupt.", 100, 'r', 1)
+            self.progress.emit(
+                "<b>Error reading archive info!</b><br/>This archive might be corrupt.", 100, 'r', 1)
             self.archiveInfo.setText("Error reading archive: {}".format(e))
-            #Log.d(e)
-            #raise e
+            # Log.d(e)
+            # raise e
 
-    def list_files(self, startpath, option, tree = "", level = 0):
-        #Log.d(f"sp = {startpath}")
+    def list_files(self, startpath, option, tree="", level=0):
+        # Log.d(f"sp = {startpath}")
         for root, dirs, files in os.walk(startpath):
-            #Log.d(f"root = {root}, dirs = {dirs}, files = {files}")
-            #level = root.replace(startpath, '').count(os.sep)
+            # Log.d(f"root = {root}, dirs = {dirs}, files = {files}")
+            # level = root.replace(startpath, '').count(os.sep)
             tabwidth = 2
             indent = ' ' * tabwidth * (level)
-            dash = '- ' # * (level)
+            dash = '- '  # * (level)
             line = '{}{}{}\n'.format(indent, dash, os.path.basename(root))
-            #Log.d(line) #, end='')
+            # Log.d(line) #, end='')
             tree += line
             for dir in dirs:
-                tree = self.list_files(os.path.join(startpath, dir), option, tree, level+1)
+                tree = self.list_files(os.path.join(
+                    startpath, dir), option, tree, level+1)
             if option:
                 subindent = ' ' * tabwidth * (level + 1)
-                #subdash = '-' * (level + 1)
+                # subdash = '-' * (level + 1)
                 for f in files:
                     subline = '{}{}{}\n'.format(subindent, dash, f)
-                    #Log.d(subline) #, end='')
+                    # Log.d(subline) #, end='')
                     tree += subline
             if level == 0:
                 tree = tree.rstrip()
@@ -573,7 +596,8 @@ class Ui_Export(QtWidgets.QWidget):
 
     def generateExportName(self):
         _, selected_folder = os.path.split(self.source_subfolder)
-        default_filename = str(datetime.datetime.now()).split(' ')[0].replace(":", "").replace("-", "").replace(" ", "_") + "_QATCH_EXPORT"
+        default_filename = str(datetime.datetime.now()).split(' ')[0].replace(
+            ":", "").replace("-", "").replace(" ", "_") + "_QATCH_EXPORT"
         if len(selected_folder) > 0:
             default_filename = selected_folder
         enabled = self.exportNoName.isChecked() == False
@@ -593,7 +617,7 @@ class Ui_Export(QtWidgets.QWidget):
             self.ui_toggle(not self.drive == None)
         else:
             self.ui_toggle(False)
-        #Log.d(f"en={enable} chk1={self.chk1} chk2={self.chk2} drive='{self.drive}'")
+        # Log.d(f"en={enable} chk1={self.chk1} chk2={self.chk2} drive='{self.drive}'")
         if enable and (self.chk1 or self.chk2) and (self.drive != None):
             self.exportNow.setEnabled(True)
             self.exportCancel.setEnabled(False)
@@ -617,15 +641,18 @@ class Ui_Export(QtWidgets.QWidget):
     def ui_add(self):
         self.ui_toggle(True)
         self.confirmed = False
-        self.progress.emit(f"<b>Export to USB</b><br/>[{self.drive}] USB drive found! Ready to export.", 0, 'b', 0)
+        self.progress.emit(
+            f"<b>Export to USB</b><br/>[{self.drive}] USB drive found! Ready to export.", 0, 'b', 0)
         self.freezeGUI(True)
 
     def ui_remove(self):
         self.ui_toggle(False)
         if self.confirmed:
-            self.progress.emit(None, 66, 'b', 0) # Drive ejected by user request
+            # Drive ejected by user request
+            self.progress.emit(None, 66, 'b', 0)
         else:
-            self.progress.emit(f"[{self.drive}] USB drive removed unexpectedly! Please eject first.", 100, 'b', 0)
+            self.progress.emit(
+                f"[{self.drive}] USB drive removed unexpectedly! Please eject first.", 100, 'b', 0)
         self.confirmed = False
         self.drive = None
         self.freezeGUI(True)
@@ -636,18 +663,20 @@ class Ui_Export(QtWidgets.QWidget):
 
     def mainTask(self):
         Log.d(TAG1, "Thread started.")
-        dl = 'AB_DEFGHIJKLMNOPQRSTUVWXYZ' # ignore C drive
+        dl = 'AB_DEFGHIJKLMNOPQRSTUVWXYZ'  # ignore C drive
         drives = ['%s:' % d for d in dl if os.path.exists('%s:' % d)]
         Log.i(TAG1, "Existing drive(s): " + str(drives))
-        if len(drives) == 1: # and drives[0] != "D:":
+        if len(drives) == 1:  # and drives[0] != "D:":
             Log.i(TAG1, "Using existing drive")
             self.drive = drives[0]
             self.usb_add.emit()
         if len(drives) > 1:
-            self.progress.emit("<b>Re-insert USB drive...</b><br/>Multiple USB drives detected.", 0, 'b', 0)
+            self.progress.emit(
+                "<b>Re-insert USB drive...</b><br/>Multiple USB drives detected.", 0, 'b', 0)
         self.checkMode = None
         while not self.do_close:
-            uncheckeddrives = ['%s:' % d for d in dl if os.path.exists('%s:' % d)]
+            uncheckeddrives = ['%s:' %
+                               d for d in dl if os.path.exists('%s:' % d)]
             if self.chk1:
                 if self.checkMode != 1:
                     Log.i("Detecting USB drives...")
@@ -670,35 +699,40 @@ class Ui_Export(QtWidgets.QWidget):
                         if self.drive == d:
                             self.usb_remove.emit()
                 if changes:
-                    drives = ['%s:' % d for d in dl if os.path.exists('%s:' % d)]
+                    drives = ['%s:' %
+                              d for d in dl if os.path.exists('%s:' % d)]
                 self.checkMode = 1
             elif self.chk2:
                 if self.checkMode != 2:
-                    self.progress.emit("<b>Export to Folder</b><br/>Configure settings then hit 'Export'.", 0, 'b', 0)
+                    self.progress.emit(
+                        "<b>Export to Folder</b><br/>Configure settings then hit 'Export'.", 0, 'b', 0)
                 self.checkMode = 2
             else:
                 if self.checkMode != 0:
-                    self.progress.emit("<b>Select an export location...</b><br/>Export to Folder or USB.", 0, 'b', 0)
+                    self.progress.emit(
+                        "<b>Select an export location...</b><br/>Export to Folder or USB.", 0, 'b', 0)
                 self.checkMode = 0
         Log.i(TAG1, "Thread finished.")
 
     def select_folder_source(self):
-        data_path = QtCore.QUrl.fromLocalFile(os.path.join(os.getcwd(), Constants.log_export_path))
+        data_path = QtCore.QUrl.fromLocalFile(
+            os.path.join(os.getcwd(), Constants.log_export_path))
         select_data = self.select_folder(data_path)
         if select_data == None:
-            #self.selectRun.setText("[ALL]")
-            #self.source_subfolder = ""
-            #Log.d("User aborted folder selection.")
+            # self.selectRun.setText("[ALL]")
+            # self.source_subfolder = ""
+            # Log.d("User aborted folder selection.")
             return
         if not data_path.toLocalFile() in select_data:
             self.selectRun.setText("[ALL]")
             self.source_subfolder = ""
             Log.w("User selected folder not in logged data path.")
             return
-        self.selection.setChecked(True) # force "selection" checked on select
+        self.selection.setChecked(True)  # force "selection" checked on select
         t = os.path.split(select_data)
         self.selectRun.setText(t[1])
-        self.source_subfolder = select_data.replace(data_path.toLocalFile(), "").replace("/", Constants.slash)
+        self.source_subfolder = select_data.replace(
+            data_path.toLocalFile(), "").replace("/", Constants.slash)
         if self.source_subfolder[0] == Constants.slash:
             self.source_subfolder = self.source_subfolder[1:]
         if self.source_subfolder[-1] == Constants.slash:
@@ -710,14 +744,13 @@ class Ui_Export(QtWidgets.QWidget):
         self.selectRun.setText(f"{dev_or_run}{self.selectRun.text()}")
         self.generateExportName()
 
-
     def select_folder_target(self):
         top_level = QtCore.QUrl("clsid:0AC0837C-BBF8-452A-850D-79D08E667CA7")
         if self.btn5.text() != "[NONE]":
             top_level = QtCore.QUrl.fromLocalFile(self.btn5.text())
         select_path = self.select_folder(top_level)
         if select_path == None:
-            return #self.btn5.setText("[NONE]")
+            return  # self.btn5.setText("[NONE]")
         self.drive = select_path
         self.btn5.setText(self.drive)
         self.freezeGUI(True)
@@ -727,19 +760,20 @@ class Ui_Export(QtWidgets.QWidget):
         if self.btn7.text() != "[NONE]":
             path = self.btn7.text()
             path = os.path.split(path)[0]
-            #if sp[1].count(".") > 0:
+            # if sp[1].count(".") > 0:
             #    path = sp[0] # drop ZIP file for folder select
             top_level = QtCore.QUrl.fromLocalFile(path)
         select_path = self.select_folder(top_level)
         if select_path == None:
-            return #self.btn5.setText("[NONE]")
-        #self.drive = select_path
+            return  # self.btn5.setText("[NONE]")
+        # self.drive = select_path
         self.btn7.setText(select_path)
         self.generateImportDescription()
-        #self.freezeGUI(True)
+        # self.freezeGUI(True)
 
     def select_folder(self, dir):
-        folderpath = QtWidgets.QFileDialog.getExistingDirectoryUrl(self, 'Select Folder', dir)
+        folderpath = QtWidgets.QFileDialog.getExistingDirectoryUrl(
+            self, 'Select Folder', dir)
         if folderpath.isValid():
             Log.i(TAG1, f"Selected {folderpath.toLocalFile()}")
             return folderpath.toLocalFile()
@@ -752,20 +786,21 @@ class Ui_Export(QtWidgets.QWidget):
         if self.btn7.text() != "[NONE]":
             path = self.btn7.text()
             path = os.path.split(path)[0]
-            #if sp[1].count(".") > 0:
+            # if sp[1].count(".") > 0:
             #    path = sp[0] # drop ZIP file for folder select
             top_level = QtCore.QUrl.fromLocalFile(path)
         select_path = self.select_file(top_level)
         if select_path == None:
-            return #self.btn5.setText("[NONE]")
-        #self.drive = select_path
+            return  # self.btn5.setText("[NONE]")
+        # self.drive = select_path
         self.btn7.setText(select_path)
         self.generateImportDescription()
-        #self.freezeGUI(True)
+        # self.freezeGUI(True)
 
     def select_file(self, dir):
-        filepath, _ = QtWidgets.QFileDialog.getOpenFileUrl(self, 'Select File', dir)
-        #Log.d(filepath)
+        filepath, _ = QtWidgets.QFileDialog.getOpenFileUrl(
+            self, 'Select File', dir)
+        # Log.d(filepath)
         if filepath.isValid():
             Log.i(TAG2, f"Selected {filepath.toLocalFile()}")
             return filepath.toLocalFile()
@@ -775,17 +810,20 @@ class Ui_Export(QtWidgets.QWidget):
 
     def doImport(self):
         self.stop_threads = False
-        thread = Thread(target=self.importTask, args=(lambda:self.stop_threads,self.btn7.text()))
+        thread = Thread(target=self.importTask, args=(
+            lambda: self.stop_threads, self.btn7.text()))
         thread.start()
 
     def importTask(self, abort, path):
         self.importNow.setEnabled(False)
         self.importCancel.setEnabled(True)
         try:
-            self.progress.emit("<b>Importing archived data...</b><br/>please wait...", 0, 'g', 1)
-            time.sleep(2) # give user time to bail
+            self.progress.emit(
+                "<b>Importing archived data...</b><br/>please wait...", 0, 'g', 1)
+            time.sleep(2)  # give user time to bail
             if abort():
-                self.progress.emit("<b>Import to local data: Operation cancelled.</b><br/>No import was performed.", 100, 'b', 1)
+                self.progress.emit(
+                    "<b>Import to local data: Operation cancelled.</b><br/>No import was performed.", 100, 'b', 1)
                 Log.w("Import thread killed prematurely!")
                 self.importNow.setEnabled(True)
                 self.importCancel.setEnabled(False)
@@ -795,22 +833,27 @@ class Ui_Export(QtWidgets.QWidget):
                 copied = 0
                 skipped = 0
                 if not zipfile.is_zipfile(path):
-                    self.progress.emit("<b>Import Error: Invalid ZIP file selected!</b><br/>Please try again...", 100, 'r', 1)
+                    self.progress.emit(
+                        "<b>Import Error: Invalid ZIP file selected!</b><br/>Please try again...", 100, 'r', 1)
                     Log.e("Selected file does not appear to be a valid ZIP file.")
                     self.importNow.setEnabled(True)
                     self.importCancel.setEnabled(False)
                     return
                 with zipfile.ZipFile(path, 'r') as f:
                     zip_filename = os.path.split(path)[1][:-4]
-                    self.progress.emit("<b>Verifying ZIP file integrity...</b><br/>please wait...", 0, 'b', 1)
+                    self.progress.emit(
+                        "<b>Verifying ZIP file integrity...</b><br/>please wait...", 0, 'b', 1)
                     test_result = f.testzip()
                     if test_result != None:
-                        self.progress.emit("<b>Import Error: Corrupt ZIP file selected!</b><br/>Please try again...", 100, 'r', 1)
-                        Log.e("Selected ZIP archive contains a bad file:", test_result)
+                        self.progress.emit(
+                            "<b>Import Error: Corrupt ZIP file selected!</b><br/>Please try again...", 100, 'r', 1)
+                        Log.e(
+                            "Selected ZIP archive contains a bad file:", test_result)
                         self.importNow.setEnabled(True)
                         self.importCancel.setEnabled(False)
                         return
-                    local_data = os.path.join(os.getcwd(), Constants.log_export_path)
+                    local_data = os.path.join(
+                        os.getcwd(), Constants.log_export_path)
                     Log.i(f"Import from {path} to {local_data}")
                     all_info = f.infolist()
                     zippedFolders = []
@@ -830,26 +873,31 @@ class Ui_Export(QtWidgets.QWidget):
                         doc = minidom.parseString(xml_str)
                         metrics = doc.getElementsByTagName("run_info")
                         for m in metrics:
-                            device = m.getAttribute("device") if m.hasAttribute("device") else zip_filename
+                            device = m.getAttribute("device") if m.hasAttribute(
+                                "device") else zip_filename
                         if xf.filename.find(Constants.log_export_path) >= 0:
-                            Log.e(f"XML {xf.filename} did not provide the device name. Using cwd() since full-path is in ZIP.")
+                            Log.e(
+                                f"XML {xf.filename} did not provide the device name. Using cwd() since full-path is in ZIP.")
                             exp = os.getcwd()
-                        elif xfp.count('/') == 0: # or not device in xfp:
+                        elif xfp.count('/') == 0:  # or not device in xfp:
                             if device == zip_filename:
-                                Log.e(f"XML {xf.filename} did not provide the device name. Using \"{device}\" as a fallback.")
+                                Log.e(
+                                    f"XML {xf.filename} did not provide the device name. Using \"{device}\" as a fallback.")
                             exp = os.path.join(local_data, device)
                         else:
                             exp = local_data
                         export_to[xfp] = exp
-                    for idx,xf in enumerate(zippedFiles):
+                    for idx, xf in enumerate(zippedFiles):
                         xfp = os.path.split(xf.filename)[0]
                         if export_to.get(xfp) == None:
                             if xf.filename.find(Constants.log_export_path) >= 0:
-                                Log.e(f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
+                                Log.e(
+                                    f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
                                 exp = os.getcwd()
                             elif xfp.count('/') == 0:
                                 device = zip_filename
-                                Log.e(f"XML missing for run {xfp}. Using \"{device}\" as a fallback.")
+                                Log.e(
+                                    f"XML missing for run {xfp}. Using \"{device}\" as a fallback.")
                                 exp = os.path.join(local_data, device)
                             else:
                                 exp = local_data
@@ -859,16 +907,19 @@ class Ui_Export(QtWidgets.QWidget):
                     for x, zf in enumerate(zippedFiles):
                         pct = min(99, max(1, int(100 * (x + 1) / num_files)))
                         if abort():
-                            self.progress.emit("<b>Import {}: Operation cancelled.</b><br/>Parital import was performed.".format(zip_src), pct, 'b', 1)
+                            self.progress.emit(
+                                "<b>Import {}: Operation cancelled.</b><br/>Parital import was performed.".format(zip_src), pct, 'b', 1)
                             Log.w("Import thread killed prematurely!")
                             return
                         sp0 = os.path.split(zf.filename)
                         run = os.path.split(sp0[0])[1]
                         try:
-                            if run == "_unnamed": run = sp0[1][0:-4]
+                            if run == "_unnamed":
+                                run = sp0[1][0:-4]
                         except:
                             pass
-                        self.progress.emit("<b>Importing {}... please wait...</b><br/>Importing '{}'".format(zip_src, run), pct, 'g', 1)
+                        self.progress.emit(
+                            "<b>Importing {}... please wait...</b><br/>Importing '{}'".format(zip_src, run), pct, 'g', 1)
                         d = os.path.join(os.getcwd(), zf.filename)
                         allow_copy = False
                         if self.btnGroup4.checkedId() == 1:
@@ -876,22 +927,29 @@ class Ui_Export(QtWidgets.QWidget):
                         elif not os.path.exists(d):
                             allow_copy = True
                         elif self.btnGroup4.checkedId() == 2:
-                            last_modified = datetime.datetime(*zf.date_time).astimezone()
-                            exist_modified = datetime.datetime.fromtimestamp(os.stat(d).st_mtime, tz=datetime.timezone.utc)
-                            if last_modified - exist_modified > datetime.timedelta(seconds=2): # 2 sec resolution on zf.date_time
+                            last_modified = datetime.datetime(
+                                *zf.date_time).astimezone()
+                            exist_modified = datetime.datetime.fromtimestamp(
+                                os.stat(d).st_mtime, tz=datetime.timezone.utc)
+                            # 2 sec resolution on zf.date_time
+                            if last_modified - exist_modified > datetime.timedelta(seconds=2):
                                 allow_copy = True
-                        #elif self.btnGroup4.checkedId() == 4:
+                        # elif self.btnGroup4.checkedId() == 4:
                         #    Log.w("User selected to cancel the copy operation.")
                         item = zf.filename
                         if allow_copy:
-                            if item.endswith(".xml"): copied += 1
+                            if item.endswith(".xml"):
+                                copied += 1
                             d = f.extract(zf, export_to.get(sp0[0]))
-                            last_modified = datetime.datetime(*zf.date_time).astimezone()
-                            epoch = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
+                            last_modified = datetime.datetime(
+                                *zf.date_time).astimezone()
+                            epoch = datetime.datetime.fromtimestamp(
+                                0, tz=datetime.timezone.utc)
                             file_time = (last_modified - epoch).total_seconds()
                             os.utime(d, (file_time, file_time))
                         else:
-                            if item.endswith(".xml"): skipped += 1
+                            if item.endswith(".xml"):
+                                skipped += 1
             else:
 
                 def find_xml_files(directory):
@@ -908,7 +966,8 @@ class Ui_Export(QtWidgets.QWidget):
                 #     path = os.path.join(path, Constants.log_export_path)
                 #     if not os.path.exists(path): raise ValueError("No logged data root found in archive.")
                 # relative = path[path.rindex(Constants.log_export_path):]
-                local_data = os.path.join(os.getcwd(), Constants.log_export_path) #relative)
+                local_data = os.path.join(
+                    os.getcwd(), Constants.log_export_path)  # relative)
                 archive_filename = os.path.split(path)[1]
                 xml_files, all_files = find_xml_files(path)
                 # Log.w(f"xmls: {xml_files}")
@@ -917,20 +976,24 @@ class Ui_Export(QtWidgets.QWidget):
                     xfp = os.path.split(xf)[0]
                     relative = xfp.replace(path, "")
                     if len(relative) > 0:
-                        if relative[0] == Constants.slash: # trim leading slash
+                        if relative[0] == Constants.slash:  # trim leading slash
                             relative = relative[1:]
-                        if relative[-1] == Constants.slash: # trim trailing slash
+                        if relative[-1] == Constants.slash:  # trim trailing slash
                             relative = relative[:-1]
                     doc = minidom.parse(xf)
                     metrics = doc.getElementsByTagName("run_info")
                     for m in metrics:
                         found_dev = m.hasAttribute("device")
-                        device = m.getAttribute("device") if m.hasAttribute("device") else archive_filename
-                        name = m.getAttribute("name") if m.hasAttribute("name") else os.path.split(xfp)[1]
+                        device = m.getAttribute("device") if m.hasAttribute(
+                            "device") else archive_filename
+                        name = m.getAttribute("name") if m.hasAttribute(
+                            "name") else os.path.split(xfp)[1]
                     if relative.find(Constants.log_export_path) >= 0:
-                        Log.e(f"XML {xf} did not provide the device name. Using cwd() since full-path is in ZIP.")
+                        Log.e(
+                            f"XML {xf} did not provide the device name. Using cwd() since full-path is in ZIP.")
                         exp = os.path.join(os.getcwd(), relative)
-                    elif relative.count(Constants.slash) == 0: # or not device in xfp:
+                    # or not device in xfp:
+                    elif relative.count(Constants.slash) == 0:
                         if not found_dev:
                             if name == archive_filename:
                                 run_path = os.path.join(path, name)
@@ -938,27 +1001,31 @@ class Ui_Export(QtWidgets.QWidget):
                                 if os.path.exists(run_path):
                                     # the archive has the same name as the run, nothing to do
                                     pass
-                                else: # they selected a run within an archive to import, the archive name is one level up
-                                    Log.d("A run within an archive folder was selected. The archive name is one higher in the tree.")
-                                    archive_filename = os.path.split(os.path.split(path)[0])[1] # take one level up
+                                else:  # they selected a run within an archive to import, the archive name is one level up
+                                    Log.d(
+                                        "A run within an archive folder was selected. The archive name is one higher in the tree.")
+                                    archive_filename = os.path.split(os.path.split(path)[0])[
+                                        1]  # take one level up
                                     device = archive_filename
-                            Log.e(f"XML {xf} did not provide the device name. Using \"{device}\" as a fallback.")
+                            Log.e(
+                                f"XML {xf} did not provide the device name. Using \"{device}\" as a fallback.")
                         exp = os.path.join(local_data, device, name)
                     else:
                         exp = os.path.join(local_data, relative)
                     export_to[xfp] = exp
 
-                for idx,xf in enumerate(all_files):
+                for idx, xf in enumerate(all_files):
                     xfp = os.path.split(xf)[0]
                     relative = xfp.replace(path, "")
                     if len(relative) > 0:
-                        if relative[0] == Constants.slash: # trim leading slash
+                        if relative[0] == Constants.slash:  # trim leading slash
                             relative = relative[1:]
-                        if relative[-1] == Constants.slash: # trim trailing slash
+                        if relative[-1] == Constants.slash:  # trim trailing slash
                             relative = relative[:-1]
                     if export_to.get(xfp) == None:
                         if relative.find(Constants.log_export_path) >= 0:
-                            Log.e(f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
+                            Log.e(
+                                f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
                             exp = os.path.join(os.getcwd(), relative)
                         elif relative.count(Constants.slash) == 0:
                             device = archive_filename
@@ -969,39 +1036,48 @@ class Ui_Export(QtWidgets.QWidget):
                                 if os.path.exists(run_path):
                                     # the archive has the same name as the run, nothing to do
                                     pass
-                                else: # they selected a run within an archive to import, the archive name is one level up
-                                    Log.d("A run within an archive folder was selected. The archive name is one higher in the tree.")
-                                    archive_filename = os.path.split(os.path.split(path)[0])[1] # take one level up
+                                else:  # they selected a run within an archive to import, the archive name is one level up
+                                    Log.d(
+                                        "A run within an archive folder was selected. The archive name is one higher in the tree.")
+                                    archive_filename = os.path.split(os.path.split(path)[0])[
+                                        1]  # take one level up
                                     device = archive_filename
-                            Log.e(f"XML missing for run {xfp}. Using \"{device}\" as a fallback.")
+                            Log.e(
+                                f"XML missing for run {xfp}. Using \"{device}\" as a fallback.")
 
                             exp = os.path.join(local_data, device, name)
                         else:
                             exp = os.path.join(local_data, relative)
                         export_to[xfp] = exp
                 Log.i(f"Import from {path} to {local_data}")
-                for key,val in export_to.items():
+                for key, val in export_to.items():
                     path = key
                     local_data = val
-                    copied, skipped = self.copytree(path, local_data, self.btnGroup4.checkedId())
+                    copied, skipped = self.copytree(
+                        path, local_data, self.btnGroup4.checkedId())
 
-            history_path = os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
+            history_path = os.path.join(
+                os.getcwd(), Constants.log_export_path, "export_history.log")
             if os.path.exists(history_path):
                 with open(history_path, 'r') as f:
                     log_lines = f.read()
             else:
                 log_lines = ""
             with open(history_path, 'w') as f:
-                f.write(f"<b>Imported {copied} run(s) at {str(datetime.datetime.now()).split('.')[0]}</b><br/>\n")
+                f.write(
+                    f"<b>Imported {copied} run(s) at {str(datetime.datetime.now()).split('.')[0]}</b><br/>\n")
                 f.write(f"<small>from \"{path}\" <br/>\n")
                 f.write("to \"{}\"</small><br/>\n".format(local_data))
                 f.write(f"<small>Settings: ")
-                f.write("Import from {}, ".format("ZIP" if ".zip" in path else "Folder"))
-                f.write(f"{self.btnGroup4.checkedButton().text()} existing files</small><br/>\n")
+                f.write("Import from {}, ".format(
+                    "ZIP" if ".zip" in path else "Folder"))
+                f.write(
+                    f"{self.btnGroup4.checkedButton().text()} existing files</small><br/>\n")
                 if skipped > 0:
-                    f.write(f"<small>Skipped {skipped} run(s) since overwrites were disabled.</small><br/>\n")
+                    f.write(
+                        f"<small>Skipped {skipped} run(s) since overwrites were disabled.</small><br/>\n")
                 f.write(f"<br/>\n")
-                f.write(log_lines) # pre-pend data to log file
+                f.write(log_lines)  # pre-pend data to log file
             finished_msg = f"<b>Imported {copied} run(s) from archive!</b><br/>Import process complete."
             if skipped > 0:
                 finished_msg += f" {skipped} run(s) were skipped."
@@ -1014,11 +1090,11 @@ class Ui_Export(QtWidgets.QWidget):
 
     def export(self):
         self.stop_threads = False
-        if self.btnGroup5.checkedId() == 0: # all, filtering off
-            self.filter_min = 0 # no filter
-        elif self.btnGroup5.checkedId() == 1: # today
+        if self.btnGroup5.checkedId() == 0:  # all, filtering off
+            self.filter_min = 0  # no filter
+        elif self.btnGroup5.checkedId() == 1:  # today
             self.filter_min = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
-        elif self.btnGroup5.checkedId() == 2: # last x something
+        elif self.btnGroup5.checkedId() == 2:  # last x something
             if self.filterNumDays.hasAcceptableInput():
                 date_num = int(self.filterNumDays.text())
                 if self.filterUnits.currentText() == "Hours":
@@ -1028,21 +1104,26 @@ class Ui_Export(QtWidgets.QWidget):
                 elif self.filterUnits.currentText() == "Weeks":
                     timedelta = datetime.timedelta(weeks=date_num)
                 else:
-                    Log.e(f"Input Error: \"Export by date\" units \"{self.filterUnits.currentText()}\" are not recognized.")
+                    Log.e(
+                        f"Input Error: \"Export by date\" units \"{self.filterUnits.currentText()}\" are not recognized.")
                     return
                 self.filter_min = datetime.datetime.utcnow() - timedelta
             else:
-                Log.e(f"Input Error: \"Export by date\" range must be between 1 and 31. You entered \"{self.filterNumDays.text()}\".")
+                Log.e(
+                    f"Input Error: \"Export by date\" range must be between 1 and 31. You entered \"{self.filterNumDays.text()}\".")
                 return
         if self.exportAsZIP.isChecked() and len(self.exportNameTxt.text()) == 0:
             self.generateExportName()
             default_filename = self.exportNameTxt.text()
-            export_name, ok = QtWidgets.QInputDialog.getText(None, 'Export Name', 'File name for this export catalog:', text=default_filename)
+            export_name, ok = QtWidgets.QInputDialog.getText(
+                None, 'Export Name', 'File name for this export catalog:', text=default_filename)
             if not ok:
-                Log.w("User cancelled file name request for exporting a ZIP file archive.")
+                Log.w(
+                    "User cancelled file name request for exporting a ZIP file archive.")
                 return
             self.exportNameTxt.setText(export_name)
-        export = Thread(target=self.exportTask, args=(lambda:self.stop_threads,self.exportNameTxt.text(),self.drive,self.filter_min,))
+        export = Thread(target=self.exportTask, args=(
+            lambda: self.stop_threads, self.exportNameTxt.text(), self.drive, self.filter_min,))
         export.start()
 
     def cancel(self):
@@ -1053,8 +1134,8 @@ class Ui_Export(QtWidgets.QWidget):
     def exportTask(self, abort, name, output_folder, date_filter):
         self.freeze_gui.emit(False)
         try:
-            #opft = os.path.split(output_folder)
-            #if opft[1] == Constants.log_export_path:
+            # opft = os.path.split(output_folder)
+            # if opft[1] == Constants.log_export_path:
             #    output_folder = opft[0] # don't nest "logged_data" folders
             output_folder = output_folder.replace("/", Constants.slash)
             if len(output_folder) > 2:
@@ -1064,23 +1145,28 @@ class Ui_Export(QtWidgets.QWidget):
             drive_or_folder = "USB drive" if self.chk1 else "folder"
             data_path = os.path.join(os.getcwd(), Constants.log_export_path)
             if Constants.log_export_path in output_folder:
-                export_path = os.path.join(output_folder[0:output_folder.rindex(Constants.log_export_path)], Constants.log_export_path)
+                export_path = os.path.join(output_folder[0:output_folder.rindex(
+                    Constants.log_export_path)], Constants.log_export_path)
             else:
-                export_path = os.path.join(output_folder, name, Constants.log_export_path)
-            #Log.d(output_folder, export_path)
+                export_path = os.path.join(
+                    output_folder, name, Constants.log_export_path)
+            # Log.d(output_folder, export_path)
             if self.exportAsZIP.isChecked():
                 export_folder = os.path.split(export_path)[0]
                 zip_path = export_folder + ".zip"
                 if os.path.exists(export_folder):
-                    Log.w(TAG1, "WARN: A folder with the same Export Name already exists at this location")
+                    Log.w(
+                        TAG1, "WARN: A folder with the same Export Name already exists at this location")
                 if os.path.exists(zip_path) and self.btnGroup2.checkedId() != 1:
                     if os.path.exists(export_folder):
-                        self.progress.emit("<b>[{}] Export to {}: Folder already exists.</b><br/>Please choose a different Export Name.".format(self.drive, drive_or_folder), 100, 'r', 0)
+                        self.progress.emit("<b>[{}] Export to {}: Folder already exists.</b><br/>Please choose a different Export Name.".format(
+                            self.drive, drive_or_folder), 100, 'r', 0)
                         Log.w("Export thread killed prematurely!")
                         return
                     with zipfile.ZipFile(zip_path, 'r') as f:
                         Log.i(TAG1, "Expanding existing ZIP archive")
-                        self.progress.emit("<b>Expanding existing ZIP archive...</b><br/>please wait...", 0, 'g', 0)
+                        self.progress.emit(
+                            "<b>Expanding existing ZIP archive...</b><br/>please wait...", 0, 'g', 0)
                         all_info = f.infolist()
                         zippedFolders = []
                         zippedFiles = []
@@ -1091,42 +1177,52 @@ class Ui_Export(QtWidgets.QWidget):
                                 zippedFiles.append(info)
                         for x, zf in enumerate(zippedFiles):
                             d = f.extract(zf, export_folder)
-                            last_modified = datetime.datetime(*zf.date_time).astimezone()
-                            epoch = datetime.datetime.fromtimestamp(0, tz=datetime.timezone.utc)
-                            Log.w(f"s_tz = {last_modified.tzinfo}, d_tz = {epoch.tzinfo}")
+                            last_modified = datetime.datetime(
+                                *zf.date_time).astimezone()
+                            epoch = datetime.datetime.fromtimestamp(
+                                0, tz=datetime.timezone.utc)
+                            Log.w(
+                                f"s_tz = {last_modified.tzinfo}, d_tz = {epoch.tzinfo}")
                             file_time = (last_modified - epoch).total_seconds()
                             os.utime(d, (file_time, file_time))
-            Log.i(TAG1, f"[{self.drive}] Exporting to {drive_or_folder} {export_path}...")
-            self.progress.emit(f"[{self.drive}] Exporting to {drive_or_folder}... please wait...", 0, 'g', 0)
+            Log.i(
+                TAG1, f"[{self.drive}] Exporting to {drive_or_folder} {export_path}...")
+            self.progress.emit(
+                f"[{self.drive}] Exporting to {drive_or_folder}... please wait...", 0, 'g', 0)
             copied = 0
             skipped = 0
             select_device, select_run = os.path.split(self.source_subfolder)
             if select_device == '':
                 select_device = select_run
                 select_run = ''
-            for folder, devices, logs in os.walk(data_path): # walking through the directory tree
+            # walking through the directory tree
+            for folder, devices, logs in os.walk(data_path):
                 y1 = len(devices)
                 z1 = 0
                 for x1, device in enumerate(devices):
                     if select_device != '':
-                        if select_device != device: continue
+                        if select_device != device:
+                            continue
                         y1 = 1
-                        z1 = x1 # only exporting a single device folder
+                        z1 = x1  # only exporting a single device folder
                     device_path = os.path.join(data_path, device)
                     for folder, runs, files in os.walk(device_path):
                         y2 = len(runs)
                         z2 = 0
                         for x2, run in enumerate(runs):
                             if select_run != '':
-                                if select_run != run: continue
+                                if select_run != run:
+                                    continue
                                 y2 = 1
-                                z2 = x2 - 0.5 # only exporting a single run folder
-                            pct = min(99, max(1, int(100 * (((x1 - z1) + ((x2 - z2) / y2)) / y1))))
+                                z2 = x2 - 0.5  # only exporting a single run folder
+                            pct = min(
+                                99, max(1, int(100 * (((x1 - z1) + ((x2 - z2) / y2)) / y1))))
                             if abort():
-                                self.progress.emit("<b>[{}] Export to {}: Operation cancelled.</b><br/>Parital export was performed.".format(self.drive, drive_or_folder), pct, 'b', 0)
+                                self.progress.emit("<b>[{}] Export to {}: Operation cancelled.</b><br/>Parital export was performed.".format(
+                                    self.drive, drive_or_folder), pct, 'b', 0)
                                 Log.w("Export thread killed prematurely!")
                                 return
-                            #Log.d(TAG1, "{}% - [{}] Exporting to {} \"{}\"...".format(pct, self.drive, drive_or_folder, run))
+                            # Log.d(TAG1, "{}% - [{}] Exporting to {} \"{}\"...".format(pct, self.drive, drive_or_folder, run))
                             t_run = run
                             is_unnamed = False
                             try:
@@ -1135,21 +1231,26 @@ class Ui_Export(QtWidgets.QWidget):
                                     t_run = files[0][0:-4]
                             except:
                                 pass
-                            self.progress.emit("<b>[{}] Exporting to {}... please wait...</b><br/>Exporting '{}'".format(self.drive, drive_or_folder, t_run), pct, 'g', 0)
-                            if is_unnamed and not self.exportUnnamed.isChecked(): continue # skip "_unnamed" runs if not opted in for including them
+                            self.progress.emit("<b>[{}] Exporting to {}... please wait...</b><br/>Exporting '{}'".format(
+                                self.drive, drive_or_folder, t_run), pct, 'g', 0)
+                            if is_unnamed and not self.exportUnnamed.isChecked():
+                                continue  # skip "_unnamed" runs if not opted in for including them
                             src = os.path.join(data_path, device, run)
                             dst = os.path.join(export_path, device, run)
                             if not os.path.exists(src):
                                 Log.w(f"Skipping non-existent folder: {src}")
                                 continue
-                            copied, skipped = self.copytree(src, dst, self.btnGroup2.checkedId(), None, copied, skipped, date_filter)
+                            copied, skipped = self.copytree(
+                                src, dst, self.btnGroup2.checkedId(), None, copied, skipped, date_filter)
             # remove nested folders
             Log.d(f"Checking for nested folders at {export_path}")
             top_level = os.path.split(export_path)[0]
-            path = export_path # includes 'logged_data'
+            path = export_path  # includes 'logged_data'
             while os.path.exists(path):
-                files = [file for file in os.listdir(path) if not os.path.isdir(os.path.join(path, file))]
-                folders = [file for file in os.listdir(path) if os.path.isdir(os.path.join(path, file))]
+                files = [file for file in os.listdir(
+                    path) if not os.path.isdir(os.path.join(path, file))]
+                folders = [file for file in os.listdir(
+                    path) if os.path.isdir(os.path.join(path, file))]
                 num_files = len(files)
                 num_folders = len(folders)
                 if num_files == 0 and num_folders == 1:
@@ -1157,13 +1258,16 @@ class Ui_Export(QtWidgets.QWidget):
                     Log.d(f"Moving into path: {path}")
                     continue
                 else:
-                    src = path + Constants.slash # force to directory, not a file
+                    src = path + Constants.slash  # force to directory, not a file
                     if num_files > 1:
-                        dst = os.path.join(top_level, os.path.split(path)[1]) + Constants.slash # force to directory, not a file
+                        # force to directory, not a file
+                        dst = os.path.join(top_level, os.path.split(path)[
+                                           1]) + Constants.slash
                     else:
                         dst = top_level
                     Log.d(f"Moving nested folders from {src} to {dst}...")
-                    Log.d(f"Deleting empty folder structure at {export_path}...")
+                    Log.d(
+                        f"Deleting empty folder structure at {export_path}...")
                     # Check if the destination folder already exists
                     if not os.path.exists(dst):
                         Log.d(f"Making directory: {dst}")
@@ -1173,10 +1277,12 @@ class Ui_Export(QtWidgets.QWidget):
                         self.copytree(src, dst, self.btnGroup2.checkedId())
                         shutil.rmtree(export_path)
                     else:
-                        Log.d("NOTICE: Nested directory structure points to itself. Leaving as-is.")
-                    break # we've removed all the nesting we can
+                        Log.d(
+                            "NOTICE: Nested directory structure points to itself. Leaving as-is.")
+                    break  # we've removed all the nesting we can
             if self.exportAsZIP.isChecked():
-                self.progress.emit("<b>Creating ZIP Archive...</b><br/>This may take a while for large exports...", 99, 'g', 0)
+                self.progress.emit(
+                    "<b>Creating ZIP Archive...</b><br/>This may take a while for large exports...", 99, 'g', 0)
                 export_path = os.path.split(export_path)[0]
                 zip_path = export_path + ".zip"
                 if os.path.exists(zip_path):
@@ -1185,28 +1291,36 @@ class Ui_Export(QtWidgets.QWidget):
                 shutil.rmtree(export_path)
             Log.i(TAG1, "DONE - Exported {} run(s) to {}.".format(copied, export_path))
             if skipped > 0:
-                reason = "they already existed in the output location" if self.btnGroup5.checkedId() == 0 else "date filtering was enabled"
+                reason = "they already existed in the output location" if self.btnGroup5.checkedId(
+                ) == 0 else "date filtering was enabled"
                 Log.i(TAG1, "Skipped {} run(s) because {}".format(skipped, reason))
 
-            history_path = os.path.join(os.getcwd(), Constants.log_export_path, "export_history.log")
+            history_path = os.path.join(
+                os.getcwd(), Constants.log_export_path, "export_history.log")
             if os.path.exists(history_path):
                 with open(history_path, 'r') as f:
                     log_lines = f.read()
             else:
                 log_lines = ""
             with open(history_path, 'w') as f:
-                f.write(f"<b>Exported {copied} run(s) at {str(datetime.datetime.now()).split('.')[0]}</b><br/>\n")
+                f.write(
+                    f"<b>Exported {copied} run(s) at {str(datetime.datetime.now()).split('.')[0]}</b><br/>\n")
                 f.write(f"<small>from \"{data_path}\" <br/>\n")
-                f.write("to \"{}{}\"</small><br/>\n".format(export_path, ".zip" if self.exportAsZIP.isChecked() else ""))
+                f.write("to \"{}{}\"</small><br/>\n".format(export_path,
+                        ".zip" if self.exportAsZIP.isChecked() else ""))
                 f.write(f"<small>Settings: ")
-                f.write("Export {}{}, ".format(self.btnGroup3.checkedButton().text(), self.selectRun.text() if self.selection.isChecked() else ""))
+                f.write("Export {}{}, ".format(self.btnGroup3.checkedButton().text(
+                ), self.selectRun.text() if self.selection.isChecked() else ""))
                 f.write(f"{self.btnGroup1.checkedButton().text()}, ")
-                f.write(f"{self.btnGroup2.checkedButton().text()} existing files</small><br/>\n")
+                f.write(
+                    f"{self.btnGroup2.checkedButton().text()} existing files</small><br/>\n")
                 if skipped > 0:
-                    reason = "overwrites were disabled" if self.btnGroup5.checkedId() == 0 else "filtering was enabled"
-                    f.write(f"<small>Skipped {skipped} run(s) since {reason}.</small><br/>\n")
+                    reason = "overwrites were disabled" if self.btnGroup5.checkedId(
+                    ) == 0 else "filtering was enabled"
+                    f.write(
+                        f"<small>Skipped {skipped} run(s) since {reason}.</small><br/>\n")
                 f.write(f"<br/>\n")
-                f.write(log_lines) # pre-pend data to log file
+                f.write(log_lines)  # pre-pend data to log file
             finished_msg = f"[{self.drive}] Exported to {drive_or_folder}!"
             if drive_or_folder != "folder":
                 finished_msg += " Ready to eject."
@@ -1227,7 +1341,8 @@ class Ui_Export(QtWidgets.QWidget):
             s = os.path.join(src, item)
             d = os.path.join(dst, item)
             if os.path.isdir(s):
-                copied, skipped = self.copytree(s, d, symlinks, ignore, copied, skipped, date_filter)
+                copied, skipped = self.copytree(
+                    s, d, symlinks, ignore, copied, skipped, date_filter)
             else:
                 allow_copy = False
                 if symlinks == 1:
@@ -1235,34 +1350,42 @@ class Ui_Export(QtWidgets.QWidget):
                 elif not os.path.exists(d):
                     allow_copy = True
                 elif symlinks == 2:
-                    last_modified = datetime.datetime.utcfromtimestamp(os.stat(s).st_mtime)
-                    exist_modified = datetime.datetime.utcfromtimestamp(os.stat(d).st_mtime)
-                    if last_modified - exist_modified > datetime.timedelta(seconds=2): # 2 sec resolution on zf.date_time
+                    last_modified = datetime.datetime.utcfromtimestamp(
+                        os.stat(s).st_mtime)
+                    exist_modified = datetime.datetime.utcfromtimestamp(
+                        os.stat(d).st_mtime)
+                    # 2 sec resolution on zf.date_time
+                    if last_modified - exist_modified > datetime.timedelta(seconds=2):
                         allow_copy = True
                 if allow_copy and date_filter != 0:
                     # check all files in this folder for recency filtering
                     path = src
-                    if "_unnamed" in path: # check this file only, it's an orphan
-                        last_modified = datetime.datetime.utcfromtimestamp(os.stat(s).st_mtime)
+                    if "_unnamed" in path:  # check this file only, it's an orphan
+                        last_modified = datetime.datetime.utcfromtimestamp(
+                            os.stat(s).st_mtime)
                     else:
-                        files = [file for file in os.listdir(path) if not os.path.isdir(os.path.join(path, file))]
+                        files = [file for file in os.listdir(
+                            path) if not os.path.isdir(os.path.join(path, file))]
                         epoch = datetime.datetime.utcfromtimestamp(0)
                         last_modified = epoch
                         for f in files:
                             f_path = os.path.join(path, f)
-                            st_mtime = datetime.datetime.utcfromtimestamp(os.stat(f_path).st_mtime)
+                            st_mtime = datetime.datetime.utcfromtimestamp(
+                                os.stat(f_path).st_mtime)
                             if st_mtime > last_modified:
                                 last_modified = st_mtime
-                    if last_modified < date_filter: # file older than filter
+                    if last_modified < date_filter:  # file older than filter
                         allow_copy = False
 
                 if allow_copy:
                     if not os.path.exists(dst):
                         os.makedirs(dst)
-                    if item.endswith(".xml"): copied += 1
+                    if item.endswith(".xml"):
+                        copied += 1
                     shutil.copy2(s, d)
                 else:
-                    if item.endswith(".xml"): skipped += 1
+                    if item.endswith(".xml"):
+                        skipped += 1
         return copied, skipped
 
     def detect(self):
@@ -1270,7 +1393,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.chk1 = False
         self.chk2 = True
         i = 0
-        while (self.checkMode != 2 and i < 30): # 3 sec timeout
+        while (self.checkMode != 2 and i < 30):  # 3 sec timeout
             time.sleep(0.1)
             i += 1
         self.chk1 = True
@@ -1278,29 +1401,35 @@ class Ui_Export(QtWidgets.QWidget):
 
     def eject(self):
         self.stop_threads = False
-        eject = Thread(target=self.ejectTask, args=(lambda:self.stop_threads,))
+        eject = Thread(target=self.ejectTask,
+                       args=(lambda: self.stop_threads,))
         eject.start()
 
     def ejectTask(self, abort):
         self.freeze_gui.emit(False)
         try:
             Log.i(TAG1, f"[{self.drive}] USB drive ejecting...")
-            self.progress.emit(f"[{self.drive}] USB drive ejecting... please wait...", 33, 'b', 0)
+            self.progress.emit(
+                f"[{self.drive}] USB drive ejecting... please wait...", 33, 'b', 0)
             self.confirmed = True
             time.sleep(1)
             if abort():
-                self.progress.emit(f"<b>[{self.drive}] USB drive eject: Operation cancelled.</b>", 0, 'b', 0)
+                self.progress.emit(
+                    f"<b>[{self.drive}] USB drive eject: Operation cancelled.</b>", 0, 'b', 0)
                 Log.w("Eject task aborted prematurely!")
                 return
             # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
-            subprocess.call('powershell $driveEject = New-Object -comObject Shell.Application; $driveEject.Namespace(17).ParseName("""{}""").InvokeVerb("""Eject""")'.format(self.drive), shell=True)
+            subprocess.call(
+                'powershell $driveEject = New-Object -comObject Shell.Application; $driveEject.Namespace(17).ParseName("""{}""").InvokeVerb("""Eject""")'.format(self.drive), shell=True)
             if self.drive == None:
                 tbd = self.tb.text().split()[0]
                 Log.i(TAG1, f"[{tbd}] USB drive ejected.")
-                self.progress.emit(f"[{tbd}] USB drive ejected. Safe to remove.", 100, 'b', 0)
+                self.progress.emit(
+                    f"[{tbd}] USB drive ejected. Safe to remove.", 100, 'b', 0)
             else:
                 Log.e(TAG1, f"[{self.drive}] USB drive eject failed!")
-                self.progress.emit(f"[{self.drive}] USB drive eject failed! Try again.", 66, 'r', 0)
+                self.progress.emit(
+                    f"[{self.drive}] USB drive eject failed! Try again.", 66, 'r', 0)
         except Exception as e:
             Log.e(TAG1, "Eject error: {}".format(str(e)))
             self.progress.emit("Error ejecting USB drive!", 100, 'r', 0)
@@ -1310,17 +1439,20 @@ class Ui_Export(QtWidgets.QWidget):
         self.stop_threads = False
         if not self.exported:
             if PopUp.question(self, "Confirm Erase", "You have not exported local data yet.\nAre you sure you want to erase it?"):
-                Log.w(TAG1, "Erasing local data without exporting first.\n ***Local data can be recovered from the Recycle Bin.***")
+                Log.w(
+                    TAG1, "Erasing local data without exporting first.\n ***Local data can be recovered from the Recycle Bin.***")
             else:
                 Log.w(TAG1, "Erase Aborted by User.")
                 return
         else:
             if PopUp.question(self, "Confirm Erase", "Are you sure you want to erase all local data?"):
-                Log.i(TAG1, "Erasing local data after exporting first.\n ***Local data can be recovered from the Recycle Bin.***")
+                Log.i(
+                    TAG1, "Erasing local data after exporting first.\n ***Local data can be recovered from the Recycle Bin.***")
             else:
                 Log.w(TAG1, "Erase Aborted by User.")
                 return
-        erase = Thread(target=self.eraseTask, args=(lambda:self.stop_threads,))
+        erase = Thread(target=self.eraseTask,
+                       args=(lambda: self.stop_threads,))
         erase.start()
 
     def eraseTask(self, abort):
@@ -1328,8 +1460,10 @@ class Ui_Export(QtWidgets.QWidget):
         try:
             data_path = os.path.join(os.getcwd(), Constants.log_export_path)
             Log.i(TAG1, "Erasing local data...")
-            self.progress.emit("Erasing local data... please wait...", 0, 'r', 0)
-            for folder, devices, logs in os.walk(data_path): # walking through the directory tree
+            self.progress.emit(
+                "Erasing local data... please wait...", 0, 'r', 0)
+            # walking through the directory tree
+            for folder, devices, logs in os.walk(data_path):
                 y1 = len(devices)
                 for x1, device in enumerate(devices):
                     device_path = os.path.join(data_path, device)
@@ -1338,11 +1472,14 @@ class Ui_Export(QtWidgets.QWidget):
                         for x2, run in enumerate(runs):
                             pct = int(100 * ((x1 + (x2 / y2)) / y1))
                             if abort():
-                                self.progress.emit("<b>Erase local data: Operation cancelled.</b><br/>See Recycle Bin to restore deleted runs.", pct, 'b', 0)
-                                Log.w("Erase cancelled by user. Recover any deleted items from your Recycle Bin.")
+                                self.progress.emit(
+                                    "<b>Erase local data: Operation cancelled.</b><br/>See Recycle Bin to restore deleted runs.", pct, 'b', 0)
+                                Log.w(
+                                    "Erase cancelled by user. Recover any deleted items from your Recycle Bin.")
                                 return
-                            #Log.d(TAG1, "{}% - Erasing local data \"{}\"...".format(pct, run))
-                            self.progress.emit("<b>Erasing local data... please wait...</b><br/>Erasing '{}'".format(run), pct, 'r', 0)
+                            # Log.d(TAG1, "{}% - Erasing local data \"{}\"...".format(pct, run))
+                            self.progress.emit(
+                                "<b>Erasing local data... please wait...</b><br/>Erasing '{}'".format(run), pct, 'r', 0)
                             run_path = os.path.join(data_path, device, run)
                             send2trash.send2trash(run_path)
                     send2trash.send2trash(device_path)
@@ -1354,22 +1491,27 @@ class Ui_Export(QtWidgets.QWidget):
         self.freeze_gui.emit(True)
 
     def setProgress(self, label, pct, color, tab=0):
-        if color == 'r': c = 'cc0000'
-        if color == 'g': c = '00cc00'
-        if color == 'b': c = '0000cc'
-        if pct == 0:     c = 'cccccc'
+        if color == 'r':
+            c = 'cc0000'
+        if color == 'g':
+            c = '00cc00'
+        if color == 'b':
+            c = '0000cc'
+        if pct == 0:
+            c = 'cccccc'
         if tab == 0:
             tb = self.tb
             pb = self.pb
         else:
             tb = self.tb1
             pb = self.pb1
-        if len(label): # not None or ''
+        if len(label):  # not None or ''
             tb.setText(label)
-        if 0 < pct < 100: # set for 1% to 99%
-            pb.setStyleSheet(f'background: qlineargradient(x1:{(pct-1)/100} y1:0, x2:{pct/100} y2:0, stop:0 #{c}, stop:1 #cccccc); border: 1px solid #cccccc;')
+        if 0 < pct < 100:  # set for 1% to 99%
+            pb.setStyleSheet(
+                f'background: qlineargradient(x1:{(pct-1)/100} y1:0, x2:{pct/100} y2:0, stop:0 #{c}, stop:1 #cccccc); border: 1px solid #cccccc;')
             pb.setText(f'{pct}%')
-        else: # set for 0% and/or 100%
+        else:  # set for 0% and/or 100%
             pb.setStyleSheet(f'background: #{c}; border: 1px solid #cccccc;')
             pb.clear()
 

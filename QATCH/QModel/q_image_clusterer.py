@@ -249,7 +249,8 @@ class QClusterer:
         for k in tqdm(k_values, desc="<<Optimal K>>"):
             kmeans = KMeans(n_clusters=k)
             predicted_labels = kmeans.fit_predict(features)
-            silhouette_scores.append(silhouette_score(features, predicted_labels))
+            silhouette_scores.append(
+                silhouette_score(features, predicted_labels))
 
         plt.figure(figsize=(10, 5))
         plt.plot(k_values, silhouette_scores, "bx-")
@@ -290,7 +291,8 @@ class QClusterer:
             labels (np.ndarray): Cluster labels.
         """
         print("[STATUS] Visualizing")
-        plt.scatter(features[:, 0], features[:, 1], c=predicted_labels, cmap="viridis")
+        plt.scatter(features[:, 0], features[:, 1],
+                    c=predicted_labels, cmap="viridis")
         plt.title("Clusters of 2D Line Plot Images")
         plt.show()
 
@@ -359,13 +361,16 @@ class QClusterer:
 
         features = self.extract_features(processed_images)
 
-        optimal_k = self.find_optimal_clusters(features, min_k=min_k, max_k=max_k)
+        optimal_k = self.find_optimal_clusters(
+            features, min_k=min_k, max_k=max_k)
 
-        predicted_labels = self.perform_clustering(features, n_clusters=optimal_k)
+        predicted_labels = self.perform_clustering(
+            features, n_clusters=optimal_k)
         if plotting:
             self.visualize_clusters(features, predicted_labels)
 
-            self.display_cluster_images(images, predicted_labels, n_clusters=optimal_k)
+            self.display_cluster_images(
+                images, predicted_labels, n_clusters=optimal_k)
 
         return predicted_labels
 
@@ -386,7 +391,8 @@ class QClusterer:
         file_buffer_2 = file_buffer
         if not isinstance(file_buffer_2, str):
             if hasattr(file_buffer_2, "seekable") and file_buffer_2.seekable():
-                file_buffer_2.seek(0)  # reset ByteIO buffer to beginning of stream
+                # reset ByteIO buffer to beginning of stream
+                file_buffer_2.seek(0)
             else:
                 # ERROR: 'file_buffer_2' must be 'BytesIO' type here, but it's not seekable!
                 raise IOError(
@@ -429,7 +435,8 @@ class QClusterer:
             model_path (str): Path where the KMeans model should be saved.
         """
         if self.kmeans is None:
-            raise ValueError("Model is not trained. Please train the model first.")
+            raise ValueError(
+                "Model is not trained. Please train the model first.")
         print(f"[STATUS] Saving model as {model_path}")
         joblib.dump(self.kmeans, model_path)
 
@@ -438,7 +445,8 @@ class QClusterer:
 if __name__ == "__main__":
     # Example Usage
     qcr = QClusterer()
-    labels = qcr.train("content/training_data/test_clusters", min_k=3, max_k=10)
+    labels = qcr.train(
+        "content/training_data/test_clusters", min_k=3, max_k=10)
     qcr.save_model("QModel/SavedModels/cluster.joblib")
 
     # For prediction

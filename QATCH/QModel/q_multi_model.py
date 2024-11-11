@@ -306,7 +306,8 @@ class QMultiModel:
         Example:
             best_hyperparams = self.tune(evaluations=300)
         """
-        print(f"[STATUS] Running model tuning for {evaluations} max iterations")
+        print(
+            f"[STATUS] Running model tuning for {evaluations} max iterations")
         space = {
             "max_depth": hp.choice("max_depth", np.arange(1, 20, 1, dtype=int)),
             "eta": hp.uniform("eta", 0, 1),
@@ -412,7 +413,8 @@ class QPredictor:
             relative_root = os.path.join(Architecture.get_path(), "QATCH")
         else:
             relative_root = os.getcwd()
-        pickle_path = os.path.join(relative_root, "QModel/SavedModels/label_{}.pkl")
+        pickle_path = os.path.join(
+            relative_root, "QModel/SavedModels/label_{}.pkl")
         for i in range(3):
             with open(pickle_path.format(i), "rb") as file:
                 setattr(self, f"__label_{i}__", pickle.load(file))
@@ -476,7 +478,8 @@ class QPredictor:
             return adj_prediction, (lq_idx, uq_idx)
 
         lq_idx = next((i for i, x in enumerate(adj) if x == 1), -1) + i
-        uq_idx = next((i for i, x in reversed(list(enumerate(adj))) if x == 1), -1) + i
+        uq_idx = next((i for i, x in reversed(
+            list(enumerate(adj))) if x == 1), -1) + i
         return prediction, (lq_idx, uq_idx)
 
     def find_and_sort_peaks(self, signal):
@@ -507,7 +510,7 @@ class QPredictor:
         slope_change = []
         for i in range(len(diff) - window_size + 1):
             # Calculate the slope change over the current window
-            window_slope_change = np.mean(np.diff(diff[i : i + window_size]))
+            window_slope_change = np.mean(np.diff(diff[i: i + window_size]))
             slope_change.append(window_slope_change)
 
         slope_change = np.array(slope_change)
@@ -593,7 +596,8 @@ class QPredictor:
             left_bound = zero_slope_regions[0][1]
             right_bound = zero_slope_regions[1][0]
 
-            peaks_between, _ = find_peaks(dissipation_data[left_bound:right_bound])
+            peaks_between, _ = find_peaks(
+                dissipation_data[left_bound:right_bound])
             peaks_indices = [peak + left_bound for peak in peaks_between]
 
             if peaks_indices:
@@ -664,7 +668,8 @@ class QPredictor:
             return initial_guess
 
         points = np.array([adjusted_guess, initial_guess])
-        weights = np.array([0.25, 0.75])  # Biases adjustment toward the initial guess
+        # Biases adjustment toward the initial guess
+        weights = np.array([0.25, 0.75])
         weighted_mean = np.average(points, weights=weights)
         final_adjustment = int(weighted_mean)
 
@@ -701,7 +706,8 @@ class QPredictor:
                         zero_slope_regions.append(current_region)
                         current_region = [zero_slope_indices[i]]
 
-                zero_slope_regions.append(current_region)  # Append the last region
+                # Append the last region
+                zero_slope_regions.append(current_region)
 
             return zero_slope_regions
 
@@ -709,7 +715,8 @@ class QPredictor:
 
         # Check if there is a filtering of peaks such that they appear within our predefined, bounded
         # region.  If not, just report the guessed POI.
-        filtered_peaks = [point for point in peaks if bounds[0] <= point <= bounds[1]]
+        filtered_peaks = [
+            point for point in peaks if bounds[0] <= point <= bounds[1]]
 
         if len(filtered_peaks) == 0:
             # TODO: Adjust POI if there are no Resonance frequency peaks in the bounded region.  Potentially look at something like
@@ -834,7 +841,8 @@ class QPredictor:
             closest_rf_point = filtered_rf_points[closest_rf_idx]
 
             # Calculate distances from candidate points to the closest RF point
-            distances_to_closest_rf = np.abs(candidate_points - closest_rf_point)
+            distances_to_closest_rf = np.abs(
+                candidate_points - closest_rf_point)
 
             # Find the closest candidate point to the closest RF point
             closest_candidate_idx = np.argmin(distances_to_closest_rf)
@@ -933,10 +941,12 @@ class QPredictor:
             # in the dissipation curve. (2) There are no candidates, in which case, pick the point on the
             # dissipation curve which has the most significant change in slope over the baseline slope of
             # that region.
-            filtered_candidates = [point for point in candidates if a <= point <= b]
+            filtered_candidates = [
+                point for point in candidates if a <= point <= b]
 
             if len(filtered_candidates) > 0:
-                adjusted_poi_6 = min(filtered_candidates, key=lambda x: abs(x - a))
+                adjusted_poi_6 = min(filtered_candidates,
+                                     key=lambda x: abs(x - a))
                 # adjusted_poi_6 = max(filtered_candidates,
                 #                      key=lambda p: signal[p])
                 tail_class = tail_class + "_A"
@@ -1121,7 +1131,8 @@ class QPredictor:
             start_5 = emp_points[4]
             start_6 = emp_points[5]
         adj_1 = start_1
-        poi_1 = self.adjustment_poi_1(initial_guess=start_1, dissipation_data=diss_raw)
+        poi_1 = self.adjustment_poi_1(
+            initial_guess=start_1, dissipation_data=diss_raw)
         adj_6 = extracted_results[6]
         candidates_6 = self.find_and_sort_peaks(adj_6)
         if diff_raw.mean() < 0:
@@ -1228,7 +1239,8 @@ class QPredictor:
 
         for i in range(6):
             # Sort and remove point
-            candidates_i = sort_and_remove_point(candidates_list[i], poi_list[i])
+            candidates_i = sort_and_remove_point(
+                candidates_list[i], poi_list[i])
 
             # Extract and sort confidence
             confidence_i = np.sort(np.array(extracted_confidences[i])[candidates_i])[

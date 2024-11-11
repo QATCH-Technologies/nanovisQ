@@ -1,3 +1,17 @@
+import pyzipper
+import hashlib
+import threading
+import sys
+import pyqtgraph as pg
+import datetime as dt
+from time import strftime, localtime, sleep
+from xml.dom import minidom
+from numpy import loadtxt
+import numpy as np
+from io import BytesIO
+from PyQt5 import QtCore, QtGui, QtWidgets
+from QATCH.QModel.q_image_clusterer import QClusterer
+from QATCH.QModel.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.fileManager import FileManager
@@ -13,32 +27,19 @@ from QATCH.ui.runInfo import QueryRunInfo
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"  # hide info/warning logs from tf # lazy load
-from QATCH.QModel.q_multi_model import QPredictor
-from QATCH.QModel.q_image_clusterer import QClusterer
-from PyQt5 import QtCore, QtGui, QtWidgets
-from io import BytesIO
-import numpy as np
-from numpy import loadtxt
-from xml.dom import minidom
+# hide info/warning logs from tf # lazy load
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 # from scipy.interpolate import UnivariateSpline # unused
 # from scipy.optimize import curve_fit # lazy load
 # from scipy.signal import argrelextrema # lazy load
 # from scipy.signal import savgol_filter # lazy load
-from time import strftime, localtime, sleep
-import datetime as dt
-import pyqtgraph as pg
 
 # import matplotlib.backends.backend_pdf # lazy load
 # import matplotlib.pyplot as plt # lazy load
-import sys
 
 # os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf # lazy load
 # import tensorflow as tf # lazy load
-import threading
-import hashlib
-import pyzipper
 
 TAG = "[Analyze]"
 
@@ -72,7 +73,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ST2 = ST1 - np.polyval([11.5, 59.5], X2)
         else:  # X2 > -2.8:
             ST2 = ST1 - 27
-        return ST2  # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_ST.csv", surfactant, concentration)
+        # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_ST.csv", surfactant, concentration)
+        return ST2
 
     @staticmethod
     def Lookup_CA(surfactant, concentration):
@@ -81,7 +83,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             CA = CA - 0
         elif concentration >= 1:
             CA = CA - 0
-        return CA  # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_CA.csv", surfactant, concentration)
+        # AnalyzeProcess.Lookup_Table("QATCH/resources/lookup_CA.csv", surfactant, concentration)
+        return CA
 
     @staticmethod
     def Lookup_DN(surfactant, concentration):
@@ -92,7 +95,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         debug = False
         table = loadtxt(table_path, delimiter="\t")
         log_surfactant = np.log10(surfactant)
-        pcts = np.log10(table[0][1:])  # first row values, without A1 cell (empty)
+        # first row values, without A1 cell (empty)
+        pcts = np.log10(table[0][1:])
         cons = table[:, 0][1:]  # first col values, without A1 cell (empty)
         data = table[1:, 1:]  # data, without header row/col (for indexing)
         if debug:
@@ -176,10 +180,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             col = data[:, s_idx]
             if debug:
                 Log.d(col)
-            ratio = (concentration - cons[c_idx[0]]) / (cons[c_idx[1]] - cons[c_idx[0]])
+            ratio = (concentration - cons[c_idx[0]]) / \
+                (cons[c_idx[1]] - cons[c_idx[0]])
             if debug:
                 Log.d(ratio)
-            ret = (col[c_idx[0]] + (col[c_idx[1]] - col[c_idx[0]]) * ratio)[0][0]
+            ret = (col[c_idx[0]] + (col[c_idx[1]] -
+                   col[c_idx[0]]) * ratio)[0][0]
         if len(c_idx) == 1 and len(s_idx) == 2:
             row = data[c_idx][0]
             if debug:
@@ -193,7 +199,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if len(c_idx) == 1 and len(s_idx) == 1:
             ret = data[c_idx, s_idx][0][0]
 
-        lookup_type = table_path[table_path.rindex("/") + 1 : -4]
+        lookup_type = table_path[table_path.rindex("/") + 1: -4]
         Log.d(f"{lookup_type}({surfactant:1.3f}, {concentration:3.0f}) = {ret:2.2f}")
         return ret
 
@@ -296,7 +302,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     import tensorflow as tf
 
                     # import tensorflow, load model, and predict good or bad
-                    model_path = os.path.join(Architecture.get_path(), "QATCH/models/")
+                    model_path = os.path.join(
+                        Architecture.get_path(), "QATCH/models/")
                     time_model = tf.keras.models.load_model(
                         os.path.join(model_path, "time_model")
                     )
@@ -316,11 +323,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     data_diff = lin_ys_diff
 
                     predict_time = (
-                        0  # max(0, min(1, time_model([data_time]).numpy()[0][0]))
+                        # max(0, min(1, time_model([data_time]).numpy()[0][0]))
+                        0
                     )
-                    predict_diss = max(0, min(1, diss_model([data_diss]).numpy()[0][0]))
-                    predict_freq = max(0, min(1, freq_model([data_freq]).numpy()[0][0]))
-                    predict_diff = max(0, min(1, diff_model([data_diff]).numpy()[0][0]))
+                    predict_diss = max(
+                        0, min(1, diss_model([data_diss]).numpy()[0][0]))
+                    predict_freq = max(
+                        0, min(1, freq_model([data_freq]).numpy()[0][0]))
+                    predict_diff = max(
+                        0, min(1, diff_model([data_diff]).numpy()[0][0]))
 
                     predictors_count = 3  # ignore time
                     predict_data = (
@@ -357,7 +368,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # lazy load these modules on 'loadRun()' call
         self.QModel_modules_loaded = False
-        self.QModel_clusterer = None  # QClusterer(model_path=cluster_model_path)
+        # QClusterer(model_path=cluster_model_path)
+        self.QModel_clusterer = None
         self.QModel_predict_0 = (
             None  # QPredictor(model_path=predict_model_path.format(0))
         )
@@ -394,7 +406,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.text_Created = QtWidgets.QLabel("[NONE]")
         self.btn_Info = QtWidgets.QPushButton("Run Info")
 
-        ### START ANALYZE SIGNATURE CODE:
+        # START ANALYZE SIGNATURE CODE:
         # This code also exists in popUp.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.action_analyze'
@@ -403,7 +415,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.signForm.setWindowFlags(
             QtCore.Qt.Dialog
         )  # | QtCore.Qt.WindowStaysOnTopHint)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/sign.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/sign.png")
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
         layout_sign = QtWidgets.QVBoxLayout()
@@ -429,7 +442,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign = QtWidgets.QLineEdit()
         self.sign.installEventFilter(self)
         layout_sign.addWidget(self.sign)
-        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
+        self.sign_do_not_ask = QtWidgets.QCheckBox(
+            "Do not ask again this session")
         self.sign_do_not_ask.setEnabled(False)
         if UserProfiles.checkDevMode()[0]:  # DevMode enabled
             auto_sign_key = None
@@ -437,7 +451,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -460,7 +475,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout_ok_cancel.addWidget(self.sign_cancel)
         layout_sign.addLayout(layout_ok_cancel)
         self.signForm.setLayout(layout_sign)
-        ### END ANALYZE SIGNATURE CODE
+        # END ANALYZE SIGNATURE CODE
 
         self.graphStack = (
             QtWidgets.QStackedWidget()
@@ -495,7 +510,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.setStyleSheet("color: #333333;")
 
         icon_load = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/load.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/load.png")
         icon_load.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_load.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Load = QtWidgets.QToolButton()
@@ -506,7 +522,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addWidget(self.tBtn_Load)
 
         icon_reset = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/reset.png")
         icon_reset.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_reset.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Rescan = QtWidgets.QToolButton()
@@ -519,7 +536,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Load.addSeparator()
 
         icon_info = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/info.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/info.png")
         icon_info.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_info.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
         self.tBtn_Info = QtWidgets.QToolButton()
@@ -538,11 +556,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sort_by = QtWidgets.QLabel("Sort by:")
         self.sort_by_name = QtWidgets.QLabel("Name")
         # self.sort_by_name.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px;")
-        self.sort_by_name.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sort_by_name.setCursor(
+            QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.sort_by_name.mousePressEvent = self.action_sort_by_name
         self.sort_by_date = QtWidgets.QLabel("Date")
         # self.sort_by_date.setStyleSheet("color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;")
-        self.sort_by_date.setCursor(QtGui.QCursor(QtCore.Qt.PointingHandCursor))
+        self.sort_by_date.setCursor(
+            QtGui.QCursor(QtCore.Qt.PointingHandCursor))
         self.sort_by_date.mousePressEvent = self.action_sort_by_date
 
         sort_by_layout = QtWidgets.QHBoxLayout()
@@ -557,7 +577,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.runGrid = QtWidgets.QGridLayout()
         self.runGrid.setContentsMargins(0, 0, 0, 0)
-        self.runGrid.addWidget(self.sort_by_widget, 1, 2)  # row, col, rowspan, colspan
+        # row, col, rowspan, colspan
+        self.runGrid.addWidget(self.sort_by_widget, 1, 2)
         self.runGrid.addWidget(self.text_Runs, 2, 1)
         self.runGrid.addWidget(self.cBox_Runs, 2, 2)
         self.runGrid.addWidget(self.text_Created, 3, 2)
@@ -588,7 +609,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_cancel = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/cancel.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/cancel.png")
         icon_cancel.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_cancel.addPixmap(QtGui.QPixmap('QATCH/icons/cancel-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Cancel = QtWidgets.QToolButton()
@@ -625,7 +647,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_modify = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/modify.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/modify.png")
         icon_modify.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_modify.addPixmap(QtGui.QPixmap('QATCH/icons/modify-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Modify = QtWidgets.QToolButton()
@@ -637,7 +660,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addWidget(self.tool_Modify)
 
         icon_analyze = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/start.png")
         icon_analyze.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_analyze.addPixmap(QtGui.QPixmap('QATCH/icons/analyze-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Analyze = QtWidgets.QToolButton()
@@ -662,12 +686,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.toolBar.addWidget(self.tool_Advanced)
 
         icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/advanced.png")
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Advanced = QtWidgets.QToolButton()
-        self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Advanced.setIcon(icon_advanced)  # normal and disabled pixmaps
+        self.tool_Advanced.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
+        # normal and disabled pixmaps
+        self.tool_Advanced.setIcon(icon_advanced)
         self.tool_Advanced.setText("Advanced")
         self.tool_Advanced.clicked.connect(self.action_advanced)
         self.tool_bar.addWidget(self.tool_Advanced)
@@ -675,9 +702,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_bar.addSeparator()
 
         icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/user.png")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        icon_user.addPixmap(QtGui.QPixmap("QATCH/icons/user.png"), QtGui.QIcon.Disabled)
+        icon_user.addPixmap(QtGui.QPixmap(
+            "QATCH/icons/user.png"), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
         self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_User.setIcon(icon_user)  # normal and disabled pixmaps
@@ -717,9 +746,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.cBox_Devices, 2, 2, 1, 2
         )  # row, col, rowspan, colspan
 
-        self.showRunsFromAllDevices = QtWidgets.QCheckBox("Show runs from all devices")
+        self.showRunsFromAllDevices = QtWidgets.QCheckBox(
+            "Show runs from all devices")
         self.showRunsFromAllDevices.setChecked(True)
-        self.showRunsFromAllDevices.clicked.connect(self.showRunsFromAllDevices_clicked)
+        self.showRunsFromAllDevices.clicked.connect(
+            self.showRunsFromAllDevices_clicked)
         self.cBox_Devices.setEnabled(False)
 
         self.gridLayout.addWidget(self.showRunsFromAllDevices, 3, 2, 1, 2)
@@ -785,7 +816,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.option_remove_dups.setChecked(True)
         self.gridLayout.addWidget(self.option_remove_dups, 2, 5, 1, 3)
-        self.correct_drop_effect = QtWidgets.QCheckBox("Apply drop effect vectors")
+        self.correct_drop_effect = QtWidgets.QCheckBox(
+            "Apply drop effect vectors")
         self.correct_drop_effect.setChecked(True)
         self.correct_drop_effect.clicked.connect(self.change_drop_effect)
         self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
@@ -794,8 +826,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.advancedwidget.setWindowFlags(
             QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint
         )
-        self.advancedwidget.setWhatsThis("These settings are for Advanced Users ONLY!")
-        warningWidget = QtWidgets.QLabel(f"WARNING: {self.advancedwidget.whatsThis()}")
+        self.advancedwidget.setWhatsThis(
+            "These settings are for Advanced Users ONLY!")
+        warningWidget = QtWidgets.QLabel(
+            f"WARNING: {self.advancedwidget.whatsThis()}")
         warningWidget.setStyleSheet(
             "background: #FF6600; padding: 1px; font-weight: bold;"
         )
@@ -803,7 +837,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         warningLayout.addWidget(warningWidget)
         warningLayout.addLayout(self.gridLayout)
         self.advancedwidget.setLayout(warningLayout)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/advanced.png")
         self.advancedwidget.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.advancedwidget.setWindowTitle("Advanced Settings")
 
@@ -886,7 +921,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout_v4.addWidget(self.graphStack)
         widget_h4.setLayout(layout_v4)
         widget_h4.setObjectName("AnalyzerFrame")
-        widget_h4.setStyleSheet("QWidget#AnalyzerFrame { background-color: #ffffff; }")
+        widget_h4.setStyleSheet(
+            "QWidget#AnalyzerFrame { background-color: #ffffff; }")
 
         self.graphWidget1 = pg.PlotWidget()
         self.graphWidget1.setBackground("w")
@@ -917,7 +953,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.btnMovable1 = QtWidgets.QToolButton(handle1)
         self.btnMovable1.setText("=")
         self.btnMovable1.setFont(QtGui.QFont("Arial", 8))
-        self.btnMovable1.clicked.connect(lambda: self.graph_split.setSizes([1, 1]))
+        self.btnMovable1.clicked.connect(
+            lambda: self.graph_split.setSizes([1, 1]))
         layout_s1.addWidget(self.btnMovable1)
         layout_s1.addStretch()
         handle1.setLayout(layout_s1)
@@ -932,7 +969,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.btnMovable2.setText("||")
         self.btnMovable2.setFont(QtGui.QFont("Arial", 8))
         self.btnMovable2.clicked.connect(
-            lambda: self.results_split.setSizes(self.get_results_split_auto_sizes())
+            lambda: self.results_split.setSizes(
+                self.get_results_split_auto_sizes())
         )
         layout_s2.addWidget(self.btnMovable2)
         layout_s2.addStretch()
@@ -965,7 +1003,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setSizePolicy(
             QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred
         )
-        self.cBox_Runs.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.cBox_Runs.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToContents)
         self.cBox_Runs.setEditable(True)
         self.cBox_Runs.setEnabled(False)
         self.cBox_Runs.setEditText("No Runs Found")
@@ -1028,12 +1067,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.ai_backBtn = QtWidgets.QToolButton()
         self.ai_backBtn.setArrowType(QtCore.Qt.LeftArrow)
         self.ai_backBtn.adjustSize()
-        self.ai_backBtn.clicked.connect(self.AI_Prev_Guess)  # (self.summaryBack)
+        self.ai_backBtn.clicked.connect(
+            self.AI_Prev_Guess)  # (self.summaryBack)
         self.ai_layout.addWidget(self.ai_backBtn, 0, 0, 6, 1)
         self.ai_nextBtn = QtWidgets.QToolButton()
         self.ai_nextBtn.setArrowType(QtCore.Qt.RightArrow)
         self.ai_nextBtn.adjustSize()
-        self.ai_nextBtn.clicked.connect(self.AI_Next_Guess)  # (self.summaryNext)
+        self.ai_nextBtn.clicked.connect(
+            self.AI_Next_Guess)  # (self.summaryNext)
         self.ai_layout.addWidget(self.ai_nextBtn, 0, 3, 6, 1)
         self.ai_label = QtWidgets.QLabel("Point [Unknown]")
         self.ai_layout.addWidget(
@@ -1066,8 +1107,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.ai_prev.setVisible(False)
         self.ai_next.setVisible(False)
 
-        self.progressValue.connect(lambda value: self.progressBar.setValue(value))
-        self.progressFormat.connect(lambda value: self.progressBar.setFormat(value))
+        self.progressValue.connect(
+            lambda value: self.progressBar.setValue(value))
+        self.progressFormat.connect(
+            lambda value: self.progressBar.setFormat(value))
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
 
@@ -1080,7 +1123,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         min_width = tableWidget.verticalHeader().width() + 6  # +6 seems to be needed
         min_width += tableWidget.verticalScrollBar().width()
         for i in range(tableWidget.columnCount()):
-            min_width += tableWidget.columnWidth(i)  # seems to include gridline
+            # seems to include gridline
+            min_width += tableWidget.columnWidth(i)
             if i == 0 and setMinimumWidth:
                 tableWidget.setMinimumWidth(min_width)
         setSizes = [min_width, full_width - min_width]
@@ -1111,7 +1155,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.e(f"Moving marker {px} failed: {str(e)}")
 
     def showRunsFromAllDevices_clicked(self):
-        self.cBox_Devices.setEnabled(not self.showRunsFromAllDevices.isChecked())
+        self.cBox_Devices.setEnabled(
+            not self.showRunsFromAllDevices.isChecked())
         self.updateRun(self.cBox_Devices.currentIndex())
 
     def switch_user_at_sign_time(self):
@@ -1131,13 +1176,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
             else:
                 Log.d(
                     "User switched users to the same user profile. Nothing to change."
@@ -1160,13 +1207,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
             if new_username != None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -1244,7 +1293,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.step_direction = "backwards"
             self.goBack()
         except Exception as e:
-            Log.e(f"An error occurred while moving to the prior step: {str(e)}")
+            Log.e(
+                f"An error occurred while moving to the prior step: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
@@ -1303,7 +1353,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
                 screen = QtWidgets.QDesktopWidget().availableGeometry()
-                left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
+                left = int(
+                    (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
                 top = (
                     int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
                 )
@@ -1313,7 +1364,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 return
 
         if self.sign_do_not_ask.isChecked():
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -1334,7 +1386,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.getPoints()  # show summary
             self.getPoints()  # show analysis
         except Exception as e:
-            Log.e(f"An error occurred while analyzing the selected run: {str(e)}")
+            Log.e(
+                f"An error occurred while analyzing the selected run: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
@@ -1354,7 +1407,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             poi_vals = []
             for pm in self.poi_markers:
                 cur_val = pm.value()
-                cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
+                cur_idx = next(x for x, y in enumerate(
+                    self.xs) if y >= cur_val)
                 poi_vals.append(cur_idx)
             poi_vals.sort()
             self.custom_poi_text.setText(f"{poi_vals}")
@@ -1411,7 +1465,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def change_drop_effect(self, object):
         if not self.correct_drop_effect.isChecked():
-            self.tbox_diff_factor.setText(f"{Constants.default_diff_factor:1.3f}")
+            self.tbox_diff_factor.setText(
+                f"{Constants.default_diff_factor:1.3f}")
         self.set_new_diff_factor()
 
     def set_new_diff_factor(self):
@@ -1427,7 +1482,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.action_cancel()  # ask if they mean it if there are unsaved changes
             if not self.hasUnsavedChanges():  # only proceed if they say yes
                 try:
-                    self.diff_factor = round(float(self.tbox_diff_factor.text()), 1)
+                    self.diff_factor = round(
+                        float(self.tbox_diff_factor.text()), 1)
                     Log.d(f"Difference Factor = {self.diff_factor}")
                 except:
                     if hasattr(self, "diff_factor"):
@@ -1513,7 +1569,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def _step_to_next_value(self):
         if True:
             # NOTE: 'speed' starts slow and ends fast (1, not 0)
-            total_steps = 9  # <-- enter 'found' count when you search for "progress.emit" (including this one)
+            # <-- enter 'found' count when you search for "progress.emit" (including this one)
+            total_steps = 9
             speed = max(
                 1, int((total_steps - len(self.progress_status_step)) / 2)
             )  # larger numbers mean slower progressBar speed
@@ -1521,14 +1578,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if len(self.progress_value_steps) == 0:
                 self.progress_value_steps.append(100)
             if not self.analyzer_task.isRunning():
-                speed = 0 if self.progress_value_steps[-1] > 99 else 1  # force fast
+                # force fast
+                speed = 0 if self.progress_value_steps[-1] > 99 else 1
             if self.progress_value_steps[-1] > 99:
                 go_slow = False  # force fast
             value = self.progress_value_steps.pop(0)
             if (
                 not self.analyzer_task.isRunning()
             ):  # value in self.progress_status_step.keys():
-                keys = list(self.progress_status_step.keys())[::-1]  # in reverse order
+                keys = list(self.progress_status_step.keys())[
+                    ::-1]  # in reverse order
                 status = self.progress_status_step.get(
                     keys[0]
                 )  # most recent label # .get(value)
@@ -1539,7 +1598,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     value *= 2
                     value = min(99, value)
             else:
-                value = max(value, self.raw_val - 5)  # progress_value_steps[-1]
+                # progress_value_steps[-1]
+                value = max(value, self.raw_val - 5)
             self.progressValue.emit(int(value))
             # self.progressBar.setValue(value)
             # Log.w(f"value={self.progressBar.value()}")
@@ -1548,7 +1608,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             wait_time = 0.1 * speed if go_slow else 0.01 * speed
             # if wait_time > 0:
             #     sleep(wait_time)
-            QtCore.QTimer.singleShot(int(1000 * wait_time), self._step_to_next_value)
+            QtCore.QTimer.singleShot(
+                int(1000 * wait_time), self._step_to_next_value)
         else:
             self.progress_value_scanning = False
 
@@ -1718,7 +1779,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def text_transform(self):
         text = self.sign.text()
         if len(text) in [1, 2, 3, 4]:  # are these initials?
-            self.sign.setText(text.upper())  # will not fire 'textEdited' signal again
+            # will not fire 'textEdited' signal again
+            self.sign.setText(text.upper())
 
     def AI_Prev_Guess(self):
         min_val = 0 if not self.AI_has_starting_values else -1
@@ -1753,7 +1815,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 else:
                     marker_xs = self.poi_markers[px].value()
             elif (
-                self.moved_markers[px] and "manual" not in self.ai_score.text().lower()
+                self.moved_markers[px] and "manual" not in self.ai_score.text(
+                ).lower()
             ):  # custom point
                 self.moved_markers[px] = False
                 cur_val = -1
@@ -1768,7 +1831,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         f"Failed to update prediction for POI{px} to guess #{cur_val}"
                     )
             try:
-                t_idx = next(x for x, y in enumerate(self.xs) if y >= marker_xs)
+                t_idx = next(x for x, y in enumerate(
+                    self.xs) if y >= marker_xs)
                 index = self.xs[int(t_idx)]
                 if self.poi_markers[px].value() != index:
                     Log.d(f"Moving marker {px} to position {index}")
@@ -1797,7 +1861,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if cur_val == -1:
             if self.AI_has_starting_values:
                 # marker_xs = self.AI_Start_Vals[px]
-                self.ai_score.setText("ERROR!" if error else "Loaded from prior run")
+                self.ai_score.setText(
+                    "ERROR!" if error else "Loaded from prior run")
             else:
                 self.ai_score.setText("Manually selected point")
             self.ai_score.adjustSize()
@@ -1904,7 +1969,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             index = mousePoint.x()
             Log.d(f"Mouse click @ xs = {index}")
             self.poi_markers[px].setValue(index)
-            self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
+            self.poi_markers[px].sigPositionChangeFinished.emit(
+                self.poi_markers[px])
 
     def eventFilter(self, obj, event):
         if (
@@ -1944,17 +2010,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def moveCurrentMarker(self, offset):
         px = self.stateStep - 1
-        offset *= max(1, int(self.getContextWidth()[0] / 50))  # 100 steps per window
+        # 100 steps per window
+        offset *= max(1, int(self.getContextWidth()[0] / 50))
         if px in range(0, len(self.poi_markers)):
             cur_val = self.poi_markers[px].value()
-            new_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val) + offset
+            new_idx = next(x for x, y in enumerate(
+                self.xs) if y >= cur_val) + offset
             if new_idx < 0:
                 new_idx = 0
             if new_idx >= len(self.xs):
                 new_idx = len(self.xs) - 1
             new_val = self.xs[new_idx]
             self.poi_markers[px].setValue(new_val)
-            self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
+            self.poi_markers[px].sigPositionChangeFinished.emit(
+                self.poi_markers[px])
         else:
             pass
 
@@ -1966,14 +2035,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             is_clipped = self.getContextWidth()[1]
             if was_clipped == True and is_clipped == True:
                 if self.stateStep <= 3:  # start, end of fill, post point
-                    self.zoomLevel = 5 * self.getContextWidth()[0] / self.smooth_factor
+                    self.zoomLevel = 5 * \
+                        self.getContextWidth()[0] / self.smooth_factor
                 else:  # blips
                     self.zoomLevel = (
-                        self.stateStep * self.getContextWidth()[0] / self.smooth_factor
+                        self.stateStep *
+                        self.getContextWidth()[0] / self.smooth_factor
                     )
                 Log.d(f"Adjusted initial zoom level to x{self.zoomLevel:2.2f}")
             if was_clipped == False and is_clipped == True:
-                self.zoomLevel = float(self.zoomLevel / offset)  # revert to original
+                # revert to original
+                self.zoomLevel = float(self.zoomLevel / offset)
                 Log.w("Zoom level at edge limit. Up/down key event ignored.")
             elif self.zoomLevel < 1 / (2**5):
                 self.zoomLevel = 1 / (2**5)
@@ -1981,7 +2053,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             elif self.zoomLevel > 1 * (2**5):
                 self.zoomLevel = 1 * (2**5)
                 Log.w("Zoom level at upper limit. Up/down key event ignored.")
-            self.poi_markers[px].sigPositionChangeFinished.emit(self.poi_markers[px])
+            self.poi_markers[px].sigPositionChangeFinished.emit(
+                self.poi_markers[px])
 
     def setXmlPath(self, xml_path):
         self.xml_path = xml_path
@@ -1996,7 +2069,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             return
         self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
-        run = run[0 : run.find("(") - 1]
+        run = run[0: run.find("(") - 1]
         dev = self.run_devices.get(run)
         if dev != None:
             self.cBox_Devices.setCurrentText(dev)
@@ -2008,7 +2081,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.updateRun(idx)
 
     def updateRun(self, idx):
-        runs = FileStorage.DEV_get_logged_data_folders(self.cBox_Devices.itemText(idx))
+        runs = FileStorage.DEV_get_logged_data_folders(
+            self.cBox_Devices.itemText(idx))
         runs = [x for x in runs if not x == "_unnamed"]  # remove _unnamed
         unchecked_runs = [
             x
@@ -2042,10 +2116,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 zf.testzip()
                             except:
                                 zf.setpassword(
-                                    hashlib.sha256(zf.comment).hexdigest().encode()
+                                    hashlib.sha256(
+                                        zf.comment).hexdigest().encode()
                                 )
                             files = zf.namelist()
-                            xml_filename = [x for x in files if x.endswith(".xml")][0]
+                            xml_filename = [
+                                x for x in files if x.endswith(".xml")][0]
                             with zf.open(xml_filename, "r") as fh:
                                 xml_str = fh.read().decode()
                             doc = minidom.parseString(xml_str)
@@ -2081,7 +2157,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             name = m.getAttribute("name")
                             value = m.getAttribute("value")
                             if name == "start":
-                                captured_datetime = value  # value[0:value.find("T")]
+                                # value[0:value.find("T")]
+                                captured_datetime = value
                                 self.run_timestamps[dict_key] = captured_datetime
                         params = doc.getElementsByTagName("param")
                         for p in params:
@@ -2104,7 +2181,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             except Exception as e:
                 # import traceback
                 # traceback.print_exc()
-                Log.e(f'Error getting timestamp from XML for run "{data_folder}"!')
+                Log.e(
+                    f'Error getting timestamp from XML for run "{data_folder}"!')
                 Log.d(f"Error message: {str(e)}")
 
         for dict_key in unchecked_runs:
@@ -2123,18 +2201,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
         runs = []
         for run in self.sorted_runs:
             run_name = run[0]
-            device_name = run_name[run_name.find(":") + 1 :]
-            run_name = self.run_names[run_name]  # run_name[0:run_name.find(":")]
+            device_name = run_name[run_name.find(":") + 1:]
+            # run_name[0:run_name.find(":")]
+            run_name = self.run_names[run_name]
             captured_datetime = run[1]
             if captured_datetime == "0 / No Date":
                 captured_date = "Undated"
             else:
-                captured_date = captured_datetime[0 : captured_datetime.find("T")]
+                captured_date = captured_datetime[0: captured_datetime.find(
+                    "T")]
             if (
                 self.showRunsFromAllDevices.isChecked()
                 or self.cBox_Devices.currentText() == device_name
             ):
-                runs.append(f"{run_name} ({captured_date})")  # append date to run name
+                # append date to run name
+                runs.append(f"{run_name} ({captured_date})")
 
         self.cBox_Runs.clear()
         self.cBox_Runs.addItems(runs)
@@ -2160,7 +2241,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 cluster_model_path = os.path.join(
                     Architecture.get_path(), "QATCH/QModel/SavedModels/cluster.joblib"
                 )
-                self.QModel_clusterer = QClusterer(model_path=cluster_model_path)
+                self.QModel_clusterer = QClusterer(
+                    model_path=cluster_model_path)
 
                 predict_model_path = os.path.join(
                     Architecture.get_path(),
@@ -2197,7 +2279,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -2210,7 +2293,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # NOTE: This check is needed for Analyze since it persists across run loads
             #       and is only init'd once per application instance (across sessions).
-            self.sign_do_not_ask.setVisible(True)  # just in case, make it visible
+            # just in case, make it visible
+            self.sign_do_not_ask.setVisible(True)
         else:  # DevMode may have been manually disabled since last run load
             # Force compliance by removing auto-sign feature support
             self.sign_do_not_ask.setChecked(False)  # uncheck
@@ -2245,14 +2329,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         for e in elems:
             if e != None:
                 e.clear()
-                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                e.setLimits(yMin=None, yMax=None,
+                            minYRange=None, maxYRange=None)
                 e.setXRange(min=0, max=1)
                 e.setYRange(min=0, max=1)
             if e is ax:
                 e.addItem(self._text1, ignoreBounds=True)
 
         try:
-            self.progressBar.valueChanged.disconnect(self._update_progress_value)
+            self.progressBar.valueChanged.disconnect(
+                self._update_progress_value)
         except:
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
 
@@ -2270,13 +2356,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def getFolderFromRun(self, run_string):
         idx = run_string.rfind("(")
         if idx > 0:
-            folder = run_string[0 : idx - 1]
+            folder = run_string[0: idx - 1]
         else:
             folder = run_string
         dict_key = list(self.run_names.keys())[
             list(self.run_names.values()).index(folder)
         ]
-        folder = dict_key[0 : dict_key.find(":")]
+        folder = dict_key[0: dict_key.find(":")]
         # Log.w(f"folder from run = '{folder}'")
         return folder
 
@@ -2290,7 +2376,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )
             self.enable_buttons()
         except Exception as e:
-            Log.e(f"An error occurred while loading the selected run: {str(e)}")
+            Log.e(
+                f"An error occurred while loading the selected run: {str(e)}")
             self.action_cancel()
 
     def goBack(self):
@@ -2356,7 +2443,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tutorial_ids = [round(7 + (step_num - 2) / 10, 2)]
             if step_num > 5:
                 tutorial_ids.append(7.7)
-            self.parent.viewTutorialPage(tutorial_ids)  # analyze (precise point)
+            self.parent.viewTutorialPage(
+                tutorial_ids)  # analyze (precise point)
         else:  # "Modify" not checked or step_num > 8
             self.parent.viewTutorialPage([5, 6])  # analyze / prior results
         ax = self.graphWidget  # .plot(hour, temperature)
@@ -2373,7 +2461,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # ax3.setVisible(w123)
         if self.stateStep == 0:
             self._update_progress_value(
-                11 * (step_num - 1), f"Step {step_num} of 8: Select Rough Fill Points"
+                11 * (step_num -
+                      1), f"Step {step_num} of 8: Select Rough Fill Points"
             )
             ax.setTitle(None)
             ax.setXRange(0, self.xs[-1], padding=0.05)
@@ -2444,11 +2533,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 start_time = min(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
                 )
-                start_time = next(x for x, y in enumerate(self.xs) if y >= start_time)
+                start_time = next(x for x, y in enumerate(
+                    self.xs) if y >= start_time)
                 stop_time = max(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
                 )
-                stop_time = next(x for x, y in enumerate(self.xs) if y >= stop_time)
+                stop_time = next(x for x, y in enumerate(
+                    self.xs) if y >= stop_time)
 
                 if self.model_result == -1 and Constants.ModelData_predict:
                     try:
@@ -2515,10 +2606,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         "Model returned insufficient points. Please manually select points."
                     )
                     fill_time = self.xs[stop_time] - self.xs[start_time]
-                    poi2_time = self.xs[start_time] + (fill_time * 0.05)  # end of fill
-                    poi3_time = self.xs[start_time] + (fill_time * 0.10)  # post
-                    poi4_time = self.xs[start_time] + (fill_time * 0.25)  # blip1
-                    poi5_time = self.xs[start_time] + (fill_time * 0.50)  # blip2
+                    poi2_time = self.xs[start_time] + \
+                        (fill_time * 0.05)  # end of fill
+                    poi3_time = self.xs[start_time] + \
+                        (fill_time * 0.10)  # post
+                    poi4_time = self.xs[start_time] + \
+                        (fill_time * 0.25)  # blip1
+                    poi5_time = self.xs[start_time] + \
+                        (fill_time * 0.50)  # blip2
 
                 self.moved_markers = [
                     True,
@@ -2532,7 +2627,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             else:  # all points already set
                 for pm in self.poi_markers:
                     cur_val = pm.value()
-                    cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
+                    cur_idx = next(x for x, y in enumerate(
+                        self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
             if len(self.poi_markers) != 6:
@@ -2578,13 +2674,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.custom_poi_text.setText(f"{poi_vals}")
                         self.update_custom_pois()  # write POI markers in correct order
                     except Exception as e:
-                        Log.e("Error: An exception occurred while sorting POI markers.")
+                        Log.e(
+                            "Error: An exception occurred while sorting POI markers.")
                         Log.e(f"Error Details: {str(e)}")
 
                 poi_vals = []
                 for pm in self.poi_markers:  # already sorted
                     cur_val = pm.value()
-                    cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
+                    cur_idx = next(x for x, y in enumerate(
+                        self.xs) if y >= cur_val)
                     poi_vals.append(cur_idx)
 
                 if self.model_engine == "ModelData" and Constants.ModelData_predict:
@@ -2658,7 +2756,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.poi_markers[i - 1].value()
                             > self.poi_markers[i].value()
                         ):
-                            Log.d("Detected POI markers are out-of-order... sorting...")
+                            Log.d(
+                                "Detected POI markers are out-of-order... sorting...")
                             out_of_order = True
                             break  # no need to keep searching, the order is wrong, so fix it
                     if out_of_order:
@@ -2683,13 +2782,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # do nothing here if "QModel" or "None"
                     pass
 
-            elif self.stateStep != 7:  # in stateStep 2 thru 6 (Steps 4 thru 8 of 8)
+            # in stateStep 2 thru 6 (Steps 4 thru 8 of 8)
+            elif self.stateStep != 7:
                 if (
                     self.poi_markers[self.stateStep - 1].value()
                     < self.poi_markers[self.stateStep - 2].value()
                 ):
                     cur_val = self.poi_markers[self.stateStep - 2].value()
-                    cur_idx = next(x for x, y in enumerate(self.xs) if y >= cur_val)
+                    cur_idx = next(x for x, y in enumerate(
+                        self.xs) if y >= cur_val)
                     self.poi_markers[self.stateStep - 1].setValue(
                         self.xs[int(cur_idx + 2)]
                     )
@@ -2738,18 +2839,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.stateStep >= 4:
                 try:
                     ax1.setYRange(
-                        np.min(self.ys_freq_fit[tx1 - ws : tx1 + ws]),
-                        np.max(self.ys_freq_fit[tx1 - ws : tx1 + ws]),
+                        np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                        np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
                         padding=pad,
                     )
                     ax2.setYRange(
-                        np.min(self.ys_diff_fit[tx1 - ws : tx1 + ws]),
-                        np.max(self.ys_diff_fit[tx1 - ws : tx1 + ws]),
+                        np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                        np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
                         padding=pad,
                     )
                     ax3.setYRange(
-                        np.min(self.ys_fit[tx1 - ws : tx1 + ws]),
-                        np.max(self.ys_fit[tx1 - ws : tx1 + ws]),
+                        np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
+                        np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
                         padding=pad,
                     )
                 except ValueError as e:
@@ -2775,7 +2876,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.action_next()  # repeat last action
                     return  # do not execute remainder of this function, let the above nested 'action_next' call supercede
                 except Exception as e:
-                    Log.e(f"An error occurred while moving to the next step: {str(e)}")
+                    Log.e(
+                        f"An error occurred while moving to the next step: {str(e)}")
                     limit = None
                     t, v, tb = sys.exc_info()
                     from traceback import format_tb
@@ -2791,18 +2893,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -2838,11 +2940,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos2 = np.column_stack(
                     (self.xs[gstar_idxs], self.ys_diff_fit[gstar_idxs])
                 )
-                pos3 = np.column_stack((self.xs[gstar_idxs], self.ys_fit[gstar_idxs]))
+                pos3 = np.column_stack(
+                    (self.xs[gstar_idxs], self.ys_fit[gstar_idxs]))
             else:
-                pos1 = np.column_stack((self.xs[gstar_idxs], self.ys_freq[gstar_idxs]))
-                pos2 = np.column_stack((self.xs[gstar_idxs], self.ys_diff[gstar_idxs]))
-                pos3 = np.column_stack((self.xs[gstar_idxs], self.ys[gstar_idxs]))
+                pos1 = np.column_stack(
+                    (self.xs[gstar_idxs], self.ys_freq[gstar_idxs]))
+                pos2 = np.column_stack(
+                    (self.xs[gstar_idxs], self.ys_diff[gstar_idxs]))
+                pos3 = np.column_stack(
+                    (self.xs[gstar_idxs], self.ys[gstar_idxs]))
             self.gstars1.setData(pos=pos1)
             self.gstars2.setData(pos=pos2)
             self.gstars3.setData(pos=pos3)
@@ -2899,7 +3005,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.btn_Next.setEnabled(False)
             poi_vals = []
             for marker in self.poi_markers:
-                t_idx = next(x for x, y in enumerate(self.xs) if y >= marker.value())
+                t_idx = next(x for x, y in enumerate(
+                    self.xs) if y >= marker.value())
                 poi_vals.append(t_idx)
             poi_vals.sort()
             if self.unsaved_changes:
@@ -2931,7 +3038,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
                 self.analyzer_task.started.connect(self.analyze_work.run)
                 self.analyze_work.finished.connect(self.analyzer_task.quit)
-                self.analyze_work.progress.connect(self._update_analyze_progress)
+                self.analyze_work.progress.connect(
+                    self._update_analyze_progress)
                 self.analyze_work.finished.connect(self._update_progress_value)
                 self.analyze_work.finished.connect(self.enable_buttons)
                 self.analyzer_task.start()
@@ -3016,7 +3124,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         if step_num == 10:
             self.progressBar.setValue(100)  # Finished
-            self.progressBar.setFormat('Finished: View most recent "Analyze" results')
+            self.progressBar.setFormat(
+                'Finished: View most recent "Analyze" results')
             self.stateStep = 8
             self.tool_Cancel.setEnabled(True)
             self.lowerGraphs.setVisible(False)
@@ -3056,7 +3165,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def appendAuditToXml(self):
         data_path = self.loaded_datapath
-        xml_path = data_path[0:-4] + ".xml" if self.xml_path == None else self.xml_path
+        xml_path = data_path[0:-4] + \
+            ".xml" if self.xml_path == None else self.xml_path
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
@@ -3082,7 +3192,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 salt = UserProfiles.find(username, initials)[1][:-4]
                 userrole = infos[2]
             else:
-                Log.w(f"Found invalid session: searching for user ({self.initials})")
+                Log.w(
+                    f"Found invalid session: searching for user ({self.initials})")
                 username = None  # not known in this context (yet)
                 initials = self.initials
                 salt = UserProfiles.find(username, initials)[1][:-4]
@@ -3142,7 +3253,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def appendPointsToXml(self, poi_vals):
         data_path = self.loaded_datapath
-        xml_path = data_path[0:-4] + ".xml" if self.xml_path == None else self.xml_path
+        xml_path = data_path[0:-4] + \
+            ".xml" if self.xml_path == None else self.xml_path
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
@@ -3236,18 +3348,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
             if self.stateStep >= 4:
                 ax1.setYRange(
-                    np.min(self.ys_freq_fit[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_freq_fit[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff_fit[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_diff_fit[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys_fit[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_fit[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
@@ -3255,18 +3367,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws : tx1 + ws]),
-                    np.max(self.ys[tx1 - ws : tx1 + ws]),
+                    np.min(self.ys[tx1 - ws: tx1 + ws]),
+                    np.max(self.ys[tx1 - ws: tx1 + ws]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -3279,7 +3391,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.moved_markers[self.AI_SelectTool_At]
             and self.AI_SelectTool_Frame.isVisible()
         ):
-            self.summaryAt(self.AI_SelectTool_At)  # move AI Tool to new marker location
+            # move AI Tool to new marker location
+            self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
         if self.xml_path != None:
@@ -3366,7 +3479,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
                 relative_time = np.delete(relative_time, rows_to_toss)
                 temperature = np.delete(temperature, rows_to_toss)
-                resonance_frequency = np.delete(resonance_frequency, rows_to_toss)
+                resonance_frequency = np.delete(
+                    resonance_frequency, rows_to_toss)
                 dissipation = np.delete(dissipation, rows_to_toss)
                 Log.w(
                     "Time jumps removed from dataset for analysis purposes (original file unchanged)"
@@ -3375,7 +3489,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             poi_vals = []
             if self.askForPOIs:
                 xml_path = (
-                    data_path[0:-4] + ".xml" if self.xml_path == None else self.xml_path
+                    data_path[0:-4] +
+                    ".xml" if self.xml_path == None else self.xml_path
                 )
                 if os.path.exists(xml_path):
                     doc = minidom.parse(xml_path)
@@ -3396,7 +3511,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         Log.d("No points found in XML file for this run.")
                 else:
-                    Log.w(f'Missing XML file: Expected at "{xml_path}" for this run.')
+                    Log.w(
+                        f'Missing XML file: Expected at "{xml_path}" for this run.')
             self.show_analysis_immediately = False
             self.model_run_this_load = False
             if self.askForPOIs and len(poi_vals) == 6:
@@ -3448,10 +3564,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_engine = "QModel"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             if len(poi_vals) != 6:
-                                Log.d("Model ran, updating 'poi_vals' since we DO NOT have prior points")
+                                Log.d(
+                                    "Model ran, updating 'poi_vals' since we DO NOT have prior points")
                                 poi_vals = self.model_result
                             else:
-                                Log.d("Model ran, but not updating 'poi_vals' since we DO have prior points")
+                                Log.d(
+                                    "Model ran, but not updating 'poi_vals' since we DO have prior points")
                         else:
                             self.model_result = -1  # try fallback model
                     except Exception as e:
@@ -3554,7 +3672,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
                 ys_fit = np.concatenate((ys_fit, ys_fit_ext))
 
-            ys_diss_diff = savgol_filter(ys_fit[:t_first_90_split], smooth_factor, 1, 1)
+            ys_diss_diff = savgol_filter(
+                ys_fit[:t_first_90_split], smooth_factor, 1, 1)
             if extend_data:
                 ys_diss_diff_ext = savgol_filter(
                     ys_fit[t_first_90_split:],
@@ -3583,17 +3702,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             zeros3 = np.where(np.diff(np.sign(ys_diss_diff_offset)))[0]
             while len(zeros3) < 2:
                 zeros3 = np.append(zeros3, 100)
-            ys_diss_diff_avg = np.average(ys_diss_diff[zeros3[1] :])
+            ys_diss_diff_avg = np.average(ys_diss_diff[zeros3[1]:])
 
             minima_idx = argrelextrema(ys_diss_2ndd, np.less)[0]
             minima_val = ys_diss_2ndd[minima_idx]
-            minima_dict = {minima_idx[i]: minima_val[i] for i in range(len(minima_idx))}
+            minima_dict = {minima_idx[i]: minima_val[i]
+                           for i in range(len(minima_idx))}
             minima_sort = sorted(minima_dict.items(), key=lambda kv: (kv[0]))
 
             maxima_idx = argrelextrema(ys_diss_2ndd, np.greater)[0]
             maxima_val = ys_diss_2ndd[maxima_idx]
-            maxima_dict = {maxima_idx[i]: maxima_val[i] for i in range(len(maxima_idx))}
-            maxima_sort = sorted(maxima_dict.items(), key=lambda kv: (kv[1], kv[0]))
+            maxima_dict = {maxima_idx[i]: maxima_val[i]
+                           for i in range(len(maxima_idx))}
+            maxima_sort = sorted(maxima_dict.items(),
+                                 key=lambda kv: (kv[1], kv[0]))
 
             start_stop = sorted(maxima_sort[-2:])
             start_stop = [
@@ -3642,7 +3764,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            ys_freq_fit = savgol_filter(ys_freq[:t_first_90_split], smooth_factor, 1)
+            ys_freq_fit = savgol_filter(
+                ys_freq[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_freq_fit_ext = savgol_filter(
                     ys_freq[t_first_90_split:],
@@ -3657,15 +3780,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 if self.correct_drop_effect.isChecked():
                     baseline = np.average(ys[t_0p5:t_1p0])
                     base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_start = next(x for x,t in enumerate(xs) if t > xs[drop_start] + 0.1)
-                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_start = next(
+                        x - 1 for x, y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_start = next(x for x, t in enumerate(
+                        xs) if t > xs[drop_start] + 0.1)
+                    # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_diss = ys[drop_start]
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
                         self.diff_factor = Constants.drop_effect_multiplier_low
                     with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-                        data = np.loadtxt(f.readlines(), delimiter=",", skiprows=1)
+                        data = np.loadtxt(
+                            f.readlines(), delimiter=",", skiprows=1)
                         col = (
                             1
                             if self.diff_factor == Constants.drop_effect_multiplier_low
@@ -3679,10 +3806,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             ]
                         else:
                             # RR vector is shorter and needs to be padded with the final value
-                            drop_offsets[drop_start : drop_start + len(RR_offset)] = (
+                            drop_offsets[drop_start: drop_start + len(RR_offset)] = (
                                 RR_offset
                             )
-                            drop_offsets[drop_start + len(RR_offset) :] = RR_offset[-1]
+                            drop_offsets[drop_start +
+                                         len(RR_offset):] = RR_offset[-1]
                     Log.d(
                         f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
                     )
@@ -3708,7 +3836,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
-            ys_diff_fit = savgol_filter(ys_diff[:t_first_90_split], smooth_factor, 1)
+            ys_diff_fit = savgol_filter(
+                ys_diff[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(
                     ys_diff[t_first_90_split:],
@@ -3768,7 +3897,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             start_stop.append(t0)
             t1 = am2
             try:
-                t1 += next(x for x, y in enumerate(ys_diff_fit[am2:]) if y < em2 - eh2)
+                t1 += next(x for x,
+                           y in enumerate(ys_diff_fit[am2:]) if y < em2 - eh2)
             except:
                 if self.model_run_this_load and len(poi_vals) == 0:
                     Log.w(
@@ -3880,7 +4010,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax2.clear()
         ax3.clear()
 
-        self._update_progress_value(1, f"Step 1 of 8: Select Begin and End Points")
+        self._update_progress_value(
+            1, f"Step 1 of 8: Select Begin and End Points")
         self.setDotStepMarkers(1)
         ax.setTitle(None)
         ax.addLegend()
@@ -3918,11 +4049,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax3.showGrid(x=True, y=True)
 
         mask = np.arange(0, len(xs), 1)
-        self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask], pen="green", name="Resonance")
-        self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask], pen="blue", name="Difference")
-        self.fit3 = ax.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
+        self.fit1 = ax.plot(xs[mask], ys_freq_fit[mask],
+                            pen="green", name="Resonance")
+        self.fit2 = ax.plot(xs[mask], ys_diff_fit[mask],
+                            pen="blue", name="Difference")
+        self.fit3 = ax.plot(xs[mask], ys_fit[mask],
+                            pen="red", name="Dissipation")
 
-        noPen = pg.mkPen(color=(255, 255, 255), width=0, style=QtCore.Qt.DotLine)
+        noPen = pg.mkPen(color=(255, 255, 255), width=0,
+                         style=QtCore.Qt.DotLine)
         self.scat1 = ax.plot(
             xs[mask],
             ys_freq[mask],
@@ -3953,7 +4088,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.fit_2 = ax2.plot(
             xs[mask], ys_diff_fit[mask], pen="blue", name="Difference"
         )
-        self.fit_3 = ax3.plot(xs[mask], ys_fit[mask], pen="red", name="Dissipation")
+        self.fit_3 = ax3.plot(xs[mask], ys_fit[mask],
+                              pen="red", name="Dissipation")
 
         self.scat_1 = ax1.plot(
             xs[mask],
@@ -4014,7 +4150,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             poi_marker.setPen(color="blue")
             poi_marker.addMarker("<|>")
             ax.addItem(poi_marker)
-            poi_marker.sigPositionChangeFinished.connect(self.markerMoveFinished)
+            poi_marker.sigPositionChangeFinished.connect(
+                self.markerMoveFinished)
             self.poi_markers.append(poi_marker)
 
         self.xs = xs
@@ -4039,7 +4176,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.i(
                     "Model successfully calculated points of interest for this dataset."
                 )
-                Log.d(f"Model Result = {self.model_engine}: {self.model_result}")
+                Log.d(
+                    f"Model Result = {self.model_engine}: {self.model_result}")
                 self.stateStep = 6  # show summary
             else:
                 Log.e(
@@ -4166,12 +4304,14 @@ class AnalyzerWorker(QtCore.QObject):
             batch_input_type = "none"
             batch = "N/A"
             xml_path = (
-                data_path[0:-4] + ".xml" if self.xml_path == None else self.xml_path
+                data_path[0:-4] +
+                ".xml" if self.xml_path == None else self.xml_path
             )
             xml_params = {}
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
-                params = doc.getElementsByTagName("params")[-1]  # most recent element
+                params = doc.getElementsByTagName(
+                    "params")[-1]  # most recent element
 
                 for p in params.childNodes:
                     if p.nodeType == p.TEXT_NODE:
@@ -4200,7 +4340,8 @@ class AnalyzerWorker(QtCore.QObject):
                 batch_params_old = {}
                 batch_params_xml = doc.getElementsByTagName("batch_params")
                 if len(batch_params_xml) > 0:
-                    batch_params_xml = batch_params_xml[-1]  # most recent element
+                    # most recent element
+                    batch_params_xml = batch_params_xml[-1]
                     for p in batch_params_xml.childNodes:
                         if p.nodeType == p.TEXT_NODE:
                             continue  # only process elements
@@ -4277,7 +4418,8 @@ class AnalyzerWorker(QtCore.QObject):
                     with open(self.xml_path, "w") as f:
                         xml_str = doc.toxml()
                         f.write(xml_str)
-                        Log.d(f"Added <batch_params> to XML file: {self.xml_path}")
+                        Log.d(
+                            f"Added <batch_params> to XML file: {self.xml_path}")
                 # END BATCH PARAMS INSERT #
 
             self.update(status_label)
@@ -4286,7 +4428,8 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d(f"xml_found = {os.path.exists(xml_path)}")
             Log.d(xml_params)
 
-            BIOFORMULATION = xml_params.get("bioformulation", "False") == "True"
+            BIOFORMULATION = xml_params.get(
+                "bioformulation", "False") == "True"
             ST = float(xml_params.get("surface_tension", 69.0))
             CA = float(xml_params.get("contact_angle", 55.0))
             DENSITY = float(xml_params.get("density", 1.2))
@@ -4337,7 +4480,8 @@ class AnalyzerWorker(QtCore.QObject):
                 )
                 relative_time = np.delete(relative_time, rows_to_toss)
                 temperature = np.delete(temperature, rows_to_toss)
-                resonance_frequency = np.delete(resonance_frequency, rows_to_toss)
+                resonance_frequency = np.delete(
+                    resonance_frequency, rows_to_toss)
                 dissipation = np.delete(dissipation, rows_to_toss)
                 Log.w(
                     "Time jumps removed from dataset for analysis purposes (original file unchanged)"
@@ -4437,7 +4581,8 @@ class AnalyzerWorker(QtCore.QObject):
                 )
                 ys_fit = np.concatenate((ys_fit, ys_fit_ext))
 
-            ys_diss_diff = savgol_filter(ys_fit[:t_first_90_split], smooth_factor, 1, 1)
+            ys_diss_diff = savgol_filter(
+                ys_fit[:t_first_90_split], smooth_factor, 1, 1)
             if extend_data:
                 ys_diss_diff_ext = savgol_filter(
                     ys_fit[t_first_90_split:],
@@ -4466,19 +4611,22 @@ class AnalyzerWorker(QtCore.QObject):
             zeros3 = np.where(np.diff(np.sign(ys_diss_diff_offset)))[0]
             while len(zeros3) < 2:
                 zeros3 = np.append(zeros3, 100)
-            ys_diss_diff_avg = np.average(ys_diss_diff[zeros3[1] :])
+            ys_diss_diff_avg = np.average(ys_diss_diff[zeros3[1]:])
 
             self.update(status_label)
 
             minima_idx = argrelextrema(ys_diss_2ndd, np.less)[0]
             minima_val = ys_diss_2ndd[minima_idx]
-            minima_dict = {minima_idx[i]: minima_val[i] for i in range(len(minima_idx))}
+            minima_dict = {minima_idx[i]: minima_val[i]
+                           for i in range(len(minima_idx))}
             minima_sort = sorted(minima_dict.items(), key=lambda kv: (kv[0]))
 
             maxima_idx = argrelextrema(ys_diss_2ndd, np.greater)[0]
             maxima_val = ys_diss_2ndd[maxima_idx]
-            maxima_dict = {maxima_idx[i]: maxima_val[i] for i in range(len(maxima_idx))}
-            maxima_sort = sorted(maxima_dict.items(), key=lambda kv: (kv[1], kv[0]))
+            maxima_dict = {maxima_idx[i]: maxima_val[i]
+                           for i in range(len(maxima_idx))}
+            maxima_sort = sorted(maxima_dict.items(),
+                                 key=lambda kv: (kv[1], kv[0]))
 
             self.update(status_label)
 
@@ -4524,7 +4672,8 @@ class AnalyzerWorker(QtCore.QObject):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            ys_freq_fit = savgol_filter(ys_freq[:t_first_90_split], smooth_factor, 1)
+            ys_freq_fit = savgol_filter(
+                ys_freq[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_freq_fit_ext = savgol_filter(
                     ys_freq[t_first_90_split:],
@@ -4541,14 +4690,17 @@ class AnalyzerWorker(QtCore.QObject):
                 if self.parent.correct_drop_effect.isChecked():
                     # baseline = np.average(ys[t_0p5:t_1p0])
                     # base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = poi_vals[0] # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_diss = ys[drop_start] # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+                    drop_start = poi_vals[0]
+                    # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+                    drop_diss = ys[drop_start]
                     if drop_diss > Constants.drop_effect_cutoff_freq:
                         self.diff_factor = Constants.drop_effect_multiplier_high
                     else:
                         self.diff_factor = Constants.drop_effect_multiplier_low
                     with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-                        data = np.loadtxt(f.readlines(), delimiter=",", skiprows=1)
+                        data = np.loadtxt(
+                            f.readlines(), delimiter=",", skiprows=1)
                         col = (
                             1
                             if self.diff_factor == Constants.drop_effect_multiplier_low
@@ -4562,10 +4714,11 @@ class AnalyzerWorker(QtCore.QObject):
                             ]
                         else:
                             # RR vector is shorter and needs to be padded with the final value
-                            drop_offsets[drop_start : drop_start + len(RR_offset)] = (
+                            drop_offsets[drop_start: drop_start + len(RR_offset)] = (
                                 RR_offset
                             )
-                            drop_offsets[drop_start + len(RR_offset) :] = RR_offset[-1]
+                            drop_offsets[drop_start +
+                                         len(RR_offset):] = RR_offset[-1]
                     Log.d(
                         f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
                     )
@@ -4591,7 +4744,8 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
-            ys_diff_fit = savgol_filter(ys_diff[:t_first_90_split], smooth_factor, 1)
+            ys_diff_fit = savgol_filter(
+                ys_diff[:t_first_90_split], smooth_factor, 1)
             if extend_data:
                 ys_diff_fit_ext = savgol_filter(
                     ys_diff[t_first_90_split:],
@@ -4646,23 +4800,26 @@ class AnalyzerWorker(QtCore.QObject):
                 ax3.cla()
                 ax4.cla()
                 ax2.plot(
-                    xs[t0 - cw : t0 + cw],
-                    ys_freq[t0 - cw : t0 + cw],
+                    xs[t0 - cw: t0 + cw],
+                    ys_freq[t0 - cw: t0 + cw],
                     "g.",
                     label="freq",
                 )
-                ax2.scatter(xs[t0], ys_freq[t0], marker="*", s=75, c="black", zorder=10)
+                ax2.scatter(xs[t0], ys_freq[t0], marker="*",
+                            s=75, c="black", zorder=10)
                 ax3.plot(
-                    xs[t0 - cw : t0 + cw],
-                    ys_diff[t0 - cw : t0 + cw],
+                    xs[t0 - cw: t0 + cw],
+                    ys_diff[t0 - cw: t0 + cw],
                     "b.",
                     label="diff",
                 )
-                ax3.scatter(xs[t0], ys_diff[t0], marker="*", s=75, c="black", zorder=10)
+                ax3.scatter(xs[t0], ys_diff[t0], marker="*",
+                            s=75, c="black", zorder=10)
                 ax4.plot(
-                    xs[t0 - cw : t0 + cw], ys[t0 - cw : t0 + cw], "r.", label="diss"
+                    xs[t0 - cw: t0 + cw], ys[t0 - cw: t0 + cw], "r.", label="diss"
                 )
-                ax4.scatter(xs[t0], ys[t0], marker="*", s=75, c="black", zorder=10)
+                ax4.scatter(xs[t0], ys[t0], marker="*",
+                            s=75, c="black", zorder=10)
                 t0, done = QtWidgets.QInputDialog.getDouble(
                     None, "Input Dialog", "Confirm precise start index:", value=t0
                 )
@@ -4674,7 +4831,8 @@ class AnalyzerWorker(QtCore.QObject):
                     try:
                         t0 = next(x for x, t in enumerate(xs) if t > t0)
                     except:
-                        Log.d("Re-interpreting user input as an index, not a timestamp")
+                        Log.d(
+                            "Re-interpreting user input as an index, not a timestamp")
                         t0 = int(t0)
                 if not done:
                     return
@@ -4697,23 +4855,26 @@ class AnalyzerWorker(QtCore.QObject):
                 ax3.cla()
                 ax4.cla()
                 ax2.plot(
-                    xs[t1 - cw : t1 + cw],
-                    ys_freq[t1 - cw : t1 + cw],
+                    xs[t1 - cw: t1 + cw],
+                    ys_freq[t1 - cw: t1 + cw],
                     "g.",
                     label="freq",
                 )
-                ax2.scatter(xs[t1], ys_freq[t1], marker="*", s=75, c="black", zorder=10)
+                ax2.scatter(xs[t1], ys_freq[t1], marker="*",
+                            s=75, c="black", zorder=10)
                 ax3.plot(
-                    xs[t1 - cw : t1 + cw],
-                    ys_diff[t1 - cw : t1 + cw],
+                    xs[t1 - cw: t1 + cw],
+                    ys_diff[t1 - cw: t1 + cw],
                     "b.",
                     label="diff",
                 )
-                ax3.scatter(xs[t1], ys_diff[t1], marker="*", s=75, c="black", zorder=10)
+                ax3.scatter(xs[t1], ys_diff[t1], marker="*",
+                            s=75, c="black", zorder=10)
                 ax4.plot(
-                    xs[t1 - cw : t1 + cw], ys[t1 - cw : t1 + cw], "r.", label="diss"
+                    xs[t1 - cw: t1 + cw], ys[t1 - cw: t1 + cw], "r.", label="diss"
                 )
-                ax4.scatter(xs[t1], ys[t1], marker="*", s=75, c="black", zorder=10)
+                ax4.scatter(xs[t1], ys[t1], marker="*",
+                            s=75, c="black", zorder=10)
                 t1, done = QtWidgets.QInputDialog.getDouble(
                     None, "Input Dialog", "Confirm precise stop index:", value=t1
                 )
@@ -4725,7 +4886,8 @@ class AnalyzerWorker(QtCore.QObject):
                     try:
                         t1 = next(x for x, t in enumerate(xs) if t > t1)
                     except:
-                        Log.d("Re-interpreting user input as an index, not a timestamp")
+                        Log.d(
+                            "Re-interpreting user input as an index, not a timestamp")
                         t1 = int(t1)
                 if not done:
                     return
@@ -4748,23 +4910,26 @@ class AnalyzerWorker(QtCore.QObject):
                 ax3.cla()
                 ax4.cla()
                 ax2.plot(
-                    xs[tp - cw : tp + cw],
-                    ys_freq[tp - cw : tp + cw],
+                    xs[tp - cw: tp + cw],
+                    ys_freq[tp - cw: tp + cw],
                     "g.",
                     label="freq",
                 )
-                ax2.scatter(xs[tp], ys_freq[tp], marker="*", s=75, c="black", zorder=10)
+                ax2.scatter(xs[tp], ys_freq[tp], marker="*",
+                            s=75, c="black", zorder=10)
                 ax3.plot(
-                    xs[tp - cw : tp + cw],
-                    ys_diff[tp - cw : tp + cw],
+                    xs[tp - cw: tp + cw],
+                    ys_diff[tp - cw: tp + cw],
                     "b.",
                     label="diff",
                 )
-                ax3.scatter(xs[tp], ys_diff[tp], marker="*", s=75, c="black", zorder=10)
+                ax3.scatter(xs[tp], ys_diff[tp], marker="*",
+                            s=75, c="black", zorder=10)
                 ax4.plot(
-                    xs[tp - cw : tp + cw], ys[tp - cw : tp + cw], "r.", label="diss"
+                    xs[tp - cw: tp + cw], ys[tp - cw: tp + cw], "r.", label="diss"
                 )
-                ax4.scatter(xs[tp], ys[tp], marker="*", s=75, c="black", zorder=10)
+                ax4.scatter(xs[tp], ys[tp], marker="*",
+                            s=75, c="black", zorder=10)
                 tp, done = QtWidgets.QInputDialog.getDouble(
                     None, "Input Dialog", "Confirm precise post index:", value=tp
                 )
@@ -4776,7 +4941,8 @@ class AnalyzerWorker(QtCore.QObject):
                     try:
                         tp = next(x for x, t in enumerate(xs) if t > tp)
                     except:
-                        Log.d("Re-interpreting user input as an index, not a timestamp")
+                        Log.d(
+                            "Re-interpreting user input as an index, not a timestamp")
                         tp = int(tp)
                 if not done:
                     return
@@ -4812,8 +4978,8 @@ class AnalyzerWorker(QtCore.QObject):
                 return a * np.exp(b * x + c) + d
 
             # calculate normalized curve
-            normal_x = xs[t0 : t1 + 1]
-            normal_y = ys_diff[t0 : t1 + 1]
+            normal_x = xs[t0: t1 + 1]
+            normal_y = ys_diff[t0: t1 + 1]
             n_max = np.amax(normal_y)
             n_min = np.amin(normal_y)
 
@@ -4827,7 +4993,8 @@ class AnalyzerWorker(QtCore.QObject):
                 sm1 -= 1  # force odd number
             initial_fill = normal_y  # save for later plot
             initial_smooth = (
-                savgol_filter(initial_fill, sm1, 1) if sm1 > 1 else initial_fill
+                savgol_filter(initial_fill, sm1,
+                              1) if sm1 > 1 else initial_fill
             )
 
             # approximate linear fit
@@ -4880,10 +5047,12 @@ class AnalyzerWorker(QtCore.QObject):
                     "Applying polynomial correction to initial fill region (for long runs)"
                 )
                 line1_y = (
-                    np.sqrt(np.polyval([0.183, 0.8234, 0], normal_y)) * distances[0]
+                    np.sqrt(np.polyval([0.183, 0.8234, 0],
+                            normal_y)) * distances[0]
                 )
                 line1_y_fit = (
-                    np.sqrt(np.polyval([0.183, 0.8234, 0], best_fit_pts)) * distances[0]
+                    np.sqrt(np.polyval([0.183, 0.8234, 0],
+                            best_fit_pts)) * distances[0]
                 )
             else:
                 line1_y = np.sqrt(normal_y) * distances[0]
@@ -4894,14 +5063,16 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            line1_smooth = savgol_filter(line1_y, sm1, 3) if sm1 > 3 else line1_y
+            line1_smooth = savgol_filter(
+                line1_y, sm1, 3) if sm1 > 3 else line1_y
             line1_smooth[0] = 0  # force first value to zero
             mask = np.where(line1_smooth < 0)
             line1_smooth[mask] = 0
 
             self.update(status_label)
 
-            p0 = (-1, -1, 1, distances[0])  # start with values near those we expect
+            # start with values near those we expect
+            p0 = (-1, -1, 1, distances[0])
             a, b, c, d = p0  # default, not yet optimized
             line1_curve = line1_y  # default, not yet optimized
             try:
@@ -5011,7 +5182,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             # Log.d(range_sort)
-            for key, zone, x, y in range_sort[::-1]:  # iterate from big to small
+            # iterate from big to small
+            for key, zone, x, y in range_sort[::-1]:
                 # Log.d(xs[key], zone, y)
                 if zone in blips:
                     blips.remove(zone)
@@ -5040,7 +5212,7 @@ class AnalyzerWorker(QtCore.QObject):
                         int((zeros3[idx] + zeros3[idx + 1]) / 2)
                     ]
                     min_pt = zeros3[idx] + np.argmin(
-                        ys_diss_diff_offset[zeros3[idx] : zeros3[idx + 1]]
+                        ys_diss_diff_offset[zeros3[idx]: zeros3[idx + 1]]
                     )
                     this_size = zeros3[idx + 1] - zeros3[idx]
                     idx += 1
@@ -5071,13 +5243,14 @@ class AnalyzerWorker(QtCore.QObject):
                 t2 = v_minima[1]
             if len(v_minima) == 1:
                 t1 = v_minima[0]
-                t2 = t_minima[-1] + np.argmin(ys_diss_diff_offset[t_minima[-1] :])
+                t2 = t_minima[-1] + \
+                    np.argmin(ys_diss_diff_offset[t_minima[-1]:])
 
             self.update(status_label)
 
             np.asarray(t_minima)
 
-            ax2.plot(xs[zeros3[0] :], ys_diss_diff_offset[zeros3[0] :], "b:")
+            ax2.plot(xs[zeros3[0]:], ys_diss_diff_offset[zeros3[0]:], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")
@@ -5120,8 +5293,10 @@ class AnalyzerWorker(QtCore.QObject):
                     ax.plot(
                         xs[mask], ys_freq_fit[mask], ":", color="green", label="fit"
                     )
-                    ax.plot(xs[mask], ys_diff_fit[mask], ":", color="blue", label="fit")
-                    ax.plot(xs[mask], ys_fit[mask], ":", color="red", label="fit")
+                    ax.plot(xs[mask], ys_diff_fit[mask],
+                            ":", color="blue", label="fit")
+                    ax.plot(xs[mask], ys_fit[mask], ":",
+                            color="red", label="fit")
                     ax.plot(xs[mask], ys_freq[mask], "g,", label="freq")
                     ax.scatter(
                         xs[time],
@@ -5149,14 +5324,14 @@ class AnalyzerWorker(QtCore.QObject):
                     ax3.cla()
                     ax4.cla()
                     ax2.plot(
-                        xs[time - cw : time + cw],
-                        ys_freq[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys_freq[time - cw: time + cw],
                         "g,",
                         label="freq",
                     )
                     ax2.plot(
-                        xs[time - cw : time + cw],
-                        ys_freq_fit[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys_freq_fit[time - cw: time + cw],
                         "g.",
                         label="freq",
                     )
@@ -5169,14 +5344,14 @@ class AnalyzerWorker(QtCore.QObject):
                         zorder=10,
                     )
                     ax3.plot(
-                        xs[time - cw : time + cw],
-                        ys_diff[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys_diff[time - cw: time + cw],
                         "b,",
                         label="diff",
                     )
                     ax3.plot(
-                        xs[time - cw : time + cw],
-                        ys_diff_fit[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys_diff_fit[time - cw: time + cw],
                         "b.",
                         label="diff",
                     )
@@ -5189,14 +5364,14 @@ class AnalyzerWorker(QtCore.QObject):
                         zorder=10,
                     )
                     ax4.plot(
-                        xs[time - cw : time + cw],
-                        ys[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys[time - cw: time + cw],
                         "r,",
                         label="diss",
                     )
                     ax4.plot(
-                        xs[time - cw : time + cw],
-                        ys_fit[time - cw : time + cw],
+                        xs[time - cw: time + cw],
+                        ys_fit[time - cw: time + cw],
                         "r.",
                         label="diss",
                     )
@@ -5213,7 +5388,8 @@ class AnalyzerWorker(QtCore.QObject):
                         time = int(time)
                     else:
                         try:
-                            time = next(x for x, t in enumerate(xs) if t > time)
+                            time = next(
+                                x for x, t in enumerate(xs) if t > time)
                         except:
                             Log.d(
                                 "Re-interpreting user input as an index, not a timestamp"
@@ -5234,7 +5410,8 @@ class AnalyzerWorker(QtCore.QObject):
             # display and export selected points
             points_of_interest = np.concatenate((start_stop, [tp], times))
             Log.d(f"Points of interest (index only): {points_of_interest}")
-            Log.i(f"Points of interest: {points_of_interest} {xs[points_of_interest]}")
+            Log.i(
+                f"Points of interest: {points_of_interest} {xs[points_of_interest]}")
             np.savetxt(poi_path, points_of_interest, fmt="%i")
 
             self.update(status_label)
@@ -5263,9 +5440,12 @@ class AnalyzerWorker(QtCore.QObject):
             ax.set_title(f"Raw Data: {data_title}")
             ax.grid(axis="y", which="major")
             mask = np.arange(t_start, t_stop, 1)
-            ax.plot(xs[mask], ys_freq_fit[mask], "--", color="green", label="freq fit")
-            ax.plot(xs[mask], ys_diff_fit[mask], "--", color="blue", label="diff fit")
-            ax.plot(xs[mask], ys_fit[mask], "--", color="red", label="diss fit")
+            ax.plot(xs[mask], ys_freq_fit[mask], "--",
+                    color="green", label="freq fit")
+            ax.plot(xs[mask], ys_diff_fit[mask], "--",
+                    color="blue", label="diff fit")
+            ax.plot(xs[mask], ys_fit[mask], "--",
+                    color="red", label="diss fit")
 
             self.update(status_label)
 
@@ -5342,7 +5522,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             if len(times) >= 4:
-                midpoint_ch2_y = (ys_freq_fit[times[2]] + ys_freq_fit[times[1]]) / 2
+                midpoint_ch2_y = (
+                    ys_freq_fit[times[2]] + ys_freq_fit[times[1]]) / 2
                 midpoint_ch2_i = next(
                     x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch2_y
                 )
@@ -5363,7 +5544,8 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             if len(times) >= 6:
-                midpoint_ch3_y = (ys_freq_fit[times[3]] + ys_freq_fit[times[2]]) / 2
+                midpoint_ch3_y = (
+                    ys_freq_fit[times[3]] + ys_freq_fit[times[2]]) / 2
                 midpoint_ch3_i = next(
                     x for x, y in enumerate(ys_freq_fit) if y > midpoint_ch3_y
                 )
@@ -5392,7 +5574,7 @@ class AnalyzerWorker(QtCore.QObject):
             # fine fit points: smoothed, but only a little for accurate fast fill
             ys_normal = ys_fit_fine - ys_fit_fine[tp]
             ys_normal /= ys_fit_fine[times[1]] - ys_fit_fine[tp]
-            ys_normal = ys_normal[tp : times[1]]
+            ys_normal = ys_normal[tp: times[1]]
 
             debug = False
             if debug:
@@ -5402,10 +5584,10 @@ class AnalyzerWorker(QtCore.QObject):
                 ax_dbg = fig_dbg.add_subplot(111)
 
                 # raw points
-                xs_dbg = xs[tp : times[1]]
+                xs_dbg = xs[tp: times[1]]
                 ys_normal2 = ys - ys_fit_fine[tp]
                 ys_normal2 /= ys_fit_fine[times[1]] - ys_fit_fine[tp]
-                ys_normal2 = ys_normal2[tp : times[1]]
+                ys_normal2 = ys_normal2[tp: times[1]]
 
                 Log.i("ys_normal: ")
                 Log.i(ys_normal)
@@ -5423,7 +5605,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             idx_of_normal_pts_to_remove = []
             for p in normal_pts:
-                midpoint_p_i = next(x for x, y in enumerate(ys_normal) if y >= p) + tp
+                midpoint_p_i = next(
+                    x for x, y in enumerate(ys_normal) if y >= p) + tp
                 midpoint_p_x = xs[midpoint_p_i]
                 midpoint_p_y = ys_fit[midpoint_p_i]
                 Log.i(
@@ -5478,7 +5661,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(times)
             np.asarray(bad_times)
-            distances = np.asarray(distances)[0 : len(times)]
+            distances = np.asarray(distances)[0: len(times)]
 
             self.update(status_label)
 
@@ -5511,15 +5694,16 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            norm_fit_xs = xs[start_stop[1] : times[-1]]
-            norm_fit_dists = ys_fit[start_stop[1] : times[-1]]
+            norm_fit_xs = xs[start_stop[1]: times[-1]]
+            norm_fit_dists = ys_fit[start_stop[1]: times[-1]]
             norm_fit_dists -= norm_fit_dists[0]
             norm_fit_dists /= norm_fit_dists[-1]
             norm_fit_dists *= distances[-1] - distances[0]
             norm_fit_dists += distances[0]
 
             # Generate log() plot curves for velocity and position^-1
-            log_velocity = np.concatenate((line1_y / line1_x, distances / xs[times]))
+            log_velocity = np.concatenate(
+                (line1_y / line1_x, distances / xs[times]))
             log_position = np.concatenate((1 / line1_y, 1 / distances))
 
             raw_velocity = norm_fit_dists / norm_fit_xs
@@ -5555,14 +5739,16 @@ class AnalyzerWorker(QtCore.QObject):
 
             dropUnder5 = 0
             ####################################
-            ### NEW CODE for 2023-11-07 TESTING:
+            # NEW CODE for 2023-11-07 TESTING:
             # Drop 5 Hz or 3.33% of initial fill (whichever is larger)
-            dropBelowPct = float(1 / 30)  # default, if/when Band-Aid #2 disabled
+            # default, if/when Band-Aid #2 disabled
+            dropBelowPct = float(1 / 30)
             #######################################
-            ### Band-Aid #2: Drop more initial fill
-            ### To disable: Comment out line below:
+            # Band-Aid #2: Drop more initial fill
+            # To disable: Comment out line below:
             dropBelowPct = 0.10  # 0.15 if BIOFORMULATION else 0.40
-            Log.w(f"Dropping {int(dropBelowPct * 100)}% of initial fill region...")
+            Log.w(
+                f"Dropping {int(dropBelowPct * 100)}% of initial fill region...")
             ### END Band-Aid #2 ###################
             dropFreqBelow = max(5, initial_fill[-1] * dropBelowPct)
             ### END NEW CODE ###################
@@ -5573,8 +5759,8 @@ class AnalyzerWorker(QtCore.QObject):
                     log_position = log_position[i:]
                     dropUnder5 = i
                     ####################################
-                    ### NEW CODE for 02/03/2023 TESTING:
-                    ### REMOVED 2023-11-07:
+                    # NEW CODE for 02/03/2023 TESTING:
+                    # REMOVED 2023-11-07:
                     # if initial_fill[-1] > 1.1*DENSITY*300:
                     #     dropUnder5 = int(np.floor(len(initial_fill)/5))
                     # else:
@@ -5590,8 +5776,8 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d(f"log_velocity = {log_velocity}")
             Log.d(f"initial_fill = {initial_fill}")
             if initial_fill[-1] < 90:
-                log_velocity_46 = log_velocity_46[-len(distances) :]
-                log_position_46 = log_position_46[-len(distances) :]
+                log_velocity_46 = log_velocity_46[-len(distances):]
+                log_position_46 = log_position_46[-len(distances):]
                 cp = xs[all_times[FILL_IDX]] / 2
                 ax2.annotate("Not Analyzed", (cp, 0), ha="center")
                 ax3.annotate("Not Analyzed", (cp, 0), ha="center")
@@ -5599,7 +5785,8 @@ class AnalyzerWorker(QtCore.QObject):
             else:
                 for i in range(len(initial_fill)):
                     if initial_fill[i] > 46:
-                        Log.d(f"Dropped {i} initial samples under 46 Hz threshold")
+                        Log.d(
+                            f"Dropped {i} initial samples under 46 Hz threshold")
                         log_velocity_46 = log_velocity_46[i:]
                         log_position_46 = log_position_46[i:]
                         break
@@ -5615,7 +5802,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            keep_ids = reject_outliers(log_velocity[0 : -len(distances)], 11.0)
+            keep_ids = reject_outliers(log_velocity[0: -len(distances)], 11.0)
             if isinstance(keep_ids, bool):
                 keep_ids = [keep_ids]
             trues = [True for x in distances]
@@ -5634,7 +5821,8 @@ class AnalyzerWorker(QtCore.QObject):
             n_slope, n_offset = p0  # default, not yet optimized
             best_fit_pts = log_position_46  # default, not yet optimized
             try:
-                params, cv = curve_fit(monoLine, log_velocity_46, log_position_46, p0)
+                params, cv = curve_fit(
+                    monoLine, log_velocity_46, log_position_46, p0)
                 n_slope, n_offset = params
                 best_fit_pts = monoLine(log_velocity_46, n_slope, n_offset)
             except:
@@ -5651,7 +5839,7 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             ####################################
-            ### NEW CODE for 2022-12-06 TESTING:
+            # NEW CODE for 2022-12-06 TESTING:
             m = len(initial_fill) - (len(log_velocity) - len(log_velocity_46))
             mlen = int(np.floor(m / 5))
             log_velocity_20p = []
@@ -5661,10 +5849,10 @@ class AnalyzerWorker(QtCore.QObject):
                 log_position_20p.append(log_position_46[hh])
             for hh in range(1, 5):
                 log_velocity_20p.append(
-                    np.average(log_velocity_46[hh * mlen : (hh + 1) * mlen - 1])
+                    np.average(log_velocity_46[hh * mlen: (hh + 1) * mlen - 1])
                 )
                 log_position_20p.append(
-                    np.average(log_position_46[hh * mlen : (hh + 1) * mlen - 1])
+                    np.average(log_position_46[hh * mlen: (hh + 1) * mlen - 1])
                 )
                 # Log.d(f"idx = {(hh+1)*mlen-1}, max = {m-1}")
             ### END NEW CODE ###################
@@ -5678,7 +5866,8 @@ class AnalyzerWorker(QtCore.QObject):
             ax6.plot(log_velocity_46, best_fit_pts, "-", color="blue")
             try:
                 for i in range(-len(distances), 0):
-                    ax6.plot(log_velocity_46[i], log_position_46[i], "d", color="black")
+                    ax6.plot(
+                        log_velocity_46[i], log_position_46[i], "d", color="black")
                 ax6.set_title(
                     f"Power log coefficient: {data_title}\nn = {n:.2f}"
                     + r"$ \pm $"
@@ -5711,9 +5900,10 @@ class AnalyzerWorker(QtCore.QObject):
             all_pos = np.concatenate((line1_y[dropUnder5:], distances))
             all_time = np.concatenate((line1_x[dropUnder5:], xs[times]))
             all_temp = np.concatenate(
-                (temperature[t0 : t0 + len(line1_x[dropUnder5:])], temperature[times])
+                (temperature[t0: t0 + len(line1_x[dropUnder5:])],
+                 temperature[times])
             )
-            avg_temp = np.average(temperature[t0 : times[-1]])
+            avg_temp = np.average(temperature[t0: times[-1]])
             all_velocity = all_pos / all_time
             # all_velocity[-7] /= 2 # 1.61 (#2 in distances)
             # all_velocity[-6] /= 1.5 # 2.17 (#3 in distances)
@@ -5794,7 +5984,8 @@ class AnalyzerWorker(QtCore.QObject):
                     freq_factor_15MHz = float(
                         Constants.get_batch_param(batch, "freq_factor_15MHz")
                     )
-                    high_shear_15y = (((f2 - f0) * freq_factor_15MHz) ** 2) / DENSITY
+                    high_shear_15y = (
+                        ((f2 - f0) * freq_factor_15MHz) ** 2) / DENSITY
                     Log.i(
                         f"15MHz High shear = ((f2-f0) * {freq_factor_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                     )
@@ -5808,15 +5999,18 @@ class AnalyzerWorker(QtCore.QObject):
                     bandaid_compensate_high_shear_viscosity = False
                     if bandaid_compensate_high_shear_viscosity:
                         E3 = (
-                            ys_freq[all_times[FILL_IDX]] - ys_freq[all_times[START_IDX]]
+                            ys_freq[all_times[FILL_IDX]] -
+                            ys_freq[all_times[START_IDX]]
                         )  # from CAL file (Freq_fill)
-                        D = (d2 - d0) - ((0.023112 * (E3) / DENSITY - 4.6868) * 1e-6)
+                        D = (d2 - d0) - \
+                            ((0.023112 * (E3) / DENSITY - 4.6868) * 1e-6)
                         high_shear_15y = (
                             (D * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
                         ) / DENSITY
                     else:
                         high_shear_15y = (
-                            ((d2 - d0) * diss_factor1_15MHz - diss_factor2_15MHz) ** 2
+                            ((d2 - d0) * diss_factor1_15MHz -
+                             diss_factor2_15MHz) ** 2
                         ) / DENSITY
                     Log.i(f"d0 = {d0:1.4E}")
                     Log.i(f"d2 = {d2:1.4E}")
@@ -5831,7 +6025,8 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(
                             f"15MHz High shear = ((d2-d0) * {diss_factor1_15MHz}-{diss_factor2_15MHz})^2 / {DENSITY} = {high_shear_15y:2.2f} cP"
                         )
-                high_shear_15x = self.correctHighShear(high_shear_15x, high_shear_15y)
+                high_shear_15x = self.correctHighShear(
+                    high_shear_15x, high_shear_15y)
                 ax7.plot(high_shear_15x, high_shear_15y, "bd")
                 ax7.errorbar(
                     high_shear_15x,
@@ -5846,7 +6041,8 @@ class AnalyzerWorker(QtCore.QObject):
 
                 if True:
                     data_path_fun = data_path.replace("_3rd.csv", "_lower.csv")
-                    fun_file_exists = secure_open.file_exists(data_path_fun, "capture")
+                    fun_file_exists = secure_open.file_exists(
+                        data_path_fun, "capture")
 
                 if (
                     f2 - f0 < 900 and fun_file_exists
@@ -5896,11 +6092,14 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.e(
                                 f"Failed to locate POI_{i} @ timestamp {xs[all_times[i]] - xs[0]} from fundamental dataset. Attempting to proceed with index 0..."
                             )
-                        Log.d(f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
-                        Log.d(f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}")
+                        Log.d(
+                            f"time[{i}] must be >= {xs[all_times[i]] - xs[0]}")
+                        Log.d(
+                            f"time[{i}] = {relative_time_fun[t_fun]}, index {t_fun}")
                         times_fun.append(t_fun)
                     ys_freq_fun = (
-                        np.average(resonance_frequency_fun[0 : times_fun[FILL_IDX]])
+                        np.average(
+                            resonance_frequency_fun[0: times_fun[FILL_IDX]])
                         - resonance_frequency_fun
                     )
                     high_shear_5x = 5e6
@@ -5931,7 +6130,8 @@ class AnalyzerWorker(QtCore.QObject):
                             Log.d(f"{i+1}: ({xp[i+1]}, {fp[i+1]})")
                             Log.d("...")
                         # Log.d(f"{i}: ({xp[i]}, {fp[i]})")
-                    Log.d(f"{i}: ({xp[i]}, {fp[i]})")  # ending 'i' from last 'for' loop
+                    # ending 'i' from last 'for' loop
+                    Log.d(f"{i}: ({xp[i]}, {fp[i]})")
                     Log.i(f"f0 = {f0:2.2f} Hz")
                     Log.i(f"f2 = {f2:2.2f} Hz")
                     Log.i(f"f2-f0 = {f2-f0} Hz")
@@ -5939,18 +6139,22 @@ class AnalyzerWorker(QtCore.QObject):
                         Constants.get_batch_param(batch, "freq_delta_5MHz")
                     ):
                         freq_factor_5MHz = float(
-                            Constants.get_batch_param(batch, "freq_factor_5MHz")
+                            Constants.get_batch_param(
+                                batch, "freq_factor_5MHz")
                         )
-                        high_shear_5y = (((f2 - f0) * freq_factor_5MHz) ** 2) / DENSITY
+                        high_shear_5y = (
+                            ((f2 - f0) * freq_factor_5MHz) ** 2) / DENSITY
                         Log.i(
                             f"5MHz High shear = ((f2-f0) * {freq_factor_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                         )
                     else:
                         diss_factor1_5MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor1_5MHz")
+                            Constants.get_batch_param(
+                                batch, "diss_factor1_5MHz")
                         )
                         diss_factor2_5MHz = float(
-                            Constants.get_batch_param(batch, "diss_factor2_5MHz")
+                            Constants.get_batch_param(
+                                batch, "diss_factor2_5MHz")
                         )
                         high_shear_5y = (
                             ((d2 - d0) * diss_factor1_5MHz - diss_factor2_5MHz) ** 2
@@ -5961,7 +6165,8 @@ class AnalyzerWorker(QtCore.QObject):
                         Log.i(
                             f"5MHz High shear = ((d2-d0) * {diss_factor1_5MHz}-{diss_factor2_5MHz})^2 / {DENSITY} = {high_shear_5y:2.2f} cP"
                         )
-                    high_shear_5x = self.correctHighShear(high_shear_5x, high_shear_5y)
+                    high_shear_5x = self.correctHighShear(
+                        high_shear_5x, high_shear_5y)
                     ax7.plot(high_shear_5x, high_shear_5y, "bd")
                     ax7.errorbar(
                         high_shear_5x,
@@ -6051,12 +6256,15 @@ class AnalyzerWorker(QtCore.QObject):
                 idx1 = -5
                 idx2 = -4
                 idx3 = -3
-                avg_viscosity = np.average([in_viscosity[idx0], in_viscosity[idx3]])
+                avg_viscosity = np.average(
+                    [in_viscosity[idx0], in_viscosity[idx3]])
                 std_viscosity = np.std(
                     np.delete(in_viscosity, [idx1, idx2])
                 )  # all of in_viscosity, just not 2 points
-                min_visc = min(np.min(avg_viscosity), np.min(fill_visc)) - std_viscosity
-                max_visc = max(np.max(avg_viscosity), np.max(fill_visc)) + std_viscosity
+                min_visc = min(np.min(avg_viscosity),
+                               np.min(fill_visc)) - std_viscosity
+                max_visc = max(np.max(avg_viscosity),
+                               np.max(fill_visc)) + std_viscosity
                 Log.d(
                     f"Expected viscosity = {avg_viscosity} +/- {std_viscosity}, min = {min_visc}, max = {max_visc}"
                 )
@@ -6080,16 +6288,18 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            fit_shear = fill_shear  # np.linspace(lin_shear_rate[0], lin_shear_rate[-1]) # default: 50 points
+            # np.linspace(lin_shear_rate[0], lin_shear_rate[-1]) # default: 50 points
+            fit_shear = fill_shear
             fit_visc = (
-                fill_visc  # cube_fit(fit_shear) # plot this one, evenly spaced points
+                # cube_fit(fit_shear) # plot this one, evenly spaced points
+                fill_visc
             )
             lin_viscosity = fill_visc
 
             debug = False
             if debug:
-                raw_shear = in_shear_rate[0 : -len(distances)]
-                raw_visc = in_viscosity[0 : -len(distances)]
+                raw_shear = in_shear_rate[0: -len(distances)]
+                raw_visc = in_viscosity[0: -len(distances)]
                 import matplotlib.pyplot as plt
 
                 fig_dbg = plt.figure(figsize=(12, 9))
@@ -6107,7 +6317,7 @@ class AnalyzerWorker(QtCore.QObject):
             # ax7.plot(shear_rate, viscosity, 'r:')
 
             ### BANDAID #3 ###
-            ### PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+            # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
             enable_bandaid_3 = True
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
@@ -6157,11 +6367,15 @@ class AnalyzerWorker(QtCore.QObject):
                 )
                 ax7.plot(fit_shear, fit_visc, color="black", marker=",")
                 for hh in range(1, 5):
-                    xp = np.average(in_shear_rate[hh * mlen : (hh + 1) * mlen - 1])
-                    yp = np.average(in_viscosity[hh * mlen : (hh + 1) * mlen - 1])
-                    stdev = np.std(in_viscosity[hh * mlen : (hh + 1) * mlen - 1])
+                    xp = np.average(
+                        in_shear_rate[hh * mlen: (hh + 1) * mlen - 1])
+                    yp = np.average(
+                        in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
+                    stdev = np.std(
+                        in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
                     # ax7.plot(xp, yp, 'b.')
-                    ax7.errorbar(xp, yp, stdev, fmt="b.", ecolor="blue", capsize=3)
+                    ax7.errorbar(xp, yp, stdev, fmt="b.",
+                                 ecolor="blue", capsize=3)
             else:
                 # Remove initial fill points from output table later
                 remove_initial_fill = True
@@ -6179,7 +6393,8 @@ class AnalyzerWorker(QtCore.QObject):
                     )
                     * 100
                 )
-                Log.d(f"Percent error for calculated viscosity is: {percent_error}")
+                Log.d(
+                    f"Percent error for calculated viscosity is: {percent_error}")
                 if percent_error < 20.0:
                     ax7.plot(
                         shear_rate[i], viscosity[i], "bd"
@@ -6200,10 +6415,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             if remove_initial_fill:
                 # Remove initial fill points from output table
-                in_shear_rate = in_shear_rate[-len(distances) :]
-                in_viscosity = in_viscosity[-len(distances) :]
-                lin_viscosity = lin_viscosity[-len(distances) :]
-                in_temp = in_temp[-len(distances) :]
+                in_shear_rate = in_shear_rate[-len(distances):]
+                in_viscosity = in_viscosity[-len(distances):]
+                lin_viscosity = lin_viscosity[-len(distances):]
+                in_temp = in_temp[-len(distances):]
 
             in_shear_rate = np.flip(in_shear_rate)
             in_viscosity = np.flip(in_viscosity)
@@ -6271,7 +6486,8 @@ class AnalyzerWorker(QtCore.QObject):
             try:
                 # export data to csv
                 export_path = data_path
-                export_path = export_path.replace(".csv", Constants.export_file_format)
+                export_path = export_path.replace(
+                    ".csv", Constants.export_file_format)
                 export_path = export_path.replace("_fundamental", "")
                 export_path = export_path.replace("_3rd", "")
                 Log.i(f"Exporting analyze output to:\n\t{export_path}")
@@ -6324,19 +6540,23 @@ class AnalyzerWorker(QtCore.QObject):
             # export figures to file
             Log.i("Saving figures to file...")
             # self.progress.emit(75, "Saving Results...")
-            Log.i(f'Exporting Figure 1 to:\n\t{export_path.replace(".csv", "_1.pdf")}')
+            Log.i(
+                f'Exporting Figure 1 to:\n\t{export_path.replace(".csv", "_1.pdf")}')
             fig.savefig(export_path.replace(".csv", "_1.pdf"))
             self.update(status_label)
             # self.progress.emit(80, "Saving Results...")
-            Log.i(f'Exporting Figure 2 to:\n\t{export_path.replace(".csv", "_2.pdf")}')
+            Log.i(
+                f'Exporting Figure 2 to:\n\t{export_path.replace(".csv", "_2.pdf")}')
             fig2.savefig(export_path.replace(".csv", "_2.pdf"))
             self.update(status_label)
             # self.progress.emit(85, "Saving Results...")
-            Log.i(f'Exporting Figure 3 to:\n\t{export_path.replace(".csv", "_3.pdf")}')
+            Log.i(
+                f'Exporting Figure 3 to:\n\t{export_path.replace(".csv", "_3.pdf")}')
             fig3.savefig(export_path.replace(".csv", "_3.pdf"))
             self.update(status_label)
             # self.progress.emit(90, "Saving Results...")
-            Log.i(f'Exporting Figure 4 to:\n\t{export_path.replace(".csv", "_4.pdf")}')
+            Log.i(
+                f'Exporting Figure 4 to:\n\t{export_path.replace(".csv", "_4.pdf")}')
             fig4.savefig(export_path.replace(".csv", "_4.pdf"))
             self.update(status_label)
 
@@ -6387,20 +6607,23 @@ class AnalyzerWorker(QtCore.QObject):
                     if na_pts > 1:
                         for i in range(na_pts - 1):
                             cal_idxs = np.append(cal_idxs, na_val)
-                    cal_times = np.array(np.round(xs[cal_idxs], 4), dtype=float)
+                    cal_times = np.array(
+                        np.round(xs[cal_idxs], 4), dtype=float)
                     cal_disss = np.array(
                         np.round(ys[cal_idxs] - ys[points_of_interest[0]], 4),
                         dtype=float,
                     )
                     cal_freqs = np.array(
-                        np.round(ys_freq[cal_idxs] - ys_freq[points_of_interest[0]], 4),
+                        np.round(ys_freq[cal_idxs] -
+                                 ys_freq[points_of_interest[0]], 4),
                         dtype=float,
                     )
                     cal_notes = [
                         "Not Analyzed" if x in bad_times else "" for x in cal_idxs
                     ]
                     cal_data = np.column_stack(
-                        [cal_pts, cal_idxs, cal_times, cal_disss, cal_freqs, cal_notes]
+                        [cal_pts, cal_idxs, cal_times,
+                            cal_disss, cal_freqs, cal_notes]
                     )
 
                     np.savetxt(
@@ -6451,7 +6674,8 @@ class AnalyzerWorker(QtCore.QObject):
                     False and UserProfiles.count() > 0 and enabled == False
                 ):  # NEVER do this (is this still CFR compliant?)
                     # create a protected archive
-                    zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                    zf.setpassword(hashlib.sha256(
+                        zf.comment).hexdigest().encode())
                 else:
                     zf.setencryption(None)
                     if enabled:
@@ -6481,7 +6705,8 @@ class AnalyzerWorker(QtCore.QObject):
                 zf.write(copy_file, arcname=os.path.split(copy_file)[1])
                 os.remove(copy_file)
 
-                this_poi_csv_crc = str(hex(zf.getinfo(os.path.split(poi_path)[1]).CRC))
+                this_poi_csv_crc = str(
+                    hex(zf.getinfo(os.path.split(poi_path)[1]).CRC))
                 this_out_csv_crc = str(
                     hex(zf.getinfo(os.path.split(export_path)[1]).CRC)
                 )
@@ -6709,7 +6934,8 @@ class TableView(QtWidgets.QTableWidget):
                     newitem = QtWidgets.QTableWidgetItem(f"{item:2.2f}")
                 newitem.setFlags(QtCore.Qt.ItemIsEnabled)
                 if error_cell:
-                    newitem.setForeground(QtGui.QBrush(QtGui.QColor(255, 127, 127)))
+                    newitem.setForeground(QtGui.QBrush(
+                        QtGui.QColor(255, 127, 127)))
                 self.setItem(m, n, newitem)
         self.setHorizontalHeaderLabels(horHeaders)
         header = self.horizontalHeader()

@@ -11,6 +11,8 @@ from QATCH.core.constants import Constants
 ###############################################################################
 # Logging package - All packages can use this module
 ###############################################################################
+
+
 class Logger:
 
     ###########################################################################
@@ -23,17 +25,17 @@ class Logger:
         :type level: int.
         """
         log_format_file = logging.Formatter(
-            fmt = '%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s',
-            datefmt = None)
+            fmt='%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s',
+            datefmt=None)
         log_format_console = logging.Formatter(
-            fmt = '%(asctime)s\t%(levelname)s\t%(message)s',
-            datefmt = '%Y-%m-%d %I:%M:%S %p')
+            fmt='%(asctime)s\t%(levelname)s\t%(message)s',
+            datefmt='%Y-%m-%d %I:%M:%S %p')
 
         top_level_logger = logging.getLogger("QATCH")
         top_level_logger.setLevel(logging.DEBUG)
 
         if (top_level_logger.hasHandlers()):
-            #Logger.d("Skipping addHandlers")
+            # Logger.d("Skipping addHandlers")
             return
 
         FileManager.create_dir(Constants.log_export_path)
@@ -54,7 +56,7 @@ class Logger:
         console_handler.setLevel(logging.INFO)
         top_level_logger.addHandler(console_handler)
 
-        #Logger.d("Added handlers successfully")
+        # Logger.d("Added handlers successfully")
         top_level_logger.info("Added logging handlers")
 
     def write(self, message):
@@ -111,22 +113,23 @@ class Logger:
         logger = logging.getLogger("QATCH.logger")
         logger.error("{} {}".format(str(tag), str(msg)))
 
-
     ###########################################################################
     # logs and prints architecture-related informations
     ###########################################################################
+
     @staticmethod
     def _show_user_info():
-        tag = ""#"[User]"
-        str = " {} {} ".format(Constants.app_title,Constants.app_version)
+        tag = ""  # "[User]"
+        str = " {} {} ".format(Constants.app_title, Constants.app_version)
         Logger.i("-" * len(str))
         Logger.i(str)
         Logger.i("-" * len(str))
-        Logger.i(tag,"Build Date: {}".format(Constants.app_date))
+        Logger.i(tag, "Build Date: {}".format(Constants.app_date))
         Logger.i("{} SYSTEM INFORMATIONS:".format(tag))
         Logger.i(tag, "PC Name: {}".format(Architecture.get_os_name()))
         Logger.i(tag, "Platform: {}".format(Architecture.get_os_type()))
-        Logger.i(tag, "Python version: {}".format(Architecture.get_python_version()))
+        Logger.i(tag, "Python version: {}".format(
+            Architecture.get_python_version()))
         Logger.i(tag, "Path: {}".format(os.getcwd()))
         if getattr(sys, 'frozen', False):
             Logger.d(tag, "_MEIPASS: {}".format(sys._MEIPASS))
@@ -140,12 +143,12 @@ class Logger:
         else:
             # we are running in a normal Python environment
             bundle_dir = os.path.dirname(os.path.abspath(__file__))
-        Logger.d( "=== DEBUG INFORMATIONS ===")
-        Logger.d( f'we are {frozen} frozen')
-        Logger.d( 'bundle dir is', bundle_dir )
-        Logger.d( 'sys.argv[0] is', sys.argv[0] )
-        Logger.d( 'sys.executable is', sys.executable )
-        Logger.d( 'os.getcwd is', os.getcwd() )
+        Logger.d("=== DEBUG INFORMATIONS ===")
+        Logger.d(f'we are {frozen} frozen')
+        Logger.d('bundle dir is', bundle_dir)
+        Logger.d('sys.argv[0] is', sys.argv[0])
+        Logger.d('sys.executable is', sys.executable)
+        Logger.d('os.getcwd is', os.getcwd())
 
 
 ###############################################################################

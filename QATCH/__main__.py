@@ -6,11 +6,11 @@ if __name__ == '__main__':
         f.writelines([
             'Set WshShell = CreateObject("WScript.Shell")\n',
             'WshShell.Run "py -{}.{} app.py", 0, True\n'.format(
-                MinimalPython.major, 
+                MinimalPython.major,
                 MinimalPython.minor
             ),
             'Set WshShell = Nothing\n'
         ])
     os.startfile("QATCH\__pythonw__.vbs")
-    #freeze_support()
-    #QATCH().run()
+    # freeze_support()
+    # QATCH().run()
