@@ -492,7 +492,7 @@ class FileStorage:
                     mtime = -1
                 if d.find('_') > 0:
                     s = d.split("_")
-                    i = int(s[0])
+                    i = int(s[0], base=16) % 9
                     d = s[1]
                 else:
                     i = 0
@@ -506,7 +506,7 @@ class FileStorage:
                     dev_list.append([i, d])
                 modified[d] = mtime
             return dev_list
-        except:
+        except Exception as e:
             # most likely cause: config folder does not yet exist (thrown by listdir)
             return [] # empty list
 

@@ -15,6 +15,44 @@ TAG = "[RunInfo]"
 class RunInfoWindow(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
 
+    @staticmethod
+    def test():
+        num_runs_to_test = 4
+
+        self = QtCore.QObject()
+        # self.indicate_done = lambda: None
+        self.bThread = []
+        self.bWorker = []
+        self.RunInfoWindow = None
+        for i in range(num_runs_to_test):
+            ask4info = True
+            subDir = f"dummy_dir_{i+1}"
+            new_path = f"C:\\test\\dummy_path_{i+1}.csv"
+            is_good = True
+
+            if ask4info:
+                ask4info = False
+                # self.indicate_finalizing()
+                self.bThread.append(QtCore.QThread())
+                user_name = "Alexander J. Ross" # None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                self.bWorker.append(QueryRunInfo(subDir, new_path, is_good, user_name, parent = self.parent)) # TODO: more secure to pass user_hash (filename)
+                self.bThread[-1].started.connect(self.bWorker[-1].show)
+                self.bWorker[-1].finished.connect(self.bThread[-1].quit)
+                # self.bWorker[-1].finished.connect(self.indicate_done) # add here
+                # self.finished.disconnect(self.indicate_done) # remove here
+
+        num_runs_saved = len(self.bThread)
+        for i in range(num_runs_saved):
+            self.bWorker[i].setRuns(num_runs_saved, i) # if '1' more fields shown in QueryRunInfo
+        if num_runs_saved == 0:
+            pass # do nothing
+        elif num_runs_saved == 1:
+            self.bThread[-1].start() # only 1 run to save
+        else: 
+            self.RunInfoWindow = RunInfoWindow(self.bWorker, self.bThread) # more than 1 run to save
+
+        return (self.bThread, self.bWorker, self.RunInfoWindow)
+
     def __init__(self, bWorkers, bThreads):
         super(RunInfoWindow, self).__init__(None)
         self.bWorker = bWorkers
