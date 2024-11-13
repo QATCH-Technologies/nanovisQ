@@ -9,6 +9,7 @@ import numpy as np
 import os
 import datetime as dt
 import hashlib
+import re
 
 TAG = "[RunInfo]"
 
@@ -1313,7 +1314,6 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def confirm(self, force=False):
         from QATCH.processors.Analyze import AnalyzeProcess
-
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
@@ -1407,7 +1407,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                 if not os.path.exists(Constants.auto_sign_key_path):
                     with open(Constants.auto_sign_key_path, 'w') as f:
                         f.write(session_key)
-
         if secure_open.file_exists(self.xml_path):
             audit_action = "PARAMS"
             run = minidom.parse(self.xml_path)
@@ -1528,6 +1527,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         param_runname = run.createElement('param')
         param_runname.setAttribute('name', 'run_name')
         param_runname.setAttribute('value', self.t_runname.text())
+        self.run_name = self.t_runname.text()
         params.appendChild(param_runname)
 
         param_batch = run.createElement('param')
@@ -1675,33 +1675,150 @@ class QueryRunInfo(QtWidgets.QWidget):
             audits.appendChild(audit1)
         else:
             pass  # leave 'audits' block as empty
+        # Update the run data files and directory to refelct changes made to
+        # the run name in the RunInfo window.
+        # TODO: Only allow for valid/secure paths in XML.
+        update_success = self.update_run_name(
+            self.xml_path, self.run_name, secure=True)
+        if not update_success:
+            Log.e("Could not update directory due to invalid/unsecure path.")
+            return False
+        else:
+            # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
+            # secure_open(self.xml_path, 'w', "audit") as f:
+            with open(self.xml_path, 'w') as f:
+                xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
+                f.write(xml_str)
+                Log.i(f"Created XML file: {self.xml_path}")
 
-        os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
+            if self.q5.isEnabled():
+                run = minidom.Document()
+                xml = run.createElement('run_info')
+                xml.setAttribute('name', 'recall')
+                run.appendChild(xml)
+                if self.q5.isChecked():  # remember for next time
+                    Log.i("Run info remembered for next time.")
+                else:
+                    params = run.createElement('params')  # blank it
+                xml.appendChild(params)
+                os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
+                # secure_open(self.recall_xml, 'w') as f:
+                with open(self.recall_xml, 'w') as f:
+                    f.write(run.toxml())
 
-        # secure_open(self.xml_path, 'w', "audit") as f:
-        with open(self.xml_path, 'w') as f:
-            xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
-            f.write(xml_str)
-            Log.i(f"Created XML file: {self.xml_path}")
+            self.unsaved_changes = False
+            self.close()
+            return True
 
-        if self.q5.isEnabled():
-            run = minidom.Document()
-            xml = run.createElement('run_info')
-            xml.setAttribute('name', 'recall')
-            run.appendChild(xml)
-            if self.q5.isChecked():  # remember for next time
-                Log.i("Run info remembered for next time.")
+    def update_run_name(self, previous_xml_path: str, new_name: str, secure: bool = False):
+        """
+        Renames the the run directory and corresponding run data files to the updated name parameterized
+        by the RunInfo window. 
+
+        TODO: Disscuss how to have this match in the XML file.  Currently, the XML can contain an invalid
+        file name and will display in the dropdown.  I can just remove this if its more of a nuisance than
+        of benefit.
+
+        Args:
+            previous_xml_path (str): The file path to the XML file whose directory is to be renamed.
+            new_name (str): The new name for the directory and the files within it.
+            secure (bool): (Optional) Flag for secure directory creation. Set to False by default.
+
+        Returns:
+            bool: True if the operation was successful, False otherwise. 
+
+        Raises:
+            ValueError: If the `previous_xml_path` is not a valid file or is not within the base directory.
+            ValueError: If the `new_name` is invalid (contains special characters or path traversal).
+            PermissionError: If the function is denied permission to access directories or rename files.
+            OSError: If any OS-level error occurs during renaming or file operations.
+        """
+        try:
+            # Check `previous_xml_path` exists and is a valid file within BASE_DIR
+            if not os.path.isfile(previous_xml_path):
+                Log.e(
+                    tag=TAG, msg=f"Previous XML path {previous_xml_path} does not exist or is not a file.")
+                return False
+
+            # Prevents file creation outside of logged_data directory.
+            # if not os.path.abspath(previous_xml_path).startswith(BASE_DIR):
+            #     Log.e(f"Operation outside of secure directory is not allowed.")
+            #     return False
+
+            parent_dir = os.path.dirname(previous_xml_path)
+            grandparent_dir = os.path.dirname(parent_dir)
+
+            # Validate new_name for security (e.g., no special characters, no path traversal)
+            if secure and not re.match(r'^[\w-]+$', new_name):
+                Log.e(
+                    tag=TAG, msg=f"Invalid run name {new_name}. Allowed characters: letters, numbers, underscores, hyphens.")
+                return False
+
+            # Form new directory path and validate it is within grandparent_dir to avoid path traversal
+            new_dir = os.path.join(grandparent_dir, new_name)
+            if secure and not os.path.abspath(new_dir).startswith(os.path.abspath(grandparent_dir)):
+                Log.w(
+                    tag=TAG, msg=f"Path traversal attempt detected in new name: {new_name}")
+                return False
+             # Symlink avoidance by rejecting symbolic links in directory hierarchy
+            if secure and any(os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]):
+                Log.e(
+                    tag=TAG, msg="Symbolic links are not allowed in the directory path.")
+                return False
+
+            # Check if new directory path is valid
+            new_dir = os.path.join(grandparent_dir, new_name)
+            if os.path.exists(new_dir):
+                Log.i(
+                    tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
+                return False
             else:
-                params = run.createElement('params')  # blank it
-            xml.appendChild(params)
-            os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
-            # secure_open(self.recall_xml, 'w') as f:
-            with open(self.recall_xml, 'w') as f:
-                f.write(run.toxml())
+                os.rename(parent_dir, new_dir)
+                Log.i(
+                    tag=TAG, msg=f"Updating directory {parent_dir} to {new_dir}")
 
-        self.unsaved_changes = False
-        self.close()
-        return True
+            # List files in the new directory
+            try:
+                files = os.listdir(new_dir)
+            except PermissionError:
+                Log.e(
+                    tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
+                return False
+
+            # Rename each file to match the new directory name
+            for file in files:
+                old_path = os.path.join(new_dir, file)
+                try:
+                    if file.endswith('.xml'):
+                        new_file_name = f"{new_name}.xml"
+                        self.xml_path = new_file_name
+                    elif file.endswith('_poi.csv'):
+                        new_file_name = f"{new_name}_poi.csv"
+                    elif file.endswith('.csv'):
+                        new_file_name = f"{new_name}.csv"
+                    else:
+                        Log.i(
+                            tag=TAG, msg=f"Skipping unrecognized file format: {file}")
+                        continue  # Skip any files that don’t match the expected patterns
+
+                    # Perform the renaming
+                    new_file_path = os.path.join(new_dir, new_file_name)
+                    if os.path.exists(new_file_path):
+                        Log.w(
+                            tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {old_path}")
+                        continue
+                    os.rename(old_path, new_file_path)
+                    Log.i(
+                        tag=TAG, msg=f"Renamed file {old_path} to {new_file_path}")
+                except OSError as e:
+                    Log.e(
+                        tag=TAG, msg=f"Error renaming file {old_path} to {new_file_name}: {e}")
+                    continue
+
+            return True
+        except Exception as e:
+            Log.e(tag=TAG, msg=f"An unexpected error occurred: {e}")
+            return False
 
     def closeEvent(self, event):
         if self.unsaved_changes:

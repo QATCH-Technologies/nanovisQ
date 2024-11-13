@@ -3395,6 +3395,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
+
         if self.xml_path != None:
             xml_text = ""
             with open(self.xml_path, "r") as f:
