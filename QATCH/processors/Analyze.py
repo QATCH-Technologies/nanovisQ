@@ -3395,8 +3395,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
-
         if self.xml_path != None:
+            Log.i(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
             xml_text = ""
             with open(self.xml_path, "r") as f:
                 xml_text = f.read()
@@ -3434,10 +3434,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
             self.bWorker.finished.connect(self.update_run_names)
+
+            # IPC signal to get the updated path name from the Run Info window on
+            # change.
             self.bWorker.updated_xml_path.connect(self.setXmlPath)
+
             self.bThread.start()
 
     def update_run_names(self):
+        """
+        Used as a reciever from QueryRunInfo to update the xml_path name
+        to the modified xml_path name.
+        """
         devs = FileStorage.get_all_device_dirs()
         for i, _ in enumerate(devs):
             self.updateRun(i)

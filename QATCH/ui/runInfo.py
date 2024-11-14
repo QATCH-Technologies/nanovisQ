@@ -1682,7 +1682,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         updated_name = self.update_run_name(
             self.xml_path, self.run_name, secure=True)
         if not updated_name:
-            Log.e("Could not update directory due to invalid/unsecure path.")
+            Log.e(tag=TAG, msg="Could not update directory due path error.")
             return False
         else:
             # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
@@ -1715,7 +1715,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def update_run_name(self, previous_xml_path: str, new_name: str, secure: bool = False):
         """
         Renames the the run directory and corresponding run data files to the updated name parameterized
-        by the RunInfo window. 
+        by the RunInfo window.
 
         TODO: Disscuss how to have this match in the XML file.  Currently, the XML can contain an invalid
         file name and will display in the dropdown.  I can just remove this if its more of a nuisance than
@@ -1727,7 +1727,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             secure (bool): (Optional) Flag for secure directory creation. Set to False by default.
 
         Returns:
-            str: The name of the new directory if the operation was successful, None otherwise. 
+            str: The name of the new directory if the operation was successful, None otherwise.
 
         Raises:
             ValueError: If the `previous_xml_path` is not a valid file or is not within the base directory.
@@ -1735,6 +1735,24 @@ class QueryRunInfo(QtWidgets.QWidget):
             PermissionError: If the function is denied permission to access directories or rename files.
             OSError: If any OS-level error occurs during renaming or file operations.
         """
+        import zipfile
+        import shutil
+
+        def rename_file(file_name):
+            if file_name.endswith('.xml'):
+                return f"{new_name}.xml", True
+            elif file_name.endswith('_tec.csv'):
+                return f"{new_name}_tec.csv", False
+            elif file_name.endswith('_cal.csv'):
+                return f"{new_name}_cal.csv", False
+            elif file_name.endswith('_.csv'):
+                return f"{new_name}_poi.csv", False
+            elif file_name.endswith('_poi.csv'):
+                return f"{new_name}.csv", False
+            elif file_name.endswith('_tec.crc'):
+                return f"{new_name}_tec.crc", False
+            else:
+                return None, False
         try:
             # Check `previous_xml_path` exists and is a valid file within BASE_DIR
             if not os.path.isfile(previous_xml_path):
@@ -1789,40 +1807,71 @@ class QueryRunInfo(QtWidgets.QWidget):
                 return None
             # Rename each file to match the new directory name
             is_xml = False
-            for file in files:
-                old_path = os.path.join(new_dir, file)
-                try:
-                    if file.endswith('.xml'):
-                        new_file_name = f"{new_name}.xml"
-                        is_xml = True
-                    elif file.endswith('_poi.csv'):
-                        new_file_name = f"{new_name}_poi.csv"
-                    elif file.endswith('.csv'):
-                        new_file_name = f"{new_name}.csv"
-                    else:
+
+            # First, handle any .zip files
+            for root, _, files in os.walk(new_dir):
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    if file_name.endswith('.zip'):
+                        temp_dir = os.path.join(root, "temp_unzip")
+                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                            zip_ref.extractall(temp_dir)
+
+                        # Rename and process files in the unzipped directory
+                        for inner_root, _, inner_files in os.walk(temp_dir):
+                            for inner_file in inner_files:
+                                inner_file_path = os.path.join(
+                                    inner_root, inner_file)
+                                new_file_name, is_xml = rename_file(inner_file)
+
+                                if new_file_name:
+                                    new_file_path = os.path.join(
+                                        inner_root, new_file_name)
+                                    if os.path.exists(new_file_path):
+                                        Log.i(
+                                            tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {inner_file_path}")
+                                        continue
+                                    os.rename(inner_file_path, new_file_path)
+                                    Log.i(
+                                        tag=TAG, msg=f"Renamed file {inner_file_path} to {new_file_path}")
+                                    if is_xml:
+                                        self.xml_path = new_file_path
+                                        self.recall_xml = new_file_path
+
+                        # Re-zip the files back with the original .zip file name
+                        with zipfile.ZipFile(file_path, 'w') as zip_ref:
+                            for inner_root, _, inner_files in os.walk(temp_dir):
+                                for inner_file in inner_files:
+                                    inner_file_path = os.path.join(
+                                        inner_root, inner_file)
+                                    arcname = os.path.relpath(
+                                        inner_file_path, temp_dir)
+                                    zip_ref.write(inner_file_path, arcname)
+
+                        # Clean up the temporary directory
+                        shutil.rmtree(temp_dir)
                         Log.i(
-                            tag=TAG, msg=f"Skipping unrecognized file format: {file}")
-                        continue  # Skip any files that don’t match the expected patterns
+                            tag=TAG, msg=f"{TAG}: Re-zipped {file_name} with renamed contents.")
 
-                    # Perform the renaming
-                    new_file_path = os.path.join(new_dir, new_file_name)
-                    if is_xml:
-                        self.xml_path = new_file_path
-                        self.recall_xml = new_file_path
-                        is_xml = False
-                    if os.path.exists(new_file_path):
-                        Log.w(
-                            tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {old_path}")
-                        continue
-                    os.rename(old_path, new_file_path)
-                    Log.i(
-                        tag=TAG, msg=f"Renamed file {old_path} to {new_file_path}")
-                except OSError as e:
-                    Log.e(
-                        tag=TAG, msg=f"Error renaming file {old_path} to {new_file_name}: {e}")
-                    continue
-
-            return new_file_path, old_path
+            # Process remaining files in new_dir that are not in .zip files
+            for root, _, files in os.walk(new_dir):
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+                    if not file_name.endswith('.zip'):
+                        new_file_name, is_xml = rename_file(file_name)
+                        if new_file_name:
+                            new_file_path = os.path.join(root, new_file_name)
+                            if os.path.exists(new_file_path):
+                                Log.i(
+                                    tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {file_path}")
+                                continue
+                            os.rename(file_path, new_file_path)
+                            Log.i(
+                                tag=TAG, msg=f"Renamed file {file_path} to {new_file_path}")
+                            if is_xml:
+                                self.xml_path = new_file_path
+                                self.recall_xml = new_file_path
+            return new_file_path
         except Exception as e:
             Log.e(tag=TAG, msg=f"An unexpected error occurred: {e}")
             return None
