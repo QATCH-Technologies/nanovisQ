@@ -15,7 +15,7 @@ TAG = "[RunInfo]"
 
 
 class RunInfoWindow():
-    finished = QtCore.pyqtSignal()
+    finished = QtCore.pyqtSignal(str)
 
     @staticmethod
     def test():
@@ -406,6 +406,7 @@ class RunInfoWindow():
 
 class QueryRunInfo(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
+    updated_xml_path = QtCore.pyqtSignal(str)
 
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
         super(QueryRunInfo, self).__init__(None)
@@ -1706,6 +1707,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 with open(self.recall_xml, 'w') as f:
                     f.write(run.toxml())
             self.unsaved_changes = False
+            Log.i(tag=TAG, msg=f"Emitting {self.xml_path}")
+            self.updated_xml_path.emit(self.xml_path)
             self.close()
             return True
 
@@ -1785,12 +1788,13 @@ class QueryRunInfo(QtWidgets.QWidget):
                     tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
                 return None
             # Rename each file to match the new directory name
+            is_xml = False
             for file in files:
                 old_path = os.path.join(new_dir, file)
                 try:
                     if file.endswith('.xml'):
                         new_file_name = f"{new_name}.xml"
-                        self.xml_path = new_file_name
+                        is_xml = True
                     elif file.endswith('_poi.csv'):
                         new_file_name = f"{new_name}_poi.csv"
                     elif file.endswith('.csv'):
@@ -1802,6 +1806,10 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     # Perform the renaming
                     new_file_path = os.path.join(new_dir, new_file_name)
+                    if is_xml:
+                        self.xml_path = new_file_path
+                        self.recall_xml = new_file_path
+                        is_xml = False
                     if os.path.exists(new_file_path):
                         Log.w(
                             tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {old_path}")
