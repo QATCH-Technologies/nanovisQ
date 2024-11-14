@@ -14,7 +14,7 @@ import re
 TAG = "[RunInfo]"
 
 
-class RunInfoWindow(QtWidgets.QWidget):
+class RunInfoWindow():
     finished = QtCore.pyqtSignal()
 
     @staticmethod
@@ -1678,9 +1678,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         # Update the run data files and directory to refelct changes made to
         # the run name in the RunInfo window.
         # TODO: Only allow for valid/secure paths in XML.
-        update_success = self.update_run_name(
+        updated_name = self.update_run_name(
             self.xml_path, self.run_name, secure=True)
-        if not update_success:
+        if not updated_name:
             Log.e("Could not update directory due to invalid/unsecure path.")
             return False
         else:
@@ -1705,7 +1705,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # secure_open(self.recall_xml, 'w') as f:
                 with open(self.recall_xml, 'w') as f:
                     f.write(run.toxml())
-
             self.unsaved_changes = False
             self.close()
             return True
@@ -1725,7 +1724,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             secure (bool): (Optional) Flag for secure directory creation. Set to False by default.
 
         Returns:
-            bool: True if the operation was successful, False otherwise. 
+            str: The name of the new directory if the operation was successful, None otherwise. 
 
         Raises:
             ValueError: If the `previous_xml_path` is not a valid file or is not within the base directory.
@@ -1738,11 +1737,12 @@ class QueryRunInfo(QtWidgets.QWidget):
             if not os.path.isfile(previous_xml_path):
                 Log.e(
                     tag=TAG, msg=f"Previous XML path {previous_xml_path} does not exist or is not a file.")
-                return False
+                return None
 
             # Prevents file creation outside of logged_data directory.
-            # if not os.path.abspath(previous_xml_path).startswith(BASE_DIR):
-            #     Log.e(f"Operation outside of secure directory is not allowed.")
+            # if not os.path.abspath(previous_xml_path).startswith(Constants.log_export_path):
+            #     Log.e(
+            #         tag=TAG, msg=f"Operation outside of secure directory is not allowed.")
             #     return False
 
             parent_dir = os.path.dirname(previous_xml_path)
@@ -1752,26 +1752,26 @@ class QueryRunInfo(QtWidgets.QWidget):
             if secure and not re.match(r'^[\w-]+$', new_name):
                 Log.e(
                     tag=TAG, msg=f"Invalid run name {new_name}. Allowed characters: letters, numbers, underscores, hyphens.")
-                return False
+                return None
 
             # Form new directory path and validate it is within grandparent_dir to avoid path traversal
             new_dir = os.path.join(grandparent_dir, new_name)
             if secure and not os.path.abspath(new_dir).startswith(os.path.abspath(grandparent_dir)):
                 Log.w(
                     tag=TAG, msg=f"Path traversal attempt detected in new name: {new_name}")
-                return False
+                return None
              # Symlink avoidance by rejecting symbolic links in directory hierarchy
             if secure and any(os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]):
                 Log.e(
                     tag=TAG, msg="Symbolic links are not allowed in the directory path.")
-                return False
+                return None
 
             # Check if new directory path is valid
             new_dir = os.path.join(grandparent_dir, new_name)
             if os.path.exists(new_dir):
                 Log.i(
                     tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
-                return False
+                return None
             else:
                 os.rename(parent_dir, new_dir)
                 Log.i(
@@ -1783,8 +1783,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             except PermissionError:
                 Log.e(
                     tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
-                return False
-
+                return None
             # Rename each file to match the new directory name
             for file in files:
                 old_path = os.path.join(new_dir, file)
@@ -1815,10 +1814,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                         tag=TAG, msg=f"Error renaming file {old_path} to {new_file_name}: {e}")
                     continue
 
-            return True
+            return new_file_path, old_path
         except Exception as e:
             Log.e(tag=TAG, msg=f"An unexpected error occurred: {e}")
-            return False
+            return None
 
     def closeEvent(self, event):
         if self.unsaved_changes:

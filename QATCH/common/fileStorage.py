@@ -593,10 +593,19 @@ class FileStorage:
             # most likely cause: this device has not yet produced any logged_data (thrown by listdir)
             return []  # empty list
 
-
+    @staticmethod
+    def get_all_device_dirs():
+        device_dirs = []
+        for dir in os.listdir(Constants.log_export_path):
+            dir_path = os.path.join(Constants.log_export_path, dir)
+            if os.path.isdir(dir_path) and dir.isdigit():
+                device_dirs.append(dir)
+        return device_dirs
 ###########################################################################
 # Get an IO handle to read/write/append to a secured ZIP archive record
 ###########################################################################
+
+
 class secure_open:
 
     def __init__(self, file, mode='r', zipname=None):

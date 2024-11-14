@@ -362,7 +362,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
-
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
 
@@ -3428,7 +3427,36 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
+            self.bWorker.finished.connect(self.update_run_names)
             self.bThread.start()
+
+    def update_run_names(self):
+        devs = FileStorage.get_all_device_dirs()
+        all_runs = []
+        for i, d in enumerate(devs):
+            run_i = FileStorage.DEV_get_logged_data_folders(
+                self.cBox_Devices.itemText(i))
+            for r in run_i:
+                all_runs.append(f"{r}:{d}")
+
+        unchanged_runs = []
+        new_run = None
+        for r in all_runs:
+            collected_run = self.run_names.get(r)
+            if collected_run is not None:
+                unchanged_runs.append(collected_run)
+            else:
+                new_run = r
+        modified_run = None
+        for ur in unchanged_runs:
+            collected_run = self.run_names.get(ur)
+            if collected_run is None:
+                modified_run = ur
+
+        if modified_run is not None:
+            Log.i(
+                tag=TAG, msg=f"Run modified: {modified_run} new run: {new_run}")
+            self.xml_path = new_run
 
     def Analyze_Data(self, data_path):
 
