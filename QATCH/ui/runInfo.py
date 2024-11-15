@@ -1485,8 +1485,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             xml.setAttribute('name', self.run_name)
             xml.setAttribute('ruling', self.run_ruling)
 
-            # Create an append child metrics tag to run_info tag.  The folowing adds
-            # the sub-fields of metrics.
+            # BUILD REMAINING XML DOCUMENT #
             metrics = run.createElement('metrics')
             xml.appendChild(metrics)
 
