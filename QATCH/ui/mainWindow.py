@@ -34,7 +34,7 @@ import requests
 import stat
 import subprocess
 
-TAG = ""  # "[MainWindow]"
+TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
 ##########################################################################################
@@ -1024,11 +1024,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.analyze_data(self.data_device,
                                   self.data_folder, self.data_file)
             elif len(self.data_files) > 1:
+
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_files, "log file")
                 self.aThread.started.connect(self.aWorker.show)
                 self.aWorker.finished.connect(self.aThread.quit)
                 self.aWorker.finished.connect(self.analyze_data_get_data_file)
+
                 self.aThread.start()
             else:
                 Log.w("No data files available for selection.")
@@ -1058,6 +1060,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
+            Log.i(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1085,6 +1088,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.AnalyzeProc.Analyze_Data(data_path)
 
+    def refresh_data_files(self):
+        Log.i(TAG, "Refreshing data files...")
+        print(self.data_files)
+        self.data_files = FileStorage.DEV_get_logged_data_files(
+            self.data_device, self.data_folder)
+
     def analyze_data_get_data_device(self):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
@@ -1107,10 +1116,12 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("User aborted data folder selection.")
 
     def analyze_data_get_data_file(self):
+        self.refresh_data_files()
+
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.i("Selected data file = {}".format(self.data_file))
+            Log.i(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:

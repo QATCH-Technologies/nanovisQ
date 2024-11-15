@@ -1313,8 +1313,24 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.sign_cancel.clicked.emit()
         return super().eventFilter(obj, event)
 
-    def confirm(self, force=False):
+    def confirm(self, force: bool = False):
+        """
+        On confirmation click, the corresponding run_info tag is updated match the run information 
+        parameterized by the user in the 'Run Info' form of the Analyze window.  
+        Modifications to the run_name cause a rewrite of the entire run directory and 
+        corresponding data files to reflect the modified run_name.
+
+        Args:
+            force (bool) : (Optional) Flag to force the writing of the run XML file regardless of errors
+                or other preventative measure.
+
+        Returns:
+            bool : True if confirmation and writing of run_info was successful.  On errors, Flase is returned
+                indicating a failed writing attempt.
+        """
         from QATCH.processors.Analyze import AnalyzeProcess
+
+        # Parameter initialization
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
@@ -1324,52 +1340,64 @@ class QueryRunInfo(QtWidgets.QWidget):
         manual_ca = (ca != self.auto_ca)
         manual_dn = (density != self.auto_dn)
 
+        # Form input error checking for valid Surfactant, Concentration, Surface Tension,
+        # Contact Angle, and Density. Errors are logged to the user and the input_error flag
+        # is set to True.
         input_error = False
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
-            Log.e("Input Error: Surfactant must be between {} and {}."
+            Log.e(tags=TAG, msg="Input Error: Surfactant must be between {} and {}."
                   .format(
                       self.validSurfactant.bottom(),
                       self.validSurfactant.top()))
             input_error = True
         if self.t4.isEnabled() and not self.t4.hasAcceptableInput():
-            Log.e("Input Error: Concentration must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Concentration must be between {} and {}."
                   .format(
                       self.validConcentration.bottom(),
                       self.validConcentration.top()))
             input_error = True
         if not self.t1.hasAcceptableInput():
-            Log.e("Input Error: Surface Tension must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Surface Tension must be between {} and {}."
                   .format(
                       self.validSurfaceTension.bottom(),
                       self.validSurfaceTension.top()))
             input_error = True
         if not self.t2.hasAcceptableInput():
-            Log.e("Input Error: Contact Angle must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Contact Angle must be between {} and {}."
                   .format(
                       self.validContactAngle.bottom(),
                       self.validContactAngle.top()))
             input_error = True
         if not self.t5.hasAcceptableInput():
-            Log.e("Input Error: Density must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Density must be between {} and {}."
                   .format(
                       self.validDensity.bottom(),
                       self.validDensity.top()))
             input_error = True
+
+        # If the force parameter is set to True, input errors are ignored.
         if force:
-            Log.w("Forcing XML write regardless of input errors!")
+            Log.w(tag=TAG, msg="Forcing XML write regardless of input errors!")
             input_error = False
         if input_error:
-            Log.w("Input error: Not saving Run Info.")
+            Log.w(tag=TAG, msg="Input error: Not saving Run Info.")
             return False
 
+        # Error checking for valid signature per captured run: If the do not ask option
+        # is checked, then signatures are ignored for this session.
         if self.signature_received == False and self.sign_do_not_ask.isChecked():
             Log.w(
-                f"Signing CAPTURE with initials {self.initials} (not asking again)")
+                tag=TAG, msg=f"Signing CAPTURE with initials {self.initials} (not asking again)")
             self.signed_at = dt.datetime.now().isoformat()
             self.signature_received = True  # Do not ask again this session
+
+        # Error checking for valid signature per captured run: If the signature is still required
+        # the user should be prompted to provide a valid signature as a valid batch parameter. With the
+        # force flag enabled, this step is ignored.
         if self.signature_required and not self.signature_received:  # missing initials
             if force or self.run_idx != 0:
-                Log.w(f"Auto-signing CAPTURE with initials {self.initials}")
+                Log.w(
+                    tag=TAG, msg=f"Auto-signing CAPTURE with initials {self.initials}")
                 self.signed_at = dt.datetime.now().isoformat()
             else:
                 if self.run_idx == 0 and self.batch_found == False and self.batch_warned == False:
@@ -1379,6 +1407,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                                           "Are you sure you want to save this info?", False):
                         return False  # do not save, allow further changes, user doesn't want to save with invalid Batch Number
                     self.batch_warned = True
+
+                # Check 'Run Info' form for unsaved changes.  Notify the user if they are about to
+                # exit the form without saving edits.  The user may ignore this warning an
+                # and close without saving edits.
                 if self.unsaved_changes:
                     if self.signForm.isVisible():
                         self.signForm.hide()
@@ -1393,12 +1425,14 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.signForm.move(left, top)
                     self.signForm.setVisible(True)
                     self.sign.setFocus()
-                    Log.d("Saving Run Info, requesting signature.")
+                    Log.d(tag=TAG, msg="Saving Run Info, requesting signature.")
                 else:
-                    Log.d("Nothing to save, closing Run Info.")
+                    Log.d(tag=TAG, msg="Nothing to save, closing Run Info.")
                     self.close()  # nothing to save
                 return False
 
+        # If sign_do_not_ask attribute is checked, provide the latest session key to the
+        # user to allow fo rmodification of the XML.
         if self.sign_do_not_ask.isChecked():
             session_key_path = os.path.join(
                 Constants.user_profiles_path, "session.key")
@@ -1408,10 +1442,29 @@ class QueryRunInfo(QtWidgets.QWidget):
                 if not os.path.exists(Constants.auto_sign_key_path):
                     with open(Constants.auto_sign_key_path, 'w') as f:
                         f.write(session_key)
+
+        # Update the run_name to the name in the 'Run name' text box of the
+        # Run Info window.
+        self.run_name = self.t_runname.text()
+
+        # Mode of operation for the XML file at the xml_path attribute.
+        # If the path already exists, the action is modification of parameters
+        # in which caase, the corresponding XML document is parsed for usage later while
+        # the 'name' field in the 'run_info' header tag is updated to match the
+        # parameterized name by the user.
+        #
+        # If the xml_path is new, the action is to CAPTURE i.e. write a new XML file
+        # for a new run.  This mode of operation writes the entire run_info tag and all
+        # child tags of run_info to a new XML document object.
         if secure_open.file_exists(self.xml_path):
             audit_action = "PARAMS"
             run = minidom.parse(self.xml_path)
             xml = run.documentElement
+            if xml.hasAttribute('name'):
+                xml.setAttribute('name', self.run_name)
+                Log.i(tag=TAG, msg=f"Updated 'name' field to: {self.run_name}")
+            else:
+                Log.e(tag=TAG, msg="No 'name' field found.")
         else:
             audit_action = "CAPTURE"
             run = minidom.Document()
@@ -1421,22 +1474,25 @@ class QueryRunInfo(QtWidgets.QWidget):
             try:
                 dev_name = FileStorage.DEV_get_active(self.run_idx + 1)
             except Exception as e:
-                Log.e("Unable to get active device for RUN_IDX =", self.run_idx)
+                Log.e(
+                    tag=TAG, msg=f"Unable to get active device for RUN_IDX ={self.run_idx}")
                 dev_name = "UNKNOWN"
-                Log.e("ERROR:", e)
+                Log.e(tag=TAG, msg=f"ERROR: {e}")
 
+            # Set machine, device, name, and ruling field for top-level run_info tag.
             xml.setAttribute('machine', Architecture.get_os_name())
             xml.setAttribute('device', dev_name)
             xml.setAttribute('name', self.run_name)
             xml.setAttribute('ruling', self.run_ruling)
 
+            # Create an append child metrics tag to run_info tag.  The folowing adds
+            # the sub-fields of metrics.
             metrics = run.createElement('metrics')
             xml.appendChild(metrics)
 
             try:
-                # Log.w(f"run_path: {self.run_path}")
                 if self.run_path.endswith(".zip"):
-                    Log.e("ZIP file passed as 'run_path' incorrectly!")
+                    Log.e(tag=TAG, msg=f"ZIP file passed as 'run_path' incorrectly!")
                     raise Exception()
 
                 if self.run_path.endswith(".csv"):
@@ -1467,7 +1523,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     duration /= 60.0
                     duration_units = "minutes"
                 samples = str(samples)
-                Log.d(f"{start}, {stop}, {duration}, {samples}")
+                Log.d(tag=TAG, msg=f"{start}, {stop}, {duration}, {samples}")
 
                 # Get time of last cal - based on file timestamp
                 cal_file_path = Constants.cvs_peakfrequencies_path
@@ -1528,7 +1584,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         param_runname = run.createElement('param')
         param_runname.setAttribute('name', 'run_name')
         param_runname.setAttribute('value', self.t_runname.text())
-        self.run_name = self.t_runname.text()
         params.appendChild(param_runname)
 
         param_batch = run.createElement('param')
@@ -1738,7 +1793,20 @@ class QueryRunInfo(QtWidgets.QWidget):
         import zipfile
         import shutil
 
-        def rename_file(file_name):
+        def rename_file(file_name: str):
+            """
+            A helper function to rename files based on their suffixes.
+
+            # TODO: Determine valid file suffixes.    
+            Args:
+                file_name (str): the file name prefix to update each type of run file to.
+
+            Returns:
+                str, bool: The name of the file with a new prefix.  
+                If the file does not have a matching prefix, None is returned.
+                If the file is also an XML file, the is_xml flag is passed back as True.  
+                Otherwise this return is False.
+            """
             if file_name.endswith('.xml'):
                 return f"{new_name}.xml", True
             elif file_name.endswith('_tec.csv'):
@@ -1754,8 +1822,9 @@ class QueryRunInfo(QtWidgets.QWidget):
             else:
                 return None, False
         try:
-            # Check `previous_xml_path` exists and is a valid file within BASE_DIR
-            if not os.path.isfile(previous_xml_path):
+            # If file name is the same, it is fine to resave.  If the path already exists elsewhere,
+            # return with an error.
+            if not previous_xml_path.endswith(new_name) and not os.path.isfile(previous_xml_path):
                 Log.e(
                     tag=TAG, msg=f"Previous XML path {previous_xml_path} does not exist or is not a file.")
                 return None
@@ -1769,6 +1838,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             parent_dir = os.path.dirname(previous_xml_path)
             grandparent_dir = os.path.dirname(parent_dir)
 
+            # TODO: Modify regex to fit naming convention for files.
             # Validate new_name for security (e.g., no special characters, no path traversal)
             if secure and not re.match(r'^[\w-]+$', new_name):
                 Log.e(
@@ -1814,6 +1884,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     file_path = os.path.join(root, file_name)
                     if file_name.endswith('.zip'):
                         temp_dir = os.path.join(root, "temp_unzip")
+
+                        # TODO: Handle secure_open() instead of using zipfile.
                         with zipfile.ZipFile(file_path, 'r') as zip_ref:
                             zip_ref.extractall(temp_dir)
 

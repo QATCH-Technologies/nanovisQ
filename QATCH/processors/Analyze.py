@@ -3532,8 +3532,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         Log.d("No points found in XML file for this run.")
                 else:
-                    Log.w(
-                        f'Missing XML file: Expected at "{xml_path}" for this run.')
+                    Log.w(TAG,
+                          f'Missing XML file: Expected at "{xml_path}" for this run.')
             self.show_analysis_immediately = False
             self.model_run_this_load = False
             if self.askForPOIs and len(poi_vals) == 6:
