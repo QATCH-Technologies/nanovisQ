@@ -594,7 +594,21 @@ class FileStorage:
             return []  # empty list
 
     @staticmethod
-    def get_all_device_dirs():
+    def DEV_get_all_device_dirs():
+        """
+        Retrieve a list of all device directories from a specified export path.
+
+        # TODO: Determine which values consitute a valid device directory.
+
+        Returns:
+            list[str]: A list of directory names (strings) that are numeric and
+            represent device directories.
+
+        Raises:
+            FileNotFoundError: If `Constants.log_export_path` does not exist.
+            PermissionError: If the script does not have read permissions for
+            `Constants.log_export_path`.
+        """
         device_dirs = []
         for dir in os.listdir(Constants.log_export_path):
             dir_path = os.path.join(Constants.log_export_path, dir)

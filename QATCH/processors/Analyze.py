@@ -3395,25 +3395,63 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
+        """
+        Load and display information about a run from an XML file, initializing
+        a GUI to view or edit the run's details.
+
+        This method reads an XML file specified by `self.xml_path` to extract
+        attributes such as the run's name, associated CSV file path, ruling
+        (e.g., good or bad), and optionally, the username of the parent control.
+        It ensures that only one instance of the Run Info GUI is active, and
+        manages communication between the main thread and a worker thread for
+        GUI display and user interaction.
+
+        If the XML path is invalid or not provided, the method does nothing.
+
+        Attributes:
+            self.xml_path (str): Path to the XML file containing the run information.
+            self.parent: Reference to the parent object (if any), used to extract the
+                username for run metadata.
+            self.bThread (QtCore.QThread): Thread handling the Run Info GUI worker.
+            self.bWorker (QueryRunInfo): Worker object for the Run Info GUI.
+
+        Raises:
+            Exception: If there are issues reading or parsing the XML file, or if
+                GUI initialization fails.
+
+        Example:
+            self.xml_path = "path/to/run_info.xml"
+            self.getRunInfo()
+        """
+        # Check if the XML path is provided
         if self.xml_path != None:
             Log.i(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
+
+            # Read the XML file's content.
             xml_text = ""
             with open(self.xml_path, "r") as f:
                 xml_text = f.read()
+
+            # Decode if the content is in bytes format.
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
+
+            # Parse the XML content and extract attributes from
+            # the XML.
             xml = minidom.parseString(xml_text)
             run = xml.documentElement
             run_name = run.getAttribute("name")
             run_path = self.xml_path[0:-4] + ".csv"
             is_good = run.getAttribute("ruling")
+
+            # Get the username from the parent control, if available.
             user_name = (
                 None
                 if self.parent == None
                 else self.parent.ControlsWin.username.text()[6:]
             )
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
-            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE)
+            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
             if hasattr(self, "bThread"):
                 if self.bThread.isRunning():
                     Log.w("Run Info GUI already open. Re-showing instead.")
@@ -3421,6 +3459,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.bWorker.show()
                     return
 
+            # Initialize the thread and worker for the Run Info GUI.
             self.bThread = QtCore.QThread()
             self.bWorker = QueryRunInfo(
                 run_name=run_name,
@@ -3430,6 +3469,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 recall_from=self.xml_path,
                 parent=self.parent,
             )  # TODO: more secure to pass user_hash (filename)
+
+            # Configure the Run Info GUI worker.
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
@@ -3439,6 +3480,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # change.
             self.bWorker.updated_xml_path.connect(self.setXmlPath)
 
+            # Start the thread to display the Run Info GUI
             self.bThread.start()
 
     def update_run_names(self):
@@ -3446,7 +3488,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         Used as a reciever from QueryRunInfo to update the xml_path name
         to the modified xml_path name.
         """
-        devs = FileStorage.get_all_device_dirs()
+        devs = FileStorage.DEV_get_all_device_dirs()
         for i, _ in enumerate(devs):
             self.updateRun(i)
 
