@@ -1461,11 +1461,6 @@ class QueryRunInfo(QtWidgets.QWidget):
             audit_action = "PARAMS"
             run = minidom.parse(self.xml_path)
             xml = run.documentElement
-            if xml.hasAttribute('name'):
-                xml.setAttribute('name', self.run_name)
-                Log.i(tag=TAG, msg=f"Updated 'name' field to: {self.run_name}")
-            else:
-                Log.e(tag=TAG, msg="No 'name' field found.")
         else:
             audit_action = "CAPTURE"
             run = minidom.Document()
@@ -1750,6 +1745,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         else:
             # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
             # secure_open(self.xml_path, 'w', "audit") as f:
+            if xml.hasAttribute('name'):
+                xml.setAttribute('name', self.run_name)
+                Log.i(tag=TAG, msg=f"Updated 'name' field to: {self.run_name}")
+            else:
+                Log.e(tag=TAG, msg="No 'name' field found.")
             with open(self.xml_path, 'w') as f:
                 xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
                 f.write(xml_str)
@@ -1817,30 +1817,28 @@ class QueryRunInfo(QtWidgets.QWidget):
                 str, bool: The name of the file with a new prefix.
                 If the file does not have a matching prefix, None is returned.
                 If the file is also an XML file, the is_xml flag is passed back as True.
-                Otherwise this return is False.
+                Otherwise, this return is False.
             """
-            if file_name.endswith('_3rd.xml'):
-                return f"{new_name}_3rd.xml", True
-            elif file_name.endswith('.xml'):
-                return f"{new_name}.xml", True
-            elif file_name.endswith('_cal.csv'):
-                return f"{new_name}_cal.csv", False
-            elif file_name.endswith('_poi.csv'):
-                return f"{new_name}_poi.csv", False
-            elif file_name.endswith('_tec.csv'):
-                return f"{new_name}_tec.csv", False
-            elif file_name.endswith('_tec.crc'):
-                return f"{new_name}_tec.crc", False
-            elif file_name.endswith('_3rd.crc'):
-                return f"{new_name}_3rd.crc", False
-            elif file_name.endswith('_3rd.csv'):
-                return f"{new_name}_3rd.csv", False
-            elif file_name.endswith('_lower.csv'):
-                return f"{new_name}_lower.csv", False
-            elif file_name.endswith('.csv'):
+            xml_suffixes = ['_3rd.xml', '.xml']
+            cal_suffixes = ['_3rd_cal.csv', '_cal.csv']
+            poi_suffixes = ['_3rd_poi.csv', '_poi.csv']
+            tec_suffixes = ['_3rd_tec.csv', '_tec.csv']
+            crc_suffixes = ['_3rd_tec.crc', '_tec.crc', '.crc']
+            lower_suffixes = ['_3rd_lower.crc',
+                              '_lower.crc', '_3rd_lower.csv', '_lower.csv']
+
+            for suffix in xml_suffixes:
+                if file_name.endswith(suffix):
+                    return f"{new_name}{suffix}", True
+
+            for suffix in cal_suffixes + poi_suffixes + tec_suffixes + crc_suffixes + lower_suffixes:
+                if file_name.endswith(suffix):
+                    return f"{new_name}{suffix}", False
+
+            if file_name.endswith('.csv'):
                 return f"{new_name}.csv", False
-            else:
-                return None, False
+
+            return None, False
         try:
             # If file name is the same, it is fine to resave.  If the path already exists elsewhere,
             # return with an error.
