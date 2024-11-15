@@ -1,4 +1,5 @@
 from QATCH.common.architecture import Architecture
+from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
@@ -10,7 +11,7 @@ import os
 import datetime as dt
 import hashlib
 import re
-
+import datetime
 TAG = "[RunInfo]"
 
 
@@ -1315,9 +1316,9 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def confirm(self, force: bool = False):
         """
-        On confirmation click, the corresponding run_info tag is updated match the run information 
-        parameterized by the user in the 'Run Info' form of the Analyze window.  
-        Modifications to the run_name cause a rewrite of the entire run directory and 
+        On confirmation click, the corresponding run_info tag is updated match the run information
+        parameterized by the user in the 'Run Info' form of the Analyze window.
+        Modifications to the run_name cause a rewrite of the entire run directory and
         corresponding data files to reflect the modified run_name.
 
         Args:
@@ -1733,8 +1734,16 @@ class QueryRunInfo(QtWidgets.QWidget):
         # Update the run data files and directory to refelct changes made to
         # the run name in the RunInfo window.
         # TODO: Only allow for valid/secure paths in XML.
+
+        metrics = xml.getElementsByTagName('metric')
+        stop_value = None
+        for metric in metrics:
+            if metric.getAttribute('name') == 'stop':
+                stop_value = metric.getAttribute('value')
+                break
+        stop_datetime = datetime.date.fromisoformat(stop_value.split('T')[0])
         updated_name = self.update_run_name(
-            self.xml_path, self.run_name, secure=True)
+            self.xml_path, self.run_name, secure=True, date=stop_datetime)
         if not updated_name:
             Log.e(tag=TAG, msg="Could not update directory due path error.")
             return False
@@ -1763,10 +1772,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.unsaved_changes = False
             Log.i(tag=TAG, msg=f"Emitting {self.xml_path}")
             self.updated_xml_path.emit(self.xml_path)
+            # TODO: Signal for refreshing run-names from 'Advanced' form window.
             self.close()
             return True
 
-    def update_run_name(self, previous_xml_path: str, new_name: str, secure: bool = False):
+    def update_run_name(self, previous_xml_path: str, new_name: str, date: datetime.date, secure: bool = False):
         """
         Renames the the run directory and corresponding run data files to the updated name parameterized
         by the RunInfo window.
@@ -1778,6 +1788,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         Args:
             previous_xml_path (str): The file path to the XML file whose directory is to be renamed.
             new_name (str): The new name for the directory and the files within it.
+            date (datetime.date): The stop date of the run to rename.
             secure (bool): (Optional) Flag for secure directory creation. Set to False by default.
 
         Returns:
@@ -1790,34 +1801,44 @@ class QueryRunInfo(QtWidgets.QWidget):
             OSError: If any OS-level error occurs during renaming or file operations.
         """
         import zipfile
+        import pyzipper
         import shutil
+        from io import BytesIO
 
         def rename_file(file_name: str):
             """
             A helper function to rename files based on their suffixes.
 
-            # TODO: Determine valid file suffixes.    
+            # TODO: Determine valid file suffixes.
             Args:
                 file_name (str): the file name prefix to update each type of run file to.
 
             Returns:
-                str, bool: The name of the file with a new prefix.  
+                str, bool: The name of the file with a new prefix.
                 If the file does not have a matching prefix, None is returned.
-                If the file is also an XML file, the is_xml flag is passed back as True.  
+                If the file is also an XML file, the is_xml flag is passed back as True.
                 Otherwise this return is False.
             """
-            if file_name.endswith('.xml'):
+            if file_name.endswith('_3rd.xml'):
+                return f"{new_name}_3rd.xml", True
+            elif file_name.endswith('.xml'):
                 return f"{new_name}.xml", True
-            elif file_name.endswith('_tec.csv'):
-                return f"{new_name}_tec.csv", False
             elif file_name.endswith('_cal.csv'):
                 return f"{new_name}_cal.csv", False
-            elif file_name.endswith('_.csv'):
-                return f"{new_name}_poi.csv", False
             elif file_name.endswith('_poi.csv'):
-                return f"{new_name}.csv", False
+                return f"{new_name}_poi.csv", False
+            elif file_name.endswith('_tec.csv'):
+                return f"{new_name}_tec.csv", False
             elif file_name.endswith('_tec.crc'):
                 return f"{new_name}_tec.crc", False
+            elif file_name.endswith('_3rd.crc'):
+                return f"{new_name}_3rd.crc", False
+            elif file_name.endswith('_3rd.csv'):
+                return f"{new_name}_3rd.csv", False
+            elif file_name.endswith('_lower.csv'):
+                return f"{new_name}_lower.csv", False
+            elif file_name.endswith('.csv'):
+                return f"{new_name}.csv", False
             else:
                 return None, False
         try:
@@ -1839,7 +1860,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
             # TODO: Modify regex to fit naming convention for files.
             # Validate new_name for security (e.g., no special characters, no path traversal)
-            if secure and not re.match(r'^[\w-]+$', new_name):
+            # This could work: r'^[\w\s\-.]+$' or ^[\w\-.]+(\s[\w\-.]+)*$ for trailing and leading spaces
+            if secure and not re.match(r'^[\w\-.]+(\s[\w\-.]+)*$', new_name):
                 Log.e(
                     tag=TAG, msg=f"Invalid run name {new_name}. Allowed characters: letters, numbers, underscores, hyphens.")
                 return None
@@ -1874,67 +1896,76 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(
                     tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
                 return None
-            # Rename each file to match the new directory name
+
             is_xml = False
-
-            # First, handle any .zip files
+            # Rename each file to match the new directory name
             for root, _, files in os.walk(new_dir):
                 for file_name in files:
                     file_path = os.path.join(root, file_name)
-                    if file_name.endswith('.zip'):
-                        temp_dir = os.path.join(root, "temp_unzip")
 
-                        # TODO: Handle secure_open() instead of using zipfile.
-                        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                            zip_ref.extractall(temp_dir)
+                    # Set a temporary directory to write renamed files too.  This directory is
+                    # renamed to the capture.zip directory at the end of the process.
+                    temp_dir = None
+                    if file_name.endswith('capture.zip'):
 
-                        # Rename and process files in the unzipped directory
-                        for inner_root, _, inner_files in os.walk(temp_dir):
-                            for inner_file in inner_files:
-                                inner_file_path = os.path.join(
-                                    inner_root, inner_file)
-                                new_file_name, is_xml = rename_file(inner_file)
+                        # Get a secure list of the contents of a capture.zip archive using the
+                        # path to the zip folder.
+                        capture_contents = secure_open.get_namelist(
+                            zip_path=file_path)
+                        # Set the path of the temporary archive to write renamed files to.
+                        temp_dir = os.path.join(root, "temp_capture.zip")
 
-                                if new_file_name:
-                                    new_file_path = os.path.join(
-                                        inner_root, new_file_name)
-                                    if os.path.exists(new_file_path):
-                                        Log.i(
-                                            tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {inner_file_path}")
-                                        continue
-                                    os.rename(inner_file_path, new_file_path)
-                                    Log.i(
-                                        tag=TAG, msg=f"Renamed file {inner_file_path} to {new_file_path}")
-                                    if is_xml:
-                                        self.xml_path = new_file_path
-                                        self.recall_xml = new_file_path
+                        # For each file in the secure archive, read it as bytes and then write
+                        # the bytes to the temporary zip directory.
+                        for capture_file in capture_contents:
+                            capture_path = os.path.join(
+                                root, capture_file)
+                            with secure_open(capture_path, "r", "capture") as f:
+                                f_bytes = BytesIO(f.read())
 
-                        # Re-zip the files back with the original .zip file name
-                        with zipfile.ZipFile(file_path, 'w') as zip_ref:
-                            for inner_root, _, inner_files in os.walk(temp_dir):
-                                for inner_file in inner_files:
-                                    inner_file_path = os.path.join(
-                                        inner_root, inner_file)
-                                    arcname = os.path.relpath(
-                                        inner_file_path, temp_dir)
-                                    zip_ref.write(inner_file_path, arcname)
+                                # Create each new file name for the contents of the secure
+                                # archive directory.
+                                new_file_name, _ = rename_file(
+                                    capture_file)
 
-                        # Clean up the temporary directory
-                        shutil.rmtree(temp_dir)
-                        Log.i(
-                            tag=TAG, msg=f"{TAG}: Re-zipped {file_name} with renamed contents.")
+                            # For each file, securely write it to the temporary location using the
+                            # date of the stop time along with the name of the renamed run.
+                            with pyzipper.AESZipFile(temp_dir, 'a',
+                                                     compression=pyzipper.ZIP_DEFLATED,
+                                                     allowZip64=True,
+                                                     encryption=pyzipper.WZ_AES) as zf:
+                                friendly_name = f"{new_name} ({date})"
+                                zf.comment = friendly_name.encode()
+                                enabled, _, _ = UserProfiles.checkDevMode()
 
-            # Process remaining files in new_dir that are not in .zip files
-            for root, _, files in os.walk(new_dir):
-                for file_name in files:
-                    file_path = os.path.join(root, file_name)
-                    if not file_name.endswith('.zip'):
+                                # TODO: If already password protected, dev mode should not allow the decryption
+                                # and rewriting of already encrypted files.
+                                if UserProfiles.count() > 0 and enabled == False:
+                                    # create a protected archive
+                                    zf.setpassword(hashlib.sha256(
+                                        zf.comment).hexdigest().encode())
+                                else:
+                                    zf.setencryption(None)
+                                    if enabled:
+                                        Log.w(
+                                            tag=TAG, msg="Developer Mode is ENABLED - NOT encrypting ZIP file")
+
+                                # Write the bytes string to the new zip file location.
+                                zf.writestr(
+                                    zinfo_or_arcname=new_file_name, data=f_bytes.read())
+
+                        # Remove the old capture.zip archive and rename the temporary capture.zip archive to capture.zip.
+                        os.remove(file_path)
+                        os.rename(temp_dir, file_path)
+                    else:
+                        # Process the rest of the files in the renamed direcotry.
                         new_file_name, is_xml = rename_file(file_name)
                         if new_file_name:
-                            new_file_path = os.path.join(root, new_file_name)
+                            new_file_path = os.path.join(
+                                root, new_file_name)
                             if os.path.exists(new_file_path):
                                 Log.i(
-                                    tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {file_path}")
+                                    tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {new_file_path}")
                                 continue
                             os.rename(file_path, new_file_path)
                             Log.i(

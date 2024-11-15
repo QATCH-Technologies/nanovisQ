@@ -698,11 +698,12 @@ class secure_open:
                 proceed = True
                 archive_file = record
                 namelist = zf.namelist()
+
                 if not 'w' in mode:  # reading or appending
                     if record in namelist:
                         crc_file = archive_file[:-4] + ".crc"
 
-                        if crc_file in namelist:
+                        if crc_file in namelist and crc_file != record:
                             archive_CRC = str(
                                 hex(zf.getinfo(archive_file).CRC))
                             compare_CRC = zf.read(crc_file).decode()
@@ -759,6 +760,9 @@ class secure_open:
 
             zf.close()
 
+        def secure_write(self):
+            pass
+
     ###########################################################################
     # Get an IO handle to read/write/append to a secured ZIP archive record
     ###########################################################################
@@ -785,3 +789,55 @@ class secure_open:
             namelist = zf.namelist()
 
             return True if record in namelist else False
+
+    @staticmethod
+    def get_namelist(zip_path: str, zip_name: str = "capture"):
+        """
+        Retrieves the list of file names contained in a zip archive.
+
+        Args:
+            zip_path (str): The full path to the directory containing the zip archive.
+            zip_name (str, optional): The base name of the zip file (without extension). 
+                                    Defaults to "capture".
+
+        Returns:
+            list: A list of file names in the zip archive.
+
+        Raises:
+            FileNotFoundError: If the zip file does not exist.
+
+        Notes:
+            The method assumes the zip file is encrypted using AES and handles it 
+            accordingly with `pyzipper.AESZipFile`.
+
+        Example:
+            namelist = FileManager.get_namelist("/path/to/zip/folder")
+        """
+        # Split the provided path into archive and record names
+        # 'archive' is the directory, 'record' is the file/leaf
+        archive, record = os.path.split(zip_path)
+        # Extract parent directory and its leaf name
+        folder, subDir = os.path.split(archive)
+
+        # Use `subDir` as the zip file name if `zip_name` is None
+        if zip_name is None:
+            zip_name = subDir
+
+        # Construct the full path to the zip file using the determined zip name
+        zn = os.path.join(archive, f"{zip_name}.zip")
+
+        # Check if the zip file exists. If not, raise FileNotFoundError
+        if not FileManager.file_exists(zn):
+            raise FileNotFoundError(f"The zip file {zn} does not exist.")
+
+        # Open the zip file using pyzipper for AES encryption handling
+        zf = pyzipper.AESZipFile(
+            zn, 'r',  # Open in read mode
+            compression=pyzipper.ZIP_DEFLATED,  # Use ZIP_DEFLATED compression
+            allowZip64=True,                   # Support for files larger than 4GB
+            encryption=pyzipper.WZ_AES         # AES encryption support
+        )
+
+        # Extract and return the list of file names in the zip archive
+        namelist = zf.namelist()
+        return namelist
