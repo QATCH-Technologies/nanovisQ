@@ -1726,10 +1726,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             audits.appendChild(audit1)
         else:
             pass  # leave 'audits' block as empty
-        # Update the run data files and directory to refelct changes made to
-        # the run name in the RunInfo window.
-        # TODO: Only allow for valid/secure paths in XML.
 
+        # Get date from XML for secure file writing.
         metrics = xml.getElementsByTagName('metric')
         stop_value = None
         for metric in metrics:
@@ -1737,6 +1735,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 stop_value = metric.getAttribute('value')
                 break
         stop_datetime = datetime.date.fromisoformat(stop_value.split('T')[0])
+        # Update the run data files and directory to refelct changes made to
+        # the run name in the RunInfo window.
         updated_name = self.update_run_name(
             self.xml_path, self.run_name, secure=True, date=stop_datetime)
         if not updated_name:
@@ -1745,9 +1745,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         else:
             # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
             # secure_open(self.xml_path, 'w', "audit") as f:
+            self.run_name = updated_name
             if xml.hasAttribute('name'):
-                xml.setAttribute('name', self.run_name)
-                Log.i(tag=TAG, msg=f"Updated 'name' field to: {self.run_name}")
+                xml.setAttribute('name', updated_name)
+                Log.d(tag=TAG, msg=f"Updated 'name' field to: {updated_name}")
             else:
                 Log.e(tag=TAG, msg="No 'name' field found.")
             with open(self.xml_path, 'w') as f:
@@ -1770,9 +1771,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 with open(self.recall_xml, 'w') as f:
                     f.write(run.toxml())
             self.unsaved_changes = False
-            Log.i(tag=TAG, msg=f"Emitting {self.xml_path}")
+            Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
             self.updated_xml_path.emit(self.xml_path)
-            # TODO: Signal for refreshing run-names from 'Advanced' form window.
             self.close()
             return True
 
@@ -1800,43 +1800,37 @@ class QueryRunInfo(QtWidgets.QWidget):
             PermissionError: If the function is denied permission to access directories or rename files.
             OSError: If any OS-level error occurs during renaming or file operations.
         """
-        import zipfile
         import pyzipper
-        import shutil
         from io import BytesIO
 
-        def rename_file(file_name: str):
+        def rename_file(file_name: str, new_name: str):
             """
             A helper function to rename files based on their suffixes.
 
-            # TODO: Determine valid file suffixes.
             Args:
-                file_name (str): the file name prefix to update each type of run file to.
+                file_name (str): The file name prefix to update each type of run file to.
+                new_name (str): The new prefix for the file.
 
             Returns:
-                str, bool: The name of the file with a new prefix.
-                If the file does not have a matching prefix, None is returned.
-                If the file is also an XML file, the is_xml flag is passed back as True.
-                Otherwise, this return is False.
+                tuple: The name of the file with a new prefix and a flag indicating if it is XML.
+                    If the file does not have a matching suffix, (None, False) is returned.
             """
             xml_suffixes = ['_3rd.xml', '.xml']
-            cal_suffixes = ['_3rd_cal.csv', '_cal.csv']
-            poi_suffixes = ['_3rd_poi.csv', '_poi.csv']
-            tec_suffixes = ['_3rd_tec.csv', '_tec.csv']
-            crc_suffixes = ['_3rd_tec.crc', '_tec.crc', '.crc']
-            lower_suffixes = ['_3rd_lower.crc',
-                              '_lower.crc', '_3rd_lower.csv', '_lower.csv']
+            csv_suffixes = [
+                '_3rd_cal.csv', '_cal.csv', '_3rd_poi.csv', '_poi.csv',
+                '_3rd_tec.csv', '_tec.csv', '_3rd.csv', '_3rd_lower.csv', '_lower.csv', '.csv'
+            ]
+            crc_suffixes = [
+                '_3rd_tec.crc', '_tec.crc', '_3rd.crc', '_3rd_lower.crc', '_lower.crc'
+            ]
 
             for suffix in xml_suffixes:
                 if file_name.endswith(suffix):
                     return f"{new_name}{suffix}", True
 
-            for suffix in cal_suffixes + poi_suffixes + tec_suffixes + crc_suffixes + lower_suffixes:
+            for suffix in csv_suffixes + crc_suffixes:
                 if file_name.endswith(suffix):
                     return f"{new_name}{suffix}", False
-
-            if file_name.endswith('.csv'):
-                return f"{new_name}.csv", False
 
             return None, False
         try:
@@ -1924,7 +1918,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 # Create each new file name for the contents of the secure
                                 # archive directory.
                                 new_file_name, _ = rename_file(
-                                    capture_file)
+                                    capture_file, new_name)
 
                             # For each file, securely write it to the temporary location using the
                             # date of the stop time along with the name of the renamed run.
@@ -1945,7 +1939,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 else:
                                     zf.setencryption(None)
                                     if enabled:
-                                        Log.w(
+                                        Log.d(
                                             tag=TAG, msg="Developer Mode is ENABLED - NOT encrypting ZIP file")
 
                                 # Write the bytes string to the new zip file location.
@@ -1957,21 +1951,24 @@ class QueryRunInfo(QtWidgets.QWidget):
                         os.rename(temp_dir, file_path)
                     else:
                         # Process the rest of the files in the renamed direcotry.
-                        new_file_name, is_xml = rename_file(file_name)
+                        new_file_name, is_xml = rename_file(
+                            file_name, new_name)
                         if new_file_name:
                             new_file_path = os.path.join(
                                 root, new_file_name)
                             if os.path.exists(new_file_path):
-                                Log.i(
+                                Log.d(
                                     tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {new_file_path}")
                                 continue
                             os.rename(file_path, new_file_path)
-                            Log.i(
+                            Log.d(
                                 tag=TAG, msg=f"Renamed file {file_path} to {new_file_path}")
                             if is_xml:
                                 self.xml_path = new_file_path
                                 self.recall_xml = new_file_path
-            return new_file_path
+                                xml_name_to_write = os.path.splitext(
+                                    os.path.basename(new_file_path))[0]
+            return xml_name_to_write
         except Exception as e:
             Log.e(tag=TAG, msg=f"An unexpected error occurred: {e}")
             return None

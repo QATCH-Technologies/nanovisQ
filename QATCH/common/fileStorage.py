@@ -612,7 +612,7 @@ class FileStorage:
         device_dirs = []
         for dir in os.listdir(Constants.log_export_path):
             dir_path = os.path.join(Constants.log_export_path, dir)
-            if os.path.isdir(dir_path) and dir.isdigit():
+            if os.path.isdir(dir_path) and dir.isdigit() and len(dir) == 8:
                 device_dirs.append(dir)
         return device_dirs
 ###########################################################################
