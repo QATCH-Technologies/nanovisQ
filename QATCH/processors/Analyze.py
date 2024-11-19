@@ -2056,7 +2056,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.poi_markers[px])
 
     def setXmlPath(self, xml_path):
-        Log.i(TAG, f'Setting xml filepath to: {xml_path}')
+        Log.d(TAG, f'Setting xml filepath to: {xml_path}')
         self.xml_path = xml_path
 
     def updateDev(self, idx):
@@ -3425,7 +3425,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         # Check if the XML path is provided
         if self.xml_path != None:
-            Log.i(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
+            Log.d(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
 
             # Read the XML file's content.
             xml_text = ""

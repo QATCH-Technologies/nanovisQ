@@ -598,7 +598,9 @@ class FileStorage:
         """
         Retrieve a list of all device directories from a specified export path.
 
-        # TODO: Determine which values consitute a valid device directory.
+        For now, a valid device directory is one with an entirely numeric name.
+        Long term, finding runs should be recursive through all of 'logged_data'
+        NOTE: The length of the device directory's name is NOT always 8-digits.
 
         Returns:
             list[str]: A list of directory names (strings) that are numeric and
@@ -612,7 +614,7 @@ class FileStorage:
         device_dirs = []
         for dir in os.listdir(Constants.log_export_path):
             dir_path = os.path.join(Constants.log_export_path, dir)
-            if os.path.isdir(dir_path) and dir.isdigit() and len(dir) == 8:
+            if os.path.isdir(dir_path) and dir.isdigit():
                 device_dirs.append(dir)
         return device_dirs
 ###########################################################################
@@ -759,9 +761,6 @@ class secure_open:
                             crc_fh.write(archive_CRC.encode())
 
             zf.close()
-
-        def secure_write(self):
-            pass
 
     ###########################################################################
     # Get an IO handle to read/write/append to a secured ZIP archive record

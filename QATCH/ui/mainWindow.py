@@ -1060,7 +1060,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
-            Log.i(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
+            Log.d(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1090,7 +1090,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def refresh_data_files(self):
         Log.i(TAG, "Refreshing data files...")
-        print(self.data_files)
+        # print(self.data_files) # DEBUG ONLY
         self.data_files = FileStorage.DEV_get_logged_data_files(
             self.data_device, self.data_folder)
 
@@ -1121,7 +1121,7 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.i(TAG, f"Selected data file = {self.data_file}")
+            Log.d(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:

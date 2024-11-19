@@ -1445,8 +1445,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                         f.write(session_key)
 
         # Update the run_name to the name in the 'Run name' text box of the
-        # Run Info window.
-        self.run_name = self.t_runname.text()
+        # Run Info window, after removing leading and trailing whitespace.
+        self.run_name = self.t_runname.text().strip()
 
         # Mode of operation for the XML file at the xml_path attribute.
         # If the path already exists, the action is modification of parameters
@@ -1781,9 +1781,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         Renames the the run directory and corresponding run data files to the updated name parameterized
         by the RunInfo window.
 
-        TODO: Disscuss how to have this match in the XML file.  Currently, the XML can contain an invalid
+        TODO: Discuss how to have this match in the XML file.  Currently, the XML can contain an invalid
         file name and will display in the dropdown.  I can just remove this if its more of a nuisance than
-        of benefit.
+        of benefit. [AJR: If it's not readable data or is 'invalid' and cannot be processed, remove it]
 
         Args:
             previous_xml_path (str): The file path to the XML file whose directory is to be renamed.
@@ -1850,7 +1850,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             parent_dir = os.path.dirname(previous_xml_path)
             grandparent_dir = os.path.dirname(parent_dir)
 
-            # TODO: Modify regex to fit naming convention for files.
+            # TODO: Modify regex to fit naming convention for files. [AJR: Is this still TODO?]
             # Validate new_name for security (e.g., no special characters, no path traversal)
             # This could work: r'^[\w\s\-.]+$' or ^[\w\-.]+(\s[\w\-.]+)*$ for trailing and leading spaces
             if secure and not re.match(r'^[\w\-.]+(\s[\w\-.]+)*$', new_name):
@@ -1865,6 +1865,9 @@ class QueryRunInfo(QtWidgets.QWidget):
                     tag=TAG, msg=f"Path traversal attempt detected in new name: {new_name}")
                 return None
              # Symlink avoidance by rejecting symbolic links in directory hierarchy
+            # NOTE: The PYCODE releases do actually have a hard symbolic link for the 'logged_data' folder
+            # We need to confirm that this rejection of symlinks does not break renaming for PYCODE builds
+            # and when the naming structure folder config for the logged_data folder is only one dir deep.
             if secure and any(os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]):
                 Log.e(
                     tag=TAG, msg="Symbolic links are not allowed in the directory path.")
@@ -1905,7 +1908,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                         capture_contents = secure_open.get_namelist(
                             zip_path=file_path)
                         # Set the path of the temporary archive to write renamed files to.
-                        temp_dir = os.path.join(root, "temp_capture.zip")
+                        temp_dir = os.path.join(root, "~capture.zip")
 
                         # For each file in the secure archive, read it as bytes and then write
                         # the bytes to the temporary zip directory.

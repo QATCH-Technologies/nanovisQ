@@ -96,7 +96,7 @@ class Ui_Main(object):
         self.runview.setWidget(runwidget)
         self.runview.setMinimumSize(QtCore.QSize(1000, 122))
 
-        # analyze mode view frame: z
+        # analyze mode view frame: Analyze
         self.analyze = QtWidgets.QScrollArea()
         self.analyze.setObjectName("analyze")
         self.analyze.setStyleSheet(
