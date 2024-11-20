@@ -1866,8 +1866,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 return None
              # Symlink avoidance by rejecting symbolic links in directory hierarchy
             # NOTE: The PYCODE releases do actually have a hard symbolic link for the 'logged_data' folder
-            # We need to confirm that this rejection of symlinks does not break renaming for PYCODE builds
-            # and when the naming structure folder config for the logged_data folder is only one dir deep.
+            # We can confirm that this rejection of symlinks does not break renaming for PYCODE builds; however,
+            # it may when the naming structure folder config for the logged_data folder is only one dir deep.
             if secure and any(os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]):
                 Log.e(
                     tag=TAG, msg="Symbolic links are not allowed in the directory path.")
