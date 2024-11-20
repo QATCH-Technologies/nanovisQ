@@ -1,0 +1,7 @@
+{
+    "folder_format": "Username_Initials",
+    "filename_format": "Run Name_Date",
+    "delimiter": "_",
+    "date_format": "YYYY-MM-DD",
+    "time_format": "HH:mm:ss"
+}
