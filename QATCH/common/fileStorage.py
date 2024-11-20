@@ -617,6 +617,7 @@ class FileStorage:
             if os.path.isdir(dir_path) and dir.isdigit():
                 device_dirs.append(dir)
         return device_dirs
+
 ###########################################################################
 # Get an IO handle to read/write/append to a secured ZIP archive record
 ###########################################################################

@@ -1024,13 +1024,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.analyze_data(self.data_device,
                                   self.data_folder, self.data_file)
             elif len(self.data_files) > 1:
-
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_files, "log file")
                 self.aThread.started.connect(self.aWorker.show)
                 self.aWorker.finished.connect(self.aThread.quit)
                 self.aWorker.finished.connect(self.analyze_data_get_data_file)
-
                 self.aThread.start()
             else:
                 Log.w("No data files available for selection.")
@@ -1121,7 +1119,7 @@ class MainWindow(QtWidgets.QMainWindow):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.d(TAG, f"Selected data file = {self.data_file}")
+            Log.i(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:
