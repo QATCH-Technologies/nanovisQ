@@ -1,7 +1,8 @@
 {
-    "folder_format": "Username_Initials",
-    "filename_format": "Run Name_Date",
-    "delimiter": "_",
-    "date_format": "YYYY-MM-DD",
-    "time_format": "HH:mm:ss"
+    "folder_format": "%device%",
+    "filename_format": "%runname%",
+    "folder_format_delimiter": "_",
+    "filename_format_delimiter": "-",
+    "date_format": null,
+    "time_format": null
 }
