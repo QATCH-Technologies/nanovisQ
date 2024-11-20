@@ -1137,14 +1137,15 @@ class MainWindow(QtWidgets.QMainWindow):
         Parses a JSON file containing a nested list of booleans and maps them to port names.
 
         Parameters:
-        - json_file_path (str): Path to the JSON file containing the nested list.
+            json_file_path (str): Path to the JSON file containing the nested list (Default='plate-config.json').
 
         Returns:
-        - dict: A dictionary mapping port names (A1, B1, ...) to their boolean states.
+            dict: A dictionary mapping port names (A1, B1, ...) to their boolean states.
+            list: A list of active port names (e.g., ['A1', 'A2', ...]).
 
         Raises:
-        - FileNotFoundError: If the file does not exist.
-        - ValueError: If the file does not contain the expected nested list structure.
+            FileNotFoundError: If the file does not exist.
+            ValueError: If the file does not contain the expected nested list structure.
         """
         import json
         # Check if file exists
@@ -1188,14 +1189,17 @@ class MainWindow(QtWidgets.QMainWindow):
             raise ValueError(
                 f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements.")
 
-        # Create the dictionary of ports and their states
+        # Create the dictionary of ports and their states, and track active ports
         ports_dict = {}
+        active_ports = []
         for row_index, row in enumerate(matrix):
             for col_index, state in enumerate(row):
                 port_name = f"{columns[col_index]}{row_index + 1}"
                 ports_dict[port_name] = state
+                if state:  # If the port is active, add to the list
+                    active_ports.append(port_name)
 
-        return ports_dict
+        return ports_dict, active_ports
 
     ###########################################################################
     # Starts the acquisition of the selected serial port
@@ -1345,7 +1349,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = now_port
 
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
-        active_port_dict = self.parse_plate_config()
+        active_port_dict, active_port_list = self.parse_plate_config()
         Log.d(TAG, active_port_dict)
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
