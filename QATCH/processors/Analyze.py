@@ -818,7 +818,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(self.option_remove_dups, 2, 5, 1, 3)
         self.correct_drop_effect = QtWidgets.QCheckBox(
             "Apply drop effect vectors")
-        self.correct_drop_effect.setChecked(True)
+        # per issue #26, disable by default
+        self.correct_drop_effect.setChecked(False)
         self.correct_drop_effect.clicked.connect(self.change_drop_effect)
         self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
 
