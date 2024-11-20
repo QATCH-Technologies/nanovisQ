@@ -1908,7 +1908,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 event._scenePos
             )
         closest_marker = None
-        if mousePoint != None:
+        if mousePoint != None and len(self.poi_markers) > 0:
             index = mousePoint.x()
             Log.d(f"Mouse click @ xs = {index}")
             # find nearest POI by X value, show popup there
@@ -1939,7 +1939,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.AI_SelectTool_Body.adjustSize()
         self.ai_backBtn.setFixedHeight(self.AI_SelectTool_Body.height())
         self.ai_nextBtn.setFixedHeight(self.AI_SelectTool_Body.height())
-        self.AI_SelectTool_Frame.setVisible(True)
+        # self.AI_SelectTool_Frame.setVisible(True) # per issue #25, keep hidden
         self.AI_SelectTool_Frame.adjustSize()
         scene_pos_x = self.graphWidget.getPlotItem().vb.mapViewToScene(
             QtCore.QPointF(marker_xs, 0)
@@ -3566,7 +3566,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             if len(poi_vals) != 6:
                                 Log.d(
                                     "Model ran, updating 'poi_vals' since we DO NOT have prior points")
-                                poi_vals = self.model_result
+                                poi_vals = self.model_result.copy()
+                                out_of_order = False
+                                last_p = 0
+                                for i, p in enumerate(poi_vals):
+                                    if p < last_p:
+                                        if not out_of_order:
+                                            # print this on 1st indication only
+                                            Log.e(
+                                                tag=f"[{self.model_engine}]",
+                                                msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                            )
+                                        out_of_order = True
+                                        if i == 0:  # first POI
+                                            poi_vals[i] = int(poi_vals[1] / 2)
+                                        elif i == len(poi_vals) - 1:  # last POI
+                                            poi_vals[i] = int(
+                                                (poi_vals[i-1] + len(dissipation)) / 2)
+                                        else:  # any other POI, not first nor last
+                                            poi_vals[i] = int(
+                                                (poi_vals[i-1] + poi_vals[i+1]) / 2)
+                                        Log.e(
+                                            tag=f"[{self.model_engine}]",
+                                            msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
+                                        )
+                                    last_p = p
                             else:
                                 Log.d(
                                     "Model ran, but not updating 'poi_vals' since we DO have prior points")
@@ -4179,6 +4203,30 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.d(
                     f"Model Result = {self.model_engine}: {self.model_result}")
                 self.stateStep = 6  # show summary
+
+                def get_logger_for_confidence(confidence):
+                    logger = Log.e  # less than 33%
+                    if confidence > 66:
+                        logger = Log.i  # greater than 66%
+                    elif confidence > 33:
+                        logger = Log.w  # from 33% to 66%
+                    return logger
+
+                point_names = ["start", "end_fill",
+                               "post", "ch1", "ch2", "ch3"]
+                for i, (candidates, confidences) in enumerate(self.model_candidates):
+                    if i == 2:
+                        # do not print confidence of "post" point, it doesn't matter
+                        continue
+                    point_name = point_names[i]
+                    confidence = 100 * \
+                        confidences[0] if len(confidences) > 0 else 0
+                    num_spaces = len(point_names[1]) - len(point_name) + 1
+                    get_logger_for_confidence(confidence)(
+                        tag=f"[{self.model_engine}]",
+                        msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
+                    )
+
             else:
                 Log.e(
                     "Please manually select points of interest to Analyze this dataset."
