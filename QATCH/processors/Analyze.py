@@ -3474,12 +3474,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
-            # self.bWorker.finished.connect(self.update_run_names)
+            self.bWorker.finished.connect(self.update_run_names)
 
             # IPC signal to get the updated path name from the Run Info window on
             # change.
             self.bWorker.updated_run.connect(self.update_current_run_info)
-            # self.bWorker.updated_xml_path.connect(self.setXmlPath)
+            self.bWorker.updated_xml_path.connect(self.setXmlPath)
 
             # Start the thread to display the Run Info GUI
             self.bThread.start()

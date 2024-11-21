@@ -408,6 +408,7 @@ class RunInfoWindow():
 class QueryRunInfo(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
     updated_run = QtCore.pyqtSignal(str, str, str)
+    updated_xml_path = QtCore.pyqtSignal(str)
 
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
         super(QueryRunInfo, self).__init__(None)
@@ -1748,6 +1749,12 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.run_name = updated_name
             if xml.hasAttribute('name'):
                 xml.setAttribute('name', updated_name)
+                hash = hashlib.sha256()
+                for name, value in xml.attributes.items():
+                    hash.update(name.encode())
+                    hash.update(value.encode())
+                signature = hash.hexdigest()
+                xml.setAttribute('signature', signature)
                 Log.d(tag=TAG, msg=f"Updated 'name' field to: {updated_name}")
             else:
                 Log.e(tag=TAG, msg="No 'name' field found.")
@@ -1772,8 +1779,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     f.write(run.toxml())
             self.unsaved_changes = False
             Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
-            self.updated_xml_path.emit(self.xml_path)
             self.updated_run.emit(new_name, old_name, str(stop_datetime))
+            self.updated_xml_path.emit(self.xml_path)
             self.close()
             return True
 
