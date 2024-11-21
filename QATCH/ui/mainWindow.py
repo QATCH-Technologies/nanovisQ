@@ -120,7 +120,8 @@ class PlotsWindow(QtWidgets.QMainWindow):
     '''
     def closeEvent(self, event):
         #Log.d(" Exit Real-Time Plot GUI")
-        res =PopUp.question(self, Constants.app_title, "Are you sure you want to quit QATCH Q-1 application now?")
+        res =PopUp.question(self, Constants.app_title,
+                            "Are you sure you want to quit QATCH Q-1 application now?")
         if res:
            #self.close()
            QtWidgets.QApplication.quit()
@@ -1445,7 +1446,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.InfoWin.ui3.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label4)
                 label4a = str(int(Constants.calibration_frequency_stop -
-                              Constants.calibration_frequency_start))+" Hz"
+                                  Constants.calibration_frequency_start))+" Hz"
                 self.InfoWin.ui3.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label4a)
                 label5 = str(int(Constants.calibration_fStep))+" Hz"
@@ -1681,7 +1682,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._yaxis.append(AxisItem(orientation='left'))
             self._xaxis.append(DateAxis(orientation='bottom'))
             p = self.PlotsWin.ui2.pltB.addPlot(col=x, row=y, title=title2+f" {i+1}", **{
-                                               'font-size': '12pt'}, axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]})
+                'font-size': '12pt'}, axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]})
             p.showGrid(x=True, y=True)
             p.setLabel('bottom', 'Time', units='s')
             p.setLabel('left', 'Resonance Frequency', units='Hz',
@@ -1718,7 +1719,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # -----------------------------------------------------------------------------------------------------------------
         # Configures elements of the PyQtGraph plots: temperature
         self._plt4 = self.PlotsWin.ui2.plt.addPlot(row=3, col=0, colspan=2, title=title3, axisItems={
-                                                   'bottom': DateAxis(orientation='bottom')})
+            'bottom': DateAxis(orientation='bottom')})
         self._plt4.showGrid(x=True, y=True)
         self._plt4.setLabel('bottom', 'Time', units='s')
         self._plt4.setLabel('left', 'Temperature', units='°C',
@@ -5263,7 +5264,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @staticmethod
+    @ staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType

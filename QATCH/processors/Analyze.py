@@ -3474,14 +3474,36 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
-            self.bWorker.finished.connect(self.update_run_names)
+            # self.bWorker.finished.connect(self.update_run_names)
 
             # IPC signal to get the updated path name from the Run Info window on
             # change.
-            self.bWorker.updated_xml_path.connect(self.setXmlPath)
+            self.bWorker.updated_run.connect(self.update_current_run_info)
+            # self.bWorker.updated_xml_path.connect(self.setXmlPath)
 
             # Start the thread to display the Run Info GUI
             self.bThread.start()
+
+    def update_current_run_info(self, new_name, old_name, date):
+        index = self.cBox_Runs.findText(f"{old_name} ({date})")
+
+        # Check if the old name exists in the combo box
+        if index != -1:
+            # Update the item with the new name
+            self.cBox_Runs.setItemText(index, f"{new_name} ({date})")
+        else:
+            Log.e(
+                TAG, f"Item with name '{old_name} ({date})' not found in the combo box.")
+        for key in list(self.run_names.keys()):  # Use list to avoid runtime changes
+            if f"{old_name}:" in key:
+                # Extract the part of the key after the ':'
+                _, after_colon = key.split(":", 1)  # Split at the first ':'
+                # Store the value and remove the entry
+                value = self.run_names.pop(key)
+                after_colon = after_colon.strip()
+                break
+        self.run_names[f'{new_name}:{after_colon}'] = new_name
+        self.text_Created.setText(f'{new_name} ({date})')
 
     def update_run_names(self):
         """
