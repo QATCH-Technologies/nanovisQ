@@ -311,21 +311,25 @@ class UIConfigureData(QtWidgets.QWidget):
             "%device%" and the "_" from the input field.
 
         """
-        if self.keywords_for_input[input_name]["keywords"]:
-            if len(self.keywords_for_input[input_name]["keywords"]) > 1:
-                removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                removed_delimiter = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                self.folder_format_input.setText(
-                    self.folder_format_input.text().replace(removed_keyword, "", 1))
-                self.folder_format_input.setText(
-                    self.folder_format_input.text().replace(removed_delimiter, "", 1))
-            else:
-                removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                self.folder_format_input.setText(
-                    self.folder_format_input.text().replace(removed_keyword, "", 1))
+        try:
+            if self.keywords_for_input[input_name]["keywords"]:
+                if len(self.keywords_for_input[input_name]["keywords"]) > 1:
+                    removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    removed_delimiter = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    self.folder_format_input.setText(
+                        self.folder_format_input.text().replace(removed_keyword, "", 1))
+                    self.folder_format_input.setText(
+                        self.folder_format_input.text().replace(removed_delimiter, "", 1))
+                else:
+                    removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    self.folder_format_input.setText(
+                        self.folder_format_input.text().replace(removed_keyword, "", 1))
+        except Exception as e:
+            Log.e(
+                tag=TAG, msg=f'Error while removing last folder format tag; message={e}')
 
     def remove_last_keyword_file(self, input_name: str = 'filename_format_input'):
         """
@@ -352,21 +356,25 @@ class UIConfigureData(QtWidgets.QWidget):
             "%device%" and the "-" from the input field.
 
         """
-        if self.keywords_for_input[input_name]["keywords"]:
-            if len(self.keywords_for_input[input_name]["keywords"]) > 1:
-                removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                removed_delimiter = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                self.filename_format_input.setText(
-                    self.filename_format_input.text().replace(removed_keyword, "", 1))
-                self.filename_format_input.setText(
-                    self.filename_format_input.text().replace(removed_delimiter, "", 1))
-            else:
-                removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
-                )
-                self.filename_format_input.setText(
-                    self.filename_format_input.text().replace(removed_keyword, "", 1))
+        try:
+            if self.keywords_for_input[input_name]["keywords"]:
+                if len(self.keywords_for_input[input_name]["keywords"]) > 1:
+                    removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    removed_delimiter = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    self.filename_format_input.setText(
+                        self.filename_format_input.text().replace(removed_keyword, "", 1))
+                    self.filename_format_input.setText(
+                        self.filename_format_input.text().replace(removed_delimiter, "", 1))
+                else:
+                    removed_keyword = self.keywords_for_input[input_name]["keywords"].pop(
+                    )
+                    self.filename_format_input.setText(
+                        self.filename_format_input.text().replace(removed_keyword, "", 1))
+        except Exception as e:
+            Log.e(
+                tag=TAG, msg=f'Error while removing last file format tag; message={e}')
 
     def get_delimiter_key(self, input_name: str):
         """
@@ -391,7 +399,6 @@ class UIConfigureData(QtWidgets.QWidget):
             - If no match is found, the method returns the first key in the dictionary as a fallback.
 
         """
-        """Get the delimiter key from PATH_DELIMITERS based on the current delimiter value."""
         current_delimiter = self.keywords_for_input[input_name]["delimiter"]
         for key, value in PATH_DELIMITERS.items():
             if value == current_delimiter:
@@ -505,6 +512,7 @@ class UIConfigureData(QtWidgets.QWidget):
 
             self.last_focused_input.insert(keyword)
         else:
+            Log.e(tag=TAG, msg='No input box selected to format.')
             QMessageBox.warning(
                 self, "Error", "Please click on a format field before inserting a keyword.")
 
@@ -710,9 +718,11 @@ class UIConfigureData(QtWidgets.QWidget):
 
         # Validate folder_format and filename_format
         if not is_valid_format(folder_format):
+            Log.e(tag=TAG, msg='Invalid folder format tag pattern detected.')
             raise ValueError(
                 "Invalid folder_format: Ensure it follows the correct tag-delimiter pattern.")
         if not is_valid_format(filename_format):
+            Log.e(tag=TAG, msg='Invalid filename format tag pattern detected.')
             raise ValueError(
                 "Invalid filename_format: Ensure it follows the correct tag-delimiter pattern.")
 
@@ -773,6 +783,7 @@ class UIConfigureData(QtWidgets.QWidget):
             time_format = self.time_format_dropdown.currentText()
             # Simple validation
             if not folder_format or not filename_format:
+                Log.w(tag=TAG, msg="Folder and Filename formats cannot be empty!")
                 QMessageBox.warning(
                     self, "Error", "Folder and Filename formats cannot be empty!")
                 return
@@ -790,9 +801,15 @@ class UIConfigureData(QtWidgets.QWidget):
             # Save settings to preferences.json
             with open("file-preferences.json", "w") as f:
                 json.dump(preferences, f, indent=4)
-
-            QMessageBox.information(
-                self, "Saved", "Preferences have been saved successfully!")
+            if default:
+                Log.i(tag=TAG, msg="Restored to default prefences.")
+                QMessageBox.information(
+                    self, "Saved", "Restored to default prefences.")
+            else:
+                Log.i(tag=TAG, msg="Successfully saved prefences.")
+                QMessageBox.information(
+                    self, "Saved", "Successfully saved prefences.")
 
         except Exception as e:
+            Log.e(tag=TAG, msg=f"Failed to save settings: {e}")
             QMessageBox.warning(self, "Error", f"Failed to save settings: {e}")

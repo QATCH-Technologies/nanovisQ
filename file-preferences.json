@@ -3,6 +3,6 @@
     "filename_format": "%runname%",
     "folder_format_delimiter": "_",
     "filename_format_delimiter": "-",
-    "date_format": null,
-    "time_format": null
+    "date_format": "MM-DD-YYYY",
+    "time_format": "HH:mm:ss"
 }
