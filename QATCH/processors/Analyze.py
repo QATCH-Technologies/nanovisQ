@@ -3485,6 +3485,37 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.bThread.start()
 
     def update_current_run_info(self, new_name, old_name, date):
+        """
+        Updates the current run information in the combo box and the `run_names` dictionary.
+
+        Args:
+            new_name (str): The new name to update in the combo box and dictionary.
+            old_name (str): The old name to search for in the combo box and dictionary.
+            date (str): The date associated with the run, used to form the complete name.
+
+        Raises:
+            None: Logs an error message if the old name with the specified date is not found in the combo box.
+
+        Updates:
+            - If the item with the old name exists in the combo box, updates it with the new name.
+            - Searches for a key in the `run_names` dictionary that contains the old name followed by a colon (:).
+            If found, extracts the part of the key after the colon, removes the old key, and adds a new key with 
+            the new name and the extracted value.
+            - Updates the `text_Created` field to display the new name and date.
+
+        Example:
+            If the combo box contains "OldName (2024-11-20)" and the `run_names` dictionary contains:
+                {
+                    "OldName:Details": "value1"
+                }
+            Calling `update_current_run_info("NewName", "OldName", "2024-11-20")` will:
+            - Update the combo box to "NewName (2024-11-20)"
+            - Update the dictionary to:
+                {
+                    "NewName:Details": "NewName"
+                }
+            - Set `text_Created` to "NewName (2024-11-20)".
+        """
         index = self.cBox_Runs.findText(f"{old_name} ({date})")
 
         # Check if the old name exists in the combo box
@@ -3503,7 +3534,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 after_colon = after_colon.strip()
                 break
         self.run_names[f'{new_name}:{after_colon}'] = new_name
-        self.text_Created.setText(f'{new_name} ({date})')
+        self.text_Created.setText(f'Loaded: {new_name} ({date})')
 
     def update_run_names(self):
         """
