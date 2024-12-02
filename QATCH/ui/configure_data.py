@@ -10,6 +10,8 @@ from PyQt5.QtGui import QIcon, QPixmap
 from datetime import datetime
 import json
 import re
+import serial.tools.list_ports
+
 TAG = '[Configure Data]'
 
 # Dictionary of path delimiters to use in filenames or folder structures.
@@ -28,7 +30,7 @@ DATE_TIME_FORMATS = {
 
 # List of valid tags that can be used to configure folder or filename formats.
 VALID_TAGS = [
-    "%username%", "%initials%", "%device%", "%runname%", "%date%", "%time%"
+    "%username%", "%initials%", "%device%", "%runname%", "%date%", "%time%", "%port%"
 ]
 
 # Dictionary containing default preferences for folder and filename formatting.
@@ -38,11 +40,9 @@ DEFAULT_PREFERNCES = {
     "folder_format_delimiter": PATH_DELIMITERS["Underscore"],
     "filename_format_delimiter": PATH_DELIMITERS["Hyphen"],
     "date_format": "MM-DD-YYYY",
-    "time_format": "HH:mm:ss"
+    "time_format": "HH:mm:ss",
+    "port": "COM 1"
 }
-
-# TODO: Make system follow user preferences.
-# TODO: Add logging and documentation
 
 
 class UIConfigureData(QtWidgets.QWidget):
@@ -140,7 +140,8 @@ class UIConfigureData(QtWidgets.QWidget):
             VALID_TAGS[2]: "Device ID",
             VALID_TAGS[3]: "Run name",
             VALID_TAGS[4]: "Date",
-            VALID_TAGS[5]: "Time"
+            VALID_TAGS[5]: "Time",
+            VALID_TAGS[6]: "COM Port"
         }
 
         self.keywords_for_input = {
@@ -185,7 +186,7 @@ class UIConfigureData(QtWidgets.QWidget):
         )
 
         # Backspace buttons for Folder Format and Filename Format
-        pixmap = QPixmap(r'QATCH\ui\backspace.png')
+        pixmap = QPixmap(r'QATCH\icons\backspace.png')
         pixmap = pixmap.scaled(10, 10)
         self.folder_backspace_button = QPushButton()
         self.folder_backspace_button.clicked.connect(lambda:
@@ -236,8 +237,6 @@ class UIConfigureData(QtWidgets.QWidget):
         self.time_format_dropdown.addItems(
             ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"])
         self.time_format_dropdown.setCurrentText("HH:mm:ss")
-        self.time_format_dropdown.currentIndexChanged.connect(
-            self.generate_preview)
 
         # Output preview section
         self.preview_label = QLabel("Output Preview")
@@ -599,7 +598,8 @@ class UIConfigureData(QtWidgets.QWidget):
             VALID_TAGS[3]: "[RUNNAME]",
             VALID_TAGS[4]: datetime.now().strftime(DATE_TIME_FORMATS.get(self.date_format_dropdown.currentText())),
             VALID_TAGS[5]: QDateTime.currentDateTime().toString(
-                self.time_format_dropdown.currentText())
+                self.time_format_dropdown.currentText()),
+            VALID_TAGS[6]: "[COM PORT]"
         }
 
         # Folder and file formats
@@ -704,7 +704,7 @@ class UIConfigureData(QtWidgets.QWidget):
         """
         # Define a regex pattern for the format
         # Pattern: tag, delimiter, tag, ..., with no trailing delimiter or leading/trailing spaces
-        tag_pattern = r"(%username%|%initials%|%device%|%runname%|%date%|%time%)"
+        tag_pattern = r"(%username%|%initials%|%device%|%runname%|%date%|%time%|%port%)"
         delimiter_pattern = r"[-_\s]"
         valid_format_regex = re.compile(
             fr"^{tag_pattern}({delimiter_pattern}{tag_pattern})*$"
@@ -725,6 +725,18 @@ class UIConfigureData(QtWidgets.QWidget):
             Log.e(tag=TAG, msg='Invalid filename format tag pattern detected.')
             raise ValueError(
                 "Invalid filename_format: Ensure it follows the correct tag-delimiter pattern.")
+
+    def get_serial_devices(self):
+        ports = serial.tools.list_ports.comports()
+        port_devices = {}
+        if ports:
+            for port in ports:
+                print(f"- {port.device}: {port.description}")
+                port_devices[port.device] = port.description
+        else:
+            print("No serial ports found.")
+
+        return port_devices
 
     def save_preferences(self, default: bool = False):
         """

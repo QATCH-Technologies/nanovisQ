@@ -1,6 +1,7 @@
 from enum import Enum
 from time import strftime, localtime
 import os
+import json
 
 from QATCH.common.architecture import Architecture, OSType
 
