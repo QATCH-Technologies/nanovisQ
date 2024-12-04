@@ -10,6 +10,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.common.logger import Logger as Log
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
+from QATCH.common.fileStorage import FileStorage
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from typing import Union
@@ -1071,6 +1072,7 @@ class UserProfiles:
         with open(file, 'w') as f:
             f.write(session_key)
             Log.d("User session created.")
+        FileStorage.DEV_set_file_format_preferences()
 
     @staticmethod
     def session_info():

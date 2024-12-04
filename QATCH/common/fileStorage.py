@@ -18,6 +18,13 @@ TAG = ""  # "[FileStorage]"
 
 class FileStorage:
 
+    folder_format_tag_pattern = None
+    folder_format_delimiter = None
+    file_format_tag_pattern = []
+    file_format_delimiter = None
+    date_format = None
+    time_format = None
+
     # Global buffer and index helpers
     bufferedRows = []
     HANDLE = 0
@@ -28,6 +35,7 @@ class FileStorage:
     ###########################################################################
     # Saves CSV files of processed data in an assigned directory
     ###########################################################################
+
     @staticmethod
     def CSVsave(i, filename, path, data_save0, data_save1, data_save2, data_save3, data_save4, data_save5, writeToFilesystem=True):
         """
@@ -517,8 +525,25 @@ class FileStorage:
             Log.w(TAG, "WARN: Failed to set active device name.")
 
     @staticmethod
-    def DEV_set_file_format_preferences(index):
+    def DEV_set_file_format_preferences():
         from QATCH.common.userProfiles import UserProfiles
+        from xml.dom.minidom import parse
+        import json
+
+        def write_default_preferences(save_path):
+            default_preferences = {
+                "folder_format": "%device%",
+                "filename_format": "%runname%",
+                "folder_format_delimiter": "_",
+                "filename_format_delimiter": "_",
+                "date_format": "MM-DD-YYYY",
+                "time_format": "HH:mm:ss",
+            }
+            with open(save_path, "w") as f:
+                json.dump(default_preferences, f, indent=4)
+
+        def parse_list(node):
+            return node.firstChild.nodeValue.split(',')
 
         # Load preferences from file if exists
         user_info = UserProfiles.get_session_file()
@@ -526,15 +551,33 @@ class FileStorage:
                                              f"{user_info}-file-format-preferences.json")
         global_preferences_path = os.path.join(
             Constants.local_app_data_path, "file-format-preferences.json")
-
+        file_preferences_path = None
         if os.path.exists(user_preferences_path):
-            pass
+            file_preferences_path = user_preferences_path
         elif os.path.exists(global_preferences_path):
-            pass
+            file_preferences_path = global_preferences_path
         else:
-            # TODO Restore global default prefences file if it is deleted.
-            raise Exception("No user or global file format preferences found.")
-        # If it does not exist, load from global
+            Log.e(tag=TAG, msg="No user or global file format preferences found.")
+            write_default_preferences(global_preferences_path)
+            file_preferences_path = global_preferences_path
+
+        print(file_preferences_path)
+        xml_doc = parse(file_preferences_path)
+
+        FileStorage.folder_format_tag_pattern = parse_list(
+            xml_doc.getElementsByTagName('folder_format')[0])
+        FileStorage.file_format_tag_pattern = parse_list(
+            xml_doc.getElementsByTagName('filename_format')[0])
+        FileStorage.folder_format_delimiter = xml_doc.getElementsByTagName(
+            'folder_format_delimiter')[0].firstChild.nodeValue
+        FileStorage.file_format_delimiter = xml_doc.getElementsByTagName(
+            'filename_format_delimiter')[0].firstChild.nodeValue
+        FileStorage.date_format = xml_doc.getElementsByTagName(
+            'date_format')[0].firstChild.nodeValue
+        FileStorage.time_format = xml_doc.getElementsByTagName(
+            'time_format')[0].firstChild.nodeValue
+
+        Log.d(TAG, FileStorage.folder_format_tag_pattern)
 
         # Setup tag list and date/time format
     ###########################################################################
@@ -544,6 +587,7 @@ class FileStorage:
     @staticmethod
     def DEV_populate_path(path, i):
         FileStorage.DEV_set_file_format_preferences(path, i)
+        print("\nHERE\n")
         return path.replace(Constants.tbd_active_device_name_path, FileStorage.DEV_get_active(i))
 
     ###########################################################################

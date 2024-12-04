@@ -42,7 +42,6 @@ DEFAULT_PREFERNCES = {
     "filename_format_delimiter": PATH_DELIMITERS["Hyphen"],
     "date_format": "MM-DD-YYYY",
     "time_format": "HH:mm:ss",
-    "port": "COM 1"
 }
 
 
