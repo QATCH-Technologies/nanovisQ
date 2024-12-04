@@ -516,12 +516,34 @@ class FileStorage:
         except:
             Log.w(TAG, "WARN: Failed to set active device name.")
 
+    @staticmethod
+    def DEV_set_file_format_preferences(index):
+        from QATCH.common.userProfiles import UserProfiles
+
+        # Load preferences from file if exists
+        user_info = UserProfiles.get_session_file()
+        user_preferences_path = os.path.join(Constants.local_app_data_path, "profiles/users",
+                                             f"{user_info}-file-format-preferences.json")
+        global_preferences_path = os.path.join(
+            Constants.local_app_data_path, "file-format-preferences.json")
+
+        if os.path.exists(user_preferences_path):
+            pass
+        elif os.path.exists(global_preferences_path):
+            pass
+        else:
+            # TODO Restore global default prefences file if it is deleted.
+            raise Exception("No user or global file format preferences found.")
+        # If it does not exist, load from global
+
+        # Setup tag list and date/time format
     ###########################################################################
     # Populate Device Path to insert device folder name in file path
     ###########################################################################
 
     @staticmethod
     def DEV_populate_path(path, i):
+        FileStorage.DEV_set_file_format_preferences(path, i)
         return path.replace(Constants.tbd_active_device_name_path, FileStorage.DEV_get_active(i))
 
     ###########################################################################

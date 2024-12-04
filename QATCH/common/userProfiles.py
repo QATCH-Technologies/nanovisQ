@@ -12,6 +12,7 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from typing import Union
 
 
 class UserRoles(Enum):
@@ -1093,6 +1094,49 @@ class UserProfiles:
         else:
             Log.d("User session is NOT active.")
             return False, None  # no active session
+
+    @staticmethod
+    def get_session_file() -> Union[str, None]:
+        """
+        Reports the session file name to the caller.
+
+        Given the file from the session key and todays date, the method
+        returns the encrypted name of the user session file. If there is
+        no active user session or the user session has expired, the method
+        returns None.
+
+        Args:
+            None
+
+        Returns:
+            str: The encrypted string specifying the user file.
+            None: If there is no active user or the user session has expired.
+
+        Logs:
+            Logs debug information if the user session has expired or is not
+            active.
+        """
+        file = os.path.join(UserProfiles.PATH, "session.key")
+        today = dt.datetime.now().isoformat().split('T')[0]
+        if os.path.exists(file):
+            files, infos = UserProfiles.get_all_user_info()
+            with open(file, "r") as f:
+                session_key = f.read()
+                for i, file in enumerate(files):
+                    salt = file[:-4]
+                    hash = hashlib.sha256()
+                    hash.update(salt.encode())
+                    hash.update(today.encode())
+                    file_key = hash.hexdigest()
+                    if file_key == session_key:
+                        Log.d("User session is active.")
+                        file = file.split(".xml")[0]
+                        return file  # valid session
+            Log.d("User session is expired.")
+            return None  # invalid session
+        else:
+            Log.d("User session is NOT active.")
+            return None  # no active session
 
     @staticmethod
     def session_end():

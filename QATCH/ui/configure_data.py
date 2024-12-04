@@ -1,6 +1,7 @@
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants
 from PyQt5 import QtWidgets
 from PyQt5.QtWidgets import (QVBoxLayout, QComboBox,
                              QLabel, QLineEdit, QPushButton, QMessageBox, QFormLayout, QHBoxLayout
@@ -11,7 +12,7 @@ from datetime import datetime
 import json
 import re
 import serial.tools.list_ports
-
+import os
 TAG = '[Configure Data]'
 
 # Dictionary of path delimiters to use in filenames or folder structures.
@@ -811,7 +812,16 @@ class UIConfigureData(QtWidgets.QWidget):
             }
 
             # Save settings to preferences.json
-            with open("file-preferences.json", "w") as f:
+            user_info = UserProfiles.get_session_file()
+            user_info = user_info.split(".xml")[0]
+            if user_info:
+                save_path = os.path.join(Constants.local_app_data_path, "profiles/users",
+                                         f"{user_info}-file-format-preferences.json")
+            else:
+                save_path = os.path.join(
+                    Constants.local_app_data_path, "file-format-preferences.json")
+            print(save_path)
+            with open(save_path, "w") as f:
                 json.dump(preferences, f, indent=4)
             if default:
                 Log.i(tag=TAG, msg="Restored to default prefences.")
