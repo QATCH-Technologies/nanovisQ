@@ -15,35 +15,6 @@ import serial.tools.list_ports
 import os
 TAG = '[Configure Data]'
 
-# Dictionary of path delimiters to use in filenames or folder structures.
-PATH_DELIMITERS = {
-    "Underscore": "_",
-    "Hyphen": "-",
-    "Space": " "
-}
-
-# Dictionary of date-time formats to use for date formatting.
-DATE_TIME_FORMATS = {
-    "YYYY-MM-DD": "%Y-%m-%d",
-    "DD-MM-YYYY": "%d-%m-%Y",
-    "MM-DD-YYYY": "%m-%d-%Y"
-}
-
-# List of valid tags that can be used to configure folder or filename formats.
-VALID_TAGS = [
-    "%username%", "%initials%", "%device%", "%runname%", "%date%", "%time%", "%port%"
-]
-
-# Dictionary containing default preferences for folder and filename formatting.
-DEFAULT_PREFERNCES = {
-    "folder_format": VALID_TAGS[2],
-    "filename_format": VALID_TAGS[3],
-    "folder_format_delimiter": PATH_DELIMITERS["Underscore"],
-    "filename_format_delimiter": PATH_DELIMITERS["Hyphen"],
-    "date_format": "MM-DD-YYYY",
-    "time_format": "HH:mm:ss",
-}
-
 
 class UIConfigureData(QtWidgets.QWidget):
     """
@@ -135,18 +106,18 @@ class UIConfigureData(QtWidgets.QWidget):
         self.last_focused_input = None  # Track the last focused input field
         # Keywords and their descriptions
         self.keywords = {
-            VALID_TAGS[0]: "User's name",
-            VALID_TAGS[1]: "User's initials",
-            VALID_TAGS[2]: "Device ID",
-            VALID_TAGS[3]: "Run name",
-            VALID_TAGS[4]: "Date",
-            VALID_TAGS[5]: "Time",
-            VALID_TAGS[6]: "COM Port"
+            Constants.valid_tags[0]: "User's name",
+            Constants.valid_tags[1]: "User's initials",
+            Constants.valid_tags[2]: "Device ID",
+            Constants.valid_tags[3]: "Run name",
+            Constants.valid_tags[4]: "Date",
+            Constants.valid_tags[5]: "Time",
+            Constants.valid_tags[6]: "COM Port"
         }
 
         self.keywords_for_input = {
-            "folder_format_input": {"delimiter": list(PATH_DELIMITERS.values())[0], "keywords": []},
-            "filename_format_input": {"delimiter": list(PATH_DELIMITERS.values())[0], "keywords": []}
+            "folder_format_input": {"delimiter": list(Constants.path_delimiters.values())[0], "keywords": []},
+            "filename_format_input": {"delimiter": list(Constants.path_delimiters.values())[0], "keywords": []}
         }
 
         # Folder and filename format sections
@@ -166,9 +137,10 @@ class UIConfigureData(QtWidgets.QWidget):
 
         # Delimiter selection for Folder Format
         self.folder_delimiter_dropdown = QComboBox()
-        self.folder_delimiter_dropdown.addItems(list(PATH_DELIMITERS.values()))
+        self.folder_delimiter_dropdown.addItems(
+            list(Constants.path_delimiters.values()))
         self.folder_delimiter_dropdown.setCurrentText(
-            list(PATH_DELIMITERS.values())[0])
+            list(Constants.path_delimiters.values())[0])
         self.folder_delimiter_dropdown.currentIndexChanged.connect(
             lambda: self.set_delimiter(
                 "folder_format_input", self.folder_delimiter_dropdown.currentText())
@@ -177,9 +149,9 @@ class UIConfigureData(QtWidgets.QWidget):
         # Delimiter selection for Filename Format
         self.filename_delimiter_dropdown = QComboBox()
         self.filename_delimiter_dropdown.addItems(
-            list(PATH_DELIMITERS.values()))
+            list(Constants.path_delimiters.values()))
         self.filename_delimiter_dropdown.setCurrentText(
-            list(PATH_DELIMITERS.values())[0])
+            list(Constants.path_delimiters.values())[0])
         self.filename_delimiter_dropdown.currentIndexChanged.connect(
             lambda: self.set_delimiter(
                 "filename_format_input", self.filename_delimiter_dropdown.currentText())
@@ -226,9 +198,9 @@ class UIConfigureData(QtWidgets.QWidget):
         # Date and Time format components
         self.date_format_label = QLabel("Date Format")
         self.date_format_dropdown = QComboBox()
-        self.date_format_dropdown.addItems(list(DATE_TIME_FORMATS.keys()))
+        self.date_format_dropdown.addItems(list(Constants.date_formats.keys()))
         self.date_format_dropdown.setCurrentText(
-            list(DATE_TIME_FORMATS.keys())[0])
+            list(Constants.date_formats.keys())[0])
         self.date_format_dropdown.currentIndexChanged.connect(
             self.generate_preview)
 
@@ -399,10 +371,10 @@ class UIConfigureData(QtWidgets.QWidget):
 
         """
         current_delimiter = self.keywords_for_input[input_name]["delimiter"]
-        for key, value in PATH_DELIMITERS.items():
+        for key, value in Constants.path_delimiters.items():
             if value == current_delimiter:
                 return key
-        return list(PATH_DELIMITERS.keys())[0]
+        return list(Constants.path_delimiters.keys())[0]
 
     def set_delimiter(self, input_name: str, delimiter: str):
         """
@@ -432,7 +404,7 @@ class UIConfigureData(QtWidgets.QWidget):
 
         # Replace all existing delimiters in the keywords list with the new delimiter
         for i, keyword in enumerate(self.keywords_for_input[input_name]["keywords"]):
-            if keyword in PATH_DELIMITERS.values():
+            if keyword in Constants.path_delimiters.values():
                 self.keywords_for_input[input_name]["keywords"][i] = delimiter
         keywords = self.keywords_for_input[input_name]["keywords"]
         updated_text = "".join(keywords)
@@ -592,14 +564,14 @@ class UIConfigureData(QtWidgets.QWidget):
             username = '[USERNAME]'
             initials = '[INITIALS]'
         example_data = {
-            VALID_TAGS[0]: username,
-            VALID_TAGS[1]: initials,
-            VALID_TAGS[2]: device_preview,
-            VALID_TAGS[3]: "[RUNNAME]",
-            VALID_TAGS[4]: datetime.now().strftime(DATE_TIME_FORMATS.get(self.date_format_dropdown.currentText())),
-            VALID_TAGS[5]: QDateTime.currentDateTime().toString(
+            Constants.valid_tags[0]: username,
+            Constants.valid_tags[1]: initials,
+            Constants.valid_tags[2]: device_preview,
+            Constants.valid_tags[3]: "[RUNNAME]",
+            Constants.valid_tags[4]: datetime.now().strftime(Constants.date_formats.get(self.date_format_dropdown.currentText())),
+            Constants.valid_tags[5]: QDateTime.currentDateTime().toString(
                 self.time_format_dropdown.currentText()),
-            VALID_TAGS[6]: "[COM PORT]"
+            Constants.valid_tags[6]: "[COM PORT]"
         }
 
         # Folder and file formats
@@ -610,7 +582,7 @@ class UIConfigureData(QtWidgets.QWidget):
         def update_format(format_keywords):
             update_string = ""
             for keyword in format_keywords:
-                if keyword not in PATH_DELIMITERS.values():
+                if keyword not in Constants.path_delimiters.values():
                     update_string += example_data.get(keyword)
                 else:
                     update_string += keyword
@@ -767,17 +739,17 @@ class UIConfigureData(QtWidgets.QWidget):
         try:
             if default:
                 self.folder_format_input.setText(
-                    DEFAULT_PREFERNCES["folder_format"])
-                folder_format = DEFAULT_PREFERNCES["folder_format"]
+                    Constants.default_preferences["folder_format"])
+                folder_format = Constants.default_preferences["folder_format"]
                 self.filename_format_input.setText(
-                    DEFAULT_PREFERNCES["filename_format"])
-                filename_format = DEFAULT_PREFERNCES["filename_format"]
+                    Constants.default_preferences["filename_format"])
+                filename_format = Constants.default_preferences["filename_format"]
                 date_format = self.date_format_dropdown.setCurrentText(
-                    DEFAULT_PREFERNCES["date_format"])
+                    Constants.default_preferences["date_format"])
                 time_format = self.date_format_dropdown.setCurrentText(
-                    DEFAULT_PREFERNCES["time_format"])
-                folder_delimiter = DEFAULT_PREFERNCES["folder_format_delimiter"]
-                filename_delimiter = DEFAULT_PREFERNCES["filename_format_delimiter"]
+                    Constants.default_preferences["time_format"])
+                folder_delimiter = Constants.default_preferences["folder_format_delimiter"]
+                filename_delimiter = Constants.default_preferences["filename_format_delimiter"]
                 self.folder_delimiter_dropdown.setCurrentText(
                     folder_delimiter)
                 self.filename_delimiter_dropdown.setCurrentText(

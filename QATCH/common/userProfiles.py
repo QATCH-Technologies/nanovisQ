@@ -7,6 +7,7 @@ from time import sleep
 from xml.dom import minidom
 from enum import Enum
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import QDateTime
 from QATCH.common.logger import Logger as Log
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
@@ -14,6 +15,8 @@ from QATCH.common.fileStorage import FileStorage
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from typing import Union
+
+TAG = '[UserProfiles]'
 
 
 class UserRoles(Enum):
@@ -1072,7 +1075,11 @@ class UserProfiles:
         with open(file, 'w') as f:
             f.write(session_key)
             Log.d("User session created.")
-        FileStorage.DEV_set_file_format_preferences()
+        preferences = UserPreferences(UserProfiles.get_session_file())
+        preferences.set_preferences()
+        print(preferences.get_preferences())
+        print(preferences.get_folder_save_path())
+        print(preferences.get_file_save_path())
 
     @staticmethod
     def session_info():
@@ -1320,7 +1327,6 @@ class UserProfiles:
                         f"User {initials} does not have the required {requiredRole.name} role privileges.")
                     UserProfiles.session_end()
                     return False, filename, None
-
                 salt = filename[:-4]
                 hash = hashlib.sha256()
                 hash.update(salt.encode())
@@ -1443,3 +1449,218 @@ class UserProfiles:
                 Log.e(line)
 
         return enabled, is_error, expires_at
+
+
+class UserPreferences:
+    VALID_TAGS = [
+        "%username%", "%initials%", "%device%", "%runname%", "%date%", "%time%", "%port%"
+    ]
+
+    def __init__(self, user_session_key: str):
+        self._set_user_session(user_session_key)
+        self.setup()
+
+    def setup(self) -> None:
+        user_info = self._get_user_session()
+        user_preferences_path = os.path.join(Constants.local_app_data_path, "profiles/users",
+                                             f"{user_info}-file-format-preferences.json")
+        global_preferences_path = os.path.join(
+            Constants.local_app_data_path, "file-format-preferences.json")
+
+        self.set_use_global(True)
+        if os.path.exists(global_preferences_path):
+            self._set_global_preferences_path(global_preferences_path)
+        else:
+            Log.e(
+                tag=TAG, msg="No user or global file format preferences found. Writing global and using.")
+            FileStorage.DEV_write_default_preferences(global_preferences_path)
+            FileStorage.DEV_write_default_preferences(user_preferences_path)
+            self._set_global_preferences_path(global_preferences_path)
+
+        if os.path.exists(user_preferences_path):
+            Log.d(TAG, 'Using User Preferences')
+            self._set_user_preferences_path(user_preferences_path)
+            self.set_use_global(False)
+
+    def set_preferences(self):
+        import json
+        # Load and parse preferences file.
+        preferences_data = None
+        if self.get_use_global():
+            with open(self._get_global_preferences_path(), "r") as preferences_file:
+                preferences_data = json.load(preferences_file)
+        else:
+            with open(self._get_user_preferences_path(), 'r') as preferences_file:
+                preferences_data = json.load(preferences_file)
+
+        # Temporary variables to hold parsed contents
+        folder_tag_format = str(preferences_data["folder_format"])
+        file_tag_format = str(preferences_data["filename_format"])
+        folder_delimiter = str(
+            preferences_data["folder_format_delimiter"])
+        filename_delimiter = str(
+            preferences_data["filename_format_delimiter"])
+        date_format = str(preferences_data["date_format"])
+        time_format = str(preferences_data["time_format"])
+
+        # Set user preferences using accessor and mutators.
+        self._set_folder_format_pattern(folder_tag_format)
+        self._set_file_format_pattern(file_tag_format)
+        self._set_folder_delimiter(folder_delimiter)
+        self._set_file_delimiter(filename_delimiter)
+        self._set_date_format(date_format)
+        self._set_time_format(time_format)
+
+    def get_preferences(self) -> dict:
+        preferences_dict = {"folder_format": self._get_folder_format_pattern(),
+                            "filename_format": self._get_file_format_pattern(),
+                            "folder_format_delimiter": self._get_folder_delimiter(),
+                            "filename_format_delimiter": self._get_file_delimiter(),
+                            "date_format": self._get_date_format(),
+                            "time_format": self._get_time_format(),
+                            }
+        return preferences_dict
+
+    def reset_global_preferences(self):
+        FileStorage.DEV_write_default_preferences(
+            save_path=self._get_global_preferences_path())
+
+    def reset_user_preferences(self):
+        FileStorage.DEV_write_default_preferences(
+            save_path=self._get_user_preferences_path())
+
+    def get_folder_save_path(self) -> str:
+        return self._build_save_path(
+            self._get_folder_format_pattern(), self._get_folder_delimiter())
+
+    def get_file_save_path(self) -> str:
+        return self._build_save_path(
+            self._get_file_format_pattern(), self._get_file_delimiter())
+
+    def set_use_global(self, use_global) -> None:
+        self.use_global = use_global
+
+    def get_use_global(self) -> bool:
+        return self.use_global
+
+    # -- Private Utilities -- #
+
+    def _build_save_path(self, pattern: list, delimiter: str) -> str:
+        save_path = ""
+
+        for tag in pattern:
+            if tag == Constants.valid_tags[0]:
+                save_path = save_path + self._on_username()
+            elif tag == Constants.valid_tags[1]:
+                save_path = save_path + self._on_initials()
+            elif tag == Constants.valid_tags[2]:
+                save_path = save_path + self._on_device()
+            elif tag == Constants.valid_tags[3]:
+                save_path = save_path + self._on_runname()
+            elif tag == Constants.valid_tags[4]:
+                save_path = save_path + self._on_date()
+            elif tag == Constants.valid_tags[5]:
+                save_path = save_path + self._on_time()
+            elif tag == Constants.valid_tags[6]:
+                save_path = save_path + self._on_port()
+            else:
+                Log.e(TAG, 'Invalid folder format tag pattern')
+                raise ValueError('Invalid folder format tag pattern')
+            save_path = save_path + delimiter
+
+        # Remove the last trailing dilimeter.
+        return save_path[:-1]
+
+    def _on_username(self) -> str:
+        _, user_info = UserProfiles.session_info()
+        username = user_info[0]
+        return username
+
+    def _on_initials(self) -> str:
+        _, user_info = UserProfiles.session_info()
+        initials = user_info[1]
+        return initials
+
+    def _on_device(self) -> str:
+        return "DEVICE"
+
+    def _on_runname(self) -> str:
+        return "RUNNAME"
+
+    def _on_date(self) -> str:
+        from datetime import datetime
+        date = Constants.date_formats.get(self._get_date_format())
+        return datetime.now().strftime(date)
+
+    def _on_time(self) -> str:
+        return QDateTime.currentDateTime().toString(self._get_time_format())
+
+    def _on_port(self) -> str:
+        return 'PORT'
+
+    # -- ACCESSOR METHODS -- #
+
+    def _set_user_session(self, user_session_key: str) -> None:
+        self._user_session = user_session_key
+
+    def _set_folder_format_pattern(self, folder_format_pattern: list) -> None:
+        for delimiter in Constants.path_delimiters.values():
+            folder_format_pattern = folder_format_pattern.replace(
+                delimiter, '|')
+        split_parts = folder_format_pattern.split('|')
+        tokens = [part for part in split_parts if '%' in part]
+        self._folder_format_pattern = tokens
+
+    def _set_file_format_pattern(self, file_format_pattern: list) -> None:
+        for delimiter in Constants.path_delimiters.values():
+            file_format_pattern = file_format_pattern.replace(
+                delimiter, '|')
+        split_parts = file_format_pattern.split('|')
+        tokens = [part for part in split_parts if '%' in part]
+        self._file_format_pattern = tokens
+
+    def _set_folder_delimiter(self, folder_delimiter: str) -> None:
+        self._folder_delimiter = folder_delimiter
+
+    def _set_file_delimiter(self, file_delimiter: str) -> None:
+        self._file_delimiter = file_delimiter
+
+    def _set_date_format(self, date_format: str) -> None:
+        self._date_format = date_format
+
+    def _set_time_format(self, time_format: str) -> None:
+        self._time_format = time_format
+
+    def _set_user_preferences_path(self, user_preferences_path: str) -> None:
+        self._user_preferences_path = user_preferences_path
+
+    def _set_global_preferences_path(self, global_preferences_path: str) -> None:
+        self._global_preferences_path = global_preferences_path
+
+     # -- MUTATOR METHODS -- #
+    def _get_user_session(self) -> UserProfiles:
+        return self._user_session
+
+    def _get_folder_format_pattern(self) -> list:
+        return self._folder_format_pattern
+
+    def _get_file_format_pattern(self) -> list:
+        return self._file_format_pattern
+
+    def _get_folder_delimiter(self) -> str:
+        return self._folder_delimiter
+
+    def _get_file_delimiter(self) -> str:
+        return self._file_delimiter
+
+    def _get_time_format(self) -> str:
+        return self._time_format
+
+    def _get_date_format(self) -> str:
+        return self._date_format
+
+    def _get_user_preferences_path(self) -> str:
+        return self._user_preferences_path
+
+    def _get_global_preferences_path(self) -> str:
+        return self._global_preferences_path
