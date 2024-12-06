@@ -15,7 +15,7 @@ from QATCH.common.fileStorage import FileStorage
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from typing import Union
-
+import re
 TAG = '[UserProfiles]'
 
 
@@ -1078,9 +1078,11 @@ class UserProfiles:
         UserProfiles.user_preferences = UserPreferences(
             UserProfiles.get_session_file())
         UserProfiles.user_preferences.set_preferences()
-        # print(preferences.get_preferences())
-        # print(preferences.get_folder_save_path())
-        # print(preferences.get_file_save_path())
+        print(UserProfiles.user_preferences.get_preferences())
+        print(UserProfiles.user_preferences.get_folder_save_path(
+            device_id=12345678, port_id=1))
+        print(UserProfiles.user_preferences.get_file_save_path(
+            device_id=12345678, port_id=1))
 
     @staticmethod
     def session_info():
@@ -1526,13 +1528,13 @@ class UserPreferences:
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_user_preferences_path())
 
-    def get_folder_save_path(self, device_idx) -> str:
+    def get_folder_save_path(self, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_folder_format_pattern(), self._get_folder_delimiter(), device_idx)
+            self._get_folder_format_pattern(), self._get_folder_delimiter(), device_id, port_id)
 
-    def get_file_save_path(self, device_idx) -> str:
+    def get_file_save_path(self, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_file_format_pattern(), self._get_file_delimiter(), device_idx)
+            self._get_file_format_pattern(), self._get_file_delimiter(), device_id, port_id)
 
     def set_use_global(self, use_global) -> None:
         self.use_global = use_global
@@ -1541,7 +1543,10 @@ class UserPreferences:
         return self.use_global
 
     # -- Private Utilities -- #
-    def _build_save_path(self, pattern: list, delimiter: str, device_idx: int) -> str:
+    def _build_save_path(self, pattern: list, delimiter: str, device_id: int, port_id: int) -> str:
+        # IDX for single if FF
+        # IDX for 4x1 is 0-3
+        # IDX for 4x6 is A1-D6 in hex
         save_path = ""
 
         for tag in pattern:
@@ -1550,7 +1555,7 @@ class UserPreferences:
             elif tag == Constants.valid_tags[1]:
                 save_path = save_path + self._on_initials()
             elif tag == Constants.valid_tags[2]:
-                save_path = save_path + self._on_device(device_idx)
+                save_path = save_path + self._on_device(device_id)
             elif tag == Constants.valid_tags[3]:
                 save_path = save_path + self._on_runname()
             elif tag == Constants.valid_tags[4]:
@@ -1558,14 +1563,19 @@ class UserPreferences:
             elif tag == Constants.valid_tags[5]:
                 save_path = save_path + self._on_time()
             elif tag == Constants.valid_tags[6]:
-                save_path = save_path + self._on_port()
+                save_path = save_path + self._on_port(port_id)
             else:
                 Log.e(TAG, 'Invalid folder format tag pattern')
                 raise ValueError('Invalid folder format tag pattern')
             save_path = save_path + delimiter
 
-        # Remove the last trailing dilimeter.
-        return save_path[:-1]
+        def clean_path(path: str, delimiter: str):
+            cleaned_path = path.strip(f' {delimiter}_')
+            cleaned_path = re.sub(
+                r'[' + re.escape(delimiter + "" + delimiter) + ']+', delimiter, cleaned_path)
+
+            return cleaned_path
+        return clean_path(save_path, delimiter)
 
     def _on_username(self) -> str:
         _, user_info = UserProfiles.session_info()
@@ -1577,9 +1587,8 @@ class UserPreferences:
         initials = user_info[1]
         return initials
 
-    def _on_device(self, device_idx: int) -> str:
-        # TODO: Figrue out what 'i' is.
-        return FileStorage.DEV_get_active(device_idx)
+    def _on_device(self, device_id: int) -> str:
+        return str(device_id)
 
     def _on_runname(self) -> str:
         return "RUNNAME"
@@ -1592,8 +1601,10 @@ class UserPreferences:
     def _on_time(self) -> str:
         return QDateTime.currentDateTime().toString(self._get_time_format())
 
-    def _on_port(self) -> str:
-        return 'PORT'
+    def _on_port(self, port_id: int) -> str:
+        if port_id == "FF":
+            return ""
+        return str(port_id)
 
     # -- ACCESSOR METHODS -- #
 

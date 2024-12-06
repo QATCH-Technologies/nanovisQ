@@ -587,6 +587,7 @@ class Rename_Output_Files(QtCore.QObject):
                             _dev_pid = int(_dev_parts[0], base=16) % 9
                             # do not override 'dev_name'
                             _dev_name = _dev_parts[1]
+                        # TODO: Store PID and Dev_name for later
                         dev_info = FileStorage.DEV_info_get(
                             _dev_pid, _dev_name)
                         if 'NAME' in dev_info:
@@ -613,13 +614,15 @@ class Rename_Output_Files(QtCore.QObject):
                                                                           text=text)
                             else:
                                 ok = False  # bad run, don't save with custom name
+
                         if ok:
                             ask4info = True
                             # remove any invalid characters from user input
                             invalidChars = "\\/:*?\"'<>|"
                             for invalidChar in invalidChars:
                                 text = text.replace(invalidChar, '')
-                            subDir = text
+                            # subDir = text
+                            subDir = UserProfiles.user_preferences.get_file_save_path()
                             if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                                 if self.has_active_multi_port():  # 4x6 system
                                     # mask in port, e.g. "A" -> "A1"
@@ -631,8 +634,12 @@ class Rename_Output_Files(QtCore.QObject):
                                 if len(text) == 0:
                                     raise Exception(
                                         "No text entered. Please try again.")
+                                # TODO: Top level device directory, dev name is device folder
+
+                                # os.makedirs(os.path.join(
+                                #     path_root, dev_name, subDir), exist_ok=False)
                                 os.makedirs(os.path.join(
-                                    path_root, dev_name, subDir), exist_ok=False)
+                                    path_root, UserProfiles.user_preferences.get_folder_save_path(), subDir), exist_ok=False)
                                 # break (done below)
                             except:
                                 if len(text) > 0:

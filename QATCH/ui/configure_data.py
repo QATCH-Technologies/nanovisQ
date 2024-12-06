@@ -120,19 +120,45 @@ class UIConfigureData(QtWidgets.QWidget):
             "filename_format_input": {"delimiter": list(Constants.path_delimiters.values())[0], "keywords": []}
         }
 
-        # Folder and filename format sections
+        user_info = UserProfiles.get_session_file()
+        user_preferences_path = os.path.join(Constants.local_app_data_path, "profiles/users",
+                                             f"{user_info}-file-format-preferences.json")
+        global_preferences_path = os.path.join(
+            Constants.local_app_data_path, "file-format-preferences.json")
+        self.user_preferences = None
+        self.global_preferences = None
+        if os.path.exists(global_preferences_path):
+            with open(global_preferences_path, 'r') as preferences_file:
+                self.global_preferences = json.load(preferences_file)
+        else:
+            Log.e(
+                tag=TAG, msg="No user or global file format preferences found. Writing global and using.")
+            FileStorage.DEV_write_default_preferences(global_preferences_path)
+            FileStorage.DEV_write_default_preferences(user_preferences_path)
+            with open(global_preferences_path, 'r') as preferences_file:
+                self.global_preferences = json.load(preferences_file)
+            with open(user_preferences_path, 'r') as preferences_file:
+                self.user_preferences = json.load(preferences_file)
+
+        if os.path.exists(user_preferences_path):
+            Log.d(TAG, 'Using User Preferences')
+            with open(user_preferences_path, 'r') as preferences_file:
+                self.user_preferences = json.load(preferences_file)
+
         self.folder_format_label = QLabel("Folder Format")
         self.folder_format_input = QLineEdit()
         self.folder_format_input.focusInEvent = self.set_last_focused_input(
             self.folder_format_input)
-        self.folder_format_input.setPlaceholderText("Enter folder format")
+        self.folder_format_input.setText(
+            self.user_preferences.get("folder_format"))
         self.folder_format_input.setReadOnly(True)
 
         self.filename_format_label = QLabel("Filename Format")
         self.filename_format_input = QLineEdit()
         self.filename_format_input.focusInEvent = self.set_last_focused_input(
             self.filename_format_input)
-        self.filename_format_input.setPlaceholderText("Enter filename format")
+        self.filename_format_input.setText(
+            self.user_preferences.get("filename_format"))
         self.filename_format_input.setReadOnly(True)
 
         # Delimiter selection for Folder Format
@@ -140,7 +166,7 @@ class UIConfigureData(QtWidgets.QWidget):
         self.folder_delimiter_dropdown.addItems(
             list(Constants.path_delimiters.values()))
         self.folder_delimiter_dropdown.setCurrentText(
-            list(Constants.path_delimiters.values())[0])
+            self.user_preferences.get("folder_format_delimiter"))
         self.folder_delimiter_dropdown.currentIndexChanged.connect(
             lambda: self.set_delimiter(
                 "folder_format_input", self.folder_delimiter_dropdown.currentText())
@@ -151,7 +177,7 @@ class UIConfigureData(QtWidgets.QWidget):
         self.filename_delimiter_dropdown.addItems(
             list(Constants.path_delimiters.values()))
         self.filename_delimiter_dropdown.setCurrentText(
-            list(Constants.path_delimiters.values())[0])
+            self.user_preferences.get("file_format_delimiter"))
         self.filename_delimiter_dropdown.currentIndexChanged.connect(
             lambda: self.set_delimiter(
                 "filename_format_input", self.filename_delimiter_dropdown.currentText())
@@ -200,15 +226,16 @@ class UIConfigureData(QtWidgets.QWidget):
         self.date_format_dropdown = QComboBox()
         self.date_format_dropdown.addItems(list(Constants.date_formats.keys()))
         self.date_format_dropdown.setCurrentText(
-            list(Constants.date_formats.keys())[0])
+            self.user_preferences.get("date_format"))
         self.date_format_dropdown.currentIndexChanged.connect(
             self.generate_preview)
 
         self.time_format_label = QLabel("Time Format")
         self.time_format_dropdown = QComboBox()
-        self.time_format_dropdown.addItems(
-            ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"])
-        self.time_format_dropdown.setCurrentText("HH:mm:ss")
+        self.time_format_dropdown.addItems(list(
+            Constants.time_formats.keys()))
+        self.time_format_dropdown.setCurrentText(
+            self.user_preferences.get("time_format"))
 
         # Output preview section
         self.preview_label = QLabel("Output Preview")
@@ -471,6 +498,7 @@ class UIConfigureData(QtWidgets.QWidget):
             - The delimiter is inserted before the keyword if the list of keywords is not empty.
             - If no field is focused, a warning message is shown to the user.
         """
+        # TODO: make sure PORT tag is present before saving and runname
         if self.last_focused_input:
             input_name = "folder_format_input" if self.last_focused_input == self.folder_format_input else "filename_format_input"
 
@@ -761,11 +789,26 @@ class UIConfigureData(QtWidgets.QWidget):
                     self.keywords_for_input['folder_format_input']['keywords'])
                 filename_format = "".join(
                     self.keywords_for_input['filename_format_input']['keywords'])
+
+                # Requires  filename format to contain a %port% tag
+                if Constants.valid_tags[6] not in filename_format:
+                    Log.w(
+                        tag=TAG, msg=f"Filename must contain a {Constants.valid_tags[6]} tag.")
+                    QMessageBox.warning(
+                        self, "Error", f"Filename must contain a {Constants.valid_tags[6]} tag.")
+                    return
+                # Requires  filename format to contain a %runname% tag
+                if Constants.valid_tags[3] not in filename_format:
+                    Log.w(
+                        tag=TAG, msg=f"Filename must contain a {Constants.valid_tags[3]} tag.")
+                    QMessageBox.warning(
+                        self, "Error", f"Filename must contain a {Constants.valid_tags[3]} tag.")
+                    return
                 folder_delimiter = self.keywords_for_input['folder_format_input']['delimiter']
                 filename_delimiter = self.keywords_for_input['filename_format_input']['delimiter']
             date_format = self.date_format_dropdown.currentText()
             time_format = self.time_format_dropdown.currentText()
-            # Simple validation
+
             if not folder_format or not filename_format:
                 Log.w(tag=TAG, msg="Folder and Filename formats cannot be empty!")
                 QMessageBox.warning(

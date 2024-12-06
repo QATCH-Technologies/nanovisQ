@@ -229,9 +229,11 @@ class Constants:
         "DD-MM-YYYY": "%d-%m-%Y",
         "MM-DD-YYYY": "%m-%d-%Y"
     }
+    time_formats = {"HH:mm:ss": "HH:mm:ss", "hh:mm:ss A": "hh:mm:ss A",
+                    "HH:mm": "HH:mm", "hh:mm A": "hh:mm A"}
     default_preferences = {
         "folder_format": valid_tags[2],
-        "filename_format": valid_tags[3],
+        "filename_format": f"{valid_tags[6]}_{valid_tags[3]}",
         "folder_format_delimiter": path_delimiters["Underscore"],
         "filename_format_delimiter": path_delimiters["Hyphen"],
         "date_format": "MM-DD-YYYY",
