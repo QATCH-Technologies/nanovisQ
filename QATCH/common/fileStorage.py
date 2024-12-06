@@ -599,7 +599,7 @@ class FileStorage:
         Retrieve a list of all device directories from a specified export path.
 
         For now, a valid device directory is one with an entirely numeric name.
-        Long term, finding runs should be recursive through all of 'logged_data'
+        TODO: Long term, finding runs should be recursive through all of 'logged_data'
         NOTE: The length of the device directory's name is NOT always 8-digits.
 
         Returns:
