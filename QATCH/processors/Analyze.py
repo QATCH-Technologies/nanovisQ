@@ -362,7 +362,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
-
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
 
@@ -2057,6 +2056,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.poi_markers[px])
 
     def setXmlPath(self, xml_path):
+        Log.d(TAG, f'Setting xml filepath to: {xml_path}')
         self.xml_path = xml_path
 
     def updateDev(self, idx):
@@ -3395,24 +3395,63 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
+        """
+        Load and display information about a run from an XML file, initializing
+        a GUI to view or edit the run's details.
+
+        This method reads an XML file specified by `self.xml_path` to extract
+        attributes such as the run's name, associated CSV file path, ruling
+        (e.g., good or bad), and optionally, the username of the parent control.
+        It ensures that only one instance of the Run Info GUI is active, and
+        manages communication between the main thread and a worker thread for
+        GUI display and user interaction.
+
+        If the XML path is invalid or not provided, the method does nothing.
+
+        Attributes:
+            self.xml_path (str): Path to the XML file containing the run information.
+            self.parent: Reference to the parent object (if any), used to extract the
+                username for run metadata.
+            self.bThread (QtCore.QThread): Thread handling the Run Info GUI worker.
+            self.bWorker (QueryRunInfo): Worker object for the Run Info GUI.
+
+        Raises:
+            Exception: If there are issues reading or parsing the XML file, or if
+                GUI initialization fails.
+
+        Example:
+            self.xml_path = "path/to/run_info.xml"
+            self.getRunInfo()
+        """
+        # Check if the XML path is provided
         if self.xml_path != None:
+            Log.d(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
+
+            # Read the XML file's content.
             xml_text = ""
             with open(self.xml_path, "r") as f:
                 xml_text = f.read()
+
+            # Decode if the content is in bytes format.
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
+
+            # Parse the XML content and extract attributes from
+            # the XML.
             xml = minidom.parseString(xml_text)
             run = xml.documentElement
             run_name = run.getAttribute("name")
             run_path = self.xml_path[0:-4] + ".csv"
             is_good = run.getAttribute("ruling")
+
+            # Get the username from the parent control, if available.
             user_name = (
                 None
                 if self.parent == None
                 else self.parent.ControlsWin.username.text()[6:]
             )
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
-            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE)
+            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
             if hasattr(self, "bThread"):
                 if self.bThread.isRunning():
                     Log.w("Run Info GUI already open. Re-showing instead.")
@@ -3420,14 +3459,91 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.bWorker.show()
                     return
 
+            # Initialize the thread and worker for the Run Info GUI.
             self.bThread = QtCore.QThread()
             self.bWorker = QueryRunInfo(
-                run_name, run_path, is_good, user_name, self.xml_path, self.parent
+                run_name=run_name,
+                run_path=run_path,
+                run_ruling=is_good,
+                user_name=user_name,
+                recall_from=self.xml_path,
+                parent=self.parent,
             )  # TODO: more secure to pass user_hash (filename)
+
+            # Configure the Run Info GUI worker.
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
+            self.bWorker.finished.connect(self.update_run_names)
+
+            # IPC signal to get the updated path name from the Run Info window on
+            # change.
+            self.bWorker.updated_run.connect(self.update_current_run_info)
+            self.bWorker.updated_xml_path.connect(self.setXmlPath)
+
+            # Start the thread to display the Run Info GUI
             self.bThread.start()
+
+    def update_current_run_info(self, new_name, old_name, date):
+        """
+        Updates the current run information in the combo box and the `run_names` dictionary.
+
+        Args:
+            new_name (str): The new name to update in the combo box and dictionary.
+            old_name (str): The old name to search for in the combo box and dictionary.
+            date (str): The date associated with the run, used to form the complete name.
+
+        Raises:
+            None: Logs an error message if the old name with the specified date is not found in the combo box.
+
+        Updates:
+            - If the item with the old name exists in the combo box, updates it with the new name.
+            - Searches for a key in the `run_names` dictionary that contains the old name followed by a colon (:).
+            If found, extracts the part of the key after the colon, removes the old key, and adds a new key with 
+            the new name and the extracted value.
+            - Updates the `text_Created` field to display the new name and date.
+
+        Example:
+            If the combo box contains "OldName (2024-11-20)" and the `run_names` dictionary contains:
+                {
+                    "OldName:Details": "value1"
+                }
+            Calling `update_current_run_info("NewName", "OldName", "2024-11-20")` will:
+            - Update the combo box to "NewName (2024-11-20)"
+            - Update the dictionary to:
+                {
+                    "NewName:Details": "NewName"
+                }
+            - Set `text_Created` to "NewName (2024-11-20)".
+        """
+        index = self.cBox_Runs.findText(f"{old_name} ({date})")
+
+        # Check if the old name exists in the combo box
+        if index != -1:
+            # Update the item with the new name
+            self.cBox_Runs.setItemText(index, f"{new_name} ({date})")
+        else:
+            Log.e(
+                TAG, f"Item with name '{old_name} ({date})' not found in the combo box.")
+        for key in list(self.run_names.keys()):  # Use list to avoid runtime changes
+            if f"{old_name}:" in key:
+                # Extract the part of the key after the ':'
+                _, after_colon = key.split(":", 1)  # Split at the first ':'
+                # Store the value and remove the entry
+                value = self.run_names.pop(key)
+                after_colon = after_colon.strip()
+                break
+        self.run_names[f'{new_name}:{after_colon}'] = new_name
+        self.text_Created.setText(f'Loaded: {new_name} ({date})')
+
+    def update_run_names(self):
+        """
+        Used as a reciever from QueryRunInfo to update the xml_path name
+        to the modified xml_path name.
+        """
+        devs = FileStorage.DEV_get_all_device_dirs()
+        for i, _ in enumerate(devs):
+            self.updateRun(i)
 
     def Analyze_Data(self, data_path):
 
@@ -3511,8 +3627,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         Log.d("No points found in XML file for this run.")
                 else:
-                    Log.w(
-                        f'Missing XML file: Expected at "{xml_path}" for this run.')
+                    Log.w(TAG,
+                          f'Missing XML file: Expected at "{xml_path}" for this run.')
             self.show_analysis_immediately = False
             self.model_run_this_load = False
             if self.askForPOIs and len(poi_vals) == 6:

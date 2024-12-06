@@ -34,7 +34,7 @@ import requests
 import stat
 import subprocess
 
-TAG = ""  # "[MainWindow]"
+TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
 ##########################################################################################
@@ -120,7 +120,8 @@ class PlotsWindow(QtWidgets.QMainWindow):
     '''
     def closeEvent(self, event):
         #Log.d(" Exit Real-Time Plot GUI")
-        res =PopUp.question(self, Constants.app_title, "Are you sure you want to quit QATCH Q-1 application now?")
+        res =PopUp.question(self, Constants.app_title,
+                            "Are you sure you want to quit QATCH Q-1 application now?")
         if res:
            #self.close()
            QtWidgets.QApplication.quit()
@@ -1058,6 +1059,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
+            Log.d(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1085,6 +1087,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.AnalyzeProc.Analyze_Data(data_path)
 
+    def refresh_data_files(self):
+        Log.i(TAG, "Refreshing data files...")
+        # print(self.data_files) # DEBUG ONLY
+        self.data_files = FileStorage.DEV_get_logged_data_files(
+            self.data_device, self.data_folder)
+
     def analyze_data_get_data_device(self):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
@@ -1107,10 +1115,12 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("User aborted data folder selection.")
 
     def analyze_data_get_data_file(self):
+        self.refresh_data_files()
+
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.i("Selected data file = {}".format(self.data_file))
+            Log.i(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:
@@ -1436,7 +1446,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.InfoWin.ui3.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label4)
                 label4a = str(int(Constants.calibration_frequency_stop -
-                              Constants.calibration_frequency_start))+" Hz"
+                                  Constants.calibration_frequency_start))+" Hz"
                 self.InfoWin.ui3.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label4a)
                 label5 = str(int(Constants.calibration_fStep))+" Hz"
@@ -1672,7 +1682,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._yaxis.append(AxisItem(orientation='left'))
             self._xaxis.append(DateAxis(orientation='bottom'))
             p = self.PlotsWin.ui2.pltB.addPlot(col=x, row=y, title=title2+f" {i+1}", **{
-                                               'font-size': '12pt'}, axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]})
+                'font-size': '12pt'}, axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]})
             p.showGrid(x=True, y=True)
             p.setLabel('bottom', 'Time', units='s')
             p.setLabel('left', 'Resonance Frequency', units='Hz',
@@ -1709,7 +1719,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # -----------------------------------------------------------------------------------------------------------------
         # Configures elements of the PyQtGraph plots: temperature
         self._plt4 = self.PlotsWin.ui2.plt.addPlot(row=3, col=0, colspan=2, title=title3, axisItems={
-                                                   'bottom': DateAxis(orientation='bottom')})
+            'bottom': DateAxis(orientation='bottom')})
         self._plt4.showGrid(x=True, y=True)
         self._plt4.setLabel('bottom', 'Time', units='s')
         self._plt4.setLabel('left', 'Temperature', units='°C',
@@ -5254,7 +5264,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @staticmethod
+    @ staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType
