@@ -16,7 +16,7 @@ TAG = "[RunInfo]"
 
 
 class RunInfoWindow(QtWidgets.QWidget):
-    finished = QtCore.pyqtSignal(str)
+    finished = QtCore.pyqtSignal()
 
     @staticmethod
     def test():
