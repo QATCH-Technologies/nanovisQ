@@ -15,7 +15,7 @@ import datetime
 TAG = "[RunInfo]"
 
 
-class RunInfoWindow():
+class RunInfoWindow(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal(str)
 
     @staticmethod
@@ -407,7 +407,7 @@ class RunInfoWindow():
 
 class QueryRunInfo(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
-    updated_run = QtCore.pyqtSignal(str, str, str)
+    updated_run = QtCore.pyqtSignal(str, str, str, str)
     updated_xml_path = QtCore.pyqtSignal(str)
 
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
@@ -1728,61 +1728,70 @@ class QueryRunInfo(QtWidgets.QWidget):
         else:
             pass  # leave 'audits' block as empty
 
-        # Get date from XML for secure file writing.
-        metrics = xml.getElementsByTagName('metric')
-        stop_value = None
-        for metric in metrics:
-            if metric.getAttribute('name') == 'stop':
-                stop_value = metric.getAttribute('value')
-                break
-        stop_datetime = datetime.date.fromisoformat(stop_value.split('T')[0])
-        # Update the run data files and directory to refelct changes made to
-        # the run name in the RunInfo window.
-        updated_name, new_name, old_name = self.update_run_name(
-            self.xml_path, self.run_name, secure=True, date=stop_datetime)
-        if not updated_name:
-            Log.e(tag=TAG, msg="Could not update directory due path error.")
-            return False
-        else:
+        if not self.post_run:
+            # Get date from XML for secure file writing.
+            metrics = xml.getElementsByTagName('metric')
+            stop_value = None
+            for metric in metrics:
+                if metric.getAttribute('name') == 'stop':
+                    stop_value = metric.getAttribute('value')
+                    break
+            stop_datetime = datetime.date.fromisoformat(
+                stop_value.split('T')[0])
+            # Update the run data files and directory to reflect changes made to
+            # the run name in the RunInfo window.
+            updated_name, new_name, old_name = self.update_run_name(
+                self.xml_path, self.run_name, secure=True, date=stop_datetime)
+            if not updated_name:
+                Log.e(tag=TAG, msg="Could not update directory due path error.")
+                # return False
             # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
             # secure_open(self.xml_path, 'w', "audit") as f:
-            self.run_name = updated_name
-            if xml.hasAttribute('name'):
-                xml.setAttribute('name', updated_name)
-                hash = hashlib.sha256()
-                for name, value in xml.attributes.items():
-                    hash.update(name.encode())
-                    hash.update(value.encode())
-                signature = hash.hexdigest()
-                xml.setAttribute('signature', signature)
-                Log.d(tag=TAG, msg=f"Updated 'name' field to: {updated_name}")
-            else:
-                Log.e(tag=TAG, msg="No 'name' field found.")
-            with open(self.xml_path, 'w') as f:
-                xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
-                f.write(xml_str)
-                Log.i(f"Created XML file: {self.xml_path}")
-
-            if self.q5.isEnabled():
-                run = minidom.Document()
-                xml = run.createElement('run_info')
-                xml.setAttribute('name', 'recall')
-                run.appendChild(xml)
-                if self.q5.isChecked():  # remember for next time
-                    Log.i("Run info remembered for next time.")
+            elif old_name != new_name:
+                # self.run_name = new_name
+                if xml.hasAttribute('name'):
+                    xml.setAttribute('name', new_name)
+                    hash = hashlib.sha256()
+                    for name, value in xml.attributes.items():
+                        hash.update(name.encode())
+                        hash.update(value.encode())
+                    signature = hash.hexdigest()
+                    xml.setAttribute('signature', signature)
+                    Log.d(
+                        tag=TAG, msg=f"Updated 'name' field to: {new_name}")
                 else:
-                    params = run.createElement('params')  # blank it
-                xml.appendChild(params)
-                os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
-                # secure_open(self.recall_xml, 'w') as f:
-                with open(self.recall_xml, 'w') as f:
-                    f.write(run.toxml())
-            self.unsaved_changes = False
-            Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
-            self.updated_run.emit(new_name, old_name, str(stop_datetime))
-            self.updated_xml_path.emit(self.xml_path)
-            self.close()
-            return True
+                    Log.e(tag=TAG, msg="No 'name' field found.")
+
+        with open(self.xml_path, 'w') as f:
+            xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
+            f.write(xml_str)
+            Log.i(f"Created XML file: {self.xml_path}")
+
+        if self.q5.isEnabled():
+            run = minidom.Document()
+            xml = run.createElement('run_info')
+            xml.setAttribute('name', 'recall')
+            run.appendChild(xml)
+            if self.q5.isChecked():  # remember for next time
+                Log.i("Run info remembered for next time.")
+            else:
+                params = run.createElement('params')  # blank it
+            xml.appendChild(params)
+            os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
+            # secure_open(self.recall_xml, 'w') as f:
+            with open(self.recall_xml, 'w') as f:
+                f.write(run.toxml())
+
+        if not self.post_run:
+            if updated_name:
+                Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
+                self.updated_run.emit(
+                    self.xml_path, new_name, old_name, str(stop_datetime))
+                self.updated_xml_path.emit(self.xml_path)
+
+        self.unsaved_changes = False
+        self.close()
+        return True
 
     def update_run_name(self, previous_xml_path: str, new_name: str, date: datetime.date, secure: bool = False):
         """

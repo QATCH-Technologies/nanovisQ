@@ -3485,7 +3485,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # Start the thread to display the Run Info GUI
             self.bThread.start()
 
-    def update_current_run_info(self, new_name, old_name, date):
+    def update_current_run_info(self, xml_path, new_name, old_name, date):
         """
         Updates the current run information in the combo box and the `run_names` dictionary.
 
@@ -3534,8 +3534,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 value = self.run_names.pop(key)
                 after_colon = after_colon.strip()
                 break
+        value = self.run_timestamps.pop(key)
+        self.run_timestamps[f'{new_name}:{after_colon}'] = value
         self.run_names[f'{new_name}:{after_colon}'] = new_name
         self.text_Created.setText(f'Loaded: {new_name} ({date})')
+        self.loaded_datapath = xml_path[:-4] + ".csv"
 
     def update_run_names(self):
         """
