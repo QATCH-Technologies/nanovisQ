@@ -2,6 +2,7 @@ import csv
 from QATCH.common.fileManager import FileManager
 from QATCH.core.constants import Constants
 from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles
 from time import strftime, localtime
 import datetime
 import numpy as np
@@ -17,7 +18,7 @@ TAG = ""  # "[FileStorage]"
 
 
 class FileStorage:
-
+    user_preferences = UserProfiles.user_preferences
     folder_format_tag_pattern = None
     folder_format_delimiter = None
     file_format_tag_pattern = []
@@ -53,6 +54,10 @@ class FileStorage:
         TOPATH = FileStorage.TOPATH
         BUFFER = FileStorage.BUFFER
 
+        # TODO: Do we want to pull our date/time format as well?
+        # fix1 = FileStorage.user_preferences._get_date_format()
+        # fix2 = FileStorage.user_preferences._get_time_format()
+
         fix1 = "%Y-%m-%d"
         fix2 = "%H:%M:%S"
         csv_time_prefix1 = (strftime(fix1, localtime()))
@@ -63,15 +68,21 @@ class FileStorage:
         d4 = float("{:.15e}".format(data_save4))
         d5 = float("{0:.2f}".format(data_save5))
 
-        # Append device name folder to path
-        # TODO: Replace this with folder format
-        path = os.path.join(path, FileStorage.DEV_get_active(i))
-        # Creates a directory if the specified path doesn't exist
+        # Modified to pull the user prefered file and folder format from user preferences
+        # and save accordingly.
+        folder_save_path = FileStorage.user_preferences.get_folder_save_path()
+        file_save_path = FileStorage.user_preferences.get_file_save_path()
+        path = os.path.join(path, folder_save_path)
         FileManager.create_dir(path)
-        # Find index in buffered row data from file handle (create index if new)
-        # TODO: Replace this with file format and all subsequent files.
         full_path = FileManager.create_full_path(
-            filename, extension=Constants.csv_extension, path=path)
+            file_save_path, extension=Constants.csv_extension, path=path)
+
+        # path = os.path.join(path, FileStorage.DEV_get_active(i))
+        # FileManager.create_dir(path)
+        # Find index in buffered row data from file handle (create index if new)
+        # full_path = FileManager.create_full_path(
+        #     filename, extension=Constants.csv_extension, path=path)
+
         fHashKey = hashlib.sha1(full_path.encode('utf-8')).hexdigest()
         fHandle = len(FileStorage.bufferedRows)
         for x in range(fHandle):

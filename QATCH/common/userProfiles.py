@@ -774,7 +774,7 @@ class UserProfilesManager(QtWidgets.QWidget):
 # User Profiles: init, create, modify, destroy
 ###############################################################################
 class UserProfiles:
-
+    user_preferences = None
     PATH = Constants.user_profiles_path
 
     ###########################################################################
@@ -1075,11 +1075,12 @@ class UserProfiles:
         with open(file, 'w') as f:
             f.write(session_key)
             Log.d("User session created.")
-        preferences = UserPreferences(UserProfiles.get_session_file())
-        preferences.set_preferences()
-        print(preferences.get_preferences())
-        print(preferences.get_folder_save_path())
-        print(preferences.get_file_save_path())
+        UserProfiles.user_preferences = UserPreferences(
+            UserProfiles.get_session_file())
+        UserProfiles.user_preferences.set_preferences()
+        # print(preferences.get_preferences())
+        # print(preferences.get_folder_save_path())
+        # print(preferences.get_file_save_path())
 
     @staticmethod
     def session_info():
@@ -1525,13 +1526,13 @@ class UserPreferences:
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_user_preferences_path())
 
-    def get_folder_save_path(self) -> str:
+    def get_folder_save_path(self, device_idx) -> str:
         return self._build_save_path(
-            self._get_folder_format_pattern(), self._get_folder_delimiter())
+            self._get_folder_format_pattern(), self._get_folder_delimiter(), device_idx)
 
-    def get_file_save_path(self) -> str:
+    def get_file_save_path(self, device_idx) -> str:
         return self._build_save_path(
-            self._get_file_format_pattern(), self._get_file_delimiter())
+            self._get_file_format_pattern(), self._get_file_delimiter(), device_idx)
 
     def set_use_global(self, use_global) -> None:
         self.use_global = use_global
@@ -1540,7 +1541,7 @@ class UserPreferences:
         return self.use_global
 
     # -- Private Utilities -- #
-    def _build_save_path(self, pattern: list, delimiter: str) -> str:
+    def _build_save_path(self, pattern: list, delimiter: str, device_idx: int) -> str:
         save_path = ""
 
         for tag in pattern:
@@ -1549,7 +1550,7 @@ class UserPreferences:
             elif tag == Constants.valid_tags[1]:
                 save_path = save_path + self._on_initials()
             elif tag == Constants.valid_tags[2]:
-                save_path = save_path + self._on_device()
+                save_path = save_path + self._on_device(device_idx)
             elif tag == Constants.valid_tags[3]:
                 save_path = save_path + self._on_runname()
             elif tag == Constants.valid_tags[4]:
@@ -1576,9 +1577,9 @@ class UserPreferences:
         initials = user_info[1]
         return initials
 
-    def _on_device(self) -> str:
+    def _on_device(self, device_idx: int) -> str:
         # TODO: Figrue out what 'i' is.
-        return FileStorage.DEV_get_active(i)
+        return FileStorage.DEV_get_active(device_idx)
 
     def _on_runname(self) -> str:
         return "RUNNAME"
