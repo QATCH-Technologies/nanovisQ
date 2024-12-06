@@ -1452,10 +1452,6 @@ class UserProfiles:
 
 
 class UserPreferences:
-    VALID_TAGS = [
-        "%username%", "%initials%", "%device%", "%runname%", "%date%", "%time%", "%port%"
-    ]
-
     def __init__(self, user_session_key: str):
         self._set_user_session(user_session_key)
         self.setup()
@@ -1544,7 +1540,6 @@ class UserPreferences:
         return self.use_global
 
     # -- Private Utilities -- #
-
     def _build_save_path(self, pattern: list, delimiter: str) -> str:
         save_path = ""
 
@@ -1582,7 +1577,8 @@ class UserPreferences:
         return initials
 
     def _on_device(self) -> str:
-        return "DEVICE"
+        # TODO: Figrue out what 'i' is.
+        return FileStorage.DEV_get_active(i)
 
     def _on_runname(self) -> str:
         return "RUNNAME"

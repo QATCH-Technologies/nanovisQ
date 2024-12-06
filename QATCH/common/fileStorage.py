@@ -64,10 +64,12 @@ class FileStorage:
         d5 = float("{0:.2f}".format(data_save5))
 
         # Append device name folder to path
+        # TODO: Replace this with folder format
         path = os.path.join(path, FileStorage.DEV_get_active(i))
         # Creates a directory if the specified path doesn't exist
         FileManager.create_dir(path)
         # Find index in buffered row data from file handle (create index if new)
+        # TODO: Replace this with file format and all subsequent files.
         full_path = FileManager.create_full_path(
             filename, extension=Constants.csv_extension, path=path)
         fHashKey = hashlib.sha1(full_path.encode('utf-8')).hexdigest()
