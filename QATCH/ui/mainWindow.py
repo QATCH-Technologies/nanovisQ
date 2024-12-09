@@ -1349,17 +1349,18 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = now_port
 
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
-        active_port_dict, active_port_list = self.parse_plate_config()
+        active_port_dict, active_port_list = self.parse_ports_from_file()
+        print(active_port_list)
         Log.d(TAG, active_port_dict)
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
             selected_port = []
-            for i in range(self.multiplex_plots):
-                if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
+            for port_id in active_port_list:
+                if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
 
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     selected_port.append(
-                        self.ControlsWin.ui1.cBox_Port.itemData(i))
+                        self.ControlsWin.ui1.cBox_Port.itemData(port_id))
 
         # Determine the measurement type and user profile is not in developer mode.  If the user profile is in developer
         # mode, and there is an error or expires is empty, warn the user.
