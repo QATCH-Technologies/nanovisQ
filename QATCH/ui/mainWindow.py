@@ -1350,7 +1350,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
         active_port_dict, active_port_list = self.parse_ports_from_file()
-        print(active_port_list)
         Log.d(TAG, active_port_dict)
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
