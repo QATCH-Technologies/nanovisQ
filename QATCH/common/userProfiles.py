@@ -1528,13 +1528,13 @@ class UserPreferences:
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_user_preferences_path())
 
-    def get_folder_save_path(self, device_id: int, port_id: int) -> str:
+    def get_folder_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_folder_format_pattern(), self._get_folder_delimiter(), device_id, port_id)
+            self._get_folder_format_pattern(), self._get_folder_delimiter(), runname, device_id, port_id)
 
-    def get_file_save_path(self, device_id: int, port_id: int) -> str:
+    def get_file_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_file_format_pattern(), self._get_file_delimiter(), device_id, port_id)
+            self._get_file_format_pattern(), self._get_file_delimiter(),  runname, device_id, port_id)
 
     def set_use_global(self, use_global) -> None:
         self.use_global = use_global
@@ -1543,7 +1543,7 @@ class UserPreferences:
         return self.use_global
 
     # -- Private Utilities -- #
-    def _build_save_path(self, pattern: list, delimiter: str, device_id: int, port_id: int) -> str:
+    def _build_save_path(self, pattern: list, runname: str, delimiter: str, device_id: int, port_id: int) -> str:
         # IDX for single if FF
         # IDX for 4x1 is 0-3
         # IDX for 4x6 is A1-D6 in hex
@@ -1557,7 +1557,7 @@ class UserPreferences:
             elif tag == Constants.valid_tags[2]:
                 save_path = save_path + self._on_device(device_id)
             elif tag == Constants.valid_tags[3]:
-                save_path = save_path + self._on_runname()
+                save_path = save_path + self._on_runname(runname)
             elif tag == Constants.valid_tags[4]:
                 save_path = save_path + self._on_date()
             elif tag == Constants.valid_tags[5]:
@@ -1590,8 +1590,8 @@ class UserPreferences:
     def _on_device(self, device_id: int) -> str:
         return str(device_id)
 
-    def _on_runname(self) -> str:
-        return "RUNNAME"
+    def _on_runname(self, runname: str) -> str:
+        return str(runname)
 
     def _on_date(self) -> str:
         from datetime import datetime
@@ -1602,8 +1602,6 @@ class UserPreferences:
         return QDateTime.currentDateTime().toString(self._get_time_format())
 
     def _on_port(self, port_id: int) -> str:
-        if port_id == "FF":
-            return ""
         return str(port_id)
 
     # -- ACCESSOR METHODS -- #
