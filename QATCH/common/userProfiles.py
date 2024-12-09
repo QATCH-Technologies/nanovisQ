@@ -1078,11 +1078,11 @@ class UserProfiles:
         UserProfiles.user_preferences = UserPreferences(
             UserProfiles.get_session_file())
         UserProfiles.user_preferences.set_preferences()
-        print(UserProfiles.user_preferences.get_preferences())
-        print(UserProfiles.user_preferences.get_folder_save_path(
-            device_id=12345678, port_id=1))
-        print(UserProfiles.user_preferences.get_file_save_path(
-            device_id=12345678, port_id=1))
+        # print(UserProfiles.user_preferences.get_preferences())
+        # print(UserProfiles.user_preferences.get_folder_save_path(
+        #     device_id=12345678, port_id=1))
+        # print(UserProfiles.user_preferences.get_file_save_path(
+        #     device_id=12345678, port_id=1))
 
     @staticmethod
     def session_info():

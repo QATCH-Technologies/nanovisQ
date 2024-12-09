@@ -672,9 +672,9 @@ class Rename_Output_Files(QtCore.QObject):
                                     _dev_pid = (
                                         (_dev_pid + 9) << 4) | self.get_active_multi_port()
                                 # else: 4x1 system, nothing to do
-                                port_mask = self._portIDfromIndex(_dev_pid)
+                                port_id = self._portIDfromIndex(_dev_pid)
                                 run_directory = UserProfiles.user_preferences.get_file_save_path(
-                                    runname=input_text, device_id=dev_name, port_id=port_mask)
+                                    runname=input_text, device_id=dev_name, port_id=port_id)
                                 # run_directory += f"_{self._portIDfromIndex(_dev_pid)}"
 
                             # Raise exception if runname retrieved from user is empty.
