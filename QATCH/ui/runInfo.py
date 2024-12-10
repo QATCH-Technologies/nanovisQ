@@ -1898,14 +1898,15 @@ class QueryRunInfo(QtWidgets.QWidget):
             # Check if new directory path is valid
             new_dir = os.path.join(grandparent_dir, new_name)
             old_name = os.path.basename(parent_dir)
-            if os.path.exists(new_dir):
+            # Solves case change issue in run names.
+            case_change = old_name.lower() == new_name.lower() and old_name != new_name
+            if os.path.exists(new_dir) and not case_change:
                 Log.i(
                     tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
                 return None, None, None
-            else:
-                os.rename(parent_dir, new_dir)
-                Log.i(
-                    tag=TAG, msg=f"Updating directory {parent_dir} to {new_dir}")
+
+            os.rename(parent_dir, new_dir)
+            Log.i(tag=TAG, msg=f"Updating directory {parent_dir} to {new_dir}")
 
             # List files in the new directory
             try:
