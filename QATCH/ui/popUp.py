@@ -8,6 +8,8 @@ TAG = "[PopUp]"
 ###############################################################################
 # Warning dialog module
 ###############################################################################
+
+
 class PopUp:
 
     ###########################################################################
@@ -21,11 +23,11 @@ class PopUp:
         :param message: Message to be shown in the dialog :type message: str.
         :return: 1 if button1 was pressed, 0 if button2   :rtype: int.
         """
-        #ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
-        #if ans == QtWidgets.QMessageBox.Yes:
+        # ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
+        # if ans == QtWidgets.QMessageBox.Yes:
         #    Log.d('Si')
         #    return True
-        #elif ans == QtWidgets.QMessageBox.No:
+        # elif ans == QtWidgets.QMessageBox.No:
         #    Log.d('No')
         #    return False
         width = 340
@@ -38,7 +40,8 @@ class PopUp:
         box.setWindowTitle(title)
         box.setGeometry(left, top, width, height)
         box.setText(message)
-        box.setStandardButtons(QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No)
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes |
+                               QtWidgets.QMessageBox.No)
         button1 = box.button(QtWidgets.QMessageBox.Yes)
         button1.setText('@10MHz')
         button2 = box.button(QtWidgets.QMessageBox.No)
@@ -56,18 +59,18 @@ class PopUp:
     # Shows a pop-up question dialog with Yes/No (or Ok) buttons
     ###########################################################################
     @staticmethod
-    def question_FW(parent, title, message, details = "", onlyOK = False):
+    def question_FW(parent, title, message, details="", onlyOK=False):
         """
         :param parent: Parent window for the dialog.
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         :return: 1 if button1 was pressed, 0 if button2   :rtype: int.
         """
-        #ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
-        #if ans == QtWidgets.QMessageBox.Yes:
+        # ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
+        # if ans == QtWidgets.QMessageBox.Yes:
         #    Log.d('Si')
         #    return True
-        #elif ans == QtWidgets.QMessageBox.No:
+        # elif ans == QtWidgets.QMessageBox.No:
         #    Log.d('No')
         #    return False
         width = 340
@@ -76,7 +79,8 @@ class PopUp:
         left = int((area.width() - width) / 2)
         top = int((area.height() - height) / 2)
         box = QtWidgets.QMessageBox(parent)
-        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/download_icon.ico')
         box.setIconPixmap(QtGui.QPixmap(icon_path))
         box.setWindowTitle(title)
         box.setGeometry(left, top, width, height)
@@ -84,7 +88,8 @@ class PopUp:
         box.setDetailedText(details)
 
         if not onlyOK:
-            box.setStandardButtons(QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No)
+            box.setStandardButtons(
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
             box.setDefaultButton(QtWidgets.QMessageBox.Yes)
             button1 = box.button(QtWidgets.QMessageBox.Yes)
             button1.setText('Yes')
@@ -110,17 +115,18 @@ class PopUp:
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
-        QtWidgets.QMessageBox.warning(None, title, message, QtWidgets.QMessageBox.Ok)
-        #msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
-        #msgBox = QtWidgets.QMessageBox()
-        #msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
-        #msgBox.exec_()
+        QtWidgets.QMessageBox.warning(
+            None, title, message, QtWidgets.QMessageBox.Ok)
+        # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
+        # msgBox = QtWidgets.QMessageBox()
+        # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
+        # msgBox.exec_()
 
     ###########################################################################
     # Shows a pop-up question dialog with yes and no buttons
     ###########################################################################
     @staticmethod
-    def question(parent, title, message, default = False):
+    def question(parent, title, message, default=False):
         """
         :param parent: Parent window for the dialog.
         :param title: Title of the dialog :type title: str.
@@ -128,7 +134,8 @@ class PopUp:
         :return: True if Yes button was pressed :rtype: bool.
         """
         defaultButton = QtWidgets.QMessageBox.Yes if default else QtWidgets.QMessageBox.No
-        ans = QtWidgets.QMessageBox.question(None, title, message, QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No, defaultButton)
+        ans = QtWidgets.QMessageBox.question(
+            None, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
         if ans == QtWidgets.QMessageBox.Yes:
             return True
         else:
@@ -138,13 +145,13 @@ class PopUp:
     # Shows a Pop up critical dialog with Retry/Ignore buttons
     ###########################################################################
     @staticmethod
-    def critical(parent, title, message, details = "", question = False, ok_only = False, btn1_text = "Retry"):
+    def critical(parent, title, message, details="", question=False, ok_only=False, btn1_text="Retry"):
         """
         :param parent: Parent window for the dialog.
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
-        #return (QtWidgets.QMessageBox.critical(parent, title, message, QtWidgets.QMessageBox.Retry, QtWidgets.QMessageBox.Ignore)
+        # return (QtWidgets.QMessageBox.critical(parent, title, message, QtWidgets.QMessageBox.Retry, QtWidgets.QMessageBox.Ignore)
         #     == QtWidgets.QMessageBox.Retry)
 
         width = 340
@@ -162,7 +169,8 @@ class PopUp:
         box.setText(message)
         box.setDetailedText(details)
         if question:
-            box.setStandardButtons(QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No)
+            box.setStandardButtons(
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
             box.setDefaultButton(QtWidgets.QMessageBox.No)
             button1 = box.button(QtWidgets.QMessageBox.Yes)
             button1.setText('Yes')
@@ -174,7 +182,8 @@ class PopUp:
             button1 = box.button(QtWidgets.QMessageBox.Ok)
             button1.setText('Ok')
         else:
-            box.setStandardButtons(QtWidgets.QMessageBox.Retry|QtWidgets.QMessageBox.Ignore)
+            box.setStandardButtons(
+                QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Ignore)
             box.setDefaultButton(QtWidgets.QMessageBox.Retry)
             button1 = box.button(QtWidgets.QMessageBox.Retry)
             button1.setText(btn1_text)
@@ -188,24 +197,25 @@ class PopUp:
     # Shows a Pop up information dialog with Ok button
     ###########################################################################
     @staticmethod
-    def information(parent, title, message, details = ""):
+    def information(parent, title, message, details=""):
         """
         :param parent: Parent window for the dialog.
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
-        QtWidgets.QMessageBox.information(None, title, message, QtWidgets.QMessageBox.Ok)
-        #msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
-        #msgBox = QtWidgets.QMessageBox()
-        #msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
-        #msgBox.exec_()
+        QtWidgets.QMessageBox.information(
+            None, title, message, QtWidgets.QMessageBox.Ok)
+        # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
+        # msgBox = QtWidgets.QMessageBox()
+        # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
+        # msgBox.exec_()
 
 
 class QueryComboBox(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
     confirmed = False
 
-    def __init__(self, items, type = "item", parent = None):
+    def __init__(self, items, type="item", parent=None):
         super(QueryComboBox, self).__init__(parent)
 
         layout_h = QtWidgets.QHBoxLayout()
@@ -235,8 +245,8 @@ class QueryComboBox(QtWidgets.QWidget):
     def closeEvent(self, event):
         if not self.confirmed:
             self.cb.setCurrentIndex(-1)
-        self.finished.emit() # queue call for clickedButton
-        event.ignore() # keep open until clickedButton call
+        self.finished.emit()  # queue call for clickedButton
+        event.ignore()  # keep open until clickedButton call
 
     def clickedButton(self):
         ret = self.cb.currentIndex()

@@ -1,6 +1,4 @@
-import sys
 import os
-import random
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,11 +8,12 @@ from hyperopt.early_stop import no_progress_loss
 from scipy.signal import find_peaks
 from sklearn.model_selection import train_test_split
 import pickle
-from scipy.signal import find_peaks, argrelextrema
+from scipy.signal import find_peaks
+from scipy.stats import linregress
 from scipy.interpolate import interp1d
 
-# from ModelData import ModelData
 
+# from ModelData import ModelData
 Architecture_found = False
 try:
     if not Architecture_found:
@@ -307,7 +306,8 @@ class QMultiModel:
         Example:
             best_hyperparams = self.tune(evaluations=300)
         """
-        print(f"[STATUS] Running model tuning for {evaluations} max iterations")
+        print(
+            f"[STATUS] Running model tuning for {evaluations} max iterations")
         space = {
             "max_depth": hp.choice("max_depth", np.arange(1, 20, 1, dtype=int)),
             "eta": hp.uniform("eta", 0, 1),
@@ -413,7 +413,8 @@ class QPredictor:
             relative_root = os.path.join(Architecture.get_path(), "QATCH")
         else:
             relative_root = os.getcwd()
-        pickle_path = os.path.join(relative_root, "QModel/SavedModels/label_{}.pkl")
+        pickle_path = os.path.join(
+            relative_root, "QModel/SavedModels/label_{}.pkl")
         for i in range(3):
             with open(pickle_path.format(i), "rb") as file:
                 setattr(self, f"__label_{i}__", pickle.load(file))
@@ -477,7 +478,8 @@ class QPredictor:
             return adj_prediction, (lq_idx, uq_idx)
 
         lq_idx = next((i for i, x in enumerate(adj) if x == 1), -1) + i
-        uq_idx = next((i for i, x in reversed(list(enumerate(adj))) if x == 1), -1) + i
+        uq_idx = next((i for i, x in reversed(
+            list(enumerate(adj))) if x == 1), -1) + i
         return prediction, (lq_idx, uq_idx)
 
     def find_and_sort_peaks(self, signal):
@@ -508,7 +510,7 @@ class QPredictor:
         slope_change = []
         for i in range(len(diff) - window_size + 1):
             # Calculate the slope change over the current window
-            window_slope_change = np.mean(np.diff(diff[i : i + window_size]))
+            window_slope_change = np.mean(np.diff(diff[i: i + window_size]))
             slope_change.append(window_slope_change)
 
         slope_change = np.array(slope_change)
@@ -569,217 +571,221 @@ class QPredictor:
 
         return regions
 
-    def adjustment_poi_1(self, guess, diss_raw):
+    def adjustment_poi_1(self, initial_guess, dissipation_data):
+        """Adjusts the point of interest (POI) based on the nearest zero-slope region or peak.
 
-        zero_slope = self.find_zero_slope_regions(self.normalize(diss_raw), 0.0075, 100)
-        adjusted_guess = guess
+        This method refines the initial guess of the point of interest by finding
+        nearby regions with zero slope and selecting the most suitable peak. If no
+        valid zero-slope region is found, it adjusts the guess to the nearest peak
+        in the dissipation data.
 
-        if len(zero_slope) >= 2:
-            l = zero_slope[0][1]
-            r = zero_slope[1][0]
-            peaks_between, _ = find_peaks(diss_raw[l:r])
-            between = []
-            for p in peaks_between:
-                between.append(p + l)
-            # if emp_guess < l:
-            #     adjusted_guess = r
+        Args:
+            initial_guess (int): Initial point of interest guess, typically an index within the dataset.
+            dissipation_data (np.ndarray): 1D array of dissipation values.
 
-            if between is not None and len(between) > 0:
-                between = np.array(between)
-                distances = np.abs(between - guess)
-                if adjusted_guess >= r:
+        Returns:
+            int: Adjusted index of the point of interest, either at or near a zero-slope
+                region or closest peak.
+        """
+        zero_slope_regions = self.find_zero_slope_regions(
+            self.normalize(dissipation_data), threshold=0.0075, min_region_length=100
+        )
+        adjusted_guess = initial_guess
+
+        if len(zero_slope_regions) >= 2:
+            left_bound = zero_slope_regions[0][1]
+            right_bound = zero_slope_regions[1][0]
+
+            peaks_between, _ = find_peaks(
+                dissipation_data[left_bound:right_bound])
+            peaks_indices = [peak + left_bound for peak in peaks_between]
+
+            if peaks_indices:
+                peaks_array = np.array(peaks_indices)
+                distances = np.abs(peaks_array - initial_guess)
+
+                if adjusted_guess >= right_bound:
                     furthest_index = np.argmax(distances)
-                    distances[furthest_index] = min(distances)
+                    distances[furthest_index] = np.min(
+                        distances
+                    )  # Ignore the furthest peak for the second furthest
                     second_furthest_index = np.argmax(distances)
-                    adjusted_guess = between[second_furthest_index]
+                    adjusted_guess = peaks_array[second_furthest_index]
                 else:
                     nearest_index = np.argmin(distances)
-                    distances[nearest_index] = np.argmin(distances)
-                    adjusted_guess = between[nearest_index]
+                    adjusted_guess = peaks_array[nearest_index]
 
         else:
-            peaks, _ = find_peaks(diss_raw)
-            distances = np.abs(peaks - adjusted_guess)
-            nearest_peak_index = peaks[np.argmin(distances)]
-            adjusted_guess = nearest_peak_index
-
-        # if abs(adjusted_guess - actual) > 5:
-        #     fig, ax = plt.subplots()
-        #     ax.plot(diss_raw, color="grey")
-        #     for l, r in zero_slope:
-        #         ax.fill_between((l, r), max(diss_raw), alpha=0.5)
-        #     ax.scatter(between, diss_raw[between])
-        #     ax.axvline(guess, color="green", linestyle="dotted", label="guess")
-
-        #     ax.axvline(adjusted_guess, color="brown", label="adjusted")
-        #     ax.axvline(actual, color="orange", linestyle="--", label="actual")
-        #     plt.legend()
-
-        #     plt.show()
+            all_peaks, _ = find_peaks(dissipation_data)
+            distances_to_peaks = np.abs(all_peaks - adjusted_guess)
+            nearest_peak = all_peaks[np.argmin(distances_to_peaks)]
+            adjusted_guess = nearest_peak
 
         return adjusted_guess
 
-    def adjustment_poi_2(self, guess, diss_raw, actual, bounds, poi_1_guess):
+    def adjustment_poi_2(self, initial_guess, dissipation_data, bounds, poi_1_estimate):
+        """Adjusts the point of interest (POI) within specified bounds, influenced by another POI.
 
-        diss_raw = self.normalize(diss_raw)
-        diss_invert = -diss_raw
-        start = bounds[0]
-        stop = bounds[1]
-        if guess < bounds[0]:
-            start = guess
+        This method refines the initial guess for a point of interest based on specified
+        bounds and a previous POI estimate. It calculates the nearest peak within the bounds,
+        weighted toward the initial guess, and returns an adjusted POI if valid.
 
-        if guess > bounds[1]:
-            stop = guess
-        if start < poi_1_guess:
-            start = poi_1_guess
+        Args:
+            initial_guess (int): Initial guess for the point of interest, typically an index.
+            dissipation_data (np.ndarray): 1D array of dissipation values to be processed.
+            bounds (tuple[int, int]): Start and stop bounds within which to adjust the POI.
+            poi_1_estimate (int): Estimate of a prior POI that affects the adjustment range.
 
-        if stop < poi_1_guess:
-            delta = stop - start
-            start = poi_1_guess
-            stop = start + delta
-        peaks, _ = find_peaks(diss_invert)
-        # peaks = peaks + bounds[0]
+        Returns:
+            int: Adjusted index of the point of interest within the specified bounds.
+        """
+        dissipation_data = self.normalize(dissipation_data)
+        dissipation_inverted = -dissipation_data
+        start_bound, stop_bound = bounds
+
+        if initial_guess < start_bound:
+            start_bound = initial_guess
+        elif initial_guess > stop_bound:
+            stop_bound = initial_guess
+
+        if start_bound < poi_1_estimate:
+            start_bound = poi_1_estimate + 1
+        if stop_bound < poi_1_estimate:
+            range_delta = stop_bound - start_bound
+            start_bound = poi_1_estimate
+            stop_bound = start_bound + range_delta - 1
+
+        peaks, _ = find_peaks(dissipation_inverted)
         if len(peaks) == 0:
-            return guess
-        valid_peaks = peaks[peaks < guess]
-        distances = np.abs(valid_peaks - guess)
+            return initial_guess
 
-        # Find the closest RF point to the initial guess, considering weights
-        closest_idx = np.argmin(distances)
-        adjustment = peaks[closest_idx]
-        if adjustment < poi_1_guess:
-            return guess
-        points = np.array([adjustment, guess])
+        valid_peaks = peaks[peaks < initial_guess]
+        distances_to_guess = np.abs(valid_peaks - initial_guess)
+        closest_peak_idx = np.argmin(distances_to_guess)
+        adjusted_guess = valid_peaks[closest_peak_idx]
+
+        if adjusted_guess < poi_1_estimate:
+            return initial_guess
+
+        points = np.array([adjusted_guess, initial_guess])
+        # Biases adjustment toward the initial guess
         weights = np.array([0.25, 0.75])
         weighted_mean = np.average(points, weights=weights)
-        adjustment = int(weighted_mean)
-        if abs(guess - adjustment) > 75:
-            adjustment = guess
-        # if abs(actual - adjustment) > 5:
-        #     fig, ax = plt.subplots()
-        #     ax.plot(diss_raw, color="grey")
-        #     ax.fill_betweenx(
-        #         [0, max(diss_raw)], bounds[0], bounds[1], color=f"yellow", alpha=0.5
-        #     )
-        #     ax.axvline(guess, color="green", linestyle="dotted", label="guess")
+        final_adjustment = int(weighted_mean)
 
-        #     ax.scatter(peaks, diss_raw[peaks])
-        #     ax.axvline(adjustment, color="brown", label="adjusted")
-        #     ax.axvline(actual[0], color="tan",
-        #                linestyle="--", label="actual 1")
-        #     ax.axvline(actual[1], color="orange",
-        #                linestyle="--", label="actual 2")
+        if abs(initial_guess - final_adjustment) > 75:
+            final_adjustment = initial_guess
+
+        return final_adjustment
+
+    def adjustmet_poi_4(self, df, candidates, guess, actual, bounds, poi_1_guess):
+        dissipation = self.normalize(df["Dissipation"])
+        rf = self.normalize(df["Resonance_Frequency"])
+        difference = self.normalize(df["Difference"])
+        candidates = np.append(candidates, guess)
+
+        # Temporary variable for the adjusted point.
+        adjusted_point = -1
+
+        def find_zero_slope_regions(data, threshold=0.1):
+            # Calculate the slope (difference between consecutive points)
+            slopes = np.diff(data)
+
+            # Identify indices where the slope is within the threshold
+            zero_slope_indices = np.where(np.abs(slopes) < threshold)[0]
+
+            # Group indices into continuous regions
+            zero_slope_regions = []
+            if zero_slope_indices.size > 0:
+                current_region = [zero_slope_indices[0]]
+
+                for i in range(1, len(zero_slope_indices)):
+                    if zero_slope_indices[i] == zero_slope_indices[i - 1] + 1:
+                        current_region.append(zero_slope_indices[i])
+                    else:
+                        zero_slope_regions.append(current_region)
+                        current_region = [zero_slope_indices[i]]
+
+                # Append the last region
+                zero_slope_regions.append(current_region)
+
+            return zero_slope_regions
+
+        peaks, _ = find_peaks(rf)
+
+        # Check if there is a filtering of peaks such that they appear within our predefined, bounded
+        # region.  If not, just report the guessed POI.
+        filtered_peaks = [
+            point for point in peaks if bounds[0] <= point <= bounds[1]]
+
+        if len(filtered_peaks) == 0:
+            # TODO: Adjust POI if there are no Resonance frequency peaks in the bounded region.  Potentially look at something like
+            # Difference peaks or dissipation valleys and try to correlate.
+            adjusted_point = guess
+        else:
+            # filtered_peaks = [point for point in peaks if bounds[0] <= point <= bounds[1]]
+            filtered_peaks = [point for point in peaks if poi_1_guess <= point]
+            # Interpolate between peaks to create the upper envelope
+            t = np.arange(len(rf))
+            envelope_interpolator = interp1d(
+                t[peaks], rf[peaks], kind="linear", fill_value="extrapolate"
+            )
+            upper_envelope = envelope_interpolator(t)
+
+            # Compute regions of approximately zero slope in the RF curve.
+            zsr = find_zero_slope_regions(upper_envelope, threshold=0.00001)
+            moved = False
+            for region in zsr:
+                lb = region[0]
+                rb = region[-1]
+                if lb <= filtered_peaks[0] <= rb:
+                    adjusted_point = filtered_peaks[1]
+                    moved = True
+                    break
+            if not moved:
+                adjusted_point = filtered_peaks[0]
+        # if abs(actual[3] - adjusted_point) > 50:
+        #     fig, ax = plt.subplots()
+        #     ax.plot(dissipation, label="Dissipation", color="black")
+        #     ax.plot(difference, label="Difference", color="tan")
+        #     ax.fill_betweenx(
+        #         [0, max(dissipation)], bounds[0], bounds[1], color=f"yellow", alpha=0.1
+        #     )
+        #     ax.plot(rf, label="rf", color="grey")
+        #     ax.plot(upper_envelope, label="upper_envelope", color="brown")
+        #     ax.scatter(actual, upper_envelope[actual], color="blue", label="Actual")
         #     ax.scatter(
-        #         peaks[closest_idx],
-        #         diss_raw[peaks[closest_idx]],
+        #         candidates,
+        #         upper_envelope[candidates],
         #         color="red",
+        #         label="Candidates",
         #         marker="x",
         #     )
+        #     for region in zsr:
+        #         ax.axvspan(
+        #             region[0],
+        #             region[-1],
+        #             color="red",
+        #             alpha=0.5,
+        #             label="Zero Slope Region",
+        #         )
+        #     ax.scatter(
+        #         filtered_peaks,
+        #         upper_envelope[filtered_peaks],
+        #         color="green",
+        #         label="Peaks",
+        #     )
+
+        #     ax.axvline(adjusted_point, color="orange", label="adjusted_point")
         #     plt.legend()
-
         #     plt.show()
+        return adjusted_point
 
-        return adjustment
-
-    def adjustmet_poi_4(self, df, candidates, guess, actual, bounds):
+    def adjustmet_poi_5(
+        self, df, candidates, guess, actual, bounds, poi_4_guess, poi_6_guess
+    ):
         diss = df["Dissipation"]
         rf = df["Resonance_Frequency"]
-        diff = df["Difference"]
-        diss_peaks, _ = find_peaks(diss)
-        rf_peaks, _ = find_peaks(rf)
-        diff_peaks, _ = find_peaks(diff)
-        initial_guess = np.array(guess)
-        candidate_points = np.array(candidates)
-        rf_points = np.array(rf_peaks)
-        diss_points = np.array(diss_peaks)
-        diff_points = np.array(diff_peaks)
-        x_min, x_max = bounds
-        candidates = np.append(candidates, guess)
-        candidate_density = len(candidates) / (x_max - x_min)
-        if candidate_density < 0.02 or (guess < x_min or guess > x_max):
-            # Filter RF points within the bounds
-            rf_points = np.concatenate((rf_points, diss_points))
-            within_bounds = (rf_points >= x_min) & (rf_points <= x_max)
-            filtered_rf_points = rf_points[within_bounds]
-
-            # If no RF points within the bounds, return None or handle accordingly
-            if filtered_rf_points.size == 0:
-
-                return guess
-
-            # Calculate proximity weight for each RF point based on diff and diss points
-            def calculate_weight(rf_point):
-                multiplier = 2
-                diff_in_proximity = np.sum(
-                    np.abs(np.array(diff_points) - rf_point) < 0.02 * len(rf)
-                )
-                weight = diff_in_proximity
-
-                # Apply multiplier if a diss point is nearby
-                if np.any(np.abs(np.array(diss_points) - rf_point) < 0.02 * len(rf)):
-                    weight *= multiplier
-                return weight
-
-            epsilon = 1e-10
-
-            # Calculate weights for filtered RF points
-            weights = np.array(
-                [calculate_weight(rf_point) for rf_point in filtered_rf_points]
-            )
-
-            # Calculate weighted distances from initial guess to each filtered RF point
-            distances_to_rf = np.abs(filtered_rf_points - initial_guess)
-
-            # Prevent division by zero by replacing zero weights with epsilon
-            weighted_distances = distances_to_rf / np.where(
-                weights == 0, epsilon, weights
-            )
-
-            # Find the closest RF point to the initial guess, considering weights
-            closest_rf_idx = np.argmin(weighted_distances)
-            closest_rf_point = filtered_rf_points[closest_rf_idx]
-
-            # Calculate distances from candidate points to the closest RF point
-            distances_to_closest_rf = np.abs(candidate_points - closest_rf_point)
-
-            # Find the closest candidate point to the closest RF point
-            closest_candidate_idx = np.argmin(distances_to_closest_rf)
-            adjusted_point = candidate_points[closest_candidate_idx]
-            # fig, ax = plt.subplots()
-            # ax.plot(diss, color="grey")
-            # ax.fill_betweenx(
-            #     [0, max(diss)], bounds[0], bounds[1], color=f"yellow", alpha=0.5
-            # )
-            # # ax.scatter(diss_peaks, diss[diss_peaks], color="red", label="diss peaks")
-            # ax.scatter(diff_peaks, diss[diff_peaks], color="green", label="diff peaks")
-            # ax.scatter(rf_points, diss[rf_points], color="blue", label="rf peaks")
-            # ax.scatter(candidates, diss[candidates], color="black", label="candidates")
-            # ax.axvline(guess, color="orange", label="guess")
-            # ax.axvline(actual, color="orange", linestyle="--", label="actual")
-            # ax.axvline(adjusted_point, color="brown", label="adjusted")
-            # plt.legend()
-            # plt.show()
-            return adjusted_point
-        else:
-            # fig, ax = plt.subplots()
-            # ax.plot(diss, color="grey")
-            # ax.fill_betweenx(
-            #     [0, max(diss)], bounds[0], bounds[1], color=f"yellow", alpha=0.5
-            # )
-            # # ax.scatter(diss_peaks, diss[diss_peaks], color="red", label="diss peaks")
-            # ax.scatter(diff_peaks, diss[diff_peaks], color="green", label="diff peaks")
-            # ax.scatter(rf_peaks, diss[rf_peaks], color="blue", label="rf peaks")
-            # ax.scatter(candidates, diss[candidates], color="black", label="candidates")
-            # ax.axvline(guess, color="orange", label="guess")
-            # ax.axvline(actual, color="orange", linestyle="--", label="actual")
-            # plt.legend()
-            # plt.show()
-            return guess
-
-    def adjustmet_poi_5(self, df, candidates, emp_guess, guess, actual, bounds):
-        diss = df["Dissipation"]
-        rf = df["Resonance_Frequency"]
-
         diff = df["Difference"]
 
         diss_peaks, _ = find_peaks(diss)
@@ -793,7 +799,12 @@ class QPredictor:
         diff_points = np.array(diff_peaks)
         np.concatenate((rf_points, diff_points, diss_points))
         x_min, x_max = bounds
+        if x_min < poi_4_guess:
+            x_min = poi_4_guess + 1
+        if x_max > poi_6_guess:
+            x_max = poi_6_guess - 1
         candidate_density = len(candidates) / (x_max - x_min)
+        adjusted_point = -1
         if candidate_density < 0.01:
             zero_slope = self.find_zero_slope_regions(rf)
             # Filter RF points within the bounds
@@ -809,23 +820,8 @@ class QPredictor:
             if filtered_rf_points.size == 0:
                 return guess
 
-            # Calculate proximity weight for each RF point based on diff and diss points
-            def calculate_weight(rf_point):
-                # multiplier = 2
-                # diff_in_proximity = np.sum(
-                #     np.abs(np.array(diff_points) - rf_point) < 0.02 * len(rf)
-                # )
-                # weight = diff_in_proximity
-
-                # # Apply multiplier if a diss point is nearby
-                # if np.any(np.abs(np.array(diss_points) - rf_point) < 0.02 * len(rf)):
-                #     weight *= multiplier
-                return 1
-
             # Calculate weights for filtered RF points
-            weights = np.array(
-                [calculate_weight(rf_point) for rf_point in filtered_rf_points]
-            )
+            weights = np.array([1 for rf_point in filtered_rf_points])
 
             # Calculate weighted distances from initial guess to each filtered RF point
             distances_to_rf = np.abs(filtered_rf_points - initial_guess)
@@ -836,76 +832,178 @@ class QPredictor:
             closest_rf_point = filtered_rf_points[closest_rf_idx]
 
             # Calculate distances from candidate points to the closest RF point
-            distances_to_closest_rf = np.abs(candidate_points - closest_rf_point)
+            distances_to_closest_rf = np.abs(
+                candidate_points - closest_rf_point)
 
             # Find the closest candidate point to the closest RF point
             closest_candidate_idx = np.argmin(distances_to_closest_rf)
             adjusted_point = candidate_points[closest_candidate_idx]
-            # fig, ax = plt.subplots()
-            # ax.plot(diss, color="grey")
-            # ax.fill_betweenx(
-            #     [0, max(diss)], bounds[0], bounds[1], color=f"yellow", alpha=0.5
-            # )
-            # ax.scatter(diss_peaks, diss[diss_peaks],
-            #            color="red", label="diss peaks")
-            # ax.scatter(diff_peaks, diss[diff_peaks],
-            #            color="green", label="diff peaks")
-            # ax.scatter(rf_points, diss[rf_points],
-            #            color="blue", label="rf peaks")
-            # ax.scatter(
-            #     emp_guess, diss[emp_guess], color="pink", marker="x", label="emp guess"
-            # )
-            # ax.scatter(candidates, diss[candidates],
-            #            color="black", label="candidates")
-            # ax.axvline(guess, color="purple",
-            #            linestyle='dotted', label="guess")
-            # ax.axvline(actual, color="orange", linestyle="--", label="actual")
-            # ax.axvline(adjusted_point, color="brown", label="adjusted")
-            # plt.legend()
-            # plt.show()
-            return adjusted_point
+
         else:
-            return guess
+            adjusted_point = guess
+
+        # if abs(adjusted_point - actual) > 50:
+        #     fig, ax = plt.subplots()
+        #     ax.plot(diss, color="grey")
+        #     ax.fill_betweenx(
+        #         [0, max(diss)], bounds[0], bounds[1], color=f"yellow", alpha=0.5
+        #     )
+        #     ax.scatter(diss_peaks, diss[diss_peaks], color="red", label="diss peaks")
+        #     ax.scatter(diff_peaks, diss[diff_peaks], color="green", label="diff peaks")
+        #     ax.scatter(
+        #         emp_guess, diss[emp_guess], color="pink", marker="x", label="emp guess"
+        #     )
+        #     ax.scatter(candidates, diss[candidates], color="black", label="candidates")
+        #     ax.axvline(guess, color="purple", linestyle="dotted", label="guess")
+
+        #     ax.axvline(adjusted_point, color="brown", label="adjusted")
+        #     ax.axvline(actual, color="orange", linestyle="--", label="actual")
+        #     ax.scatter(actual, diss[actual], color="orange", marker="*")
+        #     plt.legend()
+        #     plt.show()
+        return adjusted_point
 
     def adjustment_poi_6(
         self,
         poi_6_guess,
-        poi_5_guess,
         candidates,
-        actual,
-        t_delta,
         dissipation,
         difference,
         rf,
         signal,
+        t_delta,
+        actual,
     ):
-        candidates = candidates[candidates > poi_5_guess]
+        # The following are normalized datasets collected from the raw raun data.
         rf = self.normalize(rf)
         dissipation = self.normalize(dissipation)
         difference = self.normalize(difference)
         signal = self.normalize(signal)
-        rf_peaks, _ = find_peaks(rf)
+
+        # Diff peaks are peaks in the difference curve
         diff_peaks, _ = find_peaks(difference)
-        diss_peaks, _ = find_peaks(difference)
-        rf_max = np.argmax(rf[poi_5_guess:]) + poi_5_guess
-        diff_max = np.argmax(difference[poi_5_guess:]) + poi_5_guess
-        average_conf = np.average(signal)
-        if t_delta > 0:
-            if rf_max > t_delta - (0.1 * t_delta) and diff_max > t_delta - (
-                0.1 * t_delta
-            ):
-                nearest_diff_peaks = min(diff_peaks, key=lambda x: abs(x - rf_max))
-                target = (rf_max + diff_max) / 2
-                nearest_candidate = min(candidates, key=lambda x: abs(x - target))
+        # The list of candidates appends the intial guess of POI6 to the list of potential candidates.
+        candidates = np.append(candidates, [poi_6_guess])
+
+        def classify_tail(data, a, b):
+            slope = data[a] - data[b]
+            if slope < 0:
+                return "increasing"
+            elif slope > 0:
+                return "decreasing"
             else:
-                nearest_candidate = poi_6_guess
+                # TODO: Implement a method for determining noise at the end of the signal.
+                return "noisy"
+
+        # Subtract the difference from dissipation curve to get segments where the normalized difference
+        # signal interesects witht the noramlized dissipation signal.
+        diff_signal = difference - dissipation
+        crossings = np.where(np.diff(np.sign(diff_signal)))[0]
+
+        # Take the last crossing in where the difference and dissipation signal instersect.
+        nearest_crossing = max(crossings)
+
+        # Next, get the peak in the difference curve that minimizes the distance between to the final
+        # interesction.  This peak indicates the the peak of interest ending the run.
+        distances = np.abs(diff_peaks - nearest_crossing)
+        nearest_peak = diff_peaks[np.argmin(distances)]
+
+        # The nearest peak and crossing can be out of order so the following ensures that these two points
+        # are in ascending order.
+        a, b = (
+            (nearest_peak, nearest_crossing)
+            if nearest_peak < nearest_crossing
+            else (nearest_crossing, nearest_peak)
+        )
+        # Get the type of tail the last 10% of the run classifies as.  10% is an artbirary
+        # fraction of the run and can be adjusted.
+        tail_class = classify_tail(difference, a, b)
+        if tail_class == "increasing":
+            # For an increasing tail in the difference curve, currently no adjustment is provided.
+            # TODO: For an increasing tail, implelment an adjustment.
+            # I think this could be something along the lines of looking at nearest valley in both
+            # difference and dissipation and moving poi guess to that but I am not sure.
+            filtered_candidates = candidates
+            adjusted_poi_6 = poi_6_guess
+        elif tail_class == "decreasing":
+            # For decreasing tails, there are 2 cases: (1) Between the nearest peak and crossing point,
+            # there exists some candidates.  Pick the candidate closest to the base of the increase segment
+            # in the dissipation curve. (2) There are no candidates, in which case, pick the point on the
+            # dissipation curve which has the most significant change in slope over the baseline slope of
+            # that region.
+            filtered_candidates = [
+                point for point in candidates if a <= point <= b]
+
+            if len(filtered_candidates) > 0:
+                adjusted_poi_6 = min(filtered_candidates,
+                                     key=lambda x: abs(x - a))
+                # adjusted_poi_6 = max(filtered_candidates,
+                #                      key=lambda p: signal[p])
+                tail_class = tail_class + "_A"
+            else:
+                slope = np.diff(dissipation[a:b])
+                if len(slope) == 0:
+                    adjusted_poi_6 = poi_6_guess
+                else:
+                    average_slope = np.mean(slope)
+                    increasing_index = np.argmax(slope > average_slope)
+                    significant_point = increasing_index + 1
+                    adjusted_poi_6 = significant_point + a
         else:
-            target = (rf_max + diff_max) / 2
-            nearest_candidate = min(candidates, key=lambda x: abs(x - rf_max))
+            # TODO: Noise case
+            # The final case is instended to handle the case where the end of the run is noisy.
+            filtered_candidates = candidates
+            adjusted_poi_6 = poi_6_guess
 
-        return nearest_candidate
+        # if abs(actual[5] - adjusted_poi_6) > 30 and tail_class == "increasing":
+        #     plt.figure(figsize=(8, 8))
+        #     plt.plot(dissipation, label="Dissipation", color="grey")
+        #     plt.scatter(
+        #         filtered_candidates,
+        #         dissipation[filtered_candidates],
+        #         color="red",
+        #         label="Candidates",
+        #         marker="x",
+        #     )
 
-    def predict(self, file_buffer, type=-1, start=-1, stop=-1, act=[None] * 6):
+        #     plt.plot(difference, label="Difference", color="brown")
+        #     plt.plot(rf, label="Resonance frequency", color="tan")
+
+        #     plt.scatter(actual, dissipation[actual], label="actual", color="blue")
+        #     # plt.scatter(rf_max, dissipation[rf_max], label="rf_peaks", color="green")
+        #     plt.scatter(
+        #         nearest_peak,
+        #         dissipation[nearest_peak],
+        #         label="Nearest Peak",
+        #         color="yellow",
+        #         marker="*",
+        #     )
+        #     plt.scatter(
+        #         crossings,
+        #         difference[crossings],
+        #         color="red",
+        #         label="Crossings",
+        #         zorder=5,
+        #     )
+        #     plt.scatter(
+        #         nearest_crossing,
+        #         difference[nearest_crossing],
+        #         color="yellow",
+        #         marker="*",
+        #         label="Nearest Crossing",
+        #         zorder=5,
+        #     )
+
+        #     if t_delta > 0:
+        #         plt.axvline(t_delta, label="t_delta", color="black", linestyle="dotted")
+        #     plt.axvline(adjusted_poi_6, label="poi_6", color="purple")
+        #     plt.legend()
+        #     plt.title(tail_class)
+        #     plt.show()
+
+        return adjusted_poi_6
+
+    def predict(self, file_buffer, run_type=-1, start=-1, stop=-1, act=[None] * 6):
         # Load CSV data and drop unnecessary columns
         df = pd.read_csv(file_buffer)
         columns_to_drop = ["Date", "Time", "Ambient", "Temperature"]
@@ -979,7 +1077,6 @@ class QPredictor:
 
         # Process data using QDataPipeline
         qdp = QDataPipeline(file_buffer_2)
-        t_delta = qdp.find_time_delta()
         diss_raw = qdp.__dataframe__["Dissipation"]
         rel_time = qdp.__dataframe__["Relative_time"]
         qdp.preprocess(poi_filepath=None)
@@ -1024,121 +1121,139 @@ class QPredictor:
             start_5 = emp_points[4]
             start_6 = emp_points[5]
         adj_1 = start_1
-        poi_1 = self.adjustment_poi_1(guess=start_1, diss_raw=diss_raw)
+        poi_1 = self.adjustment_poi_1(
+            initial_guess=start_1, dissipation_data=diss_raw)
+        adj_6 = extracted_results[6]
+        candidates_6 = self.find_and_sort_peaks(adj_6)
+        if diff_raw.mean() < 0:
+            poi_6 = start_6
+        else:
+            t_delta = qdp.find_time_delta()
+            poi_6 = self.adjustment_poi_6(
+                poi_6_guess=np.argmax(adj_6),
+                candidates=candidates_6,
+                dissipation=df["Dissipation"],
+                difference=df["Difference"],
+                rf=df["Resonance_Frequency"],
+                signal=adj_6,
+                t_delta=t_delta,
+                actual=act,
+            )
         adj_2, bounds_2 = self.adjust_predictions(
             prediction=extracted_results[2],
             rel_time=rel_time,
             poi_num=2,
-            type=type,
+            type=run_type,
             i=poi_1,
-            j=extracted_6,
+            j=poi_6,
         )
         adj_3, bounds_3 = self.adjust_predictions(
             prediction=extracted_results[3],
             rel_time=rel_time,
             poi_num=3,
-            type=type,
+            type=run_type,
             i=poi_1,
-            j=extracted_6,
+            j=poi_6,
         )
         adj_4, bounds_4 = self.adjust_predictions(
             prediction=extracted_results[4],
             rel_time=rel_time,
             poi_num=4,
-            type=type,
+            type=run_type,
             i=poi_1,
-            j=extracted_6,
+            j=poi_6,
         )
         adj_5, bounds_5 = self.adjust_predictions(
             prediction=extracted_results[5],
             rel_time=rel_time,
             poi_num=5,
-            type=type,
+            type=run_type,
             i=poi_1,
-            j=extracted_6,
+            j=poi_6,
         )
-        adj_6 = extracted_results[6]
+
         candidates_1 = self.find_and_sort_peaks(extracted_results[1])
         candidates_2 = self.find_and_sort_peaks(adj_2)
         candidates_3 = self.find_and_sort_peaks(adj_3)
         candidates_4 = self.find_and_sort_peaks(adj_4)
         candidates_5 = self.find_and_sort_peaks(adj_5)
-        candidates_6 = self.find_and_sort_peaks(adj_6)
+
+        # skip adjustment of point 6 when inverted (drop applied to outlet)
 
         poi_2 = self.adjustment_poi_2(
-            guess=start_2,
-            diss_raw=diss_raw,
-            actual=act[1],
+            initial_guess=start_2,
+            dissipation_data=diss_raw,
             bounds=bounds_2,
+            poi_1_estimate=poi_1,
+        )
+        poi_4 = self.adjustmet_poi_4(
+            df=df,
+            candidates=candidates_4,
+            guess=extracted_4,
+            actual=act,
+            bounds=bounds_4,
             poi_1_guess=poi_1,
         )
-        # poi_2 = emp_points[1]
-        poi_4 = self.adjustmet_poi_4(df, candidates_4, extracted_4, act[3], bounds_4)
-        # Hot fix to prevent out of order poi_4 and poi_5
-        if bounds_5[0] < poi_4:
-            lst = list(bounds_5)
-            lst[0] = poi_4 + 1
-            bounds_5 = tuple(lst)
         poi_5 = self.adjustmet_poi_5(
-            df, candidates_5, extracted_5, start_5, act[4], bounds_5
+            df=df,
+            candidates=candidates_5,
+            guess=extracted_5,
+            actual=act[4],
+            bounds=bounds_5,
+            poi_4_guess=poi_4,
+            poi_6_guess=poi_6,
         )
+
         if poi_1 >= poi_2:
             poi_1 = adj_1
         poi_3 = np.argmax(adj_3)
 
-        # skip adjustment of point 6 when inverted (drop applied to outlet)
-        if diff_raw.mean() < 0:
-            poi_6 = start_6
-        else:
-            poi_6 = self.adjustment_poi_6(
-                poi_6_guess=np.argmax(adj_6),
-                poi_5_guess=poi_5,
-                candidates=candidates_6,
-                actual=act,
-                t_delta=t_delta,
-                dissipation=df["Dissipation"],
-                difference=df["Difference"],
-                rf=df["Resonance_Frequency"],
-                signal=adj_6,
-            )
-
         def sort_and_remove_point(arr, point):
             arr = np.array(arr)
             if len(arr) > MAX_GUESSES - 1:
-                arr = arr[:MAX_GUESSES - 1]
+                arr = arr[: MAX_GUESSES - 1]
             arr.sort()
+
             return arr[arr != point]
 
-        candidates_1 = sort_and_remove_point(candidates_1, poi_1)
-        candidates_2 = sort_and_remove_point(candidates_2, poi_2)
-        candidates_3 = sort_and_remove_point(candidates_3, poi_3)
-        candidates_4 = sort_and_remove_point(candidates_4, poi_4)
-        candidates_5 = sort_and_remove_point(candidates_5, poi_5)
-        candidates_6 = sort_and_remove_point(candidates_6, poi_6)
-
-        candidates_1 = np.insert(candidates_1, 0, poi_1)
-        candidates_2 = np.insert(candidates_2, 0, poi_2)
-        candidates_3 = np.insert(candidates_3, 0, poi_3)
-        candidates_4 = np.insert(candidates_4, 0, poi_4)
-        candidates_5 = np.insert(candidates_5, 0, poi_5)
-        candidates_6 = np.insert(candidates_6, 0, poi_6)
-
-        confidence_1 = np.array(extracted_results[1])[candidates_1]
-        confidence_2 = np.array(adj_2)[candidates_2]
-        confidence_3 = np.array(adj_3)[candidates_3]
-        confidence_4 = np.array(adj_4)[candidates_4]
-        confidence_5 = np.array(adj_5)[candidates_5]
-        confidence_6 = np.array(adj_6)[candidates_6]
-
-        # TODO: Adjust 1st confidence to be better than 2nd guess
-
-        candidates = [
-            (candidates_1, confidence_1),
-            (candidates_2, confidence_2),
-            (candidates_3, confidence_3),
-            (candidates_4, confidence_4),
-            (candidates_5, confidence_5),
-            (candidates_6, confidence_6),
+        candidates_list = [
+            candidates_1,
+            candidates_2,
+            candidates_3,
+            candidates_4,
+            candidates_5,
+            candidates_6,
         ]
+        poi_list = [poi_1, poi_2, poi_3, poi_4, poi_5, poi_6]
+        extracted_confidences = extracted_results[1:7]
 
+        candidates = []
+
+        for i in range(len(poi_list)):
+
+            # Sort and remove point
+            candidates_i = sort_and_remove_point(
+                candidates_list[i], poi_list[i])
+            filtered_points = candidates_i
+            if i < 3:
+                mean = np.mean(candidates_i)
+                std_dev = np.std(candidates_i)
+                threshold = 2
+                # Filter points within the specified threshold
+                filtered_points = [point for point in candidates_i if abs(
+                    point - mean) <= threshold * std_dev]
+
+            # Extract and sort confidence
+            confidence_i = np.sort(np.array(extracted_confidences[i])[filtered_points])[
+                ::-1
+            ]
+
+            # Insert POI at the start, remove the last element
+            if len(candidates_i) > 1:
+                candidates_i = np.insert(candidates_i, 0, poi_list[i])[:-1]
+            else:
+                candidates_i = np.insert(candidates_i, 0, poi_list[i])
+
+            # Append to candidates list
+            candidates.append((candidates_i, confidence_i))
         return candidates

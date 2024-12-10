@@ -8,22 +8,24 @@ from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from os import system, path
 
+
 class QATCH_TyUpdater:
 
     # NOTE: It is desirable to still send "PROGRAM" command to device prior to flashing
     #       Best practice: Wait until you receive "Waiting for lines..." before reboot.
 
-    def __init__(self, progress_signal = None):
+    def __init__(self, progress_signal=None):
         if progress_signal == None:
             progress_signal = pyqtSignal(str, int)
         self.progress = progress_signal
 
     def update(self, device_sernum, firmware_path):
 
-        queue_timeout = 5 # seconds of no subprocess.stdout bytes to trigger a timeout exception
+        queue_timeout = 5  # seconds of no subprocess.stdout bytes to trigger a timeout exception
         tools_path = path.join(Architecture.get_path(), "tools")
         path_to_tycmd = path.join(tools_path, "tytools", "tycmd.exe")
-        path_to_loader = path.join(tools_path, "tool-teensy", "teensy_loader_cli.exe")
+        path_to_loader = path.join(
+            tools_path, "tool-teensy", "teensy_loader_cli.exe")
         teensy_mcu = "TEENSY41"
 
         Log.d("Path to TyCmd: ", path_to_tycmd)
@@ -46,9 +48,12 @@ class QATCH_TyUpdater:
             finally:
                 queue.put(None)
 
-        cmd_updater = f'{path_to_tycmd}  upload  --board  {device_sernum}  {firmware_path}'.split('  ')
-        cmd_restart = f'{path_to_tycmd}  reset  --board  {device_sernum}  --bootloader'.split('  ')
-        cmd_flasher = f'{path_to_loader}  --mcu={teensy_mcu}  -v  {firmware_path}  -w'.split('  ')
+        cmd_updater = f'{path_to_tycmd}  upload  --board  {device_sernum}  {firmware_path}'.split(
+            '  ')
+        cmd_restart = f'{path_to_tycmd}  reset  --board  {device_sernum}  --bootloader'.split(
+            '  ')
+        cmd_flasher = f'{path_to_loader}  --mcu={teensy_mcu}  -v  {firmware_path}  -w'.split(
+            '  ')
 
         p_updater, p_flasher, p_restart = None, None, None
         t_updater, t_flasher, t_restart = None, None, None
@@ -61,12 +66,14 @@ class QATCH_TyUpdater:
 
             q = Queue()
 
-            p_flasher = Popen(cmd_flasher, stdout=PIPE, stderr=STDOUT, shell=True)
+            p_flasher = Popen(cmd_flasher, stdout=PIPE,
+                              stderr=STDOUT, shell=True)
             t_flasher = Thread(target=reader, args=[p_flasher, q])
             t_flasher.daemon = True
             t_flasher.start()
 
-            p_restart = Popen(cmd_restart, stdout=PIPE, stderr=STDOUT, shell=True)
+            p_restart = Popen(cmd_restart, stdout=PIPE,
+                              stderr=STDOUT, shell=True)
             t_restart = Thread(target=reader, args=[p_restart, q])
             t_restart.daemon = True
             t_restart.start()
@@ -77,8 +84,8 @@ class QATCH_TyUpdater:
 
             for i in range(3):
                 if i == 2 and p_updater == None:
-                    break # do not wait for 3rd queue
-                for source, byte in iter(callback_args(q.get, timeout = queue_timeout), None):
+                    break  # do not wait for 3rd queue
+                for source, byte in iter(callback_args(q.get, timeout=queue_timeout), None):
                     # print("%s: %s" % (source, data))
                     if source == Path(cmd_restart[0]).stem:
                         line_restart += byte
@@ -86,10 +93,12 @@ class QATCH_TyUpdater:
                             most_recent_line = line_restart.splitlines()[-1]
                             print("%s: %s" % (source, most_recent_line))
                             if most_recent_line.find(b"Board is already in bootloader mode") >= 0:
-                                print("Warning: Board is already in bootloader mode")
+                                print(
+                                    "Warning: Board is already in bootloader mode")
                                 pass_restart = True
                             if most_recent_line.find(b"Triggering board reboot") >= 0:
-                                print("SUCCESS: Board reset and entering bootloader...")
+                                print(
+                                    "SUCCESS: Board reset and entering bootloader...")
                                 pass_restart = True
                     if source == Path(cmd_flasher[0]).stem:
                         line_flasher += byte
@@ -97,12 +106,16 @@ class QATCH_TyUpdater:
                             most_recent_line = line_flasher.splitlines()[-1]
                             print("%s: %s" % (source, most_recent_line))
                             if most_recent_line.startswith(b"Read"):
-                                total_pages = int(most_recent_line.split(b' ')[-4]) / 1024
+                                total_pages = int(
+                                    most_recent_line.split(b' ')[-4]) / 1024
                             if most_recent_line.startswith(b"Booting"):
                                 pass_flasher = True
                             if most_recent_line.find(b"error writing to Teensy") >= 0 and p_updater == None:
-                                p_updater = Popen(cmd_flasher[:-1], stdout=PIPE, stderr=STDOUT, shell=True) # try again, no wait (likely pass)
-                                t_updater = Thread(target=reader, args=[p_updater, q])
+                                # try again, no wait (likely pass)
+                                p_updater = Popen(
+                                    cmd_flasher[:-1], stdout=PIPE, stderr=STDOUT, shell=True)
+                                t_updater = Thread(
+                                    target=reader, args=[p_updater, q])
                                 t_updater.daemon = True
                                 t_updater.start()
                         if byte == b'.':
@@ -114,7 +127,8 @@ class QATCH_TyUpdater:
                                     starting = True
                                     curr_txt = "Starting firmware transfer..."
                                 else:
-                                    if starting: print()
+                                    if starting:
+                                        print()
                                     starting = False
                                     # curr_txt = f"b'Programming {curr_pct}%'"
                                     curr_txt = "Programming device firmware...<br/><b>DO NOT POWER CYCLE DEVICE!</b>"
@@ -142,9 +156,9 @@ class QATCH_TyUpdater:
             if p_updater != None and p_updater.poll() == None:
                 # subprocess still running, kill it on timeout
                 p_updater.kill()
-                                
+
         if pass_flasher and pass_restart:
-            result_error = "" # success
+            result_error = ""  # success
             Log.i("SUCCESS: Updated successfully")
             if p_updater == None:
                 Log.d("BONUS: No retry was required!")
@@ -172,4 +186,3 @@ class QATCH_TyUpdater:
 
         Log.d("TyUpdater Task gracefully finished.")
         return result_error
-

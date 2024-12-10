@@ -5,7 +5,7 @@ from QATCH.common.logger import LoggerLevel
 from QATCH.core.constants import Constants
 
 
-TAG = ""#"Arguments"
+TAG = ""  # "Arguments"
 
 
 ###############################################################################
@@ -13,20 +13,19 @@ TAG = ""#"Arguments"
 ###############################################################################
 class Arguments:
 
-
     ###########################################################################
     # Initializes
     ###########################################################################
     def __init__(self):
         self._parser = None
 
-
     ###########################################################################
     # Creates and parses the arguments to be used by the application.
     ###########################################################################
+
     def create(self):
         parser = argparse.ArgumentParser(
-                            description='SOFTWARE\nA real time plotting and logging application')
+            description='SOFTWARE\nA real time plotting and logging application')
         parser.add_argument("-i", "--info",
                             dest="log_level_info",
                             action='store_true',
@@ -53,10 +52,10 @@ class Arguments:
                             )
         self._parser = parser.parse_args()
 
-
     ###########################################################################
     # Sets the user specified log level
     ###########################################################################
+
     def set_user_log_level(self):
         if self._parser is not None:
             self._parse_log_level()

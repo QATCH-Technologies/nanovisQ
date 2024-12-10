@@ -11,50 +11,52 @@ import numpy as np
 TAG = "[Simulator]"
 
 # a Serial class emulator
+
+
 class serial:
 
     STOPBITS_ONE = 1
     EIGHTBITS = 8
 
-    ## init(): the constructor.  Many of the arguments have default values
+    # init(): the constructor.  Many of the arguments have default values
     # and can be skipped when calling the constructor.
-    def Serial( port='COM1', baudrate = 19200, timeout=1,
-                bytesize = 8, parity = 'N', stopbits = 1, xonxoff=0,
-                rtscts = 0, dsrdtr = 0, write_timeout = None,
-                inter_byte_timeout = None ):
+    def Serial(port='COM1', baudrate=19200, timeout=1,
+               bytesize=8, parity='N', stopbits=1, xonxoff=0,
+               rtscts=0, dsrdtr=0, write_timeout=None,
+               inter_byte_timeout=None):
 
-        return serial( port, baudrate, timeout,
-                       bytesize, parity, stopbits, xonxoff,
-                       rtscts, dsrdtr, write_timeout,
-                       inter_byte_timeout )
+        return serial(port, baudrate, timeout,
+                      bytesize, parity, stopbits, xonxoff,
+                      rtscts, dsrdtr, write_timeout,
+                      inter_byte_timeout)
 
-    def __init__( self, port='COM1', baudrate = 19200, timeout=1,
-                  bytesize = 8, parity = 'N', stopbits = 1, xonxoff=0,
-                  rtscts = 0, dsrdtr = 0, write_timeout = None,
-                  inter_byte_timeout = None ):
-        self.name     = port
-        self.port     = port
-        self.timeout  = timeout
-        self.parity   = parity
+    def __init__(self, port='COM1', baudrate=19200, timeout=1,
+                 bytesize=8, parity='N', stopbits=1, xonxoff=0,
+                 rtscts=0, dsrdtr=0, write_timeout=None,
+                 inter_byte_timeout=None):
+        self.name = port
+        self.port = port
+        self.timeout = timeout
+        self.parity = parity
         self.baudrate = baudrate
         self.bytesize = bytesize
         self.stopbits = stopbits
-        self.xonxoff  = xonxoff
-        self.rtscts   = rtscts
-        self.dsrdtr   = dsrdtr
-        self.write_timeout      = write_timeout
+        self.xonxoff = xonxoff
+        self.rtscts = rtscts
+        self.dsrdtr = dsrdtr
+        self.write_timeout = write_timeout
         self.inter_byte_timeout = inter_byte_timeout
-        self.is_open    = False
+        self.is_open = False
         self.in_waiting = 0
-        self._in_data   = ""
-        self._out_data  = b''
+        self._in_data = ""
+        self._out_data = b''
 
         self.__init_simulator__()
 
-    def __init_simulator__( self ):
+    def __init_simulator__(self):
         self.sim_log = False
         self.start_time = time()
-        Log.d (TAG, 'Simulator initialized!')
+        Log.d(TAG, 'Simulator initialized!')
 
         # BUILD INFO
         self.DEVICE_BUILD = "QATCH Q-1"
@@ -97,7 +99,7 @@ class serial:
         #define BAUD            2000000
         '''
         # Sample delay between set and read frequency when sweeping
-        self.FREQ_OFFSET = 0 # sim-only
+        self.FREQ_OFFSET = 0  # sim-only
 
         # DEFINE OPTIONS
         '''
@@ -111,13 +113,13 @@ class serial:
         # use to encode serial bytes instead of sending plaintext (faster, but harder to debug)
         self.ENCODE_SERIAL = True
         # use to set default state of whether to report phase data or not
-        self.REPORT_PHASE  = False
+        self.REPORT_PHASE = False
         # use to send reading deltas instead of absolute values
-        self.USE_DELTAS    = False
+        self.USE_DELTAS = False
         # use to turn on continuous streaming of data once started
-        self.DO_STREAM     = True
+        self.DO_STREAM = True
         # use only for serial monitor debugging (will confuse application)
-        self.DEBUG         = False
+        self.DEBUG = False
         '''
         // Force turn off averaging if disabled
         #if AVERAGING == False
@@ -146,9 +148,9 @@ class serial:
         float temperature = 0;
         '''
         # used to add ADC init delay after calling SetFreq()
-        #self.waitNeeded = False # set dynamically
-        self.reportTemp = True # dynamic (not in every sample)
-        self.reportPhase = True # dynamic (programmable)
+        # self.waitNeeded = False # set dynamically
+        self.reportTemp = True  # dynamic (not in every sample)
+        self.reportPhase = True  # dynamic (programmable)
 
         # init sweep param
         self.freq_start = 0
@@ -172,10 +174,10 @@ class serial:
         '''
         # Flags for triggering and tracking serial I/O
         self.message = False
-        #self.pre_time = 0
-        #self.last_time = 0
+        # self.pre_time = 0
+        # self.last_time = 0
         self.last_temp = 0
-        #self.last_jump = 0
+        # self.last_jump = 0
         '''
         int byteAtPort = 0;
         '''
@@ -186,73 +188,74 @@ class serial:
         self.lastLastVal_ph = 0
         self.lastVal_mag = 0
         self.lastVal_ph = 0
-        #self.everyOther = True
-        #self.firstHit = True
+        # self.everyOther = True
+        # self.firstHit = True
         self.streaming = False
         self.swSpeed_us = 0
 
         # Timeout timer to prevent it from staying on forever
         self.quack_counter = 0
-        self.quack_interval = 100000 # 100k samples is ~10 minutes @ 6ms/s
+        self.quack_interval = 100000  # 100k samples is ~10 minutes @ 6ms/s
 
-    ## isOpen()
+    # isOpen()
     # returns True if the port to the Arduino is open.  False otherwise
-    def isOpen( self ):
+    def isOpen(self):
         return self.is_open
 
-    ## open()
+    # open()
     # opens the port
-    def open( self ):
+    def open(self):
         self.is_open = True
 
-    ## close()
+    # close()
     # closes the port
-    def close( self ):
+    def close(self):
         self.is_open = False
 
-    ## write()
+    # write()
     # writes a string of characters to the Arduino
-    def write( self, string ):
+    def write(self, string):
         string = string.decode("utf-8")
-        if self.sim_log: Log.d(TAG, 'RX "' + string.rstrip() + '"' )
+        if self.sim_log:
+            Log.d(TAG, 'RX "' + string.rstrip() + '"')
         self._in_data += string
 
-        self.run() # run simulator processor to handle cmd
+        self.run()  # run simulator processor to handle cmd
 
-    ## read()
+    # read()
     # reads n characters from the fake Arduino. Actually n characters
     # are read from the string _out_data and returned to the caller.
-    def read( self, n=1 ):
+    def read(self, n=1):
         s = self._out_data[0:n]
         self._out_data = self._out_data[n:]
         self.in_waiting = len(self._out_data)
 
         if self.message:
-            self.__message__() # append to queue if pending
+            self.__message__()  # append to queue if pending
 
         return s
 
-    def reset_input_buffer( self ):
+    def reset_input_buffer(self):
         self._out_data = b''
 
-    def reset_output_buffer( self ):
+    def reset_output_buffer(self):
         self._in_data = ""
 
-    ## __str__()
+    # __str__()
     # returns a string representation of the serial class
-    def __str__( self ):
-        return  "Serial<id=0xa81c10, open=%s>( port='%s', baudrate=%d," \
-               % ( str(self.isOpen), self.port, self.baudrate ) \
-               + " bytesize=%d, parity='%s', stopbits=%d, xonxoff=%d, rtscts=%d,"\
-               % ( self.bytesize, self.parity, self.stopbits, self.xonxoff,
-                   self.rtscts ) \
-               + " dsrdtr=%d, write_timeout='%s', inter_byte_timeout=%d)"\
-               % ( self.dsrdtr, self.write_timeout, self.inter_byte_timeout )
+    def __str__(self):
+        return "Serial<id=0xa81c10, open=%s>( port='%s', baudrate=%d," \
+               % (str(self.isOpen), self.port, self.baudrate) \
+            + " bytesize=%d, parity='%s', stopbits=%d, xonxoff=%d, rtscts=%d,"\
+               % (self.bytesize, self.parity, self.stopbits, self.xonxoff,
+                   self.rtscts) \
+            + " dsrdtr=%d, write_timeout='%s', inter_byte_timeout=%d)"\
+               % (self.dsrdtr, self.write_timeout, self.inter_byte_timeout)
 
-    ## __readline__()
+    # __readline__()
     # reads a line from the simulated serial input buffer_recv_size
-    def __readline__( self ):
-        returnIndex = self._in_data.find( "\n" )
+    def __readline__(self):
+        returnIndex = self._in_data.find("\n")
         if returnIndex != -1:
             s = self._in_data[0:returnIndex]
             self._in_data = self._in_data[returnIndex+1:]
@@ -260,32 +263,34 @@ class serial:
         else:
             return ""
 
-    ## __writestr__()
+    # __writestr__()
     # writes a string to end of simulated serial output buffer
-    def __writestr__( self, string ):
+    def __writestr__(self, string):
         self._out_data += string.encode()
         self.in_waiting = len(self._out_data)
-        if self.sim_log: Log.d(TAG, 'TX "' + string.rstrip() + '"' )
+        if self.sim_log:
+            Log.d(TAG, 'TX "' + string.rstrip() + '"')
 
-    ## __writebyte__()
+    # __writebyte__()
     # writes a byte to end of simulated serial output buffer
-    def __writebyte__( self, byte ):
+    def __writebyte__(self, byte):
         self._out_data += pack("B", byte)
         self.in_waiting = len(self._out_data)
-        if self.sim_log: Log.d(TAG, 'TX "' + "0x{0:02x}".format(byte) + '"' )
+        if self.sim_log:
+            Log.d(TAG, 'TX "' + "0x{0:02x}".format(byte) + '"')
 
-    def run( self ):
+    def run(self):
         cmd = self.__readline__()
         while not cmd == "":
             # send one byte here to give SW something to read
             # once a byte is read, additional bytes are queued by __message__
-            self.quack_counter = 0 # reset stream timeout counter
+            self.quack_counter = 0  # reset stream timeout counter
             if cmd == "VERSION":
                 self.__writestr__(self.DEVICE_BUILD + "\r\n")
                 self.__writestr__(self.CODE_VERSION + "\r\n")
                 self.__writestr__(self.RELEASE_DATE + "\r\n")
             elif cmd == "PROGRAM":
-                Log.d (TAG, 'NOTICE: Cannot be programmed!')
+                Log.d(TAG, 'NOTICE: Cannot be programmed!')
             elif cmd.find("SPEED") == 0:
                 self.swSpeed_us = int(cmd[6:])
             elif cmd == "STREAM":
@@ -297,9 +302,10 @@ class serial:
                 self.last_temp = 0
                 self.__writestr__("STOP\r\n")
             else:
-                self.reportPhase = self.REPORT_PHASE # default (if not specified in cmd)
+                # default (if not specified in cmd)
+                self.reportPhase = self.REPORT_PHASE
                 # decode message
-                param = cmd.split(';') # delimiter is the semicolon
+                param = cmd.split(';')  # delimiter is the semicolon
                 for nn in range(0, len(param)):
                     str = param[nn]
                     # frequency start
@@ -316,24 +322,24 @@ class serial:
                     # frequency step
                     elif (nn == 2):
                         self.freq_step = int(str)
-                        self.message = True # mark sweep to begin!
+                        self.message = True  # mark sweep to begin!
                         if not self.streaming:
                             # reset global variables for new sweep
                             self.swSpeed_us = 0
                             self.freq_start_up = self.freq_stop_up = self.freq_step_up = 0
                             self.freq_start_down = self.freq_stop_down = self.freq_step_down = 0
                             self.base_overtones_per_cycle = self.base_overtone_counter = 0
-                        self.__writestr__( 'S' ) # send Shift ACK
+                        self.__writestr__('S')  # send Shift ACK
                     # indeterminate meaning, must check value to decide
                     elif (nn == 3):
                         val = int(str)
                         if (val == 0 or val == 1):
                             # report phase (0 no / 1 yes)
                             self.reportPhase = val
-                            break # ignore any additional delimited data!
+                            break  # ignore any additional delimited data!
                         else:
-                          # frequency start up
-                          self.freq_start_up = val # cannot be 0/1
+                            # frequency start up
+                            self.freq_start_up = val  # cannot be 0/1
                     # frequency stop up
                     elif (nn == 4):
                         self.freq_stop_up = int(str)
@@ -352,12 +358,11 @@ class serial:
                     # base overtones per cycle
                     elif (nn == 9):
                         self.base_overtones_per_cycle = int(str)
-                        break # ignore any additional delimited data!
+                        break  # ignore any additional delimited data!
 
-            cmd = self.__readline__() # read next line (if any)
+            cmd = self.__readline__()  # read next line (if any)
 
-
-    def __message__( self ):
+    def __message__(self):
         # buffer up to one serial sweep in out queue
         # wait until it's read before buffering more
         if self.in_waiting == 0:
@@ -375,10 +380,11 @@ class serial:
 
             # stop stream if one-shot or "quacking" too long
             if ((self.quack_counter > self.quack_interval) or
-                not(self.DO_STREAM and self.streaming)):
-              if self.streaming: Log.d (TAG, 'NOTICE: Streaming turned off!')
-              self.streaming = False # if asked for, but not enabled
-              self.message = False # one-shot only (not repeatedly)
+                    not (self.DO_STREAM and self.streaming)):
+                if self.streaming:
+                    Log.d(TAG, 'NOTICE: Streaming turned off!')
+                self.streaming = False  # if asked for, but not enabled
+                self.message = False  # one-shot only (not repeatedly)
             '''
             if (CONTINUOUS_ADC)
             {
@@ -396,18 +402,18 @@ class serial:
             '''
             # do frequency hopping (if configured)
             if not (self.base_overtones_per_cycle == 0):
-              self.base_overtone_counter += 1
-              if (self.base_overtone_counter >= self.base_overtones_per_cycle):
-                if (self.base_overtone_counter == self.base_overtones_per_cycle):
-                  this_freq_start = self.freq_start_up
-                  this_freq_stop = self.freq_stop_up
-                  this_freq_step = self.freq_step_up
-              else:
-                  this_freq_start = self.freq_start_down
-                  this_freq_stop = self.freq_stop_down
-                  this_freq_step = self.freq_step_down
+                self.base_overtone_counter += 1
+                if (self.base_overtone_counter >= self.base_overtones_per_cycle):
+                    if (self.base_overtone_counter == self.base_overtones_per_cycle):
+                        this_freq_start = self.freq_start_up
+                        this_freq_stop = self.freq_stop_up
+                        this_freq_step = self.freq_step_up
+                else:
+                    this_freq_start = self.freq_start_down
+                    this_freq_stop = self.freq_stop_down
+                    this_freq_step = self.freq_step_down
 
-                  self.base_overtone_counter = 0 # repeat
+                    self.base_overtone_counter = 0  # repeat
 
             # simulator specific code (calculate curve)
             peak_m = 2800
@@ -415,7 +421,7 @@ class serial:
             peak_f = 5055000
             bandwidth = 2500
             if (time() - self.start_time > 10):
-                shift_factor = 650 # 300, 500, 650
+                shift_factor = 650  # 300, 500, 650
                 t = (time() - self.start_time - 15) * 10
                 t = 0 if t < 0 else min(t, shift_factor)
                 peak_m -= (shift_factor - t)
@@ -425,7 +431,8 @@ class serial:
 
             left_f = peak_f - bandwidth
             right_f = peak_f + bandwidth
-            numPts = int((this_freq_stop - this_freq_start) / this_freq_step) + 1
+            numPts = int((this_freq_stop - this_freq_start) /
+                         this_freq_step) + 1
             datPts = int((right_f - left_f) / this_freq_step)
             x_data = np.linspace(0, np.pi, datPts)
             y_data = np.sin(x_data)
@@ -434,9 +441,9 @@ class serial:
             ix = 0
             self.curve = [0] * numPts
 
-            for x in range (0, numPts):
-                #self.curve[x] = x
-                #continue
+            for x in range(0, numPts):
+                # self.curve[x] = x
+                # continue
                 if this_f < left_f:
                     self.curve[x] = base_m
                 elif ix >= len(y_data):
@@ -447,7 +454,7 @@ class serial:
                     self.curve[x] = base_m + (y_data[ix] * (peak_m - base_m))
                     ix += 1
                 this_f += this_freq_step
-            #Log.d ("curve {}".format(self.curve))
+            # Log.d ("curve {}".format(self.curve))
 
             # start sweep cycle measurement
             count = this_freq_start
@@ -497,17 +504,21 @@ class serial:
                         # "E" and "F" are not supported
                         # "G" denotes format: mag deltas, raw temp
                         # "H" denotes format: mag deltas only
-                        self.__writestr__( 'Q' )
+                        self.__writestr__('Q')
                         if (self.reportPhase):
                             if not (self.USE_DELTAS):
-                                self.__writestr__( "A" if self.reportTemp else "B" )
-                            else: # deltas
-                                self.__writestr__( "E" if self.reportTemp else "F" )
-                        else: # no phase
+                                self.__writestr__(
+                                    "A" if self.reportTemp else "B")
+                            else:  # deltas
+                                self.__writestr__(
+                                    "E" if self.reportTemp else "F")
+                        else:  # no phase
                             if not (self.USE_DELTAS):
-                                self.__writestr__( "C" if self.reportTemp else "D" )
-                            else: # deltas
-                                self.__writestr__( "G" if self.reportTemp else "H" )
+                                self.__writestr__(
+                                    "C" if self.reportTemp else "D")
+                            else:  # deltas
+                                self.__writestr__(
+                                    "G" if self.reportTemp else "H")
 
                         if (self.USE_DELTAS):
                             # report frequency hopping (if configured)
@@ -587,7 +598,8 @@ class serial:
                     measure_mag = self.curve[idx] + random.triangular(-25, 25)
                     if (self.reportPhase):
                         # ADC measure phase
-                        measure_phase = self.curve[idx] * 0.7 + random.triangular(-25, 25)
+                        measure_phase = self.curve[idx] * \
+                            0.7 + random.triangular(-25, 25)
                     idx += 1
 
                     # serial write data (all values)
@@ -621,11 +633,13 @@ class serial:
 
                             everyOther = False
                         else:
-                            delta_mag = self.__deltaMag__(self.lastVal_mag, int(measure_mag))
+                            delta_mag = self.__deltaMag__(
+                                self.lastVal_mag, int(measure_mag))
                             self.__writebyte__(delta_mag)
 
                             if (self.reportPhase):
-                                delta_ph = self.__deltaPh__(self.lastVal_ph, int(measure_phase))
+                                delta_ph = self.__deltaPh__(
+                                    self.lastVal_ph, int(measure_phase))
                                 self.__writebyte__(delta_ph)
 
                             everyOther = True
@@ -644,11 +658,11 @@ class serial:
                             self.__writebyte__(phase_int0)
                     else:
                         self.__writestr__("{0:.2f}".format(measure_mag))
-                        self.__writestr__( ';' )
+                        self.__writestr__(';')
 
                         if (self.reportPhase):
                             self.__writestr__("{0:.2f}".format(measure_phase))
-                            self.__writestr__( '\r\n' )
+                            self.__writestr__('\r\n')
                     '''
                     // if this is a cal run, and fw goes too fast for too long, bytes may get dropped by sw serial link
                     // to combat this, if this is NOT a streaming run AND it has over 500+ samples (assumed to be cal),
@@ -697,7 +711,7 @@ class serial:
                     self.__writebyte__(temp_int0)
                 else:
                     self.__writestr__("{0:.2f}".format(temperature))
-                    self.__writestr__( ';' )
+                    self.__writestr__(';')
 
             # print termination char EOM
             if not (self.ENCODE_SERIAL):
@@ -732,37 +746,36 @@ class serial:
             '''
             # report stream timeout event
             if (self.quack_counter > self.quack_interval):
-              self.__writestr__("QUACK!\r\n")
-
+                self.__writestr__("QUACK!\r\n")
 
     # Send deltas for magnitude
-    def __deltaMag__( self, val1, val2 ):
-        compress = 4 # compression ratio (MUST MATCH SW)
-        out = 0 # retval
+    def __deltaMag__(self, val1, val2):
+        compress = 4  # compression ratio (MUST MATCH SW)
+        out = 0  # retval
         sign = 0
 
-        #Log.d ("val0 {} val1 {} val2 {}".format(self.lastLastVal_mag, val1, val2))
-        #delta1 = (val1 - self.lastLastVal_mag)
-        #delta2 = (val2 - val1)
-        #Log.d ("delta1 {} delta2 {}".format(delta1, delta2))
-        #enc1 = enc2 = 0
+        # Log.d ("val0 {} val1 {} val2 {}".format(self.lastLastVal_mag, val1, val2))
+        # delta1 = (val1 - self.lastLastVal_mag)
+        # delta2 = (val2 - val1)
+        # Log.d ("delta1 {} delta2 {}".format(delta1, delta2))
+        # enc1 = enc2 = 0
 
         # calculate val1
         self.targetDelta_mag += (val1 - self.lastLastVal_mag)
-        #Log.d ("mag1 {}".format(self.targetDelta_mag))
+        # Log.d ("mag1 {}".format(self.targetDelta_mag))
         if (self.targetDelta_mag > 7 * compress):
             # too big to encode now, indicate max and send rest later
-            out |= 0x70 # 0111 0000 (7)
+            out |= 0x70  # 0111 0000 (7)
             self.targetDelta_mag -= (7 * compress)
 
-            Log.d ("too big")
+            Log.d("too big")
 
         elif (self.targetDelta_mag < -8 * compress):
             # too small to encode now, indicate min and send rest later
-            out |= 0x80 # 1000 0000 (-8)
+            out |= 0x80  # 1000 0000 (-8)
             self.targetDelta_mag -= (-8 * compress)
 
-            Log.d ("too small")
+            Log.d("too small")
 
         else:
             # entire delta can be encoded now, so do that
@@ -770,26 +783,26 @@ class serial:
             sign = 1 if self.targetDelta_mag >= 0 else -1
             self.targetDelta_mag = (self.targetDelta_mag % (sign * compress))
 
-            #enc1 = ((out if out >= 0 else out + 256) >> 4)
-            #Log.d ("enc1 {}".format(enc1))
-            #Log.d ("rem1 {}".format(self.targetDelta_mag))
+            # enc1 = ((out if out >= 0 else out + 256) >> 4)
+            # Log.d ("enc1 {}".format(enc1))
+            # Log.d ("rem1 {}".format(self.targetDelta_mag))
 
         # calculate val2
         self.targetDelta_mag += (val2 - val1)
-        #Log.d ("mag2 {}".format(self.targetDelta_mag))
+        # Log.d ("mag2 {}".format(self.targetDelta_mag))
         if (self.targetDelta_mag > 7 * compress):
             # too big to encode now, indicate max and send rest later
-            out |= 0x07 # 0000 0111 (7)
+            out |= 0x07  # 0000 0111 (7)
             self.targetDelta_mag -= (7 * compress)
 
-            Log.d ("too big")
+            Log.d("too big")
 
         elif (self.targetDelta_mag < -8 * compress):
             # too small to encode now, indicate min and send rest later
-            out |= 0x08 # 0000 1000 (-8)
+            out |= 0x08  # 0000 1000 (-8)
             self.targetDelta_mag -= (-8 * compress)
 
-            Log.d ("too small")
+            Log.d("too small")
 
         else:
             # entire delta can be encoded now, so do that
@@ -797,45 +810,44 @@ class serial:
             sign = 1 if self.targetDelta_mag >= 0 else -1
             self.targetDelta_mag = (self.targetDelta_mag % (sign * compress))
 
-            #enc2 = (out & 0x0F)
-            #Log.d ("enc2 {}".format(enc2))
-            #Log.d ("rem2 {}".format(self.targetDelta_mag))
+            # enc2 = (out & 0x0F)
+            # Log.d ("enc2 {}".format(enc2))
+            # Log.d ("rem2 {}".format(self.targetDelta_mag))
 
         # store last val for next time
         self.lastLastVal_mag = val2
 
         # return encoded byte
-        return out if out >= 0 else out + 256 # 2's complement math when out < 0
-
+        return out if out >= 0 else out + 256  # 2's complement math when out < 0
 
     # Send deltas for phase
-    def __deltaPh__( self, val1, val2 ):
-        compress = 4 # compression ratio (MUST MATCH SW)
-        out = 0 # retval
+    def __deltaPh__(self, val1, val2):
+        compress = 4  # compression ratio (MUST MATCH SW)
+        out = 0  # retval
         sign = 0
 
-        #Log.d ("val0 {} val1 {} val2 {}".format(self.lastLastVal_mag, val1, val2))
-        #delta1 = (val1 - self.lastLastVal_mag)
-        #delta2 = (val2 - val1)
-        #Log.d ("delta1 {} delta2 {}".format(delta1, delta2))
-        #enc1 = enc2 = 0
+        # Log.d ("val0 {} val1 {} val2 {}".format(self.lastLastVal_mag, val1, val2))
+        # delta1 = (val1 - self.lastLastVal_mag)
+        # delta2 = (val2 - val1)
+        # Log.d ("delta1 {} delta2 {}".format(delta1, delta2))
+        # enc1 = enc2 = 0
 
         # calculate val1
         self.targetDelta_ph += (val1 - self.lastLastVal_ph)
-        #Log.d ("mag1 {}".format(self.targetDelta_mag))
+        # Log.d ("mag1 {}".format(self.targetDelta_mag))
         if (self.targetDelta_ph > 7 * compress):
             # too big to encode now, indicate max and send rest later
-            out |= 0x70 # 0111 0000 (7)
+            out |= 0x70  # 0111 0000 (7)
             self.targetDelta_ph -= (7 * compress)
 
-            Log.d ("too big")
+            Log.d("too big")
 
         elif (self.targetDelta_ph < -8 * compress):
             # too small to encode now, indicate min and send rest later
-            out |= 0x80 # 1000 0000 (-8)
+            out |= 0x80  # 1000 0000 (-8)
             self.targetDelta_ph -= (-8 * compress)
 
-            Log.d ("too small")
+            Log.d("too small")
 
         else:
             # entire delta can be encoded now, so do that
@@ -843,26 +855,26 @@ class serial:
             sign = 1 if self.targetDelta_ph >= 0 else -1
             self.targetDelta_ph = (self.targetDelta_ph % (sign * compress))
 
-            #enc1 = ((out if out >= 0 else out + 256) >> 4)
-            #Log.d ("enc1 {}".format(enc1))
-            #Log.d ("rem1 {}".format(self.targetDelta_mag))
+            # enc1 = ((out if out >= 0 else out + 256) >> 4)
+            # Log.d ("enc1 {}".format(enc1))
+            # Log.d ("rem1 {}".format(self.targetDelta_mag))
 
         # calculate val2
         self.targetDelta_ph += (val2 - val1)
-        #Log.d ("mag2 {}".format(self.targetDelta_mag))
+        # Log.d ("mag2 {}".format(self.targetDelta_mag))
         if (self.targetDelta_ph > 7 * compress):
             # too big to encode now, indicate max and send rest later
-            out |= 0x07 # 0000 0111 (7)
+            out |= 0x07  # 0000 0111 (7)
             self.targetDelta_ph -= (7 * compress)
 
-            Log.d ("too big")
+            Log.d("too big")
 
         elif (self.targetDelta_ph < -8 * compress):
             # too small to encode now, indicate min and send rest later
-            out |= 0x08 # 0000 1000 (-8)
+            out |= 0x08  # 0000 1000 (-8)
             self.targetDelta_ph -= (-8 * compress)
 
-            Log.d ("too small")
+            Log.d("too small")
 
         else:
             # entire delta can be encoded now, so do that
@@ -870,12 +882,12 @@ class serial:
             sign = 1 if self.targetDelta_ph >= 0 else -1
             self.targetDelta_ph = (self.targetDelta_ph % (sign * compress))
 
-            #enc2 = (out & 0x0F)
-            #Log.d ("enc2 {}".format(enc2))
-            #Log.d ("rem2 {}".format(self.targetDelta_mag))
+            # enc2 = (out & 0x0F)
+            # Log.d ("enc2 {}".format(enc2))
+            # Log.d ("rem2 {}".format(self.targetDelta_mag))
 
         # store last val for next time
         self.lastLastVal_ph = val2
 
         # return encoded byte
-        return out if out >= 0 else out + 256 # 2's complement math when out < 0
+        return out if out >= 0 else out + 256  # 2's complement math when out < 0

@@ -4,30 +4,31 @@ import logging
 from logging.handlers import QueueHandler
 
 
-TAG = ""#"[Parser]"
+TAG = ""  # "[Parser]"
 
 ###############################################################################
 # Process to parse incoming data and distribute it to worker
 ###############################################################################
-class ParserProcess(multiprocessing.Process):
 
+
+class ParserProcess(multiprocessing.Process):
 
     ###########################################################################
     # Initializing values for process
     ###########################################################################
     def __init__(self, queue_log,
-                       data_queue0,
-                       data_queue1,
-                       data_queue2,
-                       data_queue3,
-                       data_queue4,
-                       data_queue5,
-                       data_queue6):
+                 data_queue0,
+                 data_queue1,
+                 data_queue2,
+                 data_queue3,
+                 data_queue4,
+                 data_queue5,
+                 data_queue6):
         """
         :param data_queue{i}: References to queue where processed data will be put.
         :type data_queue{i}: multiprocessing Queue.
         """
-        self._queueLog = queue_log #Log.create()
+        self._queueLog = queue_log  # Log.create()
         logger = logging.getLogger("QATCH.logger")
         logger.addHandler(QueueHandler(self._queueLog))
         logger.setLevel(logging.DEBUG)
@@ -43,7 +44,7 @@ class ParserProcess(multiprocessing.Process):
         self._out_queue5 = data_queue5
         self._out_queue6 = data_queue6
 
-        #Log.d(TAG, "Process ready")
+        # Log.d(TAG, "Process ready")
 
     ###########################################################################
     # Add new raw data and calculated data to the corresponding internal queue

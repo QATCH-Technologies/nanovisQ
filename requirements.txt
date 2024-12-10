@@ -171,7 +171,7 @@ requests==2.32.3
     #   -r requirements.in
     #   dropbox
     #   tensorflow-intel
-rich==13.9.3
+rich==13.9.4
     # via keras
 scikit-learn==1.5.1
     # via
@@ -222,7 +222,7 @@ threadpoolctl==3.5.0
     # via
     #   imbalanced-learn
     #   scikit-learn
-tqdm==4.66.6
+tqdm==4.67.0
     # via
     #   -r requirements.in
     #   hyperopt
@@ -236,7 +236,7 @@ tzdata==2024.2
     # via pandas
 urllib3==2.2.3
     # via requests
-werkzeug==3.1.0
+werkzeug==3.1.2
     # via tensorboard
 wheel==0.44.0
     # via astunparse

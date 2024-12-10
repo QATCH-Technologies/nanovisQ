@@ -34,7 +34,7 @@ import requests
 import stat
 import subprocess
 
-TAG = ""  # "[MainWindow]"
+TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
 ##########################################################################################
@@ -120,7 +120,8 @@ class PlotsWindow(QtWidgets.QMainWindow):
     '''
     def closeEvent(self, event):
         #Log.d(" Exit Real-Time Plot GUI")
-        res =PopUp.question(self, Constants.app_title, "Are you sure you want to quit QATCH Q-1 application now?")
+        res =PopUp.question(self, Constants.app_title,
+                            "Are you sure you want to quit QATCH Q-1 application now?")
         if res:
            #self.close()
            QtWidgets.QApplication.quit()
@@ -221,9 +222,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
-        version = self.menubar[3].addAction('{} ({})'.format(
-            Constants.app_version, Constants.app_date))
-        version.setEnabled(False)
+        sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
+            Constants.app_version,
+            "exe" if getattr(sys, 'frozen', False) else "py",
+            Constants.app_date))
+        sw_version.setEnabled(False)
+        from QATCH.QModel.__init__ import __version__ as QModel_version
+        from QATCH.QModel.__init__ import __release__ as QModel_release
+        q_version = self.menubar[3].addAction('QModel v{} ({})'.format(
+            QModel_version, QModel_release))
+        q_version.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -1051,6 +1059,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
+            Log.d(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1078,6 +1087,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.AnalyzeProc.Analyze_Data(data_path)
 
+    def refresh_data_files(self):
+        Log.i(TAG, "Refreshing data files...")
+        # print(self.data_files) # DEBUG ONLY
+        self.data_files = FileStorage.DEV_get_logged_data_files(
+            self.data_device, self.data_folder)
+
     def analyze_data_get_data_device(self):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
@@ -1100,10 +1115,12 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("User aborted data folder selection.")
 
     def analyze_data_get_data_file(self):
+        self.refresh_data_files()
+
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.i("Selected data file = {}".format(self.data_file))
+            Log.i(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:
@@ -1222,6 +1239,17 @@ class MainWindow(QtWidgets.QMainWindow):
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
+        if check_result == None:  # user check required, but no user signed in
+            Log.w(
+                f"Not signed in: User with role {action_role.name} is required to perform this action.")
+            Log.i("Please sign in to continue.")
+            self.ControlsWin.set_user_profile()  # prompt for sign-in
+            check_result = UserProfiles().check(
+                self.ControlsWin.userrole, action_role)  # check again
+        if not check_result:  # no user signed in or user not authorized
+            Log.w(
+                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+            return  # deny action
 
         # User check required, but no user signed in.
         if check_result == None:
@@ -1285,6 +1313,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Uniquify file names.
                 new_file_time = strftime(
                     Constants.csv_default_prefix, localtime())
+
                 new_path = os.path.join(
                     path_parts[0], subDir, "{}_{}".format(new_file_time, path_parts[1]))
                 try:
@@ -1297,6 +1326,7 @@ class MainWindow(QtWidgets.QMainWindow):
         except:
             Log.e(
                 tag=TAG, msg="Failed to move prior created files. Some new files may not be renamed.")
+
         ### END HANDLE ORPHANED FILES ###
 
         # Add TEC output file to new files list (if exists)
@@ -1309,10 +1339,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
         # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port is None:
-            selected_port = ''
+        if selected_port == None:
+            selected_port = ''  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
-            selected_port = ''
+            selected_port = ''  # Dissallow Action
 
         # If the selected port has been disallowed, the application scans for connected devices.
         if selected_port == '':
@@ -1384,8 +1414,10 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.i(TAG, "Initialize was last performed {} minute{} ago.".format(
                     age_in_mins, "" if age_in_mins == 1 else "s"))
+
             # Application EXE hangs on close if we do not check before doing a measurement run every single time.
             self.fwUpdater.checkAgain()
+
         else:
             # Check for and remove any invalid calibration files in root of config folder on CAL start
             paths = [Constants.csv_calibration_path,
@@ -4572,6 +4604,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 pass  # found directories in install path, not relative to CWD()
             elif getattr(sys, 'frozen', False):  # frozen cannot do relative path
                 cur_install_path = os.path.dirname(sys.executable)
+            # argv[0] contains a file name only, no relative path
+            elif len(cur_install_path) == 0:
+                cur_install_path = os.path.dirname(
+                    os.path.dirname(os.path.abspath(__file__)))
             if name[0:-4].endswith("_py") and os.path.split(cur_install_path)[1] == "QATCH":
                 cur_install_path = os.path.dirname(cur_install_path)
             save_to = os.path.join(os.path.dirname(
@@ -4729,7 +4765,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if os.path.exists(save_to):
             # Extract ZIP and launch new build
             with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(new_install_path)
+                zf.extractall(os.path.dirname(new_install_path))
             os.remove(save_to)
 
             Log.w("Launching setup script for new build...")
@@ -5381,7 +5417,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @staticmethod
+    @ staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType

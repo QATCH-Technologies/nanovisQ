@@ -2,6 +2,7 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import GraphicsLayoutWidget
 
+
 class Ui_Plots(object):
     def setupUi(self, MainWindow):
         MainWindow.setObjectName("MainWindow")
@@ -35,10 +36,12 @@ class Ui_Plots(object):
 
         self.label = QtWidgets.QLabel()
         self.Layout_graphs.addWidget(self.label, 0, 0, 1, 1)
+
         def link1(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
         self.label.linkActivated.connect(link1)
-        self.label.setText('<a href="https://qatchtech.com/"> <font color=#000000 >Open-source Python application for displaying, processing and storing real-time data from QATCH Q-1 Device</font> </a>')
+        self.label.setText(
+            '<a href="https://qatchtech.com/"> <font color=#000000 >Open-source Python application for displaying, processing and storing real-time data from QATCH Q-1 Device</font> </a>')
 
         self.Layout_graphs.addWidget(self.plt, 1, 0, 1, 1)
         self.Layout_graphs.addWidget(self.pltB, 2, 0, 1, 1)
@@ -51,9 +54,12 @@ class Ui_Plots(object):
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "icons/qatch-icon.png")
-        MainWindow.setWindowIcon(QtGui.QIcon(icon_path)) #.png
-        MainWindow.setWindowTitle(_translate("MainWindow", "{} {} - Setup/Control GUI".format(Constants.app_title, Constants.app_version)))
+        icon_path = os.path.join(
+            Architecture.get_path(), "icons/qatch-icon.png")
+        MainWindow.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        MainWindow.setWindowTitle(_translate(
+            "MainWindow", "{} {} - Setup/Control GUI".format(Constants.app_title, Constants.app_version)))
+
 
 '''
 if __name__ == "__main__":

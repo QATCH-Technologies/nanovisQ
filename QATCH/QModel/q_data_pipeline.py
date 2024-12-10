@@ -247,7 +247,8 @@ class QDataPipeline:
             self.add_class(poi_filepath)
 
         # Compute the 0.5% smoothing quantity for this dataset.
-        smooth_win = int(0.005 * len(self.__dataframe__["Relative_time"].values))
+        smooth_win = int(
+            0.005 * len(self.__dataframe__["Relative_time"].values))
         if smooth_win % 2 == 0:
             smooth_win += 1
         if smooth_win <= 1:
@@ -264,8 +265,10 @@ class QDataPipeline:
         # STEP 4
         # Smooth the dissipation, difference, and resonance frequency curves
         # using dynamic window size and polyorder 1
-        self.compute_smooth(column="Dissipation", winsize=smooth_win, polyorder=1)
-        self.compute_smooth(column="Difference", winsize=smooth_win, polyorder=1)
+        self.compute_smooth(column="Dissipation",
+                            winsize=smooth_win, polyorder=1)
+        self.compute_smooth(column="Difference",
+                            winsize=smooth_win, polyorder=1)
         self.compute_smooth(
             column="Resonance_Frequency", winsize=smooth_win, polyorder=1
         )
@@ -322,7 +325,8 @@ class QDataPipeline:
         ) // larger_delta
 
         # Return the downsampling factor, which is the number of indices fitting into the larger delta
-        downsampling_factor = len(self.__dataframe__) // indices_in_larger_delta
+        downsampling_factor = len(
+            self.__dataframe__) // indices_in_larger_delta
         # return int(downsampling_factor)
         return 20
 
@@ -453,7 +457,8 @@ class QDataPipeline:
         name = f"{column}_detrend"
 
         # Remove the linear trend from the specified column and store it in the new column
-        self.__dataframe__[name] = detrend(data=self.__dataframe__[column].values)
+        self.__dataframe__[name] = detrend(
+            data=self.__dataframe__[column].values)
 
     # def interpolate(self, num_rows: int = 20) -> None:
     #     """
@@ -639,7 +644,8 @@ class QDataPipeline:
         xs = self.__dataframe__["Relative_time"]
         i = next(x + 0 for x, t in enumerate(xs) if t > 0.5)
         j = next(x + 1 for x, t in enumerate(xs) if t > 2.5)
-        avg_resonance_frequency = self.__dataframe__["Resonance_Frequency"][i:j].mean()
+        avg_resonance_frequency = self.__dataframe__[
+            "Resonance_Frequency"][i:j].mean()
         avg_dissipation = self.__dataframe__["Dissipation"][i:j].mean()
         # Compute the ys_diss, ys_freq, and ys_diff
         self.__dataframe__["ys_diss"] = (
@@ -652,11 +658,13 @@ class QDataPipeline:
         )
         diff_factor = 1.5
         self.__dataframe__["Difference"] = (
-            self.__dataframe__["ys_freq"] - diff_factor * self.__dataframe__["ys_diss"]
+            self.__dataframe__["ys_freq"] -
+            diff_factor * self.__dataframe__["ys_diss"]
         )
 
         # Drop the intermediate columns if not needed
-        self.__dataframe__["Resonance_Frequency"] = self.__dataframe__["ys_freq"]
+        self.__dataframe__[
+            "Resonance_Frequency"] = self.__dataframe__["ys_freq"]
         self.__dataframe__["Dissipation"] = self.__dataframe__["ys_diss"]
         self.__dataframe__["Cumulative"] = savgol_filter(
             self.__dataframe__["Dissipation"].values
