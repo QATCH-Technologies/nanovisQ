@@ -537,8 +537,6 @@ class FileStorage:
 
     @staticmethod
     def DEV_populate_path(path, i):
-        FileStorage.DEV_set_file_format_preferences(path, i)
-        print("\nHERE\n")
         return path.replace(Constants.tbd_active_device_name_path, FileStorage.DEV_get_active(i))
 
     ###########################################################################

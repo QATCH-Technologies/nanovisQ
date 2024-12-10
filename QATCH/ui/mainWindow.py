@@ -664,7 +664,8 @@ class Rename_Output_Files(QtCore.QObject):
 
                             # Using file save path from UserPreferences.
                             # run_directory = text
-
+                            run_directory = UserProfiles.user_preferences.get_file_save_path(
+                                runname=input_text, device_id=dev_name, port_id=_dev_pid)
                             # Potentially remove this vvvvv
                             if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                                 if self.has_active_multi_port():  # 4x6 system
@@ -675,6 +676,7 @@ class Rename_Output_Files(QtCore.QObject):
                                 port_id = self._portIDfromIndex(_dev_pid)
                                 run_directory = UserProfiles.user_preferences.get_file_save_path(
                                     runname=input_text, device_id=dev_name, port_id=port_id)
+
                                 # run_directory += f"_{self._portIDfromIndex(_dev_pid)}"
 
                             # Raise exception if runname retrieved from user is empty.
@@ -686,8 +688,12 @@ class Rename_Output_Files(QtCore.QObject):
                                 # Using Device folder path from UserPreferences class.
                                 # os.makedirs(os.path.join(
                                 #     path_root, dev_name, run_directory), exist_ok=False)
+                                run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
+                                    runname=input_text, device_id=dev_name, port_id=_dev_pid)
+                                print(f"RUN: {run_directory}")
+                                print(f"PARENT: {run_parent_directory}")
                                 os.makedirs(os.path.join(
-                                    path_root, UserProfiles.user_preferences.get_folder_save_path(runname=input_text, device_id=dev_name, port_id=_dev_pid), run_directory), exist_ok=False)
+                                    path_root, run_parent_directory, run_directory), exist_ok=False)
                                 # break (done below)
                             except:
                                 if len(input_text) > 0:
