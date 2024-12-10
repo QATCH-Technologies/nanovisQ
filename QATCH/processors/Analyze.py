@@ -394,6 +394,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.layout = QtWidgets.QVBoxLayout(self)
 
+        # Fixes #30
         self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
         self.text_Runs = QtWidgets.QLabel("Run:")
