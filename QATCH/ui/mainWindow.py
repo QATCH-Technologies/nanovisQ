@@ -1358,6 +1358,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
 
                     # TODO: Figure out what value needs to be appended to the active ports list.
+                    # Format is PORT_SERIALDEVICE from Last_Used.txt
                     selected_port.append(
                         self.ControlsWin.ui1.cBox_Port.itemData(port_id))
 
