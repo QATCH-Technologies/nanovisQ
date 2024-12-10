@@ -1447,11 +1447,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 logging.ERROR)  # suppress AutoGraph warnings
             if Constants.preload_tensorflow and Constants.Tensorflow_predict:
                 # load tensorflow library once per session
-                Log.d(tag=TAG, msg="Force repaint events")
+                Log.d(tag=TAG, msg="GUI: Force repaint events")
                 Log.w(tag=TAG, msg="Loading tensorflow modules...")
                 import tensorflow as tf  # lazy load
                 Log.d(tag=TAG, msg="Loaded tensorflow as tf")
-                Log.d(tag=TAG, msg="Normal repaint events")
+                Log.d(tag=TAG, msg="GUI: Normal repaint events")
 
         # Start worker thread.
         worker_check = self.worker.start()
