@@ -28,6 +28,7 @@ class FileStorage:
     ###########################################################################
     # Saves CSV files of processed data in an assigned directory
     ###########################################################################
+
     @staticmethod
     def CSVsave(i, filename, path, data_save0, data_save1, data_save2, data_save3, data_save4, data_save5, writeToFilesystem=True):
         """
@@ -515,6 +516,20 @@ class FileStorage:
                     fh.write(dev_name + '\n')
         except:
             Log.w(TAG, "WARN: Failed to set active device name.")
+
+    @staticmethod
+    def DEV_write_default_preferences(save_path: str):
+        import json
+        default_preferences = {
+            "folder_format": "%device%",
+            "filename_format": "%runname%",
+            "folder_format_delimiter": "_",
+            "filename_format_delimiter": "_",
+            "date_format": "MM-DD-YYYY",
+            "time_format": "HH:mm:ss",
+        }
+        with open(save_path, "w") as f:
+            json.dump(default_preferences, f, indent=4)
 
     ###########################################################################
     # Populate Device Path to insert device folder name in file path
