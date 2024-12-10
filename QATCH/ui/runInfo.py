@@ -427,6 +427,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.run_count = 0
         self.run_idx = 0
         self.run_port = ""  # if multirun, will be something like "_1"
+        self.auto_st = 0
+        self.auto_ca = 0
+        self.auto_dn = 0
 
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
