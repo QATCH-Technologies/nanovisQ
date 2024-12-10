@@ -394,7 +394,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.layout = QtWidgets.QVBoxLayout(self)
 
-        self.text_Devices = QtWidgets.QLabel("Device:")
+        self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
         self.text_Runs = QtWidgets.QLabel("Run:")
         self.cBox_Runs = QtWidgets.QComboBox()
@@ -733,7 +733,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Devices ------------------------------------------------------
         self.l0 = QtWidgets.QLabel()
         self.l0.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.l0.setText("<font color=#ffffff >Device Selection</font> </a>")
+
+        # Fixing issue #30
+        self.l0.setText("<font color=#ffffff >Run Selection</font> </a>")
         if USE_FULLSCREEN:
             self.l0.setFixedHeight(50)
         # else:
@@ -745,8 +747,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.cBox_Devices, 2, 2, 1, 2
         )  # row, col, rowspan, colspan
 
+        # Fixes #30
         self.showRunsFromAllDevices = QtWidgets.QCheckBox(
-            "Show runs from all devices")
+            "Show all available runs")
         self.showRunsFromAllDevices.setChecked(True)
         self.showRunsFromAllDevices.clicked.connect(
             self.showRunsFromAllDevices_clicked)
