@@ -766,6 +766,8 @@ class UIConfigureData(QtWidgets.QWidget):
             - Default preferences are defined in the `DEFAULT_PREFERNCES` dictionary.
         """
         """Save the user-defined settings to a file."""
+
+        # TODO: On-saving, update the UserPreferences in UserProfiles to reflect changes to preferences.
         try:
             if default:
                 self.folder_format_input.setText(
@@ -787,24 +789,31 @@ class UIConfigureData(QtWidgets.QWidget):
                 self.time_format_dropdown.setCurrentText(date_format)
                 self.time_format_dropdown.setCurrentText(time_format)
             else:
+
                 folder_format = "".join(
                     self.keywords_for_input['folder_format_input']['keywords'])
+                if folder_format is None or folder_format == "":
+                    folder_format = self.folder_format_input.text()
+                print(f"Folder format on save: {folder_format}")
                 filename_format = "".join(
                     self.keywords_for_input['filename_format_input']['keywords'])
+                if filename_format is None or filename_format == "":
+                    filename_format = self.filename_format_input.text()
+                print(f"File format on save: {filename_format}")
 
                 # Requires  filename format to contain a %port% tag
                 if Constants.valid_tags[6] not in filename_format:
                     Log.w(
-                        tag=TAG, msg=f"Filename must contain a {Constants.valid_tags[6]} tag.")
+                        tag=TAG, msg=f"Filename must contain a '{Constants.valid_tags[6]}' tag.")
                     QMessageBox.warning(
-                        self, "Error", f"Filename must contain a {Constants.valid_tags[6]} tag.")
+                        self, "Error", f"Filename must contain a '{Constants.valid_tags[6]}' tag.")
                     return
                 # Requires  filename format to contain a %runname% tag
                 if Constants.valid_tags[3] not in filename_format:
                     Log.w(
-                        tag=TAG, msg=f"Filename must contain a {Constants.valid_tags[3]} tag.")
+                        tag=TAG, msg=f"Filename must contain a '{Constants.valid_tags[3]}' tag.")
                     QMessageBox.warning(
-                        self, "Error", f"Filename must contain a {Constants.valid_tags[3]} tag.")
+                        self, "Error", f"Filename must contain a '{Constants.valid_tags[3]}' tag.")
                     return
                 folder_delimiter = self.keywords_for_input['folder_format_input']['delimiter']
                 filename_delimiter = self.keywords_for_input['filename_format_input']['delimiter']

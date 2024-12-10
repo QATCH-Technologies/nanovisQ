@@ -1530,11 +1530,11 @@ class UserPreferences:
 
     def get_folder_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_folder_format_pattern(), self._get_folder_delimiter(), runname, device_id, port_id)
+            pattern=self._get_folder_format_pattern(), delimiter=self._get_folder_delimiter(), runname=runname, device_id=device_id, port_id=port_id)
 
     def get_file_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            self._get_file_format_pattern(), self._get_file_delimiter(),  runname, device_id, port_id)
+            pattern=self._get_file_format_pattern(), delimiter=self._get_file_delimiter(),  runname=runname, device_id=device_id, port_id=port_id)
 
     def set_use_global(self, use_global) -> None:
         self.use_global = use_global
@@ -1544,12 +1544,10 @@ class UserPreferences:
 
     # -- Private Utilities -- #
     def _build_save_path(self, pattern: list, runname: str, delimiter: str, device_id: int, port_id: int) -> str:
-        # IDX for single if FF
-        # IDX for 4x1 is 0-3
-        # IDX for 4x6 is A1-D6 in hex
         save_path = ""
 
-        for tag in pattern:
+        for i, tag in enumerate(pattern):
+            print(save_path)
             if tag == Constants.valid_tags[0]:
                 save_path = save_path + self._on_username()
             elif tag == Constants.valid_tags[1]:
@@ -1567,15 +1565,10 @@ class UserPreferences:
             else:
                 Log.e(TAG, 'Invalid folder format tag pattern')
                 raise ValueError('Invalid folder format tag pattern')
-            save_path = save_path + delimiter
+            if i < len(pattern) - 1:
+                save_path = save_path + delimiter
 
-        def clean_path(path: str, delimiter: str):
-            cleaned_path = path.strip(f' {delimiter}_')
-            cleaned_path = re.sub(
-                r'[' + re.escape(delimiter + "" + delimiter) + ']+', delimiter, cleaned_path)
-
-            return cleaned_path
-        return clean_path(save_path, delimiter)
+        return save_path
 
     def _on_username(self) -> str:
         _, user_info = UserProfiles.session_info()
