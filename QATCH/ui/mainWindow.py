@@ -653,19 +653,19 @@ class Rename_Output_Files(QtCore.QObject):
                             else:
                                 status_ok = False  # bad run, don't save with custom name
 
+                        # Fetch run and run_parent directories based on user preferences.
+                        run_directory = UserProfiles.user_preferences.get_file_save_path(
+                            runname=input_text, device_id=dev_name, port_id=_dev_pid)
+                        run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
+                            runname=input_text, device_id=dev_name, port_id=_dev_pid)
+
                         if status_ok:
                             ask_for_info = True
-
                             # Remove any invalid characters from user input
                             invalid_characters = "\\/:*?\"'<>|"
                             for character in invalid_characters:
                                 input_text = input_text.replace(
                                     character, '')
-
-                            # Using file save path from UserPreferences.
-                            # run_directory = text
-                            run_directory = UserProfiles.user_preferences.get_file_save_path(
-                                runname=input_text, device_id=dev_name, port_id=_dev_pid)
                             # Potentially remove this vvvvv
                             if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                                 if self.has_active_multi_port():  # 4x6 system
@@ -677,8 +677,6 @@ class Rename_Output_Files(QtCore.QObject):
                                 run_directory = UserProfiles.user_preferences.get_file_save_path(
                                     runname=input_text, device_id=dev_name, port_id=port_id)
 
-                                # run_directory += f"_{self._portIDfromIndex(_dev_pid)}"
-
                             # Raise exception if runname retrieved from user is empty.
                             try:
                                 if len(input_text) == 0:
@@ -688,10 +686,7 @@ class Rename_Output_Files(QtCore.QObject):
                                 # Using Device folder path from UserPreferences class.
                                 # os.makedirs(os.path.join(
                                 #     path_root, dev_name, run_directory), exist_ok=False)
-                                run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
-                                    runname=input_text, device_id=dev_name, port_id=_dev_pid)
-                                print(f"RUN: {run_directory}")
-                                print(f"PARENT: {run_parent_directory}")
+
                                 os.makedirs(os.path.join(
                                     path_root, run_parent_directory, run_directory), exist_ok=False)
                                 # break (done below)
@@ -707,32 +702,33 @@ class Rename_Output_Files(QtCore.QObject):
                                 input_text = ""
                                 continue  # no break (try again)
                             input_text = input_text.strip().replace(' ', '_')  # word spaces -> underscores
-                            # break (done below)
                         else:
                             ask_for_info = False
                             run_directory = "_unnamed"
                             os.makedirs(os.path.join(
-                                path_root, dev_name, run_directory), exist_ok=True)
+                                path_root, run_parent_directory, run_directory), exist_ok=True)
                             input_text = new_file_time  # uniquify
                             if not force_save:
                                 input_text += "_BAD"
-                            # break (done below)
                         break
-                new_path = os.path.join(
-                    path_root, dev_name, run_directory, this_file.replace(this_name, input_text))
+
+                # Update run path to the new run path under run parent directory.
+                new_run_path = os.path.join(
+                    path_root, run_parent_directory, run_directory, this_file.replace(this_name, input_text))
                 try:
-                    os.rename(old_path, new_path)
-                    Log.i(' Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
-                    copy_file = new_path
+                    os.rename(old_path, new_run_path)
+                    Log.i(
+                        ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path))
+                    copy_file = new_run_path
                 except Exception as e:
                     # raise e
                     Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(
-                        old_path, new_path))
+                        old_path, new_run_path))
                     self.finished.connect(self.indicate_error)
                     if os.path.isfile(old_path):
                         copy_file = old_path
-                    if os.path.isfile(new_path):
-                        copy_file = new_path
+                    if os.path.isfile(new_run_path):
+                        copy_file = new_run_path
                 old_path_parts = os.path.split(old_path)
                 try:
                     # only try if empty
@@ -794,7 +790,7 @@ class Rename_Output_Files(QtCore.QObject):
                         6:]
                     # TODO: more secure to pass user_hash (filename)
                     self.bWorker.append(QueryRunInfo(
-                        run_directory, new_path, is_good, user_name, parent=self.parent))
+                        run_directory, new_run_path, is_good, user_name, parent=self.parent))
                     self.bThread[-1].started.connect(self.bWorker[-1].show)
                     self.bWorker[-1].finished.connect(self.bThread[-1].quit)
                     # add here
