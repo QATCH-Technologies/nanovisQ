@@ -845,7 +845,7 @@ class UIConfigureData(QtWidgets.QWidget):
             else:
                 save_path = os.path.join(
                     Constants.local_app_data_path, "file-format-preferences.json")
-            print(save_path)
+
             with open(save_path, "w") as f:
                 json.dump(preferences, f, indent=4)
             if default:
@@ -856,7 +856,8 @@ class UIConfigureData(QtWidgets.QWidget):
                 Log.i(tag=TAG, msg="Successfully saved prefences.")
                 QMessageBox.information(
                     self, "Saved", "Successfully saved prefences.")
-
+            # Update user Preferences attribute to new preferences.
+            UserProfiles.user_preferences.set_preferences()
         except Exception as e:
             Log.e(tag=TAG, msg=f"Failed to save settings: {e}")
             QMessageBox.warning(self, "Error", f"Failed to save settings: {e}")
