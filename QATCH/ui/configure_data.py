@@ -856,6 +856,7 @@ class UIConfigureData(QtWidgets.QWidget):
                 Log.i(tag=TAG, msg="Successfully saved prefences.")
                 QMessageBox.information(
                     self, "Saved", "Successfully saved prefences.")
+
             # Update user Preferences attribute to new preferences.
             UserProfiles.user_preferences.set_preferences()
         except Exception as e:
