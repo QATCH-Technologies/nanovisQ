@@ -548,13 +548,15 @@ class Rename_Output_Files(QtCore.QObject):
     #######################################################################
     def run(self) -> None:
         """
-        Prompt user for run name(s) and rename new output file(s) accordingly.
+        Executes the run process to handle new files, analyze data quality, prompt user input, 
+        and manage file storage and encryption.
 
-        Args:
-            None
+        This method checks for newly generated files, processes them by analyzing quality, 
+        renaming, and saving them into user-defined directories. It also handles user input 
+        for naming runs, encrypts output files if required, and manages error conditions.
 
-        Logs:
-            I/O warnings and 
+        Raises:
+            Exception: If the run name entered by the user is empty.
 
         Returns:
             None
@@ -712,16 +714,18 @@ class Rename_Output_Files(QtCore.QObject):
                                 input_text += "_BAD"
                         break
 
-                # Update run path to the new run path under run parent directory.
+                # Construct new run path to the new run path under run parent directory.
                 new_run_path = os.path.join(
                     path_root, run_parent_directory, run_directory, this_file.replace(this_name, input_text))
+
                 try:
+                    # Attempt to rename temporary files to the new run path.
                     os.rename(old_path, new_run_path)
                     Log.i(
                         ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path))
                     copy_file = new_run_path
-                except Exception as e:
-                    # raise e
+                except Exception:
+                    # Log and raise any errors terminating early if rename fails.
                     Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(
                         old_path, new_run_path))
                     self.finished.connect(self.indicate_error)
@@ -729,11 +733,12 @@ class Rename_Output_Files(QtCore.QObject):
                         copy_file = old_path
                     if os.path.isfile(new_run_path):
                         copy_file = new_run_path
+
                 old_path_parts = os.path.split(old_path)
                 try:
-                    # only try if empty
+                    # Only try to delete path if the path is empty.
                     if len(os.listdir(old_path_parts[0])) == 0:
-                        # delete old path folder (throws error if not empty)
+                        # Delete the old path folder (throws error if not empty)
                         os.rmdir(old_path_parts[0])
                 except:
                     Log.e(
@@ -742,7 +747,6 @@ class Rename_Output_Files(QtCore.QObject):
 
                 if copy_file != None:  # require access controls
                     file_parts = os.path.split(copy_file)
-                    folder = os.path.split(file_parts[0])[0]
                     if run_directory == "_unnamed":
                         zn = copy_file[:copy_file.rfind("_")] + ".zip"
                     else:
