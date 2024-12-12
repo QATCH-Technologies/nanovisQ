@@ -26,18 +26,24 @@ class FileNamingUI(QWidget):
         date_time_layout = QVBoxLayout()
 
         # Date format dropdown
+        date_format_layout = QHBoxLayout()  # Horizontal layout for date format
+        date_format_label = QLabel("Date Format:")
+        date_format_layout.addWidget(date_format_label)
         self.date_format_combo = QComboBox()
         self.date_format_combo.addItems(
             ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"])
-        date_time_layout.addWidget(QLabel("Date Format:"))
-        date_time_layout.addWidget(self.date_format_combo)
+        date_format_layout.addWidget(self.date_format_combo)
+        date_time_layout.addLayout(date_format_layout)
 
         # Time format dropdown
+        time_format_layout = QHBoxLayout()  # Horizontal layout for time format
+        time_format_label = QLabel("Time Format:")
+        time_format_layout.addWidget(time_format_label)
         self.time_format_combo = QComboBox()
         self.time_format_combo.addItems(
             ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"])
-        date_time_layout.addWidget(QLabel("Time Format:"))
-        date_time_layout.addWidget(self.time_format_combo)
+        time_format_layout.addWidget(self.time_format_combo)
+        date_time_layout.addLayout(time_format_layout)
 
         # Preview button for Date and Time format
         self.preview_date_time_button = QPushButton(
@@ -45,8 +51,10 @@ class FileNamingUI(QWidget):
         self.preview_date_time_button.clicked.connect(
             self.preview_date_time_format)
         self.preview_date_time_label = QLabel("Preview will appear here.")
-        date_time_layout.addWidget(self.preview_date_time_button)
-        date_time_layout.addWidget(self.preview_date_time_label)
+        preview_layout = QVBoxLayout()  # Layout for preview button and label
+        preview_layout.addWidget(self.preview_date_time_button)
+        preview_layout.addWidget(self.preview_date_time_label)
+        date_time_layout.addLayout(preview_layout)
 
         date_time_tab.setLayout(date_time_layout)
 
@@ -95,7 +103,7 @@ class FileNamingUI(QWidget):
         # Delimiter selection for file format
         self.file_delimiter_combo = QComboBox()
         # Set fixed size for the delimiter dropdown
-        self.file_delimiter_combo.setFixedSize(120, 30)
+        self.file_delimiter_combo.setFixedSize(40, 30)
         self.file_delimiter_combo.addItems([' ', '-', '_'])
         file_button_layout.addWidget(self.file_delimiter_combo)
 
@@ -132,8 +140,9 @@ class FileNamingUI(QWidget):
         # Delimiter selection for folder format
         self.folder_delimiter_combo = QComboBox()
         # Set fixed size for the delimiter dropdown
-        self.folder_delimiter_combo.setFixedSize(120, 30)
-        self.folder_delimiter_combo.addItems([' ', '-', '_'])
+        self.folder_delimiter_combo.setFixedSize(40, 30)
+        self.folder_delimiter_combo.addItems(
+            [' ', '-', '_'])
         folder_button_layout.addWidget(self.folder_delimiter_combo)
 
         file_folder_layout.addLayout(folder_button_layout)
@@ -182,10 +191,6 @@ class FileNamingUI(QWidget):
             layout.addWidget(combo)
             combo_list.append(combo)  # Add the combo to the respective list
 
-            # Connect the signal for when a tag is selected
-            combo.currentIndexChanged.connect(
-                lambda: self.update_selected_tags(combo))
-
     def remove_last_dropdown(self, layout):
         """Remove the last dropdown from the given layout, if there is more than one."""
         # Ensure there's more than one dropdown in the layout before allowing removal
@@ -214,58 +219,6 @@ class FileNamingUI(QWidget):
             current_tag = combo.currentText()
             if current_tag != "Select tag" and current_tag in self.selected_tags:
                 self.selected_tags.remove(current_tag)
-
-            # Update all dropdowns to reflect the available tags
-            self.update_all_dropdowns()
-
-    def update_selected_tags(self, combo):
-        """Update the selected tags list when a tag is selected and update other dropdowns."""
-
-        # Check if we're in the middle of an update to avoid recursion
-        if self._updating:
-            return
-
-        selected_tag = combo.currentText()
-
-        # Avoid recursion: set the _updating flag to True while making the changes
-        self._updating = True
-
-        # If the tag is selected and it isn't already in the selected tags, add it
-        if selected_tag != "Select tag" and selected_tag not in self.selected_tags:
-            self.selected_tags.append(selected_tag)
-
-        # If the tag is being deselected (or changed), remove it from selected tags
-        elif selected_tag != "Select tag" and selected_tag in self.selected_tags:
-            self.selected_tags.remove(selected_tag)
-
-        # Update all dropdowns to reflect the available tags
-        self.update_all_dropdowns()
-
-        # Update the current dropdown's selected tag text to reflect the selection
-        combo.setCurrentText(selected_tag)
-
-        # After the changes are made, reset the flag and allow further updates
-        self._updating = False
-
-    def update_all_dropdowns(self):
-        """Update all dropdowns to reflect the available tags."""
-        # Rebuild the available tags list (no restrictions)
-        available_tags = self.tags  # Allow all tags, no exclusions
-
-        # Update each dropdown's available items
-        for combo in self.file_format_combos + self.folder_format_combos:
-            # Block signals temporarily to avoid recursion
-            combo.blockSignals(True)
-
-            # Clear the existing items and add the "Select tag" as the first item
-            # combo.clear()
-            # combo.addItem("Select tag")
-
-            # Add all available tags back to the dropdown
-            # combo.addItems(available_tags)
-
-            # Re-enable signals
-            combo.blockSignals(False)
 
     def preview_date_time_format(self):
         """Preview the date and time format based on selected options."""
