@@ -1,226 +1,327 @@
 import sys
-from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QLabel,
-    QComboBox, QLineEdit, QPushButton, QWidget, QVBoxLayout, QMessageBox, QMenu
-)
-from PyQt5.QtCore import Qt, QMimeData
-from PyQt5.QtGui import QDrag
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel
+from PyQt5.QtCore import Qt  # Import Qt for alignment
 
 
-# Define tags and delimiters
-tags = ["%username%", "%initials%", "%device%",
-        "%runname%", "%date%", "%time%", "%port%"]
-delimiters = {"Underscore": "_", "Hyphen": "-", "Space": " "}
-
-
-class DraggableButton(QPushButton):
-    def __init__(self, text, parent=None):
-        super().__init__(text, parent)
-        self.setAcceptDrops(True)
-        self.setFixedSize(150, 30)
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.show_context_menu)
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() != Qt.LeftButton:
-            return
-
-        mime_data = QMimeData()
-        mime_data.setText(self.text())
-
-        drag = QDrag(self)
-        drag.setMimeData(mime_data)
-        drag.exec_(Qt.MoveAction)
-
-    def show_context_menu(self, pos):
-        menu = QMenu(self)
-        remove_action = menu.addAction("Remove Tag")
-        action = menu.exec_(self.mapToGlobal(pos))
-        if action == remove_action:
-            self.parent().remove_widget(self)
-
-
-class DroppableArea(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAcceptDrops(True)
-        self.setFixedHeight(150)
-        self.setStyleSheet("border: 1px solid black;")
-        self.layout = QHBoxLayout(self)
-        self.layout.setAlignment(Qt.AlignLeft)
-        self.setLayout(self.layout)
-
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasText():
-            # Change background color on hover
-            self.setStyleSheet(
-                "background-color: lightblue; border: 1px solid black;")
-            event.accept()
-        else:
-            event.ignore()
-
-    def dragLeaveEvent(self, event):
-        # Reset the background color when dragging leaves the area
-        self.setStyleSheet("background-color: none; border: 1px solid black;")
-
-    def dropEvent(self, event):
-        # Reset the background color when the drop occurs
-        self.setStyleSheet("background-color: none; border: 1px solid black;")
-
-        # Check if the drop is outside the droppable area
-        if not self.geometry().contains(event.pos()):
-            return  # Do not accept the drop if it's inside the box
-
-        # Proceed if the dropped data contains text
-        if event.mimeData().hasText():
-            text = event.mimeData().text()
-
-            # Check if the tag is already in the Set Tag Order box
-            if any(widget.text() == text for widget in self.layout.children()):
-                return  # Don't add the tag if it's already in the box
-
-            # Add the tag button to the layout if it's not already present
-            self.add_button_to_layout(text)
-            event.accept()
-
-    def add_button_to_layout(self, text):
-        tag_button = DraggableButton(text)
-        tag_button.setParent(self)
-        tag_button.setAcceptDrops(True)
-        self.layout.addWidget(tag_button)
-
-    def remove_widget(self, widget):
-        self.layout.removeWidget(widget)
-        widget.deleteLater()
-
-    def dragMoveEvent(self, event):
-        # Detect which button is being dragged over
-        for widget in self.layout.children():
-            if widget.geometry().contains(event.pos()):
-                widget.setStyleSheet("border: 1px solid red;")
-            else:
-                widget.setStyleSheet("")
-
-        # Reorder the widget if dragged over another
-        current_dragged_widget = self.childAt(event.pos())
-        if current_dragged_widget:
-            dragged_widget_text = event.mimeData().text()
-
-            if current_dragged_widget and current_dragged_widget.text() != dragged_widget_text:
-                # Move widget to the new position
-                for i in range(self.layout.count()):
-                    widget = self.layout.itemAt(i).widget()
-                    if widget.text() == dragged_widget_text:
-                        # Remove the dragged widget from its original position
-                        self.layout.removeWidget(current_dragged_widget)
-                        # Insert it at the new position
-                        self.layout.insertWidget(i, current_dragged_widget)
-                        break
-
-            self.layout.update()
-
-
-class FileNamingUI(QMainWindow):
+class FileNamingUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("File Naming Preferences")
-        self.setGeometry(100, 100, 800, 400)
+        self.setWindowTitle('File Naming Preferences')
 
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
+        # Initialize the _updating flag to avoid recursion
+        self._updating = False  # Initialize the _updating flag
 
-        self.layout = QVBoxLayout()
+        # Set fixed size for the window (width, height) based on the desired size
+        # Adjust as needed for the window size in your screenshot
+        self.setFixedSize(600, 400)
 
-        self.tag_selection_layout = QHBoxLayout()
-        self.tag_label = QLabel("Available Tags:")
-        self.tag_selection_layout.addWidget(self.tag_label)
+        # Layout for the main window
+        main_layout = QVBoxLayout()
 
-        self.buttons = []
-        for tag in tags:
-            button = DraggableButton(tag)
-            self.buttons.append(button)
-            self.tag_selection_layout.addWidget(button)
+        # Tab widget to contain both tabs
+        tab_widget = QTabWidget()
 
-        self.layout.addLayout(self.tag_selection_layout)
+        # Date and time preferences tab
+        date_time_tab = QWidget()
+        date_time_layout = QVBoxLayout()
 
-        # Select Delimiter layout
-        self.delimiter_layout = QHBoxLayout()
-        self.delimiter_label = QLabel("Select Delimiter:")
-        self.delimiter_dropdown = QComboBox()
-        self.delimiter_dropdown.addItems(delimiters.keys())
-        self.delimiter_layout.addWidget(self.delimiter_label)
-        self.delimiter_layout.addWidget(self.delimiter_dropdown)
+        # Date format dropdown
+        self.date_format_combo = QComboBox()
+        self.date_format_combo.addItems(
+            ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"])
+        date_time_layout.addWidget(QLabel("Date Format:"))
+        date_time_layout.addWidget(self.date_format_combo)
 
-        self.layout.addLayout(self.delimiter_layout)
+        # Time format dropdown
+        self.time_format_combo = QComboBox()
+        self.time_format_combo.addItems(
+            ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"])
+        date_time_layout.addWidget(QLabel("Time Format:"))
+        date_time_layout.addWidget(self.time_format_combo)
 
-        # Set Tag Order layout
-        self.order_layout = QVBoxLayout()
-        self.order_label = QLabel("Set Tag Order (Drag and Drop Tags):")
-        self.order_layout.addWidget(self.order_label)
+        # Preview button for Date and Time format
+        self.preview_date_time_button = QPushButton(
+            "Preview Date & Time Format")
+        self.preview_date_time_button.clicked.connect(
+            self.preview_date_time_format)
+        self.preview_date_time_label = QLabel("Preview will appear here.")
+        date_time_layout.addWidget(self.preview_date_time_button)
+        date_time_layout.addWidget(self.preview_date_time_label)
 
-        self.droppable_area = DroppableArea()
-        self.order_layout.addWidget(self.droppable_area)
+        date_time_tab.setLayout(date_time_layout)
 
-        self.layout.addLayout(self.order_layout)
+        # File and folder format preferences tab
+        file_folder_tab = QWidget()
+        file_folder_layout = QVBoxLayout()
 
-        # Preview Layout
-        self.preview_layout = QVBoxLayout()
-        self.preview_label = QLabel("Preview File Name:")
-        self.preview_line = QLineEdit()
-        self.preview_line.setReadOnly(True)
-        self.preview_layout.addWidget(self.preview_label)
-        self.preview_layout.addWidget(self.preview_line)
+        # Label for file and folder format instructions
+        format_label = QLabel("Select tags for the file and folder format:")
+        file_folder_layout.addWidget(format_label)
 
-        self.layout.addLayout(self.preview_layout)
+        # Tags available
+        self.tags = ["%username%", "%initials%", "%device%",
+                     "%runname%", "%date%", "%time%", "%port%"]
 
-        # Buttons Layout
-        self.buttons_layout = QHBoxLayout()
-        self.preview_button = QPushButton("Generate Preview")
-        self.save_button = QPushButton("Save Preferences")
-        self.buttons_layout.addWidget(self.preview_button)
-        self.buttons_layout.addWidget(self.save_button)
+        # Initialize the list of selected tags
+        self.selected_tags = []
 
-        self.layout.addLayout(self.buttons_layout)
+        # File Format Section
+        file_format_label = QLabel("File Format:")
+        file_folder_layout.addWidget(file_format_label)
 
-        self.central_widget.setLayout(self.layout)
+        # Create a container to hold the file format dropdowns horizontally
+        self.file_format_container = QHBoxLayout()
+        self.file_format_combos = []  # List to keep track of file format combo boxes
+        self.add_dropdown(self.file_format_container)  # Add the first dropdown
+        file_folder_layout.addLayout(self.file_format_container)
 
-        # Signals
-        self.preview_button.clicked.connect(self.generate_preview)
-        self.save_button.clicked.connect(self.save_preferences)
+        # File Format Button and Delimiter
+        file_button_layout = QHBoxLayout()
+        file_button_layout.setAlignment(
+            Qt.AlignLeft)  # Align buttons to the left
+        add_file_button = QPushButton("+")
+        add_file_button.setFixedSize(40, 30)  # Set fixed size for the button
+        add_file_button.clicked.connect(
+            lambda: self.add_dropdown(self.file_format_container))
+        file_button_layout.addWidget(add_file_button)
 
-    def generate_preview(self):
-        tag_order = [self.droppable_area.layout.itemAt(i).widget().text()
-                     for i in range(self.droppable_area.layout.count())]
-        delimiter = delimiters[self.delimiter_dropdown.currentText()]
+        remove_file_button = QPushButton("-")
+        # Set fixed size for the button
+        remove_file_button.setFixedSize(40, 30)
+        remove_file_button.clicked.connect(
+            lambda: self.remove_last_dropdown(self.file_format_container))
+        file_button_layout.addWidget(remove_file_button)
 
-        if not tag_order:
-            QMessageBox.warning(
-                self, "No Tags in Order", "Please add at least one tag to the order to generate a preview.")
+        # Delimiter selection for file format
+        self.file_delimiter_combo = QComboBox()
+        # Set fixed size for the delimiter dropdown
+        self.file_delimiter_combo.setFixedSize(120, 30)
+        self.file_delimiter_combo.addItems([' ', '-', '_'])
+        file_button_layout.addWidget(self.file_delimiter_combo)
+
+        file_folder_layout.addLayout(file_button_layout)
+
+        # Folder Format Section
+        folder_format_label = QLabel("Folder Format:")
+        file_folder_layout.addWidget(folder_format_label)
+
+        # Create a container to hold the folder format dropdowns horizontally
+        self.folder_format_container = QHBoxLayout()
+        self.folder_format_combos = []  # List to keep track of folder format combo boxes
+        # Add the first dropdown
+        self.add_dropdown(self.folder_format_container)
+        file_folder_layout.addLayout(self.folder_format_container)
+
+        # Folder Format Button and Delimiter
+        folder_button_layout = QHBoxLayout()
+        folder_button_layout.setAlignment(
+            Qt.AlignLeft)  # Align buttons to the left
+        add_folder_button = QPushButton("+")
+        add_folder_button.setFixedSize(40, 30)  # Set fixed size for the button
+        add_folder_button.clicked.connect(
+            lambda: self.add_dropdown(self.folder_format_container))
+        folder_button_layout.addWidget(add_folder_button)
+
+        remove_folder_button = QPushButton("-")
+        # Set fixed size for the button
+        remove_folder_button.setFixedSize(40, 30)
+        remove_folder_button.clicked.connect(
+            lambda: self.remove_last_dropdown(self.folder_format_container))
+        folder_button_layout.addWidget(remove_folder_button)
+
+        # Delimiter selection for folder format
+        self.folder_delimiter_combo = QComboBox()
+        # Set fixed size for the delimiter dropdown
+        self.folder_delimiter_combo.setFixedSize(120, 30)
+        self.folder_delimiter_combo.addItems([' ', '-', '_'])
+        folder_button_layout.addWidget(self.folder_delimiter_combo)
+
+        file_folder_layout.addLayout(folder_button_layout)
+
+        # Preview button and label
+        self.preview_button = QPushButton("Preview Format")
+        self.preview_button.clicked.connect(self.preview_format)
+        self.preview_label = QLabel("Preview will appear here.")
+        file_folder_layout.addWidget(self.preview_button)
+        file_folder_layout.addWidget(self.preview_label)
+
+        file_folder_tab.setLayout(file_folder_layout)
+
+        # Add tabs to the tab widget
+        tab_widget.addTab(date_time_tab, "Date and Time Preferences")
+        tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
+
+        # Add the tab widget to the main layout
+        main_layout.addWidget(tab_widget)
+
+        # Submit button
+        submit_button = QPushButton('Save Preferences')
+        submit_button.clicked.connect(self.save_preferences)
+        main_layout.addWidget(submit_button)
+
+        # Set the layout for the window
+        self.setLayout(main_layout)
+
+    def add_dropdown(self, layout):
+        """Add a new dropdown to the layout."""
+        # Determine the correct layout based on the section (file or folder)
+        if layout == self.file_format_container:
+            combo_list = self.file_format_combos
+        else:
+            combo_list = self.folder_format_combos
+
+        if len(combo_list) < len(self.tags):  # Ensure no more than 7 dropdowns
+            combo = QComboBox()
+            # Add the "Select tag" placeholder as the first item
+            combo.addItem("Select tag")
+            # Filter out already selected tags from the available options
+            available_tags = [
+                tag for tag in self.tags if tag not in self.selected_tags]
+            combo.addItems(available_tags)
+
+            layout.addWidget(combo)
+            combo_list.append(combo)  # Add the combo to the respective list
+
+            # Connect the signal for when a tag is selected
+            combo.currentIndexChanged.connect(
+                lambda: self.update_selected_tags(combo))
+
+    def remove_last_dropdown(self, layout):
+        """Remove the last dropdown from the given layout, if there is more than one."""
+        # Ensure there's more than one dropdown in the layout before allowing removal
+        if layout == self.file_format_container and len(self.file_format_combos) > 1:
+            self.remove_dropdown(self.file_format_combos[-1], layout)
+        elif layout == self.folder_format_container and len(self.folder_format_combos) > 1:
+            self.remove_dropdown(self.folder_format_combos[-1], layout)
+
+    def remove_dropdown(self, combo, layout):
+        """Remove a dropdown and its corresponding remove button."""
+        # Determine the correct combo list based on the section (file or folder)
+        if layout == self.file_format_container:
+            combo_list = self.file_format_combos
+        else:
+            combo_list = self.folder_format_combos
+
+        # Remove the combo from the list and layout
+        if combo in combo_list:
+            combo_list.remove(combo)
+            layout.removeWidget(combo)
+
+            # Delete the combo box widget itself
+            combo.deleteLater()
+
+            # Update the selected tags list to allow the tag to be selected again
+            current_tag = combo.currentText()
+            if current_tag != "Select tag" and current_tag in self.selected_tags:
+                self.selected_tags.remove(current_tag)
+
+            # Update all dropdowns to reflect the available tags
+            self.update_all_dropdowns()
+
+    def update_selected_tags(self, combo):
+        """Update the selected tags list when a tag is selected and update other dropdowns."""
+
+        # Check if we're in the middle of an update to avoid recursion
+        if self._updating:
             return
 
-        preview_name = delimiter.join(tag_order)
-        self.preview_line.setText(preview_name)
+        selected_tag = combo.currentText()
+
+        # Avoid recursion: set the _updating flag to True while making the changes
+        self._updating = True
+
+        # If the tag is selected and it isn't already in the selected tags, add it
+        if selected_tag != "Select tag" and selected_tag not in self.selected_tags:
+            self.selected_tags.append(selected_tag)
+
+        # If the tag is being deselected (or changed), remove it from selected tags
+        elif selected_tag != "Select tag" and selected_tag in self.selected_tags:
+            self.selected_tags.remove(selected_tag)
+
+        # Update all dropdowns to reflect the available tags
+        self.update_all_dropdowns()
+
+        # Update the current dropdown's selected tag text to reflect the selection
+        combo.setCurrentText(selected_tag)
+
+        # After the changes are made, reset the flag and allow further updates
+        self._updating = False
+
+    def update_all_dropdowns(self):
+        """Update all dropdowns to reflect the available tags."""
+        # Rebuild the available tags list (no restrictions)
+        available_tags = self.tags  # Allow all tags, no exclusions
+
+        # Update each dropdown's available items
+        for combo in self.file_format_combos + self.folder_format_combos:
+            # Block signals temporarily to avoid recursion
+            combo.blockSignals(True)
+
+            # Clear the existing items and add the "Select tag" as the first item
+            # combo.clear()
+            # combo.addItem("Select tag")
+
+            # Add all available tags back to the dropdown
+            # combo.addItems(available_tags)
+
+            # Re-enable signals
+            combo.blockSignals(False)
+
+    def preview_date_time_format(self):
+        """Preview the date and time format based on selected options."""
+        date_format = self.date_format_combo.currentText()
+        time_format = self.time_format_combo.currentText()
+
+        # Example date and time string to preview
+        from datetime import datetime
+        current_datetime = datetime.now()
+
+        formatted_date = current_datetime.strftime(date_format)
+        formatted_time = current_datetime.strftime(time_format)
+
+        preview_text = f"Date: {formatted_date}\nTime: {formatted_time}"
+        self.preview_date_time_label.setText(preview_text)
+
+    def preview_format(self):
+        """Preview the file and folder format based on selected tags."""
+        file_format = [combo.currentText()
+                       for combo in self.file_format_combos]
+        folder_format = [combo.currentText()
+                         for combo in self.folder_format_combos]
+        file_delimiter = self.file_delimiter_combo.currentText()
+        folder_delimiter = self.folder_delimiter_combo.currentText()
+
+        # Generate a preview string based on the selected format
+        file_preview = file_delimiter.join(
+            [item for item in file_format if item != "Select tag"])
+        folder_preview = folder_delimiter.join(
+            [item for item in folder_format if item != "Select tag"])
+
+        preview_text = f"File Format Preview: {file_preview}\nFolder Format Preview: {folder_preview}"
+        self.preview_label.setText(preview_text)
 
     def save_preferences(self):
-        tag_order = [self.droppable_area.layout.itemAt(i).widget().text()
-                     for i in range(self.droppable_area.layout.count())]
-        delimiter = delimiters[self.delimiter_dropdown.currentText()]
+        date_format = self.date_format_combo.currentText()
+        time_format = self.time_format_combo.currentText()
 
-        if not tag_order:
-            QMessageBox.warning(
-                self, "No Tags in Order", "Please add at least one tag to the order to save preferences.")
-            return
+        # Get file and folder formats
+        file_format = [combo.currentText()
+                       for combo in self.file_format_combos]
+        folder_format = [combo.currentText()
+                         for combo in self.folder_format_combos]
+        file_delimiter = self.file_delimiter_combo.currentText()
+        folder_delimiter = self.folder_delimiter_combo.currentText()
 
-        preferences = {
-            "tags": tag_order,
-            "delimiter": delimiter
-        }
+        # Here we would process and save the user preferences (for example, printing to console)
+        print(f"Date Format: {date_format}")
+        print(f"Time Format: {time_format}")
+        print(f"File Format Options: {file_format}")
+        print(f"Folder Format Options: {folder_format}")
+        print(f"File Delimiter: {file_delimiter}")
+        print(f"Folder Delimiter: {folder_delimiter}")
 
-        QMessageBox.information(self, "Preferences Saved",
-                                f"Preferences saved successfully:\n{preferences}")
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = FileNamingUI()
     window.show()
