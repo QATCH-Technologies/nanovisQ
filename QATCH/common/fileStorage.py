@@ -520,16 +520,14 @@ class FileStorage:
     @staticmethod
     def DEV_write_default_preferences(save_path: str):
         import json
-        default_preferences = {
-            "folder_format": "%device%",
-            "filename_format": "%runname%",
-            "folder_format_delimiter": "_",
-            "filename_format_delimiter": "_",
-            "date_format": "MM-DD-YYYY",
-            "time_format": "HH:mm:ss",
-        }
         with open(save_path, "w") as f:
-            json.dump(default_preferences, f, indent=4)
+            json.dump(Constants.default_preferences, f, indent=4)
+
+    @staticmethod
+    def DEV_write_preferences(save_path: str, preferences: dict):
+        import json
+        with open(save_path, "w") as f:
+            json.dump(preferences, f, indent=4)
 
     ###########################################################################
     # Populate Device Path to insert device folder name in file path

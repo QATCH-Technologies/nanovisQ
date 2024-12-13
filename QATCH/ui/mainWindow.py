@@ -8,6 +8,7 @@ from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
 from QATCH.ui.export import Ui_Export
 from QATCH.ui.configure_data import UIConfigureData
+from QATCH.ui.expr_ui import PreferencesUI
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.fileManager import FileManager
@@ -170,7 +171,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.ui1 = Ui_Controls()
         self.ui1.setupUi(self)
         self.ui_export = Ui_Export()
-        self.ui_configure_data = UIConfigureData()
+        # self.ui_configure_data = UIConfigureData()
+        self.ui_preferences = PreferencesUI()
         self.current_timer = QtCore.QTimer()
         self.current_timer.timeout.connect(self.double_toggle_plots)
         UserProfiles().session_end()
@@ -181,7 +183,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[0].addAction('&Analyze Data', self.analyze_data)
         self.menubar[0].addAction('&Import Data', self.import_data)
         self.menubar[0].addAction('&Export Data', self.export_data)
-        self.menubar[0].addAction('&Configure Data', self.configure_data)
+        # self.menubar[0].addAction('&Configure Data', self.configure_data)
+        self.menubar[0].addAction('&Preferences', self.preferences)
         self.menubar[0].addAction('&Find Devices', self.scan_subnets)
         self.menubar[0].addAction('E&xit', self.close)
         self.menubar.append(target.menuBar().addMenu("&Users"))
@@ -254,8 +257,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def export_data(self):
         self.ui_export.showNormal(1)
 
-    def configure_data(self):
-        self.ui_configure_data.show()
+    # def configure_data(self):
+    #     self.ui_configure_data.show()
+
+    def preferences(self):
+        self.ui_preferences.show()
 
     def scan_subnets(self):
         Discovery().scanSubnets()

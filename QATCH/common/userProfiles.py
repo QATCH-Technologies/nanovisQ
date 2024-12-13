@@ -1528,6 +1528,10 @@ class UserPreferences:
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_user_preferences_path())
 
+    def write_user_preferences(self):
+        FileStorage.DEV_write_preferences(
+            save_path=self._get_user_preferences_path(), preferences=self.get_preferences())
+
     def get_folder_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
             pattern=self._get_folder_format_pattern(), delimiter=self._get_folder_delimiter(), runname=runname, device_id=device_id, port_id=port_id)
@@ -1588,8 +1592,21 @@ class UserPreferences:
 
     def _on_date(self) -> str:
         from datetime import datetime
-        date = Constants.date_formats.get(self._get_date_format())
-        return datetime.now().strftime(date)
+        format_mapping = {
+            "YYYY": "%Y",  # Year with century as a decimal number
+            "MM": "%m",    # Month as a zero-padded decimal number
+            "DD": "%d",    # Day of the month as a zero-padded decimal number
+            # Hour (24-hour clock) as a zero-padded decimal number
+            "hh": "%H",
+            "mm": "%M",    # Minute as a zero-padded decimal number
+            "ss": "%S",    # Second as a zero-padded decimal number
+            "A": "%p",     # AM/PM (12-hour clock)
+        }
+        date_format = self._get_date_format()
+        for key, value in format_mapping.items():
+            date_format = date_format.replace(key, value)
+
+        return datetime.now().strftime(date_format)
 
     def _on_time(self) -> str:
         return QDateTime.currentDateTime().toString(self._get_time_format())
@@ -1602,16 +1619,16 @@ class UserPreferences:
     def _set_user_session(self, user_session_key: str) -> None:
         self._user_session = user_session_key
 
-    def _set_folder_format_pattern(self, folder_format_pattern: list) -> None:
-        for delimiter in Constants.path_delimiters.values():
+    def _set_folder_format_pattern(self, folder_format_pattern: str) -> None:
+        for delimiter in Constants.path_delimiters:
             folder_format_pattern = folder_format_pattern.replace(
                 delimiter, '|')
         split_parts = folder_format_pattern.split('|')
         tokens = [part for part in split_parts if '%' in part]
         self._folder_format_pattern = tokens
 
-    def _set_file_format_pattern(self, file_format_pattern: list) -> None:
-        for delimiter in Constants.path_delimiters.values():
+    def _set_file_format_pattern(self, file_format_pattern: str) -> None:
+        for delimiter in Constants.path_delimiters:
             file_format_pattern = file_format_pattern.replace(
                 delimiter, '|')
         split_parts = file_format_pattern.split('|')
@@ -1640,11 +1657,23 @@ class UserPreferences:
     def _get_user_session(self) -> UserProfiles:
         return self._user_session
 
-    def _get_folder_format_pattern(self) -> list:
-        return self._folder_format_pattern
+    def _get_folder_format_pattern(self) -> str:
+        folder_format = ""
+        for i, tok in enumerate(self._folder_format_pattern):
+            folder_format = folder_format + tok
+            if i < len(self._folder_format_pattern) - 1:
+                folder_format = folder_format + self._get_folder_delimiter()
 
-    def _get_file_format_pattern(self) -> list:
-        return self._file_format_pattern
+        return folder_format
+
+    def _get_file_format_pattern(self) -> str:
+        file_format = ""
+        for i, tok in enumerate(self._file_format_pattern):
+            file_format = file_format + tok
+            if i < len(self._file_format_pattern) - 1:
+                file_format = file_format + self._get_file_delimiter()
+
+        return file_format
 
     def _get_folder_delimiter(self) -> str:
         return self._folder_delimiter

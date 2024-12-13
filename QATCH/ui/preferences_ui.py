@@ -1,9 +1,16 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel
-from PyQt5.QtCore import Qt  # Import Qt for alignment
+from QATCH.common.logger import Logger as Log
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.core.constants import Constants
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox
+from PyQt5.QtCore import Qt
+
+TAG = '[Preferences]'
+SELECT_TAG_PROMPT = '-- Select Tag --'
 
 
-class FileNamingUI(QWidget):
+class PreferencesUI(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('File Naming Preferences')
@@ -31,7 +38,7 @@ class FileNamingUI(QWidget):
         date_format_layout.addWidget(date_format_label)
         self.date_format_combo = QComboBox()
         self.date_format_combo.addItems(
-            ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"])
+            Constants.date_formats)
         date_format_layout.addWidget(self.date_format_combo)
         date_time_layout.addLayout(date_format_layout)
 
@@ -41,7 +48,7 @@ class FileNamingUI(QWidget):
         time_format_layout.addWidget(time_format_label)
         self.time_format_combo = QComboBox()
         self.time_format_combo.addItems(
-            ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"])
+            Constants.time_formats)
         time_format_layout.addWidget(self.time_format_combo)
         date_time_layout.addLayout(time_format_layout)
 
@@ -67,8 +74,7 @@ class FileNamingUI(QWidget):
         file_folder_layout.addWidget(format_label)
 
         # Tags available
-        self.tags = ["%username%", "%initials%", "%device%",
-                     "%runname%", "%date%", "%time%", "%port%"]
+        self.tags = Constants.valid_tags
 
         # Initialize the list of selected tags
         self.selected_tags = []
@@ -104,7 +110,7 @@ class FileNamingUI(QWidget):
         self.file_delimiter_combo = QComboBox()
         # Set fixed size for the delimiter dropdown
         self.file_delimiter_combo.setFixedSize(40, 30)
-        self.file_delimiter_combo.addItems([' ', '-', '_'])
+        self.file_delimiter_combo.addItems(Constants.path_delimiters)
         file_button_layout.addWidget(self.file_delimiter_combo)
 
         file_folder_layout.addLayout(file_button_layout)
@@ -142,7 +148,7 @@ class FileNamingUI(QWidget):
         # Set fixed size for the delimiter dropdown
         self.folder_delimiter_combo.setFixedSize(40, 30)
         self.folder_delimiter_combo.addItems(
-            [' ', '-', '_'])
+            Constants.path_delimiters)
         folder_button_layout.addWidget(self.folder_delimiter_combo)
 
         file_folder_layout.addLayout(folder_button_layout)
@@ -162,7 +168,15 @@ class FileNamingUI(QWidget):
 
         # Add the tab widget to the main layout
         main_layout.addWidget(tab_widget)
+        # Label to display status of global preferences
+        self.global_pref_label = QLabel("Use global preferences: OFF")
+        main_layout.addWidget(self.global_pref_label)
 
+        # Toggle checkbox for global preferences
+        self.global_pref_toggle = QCheckBox("Use global preferences", self)
+        self.global_pref_toggle.stateChanged.connect(
+            self.toggle_global_preferences)
+        main_layout.addWidget(self.global_pref_toggle)
         # Submit button
         submit_button = QPushButton('Save Preferences')
         submit_button.clicked.connect(self.save_preferences)
@@ -182,7 +196,7 @@ class FileNamingUI(QWidget):
         if len(combo_list) < len(self.tags):  # Ensure no more than 7 dropdowns
             combo = QComboBox()
             # Add the "Select tag" placeholder as the first item
-            combo.addItem("Select tag")
+            combo.addItem(SELECT_TAG_PROMPT)
             # Filter out already selected tags from the available options
             available_tags = [
                 tag for tag in self.tags if tag not in self.selected_tags]
@@ -217,8 +231,18 @@ class FileNamingUI(QWidget):
 
             # Update the selected tags list to allow the tag to be selected again
             current_tag = combo.currentText()
-            if current_tag != "Select tag" and current_tag in self.selected_tags:
+            if current_tag != SELECT_TAG_PROMPT and current_tag in self.selected_tags:
                 self.selected_tags.remove(current_tag)
+
+    def toggle_global_preferences(self):
+        if self.global_pref_toggle.isChecked():
+            self.global_pref_label.setText("Use global preferences: ON")
+            # Load and apply global preferences here
+            self.load_global_preferences()
+        else:
+            self.global_pref_label.setText("Use global preferences: OFF")
+            # Allow user-defined preferences
+            self.load_user_preferences()
 
     def preview_date_time_format(self):
         """Preview the date and time format based on selected options."""
@@ -235,6 +259,14 @@ class FileNamingUI(QWidget):
         preview_text = f"Date: {formatted_date}\nTime: {formatted_time}"
         self.preview_date_time_label.setText(preview_text)
 
+    def load_global_preferences(self):
+        UserProfiles.user_preferences.set_use_global(use_global=True)
+        UserProfiles.user_preferences.set_preferences()
+
+    def load_user_preferences(self):
+        UserProfiles.user_preferences.set_use_global(use_global=False)
+        UserProfiles.user_preferences.set_preferences()
+
     def preview_format(self):
         """Preview the file and folder format based on selected tags."""
         file_format = [combo.currentText()
@@ -243,12 +275,15 @@ class FileNamingUI(QWidget):
                          for combo in self.folder_format_combos]
         file_delimiter = self.file_delimiter_combo.currentText()
         folder_delimiter = self.folder_delimiter_combo.currentText()
-
+        device_id = FileStorage.DEV_get_active(0)
+        if device_id == "":
+            device_id = "12345678"
+        port_id = 1
         # Generate a preview string based on the selected format
-        file_preview = file_delimiter.join(
-            [item for item in file_format if item != "Select tag"])
-        folder_preview = folder_delimiter.join(
-            [item for item in folder_format if item != "Select tag"])
+        file_preview = UserProfiles.user_preferences._build_save_path(
+            file_format, "Runname", file_delimiter, device_id, port_id)
+        folder_preview = UserProfiles.user_preferences._build_save_path(
+            folder_format, "Runname", folder_delimiter, device_id, port_id)
 
         preview_text = f"File Format Preview: {file_preview}\nFolder Format Preview: {folder_preview}"
         self.preview_label.setText(preview_text)
@@ -265,17 +300,32 @@ class FileNamingUI(QWidget):
         file_delimiter = self.file_delimiter_combo.currentText()
         folder_delimiter = self.folder_delimiter_combo.currentText()
 
-        # Here we would process and save the user preferences (for example, printing to console)
-        print(f"Date Format: {date_format}")
-        print(f"Time Format: {time_format}")
-        print(f"File Format Options: {file_format}")
-        print(f"Folder Format Options: {folder_format}")
-        print(f"File Delimiter: {file_delimiter}")
-        print(f"Folder Delimiter: {folder_delimiter}")
+        file_format_pattern = ""
+        folder_format_pattern = ""
+        for i, tok in enumerate(file_format):
+            file_format_pattern = file_format_pattern + tok
+            if i < len(file_format) - 1:
+                file_format_pattern = file_format_pattern + file_delimiter
+        for i, tok in enumerate(folder_format):
+            folder_format_pattern = folder_format_pattern + tok
+            if i < len(folder_format) - 1:
+                folder_format_pattern = folder_format_pattern + folder_delimiter
+
+        UserProfiles.user_preferences._set_date_format(date_format=date_format)
+        UserProfiles.user_preferences._set_time_format(time_format=time_format)
+        UserProfiles.user_preferences._set_file_delimiter(
+            file_delimiter=file_delimiter)
+        UserProfiles.user_preferences._set_folder_delimiter(
+            folder_delimiter=folder_delimiter)
+        UserProfiles.user_preferences._set_file_format_pattern(
+            file_format_pattern=file_format_pattern)
+        UserProfiles.user_preferences._set_folder_format_pattern(
+            folder_format_pattern=folder_format_pattern)
+        UserProfiles.user_preferences.write_user_preferences()
 
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    window = FileNamingUI()
+    window = PreferencesUI()
     window.show()
     sys.exit(app.exec_())
