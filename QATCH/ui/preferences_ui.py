@@ -181,7 +181,9 @@ class PreferencesUI(QWidget):
         submit_button = QPushButton('Save Preferences')
         submit_button.clicked.connect(self.save_preferences)
         main_layout.addWidget(submit_button)
-
+        reset_button = QPushButton('Reset to Default Preferences')
+        reset_button.clicked.connect(self.reset_to_default_preferences)
+        main_layout.addWidget(reset_button)
         # Set the layout for the window
         self.setLayout(main_layout)
 
@@ -261,11 +263,68 @@ class PreferencesUI(QWidget):
 
     def load_global_preferences(self):
         UserProfiles.user_preferences.set_use_global(use_global=True)
+        global_preferences = UserProfiles.user_preferences.load_global_preferences()
         UserProfiles.user_preferences.set_preferences()
+        # Reset the date and time format dropdowns based on the dictionary
+        self.date_format_combo.setCurrentText(
+            global_preferences["date_format"])
+        self.time_format_combo.setCurrentText(
+            global_preferences["time_format"])
+
+        # Reset file format
+        file_format = global_preferences["filename_format"].split(
+            global_preferences["filename_format_delimiter"])
+        self.set_file_format_dropdowns(
+            file_format, global_preferences["filename_format_delimiter"])
+
+        # Reset folder format
+        folder_format = global_preferences["folder_format"].split(
+            global_preferences["folder_format_delimiter"])
+        self.set_folder_format_dropdowns(
+            folder_format, Constants.default_preferences["folder_format_delimiter"])
+
+        # Reset delimiters
+        self.file_delimiter_combo.setCurrentText(
+            global_preferences["filename_format_delimiter"])
+        self.folder_delimiter_combo.setCurrentText(
+            global_preferences["folder_format_delimiter"])
+
+        # Reset global preferences toggle
+        self.global_pref_toggle.setChecked(True)
+        self.global_pref_label.setText("Use global preferences: ON")
 
     def load_user_preferences(self):
         UserProfiles.user_preferences.set_use_global(use_global=False)
+        user_preferences = UserProfiles.user_preferences.load_user_preferences()
         UserProfiles.user_preferences.set_preferences()
+
+        # Reset the date and time format dropdowns based on the dictionary
+        self.date_format_combo.setCurrentText(
+            user_preferences["date_format"])
+        self.time_format_combo.setCurrentText(
+            user_preferences["time_format"])
+
+        # Reset file format
+        file_format = user_preferences["filename_format"].split(
+            user_preferences["filename_format_delimiter"])
+        self.set_file_format_dropdowns(
+            file_format, user_preferences["filename_format_delimiter"])
+
+        # Reset folder format
+        folder_format = user_preferences["folder_format"].split(
+            user_preferences["folder_format_delimiter"])
+        self.set_folder_format_dropdowns(
+            folder_format, Constants.default_preferences["folder_format_delimiter"])
+
+        # Reset delimiters
+        self.file_delimiter_combo.setCurrentText(
+            user_preferences["filename_format_delimiter"])
+        self.folder_delimiter_combo.setCurrentText(
+            user_preferences["folder_format_delimiter"])
+
+        # Reset global preferences toggle
+        self.global_pref_toggle.setChecked(False)
+        self.global_pref_label.setText("Use global preferences: OFF")
 
     def preview_format(self):
         """Preview the file and folder format based on selected tags."""
@@ -323,9 +382,47 @@ class PreferencesUI(QWidget):
             folder_format_pattern=folder_format_pattern)
         UserProfiles.user_preferences.write_user_preferences()
 
+    def reset_to_default_preferences(self):
+        """Reset preferences to their default values based on a dictionary."""
 
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    window = PreferencesUI()
-    window.show()
-    sys.exit(app.exec_())
+        # Reset the date and time format dropdowns based on the dictionary
+        self.date_format_combo.setCurrentText(
+            Constants.default_preferences["date_format"])
+        self.time_format_combo.setCurrentText(
+            Constants.default_preferences["time_format"])
+
+        # Reset file format
+        file_format = Constants.default_preferences["filename_format"].split(
+            Constants.default_preferences["filename_format_delimiter"])
+        self.set_file_format_dropdowns(
+            file_format, Constants.default_preferences["filename_format_delimiter"])
+
+        # Reset folder format
+        folder_format = Constants.default_preferences["folder_format"].split(
+            Constants.default_preferences["folder_format_delimiter"])
+        self.set_folder_format_dropdowns(
+            folder_format, Constants.default_preferences["folder_format_delimiter"])
+
+        # Reset delimiters
+        self.file_delimiter_combo.setCurrentText(
+            Constants.default_preferences["filename_format_delimiter"])
+        self.folder_delimiter_combo.setCurrentText(
+            Constants.default_preferences["folder_format_delimiter"])
+
+    def set_file_format_dropdowns(self, file_format, delimiter):
+        """Sets the file format dropdowns based on the provided file format list."""
+        for i, format_item in enumerate(file_format):
+            if i >= len(self.file_format_combos):
+                self.add_dropdown(self.file_format_container)
+            self.file_format_combos[i].setCurrentText(format_item)
+        # Ensure delimiters are correctly set
+        self.file_delimiter_combo.setCurrentText(delimiter)
+
+    def set_folder_format_dropdowns(self, folder_format, delimiter):
+        """Sets the folder format dropdowns based on the provided folder format list."""
+        for i, format_item in enumerate(folder_format):
+            if i >= len(self.folder_format_combos):
+                self.add_dropdown(self.folder_format_container)
+            self.folder_format_combos[i].setCurrentText(format_item)
+        # Ensure delimiters are correctly set
+        self.folder_delimiter_combo.setCurrentText(delimiter)

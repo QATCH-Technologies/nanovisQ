@@ -8,7 +8,7 @@ from QATCH.ui.popUp import PopUp, QueryComboBox
 from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
 from QATCH.ui.export import Ui_Export
 from QATCH.ui.configure_data import UIConfigureData
-from QATCH.ui.expr_ui import PreferencesUI
+from QATCH.ui.preferences_ui import PreferencesUI
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.fileManager import FileManager

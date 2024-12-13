@@ -529,6 +529,14 @@ class FileStorage:
         with open(save_path, "w") as f:
             json.dump(preferences, f, indent=4)
 
+    @staticmethod
+    def DEV_load_preferences(load_path: str) -> dict:
+        import json
+        preferences = {}
+        with open(load_path, "r") as f:
+            preferences = json.load(f)
+        return preferences
+
     ###########################################################################
     # Populate Device Path to insert device folder name in file path
     ###########################################################################
