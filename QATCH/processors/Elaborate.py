@@ -346,7 +346,6 @@ class ElaborateProcess(multiprocessing.Process):
         )
 
 # TODO AJR: Consider moving file writing operations to a separate thread
-
         if self._export:
             # Storing acquired sweeps
             filename = "{}_{}_{}".format(
