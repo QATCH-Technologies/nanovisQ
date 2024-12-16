@@ -3,8 +3,8 @@ from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox
+from PyQt5.QtCore import Qt, QTimer
 
 TAG = '[Preferences]'
 SELECT_TAG_PROMPT = '-- Select Tag --'
@@ -26,7 +26,7 @@ class PreferencesUI(QWidget):
         main_layout = QVBoxLayout()
 
         # Tab widget to contain both tabs
-        tab_widget = QTabWidget()
+        self.tab_widget = QTabWidget()
 
         # Date and time preferences tab
         date_time_tab = QWidget()
@@ -163,11 +163,13 @@ class PreferencesUI(QWidget):
         file_folder_tab.setLayout(file_folder_layout)
 
         # Add tabs to the tab widget
-        tab_widget.addTab(date_time_tab, "Date and Time Preferences")
-        tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
+        self.tab_widget.addTab(date_time_tab, "Date and Time Preferences")
+        self.tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
+        # Connect tab change signal to handler
+        self.tab_widget.currentChanged.connect(self.handle_tab_change)
 
         # Add the tab widget to the main layout
-        main_layout.addWidget(tab_widget)
+        main_layout.addWidget(self.tab_widget)
         # Label to display status of global preferences
         self.global_pref_label = QLabel("Use global preferences: OFF")
         main_layout.addWidget(self.global_pref_label)
@@ -186,6 +188,15 @@ class PreferencesUI(QWidget):
         main_layout.addWidget(reset_button)
         # Set the layout for the window
         self.setLayout(main_layout)
+
+    def handle_tab_change(self, index):
+        """Handle tab change and load preferences if needed."""
+        # Check if the file and folder preferences tab is selected
+        if self.tab_widget.tabText(index) == "File and Folder Preferences":
+            if self.global_pref_toggle.isChecked():
+                self.load_global_preferences()
+            else:
+                self.load_user_preferences()
 
     def add_dropdown(self, layout):
         """Add a new dropdown to the layout."""
@@ -348,6 +359,7 @@ class PreferencesUI(QWidget):
         self.preview_label.setText(preview_text)
 
     def save_preferences(self):
+
         date_format = self.date_format_combo.currentText()
         time_format = self.time_format_combo.currentText()
 
@@ -370,6 +382,7 @@ class PreferencesUI(QWidget):
             if i < len(folder_format) - 1:
                 folder_format_pattern = folder_format_pattern + folder_delimiter
 
+        # Save preferences
         UserProfiles.user_preferences._set_date_format(date_format=date_format)
         UserProfiles.user_preferences._set_time_format(time_format=time_format)
         UserProfiles.user_preferences._set_file_delimiter(
@@ -381,6 +394,14 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences._set_folder_format_pattern(
             folder_format_pattern=folder_format_pattern)
         UserProfiles.user_preferences.write_user_preferences()
+
+        # Show a popup window to confirm preferences were saved
+        msg_box = QMessageBox()
+        msg_box.setIcon(QMessageBox.Information)
+        msg_box.setWindowTitle("Preferences Saved")
+        msg_box.setText("Your preferences have been successfully saved.")
+        msg_box.setStandardButtons(QMessageBox.Ok)
+        msg_box.exec_()
 
     def reset_to_default_preferences(self):
         """Reset preferences to their default values based on a dictionary."""
@@ -411,6 +432,10 @@ class PreferencesUI(QWidget):
 
     def set_file_format_dropdowns(self, file_format, delimiter):
         """Sets the file format dropdowns based on the provided file format list."""
+        # Remove all existing dropdowns
+        for combo in self.file_format_combos:
+            combo.deleteLater()
+        self.file_format_combos.clear()
         for i, format_item in enumerate(file_format):
             if i >= len(self.file_format_combos):
                 self.add_dropdown(self.file_format_container)
@@ -420,6 +445,9 @@ class PreferencesUI(QWidget):
 
     def set_folder_format_dropdowns(self, folder_format, delimiter):
         """Sets the folder format dropdowns based on the provided folder format list."""
+        for combo in self.folder_format_combos:
+            combo.deleteLater()
+        self.folder_format_combos.clear()
         for i, format_item in enumerate(folder_format):
             if i >= len(self.folder_format_combos):
                 self.add_dropdown(self.folder_format_container)

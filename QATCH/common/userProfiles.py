@@ -1521,10 +1521,10 @@ class UserPreferences:
         return preferences_dict
 
     def load_user_preferences(self) -> dict:
-        FileStorage.DEV_load_preferences(self._get_user_preferences_path())
+        return FileStorage.DEV_load_preferences(self._get_user_preferences_path())
 
     def load_global_preferences(self) -> dict:
-        FileStorage.DEV_load_preferences(self._get_global_preferences_path())
+        return FileStorage.DEV_load_preferences(self._get_global_preferences_path())
 
     def reset_global_preferences(self):
         FileStorage.DEV_write_default_preferences(

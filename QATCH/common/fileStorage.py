@@ -532,11 +532,17 @@ class FileStorage:
     @staticmethod
     def DEV_load_preferences(load_path: str) -> dict:
         import json
-        preferences = {}
-        with open(load_path, "r") as f:
-            preferences = json.load(f)
-        return preferences
-
+        try:
+            with open(load_path, 'r') as file:
+                preferences = json.load(file)
+                return preferences
+        except FileNotFoundError:
+            print(f"Error: The file {load_path} was not found.")
+        except json.JSONDecodeError:
+            print(f"Error: The file {load_path} is not a valid JSON.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        return None
     ###########################################################################
     # Populate Device Path to insert device folder name in file path
     ###########################################################################
