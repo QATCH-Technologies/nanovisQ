@@ -248,14 +248,61 @@ class PreferencesUI(QWidget):
                 self.selected_tags.remove(current_tag)
 
     def toggle_global_preferences(self):
-        if self.global_pref_toggle.isChecked():
-            self.global_pref_label.setText("Use global preferences: ON")
-            # Load and apply global preferences here
+        is_checked = self.global_pref_toggle.isChecked()
+
+        # Update the label
+        self.global_pref_label.setText(
+            "Use global preferences: ON" if is_checked else "Use global preferences: OFF")
+
+        # Disable/Enable Date and Time dropdowns
+        self.date_format_combo.setEnabled(not is_checked)
+        self.time_format_combo.setEnabled(not is_checked)
+
+        # Disable/Enable File Format Section
+        self.file_delimiter_combo.setEnabled(not is_checked)
+        for combo in self.file_format_combos:
+            # Disable all file format dropdowns
+            combo.setEnabled(not is_checked)
+
+        # Disable/Enable Folder Format Section
+        self.folder_delimiter_combo.setEnabled(not is_checked)
+        for combo in self.folder_format_combos:
+            # Disable all folder format dropdowns
+            combo.setEnabled(not is_checked)
+
+        # Explicitly disable add/remove buttons
+        self.disable_add_remove_buttons(is_checked)
+
+        # Ensure all dropdowns in the layouts are disabled dynamically
+        self.disable_all_combos_in_layout(
+            self.file_format_container, not is_checked)
+        self.disable_all_combos_in_layout(
+            self.folder_format_container, not is_checked)
+
+        # Load preferences
+        if is_checked:
             self.load_global_preferences()
         else:
-            self.global_pref_label.setText("Use global preferences: OFF")
-            # Allow user-defined preferences
             self.load_user_preferences()
+
+    def disable_add_remove_buttons(self, disable):
+        """Disable add and remove buttons for file and folder format layouts."""
+        for button in self.findChildren(QPushButton):
+            if button.text() in ["+", "-"]:
+                button.setEnabled(not disable)
+
+    def disable_all_combos_in_layout(self, layout, enable):
+        """Disable all QComboBox widgets in a layout."""
+        for i in range(layout.count()):
+            item = layout.itemAt(i)
+            if item:
+                widget = item.widget()
+                if isinstance(widget, QComboBox):
+                    print("disabiling combo boxes.")
+                    widget.setEnabled(enable)
+                elif isinstance(widget, QWidget) and widget.layout():
+                    # Recursively disable combo boxes in nested layouts
+                    self.disable_all_combos_in_layout(widget.layout(), enable)
 
     def preview_date_time_format(self):
         """Preview the date and time format based on selected options."""
@@ -299,7 +346,6 @@ class PreferencesUI(QWidget):
             global_preferences["filename_format_delimiter"])
         self.folder_delimiter_combo.setCurrentText(
             global_preferences["folder_format_delimiter"])
-
         # Reset global preferences toggle
         self.global_pref_toggle.setChecked(True)
         self.global_pref_label.setText("Use global preferences: ON")
