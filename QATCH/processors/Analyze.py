@@ -1020,7 +1020,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.textEdited.connect(self.sign_edit)
         self.sign.textEdited.connect(self.text_transform)
         self.btn_Info.pressed.connect(self.getRunInfo)
-        self.graphWidget.scene().sigMouseClicked.connect(self.summaryClick)
+        # self.graphWidget.scene().sigMouseClicked.connect(self.summaryClick)
         self.graphWidget1.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget2.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget3.scene().sigMouseClicked.connect(self.onClick)
@@ -1029,6 +1029,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.askForPOIs = True
 
+        '''
         # create main graph summary point selection tool (initially hidden)
         self.AI_SelectTool_At = 0
         self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
@@ -1110,6 +1111,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.ai_prev.setVisible(False)
         self.ai_next.setVisible(False)
+        '''
 
         self.progressValue.connect(
             lambda value: self.progressBar.setValue(value))
@@ -1118,8 +1120,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
 
-    def hideSelectTool(self, event):
-        self.AI_SelectTool_Frame.hide()
+    # def hideSelectTool(self, event):
+    #     self.AI_SelectTool_Frame.hide()
 
     def get_results_split_auto_sizes(self, setMinimumWidth=True):
         tableWidget = self.results_split.widget(0)
@@ -1786,6 +1788,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # will not fire 'textEdited' signal again
             self.sign.setText(text.upper())
 
+    '''
     def AI_Prev_Guess(self):
         min_val = 0 if not self.AI_has_starting_values else -1
         cur_val = self.AI_Guess_Idxs[self.AI_SelectTool_At]
@@ -1956,6 +1959,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.ai_backBtn.setEnabled(enable_back)
         # enable_next = (self.AI_SelectTool_At < 5)
         # self.ai_nextBtn.setEnabled(enable_next)
+    '''
 
     def onClick(self, event):
         ax1 = self.graphWidget1
@@ -2236,10 +2240,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("User declined load action. There are unsaved changes.")
             return
 
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(
-                False
-            )  # require re-click to show popup tool incorrect position
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(
+        #         False
+        #     )  # require re-click to show popup tool incorrect position
 
         try:
             if not self.QModel_modules_loaded:
@@ -2422,7 +2426,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if px in range(len(self.poi_markers)):
             tt1 = self.poi_markers[px].value()
         else:
-            tt1 = self.poi_markers[self.AI_SelectTool_At].value()
+            # self.poi_markers[self.AI_SelectTool_At].value()
+            tt1 = self.xs[-1]
         tx1 = next(x for x, y in enumerate(self.xs) if y >= tt1)
         if tx1 - ws < 0:
             clipped = True
@@ -2656,7 +2661,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(True)
                 marker.setPen(color="blue")
                 marker.addMarker("<|>")
-            self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
+            # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
         elif self.stateStep in range(1, 7):
             if self.stateStep + 2 == 3:  # stateStep 1 = Step 3 of 8
                 # sort poi_markers by time, in case the user messed up the order moving things around manually in Step 2
@@ -2957,10 +2962,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.gstars1.setData(pos=pos1)
             self.gstars2.setData(pos=pos2)
             self.gstars3.setData(pos=pos3)
-            # Show AI Tool on current point marker after everything settles:
-            QtCore.QTimer.singleShot(
-                1, lambda: self.summaryAt(max(0, min(5, self.stateStep - 1)))
-            )
+            # # Show AI Tool on current point marker after everything settles:
+            # QtCore.QTimer.singleShot(
+            #     1, lambda: self.summaryAt(max(0, min(5, self.stateStep - 1)))
+            # )
         elif self.stateStep == 7:
             self._update_progress_value(
                 100,
@@ -2996,7 +3001,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             for i, marker in enumerate(self.poi_markers):
                 Log.d(f"Marker {i} = ", marker.value())
             self.btn_Next.setText("Analyze")
-            self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
+            # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
         else:
             self.stateStep = 8
             if self.unsaved_changes:
@@ -3114,8 +3119,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 step_num = i + 1
                 break
 
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(False)
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(False)
 
         if self.allow_modify == False and step_num < 9:
             self.tool_Modify.setChecked(True)
@@ -3319,7 +3324,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"Marker {marker_idx} has been moved by the user! Flagged for model tuning."
             )
         # clear flag if it moved from AI directive; only set on manual movement
-        self.moved_markers[marker_idx] = True if not self.AI_moving_marker else False
+        # if not self.AI_moving_marker else False
+        self.moved_markers[marker_idx] = True
         self.detect_change()
         # setXRange for 'ax' all the time on marker move to keep markers in view (except for Step 2)
         if self.stateStep > 0:
@@ -3392,12 +3398,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.star1.setData(pos=pos1)
             self.star2.setData(pos=pos2)
             self.star3.setData(pos=pos3)
-        if (
-            self.moved_markers[self.AI_SelectTool_At]
-            and self.AI_SelectTool_Frame.isVisible()
-        ):
-            # move AI Tool to new marker location
-            self.summaryAt(self.AI_SelectTool_At)
+        # if (
+        #     self.moved_markers[self.AI_SelectTool_At]
+        #     and self.AI_SelectTool_Frame.isVisible()
+        # ):
+        #     # move AI Tool to new marker location
+        #     self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
         """
@@ -4317,8 +4323,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.data_freq = resonance_frequency
         self.data_diss = dissipation
 
-        self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
-        self.AI_has_starting_values = False
+        # self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
+        # self.AI_has_starting_values = False
         if (
             self.model_run_this_load and self.stateStep != 6
         ):  # model has guess(es) and there is no prior run
@@ -4360,7 +4366,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             # model not run this load
             if self.stateStep == 6:
-                self.AI_has_starting_values = True
+                # self.AI_has_starting_values = True
                 Log.i("Loaded points of interest from a prior run of Analyze tool.")
             else:
                 Log.e(
@@ -4376,10 +4382,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.getPoints()  # confirm and analyze only if they want to view previous results
 
     def resizeEvent(self, event):
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(
-                False
-            )  # require re-click to show popup tool incorrect position
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(
+        #         False
+        #     )  # require re-click to show popup tool incorrect position
+        pass
 
 
 class AnalyzerWorker(QtCore.QObject):
