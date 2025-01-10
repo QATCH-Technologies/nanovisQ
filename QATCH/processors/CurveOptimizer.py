@@ -19,7 +19,7 @@ from scipy.optimize import minimize
 from scipy.ndimage import gaussian_filter1d
 from QATCH.common.logger import Logger as Log
 
-TAG = "CurveOptimizer"
+TAG = "[CurveOptimizer]"
 
 
 class CurveOptimizer:
@@ -43,7 +43,7 @@ class CurveOptimizer:
     SIGMA_SMOOTHING = 10
 
     @staticmethod
-    def run(file_buffer, num_samples: int = 10) -> tuple:
+    def run(file_buffer, num_samples: int = 10, bounds: tuple = BOUNDS) -> tuple:
         """
         Optimizes the difference factor for a given file buffer.
 
@@ -96,7 +96,7 @@ class CurveOptimizer:
 
         # Perform optimization of difference factor.
         optimal_factor, optimal_metric = CurveOptimizer._find_optimal_difference_factor(
-            data_frame, CurveOptimizer.DEFAULT_FACTOR, filtered_indices, bounds=CurveOptimizer.BOUNDS
+            data_frame, CurveOptimizer.DEFAULT_FACTOR, filtered_indices, bounds=bounds
         )
         Log.i(
             TAG, f"Difference curve optimization complete, reporting optimal difference factor {optimal_factor}, with objective {optimal_metric}")

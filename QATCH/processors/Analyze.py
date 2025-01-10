@@ -21,6 +21,7 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
+from QATCH.processors.CurveOptimizer import CurveOptimizer
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -4865,52 +4866,62 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            # APPLY DROP EFFECT VECTORS
-            drop_offsets = np.zeros(ys.shape)
-            try:
-                if self.parent.correct_drop_effect.isChecked():
-                    # baseline = np.average(ys[t_0p5:t_1p0])
-                    # base_std = np.std(ys[t_0p5:t_1p0])
-                    # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_start = poi_vals[0]
-                    # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
-                    drop_diss = ys[drop_start]
-                    if drop_diss > Constants.drop_effect_cutoff_freq:
-                        self.diff_factor = Constants.drop_effect_multiplier_high
-                    else:
-                        self.diff_factor = Constants.drop_effect_multiplier_low
-                    with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-                        data = np.loadtxt(
-                            f.readlines(), delimiter=",", skiprows=1)
-                        col = (
-                            1
-                            if self.diff_factor == Constants.drop_effect_multiplier_low
-                            else 2
-                        )
-                        RR_offset = data[:, col]
-                        if drop_start + len(RR_offset) > len(drop_offsets):
-                            # RR vector is longer than the actual run data, truncate it
-                            drop_offsets[drop_start:] = RR_offset[
-                                : len(drop_offsets) - drop_start
-                            ]
-                        else:
-                            # RR vector is shorter and needs to be padded with the final value
-                            drop_offsets[drop_start: drop_start + len(RR_offset)] = (
-                                RR_offset
-                            )
-                            drop_offsets[drop_start +
-                                         len(RR_offset):] = RR_offset[-1]
-                    Log.d(
-                        f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
-                    )
-                    Log.d(
-                        f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
-                    )
-                    Log.d(
-                        f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
-                    )
-            except Exception as e:
-                Log.e("ERROR:", e)
+            # Optimizing difference factor.
+            optimal_factor, optimal_score = None, None
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                file_header = BytesIO(f.read())
+                optimal_factor, optimal_score = CurveOptimizer.run(
+                    file_header, num_samples=7, bounds=(self.parent.validFactor.bottom(), self.parent.validFactor.top()))
+
+            if optimal_factor is not None:
+                self.diff_factor = optimal_factor
+            else:
+                self.diff_factor = Constants.default_diff_factor
+            # drop_offsets = np.zeros(ys.shape)
+            # try:
+            #     if self.parent.correct_drop_effect.isChecked():
+            #         # baseline = np.average(ys[t_0p5:t_1p0])
+            #         # base_std = np.std(ys[t_0p5:t_1p0])
+            #         # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+            #         drop_start = poi_vals[0]
+            #         # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+            #         drop_diss = ys[drop_start]
+            #         if drop_diss > Constants.drop_effect_cutoff_freq:
+            #             self.diff_factor = Constants.drop_effect_multiplier_high
+            #         else:
+            #             self.diff_factor = Constants.drop_effect_multiplier_low
+            #         with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
+            #             data = np.loadtxt(
+            #                 f.readlines(), delimiter=",", skiprows=1)
+            #             col = (
+            #                 1
+            #                 if self.diff_factor == Constants.drop_effect_multiplier_low
+            #                 else 2
+            #             )
+            #             RR_offset = data[:, col]
+            #             if drop_start + len(RR_offset) > len(drop_offsets):
+            #                 # RR vector is longer than the actual run data, truncate it
+            #                 drop_offsets[drop_start:] = RR_offset[
+            #                     : len(drop_offsets) - drop_start
+            #                 ]
+            #             else:
+            #                 # RR vector is shorter and needs to be padded with the final value
+            #                 drop_offsets[drop_start: drop_start + len(RR_offset)] = (
+            #                     RR_offset
+            #                 )
+            #                 drop_offsets[drop_start +
+            #                              len(RR_offset):] = RR_offset[-1]
+            #         Log.d(
+            #             f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
+            #         )
+            #         Log.d(
+            #             f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
+            #         )
+            #         Log.d(
+            #             f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
+            #         )
+            # except Exception as e:
+            #     Log.e("ERROR:", e)
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = (
