@@ -827,6 +827,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.correct_drop_effect.clicked.connect(self.change_drop_effect)
         self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
 
+        # Add the checkbox and call-backs for using the curve-optimizer utility.
+        self.curve_optimizer_checkbox = QtWidgets.QCheckBox(
+            "Auto-Calculate \"Difference Factor\"")
+        self.curve_optimizer_checkbox.setChecked(False)
+        self.curve_optimizer_checkbox.clicked.connect(self.use_curve_optimizer)
+        self.gridLayout.addWidget(self.curve_optimizer_checkbox, 4, 5, 1, 3)
+
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
             QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint
@@ -1476,7 +1483,51 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"{Constants.default_diff_factor:1.3f}")
         self.set_new_diff_factor()
 
+    def use_curve_optimizer(self, object):
+        """
+        Adjusts the difference factor based on the state of the curve optimizer checkbox.
+
+        If the curve optimizer checkbox is not checked, this method resets the 
+        diff factor to the default value specified in `Constants.default_diff_factor`. 
+        It then updates the new diff factor value by calling `self.set_new_diff_factor()`.
+
+        Args:
+            object (QWidget): The widget or object interacting with this method. Typically, 
+                this could represent the checkbox or related UI component triggering the event.
+        """
+        if not self.curve_optimizer_checkbox.isChecked():
+            self.tbox_diff_factor.setText(
+                f"{Constants.default_diff_factor:1.3f}")
+        self.set_new_diff_factor()
+
     def set_new_diff_factor(self):
+        """
+        Validates and sets a new difference factor based on user input.
+
+        This method checks if the input in `tbox_diff_factor` is valid and within 
+        the acceptable range defined by `self.validFactor`. If valid, it confirms 
+        any unsaved changes before proceeding to update the `diff_factor` with the 
+        provided input. If the input is invalid, it logs an error message. After 
+        updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
+
+        Raises an error if the process fails.
+
+        Behavior:
+            - If `tbox_diff_factor` input is invalid:
+                - Logs an error message.
+                - Exits without making changes.
+            - If there are unsaved changes:
+                - Calls `self.action_cancel()` to confirm changes.
+            - If confirmed:
+                - Updates `diff_factor` with the validated input value.
+                - If input parsing fails, reverts to the default auto-calculated value.
+                - Logs the updated or reverted state.
+            - Refreshes the plots to reflect the new difference factor.
+
+        Exceptions:
+            Logs an error message if setting the new difference factor fails.
+
+        """
         try:
             if not self.tbox_diff_factor.hasAcceptableInput():
                 Log.e(
@@ -1490,7 +1541,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if not self.hasUnsavedChanges():  # only proceed if they say yes
                 try:
                     self.diff_factor = round(
-                        float(self.tbox_diff_factor.text()), 1)
+                        float(self.tbox_diff_factor.text()), 3)
                     Log.d(f"Difference Factor = {self.diff_factor}")
                 except:
                     if hasattr(self, "diff_factor"):
@@ -3984,6 +4035,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             diff_factor = (
                 Constants.default_diff_factor
             )  # 1.0 if baseline < 50e-6 else 1.5
+
+            # Automatically compute optimal difference factor
+            if self.curve_optimizer_checkbox.isChecked():
+                self.diff_factor = self._optimize_curve(self.loaded_datapath)
+
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
@@ -4388,6 +4444,44 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #         False
         #     )  # require re-click to show popup tool incorrect position
         pass
+
+    def _optimize_curve(self, data_path):
+        """
+        Optimizes the difference factor for a given data file.
+
+        This method reads a data file securely, processes its header, and runs a 
+        curve optimization algorithm to determine the optimal difference factor 
+        and its associated score. If an optimal factor is found, it is returned. 
+        Otherwise, the default difference factor is used.
+
+        Args:
+            data_path (str): Path to the data file to be optimized.
+
+        Returns:
+            float: The optimal difference factor if found; otherwise, the default 
+            difference factor (`Constants.default_diff_factor`).
+
+        Raises:
+            Any exception during the secure file operation or optimization process 
+            will propagate and should be handled by the caller.
+
+        Example:
+            optimal_factor = self._optimize_curve("path/to/data/file")
+        """
+        optimal_factor, optimal_score = None, None
+        with secure_open(data_path, "r", "capture") as f:
+            file_header = BytesIO(f.read())
+            optimal_factor, optimal_score = CurveOptimizer.run(
+                file_header, num_samples=7, bounds=(self.validFactor.bottom(), self.validFactor.top()))
+
+        if optimal_factor is not None:
+            Log.d(
+                TAG, f"Reporting optimial difference factor of {optimal_factor}.")
+            return optimal_factor
+        else:
+            Log.d(
+                TAG, f"No optimal difference factor found, reporting default of {Constants.default_diff_factor}.")
+            return Constants.default_diff_factor
 
 
 class AnalyzerWorker(QtCore.QObject):
@@ -4865,63 +4959,12 @@ class AnalyzerWorker(QtCore.QObject):
                 ys_freq_fit = np.concatenate((ys_freq_fit, ys_freq_fit_ext))
 
             self.update(status_label)
+            # Auto-compute difference factor here using helper function.
+            self.diff_factor = self.parent._optimize_curve(
+                self.loaded_datapath)
 
-            # Optimizing difference factor.
-            optimal_factor, optimal_score = None, None
-            with secure_open(self.loaded_datapath, "r", "capture") as f:
-                file_header = BytesIO(f.read())
-                optimal_factor, optimal_score = CurveOptimizer.run(
-                    file_header, num_samples=7, bounds=(self.parent.validFactor.bottom(), self.parent.validFactor.top()))
-
-            if optimal_factor is not None:
-                self.diff_factor = optimal_factor
-            else:
-                self.diff_factor = Constants.default_diff_factor
-            # drop_offsets = np.zeros(ys.shape)
-            # try:
-            #     if self.parent.correct_drop_effect.isChecked():
-            #         # baseline = np.average(ys[t_0p5:t_1p0])
-            #         # base_std = np.std(ys[t_0p5:t_1p0])
-            #         # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-            #         drop_start = poi_vals[0]
-            #         # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
-            #         drop_diss = ys[drop_start]
-            #         if drop_diss > Constants.drop_effect_cutoff_freq:
-            #             self.diff_factor = Constants.drop_effect_multiplier_high
-            #         else:
-            #             self.diff_factor = Constants.drop_effect_multiplier_low
-            #         with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-            #             data = np.loadtxt(
-            #                 f.readlines(), delimiter=",", skiprows=1)
-            #             col = (
-            #                 1
-            #                 if self.diff_factor == Constants.drop_effect_multiplier_low
-            #                 else 2
-            #             )
-            #             RR_offset = data[:, col]
-            #             if drop_start + len(RR_offset) > len(drop_offsets):
-            #                 # RR vector is longer than the actual run data, truncate it
-            #                 drop_offsets[drop_start:] = RR_offset[
-            #                     : len(drop_offsets) - drop_start
-            #                 ]
-            #             else:
-            #                 # RR vector is shorter and needs to be padded with the final value
-            #                 drop_offsets[drop_start: drop_start + len(RR_offset)] = (
-            #                     RR_offset
-            #                 )
-            #                 drop_offsets[drop_start +
-            #                              len(RR_offset):] = RR_offset[-1]
-            #         Log.d(
-            #             f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
-            #         )
-            #         Log.d(
-            #             f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
-            #         )
-            #         Log.d(
-            #             f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
-            #         )
-            # except Exception as e:
-            #     Log.e("ERROR:", e)
+            # vvv Possibly redundant or uncessary code below vvv
+            drop_offsets = np.zeros(ys.shape)
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = (

@@ -99,7 +99,7 @@ class CurveOptimizer:
             data_frame, CurveOptimizer.DEFAULT_FACTOR, filtered_indices, bounds=bounds
         )
         Log.i(
-            TAG, f"Difference curve optimization complete, reporting optimal difference factor {optimal_factor}, with objective {optimal_metric}")
+            TAG, f"Difference curve optimization complete, reporting optimal difference factor {optimal_factor}, with minimal objective score {optimal_metric}.")
         return (optimal_factor, optimal_metric)
 
     @staticmethod
