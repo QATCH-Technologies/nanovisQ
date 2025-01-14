@@ -1462,9 +1462,9 @@ class UserPreferences:
     def setup(self) -> None:
         user_info = self._get_user_session()
         user_preferences_path = os.path.join(Constants.local_app_data_path, "profiles/users",
-                                             f"{user_info}-file-format-preferences.json")
+                                             f"{user_info}-preferences.json")
         global_preferences_path = os.path.join(
-            Constants.local_app_data_path, "file-format-preferences.json")
+            Constants.local_app_data_path, "global_preferences.json")
 
         self.set_use_global(True)
         if os.path.exists(global_preferences_path):
@@ -1493,6 +1493,8 @@ class UserPreferences:
                 preferences_data = json.load(preferences_file)
 
         # Temporary variables to hold parsed contents
+        load_data_path = str(preferences_data["load_data_path"])
+        write_data_path = str(preferences_data["write_data_path"])
         folder_tag_format = str(preferences_data["folder_format"])
         file_tag_format = str(preferences_data["filename_format"])
         folder_delimiter = str(
@@ -1503,6 +1505,8 @@ class UserPreferences:
         time_format = str(preferences_data["time_format"])
 
         # Set user preferences using accessor and mutators.
+        self._set_load_data_path(load_data_path)
+        self._set_write_data_path(write_data_path)
         self._set_folder_format_pattern(folder_tag_format)
         self._set_file_format_pattern(file_tag_format)
         self._set_folder_delimiter(folder_delimiter)
@@ -1511,13 +1515,16 @@ class UserPreferences:
         self._set_time_format(time_format)
 
     def get_preferences(self) -> dict:
-        preferences_dict = {"folder_format": self._get_folder_format_pattern(),
-                            "filename_format": self._get_file_format_pattern(),
-                            "folder_format_delimiter": self._get_folder_delimiter(),
-                            "filename_format_delimiter": self._get_file_delimiter(),
-                            "date_format": self._get_date_format(),
-                            "time_format": self._get_time_format(),
-                            }
+        preferences_dict = {
+            "load_data_path": self._get_load_data_path(),
+            "write_data_path": self._get_write_data_path(),
+            "folder_format": self._get_folder_format_pattern(),
+            "filename_format": self._get_file_format_pattern(),
+            "folder_format_delimiter": self._get_folder_delimiter(),
+            "filename_format_delimiter": self._get_file_delimiter(),
+            "date_format": self._get_date_format(),
+            "time_format": self._get_time_format(),
+        }
         return preferences_dict
 
     def load_user_preferences(self) -> dict:
@@ -1630,7 +1637,7 @@ class UserPreferences:
             folder_format_pattern = folder_format_pattern.replace(
                 delimiter, '|')
         split_parts = folder_format_pattern.split('|')
-        tokens = [part for part in split_parts if '%' in part]
+        tokens = [part for part in split_parts]
         self._folder_format_pattern = tokens
 
     def _set_file_format_pattern(self, file_format_pattern: str) -> None:
@@ -1638,7 +1645,7 @@ class UserPreferences:
             file_format_pattern = file_format_pattern.replace(
                 delimiter, '|')
         split_parts = file_format_pattern.split('|')
-        tokens = [part for part in split_parts if '%' in part]
+        tokens = [part for part in split_parts]
         self._file_format_pattern = tokens
 
     def _set_folder_delimiter(self, folder_delimiter: str) -> None:
@@ -1658,6 +1665,12 @@ class UserPreferences:
 
     def _set_global_preferences_path(self, global_preferences_path: str) -> None:
         self._global_preferences_path = global_preferences_path
+
+    def _set_load_data_path(self, load_data_path: str) -> None:
+        self._load_data_path = load_data_path
+
+    def _set_write_data_path(self, write_data_path: str) -> None:
+        self._write_data_path = write_data_path
 
      # -- MUTATOR METHODS -- #
     def _get_user_session(self) -> UserProfiles:
@@ -1698,3 +1711,9 @@ class UserPreferences:
 
     def _get_global_preferences_path(self) -> str:
         return self._global_preferences_path
+
+    def _get_load_data_path(self) -> str:
+        return self._load_data_path
+
+    def _get_write_data_path(self) -> str:
+        return self._write_data_path

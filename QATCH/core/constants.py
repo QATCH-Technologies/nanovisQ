@@ -216,12 +216,26 @@ class Constants:
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
 
-    valid_tags = ["%username%", "%initials%", "%device%",
-                  "%runname%", "%date%", "%time%", "%port%"]
+    valid_tags = ["Username", "Initials", "Device",
+                  "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]
     date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
     time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
+    date_conversion = {
+        "YYYY-MM-DD": "%Y-%m-%d",
+        "DD-MM-YYYY": "%d-%m-%Y",
+        "MM-DD-YYYY": "%m-%d-%Y"
+    }
+
+    time_conversion = {
+        "HH:mm:ss": "%H:%M:%S",
+        "hh:mm:ss A": "%I:%M:%S %p",
+        "HH:mm": "%H:%M",
+        "hh:mm A": "%I:%M %p"
+    }
     default_preferences = {
+        "load_data_path": local_app_data_path,
+        "write_data_path": local_app_data_path,
         "folder_format": valid_tags[2],
         "filename_format": f"{valid_tags[6]}_{valid_tags[3]}",
         "folder_format_delimiter": path_delimiters[0],

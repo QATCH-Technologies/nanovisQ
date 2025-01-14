@@ -1,11 +1,11 @@
-import sys
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
-from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox
-from PyQt5.QtCore import Qt, QTimer
-
+from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox, QLineEdit, QFileDialog, QSizePolicy
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon
+import os
 TAG = '[Preferences]'
 SELECT_TAG_PROMPT = '-- Select Tag --'
 
@@ -13,7 +13,8 @@ SELECT_TAG_PROMPT = '-- Select Tag --'
 class PreferencesUI(QWidget):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('File Naming Preferences')
+        self.setWindowTitle('Preferences')
+        self.setWindowIcon(QIcon(r"QATCH\icons\preferences_icon.png"))
 
         # Initialize the _updating flag to avoid recursion
         self._updating = False  # Initialize the _updating flag
@@ -109,7 +110,7 @@ class PreferencesUI(QWidget):
         # Delimiter selection for file format
         self.file_delimiter_combo = QComboBox()
         # Set fixed size for the delimiter dropdown
-        self.file_delimiter_combo.setFixedSize(40, 30)
+        self.file_delimiter_combo.setFixedSize(40, 28)
         self.file_delimiter_combo.addItems(Constants.path_delimiters)
         file_button_layout.addWidget(self.file_delimiter_combo)
 
@@ -161,10 +162,52 @@ class PreferencesUI(QWidget):
         file_folder_layout.addWidget(self.preview_label)
 
         file_folder_tab.setLayout(file_folder_layout)
+        # Default Data Path Tab
+        default_data_tab = QWidget()
+        # Main layout
+        default_data_layout = QVBoxLayout()
+
+        # Load directory section
+        load_label = QLabel("Select or input a load directory:")
+        load_label.setAlignment(Qt.AlignLeft)
+        default_data_layout.addWidget(load_label)
+
+        load_directory_layout = QHBoxLayout()
+        self.load_directory_input = QLineEdit()
+        load_directory_layout.addWidget(self.load_directory_input)
+
+        load_browse_button = QPushButton("Browse")
+        load_browse_button.clicked.connect(self.open_load_file_dialog)
+        load_directory_layout.addWidget(load_browse_button)
+
+        default_data_layout.addLayout(load_directory_layout)
+
+        # Write directory section
+        write_label = QLabel("Select or input a write directory:")
+        write_label.setAlignment(Qt.AlignLeft)
+        default_data_layout.addWidget(write_label)
+
+        write_directory_layout = QHBoxLayout()
+        self.write_directory_input = QLineEdit()
+        write_directory_layout.addWidget(self.write_directory_input)
+
+        write_browse_button = QPushButton("Browse")
+        write_browse_button.clicked.connect(self.open_write_file_dialog)
+        write_directory_layout.addWidget(write_browse_button)
+
+        default_data_layout.addLayout(write_directory_layout)
+
+        # Spacer to push elements down if necessary
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        default_data_layout.addWidget(spacer)
+
+        default_data_tab.setLayout(default_data_layout)
 
         # Add tabs to the tab widget
         self.tab_widget.addTab(date_time_tab, "Date and Time Preferences")
         self.tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
+        self.tab_widget.addTab(default_data_tab, "Default Data Path")
         # Connect tab change signal to handler
         self.tab_widget.currentChanged.connect(self.handle_tab_change)
 
@@ -192,11 +235,26 @@ class PreferencesUI(QWidget):
     def handle_tab_change(self, index):
         """Handle tab change and load preferences if needed."""
         # Check if the file and folder preferences tab is selected
-        if self.tab_widget.tabText(index) == "File and Folder Preferences":
-            if self.global_pref_toggle.isChecked():
-                self.load_global_preferences()
-            else:
-                self.load_user_preferences()
+        if self.global_pref_toggle.isChecked():
+            self.load_global_preferences()
+        else:
+            self.load_user_preferences()
+
+    def open_load_file_dialog(self):
+        # Open file dialog for directory selection
+        selected_directory = QFileDialog.getExistingDirectory(
+            self, "Select Directory")
+        if selected_directory:
+            # Set the selected directory path to the input field
+            self.load_directory_input.setText(selected_directory)
+
+    def open_write_file_dialog(self):
+        # Open file dialog for directory selection
+        selected_directory = QFileDialog.getExistingDirectory(
+            self, "Select Directory")
+        if selected_directory:
+            # Set the selected directory path to the input field
+            self.write_directory_input.setText(selected_directory)
 
     def add_dropdown(self, layout):
         """Add a new dropdown to the layout."""
@@ -298,7 +356,6 @@ class PreferencesUI(QWidget):
             if item:
                 widget = item.widget()
                 if isinstance(widget, QComboBox):
-                    print("disabiling combo boxes.")
                     widget.setEnabled(enable)
                 elif isinstance(widget, QWidget) and widget.layout():
                     # Recursively disable combo boxes in nested layouts
@@ -313,8 +370,10 @@ class PreferencesUI(QWidget):
         from datetime import datetime
         current_datetime = datetime.now()
 
-        formatted_date = current_datetime.strftime(date_format)
-        formatted_time = current_datetime.strftime(time_format)
+        formatted_date = current_datetime.strftime(
+            Constants.date_conversion.get(date_format))
+        formatted_time = current_datetime.strftime(
+            Constants.time_conversion.get(time_format))
 
         preview_text = f"Date: {formatted_date}\nTime: {formatted_time}"
         self.preview_date_time_label.setText(preview_text)
@@ -324,6 +383,9 @@ class PreferencesUI(QWidget):
         global_preferences = UserProfiles.user_preferences.load_global_preferences()
         UserProfiles.user_preferences.set_preferences()
         # Reset the date and time format dropdowns based on the dictionary
+        self.load_directory_input.setText(global_preferences["load_data_path"])
+        self.write_directory_input.setText(
+            global_preferences["write_data_path"])
         self.date_format_combo.setCurrentText(
             global_preferences["date_format"])
         self.time_format_combo.setCurrentText(
@@ -354,7 +416,9 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences.set_use_global(use_global=False)
         user_preferences = UserProfiles.user_preferences.load_user_preferences()
         UserProfiles.user_preferences.set_preferences()
-
+        self.load_directory_input.setText(user_preferences["load_data_path"])
+        self.write_directory_input.setText(
+            user_preferences["write_data_path"])
         # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(
             user_preferences["date_format"])
@@ -383,6 +447,16 @@ class PreferencesUI(QWidget):
         self.global_pref_toggle.setChecked(False)
         self.global_pref_label.setText("Use global preferences: OFF")
 
+    def show_error_dialog(self, title, message):
+        """
+        Show an error dialog with the specified title and message.
+        """
+        error_dialog = QMessageBox()
+        error_dialog.setIcon(QMessageBox.Critical)
+        error_dialog.setWindowTitle(title)
+        error_dialog.setText(message)
+        error_dialog.exec_()
+
     def preview_format(self):
         """Preview the file and folder format based on selected tags."""
         file_format = [combo.currentText()
@@ -405,6 +479,28 @@ class PreferencesUI(QWidget):
         self.preview_label.setText(preview_text)
 
     def save_preferences(self):
+        load_data_path = self.load_directory_input.text()
+        write_data_path = self.write_directory_input.text()
+
+        # Check if load path exists
+        if not os.path.exists(load_data_path):
+            self.show_error_dialog(
+                "Load Path Error", f"The specified load path does not exist:\n{load_data_path}")
+            return
+        # Check if write path exists
+        if not os.path.exists(write_data_path):
+            self.show_error_dialog(
+                "Write Path Error", f"The specified write path does not exist:\n{write_data_path}")
+            return
+        # Check if paths are directories
+        if not os.path.isdir(load_data_path):
+            self.show_error_dialog(
+                "Load Path Error", f"The specified load path is not a directory:\n{load_data_path}")
+            return
+        if not os.path.isdir(write_data_path):
+            self.show_error_dialog(
+                "Write Path Error", f"The specified write path is not a directory:\n{write_data_path}")
+            return
 
         date_format = self.date_format_combo.currentText()
         time_format = self.time_format_combo.currentText()
@@ -439,6 +535,10 @@ class PreferencesUI(QWidget):
             file_format_pattern=file_format_pattern)
         UserProfiles.user_preferences._set_folder_format_pattern(
             folder_format_pattern=folder_format_pattern)
+        UserProfiles.user_preferences._set_load_data_path(
+            load_data_path=load_data_path)
+        UserProfiles.user_preferences._set_write_data_path(
+            write_data_path=write_data_path)
         UserProfiles.user_preferences.write_user_preferences()
 
         # Show a popup window to confirm preferences were saved
@@ -451,7 +551,10 @@ class PreferencesUI(QWidget):
 
     def reset_to_default_preferences(self):
         """Reset preferences to their default values based on a dictionary."""
-
+        self.load_directory_input.setText(
+            Constants.default_preferences["load_data_path"])
+        self.write_directory_input.setText(
+            Constants.default_preferences["write_data_path"])
         # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(
             Constants.default_preferences["date_format"])
