@@ -1,6 +1,6 @@
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
-from QATCH.common.userProfiles import UserProfiles
+from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
 from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox, QLineEdit, QFileDialog, QSizePolicy
 from PyQt5.QtCore import Qt
@@ -11,8 +11,11 @@ SELECT_TAG_PROMPT = '-- Select Tag --'
 
 
 class PreferencesUI(QWidget):
-    def __init__(self):
+    def __init__(self, parent):
         super().__init__()
+        self.parent = parent
+        self._is_admin = UserProfiles.check(
+            parent.userrole, UserRoles.ADMIN)
         self.setWindowTitle('Preferences')
         self.setWindowIcon(QIcon(r"QATCH\icons\preferences_icon.png"))
 
@@ -20,7 +23,6 @@ class PreferencesUI(QWidget):
         self._updating = False  # Initialize the _updating flag
 
         # Set fixed size for the window (width, height) based on the desired size
-        # Adjust as needed for the window size in your screenshot
         self.setFixedSize(600, 400)
 
         # Layout for the main window
@@ -272,7 +274,6 @@ class PreferencesUI(QWidget):
             available_tags = [
                 tag for tag in self.tags if tag not in self.selected_tags]
             combo.addItems(available_tags)
-
             layout.addWidget(combo)
             combo_list.append(combo)  # Add the combo to the respective list
 
@@ -311,37 +312,36 @@ class PreferencesUI(QWidget):
         # Update the label
         self.global_pref_label.setText(
             "Use global preferences: ON" if is_checked else "Use global preferences: OFF")
-
-        # Disable/Enable Date and Time dropdowns
-        self.date_format_combo.setEnabled(not is_checked)
-        self.time_format_combo.setEnabled(not is_checked)
-
-        # Disable/Enable File Format Section
-        self.file_delimiter_combo.setEnabled(not is_checked)
-        for combo in self.file_format_combos:
-            # Disable all file format dropdowns
-            combo.setEnabled(not is_checked)
-
-        # Disable/Enable Folder Format Section
-        self.folder_delimiter_combo.setEnabled(not is_checked)
-        for combo in self.folder_format_combos:
-            # Disable all folder format dropdowns
-            combo.setEnabled(not is_checked)
-
-        # Explicitly disable add/remove buttons
-        self.disable_add_remove_buttons(is_checked)
-
-        # Ensure all dropdowns in the layouts are disabled dynamically
-        self.disable_all_combos_in_layout(
-            self.file_format_container, not is_checked)
-        self.disable_all_combos_in_layout(
-            self.folder_format_container, not is_checked)
-
         # Load preferences
         if is_checked:
             self.load_global_preferences()
         else:
             self.load_user_preferences()
+        if not self._is_admin:
+            # Disable/Enable Date and Time dropdowns
+            self.date_format_combo.setEnabled(not is_checked)
+            self.time_format_combo.setEnabled(not is_checked)
+
+            # Disable/Enable File Format Section
+            self.file_delimiter_combo.setEnabled(not is_checked)
+            for combo in self.file_format_combos:
+                # Disable all file format dropdowns
+                combo.setEnabled(not is_checked)
+
+            # Disable/Enable Folder Format Section
+            self.folder_delimiter_combo.setEnabled(not is_checked)
+            for combo in self.folder_format_combos:
+                # Disable all folder format dropdowns
+                combo.setEnabled(not is_checked)
+
+            # Explicitly disable add/remove buttons
+            self.disable_add_remove_buttons(is_checked)
+
+            # Ensure all dropdowns in the layouts are disabled dynamically
+            self.disable_all_combos_in_layout(
+                self.file_format_container, not is_checked)
+            self.disable_all_combos_in_layout(
+                self.folder_format_container, not is_checked)
 
     def disable_add_remove_buttons(self, disable):
         """Disable add and remove buttons for file and folder format layouts."""
@@ -356,7 +356,7 @@ class PreferencesUI(QWidget):
             if item:
                 widget = item.widget()
                 if isinstance(widget, QComboBox):
-                    widget.setEnabled(enable)
+                    widget.setEnabled(not enable)
                 elif isinstance(widget, QWidget) and widget.layout():
                     # Recursively disable combo boxes in nested layouts
                     self.disable_all_combos_in_layout(widget.layout(), enable)

@@ -1558,8 +1558,8 @@ class UserPreferences:
 
     def get_use_global(self) -> bool:
         return self.use_global
-
     # -- Private Utilities -- #
+
     def _build_save_path(self, pattern: list, runname: str, delimiter: str, device_id: int, port_id: int) -> str:
         save_path = ""
 
@@ -1588,14 +1588,22 @@ class UserPreferences:
         return save_path
 
     def _on_username(self) -> str:
-        _, user_info = UserProfiles.session_info()
-        username = user_info[0]
-        return username
+        is_valid, user_info = UserProfiles.session_info()
+        if is_valid:
+            username = user_info[0]
+            return username
+        else:
+            Log.e(TAG, 'Invalid user session')
+            raise ValueError("Invalid user session")
 
     def _on_initials(self) -> str:
-        _, user_info = UserProfiles.session_info()
-        initials = user_info[1]
-        return initials
+        is_valid, user_info = UserProfiles.session_info()
+        if is_valid:
+            initials = user_info[1]
+            return initials
+        else:
+            Log.e(TAG, 'Invalid user session')
+            raise ValueError("Invalid user session")
 
     def _on_device(self, device_id: int) -> str:
         return str(device_id)
@@ -1672,7 +1680,8 @@ class UserPreferences:
     def _set_write_data_path(self, write_data_path: str) -> None:
         self._write_data_path = write_data_path
 
-     # -- MUTATOR METHODS -- #
+    # -- MUTATOR METHODS -- #
+
     def _get_user_session(self) -> UserProfiles:
         return self._user_session
 

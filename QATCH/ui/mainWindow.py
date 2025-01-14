@@ -172,7 +172,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.ui1.setupUi(self)
         self.ui_export = Ui_Export()
         # self.ui_configure_data = UIConfigureData()
-        self.ui_preferences = PreferencesUI()
+        self.ui_preferences = PreferencesUI(self)
+        # self.userrole
         self.current_timer = QtCore.QTimer()
         self.current_timer.timeout.connect(self.double_toggle_plots)
         UserProfiles().session_end()
