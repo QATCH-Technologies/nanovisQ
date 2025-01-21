@@ -4468,11 +4468,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         Example:
             optimal_factor = self._optimize_curve("path/to/data/file")
         """
-        optimal_factor, optimal_score = None, None
+        optimal_factor = None
         with secure_open(data_path, "r", "capture") as f:
             file_header = BytesIO(f.read())
-            optimal_factor, optimal_score = CurveOptimizer.run(
-                file_header, num_samples=7, bounds=(self.validFactor.bottom(), self.validFactor.top()))
+            optimizer = CurveOptimizer(file_header)
+            optimal_factor, lb, rb = optimizer.run()
+            Log.i(
+                TAG, f'Using optimal difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
 
         if optimal_factor is not None:
             Log.d(
