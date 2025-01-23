@@ -14,7 +14,7 @@ TAIL_TRIM_PERCENTAGE = 0.5
 """ Sets the left bound of the region behind ROI. """
 BASE_OFFSET = 0.005
 """ Restricts the difference factor. """
-DIFFERENCE_FACTOR_RESTRICTION = (1.0, 3.0)
+DIFFERENCE_FACTOR_RESTRICTION = (0.0, 3.0)
 
 
 class CurveOptimizer:
@@ -184,26 +184,46 @@ class CurveOptimizer:
         Args:
             difference (np.ndarray): A 1xN array containing 'Difference' data.
             relative_time (pd.Series): A 1xN pandas series containing 'Relative_time' data.
+            mode (str): A mode of operation with acceptable values of 'right' or 'left' (i.e. which bound to compute).
+
+        Returns:
+            tuple(float, int): a tuple containing the 'Relative_time' at the bound and the index of the bound.
+
+        Raises
+            ValueError: If the parameterized mode is not 'left' or 'right'.
         """
         try:
+            # Trim head and tail off difference and relative time data
             head_trim = int(len(difference) * HEAD_TRIM_PERCENTAGE)
             tail_trim = int(len(difference) * TAIL_TRIM_PERCENTAGE)
             relative_time = relative_time.iloc[head_trim:tail_trim]
             difference = difference[head_trim:tail_trim]
+
+            # Determine a downward trend over the difference data
             trend = np.linspace(0, difference.max(), len(difference))
+
+            # Apply the trend
             adjusted_difference = difference - trend
 
             if mode == "left":
+                # NOTE: Requires right bound already be set.  Trim again at the right bound index.
                 relative_time = relative_time.iloc[:self._right_bound["index"]]
                 difference = difference[:self._right_bound["index"]]
+
+                # Recompute trend over shortened data.
                 trend = np.linspace(0, difference.max(), len(difference))
+
+                # Reapply trend to shortned data
                 adjusted_difference = difference - trend
+
+                # Report global minima over shortened data.
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
                 Log.d(
                     TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index
             elif mode == 'right':
+                # Report global max from downtrended data.
                 index = np.argmax(adjusted_difference)
                 Log.d(
                     TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
@@ -215,15 +235,43 @@ class CurveOptimizer:
             raise
 
     def _objective(self, difference_factor: float, left_bound: float, right_bound: float) -> float:
+        """
+        The target function to optimize.
+
+        This function computes the smoothness over a left/right bounded region of difference data.
+        Smoothness is a measure of the sum of the square of the slopes times the number of 
+        of time deltas in the left/right bounded region of difference data.
+
+        Args:
+            differnce_factor (float): The difference factor to compute the difference curve with.
+            left_bound (float): A Relative_time left bound of the difference data.
+            right_bound (float): A Relative_time right bound of the difference data.
+
+        Returns: 
+            float: A measure of the smoothness over the region bounded by left_bound/right_bound
+
+        Raises:
+            Errors raised to caller.
+        """
         try:
+            # Generate the difference curve 1xN array.
             curve = self._generate_curve(difference_factor)
+
+            # Mask of the Region of Interest (ROI) by the parameterized left and right bound.
             region_mask = (curve[:, 0] >= left_bound) & (
                 curve[:, 0] <= right_bound)
+
+            # Get the differnce values and time values from this ROI.
             differences = curve[region_mask, 1]
             time_points = curve[region_mask, 0]
 
+            # Compute the slopes of the difference region.
             slopes = np.diff(differences) / np.diff(time_points)
+
+            # Compute the deltas between time points.
             step_sizes = np.diff(time_points)
+
+            # Compute the objective, smoothness metric.
             smoothness_metric = np.sum((slopes ** 2) * step_sizes)
 
             Log.d(TAG, f"Smoothness objective calculated: {smoothness_metric}")
@@ -233,19 +281,47 @@ class CurveOptimizer:
             raise
 
     def _optimize_difference_factor(self) -> float:
+        """
+        The primary function to perform the data i/o, bounding, and optimization processes.
+
+        This function generates and initial difference curve using the initial differnce factor.  Using 
+        this difference curve, left and right time and index bounds are established and the left_bound/right_bound
+        attributes are set.  Next, the function uses scipy.optimize.minimize to find a maximally smooth differnce factor
+        using the previously set time bounds, initial difference factor (typically 2.0).  The optimization method is Nelder-Mead
+        (https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method).  The result is extracted from this minimization process.  If 
+        the optimal factor is between 0.0 and 3.0, it is accepted and returned to the caller.  Otherwise, the default difference 
+        factor of 2.0 is returned. 
+
+        TODO: Look into if we should return a minimal or maximal value of 0.0 or 3.0 instead of 2.0  default.
+
+        Args:
+            None
+
+        Returns:
+            float: An optimized difference factor if the result of optimization is within bounds.  Otherwise, the 
+                default difference factor of 2.0 is reported.
+
+        Raises:
+            Exceptions reaised to caller.
+        """
         try:
+            # Generate initial curve.
             self._generate_curve(self._initial_diff_factor)
 
+            # Establish right bound
+            # IMPORTANT: this must be done before the left bound is established.
             rb_time, rb_idx = self._find_region(
-                self._dataframe["Difference"].values, self._dataframe["Resonance_Frequency"].values, self._dataframe["Dissipation"].values, self._dataframe["Relative_time"], mode="left")
+                self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="right")
             self._right_bound["time"] = rb_time
             self._right_bound["index"] = rb_idx
 
+            # Establish left bound
             lb_time, lb_idx = self._find_region(
-                self._dataframe["Difference"].values, self._dataframe["Resonance_Frequency"].values, self._dataframe["Dissipation"].values, self._dataframe["Relative_time"], mode="right")
+                self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="left")
             self._left_bound["time"] = lb_time
             self._left_bound["index"] = lb_idx
 
+            # Perform optimization
             result = minimize(
                 self._objective,
                 self._initial_diff_factor,
@@ -253,10 +329,11 @@ class CurveOptimizer:
                 method="Nelder-Mead"
             )
 
+            # Report restults to caller
             optimal_difference_factor = result.x[0]
             if optimal_difference_factor < DIFFERENCE_FACTOR_RESTRICTION[0] or optimal_difference_factor > DIFFERENCE_FACTOR_RESTRICTION[1]:
                 Log.d(
-                    TAG, f"Optimal difference factor {self._optimal_difference_factor} out of range {DIFFERENCE_FACTOR_RESTRICTION}, using default.")
+                    TAG, f"Optimal difference factor {optimal_difference_factor} out of range {DIFFERENCE_FACTOR_RESTRICTION}, using default.")
                 self._optimal_difference_factor = Constants.default_diff_factor
             else:
                 Log.d(
@@ -268,7 +345,10 @@ class CurveOptimizer:
             Log.e(TAG, f"Error optimizing difference factor: {e}")
             raise
 
-    def run(self):
+    def run(self) -> None:
+        """
+        Main entry point for calling class (Anlayze.py)
+        """
         try:
             result = self._optimize_difference_factor()
             if result:
@@ -277,7 +357,7 @@ class CurveOptimizer:
                 return result, self._left_bound['time'], self._right_bound['time']
             else:
                 Log.d(
-                    TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
+                    TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
                 return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time']
         except Exception as e:
             Log.e(TAG, f"Run failed: {e}")
