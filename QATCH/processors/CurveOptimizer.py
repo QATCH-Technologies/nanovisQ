@@ -345,9 +345,21 @@ class CurveOptimizer:
             Log.e(TAG, f"Error optimizing difference factor: {e}")
             raise
 
-    def run(self) -> None:
+    def optimize(self) -> tuple:
         """
         Main entry point for calling class (Anlayze.py)
+
+        Runs the optimize differnece factor function and reports the results of the optimization
+        along with the left and right time bounds of the optimziation region.
+
+        Args:
+            None
+
+        Returns:
+            tuple(float, float, float): Returns the optimizatized difference factor along with the the left and right time bounds of the optimization reigon.
+
+        Raises:
+            Errors raised to caller.
         """
         try:
             result = self._optimize_difference_factor()
