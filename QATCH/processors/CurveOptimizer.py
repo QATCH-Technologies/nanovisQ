@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
@@ -53,6 +54,7 @@ class CurveOptimizer:
         self._left_bound = {"time": -1, "index": -1}
         self._right_bound = {"time": -1, "index": -1}
         self._optimal_difference_factor = None
+        self._head_trim = -1
 
     def _initialize_file_buffer(self, file_buffer):
         """
@@ -195,6 +197,7 @@ class CurveOptimizer:
         try:
             # Trim head and tail off difference and relative time data
             head_trim = int(len(difference) * HEAD_TRIM_PERCENTAGE)
+            self._head_trim = head_trim
             tail_trim = int(len(difference) * TAIL_TRIM_PERCENTAGE)
             relative_time = relative_time.iloc[head_trim:tail_trim]
             difference = difference[head_trim:tail_trim]
@@ -220,14 +223,14 @@ class CurveOptimizer:
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
                 Log.d(
-                    TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
-                return relative_time.iloc[index], index
+                    TAG, f"Left bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                return relative_time.iloc[index + head_trim], index + head_trim
             elif mode == 'right':
                 # Report global max from downtrended data.
                 index = np.argmax(adjusted_difference)
                 Log.d(
-                    TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
-                return relative_time.iloc[index], index
+                    TAG, f"Right bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                return relative_time.iloc[index + head_trim], index + head_trim
             else:
                 raise ValueError(f"Invalid search bound requested {mode}.")
         except Exception as e:
@@ -279,6 +282,109 @@ class CurveOptimizer:
         except Exception as e:
             Log.e(TAG, f"Error calculating smoothness objective: {e}")
             raise
+
+    def _later_drop_effects(self, std_theshold: int = 3, window_size: int = 20) -> None:
+        """
+        Function used to cancel drop effects appearing later in the initial fill region.
+
+        This function uses a sliding window approach to determine localized deltas outside
+        of normally accepted valeus in the intial fill region of the dissipation curve. If
+        outliers can be detected, the region is repaired using 1-dimensional interpolation 
+        and filling the vector using extrapolation.  This repaired dissipation vector replaces
+        the 'Dissipation' data in the original dataframe.
+
+        Args:
+            std_threshold (int): the number of standard deviations from the mean to deem a
+                point outside of the normal (Optional).
+            window_size (int): the size of the sliding window used for localized delta search
+                (Optional)
+
+        Returns:
+            None
+
+        Raises:
+            ValueError: If `std_threshold` or `window_size` is not a positive integer.
+            ValueError: If the dataframe does not contain the 'Dissipation' column.
+            ValueError: If bounds are not properly defined or are out of range.
+        """
+        # Input validation
+        if not isinstance(std_theshold, int) or std_theshold <= 0:
+            Log.e(TAG, "std_theshold must be a positive integer.")
+            raise ValueError("std_theshold must be a positive integer.")
+        if not isinstance(window_size, int) or window_size <= 0:
+            Log.e(TAG, "window_size must be a positive integer.")
+            raise ValueError("window_size must be a positive integer.")
+
+        if "Dissipation" not in self._dataframe.columns:
+            Log.e(TAG, "The dataframe does not contain a 'Dissipation' column.")
+            raise ValueError(
+                "The dataframe does not contain a 'Dissipation' column.")
+
+        if not ("index" in self._left_bound and "index" in self._right_bound):
+            Log.e(TAG, "Bounds must be properly defined with 'index' keys.")
+            raise ValueError(
+                "Bounds must be properly defined with 'index' keys.")
+
+        if (self._left_bound['index'] < 0 or self._right_bound['index'] >= len(self._dataframe)):
+            Log.e(TAG, "Bounds are out of range of the dataframe.")
+            raise ValueError("Bounds are out of range of the dataframe.")
+
+        # Extract data
+        data = self._dataframe["Dissipation"].values
+
+        # Filter data within the bounded region [lb, rb]
+        bounded_data = data[self._left_bound['index']: self._right_bound['index'] + 1]
+        if len(bounded_data) < window_size:
+            Log.e(TAG, "Window size is larger than the bounded data region.")
+            raise ValueError(
+                "Window size is larger than the bounded data region.")
+
+        x_bounded = np.arange(
+            self._left_bound['index'], self._right_bound['index'] + 1)
+
+        # Calculate deltas over a sliding window
+        deltas = []
+        indices = []
+        for i in range(len(bounded_data) - window_size):
+            window = bounded_data[i:i + window_size]
+            delta = np.abs(window[-1] - window[0])
+            deltas.append(delta)
+            indices.append(i + window_size // 2)
+
+        deltas = np.array(deltas)
+        indices = np.array(indices, dtype=int)
+
+        # Calculate the threshold for outliers and identify points outside of
+        # the std_threshold.
+        mean_delta = np.mean(deltas)
+        std_delta = np.std(deltas)
+        threshold = mean_delta + (std_theshold * std_delta)
+        outliers = deltas > threshold
+        outlier_indices = indices[outliers]
+
+        # Repair the outliers
+        repaired_bounded_data = bounded_data.copy()
+        if len(outlier_indices) > 0:
+            valid_indices = np.setdiff1d(
+                np.arange(len(bounded_data)), outlier_indices)
+
+            # Ensure there are enough valid points for interpolation
+            if len(valid_indices) < 2:
+                Log.e(
+                    TAG, "Not enough valid points for interpolation after outlier removal.")
+                raise ValueError(
+                    "Not enough valid points for interpolation after outlier removal.")
+
+            valid_x = x_bounded[valid_indices]
+            valid_y = bounded_data[valid_indices]
+            interp_func = interp1d(
+                valid_x, valid_y, kind="linear", fill_value="extrapolate")
+            repaired_bounded_data[outlier_indices] = interp_func(
+                x_bounded[outlier_indices])
+
+        # Update the original data with the repaired region
+        data[self._left_bound['index']:self._right_bound['index'] + 1] = repaired_bounded_data
+        self._dataframe["Dissipation"] = data
 
     def _optimize_difference_factor(self) -> float:
         """
@@ -345,7 +451,7 @@ class CurveOptimizer:
             Log.e(TAG, f"Error optimizing difference factor: {e}")
             raise
 
-    def optimize(self) -> tuple:
+    def optimize(self, repair: bool = True) -> tuple:
         """
         Main entry point for calling class (Anlayze.py)
 
@@ -353,24 +459,30 @@ class CurveOptimizer:
         along with the left and right time bounds of the optimziation region.
 
         Args:
+            repair (bool): temporary variable to turn on/off data repair functionality.
             None
 
         Returns:
-            tuple(float, float, float): Returns the optimizatized difference factor along with the the left and right time bounds of the optimization reigon.
+            tuple(float, float, float, numpy.ndarray): Returns the optimizatized difference factor along 
+                with the the left and right time bounds of the optimization reigon and later drop effects in
+                the dissipation curve cancelled.
 
         Raises:
             Errors raised to caller.
         """
         try:
             result = self._optimize_difference_factor()
+            # Repair later drop effects.
+            if repair:
+                self._later_drop_effects(std_theshold=3, window_size=20)
             if result:
                 Log.d(
                     TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
-                return result, self._left_bound['time'], self._right_bound['time']
+                return result, self._left_bound['time'], self._right_bound['time'], self._dataframe["Dissipation"].values
             else:
                 Log.d(
                     TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
-                return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time']
+                return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time'], self._dataframe["Dissipation"].values
         except Exception as e:
             Log.e(TAG, f"Run failed: {e}")
             raise

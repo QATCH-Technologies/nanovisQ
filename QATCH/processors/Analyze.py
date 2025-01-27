@@ -4472,13 +4472,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         with secure_open(data_path, "r", "capture") as f:
             file_header = BytesIO(f.read())
             optimizer = CurveOptimizer(file_header)
-            optimal_factor, lb, rb = optimizer.optimize()
+            optimal_factor, lb, rb, repaired_dissipation = optimizer.optimize(
+                repair=False)
             Log.i(
-                TAG, f'Using optimal difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
+                TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
 
         if optimal_factor is not None:
             Log.d(
-                TAG, f"Reporting optimial difference factor of {optimal_factor}.")
+                TAG, f"Reporting difference factor of {optimal_factor}.")
             return optimal_factor
         else:
             Log.d(
