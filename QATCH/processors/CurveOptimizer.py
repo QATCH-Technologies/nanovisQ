@@ -15,7 +15,7 @@ TAIL_TRIM_PERCENTAGE = 0.5
 """ Sets the left bound of the region behind ROI. """
 BASE_OFFSET = 0.005
 """ Restricts the difference factor. """
-DIFFERENCE_FACTOR_RESTRICTION = (0.0, 3.0)
+DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 
 
 class CurveOptimizer:
@@ -55,13 +55,14 @@ class CurveOptimizer:
         self._right_bound = {"time": -1, "index": -1}
         self._optimal_difference_factor = None
         self._head_trim = -1
+        self._set_bounds()
 
     def _initialize_file_buffer(self, file_buffer):
         """
         Initializes the input file buffer.
 
         Given a file buffer, this function checks if the file bufer has a sekable attribute
-        and the file_buffer is seakable.  If it is, this function sets the data buffer to 
+        and the file_buffer is seakable.  If it is, this function sets the data buffer to
         the head of the seekable object.  Otherwise, the function raises a value error stating
         the buffer is not seekable.  The file buffer is retruned on success.
 
@@ -126,7 +127,7 @@ class CurveOptimizer:
             np.ndarray: A 1xN array of difference curve Y values.
 
         Raises:
-            ValueError: if the input dataframe does not contain the requeired columns "Dissipation", 
+            ValueError: if the input dataframe does not contain the requeired columns "Dissipation",
                 "Resonance_Frequency", and "Relative_time"
         """
         try:
@@ -167,20 +168,20 @@ class CurveOptimizer:
         Searches for the initial fill region to perform smoothness optimization at.
 
         Given a difference data as a 1xN dataset, a relative time series as a 1xN dataset and a mode of operation
-        ('right' or 'left'), this function attempts to dynamically search for the initail fill region to optimize 
-        the smootheness of.  First, 5% of the head of the difference and relative time data is trimmed off followed 
-        by the last 50% of the difference and relative time data.  This avoids any unecessary noise in the run data 
+        ('right' or 'left'), this function attempts to dynamically search for the initail fill region to optimize
+        the smootheness of.  First, 5% of the head of the difference and relative time data is trimmed off followed
+        by the last 50% of the difference and relative time data.  This avoids any unecessary noise in the run data
         as well as unimportant data after the initial fill region. Next, a trend is established between the maximal
         difference value and the length of the run.  This trend is applied to the difference data to down trend the
         entire dataset making the initial fill peak more prominent over the baseline or any later data.
 
-        Operating in 'left' mode requires a right bound be already established, the left bound is established as follows: 
+        Operating in 'left' mode requires a right bound be already established, the left bound is established as follows:
         Difference data and relative time data is trimmed on the right side again by the right bound.  The trend is then
         re-established on the trimmed data and applied to the already adjusted difference curve to make the base of the
         initial fill region more prominent.  The left-bound is returned as the global minima of this adjusted data stepped
         back by a small offset (0.5% of the remaining data) to make sure that the entire initial fill trough is captured.
 
-        Operating in 'right' mode sets the right bound as follows: The global maxima of the adjusted difference factor is 
+        Operating in 'right' mode sets the right bound as follows: The global maxima of the adjusted difference factor is
         returned as the right bound of this data set.
 
         Args:
@@ -237,12 +238,35 @@ class CurveOptimizer:
             Log.e(TAG, f"Error finding optimization region: {e}")
             raise
 
+    def _set_bounds(self) -> None:
+        Log.d(TAG, "Setting region bounds.")
+        # Generate initial curve.
+        self._generate_curve(self._initial_diff_factor)
+
+        # Establish right bound
+        # IMPORTANT: this must be done before the left bound is established.
+        rb_time, rb_idx = self._find_region(
+            self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="right")
+        self._right_bound["time"] = rb_time
+        self._right_bound["index"] = rb_idx
+
+        # Establish left bound
+        lb_time, lb_idx = self._find_region(
+            self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="left")
+        self._left_bound["time"] = lb_time
+        self._left_bound["index"] = lb_idx
+
+
+class DifferenceFactorOptimizer(CurveOptimizer):
+    def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
+        super().__init__(file_buffer=file_buffer, initial_diff_factor=initial_diff_factor)
+
     def _objective(self, difference_factor: float, left_bound: float, right_bound: float) -> float:
         """
         The target function to optimize.
 
         This function computes the smoothness over a left/right bounded region of difference data.
-        Smoothness is a measure of the sum of the square of the slopes times the number of 
+        Smoothness is a measure of the sum of the square of the slopes times the number of
         of time deltas in the left/right bounded region of difference data.
 
         Args:
@@ -250,7 +274,7 @@ class CurveOptimizer:
             left_bound (float): A Relative_time left bound of the difference data.
             right_bound (float): A Relative_time right bound of the difference data.
 
-        Returns: 
+        Returns:
             float: A measure of the smoothness over the region bounded by left_bound/right_bound
 
         Raises:
@@ -283,38 +307,96 @@ class CurveOptimizer:
             Log.e(TAG, f"Error calculating smoothness objective: {e}")
             raise
 
-    def _later_drop_effects(self, std_theshold: int = 3, window_size: int = 20) -> None:
+    def _optimize_difference_factor(self) -> float:
         """
-        Function used to cancel drop effects appearing later in the initial fill region.
+        The primary function to perform the data i/o, bounding, and optimization processes.
 
-        This function uses a sliding window approach to determine localized deltas outside
-        of normally accepted valeus in the intial fill region of the dissipation curve. If
-        outliers can be detected, the region is repaired using 1-dimensional interpolation 
-        and filling the vector using extrapolation.  This repaired dissipation vector replaces
-        the 'Dissipation' data in the original dataframe.
+        This function generates and initial difference curve using the initial differnce factor.  Using
+        this difference curve, left and right time and index bounds are established and the left_bound/right_bound
+        attributes are set.  Next, the function uses scipy.optimize.minimize to find a maximally smooth differnce factor
+        using the previously set time bounds, initial difference factor (typically 2.0).  The optimization method is Nelder-Mead
+        (https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method).  The result is extracted from this minimization process.  If
+        the optimal factor is between 0.0 and 3.0, it is accepted and returned to the caller.  Otherwise, the default difference
+        factor of 2.0 is returned.
+
+        TODO: Look into if we should return a minimal or maximal value of 0.0 or 3.0 instead of 2.0  default.
 
         Args:
-            std_threshold (int): the number of standard deviations from the mean to deem a
-                point outside of the normal (Optional).
-            window_size (int): the size of the sliding window used for localized delta search
-                (Optional)
-
-        Returns:
             None
 
-        Raises:
-            ValueError: If `std_threshold` or `window_size` is not a positive integer.
-            ValueError: If the dataframe does not contain the 'Dissipation' column.
-            ValueError: If bounds are not properly defined or are out of range.
-        """
-        # Input validation
-        if not isinstance(std_theshold, int) or std_theshold <= 0:
-            Log.e(TAG, "std_theshold must be a positive integer.")
-            raise ValueError("std_theshold must be a positive integer.")
-        if not isinstance(window_size, int) or window_size <= 0:
-            Log.e(TAG, "window_size must be a positive integer.")
-            raise ValueError("window_size must be a positive integer.")
+        Returns:
+            float: An optimized difference factor if the result of optimization is within bounds.  Otherwise, the
+                default difference factor of 2.0 is reported.
 
+        Raises:
+            Exceptions reaised to caller.
+        """
+        try:
+            # Perform optimization
+            result = minimize(
+                self._objective,
+                self._initial_diff_factor,
+                args=(self._left_bound['time'], self._right_bound['time']),
+                method="Nelder-Mead"
+            )
+
+            # Report restults to caller
+            optimal_difference_factor = result.x[0]
+            if DIFFERENCE_FACTOR_RESTRICTION[0] < optimal_difference_factor < DIFFERENCE_FACTOR_RESTRICTION[1]:
+                Log.d(
+                    TAG, f"Optimal difference factor: {self._optimal_difference_factor}")
+                self._optimal_difference_factor = optimal_difference_factor
+            else:
+                self._optimal_difference_factor = (
+                    DIFFERENCE_FACTOR_RESTRICTION[0]
+                    if abs(optimal_difference_factor - DIFFERENCE_FACTOR_RESTRICTION[0])
+                    < abs(optimal_difference_factor - DIFFERENCE_FACTOR_RESTRICTION[1])
+                    else DIFFERENCE_FACTOR_RESTRICTION[1]
+                )
+                Log.w(
+                    TAG, f"Optimal difference factor {optimal_difference_factor} out of range {DIFFERENCE_FACTOR_RESTRICTION}, using {self._optimal_difference_factor}.")
+            return self._optimal_difference_factor
+        except Exception as e:
+            Log.e(TAG, f"Error optimizing difference factor: {e}")
+            raise
+
+    def optimize(self) -> tuple:
+        """
+        Main entry point for calling class (Anlayze.py)
+
+        Runs the optimize differnece factor function and reports the results of the optimization
+        along with the left and right time bounds of the optimziation region.
+
+        Args:
+            None
+
+        Returns:
+            tuple(float, float, float): Returns the optimizatized difference factor along
+                with the the left and right time bounds of the optimization reigon
+
+        Raises:
+            Errors raised to caller.
+        """
+        try:
+            result = self._optimize_difference_factor()
+            # Repair later drop effects.
+            if result:
+                Log.d(
+                    TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
+                return result, self._left_bound['time'], self._right_bound['time']
+            else:
+                Log.d(
+                    TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
+                return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time']
+        except Exception as e:
+            Log.e(TAG, f"Run failed: {e}")
+            raise
+
+
+class DropEffectMitigation(CurveOptimizer):
+
+    def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
+        super().__init__(file_buffer=file_buffer, initial_diff_factor=initial_diff_factor)
         if "Dissipation" not in self._dataframe.columns:
             Log.e(TAG, "The dataframe does not contain a 'Dissipation' column.")
             raise ValueError(
@@ -326,9 +408,12 @@ class CurveOptimizer:
                 "Bounds must be properly defined with 'index' keys.")
 
         if (self._left_bound['index'] < 0 or self._right_bound['index'] >= len(self._dataframe)):
-            Log.e(TAG, "Bounds are out of range of the dataframe.")
-            raise ValueError("Bounds are out of range of the dataframe.")
+            Log.e(
+                TAG, f"Bounds are out of range of the dataframe or not initialized {self._left_bound['index']} to {self._right_bound['index']}.")
+            raise ValueError(
+                f"Bounds are out of range of the dataframe or not initialized {self._left_bound['index']} to {self._right_bound['index']}.")
 
+    def _detect_drop_effect(self, std_threshold: int, window_size: int):
         # Extract data
         data = self._dataframe["Dissipation"].values
 
@@ -339,12 +424,10 @@ class CurveOptimizer:
             raise ValueError(
                 "Window size is larger than the bounded data region.")
 
-        x_bounded = np.arange(
-            self._left_bound['index'], self._right_bound['index'] + 1)
-
         # Calculate deltas over a sliding window
         deltas = []
         indices = []
+
         for i in range(len(bounded_data) - window_size):
             window = bounded_data[i:i + window_size]
             delta = np.abs(window[-1] - window[0])
@@ -352,18 +435,75 @@ class CurveOptimizer:
             indices.append(i + window_size // 2)
 
         deltas = np.array(deltas)
-        indices = np.array(indices, dtype=int)
+        indices = np.array(indices,  dtype=int)
 
         # Calculate the threshold for outliers and identify points outside of
         # the std_threshold.
         mean_delta = np.mean(deltas)
         std_delta = np.std(deltas)
-        threshold = mean_delta + (std_theshold * std_delta)
+        threshold = mean_delta + (std_threshold * std_delta)
         outliers = deltas > threshold
         outlier_indices = indices[outliers]
+        return outlier_indices, deltas[outlier_indices]
 
+    def cancel_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
+        if not isinstance(std_theshold, int) or std_theshold <= 0:
+            Log.e(TAG, "std_theshold must be a positive integer.")
+            raise ValueError("std_theshold must be a positive integer.")
+        if not isinstance(window_size, int) or window_size <= 0:
+            Log.e(TAG, "window_size must be a positive integer.")
+            raise ValueError("window_size must be a positive integer.")
+        data = self._dataframe["Dissipation"].values
+
+        outlier_indices, deltas = self._detect_drop_effect(
+            std_threshold=std_theshold, window_size=window_size)
+
+        # TODO: Need some way of offesting the outlier_indices by the self._left_bound['index'] value
+        # print(outlier_indices, len(data), deltas)
+        max_delta = max(deltas[outlier_indices])
+        max_delta_index = outlier_indices[deltas[outlier_indices].argmax()]
+
+        for i, pt in enumerate(data):
+            if i > max_delta_index:
+                data[i] = data[i] - max_delta
+
+        plt.figure()
+        plt.plot(self._dataframe["Dissipation"],
+                 color='grey', linestyle='dotted', label='Original data')
+        plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
+        plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
+        plt.scatter(outlier_indices,
+                    self._dataframe["Dissipation"].values[outlier_indices])
+        self._dataframe["Dissipation"] = data
+        plt.plot(self._dataframe["Dissipation"],
+                 color='green', label='Canceled data')
+        plt.legend()
+        plt.title("Canceled drop effect")
+        plt.show()
+        return self._dataframe["Dissipation"].values
+
+    def interpolate_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
+
+        # Input validation
+        if not isinstance(std_theshold, int) or std_theshold <= 0:
+            Log.e(TAG, "std_theshold must be a positive integer.")
+            raise ValueError("std_theshold must be a positive integer.")
+        if not isinstance(window_size, int) or window_size <= 0:
+            Log.e(TAG, "window_size must be a positive integer.")
+            raise ValueError("window_size must be a positive integer.")
+
+        # Extract data
+        data = self._dataframe["Dissipation"].values
+
+        # Filter data within the bounded region [lb, rb]
+        bounded_data = data[self._left_bound['index']                            :self._right_bound['index']]
+        outlier_indices, _ = self._detect_drop_effect(
+            std_threshold=std_theshold, window_size=window_size)
         # Repair the outliers
         repaired_bounded_data = bounded_data.copy()
+
+        x_bounded = np.arange(
+            self._left_bound['index'], self._right_bound['index'] + 1)
         if len(outlier_indices) > 0:
             valid_indices = np.setdiff1d(
                 np.arange(len(bounded_data)), outlier_indices)
@@ -383,106 +523,19 @@ class CurveOptimizer:
                 x_bounded[outlier_indices])
 
         # Update the original data with the repaired region
-        data[self._left_bound['index']:self._right_bound['index'] + 1] = repaired_bounded_data
+        data[self._left_bound['index']:self._right_bound['index']] = repaired_bounded_data
+        plt.figure()
+        plt.plot(self._dataframe["Dissipation"],
+                 color='grey', linestyle='dotted', label='Original data')
+        plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
+        plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
+        plt.scatter(outlier_indices,
+                    self._dataframe["Dissipation"].values[outlier_indices])
         self._dataframe["Dissipation"] = data
+        plt.plot(self._dataframe["Dissipation"],
+                 color='green', label='Interpolated data')
+        plt.legend()
+        plt.title("Interpolated drop effect")
+        plt.show()
 
-    def _optimize_difference_factor(self) -> float:
-        """
-        The primary function to perform the data i/o, bounding, and optimization processes.
-
-        This function generates and initial difference curve using the initial differnce factor.  Using 
-        this difference curve, left and right time and index bounds are established and the left_bound/right_bound
-        attributes are set.  Next, the function uses scipy.optimize.minimize to find a maximally smooth differnce factor
-        using the previously set time bounds, initial difference factor (typically 2.0).  The optimization method is Nelder-Mead
-        (https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method).  The result is extracted from this minimization process.  If 
-        the optimal factor is between 0.0 and 3.0, it is accepted and returned to the caller.  Otherwise, the default difference 
-        factor of 2.0 is returned. 
-
-        TODO: Look into if we should return a minimal or maximal value of 0.0 or 3.0 instead of 2.0  default.
-
-        Args:
-            None
-
-        Returns:
-            float: An optimized difference factor if the result of optimization is within bounds.  Otherwise, the 
-                default difference factor of 2.0 is reported.
-
-        Raises:
-            Exceptions reaised to caller.
-        """
-        try:
-            # Generate initial curve.
-            self._generate_curve(self._initial_diff_factor)
-
-            # Establish right bound
-            # IMPORTANT: this must be done before the left bound is established.
-            rb_time, rb_idx = self._find_region(
-                self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="right")
-            self._right_bound["time"] = rb_time
-            self._right_bound["index"] = rb_idx
-
-            # Establish left bound
-            lb_time, lb_idx = self._find_region(
-                self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="left")
-            self._left_bound["time"] = lb_time
-            self._left_bound["index"] = lb_idx
-
-            # Perform optimization
-            result = minimize(
-                self._objective,
-                self._initial_diff_factor,
-                args=(self._left_bound['time'], self._right_bound['time']),
-                method="Nelder-Mead"
-            )
-
-            # Report restults to caller
-            optimal_difference_factor = result.x[0]
-            if optimal_difference_factor < DIFFERENCE_FACTOR_RESTRICTION[0] or optimal_difference_factor > DIFFERENCE_FACTOR_RESTRICTION[1]:
-                Log.d(
-                    TAG, f"Optimal difference factor {optimal_difference_factor} out of range {DIFFERENCE_FACTOR_RESTRICTION}, using default.")
-                self._optimal_difference_factor = Constants.default_diff_factor
-            else:
-                Log.d(
-                    TAG, f"Optimal difference factor: {self._optimal_difference_factor}")
-                self._optimal_difference_factor = optimal_difference_factor
-
-            return self._optimal_difference_factor
-        except Exception as e:
-            Log.e(TAG, f"Error optimizing difference factor: {e}")
-            raise
-
-    def optimize(self, repair: bool = True) -> tuple:
-        """
-        Main entry point for calling class (Anlayze.py)
-
-        Runs the optimize differnece factor function and reports the results of the optimization
-        along with the left and right time bounds of the optimziation region.
-
-        Args:
-            repair (bool): temporary variable to turn on/off data repair functionality.
-            None
-
-        Returns:
-            tuple(float, float, float, numpy.ndarray): Returns the optimizatized difference factor along 
-                with the the left and right time bounds of the optimization reigon and later drop effects in
-                the dissipation curve cancelled.
-
-        Raises:
-            Errors raised to caller.
-        """
-        try:
-            result = self._optimize_difference_factor()
-            # Repair later drop effects.
-            if repair:
-                self._later_drop_effects(std_theshold=3, window_size=20)
-            if result:
-                Log.d(
-                    TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
-                return result, self._left_bound['time'], self._right_bound['time'], self._dataframe["Dissipation"].values
-            else:
-                Log.d(
-                    TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
-                return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time'], self._dataframe["Dissipation"].values
-        except Exception as e:
-            Log.e(TAG, f"Run failed: {e}")
-            raise
+        return self._dataframe["Dissipation"].values

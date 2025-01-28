@@ -21,7 +21,7 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
-from QATCH.processors.CurveOptimizer import CurveOptimizer
+from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectMitigation
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -828,11 +828,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
 
         # Add the checkbox and call-backs for using the curve-optimizer utility.
-        self.curve_optimizer_checkbox = QtWidgets.QCheckBox(
+        self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
             "Auto-Calculate \"Difference Factor\"")
-        self.curve_optimizer_checkbox.setChecked(False)
-        self.curve_optimizer_checkbox.clicked.connect(self.use_curve_optimizer)
-        self.gridLayout.addWidget(self.curve_optimizer_checkbox, 4, 5, 1, 3)
+
+        self.difference_factor_optimizer_checkbox.setChecked(False)
+        self.difference_factor_optimizer_checkbox.clicked.connect(
+            self.use_difference_factor_optimizer)
+        self.gridLayout.addWidget(
+            self.difference_factor_optimizer_checkbox, 4, 5, 1, 3)
+
+        self.drop_effect_interp_checkbox = QtWidgets.QCheckBox(
+            "Interpolate drop effect")
+
+        self.drop_effect_interp_checkbox.setChecked(False)
+        self.drop_effect_interp_checkbox.clicked.connect(
+            self.use_drop_effect_interpolation)
+        self.gridLayout.addWidget(self.drop_effect_interp_checkbox, 5, 5, 1, 3)
+
+        self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
+            "Cancel drop effect")
+
+        self.drop_effect_cancelation_checkbox.setChecked(False)
+        self.drop_effect_cancelation_checkbox.clicked.connect(
+            self.use_drop_effect_cancelation)
+        self.gridLayout.addWidget(
+            self.drop_effect_cancelation_checkbox, 6, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -1483,7 +1503,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"{Constants.default_diff_factor:1.3f}")
         self.set_new_diff_factor()
 
-    def use_curve_optimizer(self, object):
+    def use_difference_factor_optimizer(self, object):
         """
         Adjusts the difference factor based on the state of the curve optimizer checkbox.
 
@@ -1495,10 +1515,46 @@ class AnalyzeProcess(QtWidgets.QWidget):
             object (QWidget): The widget or object interacting with this method. Typically, 
                 this could represent the checkbox or related UI component triggering the event.
         """
-        if not self.curve_optimizer_checkbox.isChecked():
+        if not self.difference_factor_optimizer_checkbox.isChecked():
             self.tbox_diff_factor.setText(
                 f"{Constants.default_diff_factor:1.3f}")
         self.set_new_diff_factor()
+
+    def use_drop_effect_interpolation(self, object):
+        try:
+            self.action_cancel()  # ask if they mean it if there are unsaved changes
+            if not self.hasUnsavedChanges():  # only proceed if they say yes
+                try:
+                    self.diff_factor = round(
+                        float(self.tbox_diff_factor.text()), 3)
+                    Log.d(f"Difference Factor = {self.diff_factor}")
+                except:
+                    if hasattr(self, "diff_factor"):
+                        del (
+                            self.diff_factor
+                        )  # unset to revert to default auto-calc value
+                        Log.d("Difference Factor deleted")
+                self.loadRun()  # refresh plots to show new diff factor
+        except:
+            Log.e("Failed to set new difference factor!")
+
+    def use_drop_effect_cancelation(self, object):
+        try:
+            self.action_cancel()  # ask if they mean it if there are unsaved changes
+            if not self.hasUnsavedChanges():  # only proceed if they say yes
+                try:
+                    self.diff_factor = round(
+                        float(self.tbox_diff_factor.text()), 3)
+                    Log.d(f"Difference Factor = {self.diff_factor}")
+                except:
+                    if hasattr(self, "diff_factor"):
+                        del (
+                            self.diff_factor
+                        )  # unset to revert to default auto-calc value
+                        Log.d("Difference Factor deleted")
+                self.loadRun()  # refresh plots to show new diff factor
+        except:
+            Log.e("Failed to set new difference factor!")
 
     def set_new_diff_factor(self):
         """
@@ -4037,13 +4093,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )  # 1.0 if baseline < 50e-6 else 1.5
 
             # Automatically compute optimal difference factor
-            if self.curve_optimizer_checkbox.isChecked():
+            if self.difference_factor_optimizer_checkbox.isChecked():
                 self.diff_factor = self._optimize_curve(self.loaded_datapath)
 
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                ys_diff = self._cancel_drop_effect(self.loaded_datapath)
 
+            if self.drop_effect_interp_checkbox.isChecked():
+                ys_diff = self._interpolate_drop_effect(self.loaded_datapath)
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
@@ -4471,9 +4531,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         optimal_factor = None
         with secure_open(data_path, "r", "capture") as f:
             file_header = BytesIO(f.read())
-            optimizer = CurveOptimizer(file_header)
-            optimal_factor, lb, rb, repaired_dissipation = optimizer.optimize(
-                repair=False)
+            optimizer = DifferenceFactorOptimizer(file_header)
+            optimal_factor, lb, rb = optimizer.optimize()
             Log.i(
                 TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
 
@@ -4485,6 +4544,42 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d(
                 TAG, f"No optimal difference factor found, reporting default of {Constants.default_diff_factor}.")
             return Constants.default_diff_factor
+
+    def _interpolate_drop_effect(self, data_path):
+        with secure_open(data_path, "r", "capture") as f:
+            file_header = BytesIO(f.read())
+            dem = DropEffectMitigation(file_header)
+            corrected_data = dem.interpolate_drop_effect()
+
+            Log.i(
+                TAG, 'Performing drop effect interpolation.')
+
+        if corrected_data is not None:
+            Log.d(
+                TAG, f"Dissipation drop effect interpolation successful.")
+            return corrected_data
+        else:
+            Log.d(
+                TAG, f"Dissipation drop effect interpolation failed. Using original data.")
+            return None
+
+    def _cancel_drop_effect(self, data_path):
+        with secure_open(data_path, "r", "capture") as f:
+            file_header = BytesIO(f.read())
+            dem = DropEffectMitigation(file_header)
+            corrected_data = dem.cancel_drop_effect()
+
+            Log.i(
+                TAG, f'Performing drop effect cancelation.')
+
+        if corrected_data is not None:
+            Log.d(
+                TAG, f"Dissipation drop effect cancelation successful.")
+            return corrected_data
+        else:
+            Log.d(
+                TAG, f"Dissipation drop effect cancelation failed. Using original data.")
+            return None
 
 
 class AnalyzerWorker(QtCore.QObject):
