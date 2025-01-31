@@ -3896,6 +3896,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # raw data
             xs = relative_time
             ys = dissipation
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                canceled_diss, canceled_diff, canceled_rf = self._cancel_drop_effect(
+                    self.loaded_datapath)
+                ys = canceled_diss
+
+            if self.drop_effect_interp_checkbox.isChecked():
+                ys = self._interpolate_drop_effect(self.loaded_datapath)
 
             # use rough smoothing based on total runtime to figure start/stop
             total_runtime = xs[-1]
@@ -4028,6 +4035,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
+            # if self.drop_effect_cancelation_checkbox.isChecked():
+            #     ys_freq = canceled_rf
+
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
             if extend_data:
@@ -4099,11 +4109,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
-            if self.drop_effect_cancelation_checkbox.isChecked():
-                ys_diff = self._cancel_drop_effect(self.loaded_datapath)
 
-            if self.drop_effect_interp_checkbox.isChecked():
-                ys_diff = self._interpolate_drop_effect(self.loaded_datapath)
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")

@@ -413,38 +413,66 @@ class DropEffectMitigation(CurveOptimizer):
             raise ValueError(
                 f"Bounds are out of range of the dataframe or not initialized {self._left_bound['index']} to {self._right_bound['index']}.")
 
-    def _detect_drop_effect(self, std_threshold: int, window_size: int):
-        # Extract data
-        data = self._dataframe["Dissipation"].values
+    def _detect_drop_effect(self, x, y, x_min, x_max):
+        """
+        Detects the largest increase in slope (acceleration) within a bounded region.
 
-        # Filter data within the bounded region [lb, rb]
-        bounded_data = data[self._left_bound['index']: self._right_bound['index'] + 1]
-        if len(bounded_data) < window_size:
-            Log.e(TAG, "Window size is larger than the bounded data region.")
+        Parameters:
+        - x: List or numpy array of x-values
+        - y: List or numpy array of y-values
+        - x_min: Lower bound of the region
+        - x_max: Upper bound of the region
+
+        Returns:
+        - x_max_accel: The x-value where the largest increase in slope occurs
+        - y_max_accel: The corresponding y-value
+        """
+        # Ensure numpy arrays for differentiation
+        x = np.array(x)
+        y = np.array(y)
+
+        # Filter data within the bounded region
+        mask = (x >= x_min) & (x <= x_max)
+        x_region = x[mask]
+        y_region = y[mask]
+
+        if len(x_region) < 3:
             raise ValueError(
-                "Window size is larger than the bounded data region.")
+                "Not enough points in the specified region to compute derivatives.")
 
-        # Calculate deltas over a sliding window
-        deltas = []
-        indices = []
+        # Compute first derivative (slope)
+        dy_dx = np.gradient(y_region, x_region)
 
-        for i in range(len(bounded_data) - window_size):
-            window = bounded_data[i:i + window_size]
-            delta = np.abs(window[-1] - window[0])
-            deltas.append(delta)
-            indices.append(i + window_size // 2)
+        # Find the index of the maximum increase in slope
+        max_idx = np.argmax(dy_dx)
 
-        deltas = np.array(deltas)
-        indices = np.array(indices,  dtype=int)
+        # Get corresponding x and y values
+        x_max_change = x_region[max_idx]
+        y_max_change = y_region[max_idx]
+        y_delta = y_region[max_idx] - y_region[max_idx-2]
+        # Plot results
+        # plt.figure(figsize=(8, 5))
+        # plt.plot(x, y, label="Original Data", alpha=0.6)
+        # plt.plot(x_region, y_region, label="Bounded Region", linewidth=2)
+        # plt.scatter(x_max_change, y_max_change, color='red',
+        #             label="Max Slope Increase", zorder=3)
 
-        # Calculate the threshold for outliers and identify points outside of
-        # the std_threshold.
-        mean_delta = np.mean(deltas)
-        std_delta = np.std(deltas)
-        threshold = mean_delta + (std_threshold * std_delta)
-        outliers = deltas > threshold
-        outlier_indices = indices[outliers]
-        return outlier_indices, deltas[outlier_indices]
+        # # Annotate detected point
+        # plt.annotate(f'Max Delta {y_delta}',
+        #              xy=(x_max_change, y_max_change), xytext=(-30, 10),
+        #              textcoords='offset points', arrowprops=dict(arrowstyle="->"))
+
+        # plt.axvline(x_min, linestyle="--", color="gray", alpha=0.5)
+        # plt.axvline(x_max, linestyle="--", color="gray", alpha=0.5)
+
+        # plt.xlabel("X")
+        # plt.ylabel("Y")
+        # plt.legend()
+        # plt.title("Detection of Maximum Increase in Slope")
+        # plt.grid()
+        # plt.show()
+
+        return x_max, y_delta
 
     def cancel_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
         if not isinstance(std_theshold, int) or std_theshold <= 0:
@@ -455,35 +483,26 @@ class DropEffectMitigation(CurveOptimizer):
             raise ValueError("window_size must be a positive integer.")
         data = self._dataframe["Dissipation"].values
 
-        outlier_indices, deltas = self._detect_drop_effect(
-            std_threshold=std_theshold, window_size=window_size)
-
-        # TODO: Need some way of offesting the outlier_indices by the self._left_bound['index'] value
-        # print(outlier_indices, len(data), deltas)
-        max_delta = max(deltas[outlier_indices])
-        max_delta_index = outlier_indices[deltas[outlier_indices].argmax()]
-
-        for i, pt in enumerate(data):
-            if i > max_delta_index:
-                data[i] = data[i] - max_delta
-
-        plt.figure()
-        plt.plot(self._dataframe["Dissipation"],
-                 color='grey', linestyle='dotted', label='Original data')
-        plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
-        plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
-        plt.scatter(outlier_indices,
-                    self._dataframe["Dissipation"].values[outlier_indices])
+        idx, delta = self._detect_drop_effect(x=np.arange(len(self._dataframe["Dissipation"].values)),
+                                              y=self._dataframe["Dissipation"].values,
+                                              x_min=self._left_bound["index"],
+                                              x_max=self._right_bound['index'])
+        data[idx + 1:] -= delta
+        # plt.figure()
+        # plt.plot(self._dataframe["Dissipation"],
+        #          color='grey', label='Original data')
+        # plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
+        # plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
+        # plt.axvline(idx, color='black')
+        # plt.plot(data,
+        #          color='green', label='Canceled data', linestyle='dotted')
+        # plt.legend()
+        # plt.title("Canceled drop effect")
+        # plt.show()
         self._dataframe["Dissipation"] = data
-        plt.plot(self._dataframe["Dissipation"],
-                 color='green', label='Canceled data')
-        plt.legend()
-        plt.title("Canceled drop effect")
-        plt.show()
         return self._dataframe["Dissipation"].values
 
     def interpolate_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
-
         # Input validation
         if not isinstance(std_theshold, int) or std_theshold <= 0:
             Log.e(TAG, "std_theshold must be a positive integer.")
@@ -526,14 +545,14 @@ class DropEffectMitigation(CurveOptimizer):
         data[self._left_bound['index']:self._right_bound['index']] = repaired_bounded_data
         plt.figure()
         plt.plot(self._dataframe["Dissipation"],
-                 color='grey', linestyle='dotted', label='Original data')
+                 color='grey', label='Original data')
         plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
         plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
         plt.scatter(outlier_indices,
                     self._dataframe["Dissipation"].values[outlier_indices])
         self._dataframe["Dissipation"] = data
         plt.plot(self._dataframe["Dissipation"],
-                 color='green', label='Interpolated data')
+                 color='green', label='Interpolated data', linestyle="dotted")
         plt.legend()
         plt.title("Interpolated drop effect")
         plt.show()
