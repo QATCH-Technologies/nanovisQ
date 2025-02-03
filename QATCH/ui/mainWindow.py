@@ -4763,9 +4763,20 @@ class MainWindow(QtWidgets.QMainWindow):
         do_launch_inline = do_launch_inline if not do_launch_inline is None else self.do_launch_inline
 
         if os.path.exists(save_to):
+            zip_filename = os.path.basename(save_to)[:-4]
+            if os.path.basename(new_install_path) != zip_filename:
+                new_install_path = os.path.join(new_install_path, zip_filename)
             # Extract ZIP and launch new build
             with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(os.path.dirname(new_install_path))
+                zf.extractall(new_install_path)
+            nested_path_wrong = os.path.join(new_install_path, zip_filename)
+            if os.path.exists(nested_path_wrong):
+                # this guarantees files are extracted where we want them
+                os.renames(nested_path_wrong, new_install_path + "_temp")
+                if os.path.dirname(save_to) == new_install_path:
+                    os.renames(save_to, os.path.join(
+                        new_install_path + "_temp", zip_filename + ".zip"))
+                os.renames(new_install_path + "_temp", new_install_path)
             os.remove(save_to)
 
             Log.w("Launching setup script for new build...")
