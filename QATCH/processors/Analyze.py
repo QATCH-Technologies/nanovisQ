@@ -4030,8 +4030,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
             # 'RF' Drop Effect Correction
-            # if self.drop_effect_cancelation_checkbox.isChecked():
-            #     ys_freq = canceled_rf
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                ys_freq = avg - canceled_rf
 
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
