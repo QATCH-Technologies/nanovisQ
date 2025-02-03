@@ -216,6 +216,7 @@ class Constants:
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
 
+    select_tag_prompt = '-- Select Tag --'
     valid_tags = ["Username", "Initials", "Device",
                   "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]

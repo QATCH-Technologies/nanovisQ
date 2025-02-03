@@ -1579,6 +1579,9 @@ class UserPreferences:
                 save_path = save_path + self._on_time()
             elif tag == Constants.valid_tags[6]:
                 save_path = save_path + self._on_port(port_id)
+            elif tag == Constants.select_tag_prompt:
+                Log.w(TAG, 'Ignoring empty folder format tag pattern')
+                continue  # skip adding another delimeter
             else:
                 Log.e(TAG, 'Invalid folder format tag pattern')
                 raise ValueError('Invalid folder format tag pattern')

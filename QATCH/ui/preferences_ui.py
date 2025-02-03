@@ -7,15 +7,17 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 import os
 TAG = '[Preferences]'
-SELECT_TAG_PROMPT = '-- Select Tag --'
+SELECT_TAG_PROMPT = Constants.select_tag_prompt
 
 
 class PreferencesUI(QWidget):
     def __init__(self, parent):
         super().__init__()
         self.parent = parent
-        self._is_admin = UserProfiles.check(
-            parent.userrole, UserRoles.ADMIN)
+
+        # Assume non-admin user role until proven otherwise
+        self._is_admin = False  # call 'check_user_role()' to set
+
         self.setWindowTitle('Preferences')
         self.setWindowIcon(QIcon(r"QATCH\icons\preferences_icon.png"))
 
@@ -234,6 +236,10 @@ class PreferencesUI(QWidget):
         # Set the layout for the window
         self.setLayout(main_layout)
 
+    def check_user_role(self):
+        self._is_admin = UserProfiles.check(
+            self.parent.userrole, UserRoles.ADMIN)
+
     def handle_tab_change(self, index):
         """Handle tab change and load preferences if needed."""
         # Check if the file and folder preferences tab is selected
@@ -308,6 +314,7 @@ class PreferencesUI(QWidget):
 
     def toggle_global_preferences(self):
         is_checked = self.global_pref_toggle.isChecked()
+        self.check_user_role()  # updates self._is_admin
 
         # Update the label
         self.global_pref_label.setText(
