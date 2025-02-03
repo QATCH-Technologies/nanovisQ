@@ -1239,17 +1239,17 @@ class MainWindow(QtWidgets.QMainWindow):
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result == None:  # user check required, but no user signed in
-            Log.w(
-                f"Not signed in: User with role {action_role.name} is required to perform this action.")
-            Log.i("Please sign in to continue.")
-            self.ControlsWin.set_user_profile()  # prompt for sign-in
-            check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role)  # check again
-        if not check_result:  # no user signed in or user not authorized
-            Log.w(
-                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
-            return  # deny action
+        # if check_result == None:  # user check required, but no user signed in
+        #     Log.w(
+        #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
+        #     Log.i("Please sign in to continue.")
+        #     self.ControlsWin.set_user_profile()  # prompt for sign-in
+        #     check_result = UserProfiles().check(
+        #         self.ControlsWin.userrole, action_role)  # check again
+        # if not check_result:  # no user signed in or user not authorized
+        #     Log.w(
+        #         f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+        #     return  # deny action
 
         # User check required, but no user signed in.
         if check_result == None:
