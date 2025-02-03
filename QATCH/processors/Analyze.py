@@ -21,7 +21,7 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
-from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectMitigation
+from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -837,22 +837,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(
             self.difference_factor_optimizer_checkbox, 4, 5, 1, 3)
 
-        self.drop_effect_interp_checkbox = QtWidgets.QCheckBox(
-            "Interpolate drop effect")
-
-        self.drop_effect_interp_checkbox.setChecked(False)
-        self.drop_effect_interp_checkbox.clicked.connect(
-            self.use_drop_effect_interpolation)
-        self.gridLayout.addWidget(self.drop_effect_interp_checkbox, 5, 5, 1, 3)
-
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
-            "Cancel drop effect")
+            "Drop effect correction")
 
         self.drop_effect_cancelation_checkbox.setChecked(False)
         self.drop_effect_cancelation_checkbox.clicked.connect(
             self.use_drop_effect_cancelation)
         self.gridLayout.addWidget(
-            self.drop_effect_cancelation_checkbox, 6, 5, 1, 3)
+            self.drop_effect_cancelation_checkbox, 5, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -3896,13 +3888,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # raw data
             xs = relative_time
             ys = dissipation
+            canceled_diss, canceled_diff, canceled_rf = None, None, None
             if self.drop_effect_cancelation_checkbox.isChecked():
                 canceled_diss, canceled_diff, canceled_rf = self._cancel_drop_effect(
                     self.loaded_datapath)
                 ys = canceled_diss
-
-            if self.drop_effect_interp_checkbox.isChecked():
-                ys = self._interpolate_drop_effect(self.loaded_datapath)
 
             # use rough smoothing based on total runtime to figure start/stop
             total_runtime = xs[-1]
@@ -4031,10 +4021,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
             ys = ys * avg / 2
+
             ys_fit = ys_fit * avg / 2
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
+            # RF Drop Effect Correction
             # if self.drop_effect_cancelation_checkbox.isChecked():
             #     ys_freq = canceled_rf
 
@@ -4110,6 +4102,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
 
+            # 'Difference' Drop Effect Cancelation
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                canceled_diss, canceled_diff, canceled_rf = self._cancel_drop_effect(
+                    self.loaded_datapath)
+                ys_diff = canceled_diff
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
@@ -4551,28 +4548,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 TAG, f"No optimal difference factor found, reporting default of {Constants.default_diff_factor}.")
             return Constants.default_diff_factor
 
-    def _interpolate_drop_effect(self, data_path):
-        with secure_open(data_path, "r", "capture") as f:
-            file_header = BytesIO(f.read())
-            dem = DropEffectMitigation(file_header)
-            corrected_data = dem.interpolate_drop_effect()
-
-            Log.i(
-                TAG, 'Performing drop effect interpolation.')
-
-        if corrected_data is not None:
-            Log.d(
-                TAG, f"Dissipation drop effect interpolation successful.")
-            return corrected_data
-        else:
-            Log.d(
-                TAG, f"Dissipation drop effect interpolation failed. Using original data.")
-            return None
-
     def _cancel_drop_effect(self, data_path):
         with secure_open(data_path, "r", "capture") as f:
             file_header = BytesIO(f.read())
-            dem = DropEffectMitigation(file_header)
+            dem = DropEffectCorrection(
+                file_buffer=file_header, initial_diff_factor=self.diff_factor)
             corrected_data = dem.cancel_drop_effect()
 
             Log.i(

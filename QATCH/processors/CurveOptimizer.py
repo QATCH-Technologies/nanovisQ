@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 from scipy.optimize import minimize
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
@@ -393,10 +392,34 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             raise
 
 
-class DropEffectMitigation(CurveOptimizer):
+TAG = "DropEffectCorrection"
+
+
+class DropEffectCorrection(CurveOptimizer):
+    """
+    Class to mitigate drop effects in dissipation curves by detecting and correcting anomalies.
+
+    Attributes:
+        file_buffer: Input buffer containing the dataset.
+        initial_diff_factor (float): Initial difference factor for curve computation.
+
+    Methods:
+        cancel_drop_effect(): Detects and corrects drop effects in the dissipation curve.
+    """
 
     def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
+        """
+        Initializes the DropEffectMitigation with the provided file buffer and difference factor.
+
+        Args:
+            file_buffer: The data buffer containing dissipation data.
+            initial_diff_factor (float): The initial factor for calculating the difference curve.
+
+        Raises:
+            ValueError: If required columns are missing or bounds are not properly defined.
+        """
         super().__init__(file_buffer=file_buffer, initial_diff_factor=initial_diff_factor)
+
         if "Dissipation" not in self._dataframe.columns:
             Log.e(TAG, "The dataframe does not contain a 'Dissipation' column.")
             raise ValueError(
@@ -409,152 +432,64 @@ class DropEffectMitigation(CurveOptimizer):
 
         if (self._left_bound['index'] < 0 or self._right_bound['index'] >= len(self._dataframe)):
             Log.e(
-                TAG, f"Bounds are out of range of the dataframe or not initialized {self._left_bound['index']} to {self._right_bound['index']}.")
+                TAG, f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
+            )
             raise ValueError(
-                f"Bounds are out of range of the dataframe or not initialized {self._left_bound['index']} to {self._right_bound['index']}.")
+                f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
+            )
 
-    def _detect_drop_effect(self, x, y, x_min, x_max):
+        if "Difference" not in self._dataframe.columns:
+            Log.d(
+                TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}."
+            )
+            self._generate_curve(initial_diff_factor)
+
+    def _detect_drop_effect(self):
         """
-        Detects the largest increase in slope (acceleration) within a bounded region.
-
-        Parameters:
-        - x: List or numpy array of x-values
-        - y: List or numpy array of y-values
-        - x_min: Lower bound of the region
-        - x_max: Upper bound of the region
+        Detects drop effects within the defined bounds of the dissipation curve.
 
         Returns:
-        - x_max_accel: The x-value where the largest increase in slope occurs
-        - y_max_accel: The corresponding y-value
+            tuple: Index of the drop, dissipation delta, difference delta, and resonance frequency delta.
+
+        Raises:
+            ValueError: If there are not enough points to compute derivatives.
         """
-        # Ensure numpy arrays for differentiation
-        x = np.array(x)
-        y = np.array(y)
+        bounds = (self._left_bound['index'], self._right_bound['index'])
+        indices = np.arange(len(self._dataframe))
 
-        # Filter data within the bounded region
-        mask = (x >= x_min) & (x <= x_max)
-        x_region = x[mask]
-        y_region = y[mask]
+        regions = {col: self._dataframe[col].values[(indices >= bounds[0]) & (indices <= bounds[1])]
+                   for col in ['Dissipation', 'Difference', 'Resonance_Frequency']}
 
-        if len(x_region) < 3:
+        if len(regions['Dissipation']) < 3:
+            Log.e(
+                TAG, "Not enough points in the specified region to compute derivatives.")
             raise ValueError(
                 "Not enough points in the specified region to compute derivatives.")
 
-        # Compute first derivative (slope)
-        dy_dx = np.gradient(y_region, x_region)
+        max_idx = np.argmax(np.gradient(regions['Dissipation']))
+        deltas = {key: region[max_idx] - region[max_idx - 2]
+                  for key, region in regions.items()}
 
-        # Find the index of the maximum increase in slope
-        max_idx = np.argmax(dy_dx)
+        Log.d(
+            TAG, f"Drop effect detected at index {max_idx + bounds[0]} with deltas: {deltas}")
 
-        # Get corresponding x and y values
-        x_max_change = x_region[max_idx]
-        y_max_change = y_region[max_idx]
-        y_delta = y_region[max_idx] - y_region[max_idx-2]
-        # Plot results
-        # plt.figure(figsize=(8, 5))
-        # plt.plot(x, y, label="Original Data", alpha=0.6)
-        # plt.plot(x_region, y_region, label="Bounded Region", linewidth=2)
-        # plt.scatter(x_max_change, y_max_change, color='red',
-        #             label="Max Slope Increase", zorder=3)
+        return max_idx + bounds[0], deltas['Dissipation'], deltas['Difference'], deltas['Resonance_Frequency']
 
-        # # Annotate detected point
-        # plt.annotate(f'Max Delta {y_delta}',
-        #              xy=(x_max_change, y_max_change), xytext=(-30, 10),
-        #              textcoords='offset points', arrowprops=dict(arrowstyle="->"))
+    def cancel_drop_effect(self) -> np.ndarray:
+        """
+        Cancels the detected drop effect by adjusting the dissipation, difference, and resonance frequency values.
 
-        # plt.axvline(x_min, linestyle="--", color="gray", alpha=0.5)
-        # plt.axvline(x_max, linestyle="--", color="gray", alpha=0.5)
+        Returns:
+            np.ndarray: Updated values for dissipation, difference, and resonance frequency.
+        """
+        idx, diss_delta, diff_delta, rf_delta = self._detect_drop_effect()
+        Log.d(
+            TAG, f'Correction applied at index {idx}: diss_delta={diss_delta}, diff_delta={diff_delta}, rf_delta={rf_delta}'
+        )
 
-        # plt.xlabel("X")
-        # plt.ylabel("Y")
-        # plt.legend()
-        # plt.title("Detection of Maximum Increase in Slope")
-        # plt.grid()
-        # plt.show()
+        for col, delta in zip(['Dissipation', 'Difference', 'Resonance_Frequency'], [diss_delta, diff_delta, rf_delta]):
+            self._dataframe[col].values[idx + 1:] -= delta
 
-        return x_max, y_delta
+        Log.d(TAG, f'Drop effect correction completed for index {idx}.')
 
-    def cancel_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
-        if not isinstance(std_theshold, int) or std_theshold <= 0:
-            Log.e(TAG, "std_theshold must be a positive integer.")
-            raise ValueError("std_theshold must be a positive integer.")
-        if not isinstance(window_size, int) or window_size <= 0:
-            Log.e(TAG, "window_size must be a positive integer.")
-            raise ValueError("window_size must be a positive integer.")
-        data = self._dataframe["Dissipation"].values
-
-        idx, delta = self._detect_drop_effect(x=np.arange(len(self._dataframe["Dissipation"].values)),
-                                              y=self._dataframe["Dissipation"].values,
-                                              x_min=self._left_bound["index"],
-                                              x_max=self._right_bound['index'])
-        data[idx + 1:] -= delta
-        # plt.figure()
-        # plt.plot(self._dataframe["Dissipation"],
-        #          color='grey', label='Original data')
-        # plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
-        # plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
-        # plt.axvline(idx, color='black')
-        # plt.plot(data,
-        #          color='green', label='Canceled data', linestyle='dotted')
-        # plt.legend()
-        # plt.title("Canceled drop effect")
-        # plt.show()
-        self._dataframe["Dissipation"] = data
-        return self._dataframe["Dissipation"].values
-
-    def interpolate_drop_effect(self, std_theshold: int = 3, window_size: int = 20) -> np.ndarray:
-        # Input validation
-        if not isinstance(std_theshold, int) or std_theshold <= 0:
-            Log.e(TAG, "std_theshold must be a positive integer.")
-            raise ValueError("std_theshold must be a positive integer.")
-        if not isinstance(window_size, int) or window_size <= 0:
-            Log.e(TAG, "window_size must be a positive integer.")
-            raise ValueError("window_size must be a positive integer.")
-
-        # Extract data
-        data = self._dataframe["Dissipation"].values
-
-        # Filter data within the bounded region [lb, rb]
-        bounded_data = data[self._left_bound['index']                            :self._right_bound['index']]
-        outlier_indices, _ = self._detect_drop_effect(
-            std_threshold=std_theshold, window_size=window_size)
-        # Repair the outliers
-        repaired_bounded_data = bounded_data.copy()
-
-        x_bounded = np.arange(
-            self._left_bound['index'], self._right_bound['index'] + 1)
-        if len(outlier_indices) > 0:
-            valid_indices = np.setdiff1d(
-                np.arange(len(bounded_data)), outlier_indices)
-
-            # Ensure there are enough valid points for interpolation
-            if len(valid_indices) < 2:
-                Log.e(
-                    TAG, "Not enough valid points for interpolation after outlier removal.")
-                raise ValueError(
-                    "Not enough valid points for interpolation after outlier removal.")
-
-            valid_x = x_bounded[valid_indices]
-            valid_y = bounded_data[valid_indices]
-            interp_func = interp1d(
-                valid_x, valid_y, kind="linear", fill_value="extrapolate")
-            repaired_bounded_data[outlier_indices] = interp_func(
-                x_bounded[outlier_indices])
-
-        # Update the original data with the repaired region
-        data[self._left_bound['index']:self._right_bound['index']] = repaired_bounded_data
-        plt.figure()
-        plt.plot(self._dataframe["Dissipation"],
-                 color='grey', label='Original data')
-        plt.axvline(self._left_bound['index'], c='r', label='Left-bound')
-        plt.axvline(self._right_bound['index'], c='b', label='Right-bound')
-        plt.scatter(outlier_indices,
-                    self._dataframe["Dissipation"].values[outlier_indices])
-        self._dataframe["Dissipation"] = data
-        plt.plot(self._dataframe["Dissipation"],
-                 color='green', label='Interpolated data', linestyle="dotted")
-        plt.legend()
-        plt.title("Interpolated drop effect")
-        plt.show()
-
-        return self._dataframe["Dissipation"].values
+        return tuple(self._dataframe[col].values for col in ['Dissipation', 'Difference', 'Resonance_Frequency'])
