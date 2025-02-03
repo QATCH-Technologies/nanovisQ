@@ -28,6 +28,7 @@ class FileStorage:
     ###########################################################################
     # Saves CSV files of processed data in an assigned directory
     ###########################################################################
+
     @staticmethod
     def CSVsave(i, filename, path, data_save0, data_save1, data_save2, data_save3, data_save4, data_save5, writeToFilesystem=True):
         """
@@ -516,6 +517,32 @@ class FileStorage:
         except:
             Log.w(TAG, "WARN: Failed to set active device name.")
 
+    @staticmethod
+    def DEV_write_default_preferences(save_path: str):
+        import json
+        with open(save_path, "w") as f:
+            json.dump(Constants.default_preferences, f, indent=4)
+
+    @staticmethod
+    def DEV_write_preferences(save_path: str, preferences: dict):
+        import json
+        with open(save_path, "w") as f:
+            json.dump(preferences, f, indent=4)
+
+    @staticmethod
+    def DEV_load_preferences(load_path: str) -> dict:
+        import json
+        try:
+            with open(load_path, 'r') as file:
+                preferences = json.load(file)
+                return preferences
+        except FileNotFoundError:
+            print(f"Error: The file {load_path} was not found.")
+        except json.JSONDecodeError:
+            print(f"Error: The file {load_path} is not a valid JSON.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        return None
     ###########################################################################
     # Populate Device Path to insert device folder name in file path
     ###########################################################################

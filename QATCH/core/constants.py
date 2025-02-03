@@ -1,6 +1,7 @@
 from enum import Enum
 from time import strftime, localtime
 import os
+import json
 
 from QATCH.common.architecture import Architecture, OSType
 
@@ -215,6 +216,34 @@ class Constants:
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
 
+    select_tag_prompt = '-- Select Tag --'
+    valid_tags = ["Username", "Initials", "Device",
+                  "Runname", "Date", "Time", "Port"]
+    path_delimiters = ["_", "-", " "]
+    date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
+    time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
+    date_conversion = {
+        "YYYY-MM-DD": "%Y-%m-%d",
+        "DD-MM-YYYY": "%d-%m-%Y",
+        "MM-DD-YYYY": "%m-%d-%Y"
+    }
+
+    time_conversion = {
+        "HH:mm:ss": "%H:%M:%S",
+        "hh:mm:ss A": "%I:%M:%S %p",
+        "HH:mm": "%H:%M",
+        "hh:mm A": "%I:%M %p"
+    }
+    default_preferences = {
+        "load_data_path": local_app_data_path,
+        "write_data_path": local_app_data_path,
+        "folder_format": valid_tags[2],
+        "filename_format": f"{valid_tags[6]}_{valid_tags[3]}",
+        "folder_format_delimiter": path_delimiters[0],
+        "filename_format_delimiter": path_delimiters[0],
+        "date_format": date_formats[2],
+        "time_format": time_formats[0],
+    }
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'
     csv_calibration_path = "{}{}{}{}{}.{}".format(
@@ -319,7 +348,7 @@ class Constants:
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
 
-    @staticmethod
+    @ staticmethod
     def get_batch_param(batch, param=""):
         # Returns the found parameter for the (batch,param) pair as a string.
         # Unless, if you only supply a 'batch', it returns True/False if found.
