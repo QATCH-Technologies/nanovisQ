@@ -3888,9 +3888,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # raw data
             xs = relative_time
             ys = dissipation
+
+            # Computes initial difference cancelations for difference, resonance frequency
+            # and dissipation and applies them to the UI curves.
             canceled_diss, canceled_diff, canceled_rf = None, None, None
             if self.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self._cancel_drop_effect(
+                canceled_diss, canceled_diff, canceled_rf = self._correct_drop_effect(
                     self.loaded_datapath)
                 ys = canceled_diss
 
@@ -4026,7 +4029,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            # RF Drop Effect Correction
+            # 'RF' Drop Effect Correction
             # if self.drop_effect_cancelation_checkbox.isChecked():
             #     ys_freq = canceled_rf
 
@@ -4102,9 +4105,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
 
-            # 'Difference' Drop Effect Cancelation
+            # 'Difference' Drop Effect Correction
             if self.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self._cancel_drop_effect(
+                canceled_diss, canceled_diff, canceled_rf = self._correct_drop_effect(
                     self.loaded_datapath)
                 ys_diff = canceled_diff
             # Invert difference curve if drop applied to outlet
@@ -4548,15 +4551,37 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 TAG, f"No optimal difference factor found, reporting default of {Constants.default_diff_factor}.")
             return Constants.default_diff_factor
 
-    def _cancel_drop_effect(self, data_path):
-        with secure_open(data_path, "r", "capture") as f:
+    def _correct_drop_effect(self, file_header: str) -> tuple:
+        """
+        Corrects the dissipation drop effect in the provided file.
+
+        This method reads the contents of the file specified by `file_header`, 
+        applies a drop effect correction algorithm using the specified 
+        difference factor, and returns the corrected data if successful.
+
+        Args:
+            file_header (str): Path to the file containing the data to be corrected.
+
+        Returns:
+            tuple or None: The corrected data if the correction is successful; 
+            otherwise, returns None and logs that the original data will be used.
+
+        Logs:
+            - Info: Indicates the start of the drop effect cancellation process with the difference factor.
+            - Debug: Indicates whether the drop effect cancellation was successful or not.
+
+        Raises:
+            IOError: If there is an issue opening or reading the file.
+            Exception: For any unexpected errors during the correction process.
+        """
+        with secure_open(file_header, "r", "capture") as f:
             file_header = BytesIO(f.read())
-            dem = DropEffectCorrection(
+            dec = DropEffectCorrection(
                 file_buffer=file_header, initial_diff_factor=self.diff_factor)
-            corrected_data = dem.cancel_drop_effect()
+            corrected_data = dec.correct_drop_effect()
 
             Log.i(
-                TAG, f'Performing drop effect cancelation.')
+                TAG, f'Performing drop effect cancelation with difference factor {self.diff_factor}.')
 
         if corrected_data is not None:
             Log.d(

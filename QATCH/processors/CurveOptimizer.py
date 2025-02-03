@@ -475,9 +475,9 @@ class DropEffectCorrection(CurveOptimizer):
 
         return max_idx + bounds[0], deltas['Dissipation'], deltas['Difference'], deltas['Resonance_Frequency']
 
-    def cancel_drop_effect(self) -> np.ndarray:
+    def correct_drop_effect(self) -> np.ndarray:
         """
-        Cancels the detected drop effect by adjusting the dissipation, difference, and resonance frequency values.
+        Corrects the detected drop effect by adjusting the dissipation, difference, and resonance frequency values.
 
         Returns:
             np.ndarray: Updated values for dissipation, difference, and resonance frequency.
