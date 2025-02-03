@@ -969,13 +969,16 @@ class QPredictor:
                     increasing_index = np.argmax(slope > average_slope)
                     significant_point = increasing_index + 1
                     adjusted_poi_6 = significant_point + a
+            if crossings[crossings > adjusted_poi_6].size > 0 and t_delta > 0:
+                filter_2 = crossings[crossings > adjusted_poi_6]
+                adjusted_poi_6 = filter_2[0]
         else:
             # TODO: Noise case
             # The final case is instended to handle the case where the end of the run is noisy.
             filtered_candidates = candidates
             adjusted_poi_6 = poi_6_guess
 
-        # if abs(actual[5] - adjusted_poi_6) > 30 and tail_class == "increasing":
+        # if abs(actual[5] - adjusted_poi_6) > 30:
         #     plt.figure(figsize=(8, 8))
         #     plt.plot(dissipation, label="Dissipation", color="grey")
         #     plt.scatter(
@@ -989,7 +992,8 @@ class QPredictor:
         #     plt.plot(difference, label="Difference", color="brown")
         #     plt.plot(rf, label="Resonance frequency", color="tan")
 
-        #     plt.scatter(actual, dissipation[actual], label="actual", color="blue")
+        #     plt.scatter(actual, dissipation[actual],
+        #                 label="actual", color="blue")
         #     # plt.scatter(rf_max, dissipation[rf_max], label="rf_peaks", color="green")
         #     plt.scatter(
         #         nearest_peak,
@@ -1015,7 +1019,8 @@ class QPredictor:
         #     )
 
         #     if t_delta > 0:
-        #         plt.axvline(t_delta, label="t_delta", color="black", linestyle="dotted")
+        #         plt.axvline(t_delta, label="t_delta",
+        #                     color="black", linestyle="dotted")
         #     plt.axvline(adjusted_poi_6, label="poi_6", color="purple")
         #     plt.legend()
         #     plt.title(tail_class)
@@ -1145,6 +1150,7 @@ class QPredictor:
             initial_guess=start_1, dissipation_data=diss_raw)
         adj_6 = extracted_results[6]
         candidates_6 = self.find_and_sort_peaks(adj_6)
+
         if diff_raw.mean() < 0:
             poi_6 = start_6
         else:
