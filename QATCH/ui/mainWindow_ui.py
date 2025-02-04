@@ -12,7 +12,6 @@ from QATCH.ui.drawPlateConfig import WellPlate
 
 import datetime
 import logging
-import math
 import os
 # import threading
 

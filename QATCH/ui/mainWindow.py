@@ -16,7 +16,8 @@ from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.processors.Analyze import AnalyzeProcess
-from time import time, mktime, strftime, strptime, localtime
+from QATCH.ui.drawPlateConfig import WellPlate
+from time import time, strftime, localtime
 from dateutil import parser
 import threading
 import multiprocessing
@@ -27,7 +28,6 @@ from xml.dom import minidom
 import numpy as np
 import sys
 import os
-import io
 import pyzipper
 import hashlib
 import requests
@@ -1369,7 +1369,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         self, Constants.app_title, "Multiple devices detected. Please select a device in Advanced Settings and try again.")
                 else:
                     Log.e(
-                        tag=TAG, msg="No device is detected. Please connect a device and try again.")
+                        tag=TAG, msg=". Please connect a device and try again.")
                     PopUp.warning(
                         self, Constants.app_title, "No device is detected. Please connect a device and try again.")
                 self._enable_ui(True)
@@ -1377,7 +1377,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
-
+        self.do_plate_config()
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
         active_port_dict, active_port_list = self.parse_ports_from_file()
         Log.d(TAG, active_port_dict)
@@ -1619,6 +1619,59 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, Constants.app_title, "Warning: No peak magnitudes found. Rerun Initialize on port {}".format(
                 self.ControlsWin.ui1.cBox_Port.currentText()))
             self._enable_ui(True)
+
+    def do_plate_config(self):
+        """
+        Configures the plate settings based on the number of connected device ports and user-defined options.
+
+        This method dynamically determines the well plate dimensions based on the system configuration and the 
+        number of connected ports. If there are unsaved changes in the well plate UI, the user is prompted to 
+        save those changes before proceeding. The method also validates that the number of connected device ports 
+        is appropriate for the plate configuration and shows an error if the configuration is invalid.
+
+        Attributes:
+            wellPlateUI (WellPlate): The well plate UI widget, which displays the configuration to the user.
+            cBox_Port (QComboBox): A combo box for selecting the device port.
+            cBox_MultiMode (QComboBox): A combo box for selecting the number of channels.
+
+        Raises:
+            PopUp.warning: If the number of device ports is not valid for the selected plate configuration.
+
+        """
+        if hasattr(self, "wellPlateUI"):
+            if self.wellPlateUI.isVisible():
+                # Close if already open, and prompt the user to save unsaved changes
+                user_response = PopUp.confirm(self, "Unsaved Changes",
+                                              "You have unsaved changes. Do you want to save them before closing?")
+                if user_response == "Yes":
+                    self.save_well_plate_configuration()  # Add your save logic here
+                self.wellPlateUI.close()
+
+        # Dynamically specify plate dimensions based on device configuration
+        num_ports = self.cBox_Port.count() - 1  # Get the number of ports
+        i = self.cBox_Port.currentText()
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
+
+        # Determine well plate dimensions based on device port configuration
+        if i % 9 == i:  # 4x1 system
+            well_width = 4
+            well_height = 1
+        else:  # 4x6 system
+            well_width = 6
+            well_height = 4
+
+        # Get the number of channels based on user input
+        num_channels = self.cBox_MultiMode.currentIndex() + 1
+
+        # Validate device port count for plate configuration
+        if num_ports not in [well_width, well_height] and num_ports != 1:
+            PopUp.warning(self, "Plate Configuration",
+                          f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
+                          f"You must have exactly 4 device ports connected for this mode.<br/>" +
+                          f"Currently connected device port count is: {num_ports} (not 4)")
+        else:
+            # Create widget and show UI to user
+            self.wellPlateUI = WellPlate(well_width, well_height, num_channels)
 
     ###########################################################################
     # Stops the acquisition of the selected serial port
