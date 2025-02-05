@@ -1215,7 +1215,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ports_dict[port_name] = state
                 if state:  # If the port is active, add to the list
                     active_ports.append(port_name)
-
+        # Works fine for isolation test.  Need to do some kind of relative pathing.
         return ports_dict, active_ports
 
     ###########################################################################
