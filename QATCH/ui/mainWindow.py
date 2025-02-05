@@ -1377,7 +1377,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
-
+        # self.ControlsWin.ui1.do_plate_config()
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
         active_port_dict, active_port_list = self.parse_ports_from_file()
         Log.d(TAG, active_port_dict)

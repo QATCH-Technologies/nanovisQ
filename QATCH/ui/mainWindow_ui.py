@@ -1225,6 +1225,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
     def action_initialize(self):
         if self.pButton_Start.isEnabled():
+            self.do_plate_config(on_init_click=True)
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
@@ -1309,7 +1310,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
 
-    def do_plate_config(self):
+    def do_plate_config(self, on_init_click: bool):
         if hasattr(self, "wellPlateUI"):
             if self.wellPlateUI.isVisible():
                 # close if already open, don't bother to ask to save unsaved changes (TODO)
@@ -1327,15 +1328,19 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             well_width = 6
             well_height = 4
         num_channels = self.cBox_MultiMode.currentIndex() + 1  # user define device count
-        if num_ports not in [well_width, well_height] and num_ports != 1:
-            PopUp.warning(self, "Plate Configuration",
-                          f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
-                          f"You must have exactly 4 device ports connected for this mode.<br/>" +
-                          f"Currently connected device port count is: {num_ports} (not 4)")
+        if num_ports not in [well_width, well_height] or num_ports < 4:
+            if on_init_click:
+                Log.i(
+                    f"Currently connected device port count is: {num_ports} < 4, skipping plate config.")
+            else:
+                PopUp.warning(self, "Plate Configuration",
+                              f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
+                              f"You must have exactly 4 device ports connected for this mode.<br/>" +
+                              f"Currently connected device port count is: {num_ports} (not 4)")
         else:
             # creation of widget also shows UI to user
             self.wellPlateUI = WellPlate(well_width, well_height, num_channels)
-        plate_config_done.emit()
+
 #######################################################################################################################
 
 
