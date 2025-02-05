@@ -556,7 +556,6 @@ class Ui_Login(object):
 
 
 class Ui_Controls(object):  # QtWidgets.QMainWindow
-
     def setupUi(self, MainWindow1):
         USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
         SHOW_SIMPLE_CONTROLS = True
@@ -922,7 +921,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.pButton_PlateConfig = QtWidgets.QPushButton(
             QtGui.QIcon(os.path.join(icon_path, 'advanced.png')), "")
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
-        self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
+        self.pButton_PlateConfig.clicked.connect(self.do_plate_config)
         self.hBox_MultiConfig = QtWidgets.QHBoxLayout()
         self.hBox_MultiConfig.addWidget(self.cBox_MultiMode, 3)
         self.hBox_MultiConfig.addWidget(self.pButton_PlateConfig, 1)
@@ -1310,7 +1309,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
 
-    def doPlateConfig(self):
+    def do_plate_config(self):
         if hasattr(self, "wellPlateUI"):
             if self.wellPlateUI.isVisible():
                 # close if already open, don't bother to ask to save unsaved changes (TODO)
@@ -1336,9 +1335,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         else:
             # creation of widget also shows UI to user
             self.wellPlateUI = WellPlate(well_width, well_height, num_channels)
-
-
+        plate_config_done.emit()
 #######################################################################################################################
+
 
 class Ui_Plots(object):
     def setupUi(self, MainWindow2):
