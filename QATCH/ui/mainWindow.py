@@ -1377,20 +1377,24 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
-        # self.ControlsWin.ui1.do_plate_config()
-        # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
-        active_port_dict, active_port_list = self.parse_ports_from_file()
-        Log.d(TAG, active_port_dict)
+
+        port_count = self.ControlsWin.ui1.cBox_Port.count() - 1
         # Sets the number of ports to use for a multiplex device.
-        if self.multiplex_plots > 1:
-            selected_port = []
+        if port_count >= 4:
+            # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
+            active_port_dict, active_port_list = self.parse_ports_from_file()
+            Log.d(TAG, active_port_dict)
+            selected_ports = []
             for port_id in active_port_list:
-                if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
+                if port_id < port_count:
 
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
-                    selected_port.append(
+                    selected_ports.append(
                         self.ControlsWin.ui1.cBox_Port.itemData(port_id))
+        else:
+            Log.d(
+                TAG, f"No multiplex detected, running in single mode; available ports: {port_count}")
 
         # Determine the measurement type and user profile is not in developer mode.  If the user profile is in developer
         # mode, and there is an error or expires is empty, warn the user.

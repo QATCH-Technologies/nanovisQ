@@ -618,6 +618,9 @@ class FileStorage:
                 device_dirs.append(dir)
         return device_dirs
 
+    # @staticmethod
+    # def DEV_
+
 ###########################################################################
 # Get an IO handle to read/write/append to a secured ZIP archive record
 ###########################################################################
