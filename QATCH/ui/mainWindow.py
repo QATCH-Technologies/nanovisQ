@@ -771,7 +771,9 @@ class Rename_Output_Files(QtCore.QObject):
         i = self.parent.ControlsWin.ui1.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
         if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
-            return os.path.exists("plate-config.json")
+            plate_config_path = os.path.join(
+                Constants.local_app_data_path, "plate-config.json")
+            return os.path.exists(plate_config_path)
         return False
 
     def get_active_multi_port(self):
@@ -1149,7 +1151,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if chk4 != self.ControlsWin.chk4.isChecked():
             self.ControlsWin.toggle_RandD()
 
-    def parse_ports_from_file(self, path_to_plate_config: str = r'plate-config.json'):
+    def parse_ports_from_file(self, path_to_plate_config: str):
         """
         Parses a JSON file containing a nested list of booleans and maps them to port names.
 
@@ -1167,10 +1169,13 @@ class MainWindow(QtWidgets.QMainWindow):
         import json
         # Check if file exists
         if not os.path.exists(path_to_plate_config):
-            Log.e(
-                tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
-            raise FileNotFoundError(
-                f"The file '{path_to_plate_config}' does not exist.")
+            Log.w(
+                tag=TAG, msg=f"Plate configuration not found, writing default with all active plates.")
+            try:
+                FileStorage.DEV_write_default_plate_config()
+            except Exception as e:
+                Log.e(TAG, f"{e}")
+                raise e
 
         # Read the JSON file
         try:
@@ -1197,7 +1202,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
 
         # Map rows to numbers (1-6) and columns to letters (A-D)
-        rows = range(1, len(matrix) + 1)  # 1 through number of rows
         columns = ['A', 'B', 'C', 'D']   # A through D
 
         # Ensure each row has the correct number of columns

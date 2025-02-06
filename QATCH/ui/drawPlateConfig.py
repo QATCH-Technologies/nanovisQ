@@ -6,7 +6,7 @@ import json
 import os
 import sys
 from string import ascii_uppercase as auc  # Add this import statement
-
+from QATCH.core.constants import Constants
 # Logger and Architecture setup with fallback definitions
 try:
     from QATCH.common.logger import Logger as Log
@@ -138,7 +138,9 @@ class WellPlate(QDialog):
             msg.exec_()
         else:
             try:
-                with open("plate-config.json", 'w') as f:
+                save_path = os.path.join(
+                    Constants.local_app_data_path, "plate-config.json")
+                with open(save_path, 'w') as f:
                     json.dump(self.well_states, f)
                 msg.setWindowTitle("Saved: Plate Configuration")
                 msg.setText("Your plate configuration was saved successfully.")
@@ -211,7 +213,9 @@ class WellPlate(QDialog):
                     self.well_states[x][y] = True
                     self.wells_selected += 1
         try:
-            with open("plate-config.json", 'r') as f:
+            save_path = os.path.join(
+                Constants.local_app_data_path, "plate-config.json")
+            with open(save_path, 'r') as f:
                 saved_states = json.load(f)
             if len(saved_states) == self.well_cols and len(saved_states[0]) == self.well_rows:
                 self.well_states = saved_states

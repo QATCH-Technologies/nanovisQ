@@ -8,6 +8,7 @@ import numpy as np
 import os
 import hashlib
 import pyzipper
+import json
 
 TAG = ""  # "[FileStorage]"
 
@@ -618,12 +619,29 @@ class FileStorage:
                 device_dirs.append(dir)
         return device_dirs
 
-    # @staticmethod
-    # def DEV_
+    @staticmethod
+    def DEV_write_default_plate_config():
+        """Writes default plate configuarion JSON file containing a 6x4 matrix 
+        with all plates set to True.
 
-###########################################################################
-# Get an IO handle to read/write/append to a secured ZIP archive record
-###########################################################################
+        Raises:
+            ValueError: If the filename is not a string.
+            IOError: If there is an issue writing to the file.
+        """
+        plate_config_path = os.path.join(
+            Constants.local_app_data_path, "plate-config.json")
+        data = [[True for _ in range(4)] for _ in range(6)]
+
+        try:
+            with open(plate_config_path, 'w') as file:
+                json.dump(data, file, indent=4)
+        except IOError as e:
+            raise IOError(
+                f"Error writing plate configuration {plate_config_path}: {e}")
+
+    ###########################################################################
+    # Get an IO handle to read/write/append to a secured ZIP archive record
+    ###########################################################################
 
 
 class secure_open:
