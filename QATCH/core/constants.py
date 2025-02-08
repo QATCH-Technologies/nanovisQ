@@ -214,6 +214,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    invalidChars = "\\/:*?\"'<>|"
 
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'

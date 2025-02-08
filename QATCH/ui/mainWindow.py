@@ -611,8 +611,8 @@ class Rename_Output_Files(QtCore.QObject):
                         if ok:
                             ask4info = True
                             # remove any invalid characters from user input
-                            invalidChars = "\\/:*?\"'<>|"
-                            for invalidChar in invalidChars:
+                            # invalidChars = "\\/:*?\"'<>|"
+                            for invalidChar in Constants.invalidChars:
                                 text = text.replace(invalidChar, '')
                             subDir = text
                             if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
@@ -2323,8 +2323,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                                   text=friendly_name)
         if ok:
             # remove any invalid characters from user input
-            invalidChars = "\\/:*?\"'<>|"
-            for invalidChar in invalidChars:
+            # invalidChars = "\\/:*?\"'<>|"
+            for invalidChar in Constants.invalidChars:
                 text = text.replace(invalidChar, '')
             text = text.strip().replace(' ', '_')  # word spaces -> underscores
             # limit length of input

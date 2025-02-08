@@ -3655,11 +3655,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         Used as a reciever from QueryRunInfo to update the xml_path name
         to the modified xml_path name.
         """
-        loaded_idx = self.cBox_Runs.currentIndex()
-        devs = FileStorage.DEV_get_all_device_dirs()
-        for i, _ in enumerate(devs):
-            self.updateRun(i)
-        self.cBox_Runs.setCurrentIndex(loaded_idx)
+        if self.bWorker.run_name_changed:
+            loaded_idx = self.cBox_Runs.currentIndex()
+            devs = FileStorage.DEV_get_all_device_dirs()
+            for i, _ in enumerate(devs):
+                self.updateRun(i)
+            self.cBox_Runs.setCurrentIndex(loaded_idx)
 
     def Analyze_Data(self, data_path):
 
