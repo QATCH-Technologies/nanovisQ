@@ -2178,7 +2178,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             return
         self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
-        run = run[0: run.find("(") - 1]
+        run = run[0: run.rfind("(") - 1]
         dev = self.run_devices.get(run)
         if dev != None:
             self.cBox_Devices.setCurrentText(dev)
