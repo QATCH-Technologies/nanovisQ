@@ -1149,74 +1149,74 @@ class MainWindow(QtWidgets.QMainWindow):
         if chk4 != self.ControlsWin.chk4.isChecked():
             self.ControlsWin.toggle_RandD()
 
-    def parse_ports_from_file(self, path_to_plate_config: str = r'plate-config.json'):
-        """
-        Parses a JSON file containing a nested list of booleans and maps them to port names.
+    # def parse_ports_from_file(self, path_to_plate_config: str = r'plate-config.json'):
+    #     """
+    #     Parses a JSON file containing a nested list of booleans and maps them to port names.
 
-        Parameters:
-            json_file_path (str): Path to the JSON file containing the nested list (Default='plate-config.json').
+    #     Parameters:
+    #         json_file_path (str): Path to the JSON file containing the nested list (Default='plate-config.json').
 
-        Returns:
-            dict: A dictionary mapping port names (A1, B1, ...) to their boolean states.
-            list: A list of active port names (e.g., ['A1', 'A2', ...]).
+    #     Returns:
+    #         dict: A dictionary mapping port names (A1, B1, ...) to their boolean states.
+    #         list: A list of active port names (e.g., ['A1', 'A2', ...]).
 
-        Raises:
-            FileNotFoundError: If the file does not exist.
-            ValueError: If the file does not contain the expected nested list structure.
-        """
-        import json
-        # Check if file exists
-        if not os.path.exists(path_to_plate_config):
-            Log.e(
-                tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
-            raise FileNotFoundError(
-                f"The file '{path_to_plate_config}' does not exist.")
+    #     Raises:
+    #         FileNotFoundError: If the file does not exist.
+    #         ValueError: If the file does not contain the expected nested list structure.
+    #     """
+    #     import json
+    #     # Check if file exists
+    #     if not os.path.exists(path_to_plate_config):
+    #         Log.e(
+    #             tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
+    #         raise FileNotFoundError(
+    #             f"The file '{path_to_plate_config}' does not exist.")
 
-        # Read the JSON file
-        try:
-            with open(path_to_plate_config, 'r') as file:
-                matrix = json.load(file)
-        except json.JSONDecodeError as e:
-            Log.e(
-                tag=TAG, msg=f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
-            raise ValueError(
-                f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+    #     # Read the JSON file
+    #     try:
+    #         with open(path_to_plate_config, 'r') as file:
+    #             matrix = json.load(file)
+    #     except json.JSONDecodeError as e:
+    #         Log.e(
+    #             tag=TAG, msg=f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+    #         raise ValueError(
+    #             f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
 
-        # Validate the JSON structure
-        if not isinstance(matrix, list) or not all(isinstance(row, list) for row in matrix):
-            Log.e(
-                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
-            raise ValueError(
-                f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+    #     # Validate the JSON structure
+    #     if not isinstance(matrix, list) or not all(isinstance(row, list) for row in matrix):
+    #         Log.e(
+    #             tag=TAG, msg=f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+    #         raise ValueError(
+    #             f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
 
-        # Check all elements are booleans
-        if not all(all(isinstance(value, bool) for value in row) for row in matrix):
-            Log.e(
-                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
-            raise ValueError(
-                f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+    #     # Check all elements are booleans
+    #     if not all(all(isinstance(value, bool) for value in row) for row in matrix):
+    #         Log.e(
+    #             tag=TAG, msg=f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+    #         raise ValueError(
+    #             f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
 
-        # Map rows to numbers (1-6) and columns to letters (A-D)
-        rows = range(1, len(matrix) + 1)  # 1 through number of rows
-        columns = ['A', 'B', 'C', 'D']   # A through D
+    #     # Map rows to numbers (1-6) and columns to letters (A-D)
+    #     rows = range(1, len(matrix) + 1)  # 1 through number of rows
+    #     columns = ['A', 'B', 'C', 'D']   # A through D
 
-        # Ensure each row has the correct number of columns
-        num_columns = len(columns)
-        if any(len(row) != num_columns for row in matrix):
-            raise ValueError(
-                f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements.")
+    #     # Ensure each row has the correct number of columns
+    #     num_columns = len(columns)
+    #     if any(len(row) != num_columns for row in matrix):
+    #         raise ValueError(
+    #             f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements.")
 
-        # Create the dictionary of ports and their states, and track active ports
-        ports_dict = {}
-        active_ports = []
-        for row_index, row in enumerate(matrix):
-            for col_index, state in enumerate(row):
-                port_name = f"{columns[col_index]}{row_index + 1}"
-                ports_dict[port_name] = state
-                if state:  # If the port is active, add to the list
-                    active_ports.append(port_name)
+    #     # Create the dictionary of ports and their states, and track active ports
+    #     ports_dict = {}
+    #     active_ports = []
+    #     for row_index, row in enumerate(matrix):
+    #         for col_index, state in enumerate(row):
+    #             port_name = f"{columns[col_index]}{row_index + 1}"
+    #             ports_dict[port_name] = state
+    #             if state:  # If the port is active, add to the list
+    #                 active_ports.append(port_name)
 
-        return ports_dict, active_ports
+    #     return ports_dict, active_ports
 
     ###########################################################################
     # Starts the acquisition of the selected serial port
@@ -1378,13 +1378,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
 
-        # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
-        active_port_dict, active_port_list = self.parse_ports_from_file()
-        Log.d(TAG, active_port_dict)
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
             selected_port = []
-            for port_id in active_port_list:
+            for port_id in range(self.multiplex_plots):
                 if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
 
                     # TODO: Figure out what value needs to be appended to the active ports list.
@@ -5428,7 +5425,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @ staticmethod
+    @staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType
