@@ -255,13 +255,6 @@ class CurveOptimizer:
         self._left_bound["time"] = lb_time
         self._left_bound["index"] = lb_idx
 
-        plt.figure()
-        plt.plot(self._dataframe["Relative_time"].values,
-                 self._dataframe["Difference"].values)
-        plt.axvline(lb_time)
-        plt.axvline(rb_time)
-        plt.show()
-
 
 class DifferenceFactorOptimizer(CurveOptimizer):
     def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
