@@ -846,6 +846,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(
             self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
 
+        # Per Zehra, for v2.6r53: Hide these corrections (not working)
+        self.difference_factor_optimizer_checkbox.setVisible(False)
+        self.drop_effect_cancelation_checkbox.setVisible(False)
+
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
             QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint
