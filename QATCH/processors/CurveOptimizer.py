@@ -262,99 +262,113 @@ class DifferenceFactorOptimizer(CurveOptimizer):
 
     def _objective(self, difference_factor: float, left_bound: float, right_bound: float) -> float:
         """
-        The target function to optimize.
+        Computes a penalty metric based on sudden changes in the first 20% of the ROI of the difference
+        curve computed using the provided difference factor.
 
-        This function computes the smoothness over a left/right bounded region of difference data.
-        Smoothness is a measure of the sum of the square of the slopes times the number of
-        of time deltas in the left/right bounded region of difference data.
+        The metric:
+        - Computes the first differences for the first 20% of the ROI.
+        - Determines the "typical" change (median) and a robust measure of dispersion (MAD).
+        - Penalizes any differences that deviate from the typical change by more than a tolerance.
 
         Args:
-            differnce_factor (float): The difference factor to compute the difference curve with.
-            left_bound (float): A Relative_time left bound of the difference data.
-            right_bound (float): A Relative_time right bound of the difference data.
+            difference_factor (float): The factor used to generate the difference curve.
+            left_bound (float): The left (start) time bound for the ROI.
+            right_bound (float): The right (end) time bound for the ROI.
 
         Returns:
-            float: A measure of the smoothness over the region bounded by left_bound/right_bound
+            float: The penalty metric (lower is better).
 
         Raises:
-            Errors raised to caller.
+            Exception: If any error is encountered during computation.
         """
         try:
-            # Generate the difference curve 1xN array.
+            # Generate the difference curve.
+            # Assumed: column 0 is time and column 1 is the signal value.
             curve = self._generate_curve(difference_factor)
 
-            # Mask of the Region of Interest (ROI) by the parameterized left and right bound.
+            # Extract the ROI based on time bounds.
             region_mask = (curve[:, 0] >= left_bound) & (
                 curve[:, 0] <= right_bound)
+            values = curve[region_mask, 1]
 
-            # Get the differnce values and time values from this ROI.
-            differences = curve[region_mask, 1]
-            time_points = curve[region_mask, 0]
+            # Check that we have enough data.
+            if len(values) < 2:
+                Log.w(TAG, "ROI is too short; returning a high penalty.")
+                return np.inf
 
-            # Compute the slopes of the difference region.
-            slopes = np.diff(differences) / np.diff(time_points)
+            # Use only the first 20% of the ROI.
+            # Ensure at least 2 points for diff
+            subset_length = max(2, int(0.3 * len(values)))
+            sub_values = values[:subset_length]
 
-            # Compute the deltas between time points.
-            step_sizes = np.diff(time_points)
+            # Compute first differences on the restricted subset.
+            diffs = np.diff(sub_values)
+            if len(diffs) == 0:
+                Log.w(
+                    TAG, "Not enough differences in the subset; returning a high penalty.")
+                return np.inf
 
-            # Compute the objective, smoothness metric.
-            smoothness_metric = np.sum((slopes ** 2) * step_sizes)
+            # Calculate the typical delta using the median.
+            typical_delta = np.median(diffs)
 
-            Log.d(TAG, f"Smoothness objective calculated: {smoothness_metric}")
-            return smoothness_metric
+            # Calculate the median absolute deviation (MAD) as a robust dispersion measure.
+            mad = np.median(np.abs(diffs - typical_delta))
+
+            # Set a tolerance. You might choose to scale the MAD if needed.
+            # For example, tolerance = mad (strict) or tolerance = 1.5 * mad (more lenient)
+            # Ensure a minimum tolerance if mad is very low
+            tolerance = mad if mad > 0.05 else 0.05
+
+            # Calculate the excess deviation beyond the tolerance.
+            excess = np.maximum(np.abs(diffs - typical_delta) - tolerance, 0)
+            penalty = np.sum(excess ** 2)
+            Log.d(
+                TAG, f"Penalty computed for difference factor {difference_factor}: {penalty}")
+            return penalty
+
         except Exception as e:
-            Log.e(TAG, f"Error calculating smoothness objective: {e}")
+            Log.e(TAG, f"Error calculating penalty metric: {e}")
             raise
 
     def _optimize_difference_factor(self) -> float:
         """
-        The primary function to perform the data i/o, bounding, and optimization processes.
-
-        This function generates and initial difference curve using the initial differnce factor.  Using
-        this difference curve, left and right time and index bounds are established and the left_bound/right_bound
-        attributes are set.  Next, the function uses scipy.optimize.minimize to find a maximally smooth differnce factor
-        using the previously set time bounds, initial difference factor (typically 2.0).  The optimization method is Nelder-Mead
-        (https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method).  The result is extracted from this minimization process.  If
-        the optimal factor is between 0.0 and 3.0, it is accepted and returned to the caller.  Otherwise, the default difference
-        factor of 2.0 is returned.
-
-        TODO: Look into if we should return a minimal or maximal value of 0.0 or 3.0 instead of 2.0  default.
-
-        Args:
-            None
+        Optimizes the difference factor by minimizing the penalty metric (which now only considers the
+        first 20% of the ROI) using the L-BFGS-B method. This method enforces that the difference factor
+        remains within the bounds [0.5, 3.0].
 
         Returns:
-            float: An optimized difference factor if the result of optimization is within bounds.  Otherwise, the
-                default difference factor of 2.0 is reported.
+            float: The optimized difference factor (between 0.5 and 3.0).
 
         Raises:
-            Exceptions reaised to caller.
+            Exception: Any errors encountered during optimization are re-raised.
         """
         try:
-            # Perform optimization
+            bounds = [(0.5, 3.0)]
             result = minimize(
                 self._objective,
                 self._initial_diff_factor,
                 args=(self._left_bound['time'], self._right_bound['time']),
-                method="Nelder-Mead"
+                method="L-BFGS-B",
+                bounds=bounds
             )
 
-            # Report restults to caller
             optimal_difference_factor = result.x[0]
-            if DIFFERENCE_FACTOR_RESTRICTION[0] < optimal_difference_factor < DIFFERENCE_FACTOR_RESTRICTION[1]:
-                Log.d(
-                    TAG, f"Optimal difference factor: {self._optimal_difference_factor}")
+
+            if 0.5 <= optimal_difference_factor <= 3.0:
                 self._optimal_difference_factor = optimal_difference_factor
+                Log.d(
+                    TAG, f"Optimal difference factor found: {self._optimal_difference_factor}")
             else:
-                self._optimal_difference_factor = (
-                    DIFFERENCE_FACTOR_RESTRICTION[0]
-                    if abs(optimal_difference_factor - DIFFERENCE_FACTOR_RESTRICTION[0])
-                    < abs(optimal_difference_factor - DIFFERENCE_FACTOR_RESTRICTION[1])
-                    else DIFFERENCE_FACTOR_RESTRICTION[1]
-                )
+                self._optimal_difference_factor = max(
+                    0.5, min(optimal_difference_factor, 3.0))
                 Log.w(
-                    TAG, f"Optimal difference factor {optimal_difference_factor} out of range {DIFFERENCE_FACTOR_RESTRICTION}, using {self._optimal_difference_factor}.")
+                    TAG,
+                    f"Optimal difference factor {optimal_difference_factor} out of bounds [0.5, 3.0], "
+                    f"using {self._optimal_difference_factor}."
+                )
+
             return self._optimal_difference_factor
+
         except Exception as e:
             Log.e(TAG, f"Error optimizing difference factor: {e}")
             raise
