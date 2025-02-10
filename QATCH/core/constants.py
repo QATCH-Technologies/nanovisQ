@@ -40,7 +40,7 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b53"
+    app_version = "v2.6r53"
     app_date = "2025-02-10"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
