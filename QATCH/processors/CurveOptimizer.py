@@ -223,13 +223,13 @@ class CurveOptimizer:
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
                 Log.d(
-                    TAG, f"Left bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                    TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             elif mode == 'right':
                 # Report global max from downtrended data.
                 index = np.argmax(adjusted_difference)
                 Log.d(
-                    TAG, f"Right bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                    TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             else:
                 raise ValueError(f"Invalid search bound requested {mode}.")
@@ -254,6 +254,9 @@ class CurveOptimizer:
             self._dataframe["Difference"].values, self._dataframe["Relative_time"], mode="left")
         self._left_bound["time"] = lb_time
         self._left_bound["index"] = lb_idx
+
+
+TAG = "DifferenceFactorOptimizer"
 
 
 class DifferenceFactorOptimizer(CurveOptimizer):
@@ -343,7 +346,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             Exception: Any errors encountered during optimization are re-raised.
         """
         try:
-            bounds = [(0.5, 3.0)]
+            bounds = [(0.5, 2.0)]
             result = minimize(
                 self._objective,
                 self._initial_diff_factor,
