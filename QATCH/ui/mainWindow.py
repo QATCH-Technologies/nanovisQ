@@ -33,6 +33,7 @@ import hashlib
 import requests
 import stat
 import subprocess
+import ctypes
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -61,31 +62,86 @@ class _MainWindow(QtWidgets.QMainWindow):
 
 
 # ------------------------------------------------------------------------------
-class LoginWindow(QtWidgets.QMainWindow):
 
-    def __init__(self, parent):
+
+class LoginWindow(QtWidgets.QMainWindow):
+    """Main window for handling user login events.
+
+    This class provides a login window that manages user interactions, and the window close event.
+    It initializes the login UI and processes events to either authenticate the user,
+    clear the login form, or update the UI state (e.g., toggling the Caps Lock indicator).
+
+    Attributes:
+        ui5 (Ui_Login): An instance of the login UI class used to set up and manage
+            the login interface view.
+    """
+
+    def __init__(self, parent: QtWidgets.QMainWindow) -> None:
+        """Initializes the LoginWindow with the given parent window.
+
+        This method sets up the user interface for the login window by creating an instance
+        of the UI class and initializing it with the current window and parent window.
+
+        Args:
+            parent (QtWidgets.QMainWindow): The parent widget for this login window.
+        """
         super().__init__()
         self.ui5 = Ui_Login()
         self.ui5.setupUi(self, parent)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
+        """Intercepts and processes key press events for the login window.
+
+        This method handles key press events to facilitate user interactions:
+          - **Enter/Return**: If the password field is empty, the focus is set to the field;
+            otherwise, the sign-in action is triggered.
+          - **Escape**: Clears the login form.
+          - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
+
+        Args:
+            obj: The object for which the event is being filtered.
+            event (QtCore.QEvent): The event object containing details about the key press.
+
+        Returns:
+            bool: The result of the event filtering. If the event is not handled,
+            it is passed to the base class implementation.
+        """
         if event.type() == QtCore.QEvent.KeyPress:
-            # Log.i(f"Key {event.key()} pressed!")
+
+            # Handles focus for user password field.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
                 if len(self.ui5.user_password.text()) == 0:
                     self.ui5.user_password.setFocus()
                 else:
                     self.ui5.action_sign_in()
+
+            # Handles clearing the login form on EscapeKey press.
             if event.key() == QtCore.Qt.Key_Escape:
                 self.ui5.clear_form()
+
+            # Handles user info messages for CapsLock key press.
+            if event.type() == event.KeyPress and event.key() == QtCore.Qt.Key_CapsLock:
+                self.ui5.caps_lock_on = not self.ui5.caps_lock_on
+                self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+
         return super().eventFilter(obj, event)
 
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
+    def closeEvent(self, event: QtCore.QEvent) -> None:
+        """Handles the window close event by prompting the user for confirmation.
+
+        When a close event occurs, this method displays a confirmation dialog asking the user
+        whether they wish to quit the application. If the user confirms, the application quits;
+        otherwise, the event is ignored, and the window remains open.
+
+        Args:
+            event (QtCore.QEvent): The close event triggered when the user attempts to close the window.
+
+        Returns:
+            None
+        """
         res = PopUp.question(self, Constants.app_title,
                              "Are you sure you want to quit QATCH Q-1 application now?", True)
         if res:
-            # self.close()
             QtWidgets.QApplication.quit()
         else:
             event.ignore()
@@ -5428,7 +5484,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @ staticmethod
+    @staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType

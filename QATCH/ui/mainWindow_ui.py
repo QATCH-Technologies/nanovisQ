@@ -342,9 +342,12 @@ class Ui_Main(object):
 
 
 class Ui_Login(object):
-
     def setupUi(self, MainWindow5, parent):
         self.parent = parent
+
+        # Variable to check and store the state of the Caps Lock key on init.
+        self.caps_lock_on = Constants.windll_is_caps_lock_on()
+
         MainWindow5.setObjectName("MainWindow5")
         MainWindow5.setMinimumSize(QtCore.QSize(1000, 500))
         MainWindow5.resize(500, 500)
@@ -384,12 +387,21 @@ class Ui_Login(object):
         self.sign_in.clicked.connect(self.action_sign_in)
         self.sign_in.installEventFilter(MainWindow5)
         self.layout.addWidget(self.sign_in, 5, 2, 1, 1, QtCore.Qt.AlignCenter)
+
+        # User information message box on Login Window.
+        self.user_info = QtWidgets.QLabel("")
+        self.user_info.setStyleSheet("color: #000000; font-weight: bold;")
+        self.user_info.setFixedHeight(50)
+        self.layout.addWidget(self.user_info, 6, 1, 1,
+                              3, QtCore.Qt.AlignCenter)
+
         self.user_error = QtWidgets.QLabel("")
         self.user_error.setStyleSheet("color: #ff0000;")
         # self.user_label.setAlignment(QtCore.Qt.AlignCenter)
         self.user_error.setFixedHeight(50)
-        self.layout.addWidget(self.user_error, 6, 1, 1,
+        self.layout.addWidget(self.user_error, 7, 1, 1,
                               3, QtCore.Qt.AlignCenter)
+
         v_layout = QtWidgets.QVBoxLayout()
         v_layout.addStretch()
         v_layout.addWidget(self.user_welcome)
@@ -554,6 +566,22 @@ class Ui_Login(object):
 
         if self.user_password.hasFocus():
             self.user_initials.setFocus()
+
+    def update_caps_lock_state(self, caps_lock_state: bool) -> None:
+        """
+        Method to update the message in the user_info message box
+        to inform the user that Caps Lock is on.
+
+        Args:
+            caps_lock_state (bool): The state of the Caps Lock on this device
+
+        Returns:
+            None
+        """
+        if caps_lock_state:
+            self.user_info.setText("Caps Lock is On")
+        else:
+            self.user_info.clear()
 
 
 class Ui_Controls(object):  # QtWidgets.QMainWindow
