@@ -342,7 +342,8 @@ class Ui_Main(object):
 
 
 class Ui_Login(object):
-    def setupUi(self, MainWindow5, parent):
+    def setupUi(self, MainWindow5: QtWidgets.QMainWindow, parent: QtWidgets.QMainWindow):
+
         self.parent = parent
 
         # Variable to check and store the state of the Caps Lock key on init.
@@ -556,7 +557,15 @@ class Ui_Login(object):
         else:
             self.error_invalid()
 
-    def clear_form(self):
+    def clear_form(self) -> None:
+        """Clears the user initials and password form and user error message box.
+
+        If password is shown, revert the password.  Additionally, revert focus back
+        to initials field on clear.
+
+        Returns:
+            None
+        """
         self.user_initials.clear()
         self.user_password.clear()
         self.user_error.clear()
