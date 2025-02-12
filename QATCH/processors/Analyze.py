@@ -6271,21 +6271,73 @@ class AnalyzerWorker(QtCore.QObject):
 
             ####################################
             # NEW CODE for 2022-12-06 TESTING:
-            m = len(initial_fill) - (len(log_velocity) - len(log_velocity_46))
-            mlen = int(np.floor(m / 5))
+            # Initialize result velocity and position lists.
             log_velocity_20p = []
             log_position_20p = []
-            for hh in range(0, mlen):
-                log_velocity_20p.append(log_velocity_46[hh])
-                log_position_20p.append(log_position_46[hh])
-            for hh in range(1, 5):
-                log_velocity_20p.append(
-                    np.average(log_velocity_46[hh * mlen: (hh + 1) * mlen - 1])
-                )
-                log_position_20p.append(
-                    np.average(log_position_46[hh * mlen: (hh + 1) * mlen - 1])
-                )
-                # Log.d(f"idx = {(hh+1)*mlen-1}, max = {m-1}")
+            try:
+                # Ensure that log_velocity_46 and log_position_46 have the same length
+                if len(log_velocity_46) != len(log_position_46):
+                    raise ValueError(
+                        "log_velocity_46 and log_position_46 must be the same length.")
+
+                # Compute m based on ==> m = |initial_fill| - |log_velocity| - |lov_velocity_46|.
+                m = len(initial_fill) - \
+                    (len(log_velocity) - len(log_velocity_46))
+                if m < 5:
+                    raise ValueError(
+                        "Not enough valid data points based on initial_fill and log_velocity lengths.")
+
+                # Calculate the chunk length (mlen) and ensure it is positive.
+                mlen = int(np.floor(m / 5))
+                if mlen <= 0:
+                    raise ValueError(
+                        "Calculated mlen is not positive. Check input lengths.")
+
+                # Ensure that the maximum index needed is within bounds.
+                max_required_index = 5 * mlen  # roughly the maximum index accessed
+                if max_required_index > len(log_velocity_46):
+                    raise ValueError(
+                        "Not enough entries in log_velocity_46 for the computed mlen.")
+
+                # Process the first mlen elements.
+                for hh in range(mlen):
+                    if hh >= len(log_velocity_46) or hh >= len(log_position_46):
+                        raise IndexError(
+                            f"Index {hh} out of range for log_velocity_46 or log_position_46.")
+                    log_velocity_20p.append(log_velocity_46[hh])
+                    log_position_20p.append(log_position_46[hh])
+
+                # Process the remaining four chunks using slicing and averaging.
+                for hh in range(1, 5):
+                    start_index = hh * mlen
+                    # The original code used (hh+1)*mlen - 1 as the end index.
+                    # Adjusted the end_index to avoid going out-of-bounds.
+                    end_index = (hh + 1) * mlen - 1
+
+                    # Clamp the end_index to the length of the list if necessary.
+                    if end_index > len(log_velocity_46):
+                        end_index = len(log_velocity_46)
+                    if end_index > len(log_position_46):
+                        end_index = len(log_position_46)
+
+                    # Create velocity & position slices.
+                    slice_vel = log_velocity_46[start_index:end_index]
+                    slice_pos = log_position_46[start_index:end_index]
+
+                    # Check that the velocity and position slices are not empty.
+                    if len(slice_vel) == 0 or len(slice_pos) == 0:
+                        raise ValueError(
+                            f"Slice from {start_index} to {end_index} resulted in an empty list.")
+
+                    # Compute the averages of velocity and position slices.
+                    avg_vel = np.average(slice_vel)
+                    avg_pos = np.average(slice_pos)
+
+                    log_velocity_20p.append(avg_vel)
+                    log_position_20p.append(avg_pos)
+            except Exception as e:
+                Log.w(TAG, f"Bad initial fill region, skipping analysis of this reigon.")
+                Log.d(TAG, f"With error: {e}")
             ### END NEW CODE ###################
 
             self.update(status_label)
