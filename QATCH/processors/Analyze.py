@@ -2371,7 +2371,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     model_path=predict_model_path.format(2)
                 )
             self.QModel_modules_loaded = True
-        except:
+        except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel' modules at load of run.")
 
