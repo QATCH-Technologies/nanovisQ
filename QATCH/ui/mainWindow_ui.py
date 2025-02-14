@@ -428,7 +428,7 @@ class Ui_Login(object):
         self.parent = parent
 
         # Variable to check and store the state of the Caps Lock key on init.
-        self.caps_lock_on = Constants.windll_is_caps_lock_on()
+        self.caps_lock_on = False  # set on focus of `user_password` field
 
         MainWindow5.setObjectName("MainWindow5")
         MainWindow5.setMinimumSize(QtCore.QSize(1000, 500))

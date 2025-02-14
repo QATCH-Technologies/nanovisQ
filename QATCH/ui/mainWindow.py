@@ -27,13 +27,11 @@ from xml.dom import minidom
 import numpy as np
 import sys
 import os
-import io
 import pyzipper
 import hashlib
 import requests
 import stat
 import subprocess
-import ctypes
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -92,23 +90,31 @@ class LoginWindow(QtWidgets.QMainWindow):
     def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
         """Intercepts and processes key press events for the login window.
 
-        This method handles key press events to facilitate user interactions:
+        This method handles `KeyPress` events to facilitate the following user interactions:
           - **Enter/Return**: If the password field is empty, the focus is set to the field;
             otherwise, the sign-in action is triggered.
           - **Escape**: Clears the login form.
           - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
 
+        This method handles `FocusIn` events to facilitate the following user interactions:
+          - **user_password**: Show Caps Lock indicator if CapsLock key is already active.
+
+        This method handles `FocusOut` events to facilitate the following user interactions:
+          - **user_password**: Hide Caps Lock indicator if CapsLock key is still active.
+
         Args:
-            obj: The object for which the event is being filtered.
-            event (QtCore.QEvent): The event object containing details about the key press.
+            obj: The UI object for which the event is being filtered.
+            event (QtCore.QEvent): The object containing details about type of event;
+                if `type()` is `KeyPress`: `key()` contains details about the key pressed.
 
         Returns:
-            bool: The result of the event filtering. If the event is not handled,
-            it is passed to the base class implementation.
+            bool: The result of the event filtering. In all cases, whether handled here or not,
+            it is passed to the base class implementation for default event handling as well.
         """
+        # Handles key press events for all registered objects.
         if event.type() == QtCore.QEvent.KeyPress:
 
-            # Handles focus for user password field.
+            # Handles focus for user password field and sign-in action.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
                 if len(self.ui5.user_password.text()) == 0:
                     self.ui5.user_password.setFocus()
@@ -119,11 +125,31 @@ class LoginWindow(QtWidgets.QMainWindow):
             if event.key() == QtCore.Qt.Key_Escape:
                 self.ui5.clear_form()
 
-            # Handles user info messages for CapsLock key press.
-            if event.type() == event.KeyPress and event.key() == QtCore.Qt.Key_CapsLock:
+            # Handles toggling Caps Lock indicator while password field has focus.
+            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
                 self.ui5.caps_lock_on = not self.ui5.caps_lock_on
                 self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
 
+        # Handles focus in events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusIn:
+
+            # Handles showing Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+                if self.ui5.caps_lock_on:
+                    self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+                # else: already hidden (no need to clear `user_info`)
+
+        # Handles focus out events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusOut:
+
+            # Handles hiding Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                if self.ui5.caps_lock_on:
+                    self.ui5.user_info.clear()
+                # else: already hidden (no need to clear `user_info`)
+
+        # Always process default event handling, too.
         return super().eventFilter(obj, event)
 
     def closeEvent(self, event: QtCore.QEvent) -> None:
