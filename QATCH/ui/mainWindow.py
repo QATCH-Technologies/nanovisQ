@@ -1460,9 +1460,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
 
+        # TODO AJR: This code still requires the existence of `plate-config.json`
+        #           Removing it, for now; this code should create the file if none exists:
+        '''
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
         active_port_dict, active_port_list = self.parse_ports_from_file()
         Log.d(TAG, active_port_dict)
+        '''
+        active_port_list = range(self.multiplex_plots)
+
         # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
             selected_port = []
