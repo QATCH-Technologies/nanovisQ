@@ -5428,7 +5428,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @ staticmethod
+    @staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType
