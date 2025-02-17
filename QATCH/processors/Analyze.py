@@ -6271,6 +6271,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             ####################################
             # NEW CODE for 2022-12-06 TESTING:
+            # ADDED `try-except` protection on 2025-02-17
             # Initialize result velocity and position lists.
             log_velocity_20p = []
             log_position_20p = []
@@ -6310,8 +6311,6 @@ class AnalyzerWorker(QtCore.QObject):
                 # Process the remaining four chunks using slicing and averaging.
                 for hh in range(1, 5):
                     start_index = hh * mlen
-                    # The original code used (hh+1)*mlen - 1 as the end index.
-                    # Adjusted the end_index to avoid going out-of-bounds.
                     end_index = (hh + 1) * mlen - 1
 
                     # Clamp the end_index to the length of the list if necessary.
