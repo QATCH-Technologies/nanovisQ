@@ -40,8 +40,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b52"
-    app_date = "2025-02-03"
+    app_version = "v2.6b53"
+    app_date = "2025-02-17"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -51,7 +51,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b46"
+    best_fw_version = "v2.6b52"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
