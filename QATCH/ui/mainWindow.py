@@ -27,7 +27,6 @@ from xml.dom import minidom
 import numpy as np
 import sys
 import os
-import io
 import pyzipper
 import hashlib
 import requests
@@ -61,31 +60,114 @@ class _MainWindow(QtWidgets.QMainWindow):
 
 
 # ------------------------------------------------------------------------------
-class LoginWindow(QtWidgets.QMainWindow):
 
-    def __init__(self, parent):
+
+class LoginWindow(QtWidgets.QMainWindow):
+    """Main window for handling user login events.
+
+    This class provides a login window that manages user interactions, and the window close event.
+    It initializes the login UI and processes events to either authenticate the user,
+    clear the login form, or update the UI state (e.g., toggling the Caps Lock indicator).
+
+    Attributes:
+        ui5 (Ui_Login): An instance of the login UI class used to set up and manage
+            the login interface view.
+    """
+
+    def __init__(self, parent: QtWidgets.QMainWindow) -> None:
+        """Initializes the LoginWindow with the given parent window.
+
+        This method sets up the user interface for the login window by creating an instance
+        of the UI class and initializing it with the current window and parent window.
+
+        Args:
+            parent (QtWidgets.QMainWindow): The parent widget for this login window.
+        """
         super().__init__()
         self.ui5 = Ui_Login()
         self.ui5.setupUi(self, parent)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
+        """Intercepts and processes key press events for the login window.
+
+        This method handles `KeyPress` events to facilitate the following user interactions:
+          - **Enter/Return**: If the password field is empty, the focus is set to the field;
+            otherwise, the sign-in action is triggered.
+          - **Escape**: Clears the login form.
+          - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
+
+        This method handles `FocusIn` events to facilitate the following user interactions:
+          - **user_password**: Show Caps Lock indicator if CapsLock key is already active.
+
+        This method handles `FocusOut` events to facilitate the following user interactions:
+          - **user_password**: Hide Caps Lock indicator if CapsLock key is still active.
+
+        Args:
+            obj: The UI object for which the event is being filtered.
+            event (QtCore.QEvent): The object containing details about type of event;
+                if `type()` is `KeyPress`: `key()` contains details about the key pressed.
+
+        Returns:
+            bool: The result of the event filtering. In all cases, whether handled here or not,
+            it is passed to the base class implementation for default event handling as well.
+        """
+        # Handles key press events for all registered objects.
         if event.type() == QtCore.QEvent.KeyPress:
-            # Log.i(f"Key {event.key()} pressed!")
+
+            # Handles focus for user password field and sign-in action.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
                 if len(self.ui5.user_password.text()) == 0:
                     self.ui5.user_password.setFocus()
                 else:
                     self.ui5.action_sign_in()
+
+            # Handles clearing the login form on EscapeKey press.
             if event.key() == QtCore.Qt.Key_Escape:
                 self.ui5.clear_form()
+
+            # Handles toggling Caps Lock indicator while password field has focus.
+            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
+                self.ui5.caps_lock_on = not self.ui5.caps_lock_on
+                self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+
+        # Handles focus in events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusIn:
+
+            # Handles showing Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+                if self.ui5.caps_lock_on:
+                    self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+                # else: already hidden (no need to clear `user_info`)
+
+        # Handles focus out events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusOut:
+
+            # Handles hiding Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                if self.ui5.caps_lock_on:
+                    self.ui5.user_info.clear()
+                # else: already hidden (no need to clear `user_info`)
+
+        # Always process default event handling, too.
         return super().eventFilter(obj, event)
 
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
+    def closeEvent(self, event: QtCore.QEvent) -> None:
+        """Handles the window close event by prompting the user for confirmation.
+
+        When a close event occurs, this method displays a confirmation dialog asking the user
+        whether they wish to quit the application. If the user confirms, the application quits;
+        otherwise, the event is ignored, and the window remains open.
+
+        Args:
+            event (QtCore.QEvent): The close event triggered when the user attempts to close the window.
+
+        Returns:
+            None
+        """
         res = PopUp.question(self, Constants.app_title,
                              "Are you sure you want to quit QATCH Q-1 application now?", True)
         if res:
-            # self.close()
             QtWidgets.QApplication.quit()
         else:
             event.ignore()
@@ -5428,7 +5510,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @ staticmethod
+    @staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType

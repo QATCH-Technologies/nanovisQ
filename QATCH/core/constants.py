@@ -1,7 +1,7 @@
 from enum import Enum
 from time import strftime, localtime
 import os
-
+import ctypes
 from QATCH.common.architecture import Architecture, OSType
 
 ###############################################################################
@@ -319,6 +319,20 @@ class Constants:
     UpdateEngine = UpdateEngines.GitHub
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
+
+    @staticmethod
+    def windll_is_caps_lock_on() -> bool:
+        """
+        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
+        if Caps Lock is on or False if Caps Lock is off.
+
+        Returns:
+            bool: The state of the Caps Lock; True if Caps Lock is on, False
+                if Caps Lock is off.
+        """
+        VK_CAPITAL = 0x14
+        # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
+        return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)
 
     @staticmethod
     def get_batch_param(batch, param=""):
