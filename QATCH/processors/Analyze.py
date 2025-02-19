@@ -1175,8 +1175,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.initials = new_initials
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                self.signature_received = False
-                self.signature_required = True
+                self.parent.signature_received = False
+                self.parent.signature_required = True
                 self.sign.setReadOnly(False)
                 self.sign.setMaxLength(4)
                 self.sign.clear()
@@ -1344,16 +1344,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.gotoStepNum(None, 9)  # summary
 
     def action_analyze(self):
-        if self.signature_required and (
+        if self.parent.signature_required and (
             self.unsaved_changes or self.model_run_this_load
         ):
-            if self.signature_received == False and self.sign_do_not_ask.isChecked():
+            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
                 Log.w(
                     f"Signing ANALYZE with initials {self.initials} (not asking again)"
                 )
                 self.signed_at = dt.datetime.now().isoformat()
-                self.signature_received = True  # Do not ask again this session
-            if not self.signature_received:
+                self.parent.signature_received = True  # Do not ask again this session
+            if not self.parent.signature_received:
                 if self.signForm.isVisible():
                     self.signForm.hide()
                 self.signedInAs.setText(self.username)
@@ -1714,8 +1714,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.xml_path = None  # used to indicate whether a run is loaded
         self.unsaved_changes = False
         self.signed_at = "[NEVER]"
-        self.signature_required = True  # secure assumption, set on load
-        self.signature_received = False
+        self.parent.signature_required = True  # secure assumption, set on load
+        self.parent.signature_received = False
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
@@ -1756,17 +1756,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # get active session info, if available
         active, info = UserProfiles.session_info()
         if active:
-            self.signature_required = True
-            self.signature_received = False
+            self.parent.signature_required = True
+            self.parent.signature_received = False
             self.username, self.initials = info[0], info[1]
         else:
-            self.signature_required = False
+            self.parent.signature_required = False
 
     def detect_change(self):
         if not self.unsaved_changes:
             Log.d("There are unsaved changes detected.")
-        if self.signature_received:
-            self.signature_received = False
+        if self.parent.signature_received:
+            self.parent.signature_received = False
             self.sign.setReadOnly(False)
             self.sign.setMaxLength(4)
             self.sign.clear()
@@ -1779,7 +1779,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.sign.setText(sign_text)
             self.sign.setReadOnly(True)
             self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True
+            self.parent.signature_received = True
             self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
@@ -1991,7 +1991,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 QtCore.Qt.Key_Return,
                 QtCore.Qt.Key_Space,
             ]:
-                if self.signature_received:
+                if self.parent.signature_received:
                     self.sign_ok.clicked.emit()
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
@@ -3005,7 +3005,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             self.stateStep = 8
             if self.unsaved_changes:
-                if self.signature_required and not self.signature_received:
+                if self.parent.signature_required and not self.parent.signature_received:
                     Log.e(
                         f"Input Error: Initials do not match current user info ({self.initials})"
                     )
@@ -3022,7 +3022,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.unsaved_changes:
                 Log.d("Storing new <points> in XML file")
                 self.unsaved_changes = False
-                if self.signature_required:
+                if self.parent.signature_required:
                     self.appendAuditToXml()
                 self.appendPointsToXml(poi_vals)
             # self.showAnalysis(poi_vals)
@@ -3278,7 +3278,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # create new points element
             recorded_at = (
                 self.signed_at
-                if self.signature_required
+                if self.parent.signature_required
                 else dt.datetime.now().isoformat()
             )
             points = run.createElement("points")

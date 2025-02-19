@@ -783,6 +783,20 @@ class Rename_Output_Files(QtCore.QObject):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    """
+    MainWindow is the primary interface class for the application, extending QMainWindow to manage the overall
+    layout and functionality of the program. It is responsible for initializing, configuring, and coordinating
+    various child windows, plots, background tasks, and application settings.
+
+    Attributes:
+        ReadyToShow (bool): Indicates if the main window is fully initialized and ready to be displayed.
+        set_cal1 (str): Calibration setting or identifier for the first calibration parameter.
+        set_cal2 (str): Calibration setting or identifier for the second calibration parameter.
+
+    Usage:
+        The MainWindow class is instantiated at the start of the application to construct the user interface,
+        set up all child components, and prepare the system for user interaction and data acquisition.
+    """
 
     ReadyToShow = False
     set_cal1 = "0"
@@ -792,10 +806,24 @@ class MainWindow(QtWidgets.QMainWindow):
     # Initializes methods, values and sets the UI
     ###########################################################################
     def __init__(self, samples=Constants.argument_default_samples):
+        """ Handles the main window layout.
 
-        # :param samples: Default samples shown in the plot :type samples: int.
-        # to be always placed at the beginning, initializes some important methods
+        This method setups up the various child windows and layout of the main application
+        window.  This initializer also establishes the layout of the various plots for each 
+        application mode.  Last, the initializer sets the various signals for each thread and
+        enables the UI.
+
+        Parameters:
+            samples (int): The number default number of samples shown in the plot (Optional).
+
+        Returns:
+            None
+        """
         QtWidgets.QMainWindow.__init__(self)
+
+        # The MainWindow now manages the state of audit signatures.
+        self.signature_required = True
+        self.signature_received = False
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -5264,7 +5292,7 @@ class TECTask(QtCore.QThread):
     ###########################################################################
     # Automatically selects the serial ports for Teensy (macox/windows)
     ###########################################################################
-    @ staticmethod
+    @staticmethod
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType

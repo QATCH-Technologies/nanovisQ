@@ -413,7 +413,6 @@ class QueryRunInfo(QtWidgets.QWidget):
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
         super(QueryRunInfo, self).__init__(None)
         self.parent = parent
-
         self.run_name = run_name
         self.run_path = run_path
         self.xml_path = run_path[0:-4] + ".xml"
@@ -683,15 +682,15 @@ class QueryRunInfo(QtWidgets.QWidget):
             layout_r4.addWidget(self.sign)
             # layout_v.addLayout(layout_r4) # hide here, show in external widget
             self.signed_at = "[NEVER]"
-            self.signature_required = True
-            self.signature_received = False
+            self.parent.signature_required = True
+            self.parent.signature_received = False
         else:
             self.sign = QtWidgets.QLineEdit()
             self.sign.setText("[NONE]")
             self.initials = self.sign.text()
             self.signed_at = self.sign.text()
-            self.signature_required = False
-            self.signature_received = False
+            self.parent.signature_required = False
+            self.parent.signature_received = False
 
         # START CAPTURE SIGNATURE CODE:
         # This code also exists in popUp.py in class QueryRunInfo for "ANALYZE SIGNATURE CODE"
@@ -1080,8 +1079,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.initials = new_initials
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                self.signature_received = False
-                self.signature_required = True
+                self.parent.signature_received = False
+                self.parent.signature_required = True
                 self.sign.setReadOnly(False)
                 self.sign.setMaxLength(4)
                 self.sign.clear()
@@ -1138,7 +1137,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.sign.setReadOnly(True)
             self.signed.setText(f"CAPTURE by\t=")
             self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True
+            self.parent.signature_received = True
             self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
@@ -1312,7 +1311,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return, QtCore.Qt.Key_Space]:
-                if self.signature_received:
+                if self.parent.signature_received:
                     self.sign_ok.clicked.emit()
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
@@ -1390,16 +1389,16 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         # Error checking for valid signature per captured run: If the do not ask option
         # is checked, then signatures are ignored for this session.
-        if self.signature_received == False and self.sign_do_not_ask.isChecked():
+        if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
             Log.w(
                 tag=TAG, msg=f"Signing CAPTURE with initials {self.initials} (not asking again)")
             self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True  # Do not ask again this session
+            self.parent.signature_received = True  # Do not ask again this session
 
         # Error checking for valid signature per captured run: If the signature is still required
         # the user should be prompted to provide a valid signature as a valid batch parameter. With the
         # force flag enabled, this step is ignored.
-        if self.signature_required and not self.signature_received:  # missing initials
+        if self.parent.signature_required and not self.parent.signature_received:  # missing initials
             if force or self.run_idx != 0:
                 Log.w(
                     tag=TAG, msg=f"Auto-signing CAPTURE with initials {self.initials}")
@@ -1570,7 +1569,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             xml.appendChild(audits)
 
         # create or append new params element
-        recorded_at = self.signed_at if self.signature_required else dt.datetime.now().isoformat()
+        recorded_at = self.signed_at if self.parent.signature_required else dt.datetime.now().isoformat()
         params = run.createElement('params')
         params.setAttribute('recorded', recorded_at)
         xml.appendChild(params)
@@ -1689,7 +1688,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         signature = hash.hexdigest()
         params.setAttribute('signature', signature)
 
-        if self.signature_required:
+        if self.parent.signature_required:
             from QATCH.common.userProfiles import UserProfiles
             valid, infos = UserProfiles.session_info()
             if valid:
