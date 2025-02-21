@@ -3891,9 +3891,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Computes initial difference cancelations for difference, resonance frequency
             # and dissipation and applies them to the UI curves.
-            canceled_diss, canceled_diff, canceled_rf = None, None, None
+            canceled_diss, canceled_rf = None, None
             if self.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self._correct_drop_effect(
+                canceled_diss, canceled_rf = self._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
                     ys = canceled_diss
@@ -4106,13 +4106,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys)
-
-            # 'Difference' Drop Effect Correction
-            if self.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self._correct_drop_effect(
-                    self.loaded_datapath)
-                if canceled_diff is not None:
-                    ys_diff = canceled_diff
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
@@ -4589,7 +4582,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 file_header = BytesIO(f.read())
                 dec = DropEffectCorrection(
                     file_buffer=file_header, initial_diff_factor=self.diff_factor)
-                corrected_data = dec.correct_drop_effect()
+                corrected_data = dec.correct_drop_effects()
 
                 Log.i(
                     TAG, f'Performing drop effect cancelation with difference factor {self.diff_factor}.')
@@ -4601,12 +4594,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             else:
                 Log.d(
                     TAG, f"Dissipation drop effect cancelation failed. Using original data.")
-                return [None, None, None]
+                return [None, None]
         except Exception as e:
             Log.e(
                 TAG, f"Dissipation drop effect cancelation failed due to error. Using original data.")
             Log.e(TAG, f"Error Details: {str(e)}")
-            return [None, None, None]
+            return [None, None]
 
 
 class AnalyzerWorker(QtCore.QObject):
@@ -4945,9 +4938,9 @@ class AnalyzerWorker(QtCore.QObject):
 
             # Computes initial difference cancelations for difference, resonance frequency
             # and dissipation and applies them to the UI curves.
-            canceled_diss, canceled_diff, canceled_rf = None, None, None
+            canceled_diss, canceled_rf = None, None
             if self.parent.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self.parent._correct_drop_effect(
+                canceled_diss, canceled_rf = self.parent._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
                     ys = canceled_diss
@@ -5161,13 +5154,6 @@ class AnalyzerWorker(QtCore.QObject):
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
             ys_diff = ys_freq - (diff_factor * ys)
-
-            # 'Difference' Drop Effect Correction
-            if self.parent.drop_effect_cancelation_checkbox.isChecked():
-                canceled_diss, canceled_diff, canceled_rf = self.parent._correct_drop_effect(
-                    self.loaded_datapath)
-                if canceled_diff is not None:
-                    ys_diff = canceled_diff
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
