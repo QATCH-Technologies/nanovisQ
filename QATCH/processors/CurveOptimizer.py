@@ -222,6 +222,7 @@ class CurveOptimizer:
                 # Report global minima over shortened data.
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
+                index = index + int(0.01 * index)
                 Log.d(
                     TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
@@ -445,7 +446,7 @@ class DropEffectCorrection(CurveOptimizer):
             )
             self._generate_curve(initial_diff_factor)
 
-    def _detect_drop_effects(self, diff_offset: int = 2, threshold_factor: float = 6) -> list:
+    def _detect_drop_effects(self, diff_offset: int = 2, threshold_factor: float = 2) -> list:
         """
         Detects non-normal y-deltas in the dissipation curve within the defined bounds.
         Instead of simply picking the two largest gradients, it computes the difference
@@ -558,7 +559,6 @@ class DropEffectCorrection(CurveOptimizer):
         # Ensure the indices are within the bounds of the data arrays.
         left_idx = max(0, left_idx)
         right_idx = min(len(corrected_diss), right_idx)
-
         # For Dissipation: enforce a running maximum with a relative threshold.
         running_max = corrected_diss[left_idx]
         for i in range(left_idx, right_idx):
