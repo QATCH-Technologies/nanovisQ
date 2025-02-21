@@ -504,7 +504,7 @@ class DropEffectCorrection(CurveOptimizer):
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              baseline_rf: float = None,
-                             plot_corrections: bool = True) -> tuple:
+                             plot_corrections: bool = False) -> tuple:
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
         original_rf = self._dataframe['Resonance_Frequency'].values.copy()
@@ -534,7 +534,6 @@ class DropEffectCorrection(CurveOptimizer):
                 continue
 
             # Compute offsets so that the value at the drop index matches the previous (good) value.
-            # This “stitches” the discontinuity.
             offset_diss = corrected_diss[idx - 1] - original_diss[idx]
             offset_rf = corrected_rf[idx - 1] - original_rf[idx]
 
@@ -548,6 +547,30 @@ class DropEffectCorrection(CurveOptimizer):
             # Apply the offset correction to the segment.
             corrected_diss[idx:next_idx] += offset_diss
             corrected_rf[idx:next_idx] += offset_rf
+
+        # Get the region of interest from the object's bounds.
+        left_idx = self._left_bound['index']
+        right_idx = self._right_bound['index']
+
+        # Ensure the indices are within the bounds of the data arrays.
+        left_idx = max(0, left_idx)
+        right_idx = min(len(corrected_diss), right_idx)
+
+        # For Dissipation: enforce running maximum within the region.
+        running_max = corrected_diss[left_idx]
+        for i in range(left_idx, right_idx):
+            if corrected_diss[i] < running_max:
+                corrected_diss[i] = running_max
+            else:
+                running_max = corrected_diss[i]
+
+        # For Resonance_Frequency: enforce running minimum within the region.
+        running_min = corrected_rf[left_idx]
+        for i in range(left_idx, right_idx):
+            if corrected_rf[i] > running_min:
+                corrected_rf[i] = running_min
+            else:
+                running_min = corrected_rf[i]
 
         if plot_corrections:
             self._plot_corrections(original_diss, original_rf,
