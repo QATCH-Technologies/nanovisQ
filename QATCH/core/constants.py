@@ -234,14 +234,15 @@ class Constants:
         "HH:mm": "%H:%M",
         "hh:mm A": "%I:%M %p"
     }
+    working_logged_data_path = os.path.join(os.getcwd(), log_export_path)
     default_preferences = {
-        "load_data_path": local_app_data_path,
-        "write_data_path": local_app_data_path,
-        "folder_format": valid_tags[2],
-        "filename_format": f"{valid_tags[6]}_{valid_tags[3]}",
+        "load_data_path": working_logged_data_path,
+        "write_data_path": working_logged_data_path,
+        "folder_format": f"{valid_tags[6]}_{valid_tags[2]}",
+        "filename_format": f"{valid_tags[3]}_{valid_tags[6]}",
         "folder_format_delimiter": path_delimiters[0],
         "filename_format_delimiter": path_delimiters[0],
-        "date_format": date_formats[2],
+        "date_format": date_formats[0],
         "time_format": time_formats[0],
     }
     ##################
@@ -348,7 +349,7 @@ class Constants:
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
 
-    @ staticmethod
+    @staticmethod
     def get_batch_param(batch, param=""):
         # Returns the found parameter for the (batch,param) pair as a string.
         # Unless, if you only supply a 'batch', it returns True/False if found.

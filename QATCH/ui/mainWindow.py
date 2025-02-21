@@ -262,7 +262,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
     #     self.ui_configure_data.show()
 
     def preferences(self):
-        self.ui_preferences.show()
+        self.ui_preferences.showNormal(0)
 
     def scan_subnets(self):
         Discovery().scanSubnets()

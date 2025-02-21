@@ -38,8 +38,8 @@ class Ui_Export(QtWidgets.QWidget):
         super(Ui_Export, self).__init__(parent)
 
         USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
-        self.resize(500, 500)
-        self.move(500, 50)
+        self.setMinimumSize(500, 500)
+        # self.move(500, 50)
 
         self.layout = QtWidgets.QVBoxLayout(self)
 
@@ -439,6 +439,8 @@ class Ui_Export(QtWidgets.QWidget):
     def showNormal(self, tab_idx=0):
         super(Ui_Export, self).hide()
         super(Ui_Export, self).showNormal()
+        self.resize(self.minimumSize())
+
         self.tabs.setCurrentIndex(tab_idx)
         self.generateExportName()
 

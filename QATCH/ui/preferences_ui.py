@@ -24,8 +24,8 @@ class PreferencesUI(QWidget):
         # Initialize the _updating flag to avoid recursion
         self._updating = False  # Initialize the _updating flag
 
-        # Set fixed size for the window (width, height) based on the desired size
-        self.setFixedSize(600, 400)
+        # Set minimum size for the window (width, height) based on the desired size
+        self.setMinimumSize(550, 475)
 
         # Layout for the main window
         main_layout = QVBoxLayout()
@@ -59,12 +59,13 @@ class PreferencesUI(QWidget):
 
         # Preview button for Date and Time format
         self.preview_date_time_button = QPushButton(
-            "Preview Date & Time Format")
+            "Preview Date && Time Format")
         self.preview_date_time_button.clicked.connect(
             self.preview_date_time_format)
         self.preview_date_time_label = QLabel("Preview will appear here.")
         preview_layout = QVBoxLayout()  # Layout for preview button and label
         preview_layout.addWidget(self.preview_date_time_button)
+        preview_layout.addStretch()
         preview_layout.addWidget(self.preview_date_time_label)
         date_time_layout.addLayout(preview_layout)
 
@@ -159,10 +160,11 @@ class PreferencesUI(QWidget):
         file_folder_layout.addLayout(folder_button_layout)
 
         # Preview button and label
-        self.preview_button = QPushButton("Preview Format")
+        self.preview_button = QPushButton("Preview File && Folder Format")
         self.preview_button.clicked.connect(self.preview_format)
         self.preview_label = QLabel("Preview will appear here.")
         file_folder_layout.addWidget(self.preview_button)
+        file_folder_layout.addStretch()
         file_folder_layout.addWidget(self.preview_label)
 
         file_folder_tab.setLayout(file_folder_layout)
@@ -187,19 +189,35 @@ class PreferencesUI(QWidget):
         default_data_layout.addLayout(load_directory_layout)
 
         # Write directory section
+        write_directory_layout_1 = QHBoxLayout()
         write_label = QLabel("Select or input a write directory:")
         write_label.setAlignment(Qt.AlignLeft)
-        default_data_layout.addWidget(write_label)
+        write_directory_layout_1.addWidget(write_label)
 
-        write_directory_layout = QHBoxLayout()
+        self.sync_write_with_load = QCheckBox("Same as load directory")
+        self.sync_write_with_load.stateChanged.connect(self.toggle_folder_sync)
+        if True:  # 2 layout options available (use one or the other)
+            write_directory_layout_1.addWidget(
+                self.sync_write_with_load, alignment=Qt.AlignRight)
+        else:
+            self.sync_write_with_load.setLayoutDirection(Qt.RightToLeft)
+            write_directory_layout_1.addWidget(self.sync_write_with_load)
+
+        default_data_layout.addLayout(write_directory_layout_1)
+
+        write_directory_layout_2 = QHBoxLayout()
         self.write_directory_input = QLineEdit()
-        write_directory_layout.addWidget(self.write_directory_input)
+        write_directory_layout_2.addWidget(self.write_directory_input)
 
-        write_browse_button = QPushButton("Browse")
-        write_browse_button.clicked.connect(self.open_write_file_dialog)
-        write_directory_layout.addWidget(write_browse_button)
+        self.write_browse_button = QPushButton("Browse")
+        self.write_browse_button.clicked.connect(self.open_write_file_dialog)
+        write_directory_layout_2.addWidget(self.write_browse_button)
 
-        default_data_layout.addLayout(write_directory_layout)
+        default_data_layout.addLayout(write_directory_layout_2)
+
+        # Manually fire 'stateChanged' event on UI initialization
+        # NOTE: This must be after ALL write layout objects created
+        self.toggle_folder_sync(self.sync_write_with_load.checkState())
 
         # Spacer to push elements down if necessary
         spacer = QWidget()
@@ -236,6 +254,13 @@ class PreferencesUI(QWidget):
         # Set the layout for the window
         self.setLayout(main_layout)
 
+    def showNormal(self, tab_idx=0):
+        super(PreferencesUI, self).hide()
+        super(PreferencesUI, self).showNormal()
+        self.resize(self.minimumSize())
+
+        self.tab_widget.setCurrentIndex(tab_idx)
+
     def check_user_role(self):
         self._is_admin = UserProfiles.check(
             self.parent.userrole, UserRoles.ADMIN)
@@ -255,6 +280,9 @@ class PreferencesUI(QWidget):
         if selected_directory:
             # Set the selected directory path to the input field
             self.load_directory_input.setText(selected_directory)
+            # Sync with write folder (if sync is checked)
+            if self.sync_write_with_load.isChecked():
+                self.write_directory_input.setText(selected_directory)
 
     def open_write_file_dialog(self):
         # Open file dialog for directory selection
@@ -263,6 +291,16 @@ class PreferencesUI(QWidget):
         if selected_directory:
             # Set the selected directory path to the input field
             self.write_directory_input.setText(selected_directory)
+
+    def toggle_folder_sync(self, state):
+        is_synced = True if (state == Qt.CheckState.Checked) else False
+        self.write_directory_input.setEnabled(not is_synced)
+        self.write_browse_button.setEnabled(not is_synced)
+        if is_synced:
+            self.write_directory_input.setText(
+                self.load_directory_input.text())
+        if self.sync_write_with_load.checkState() != state:
+            self.sync_write_with_load.setCheckState(state)
 
     def add_dropdown(self, layout):
         """Add a new dropdown to the layout."""
@@ -389,10 +427,16 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences.set_use_global(use_global=True)
         global_preferences = UserProfiles.user_preferences.load_global_preferences()
         UserProfiles.user_preferences.set_preferences()
-        # Reset the date and time format dropdowns based on the dictionary
+        # Update the folder sync state based on the dictionary
+        paths_synced = Qt.CheckState.Checked if (
+            global_preferences["load_data_path"] == global_preferences["write_data_path"]
+        ) else Qt.CheckState.Unchecked
+        self.toggle_folder_sync(paths_synced)
+        # Reset the load and write paths based on the dictionary
         self.load_directory_input.setText(global_preferences["load_data_path"])
         self.write_directory_input.setText(
             global_preferences["write_data_path"])
+        # Reset the date and time format dropdowns based on the dictionary
         self.date_format_combo.setCurrentText(
             global_preferences["date_format"])
         self.time_format_combo.setCurrentText(
@@ -423,6 +467,12 @@ class PreferencesUI(QWidget):
         UserProfiles.user_preferences.set_use_global(use_global=False)
         user_preferences = UserProfiles.user_preferences.load_user_preferences()
         UserProfiles.user_preferences.set_preferences()
+        # Update the folder sync state based on the dictionary
+        paths_synced = Qt.CheckState.Checked if (
+            user_preferences["load_data_path"] == user_preferences["write_data_path"]
+        ) else Qt.CheckState.Unchecked
+        self.toggle_folder_sync(paths_synced)
+        # Reset the load and write paths based on the dictionary
         self.load_directory_input.setText(user_preferences["load_data_path"])
         self.write_directory_input.setText(
             user_preferences["write_data_path"])
@@ -558,6 +608,12 @@ class PreferencesUI(QWidget):
 
     def reset_to_default_preferences(self):
         """Reset preferences to their default values based on a dictionary."""
+        # Update folder sync state based on the dictionary
+        paths_synced = Qt.CheckState.Checked if (
+            Constants.default_preferences["load_data_path"] == Constants.default_preferences["write_data_path"]
+        ) else Qt.CheckState.Unchecked
+        self.toggle_folder_sync(paths_synced)
+        # Reset the load and write paths based on the dictionary
         self.load_directory_input.setText(
             Constants.default_preferences["load_data_path"])
         self.write_directory_input.setText(
