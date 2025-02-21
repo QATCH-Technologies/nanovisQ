@@ -223,13 +223,14 @@ class CurveOptimizer:
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
                 Log.d(
-                    TAG, f"Left bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                    TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             elif mode == 'right':
                 # Report global max from downtrended data.
-                index = np.argmax(adjusted_difference)
+                index = int(np.argmax(adjusted_difference) +
+                            0.01 * np.argmax(adjusted_difference))
                 Log.d(
-                    TAG, f"Right bound found at time: {relative_time.iloc[index+ head_trim]}.")
+                    TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             else:
                 raise ValueError(f"Invalid search bound requested {mode}.")
@@ -444,7 +445,7 @@ class DropEffectCorrection(CurveOptimizer):
             )
             self._generate_curve(initial_diff_factor)
 
-    def _detect_drop_effects(self, diff_offset: int = 2, threshold_factor: float = 3) -> list:
+    def _detect_drop_effects(self, diff_offset: int = 2, threshold_factor: float = 6) -> list:
         """
         Detects non-normal y-deltas in the dissipation curve within the defined bounds.
         Instead of simply picking the two largest gradients, it computes the difference
@@ -513,9 +514,9 @@ class DropEffectCorrection(CurveOptimizer):
 
         # If baselines are not provided, use a default value (e.g., from index 300).
         if baseline_diss is None:
-            baseline_diss = original_diss[300]
+            baseline_diss = original_diss[self._left_bound['index'] - 500]
         if baseline_rf is None:
-            baseline_rf = original_rf[300]
+            baseline_rf = original_rf[self._left_bound['index'] - 500]
 
         # Make working copies for corrections.
         corrected_diss = original_diss.copy()
@@ -566,11 +567,10 @@ class DropEffectCorrection(CurveOptimizer):
 
                 gap = running_max - corrected_diss[i]
                 allowed_gap = running_max * diss_threshold_ratio
-                print(f'{gap}, {allowed_gap}')
                 # Only partially correct if the gap exceeds the allowed fraction of the current maximum.
                 if gap > allowed_gap:
                     corrected_diss[i] = random.uniform(
-                        running_max - allowed_gap, running_max)
+                        max(running_max - allowed_gap, baseline_diss), running_max)
             else:
                 running_max = corrected_diss[i]
 
@@ -585,7 +585,6 @@ class DropEffectCorrection(CurveOptimizer):
                     corrected_rf[i] = running_min
             else:
                 running_min = corrected_rf[i]
-
         if plot_corrections:
             self._plot_corrections(original_diss, original_rf,
                                    corrected_diss, corrected_rf)
@@ -610,6 +609,8 @@ class DropEffectCorrection(CurveOptimizer):
                     label='Original Dissipation', color='blue')
         axs[0].plot(indices, corrected_diss,
                     label='Corrected Dissipation', color='red', linestyle='--')
+        axs[0].axvline(self._left_bound['index'])
+        axs[0].axvline(self._right_bound['index'])
         axs[0].set_title('Dissipation Correction')
         axs[0].set_xlabel('Index')
         axs[0].set_ylabel('Dissipation')
