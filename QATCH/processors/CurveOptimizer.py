@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-
+import random
 TAG = ["CurveOptimizer"]
 
 """ The percentage of the run data to ignore from the head of a difference curve. """
@@ -504,7 +504,9 @@ class DropEffectCorrection(CurveOptimizer):
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              baseline_rf: float = None,
-                             plot_corrections: bool = False) -> tuple:
+                             diss_threshold_ratio: float = 0.01,
+                             rf_threshold_ratio: float = 0.01,
+                             plot_corrections: bool = True) -> tuple:
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
         original_rf = self._dataframe['Resonance_Frequency'].values.copy()
@@ -556,19 +558,31 @@ class DropEffectCorrection(CurveOptimizer):
         left_idx = max(0, left_idx)
         right_idx = min(len(corrected_diss), right_idx)
 
-        # For Dissipation: enforce running maximum within the region.
+        # For Dissipation: enforce a running maximum with a relative threshold.
         running_max = corrected_diss[left_idx]
         for i in range(left_idx, right_idx):
+
             if corrected_diss[i] < running_max:
-                corrected_diss[i] = running_max
+
+                gap = running_max - corrected_diss[i]
+                allowed_gap = running_max * diss_threshold_ratio
+                print(f'{gap}, {allowed_gap}')
+                # Only partially correct if the gap exceeds the allowed fraction of the current maximum.
+                if gap > allowed_gap:
+                    corrected_diss[i] = random.uniform(
+                        running_max - allowed_gap, running_max)
             else:
                 running_max = corrected_diss[i]
 
-        # For Resonance_Frequency: enforce running minimum within the region.
+        # For Resonance_Frequency: enforce a running minimum with a relative threshold.
         running_min = corrected_rf[left_idx]
         for i in range(left_idx, right_idx):
             if corrected_rf[i] > running_min:
-                corrected_rf[i] = running_min
+                gap = corrected_rf[i] - running_min
+                allowed_gap = running_min * rf_threshold_ratio
+                # Only partially correct if the gap exceeds the allowed fraction of the current minimum.
+                if gap < allowed_gap:
+                    corrected_rf[i] = running_min
             else:
                 running_min = corrected_rf[i]
 
