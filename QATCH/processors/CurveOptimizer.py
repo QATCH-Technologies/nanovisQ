@@ -399,19 +399,20 @@ TAG = "DropEffectCorrection"
 
 class DropEffectCorrection(CurveOptimizer):
     """
-    Class to mitigate drop effects in dissipation curves by detecting and correcting anomalies.
+    Class to mitigate drop effects in dissipation and resonance frequency curves
+    by detecting and correcting anomalies independently.
 
     Attributes:
         file_buffer: Input buffer containing the dataset.
         initial_diff_factor (float): Initial difference factor for curve computation.
 
     Methods:
-        cancel_drop_effect(): Detects and corrects drop effects in the dissipation curve.
+        correct_drop_effects(): Detects and corrects drop effects in both curves independently.
     """
 
     def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
         """
-        Initializes the DropEffectMitigation with the provided file buffer and difference factor.
+        Initializes the DropEffectCorrection with the provided file buffer and difference factor.
 
         Args:
             file_buffer: The data buffer containing dissipation data.
@@ -426,6 +427,11 @@ class DropEffectCorrection(CurveOptimizer):
             Log.e(TAG, "The dataframe does not contain a 'Dissipation' column.")
             raise ValueError(
                 "The dataframe does not contain a 'Dissipation' column.")
+
+        if "Resonance_Frequency" not in self._dataframe.columns:
+            Log.e(TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
+            raise ValueError(
+                "The dataframe does not contain a 'Resonance_Frequency' column.")
 
         if not ("index" in self._left_bound and "index" in self._right_bound):
             Log.e(TAG, "Bounds must be properly defined with 'index' keys.")
@@ -442,27 +448,22 @@ class DropEffectCorrection(CurveOptimizer):
 
         if "Difference" not in self._dataframe.columns:
             Log.d(
-                TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}."
-            )
+                TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.")
             self._generate_curve(initial_diff_factor)
 
-    def _detect_drop_effects(self, diff_offset: int = 2, threshold_factor: float = 2) -> list:
+    def _detect_drop_effects_for_column(self, col_name: str, diff_offset: int = 2, threshold_factor: float = 2) -> list:
         """
-        Detects non-normal y-deltas in the dissipation curve within the defined bounds.
-        Instead of simply picking the two largest gradients, it computes the difference
-        (with an offset of diff_offset) for each point in the region and flags those
-        deviating strongly from a robust baseline.
+        Detects drop effects for a given column within the defined bounds by computing
+        differences (with an offset) and flagging those points with a difference that
+        deviates strongly from a robust baseline.
 
         Args:
+            col_name (str): The column name to process (e.g., "Dissipation" or "Resonance_Frequency").
             diff_offset (int): The number of points to offset when computing differences.
             threshold_factor (float): Factor to scale the robust measure for outlier detection.
 
         Returns:
-            list of tuples: Each tuple contains (global index, dissipation delta, resonance frequency delta)
-                            for a detected jump.
-
-        Raises:
-            ValueError: If there are not enough points to compute differences.
+            list of tuples: Each tuple contains (global index, delta) for a detected jump.
         """
         left_idx = self._left_bound['index']
         right_idx = self._right_bound['index']
@@ -474,13 +475,11 @@ class DropEffectCorrection(CurveOptimizer):
                 "Not enough points in the specified region to compute differences.")
 
         region_slice = slice(left_idx, right_idx + 1)
-        diss_values = self._dataframe['Dissipation'].values[region_slice]
-        rf_values = self._dataframe['Resonance_Frequency'].values[region_slice]
+        values = self._dataframe[col_name].values[region_slice]
 
         # Compute differences with the specified offset to smooth out noise.
-        local_indices = np.arange(diff_offset, len(diss_values))
-        diffs = diss_values[local_indices] - \
-            diss_values[local_indices - diff_offset]
+        local_indices = np.arange(diff_offset, len(values))
+        diffs = values[local_indices] - values[local_indices - diff_offset]
 
         # Compute robust statistics: median and MAD.
         median_diff = np.median(diffs)
@@ -490,17 +489,14 @@ class DropEffectCorrection(CurveOptimizer):
 
         drop_effects = []
         for local_idx in local_indices:
-            current_diff = diss_values[local_idx] - \
-                diss_values[local_idx - diff_offset]
+            current_diff = values[local_idx] - values[local_idx - diff_offset]
             if np.abs(current_diff - median_diff) > threshold:
                 # Map back to the full dataframe index.
                 global_idx = local_idx + left_idx
-                rf_delta = rf_values[local_idx] - \
-                    rf_values[local_idx - diff_offset]
-                drop_effects.append((global_idx, current_diff, rf_delta))
+                drop_effects.append((global_idx, current_diff))
 
         Log.d(
-            TAG, f"Detected drop effects at indices {[de[0] for de in drop_effects]} with deltas: {[(de[1], de[2]) for de in drop_effects]}")
+            TAG, f"Detected drop effects in {col_name} at indices {[de[0] for de in drop_effects]} with deltas {[de[1] for de in drop_effects]}")
         return drop_effects
 
     def correct_drop_effects(self,
@@ -509,11 +505,26 @@ class DropEffectCorrection(CurveOptimizer):
                              diss_threshold_ratio: float = 0.01,
                              rf_threshold_ratio: float = 0.00001,
                              plot_corrections: bool = True) -> tuple:
+        """
+        Corrects drop effects for both the dissipation and resonance frequency curves independently.
+        The detection and correction steps remain the same, but each curve’s corrections are applied
+        based solely on its own detected anomalies.
+
+        Args:
+            baseline_diss (float): Baseline value for dissipation correction.
+            baseline_rf (float): Baseline value for resonance frequency correction.
+            diss_threshold_ratio (float): Relative threshold for dissipation running correction.
+            rf_threshold_ratio (float): Relative threshold for resonance frequency running correction.
+            plot_corrections (bool): Flag to indicate whether to plot the before/after corrections.
+
+        Returns:
+            tuple: Corrected dissipation and resonance frequency arrays.
+        """
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
         original_rf = self._dataframe['Resonance_Frequency'].values.copy()
 
-        # If baselines are not provided, use a default value (e.g., from index 300).
+        # If baselines are not provided, use a default value (e.g., from index 300 offset back 500 points).
         if baseline_diss is None:
             baseline_diss = original_diss[self._left_bound['index'] - 500]
         if baseline_rf is None:
@@ -523,72 +534,73 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_diss = original_diss.copy()
         corrected_rf = original_rf.copy()
 
-        # Get the drop effects from the detection method.
-        # Each tuple is: (global_index, diss_delta, rf_delta)
-        drop_effects = self._detect_drop_effects()
+        # Detect drop effects independently for each curve.
+        drop_effects_diss = self._detect_drop_effects_for_column('Dissipation')
+        drop_effects_rf = self._detect_drop_effects_for_column(
+            'Resonance_Frequency')
 
         # Ensure drop effects are sorted by their global index.
-        drop_effects.sort(key=lambda x: x[0])
+        drop_effects_diss.sort(key=lambda x: x[0])
+        drop_effects_rf.sort(key=lambda x: x[0])
 
-        # Process each detected drop effect sequentially.
-        for i, drop in enumerate(drop_effects):
-            idx, diss_delta, rf_delta = drop
+        # Process each detected drop effect for Dissipation.
+        for i, drop in enumerate(drop_effects_diss):
+            idx, diss_delta = drop
             # Skip if the drop effect is at the very beginning.
             if idx <= 0:
                 continue
-
-            # Compute offsets so that the value at the drop index matches the previous (good) value.
+            # Compute offset so that the value at the drop index matches the previous (good) value.
             offset_diss = corrected_diss[idx - 1] - original_diss[idx]
-            offset_rf = corrected_rf[idx - 1] - original_rf[idx]
-
             # Determine the segment end: from the current drop effect until the next drop effect,
             # or to the end of the data if this is the last drop.
-            if i + 1 < len(drop_effects):
-                next_idx = drop_effects[i + 1][0]
-            else:
-                next_idx = len(corrected_diss)
-
+            next_idx = drop_effects_diss[i + 1][0] if i + \
+                1 < len(drop_effects_diss) else len(corrected_diss)
             # Apply the offset correction to the segment.
             corrected_diss[idx:next_idx] += offset_diss
+
+        # Process each detected drop effect for Resonance Frequency.
+        for i, drop in enumerate(drop_effects_rf):
+            idx, rf_delta = drop
+            if idx <= 0:
+                continue
+            offset_rf = corrected_rf[idx - 1] - original_rf[idx]
+            next_idx = drop_effects_rf[i + 1][0] if i + \
+                1 < len(drop_effects_rf) else len(corrected_rf)
             corrected_rf[idx:next_idx] += offset_rf
 
-        # Get the region of interest from the object's bounds.
+        # Post-correction adjustments: enforce running corrections independently for each curve.
         left_idx = self._left_bound['index']
         right_idx = self._right_bound['index']
-
-        # Ensure the indices are within the bounds of the data arrays.
         left_idx = max(0, left_idx)
         right_idx = min(len(corrected_diss), right_idx)
+
         # For Dissipation: enforce a running maximum with a relative threshold.
         running_max = corrected_diss[left_idx]
         for i in range(left_idx, right_idx):
-
             if corrected_diss[i] < running_max:
-
                 gap = running_max - corrected_diss[i]
                 allowed_gap = running_max * diss_threshold_ratio
-                # Only partially correct if the gap exceeds the allowed fraction of the current maximum.
                 if gap > allowed_gap:
                     corrected_diss[i] = random.uniform(
                         max(running_max - allowed_gap, baseline_diss), running_max)
             else:
                 running_max = corrected_diss[i]
 
-        # For Resonance_Frequency: enforce a running minimum with a relative threshold.
+        # For Resonance Frequency: enforce a running minimum with a relative threshold.
         running_min = corrected_rf[left_idx]
         for i in range(left_idx, right_idx):
-            if corrected_rf[i] < running_min:
-                gap = running_min - corrected_rf[i]
+            if corrected_rf[i] > running_min:
+                gap = corrected_rf[i] - running_min
                 allowed_gap = running_min * rf_threshold_ratio
-                # Only partially correct if the gap exceeds the allowed fraction of the current minimum.
                 if gap > allowed_gap:
-                    random.uniform(
-                        min(running_min - allowed_gap, baseline_rf), running_min)
+                    corrected_rf[i] = random.uniform(running_min, min(
+                        running_min + allowed_gap, baseline_rf))
             else:
                 running_min = corrected_rf[i]
+
         if plot_corrections:
-            self._plot_corrections(original_diss, original_rf,
-                                   corrected_diss, corrected_rf)
+            self._plot_corrections(
+                original_diss, original_rf, corrected_diss, corrected_rf)
 
         return (corrected_diss, corrected_rf)
 
