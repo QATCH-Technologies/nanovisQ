@@ -1557,7 +1557,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.infobar.setText(
                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
             self.ControlsWin.ui1._update_progress_text()
-            self.ControlsWin.ui1.progressBar.repaint()
+            self.ControlsWin.ui1.run_progress_bar.repaint()
 
             # set variable to preload tensorflow module, if desired
             # hide info/warning logs from tf # lazy load
@@ -1725,7 +1725,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<font color=#0000ff > Ref. Frequency </font>")
         self.InfoWin.ui3.inforef2.setText(
             "<font color=#0000ff > Ref. Dissipation </font>")
-        self.ControlsWin.ui1.progressBar.setValue(0)
+        self.ControlsWin.ui1.run_progress_bar.setValue(0)
         Log.i(TAG, "Clicked STOP")
         self._timer_plot.stop()
         self._enable_ui(True)
@@ -2927,7 +2927,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.infobar.setText(
                     "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
                 # progressbar
-                self.ControlsWin.ui1.progressBar.setValue(
+                self.ControlsWin.ui1.run_progress_bar.setValue(
                     int((self._ser_control / 10) % 100))
 
         # CALIBRATION: dynamic info in infobar at run-time
@@ -3008,7 +3008,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         stop_flag = 1
 
             # progressbar -------------
-            self.ControlsWin.ui1.progressBar.setValue(
+            self.ControlsWin.ui1.run_progress_bar.setValue(
                 0 if stop_flag else int(self._completed+1))  # dwight ver const was 10
             self.InfoWin.ui3.l6a.setText(
                 "<font color=#0000ff>  Temperature </font>" + label3)
@@ -3743,7 +3743,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 e.setYRange(min=0, max=1)
         if self._plt2_arr[0] != None:
             self._annotate_welcome_text()
-        self.ControlsWin.ui1.progressBar.setValue(0)
+        self.ControlsWin.ui1.run_progress_bar.setValue(0)
 
     ###########################################################################
     # Reference set/reset

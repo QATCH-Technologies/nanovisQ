@@ -1149,16 +1149,37 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
                  """  # background:url("openQCM/icons/openqcm-logo.png")
-        self.progressBar = QtWidgets.QProgressBar()
-        self.progressBar.setStyleSheet(styleBar)
+        self.run_progress_bar = QtWidgets.QProgressBar()
+        self.run_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        self.run_progress_bar.setObjectName("progressBar")
+        self.run_progress_bar.setStyleSheet(styleBar)
+
+        self.sr_progress_bar = QtWidgets.QProgressBar()
+        self.sr_progress_bar.setMinimum(0)
+        self.sr_progress_bar.setMaximum(5)
+        self.sr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        self.sr_progress_bar.setObjectName("shortRunProgressBar")
+
+        self.lr_progress_bar = QtWidgets.QProgressBar()
+        self.lr_progress_bar.setMinimum(0)
+        self.lr_progress_bar.setMaximum(5)
+        self.lr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        self.lr_progress_bar.setObjectName("longRunProgressBar")
+
         # self.progressBar.setProperty("value", 0)
-        self.progressBar.setGeometry(QtCore.QRect(0, 0, 50, 10))
-        self.progressBar.setObjectName("progressBar")
+
         if USE_FULLSCREEN:
-            self.progressBar.setFixedHeight(50)
+            self.run_progress_bar.setFixedHeight(50)
+            self.sr_progress_bar.setFixedHeight(50)
+            self.lr_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
-            self.progressBar.valueChanged.connect(self._update_progress_value)
-        self.progressBar.setValue(0)
+            self.run_progress_bar.valueChanged.connect(
+                self._update_progress_value)
+
+        self.run_progress_bar.setValue(0)
+        self.lr_progress_bar.setValue(0)
+        self.sr_progress_bar.setValue(0)
+
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
         self.Layout_controls.setColumnStretch(2, 0)
@@ -1166,8 +1187,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.Layout_controls.setColumnStretch(4, 2)
         self.Layout_controls.setColumnStretch(5, 2)
         self.Layout_controls.setColumnStretch(6, 2)
-        self.Layout_controls.addWidget(self.progressBar, 0, 7, 1, 1)
-
+        self.Layout_controls.addWidget(self.run_progress_bar, 0, 7, 1, 1)
+        # Add the new progress bars underneath self.run_progress_bar
+        self.Layout_controls.addWidget(self.sr_progress_bar, 1, 7, 1, 1)
+        self.Layout_controls.addWidget(self.lr_progress_bar, 2, 7, 1, 1)
         self.gridLayout.addLayout(self.Layout_controls, 7, 1, 1, 1)
         # ---------------------------------------------------------------------
 
@@ -1321,7 +1344,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.toolBarWidget.setStyleSheet("background: #DDDDDD;")
 
         self.toolLayout.addWidget(self.toolBarWidget)
-        self.toolLayout.addWidget(self.progressBar)
+        self.toolLayout.addWidget(self.run_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
             self.centralwidget.setLayout(self.toolLayout)
@@ -1330,7 +1353,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.Layout_controls.removeWidget(self.lTemp)  # label
             self.Layout_controls.removeWidget(self.slTemp)  # slider
             self.Layout_controls.removeWidget(self.pTemp)  # start/stop button
-            self.Layout_controls.removeWidget(self.progressBar)
+            self.Layout_controls.removeWidget(self.run_progress_bar)
             self.Layout_controls.removeWidget(self.lg)  # user guide
             self.Layout_controls.removeWidget(self.lmail)  # email
             self.Layout_controls.removeWidget(self.l4)  # website
@@ -1374,7 +1397,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             plain_text = "Progress: Not Started"
         else:
             plain_text = "Status: {}".format(plain_text)
-        self.progressBar.setFormat(plain_text)
+        self.run_progress_bar.setFormat(plain_text)
         styleBar = """
                     QProgressBar
                     {
@@ -1389,13 +1412,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
                  """.replace("{COLOR}", color)
-        self.progressBar.setStyleSheet(styleBar)
+        self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
         if self.cBox_Source.currentIndex() == OperationType.measurement.value:
             pass  # self._update_progress_text() # defer to infobar text, not percentage
         else:
-            self.progressBar.setFormat("Progress: %p%")
+            self.run_progress_bar.setFormat("Progress: %p%")
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
