@@ -473,14 +473,14 @@ class Ui_Login(object):
         # User information message box on Login Window.
         self.user_info = QtWidgets.QLabel("")
         self.user_info.setStyleSheet("color: #000000; font-weight: bold;")
-        self.user_info.setFixedHeight(50)
+        # self.user_info.setFixedHeight(50)
         self.layout.addWidget(self.user_info, 6, 1, 1,
                               3, QtCore.Qt.AlignCenter)
 
         self.user_error = QtWidgets.QLabel("")
         self.user_error.setStyleSheet("color: #ff0000;")
         # self.user_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.user_error.setFixedHeight(50)
+        # self.user_error.setFixedHeight(50)
         self.layout.addWidget(self.user_error, 7, 1, 1,
                               3, QtCore.Qt.AlignCenter)
 
