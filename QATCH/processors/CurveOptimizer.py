@@ -507,7 +507,7 @@ class DropEffectCorrection(CurveOptimizer):
                              baseline_diss: float = None,
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
-                             rf_threshold_ratio: float = 0.01,
+                             rf_threshold_ratio: float = 0.00001,
                              plot_corrections: bool = True) -> tuple:
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
@@ -577,12 +577,13 @@ class DropEffectCorrection(CurveOptimizer):
         # For Resonance_Frequency: enforce a running minimum with a relative threshold.
         running_min = corrected_rf[left_idx]
         for i in range(left_idx, right_idx):
-            if corrected_rf[i] > running_min:
-                gap = corrected_rf[i] - running_min
+            if corrected_rf[i] < running_min:
+                gap = running_min - corrected_rf[i]
                 allowed_gap = running_min * rf_threshold_ratio
                 # Only partially correct if the gap exceeds the allowed fraction of the current minimum.
-                if gap < allowed_gap:
-                    corrected_rf[i] = running_min
+                if gap > allowed_gap:
+                    random.uniform(
+                        min(running_min - allowed_gap, baseline_rf), running_min)
             else:
                 running_min = corrected_rf[i]
         if plot_corrections:
