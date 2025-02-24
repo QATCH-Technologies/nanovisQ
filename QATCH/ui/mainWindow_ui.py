@@ -1345,7 +1345,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.toolLayout.addWidget(self.toolBarWidget)
         self.toolLayout.addWidget(self.run_progress_bar)
-
+        self.toolLayout.addWidget(self.sr_progress_bar)
+        self.toolLayout.addWidget(self.lr_progress_bar)
         if SHOW_SIMPLE_CONTROLS:
             self.centralwidget.setLayout(self.toolLayout)
 
@@ -1354,6 +1355,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.Layout_controls.removeWidget(self.slTemp)  # slider
             self.Layout_controls.removeWidget(self.pTemp)  # start/stop button
             self.Layout_controls.removeWidget(self.run_progress_bar)
+            self.Layout_controls.removeWidget(self.sr_progress_bar)
+            self.Layout_controls.removeWidget(self.lr_progress_bar)
             self.Layout_controls.removeWidget(self.lg)  # user guide
             self.Layout_controls.removeWidget(self.lmail)  # email
             self.Layout_controls.removeWidget(self.l4)  # website
@@ -1379,6 +1382,12 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.retranslateUi(MainWindow1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow1)
+
+    def _update_sr_progress(self):
+        pass
+
+    def _update_lr_progress(self):
+        pass
 
     def _update_progress_text(self):
         # get innerText from HTML in infobar
