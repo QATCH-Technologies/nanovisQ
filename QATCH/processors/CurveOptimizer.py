@@ -22,7 +22,7 @@ DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 # This is a percentage setback from the initial drop application.  Increasing this value in the range (0,1) will
 # move the left side of the correction zone further from the initial application of the drop as a percentage of the
 # index where the drop is applied.
-INIT_DROP_SETBACK = 0.02
+INIT_DROP_SETBACK = 0.012
 
 # This is the detection senstivity for the dissipation and RF drop effects.  Increasing these values should independently
 # increase how large a delta needs to be in order to be counted as a drop effect essentially correcting fewer deltas resulting
@@ -239,7 +239,8 @@ class CurveOptimizer:
                 # Report global minima over shortened data.
                 index = int(np.argmin(adjusted_difference) -
                             (len(relative_time) * BASE_OFFSET))
-                index = index + int(INIT_DROP_SETBACK * index)
+                import math
+                index = index + math.floor(INIT_DROP_SETBACK * index)
                 Log.d(
                     TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
@@ -259,7 +260,7 @@ class CurveOptimizer:
     def _set_bounds(self) -> None:
         Log.d(TAG, "Setting region bounds.")
         # Generate initial curve.
-        self._generate_curve(self._initial_diff_factor)
+        self._generate_curve(Constants.default_diff_factor)
 
         # Establish right bound
         # IMPORTANT: this must be done before the left bound is established.
@@ -521,7 +522,7 @@ class DropEffectCorrection(CurveOptimizer):
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
                              rf_threshold_ratio: float = 0.00001,
-                             plot_corrections: bool = False) -> tuple:
+                             plot_corrections: bool = True) -> tuple:
         """
         Corrects drop effects for both the dissipation and resonance frequency curves independently.
         The detection and correction steps remain the same, but each curve’s corrections are applied
