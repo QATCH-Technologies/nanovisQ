@@ -1344,10 +1344,21 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.toolBarWidget.setStyleSheet("background: #DDDDDD;")
 
         self.toolLayout.addWidget(self.toolBarWidget)
+<<<<<<< Updated upstream
         self.toolLayout.addWidget(self.run_progress_bar)
         self.toolLayout.addWidget(self.sr_progress_bar)
         self.toolLayout.addWidget(self.lr_progress_bar)
+=======
+        self.toolLayout.addWidget(self.progressBar)
+
+        dummy_label = QtWidgets.QLabel(
+            "<b><u>Real-Time QModel fill predictions:</u></b>")
+        self.toolLayout.addWidget(dummy_label)
+
+>>>>>>> Stashed changes
         if SHOW_SIMPLE_CONTROLS:
+            # Remove bottom margin, leaving the rest as "default"
+            self.toolLayout.setContentsMargins(11, 11, 11, 0)
             self.centralwidget.setLayout(self.toolLayout)
 
             self.Layout_controls.removeWidget(self.infosave)  # tec controller
@@ -1594,9 +1605,52 @@ class Ui_Plots(object):
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName("gridLayout")
+        # Remove top margin, leaving the rest as "default"
+        self.gridLayout.setContentsMargins(11, 0, 11, 11)
         self.Layout_graphs = QtWidgets.QSplitter(
             QtCore.Qt.Horizontal)  # QGridLayout()
         self.Layout_graphs.setObjectName("Layout_graphs")
+
+        styleBar = """
+                    QProgressBar
+                    {
+                     border: 0.5px solid #B8B8B8;
+                     border-radius: 1px;
+                     text-align: center;
+                     color: #333333;
+                    }
+                     QProgressBar::chunk
+                    {
+                     background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
+                    }
+                 """  # background:url("openQCM/icons/openqcm-logo.png")
+        self.progressBar1 = QtWidgets.QProgressBar()
+        self.progressBar1.setStyleSheet(styleBar)
+        # self.progressBar1.setProperty("value", 0)
+        self.progressBar1.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        # self.progressBar1.setObjectName("progressBar1")
+        if USE_FULLSCREEN:
+            self.progressBar1.setFixedHeight(50)
+        # if SHOW_SIMPLE_CONTROLS:
+        #     self.progressBar1.valueChanged.connect(self._update_progress_value)
+        self.progressBar1.setValue(0)
+        self.progressBar1.setFormat(
+            "Real-Time QModel Status (for short runs): %p% (Not Started)")
+        self.gridLayout.addWidget(self.progressBar1, 0, 1, 1, 1)
+
+        self.progressBar2 = QtWidgets.QProgressBar()
+        self.progressBar2.setStyleSheet(styleBar)
+        # self.progressBar2.setProperty("value", 0)
+        self.progressBar2.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        # self.progressBar2.setObjectName("progressBar2")
+        if USE_FULLSCREEN:
+            self.progressBar2.setFixedHeight(50)
+        # if SHOW_SIMPLE_CONTROLS:
+        #     self.progressBar2.valueChanged.connect(self._update_progress_value)
+        self.progressBar2.setValue(0)
+        self.progressBar2.setFormat(
+            "Real-Time QModel Status (for long runs): %p% (Not Started)")
+        self.gridLayout.addWidget(self.progressBar2, 1, 1, 1, 1)
 
         self.plt = GraphicsLayoutWidget(self.centralwidget)
         self.pltB = GraphicsLayoutWidget(self.centralwidget)
@@ -1653,7 +1707,7 @@ class Ui_Plots(object):
         # self.handleSplitterButton(False)
         self.Layout_graphs.splitterMoved.connect(self.handleSplitterMoved)
 
-        self.gridLayout.addWidget(self.Layout_graphs, 3, 1, 1, 1)
+        self.gridLayout.addWidget(self.Layout_graphs, 2, 1, 1, 1)
         MainWindow2.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow2)
