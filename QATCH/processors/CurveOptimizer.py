@@ -22,13 +22,13 @@ DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 # This is a percentage setback from the initial drop application.  Increasing this value in the range (0,1) will
 # move the left side of the correction zone further from the initial application of the drop as a percentage of the
 # index where the drop is applied.
-INIT_DROP_SETBACK = 0.012
+INIT_DROP_SETBACK = 0.014
 
 # This is the detection senstivity for the dissipation and RF drop effects.  Increasing these values should independently
 # increase how large a delta needs to be in order to be counted as a drop effect essentially correcting fewer deltas resulting
 # in a less aggressive correction.
 DISSIPATION_SENSITIVITY = 2
-RF_SENSITVITY = 8
+RF_SENSITVITY = 12
 ##########################################
 # CHANGE THESE
 ##########################################
