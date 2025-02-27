@@ -2697,6 +2697,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker)
             self.forecast_predictions = self._forecaster.update_predictions(
                 new_data=new_data, ignore_before=50)
+            if self.forecast_predictions['status'] == 'completed':
+                short_pred = max(self.forecast_predictions.get(
+                    'stable_predictions', 0))
+                long_pred = max(self.forecast_predictions.get(
+                    'stable_predictions', 0))
+
+                label_map = {
+                    0: "no_fill",
+                    1: "init_fill",
+                    2: "ch_1",
+                    3: "ch_2",
+                    4: "full_fill"
+                }
+                self.ControlsWin.ui1.sr_progress_bar.setValue(short_pred)
+                self.ControlsWin.ui1.lr_progress_bar.setValue(long_pred)
+                self.ControlsWin.ui1.sr_progress_bar.setFormat(
+                    label_map.get(short_pred, ""))
+                self.ControlsWin.ui1.lr_progress_bar.setFormat(
+                    label_map.get(long_pred, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
