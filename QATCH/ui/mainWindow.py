@@ -15,6 +15,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
+from QATCH.QModel.q_forecaster import QForecasterDataprocessor, QForecasterPredictor
 from QATCH.processors.Analyze import AnalyzeProcess
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
@@ -1006,6 +1007,9 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
+        self._forecaster = QForecasterPredictor(batch_threshold=300)
+        self._forecaster.load_models()
+        self.forecast_predictions = {}
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -2688,6 +2692,12 @@ class MainWindow(QtWidgets.QMainWindow):
             vector2 = self.worker.get_d2_buffer(0)
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
+
+            new_data = QForecasterDataprocessor.convert_to_dataframe(
+                self.worker)
+            self.forecast_predictions = self._forecaster.update_predictions(
+                new_data=new_data, ignore_before=50)
+
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
             if self._ser_err_usb > 0:
