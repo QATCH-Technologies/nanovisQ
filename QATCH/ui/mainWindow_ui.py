@@ -1159,12 +1159,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.sr_progress_bar.setMaximum(5)
         self.sr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.sr_progress_bar.setObjectName("shortRunProgressBar")
+        self.sr_progress_bar.setStyleSheet(styleBar)
 
         self.lr_progress_bar = QtWidgets.QProgressBar()
         self.lr_progress_bar.setMinimum(0)
         self.lr_progress_bar.setMaximum(5)
         self.lr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.lr_progress_bar.setObjectName("longRunProgressBar")
+        self.lr_progress_bar.setStyleSheet(styleBar)
 
         # self.progressBar.setProperty("value", 0)
 
@@ -1177,8 +1179,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                 self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
-        self.lr_progress_bar.setValue(0)
-        self.sr_progress_bar.setValue(0)
+        self.lr_progress_bar.setValue(1)
+        self.sr_progress_bar.setValue(2)
+
+        self.lr_progress_bar.setFormat("Long Run: %v/%m (%p%)")
+        self.sr_progress_bar.setFormat("Short Run: %v/%m (%p%)")
 
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
@@ -1188,9 +1193,6 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.Layout_controls.setColumnStretch(5, 2)
         self.Layout_controls.setColumnStretch(6, 2)
         self.Layout_controls.addWidget(self.run_progress_bar, 0, 7, 1, 1)
-        # Add the new progress bars underneath self.run_progress_bar
-        self.Layout_controls.addWidget(self.sr_progress_bar, 1, 7, 1, 1)
-        self.Layout_controls.addWidget(self.lr_progress_bar, 2, 7, 1, 1)
         self.gridLayout.addLayout(self.Layout_controls, 7, 1, 1, 1)
         # ---------------------------------------------------------------------
 
@@ -1347,7 +1349,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.toolLayout.addWidget(self.run_progress_bar)
         self.toolLayout.addWidget(self.sr_progress_bar)
         self.toolLayout.addWidget(self.lr_progress_bar)
+
         if SHOW_SIMPLE_CONTROLS:
+            # Remove bottom margin, leaving the rest as "default"
+            self.toolLayout.setContentsMargins(11, 11, 11, 0)
             self.centralwidget.setLayout(self.toolLayout)
 
             self.Layout_controls.removeWidget(self.infosave)  # tec controller
@@ -1355,8 +1360,6 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.Layout_controls.removeWidget(self.slTemp)  # slider
             self.Layout_controls.removeWidget(self.pTemp)  # start/stop button
             self.Layout_controls.removeWidget(self.run_progress_bar)
-            self.Layout_controls.removeWidget(self.sr_progress_bar)
-            self.Layout_controls.removeWidget(self.lr_progress_bar)
             self.Layout_controls.removeWidget(self.lg)  # user guide
             self.Layout_controls.removeWidget(self.lmail)  # email
             self.Layout_controls.removeWidget(self.l4)  # website
@@ -1594,6 +1597,8 @@ class Ui_Plots(object):
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName("gridLayout")
+        # Remove top margin, leaving the rest as "default"
+        self.gridLayout.setContentsMargins(11, 0, 11, 11)
         self.Layout_graphs = QtWidgets.QSplitter(
             QtCore.Qt.Horizontal)  # QGridLayout()
         self.Layout_graphs.setObjectName("Layout_graphs")
@@ -1653,7 +1658,7 @@ class Ui_Plots(object):
         # self.handleSplitterButton(False)
         self.Layout_graphs.splitterMoved.connect(self.handleSplitterMoved)
 
-        self.gridLayout.addWidget(self.Layout_graphs, 3, 1, 1, 1)
+        self.gridLayout.addWidget(self.Layout_graphs, 2, 1, 1, 1)
         MainWindow2.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow2)
