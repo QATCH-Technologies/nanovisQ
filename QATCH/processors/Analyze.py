@@ -942,6 +942,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
         widget_dots.setLayout(layout_h4)
         widget_dots.setStyleSheet("color: #515151;")
         layout_v4.addWidget(widget_dots)
+
+        self.QModel_widget = QtWidgets.QWidget(self)
+        self.QModel_widget.setWindowFlags(
+            QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
+        self.QModel_widget.setWindowTitle("QModel Widget")
+        self.QModel_runBtn = QtWidgets.QPushButton("Run QModel Again")
+        self.QModel_runBtn.clicked.connect(self._restore_qmodel_predictions)
+        # self.layout.addWidget(self.QModel_runBtn)
+        # self.QModel_runBtn.setParent(None)
+        self.QModel_widget.setFixedSize(self.QModel_runBtn.sizeHint())
+        self.QModel_widget.hide()
+        floating_layout = QtWidgets.QHBoxLayout()
+        floating_layout.setContentsMargins(0, 0, 0, 0)
+        floating_layout.addWidget(self.QModel_runBtn)
+        self.QModel_widget.setLayout(floating_layout)
+        # floating_widget.move(100, 100)  # Position relative to main window
+        # floating_widget.show()
+        # layout_v4.addWidget(floating_widget)
+
         layout_v4.addWidget(self.graphStack)
         widget_h4.setLayout(layout_v4)
         widget_h4.setObjectName("AnalyzerFrame")
@@ -1361,6 +1380,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.allow_modify:
                 self.gotoStepNum(None, 2)  # step 2: select rough points
             else:
+                self.QModel_widget.hide()
                 self.gotoStepNum(None, 9)  # summary
 
     def action_analyze(self):
@@ -1807,6 +1827,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.clear()
 
         self.progressBar.setValue(0)  # Not started
+        self.QModel_widget.hide()
         self.setDotStepMarkers(0)
 
         self.stateStep = -1
@@ -2496,18 +2517,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(True)
         self.stateStep -= 2
         if self.stateStep < -1:
-            if PopUp.question(
-                self,
-                "Are you sure?",
-                "Any manual points will be lost if you go back to Step 1.\n\nProceed?",
-            ):
-                self.parent.analyze_data(
-                    self.cBox_Devices.currentText(),
-                    self.getFolderFromRun(self.cBox_Runs.currentText()),
-                    None,
-                )  # force back to step 1 of 8
-            else:
-                self.stateStep = 0
+            self.stateStep = 0
+            self._restore_qmodel_predictions()
+            # if PopUp.question(
+            #     self,
+            #     "Are you sure?",
+            #     "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            # ):
+            # self.parent.analyze_data(
+            #     self.cBox_Devices.currentText(),
+            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     None,
+            # )  # force back to step 1 of 8
+            # else:
+            # self.stateStep = 0
         else:
             self.moved_markers = [False, False, False, False, False, False]
             self.getPoints()
@@ -2539,6 +2562,109 @@ class AnalyzeProcess(QtWidgets.QWidget):
             clipped = True
             ws = 10
         return [ws, clipped]
+
+    def _restore_qmodel_predictions(self):
+        try:
+            if not PopUp.question(
+                self,
+                "Are you sure?",
+                "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            ):
+                # special exception case: indicates user declined action
+                raise PermissionError()
+
+            # restore QModel predictions
+            poi_vals = []
+            self.model_result = -1
+            self.model_candidates = None
+            self.model_engine = "None"
+            if Constants.QModel_predict:
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        label = self.QModel_clusterer.predict_label(fh)
+                        fh.seek(0)
+                        act_poi = [None] * 6  # no initial guesses
+                        candidates = getattr(
+                            self, f"QModel_predict_{label}"
+                        ).predict(fh, run_type=label, act=act_poi)
+                        predictions = []
+                        for p, c in candidates:
+                            predictions.append(
+                                p[0]
+                            )  # assumes 1st point is best point
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = "QModel"
+                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                        if True:  # len(poi_vals) != 6:
+                            Log.d(
+                                "Model ran, updating 'poi_vals' on re-run request")
+                            poi_vals = self.model_result.copy()
+                            out_of_order = False
+                            last_p = 0
+                            for i, p in enumerate(poi_vals):
+                                if p < last_p:
+                                    if not out_of_order:
+                                        # print this on 1st indication only
+                                        Log.e(
+                                            tag=f"[{self.model_engine}]",
+                                            msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                        )
+                                    out_of_order = True
+                                    if i == 0:  # first POI
+                                        poi_vals[i] = int(poi_vals[1] / 2)
+                                    elif i == len(poi_vals) - 1:  # last POI
+                                        poi_vals[i] = int(
+                                            (poi_vals[i-1] + len(self.ys)) / 2)
+                                    else:  # any other POI, not first nor last
+                                        poi_vals[i] = int(
+                                            (poi_vals[i-1] + poi_vals[i+1]) / 2)
+                                    Log.e(
+                                        tag=f"[{self.model_engine}]",
+                                        msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
+                                    )
+                                last_p = p
+                        else:
+                            Log.d(
+                                "Model ran, but not updating 'poi_vals' since we DO have prior points")
+                    else:
+                        self.model_result = -1  # try fallback model
+
+                except Exception as e:
+                    Log.e(e)
+                    Log.e(
+                        "Error using 'QModel'... Using 'ModelData' as fallback (less accurate)."
+                    )
+                    # raise e # debug only
+                    self.model_result = -1  # try fallback model
+
+            # move markers to QModel predicted points (if re-ran)
+            if self.model_result != -1 and len(self.poi_markers) == 6:
+                Log.i("[Run QModel Again] Restored QModel predictions for this run.")
+                for i, pm in enumerate(self.poi_markers):
+                    pm.setValue(self.xs[poi_vals[i]])
+                self.detect_change()
+            else:
+                Log.w(
+                    "[Run QModel Again] QModel has no predictions for this run. Leaving points unchanged.")
+
+        except PermissionError:
+            Log.d("User declined QModel restore prompt. No action taken.")
+
+        except Exception as e:
+            Log.e(f"QModel restore failed: {str(e)}")
+
+            limit = None
+            t, v, tb = sys.exc_info()
+            from traceback import format_tb
+
+            a_list = ["Traceback (most recent call last):"]
+            a_list = a_list + format_tb(tb, limit)
+            a_list.append(f"{t.__name__}: {str(v)}")
+            for line in a_list:
+                Log.e(line)
 
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
@@ -2642,12 +2768,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                 start_time = min(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
-                )
+                ) if len(self.poi_markers) else min(self.xs[poi_vals])
                 start_time = next(x for x, y in enumerate(
                     self.xs) if y >= start_time)
                 stop_time = max(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
-                )
+                ) if len(self.poi_markers) else max(self.xs[poi_vals])
                 stop_time = next(x for x, y in enumerate(
                     self.xs) if y >= stop_time)
 
@@ -3155,6 +3281,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyzer_task.start()
         self.setDotStepMarkers(step_num)
 
+        # Show/Hide QModel re-run button if on Step 2 and run has prior points
+        if step_num == 2 and len(self.poi_markers) == 6:
+            self._position_floating_widget()
+            self.QModel_widget.show()
+        elif self.QModel_widget.isVisible():
+            self.QModel_widget.hide()
+
     def addDotStepHandlers(self):
         dots = [
             self.dot1,
@@ -3225,6 +3358,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if self.allow_modify == False and step_num < 9:
             self.tool_Modify.setChecked(True)
             self.action_modify()  # self.tool_Modify.clicked.emit()
+            return  # action_modify() always calls this function again
 
         # determine step direction
         if step_num < self.stateStep + 2:
@@ -3250,17 +3384,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
         elif self.stateStep + 2 == step_num:
             Log.d("User clicked step jumper dot of current step. No action.")
         elif step_num == 1:
-            if PopUp.question(
-                self,
-                "Are you sure?",
-                "Any manual points will be lost if you go back to Step 1.\n\nProceed?",
-            ):
-                self.parent.analyze_data(
-                    self.cBox_Devices.currentText(),
-                    self.getFolderFromRun(self.cBox_Runs.currentText()),
-                    None,
-                )  # force back to step 1 of 8
-                self.enable_buttons()
+            self._restore_qmodel_predictions()
+            self.enable_buttons()
+            # if PopUp.question(
+            #     self,
+            #     "Are you sure?",
+            #     "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            # ):
+            # self.parent.analyze_data(
+            #     self.cBox_Devices.currentText(),
+            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     None,
+            # )  # force back to step 1 of 8
+            # self.enable_buttons()
         elif enable_analyze:
             self.stateStep = step_num - 3
             self.getPoints()  # increment to next step
@@ -4502,7 +4638,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("Showing analysis immediately")
             self.getPoints()  # confirm and analyze only if they want to view previous results
 
+    def _position_floating_widget(self):
+        pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
+            (self.width() - self.QModel_widget.width()) // 2
+        pos_Y = self.parent.MainWin.pos().y() + 250
+        self.QModel_widget.move(pos_X, pos_Y)
+
     def resizeEvent(self, event):
+        # Position relative to main window
+        if self.QModel_widget.isVisible():
+            QtCore.QTimer.singleShot(100, self._position_floating_widget)
         # if self.AI_SelectTool_Frame.isVisible():
         #     self.AI_SelectTool_Frame.setVisible(
         #         False
