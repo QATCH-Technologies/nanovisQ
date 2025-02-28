@@ -358,7 +358,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.step_direction = "forwards"
         self.allow_modify = False
         self.moved_markers = [False, False, False, False, False, False]
-        self.signed_at = "[NEVER]"
+        self.parent.signed_at = "[NEVER]"
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
@@ -1351,7 +1351,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.w(
                     f"Signing ANALYZE with initials {self.initials} (not asking again)"
                 )
-                self.signed_at = dt.datetime.now().isoformat()
+                self.parent.signed_at = dt.datetime.now().isoformat()
                 self.parent.signature_received = True  # Do not ask again this session
             if not self.parent.signature_received:
                 if self.signForm.isVisible():
@@ -1713,7 +1713,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.poi_markers = []
         self.xml_path = None  # used to indicate whether a run is loaded
         self.unsaved_changes = False
-        self.signed_at = "[NEVER]"
+        self.parent.signed_at = "[NEVER]"
         self.parent.signature_required = True  # secure assumption, set on load
         self.parent.signature_received = False
         self.model_result = -1
@@ -1778,7 +1778,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.sign.setMaxLength(len(sign_text))
             self.sign.setText(sign_text)
             self.sign.setReadOnly(True)
-            self.signed_at = dt.datetime.now().isoformat()
+            self.parent.signed_at = dt.datetime.now().isoformat()
             self.parent.signature_received = True
             self.sign_do_not_ask.setEnabled(True)
 
@@ -3213,7 +3213,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 userrole = userinfo[2]
 
             audit_action = "ANALYZE"
-            timestamp = self.signed_at
+            timestamp = self.parent.signed_at
             machine = Architecture.get_os_name()
             hash = hashlib.sha256()
             hash.update(salt.encode())  # aka 'profile'
@@ -3277,7 +3277,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # create new points element
             recorded_at = (
-                self.signed_at
+                self.parent.signed_at
                 if self.parent.signature_required
                 else dt.datetime.now().isoformat()
             )
@@ -4358,7 +4358,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         tag=f"[{self.model_engine}]",
                         msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
                     )
-
+                # POIs changed by QModel, mark as audit required
+                self.detect_change()
             else:
                 Log.e(
                     "Please manually select points of interest to Analyze this dataset."

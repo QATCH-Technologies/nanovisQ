@@ -824,6 +824,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # The MainWindow now manages the state of audit signatures.
         self.signature_required = True
         self.signature_received = False
+        self.signed_at = "[NEVER]"
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
