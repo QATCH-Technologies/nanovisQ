@@ -342,9 +342,94 @@ class Ui_Main(object):
 
 
 class Ui_Login(object):
+    """
+    User Interface for the Login Window.
 
-    def setupUi(self, MainWindow5, parent):
+    This class provides and manages the login interface for the QATCH application.
+    It sets up and configures the UI elements for user authentication, including labels,
+    text fields, buttons, and password visibility toggles. The class also handles events
+    such as text transformation, session validation, and error reporting, ensuring a smooth
+    user experience during the sign-in process.
+
+    The UI is dynamically updated to reflect changes such as password visibility toggling,
+    session expiration, and invalid credential notifications. Timers are used to clear error
+    messages after a brief interval and to periodically check the validity of the user session.
+    An action-sign in method is also provided to process and validate user credentials upon
+    clicking the sign-in button.
+
+    Attributes:
+        parent (QtWidgets.QMainWindow): The parent window that the login UI interacts with.
+        caps_lock_on (bool): Indicates if the Caps Lock is active.
+        centralwidget (QtWidgets.QWidget): The main widget containing the login interface.
+        layout (QtWidgets.QGridLayout): Grid layout manager for arranging UI components.
+        user_welcome (QtWidgets.QLabel): Label displaying a welcome message.
+        user_label (QtWidgets.QLabel): Label prompting the user to sign in.
+        user_initials (QtWidgets.QLineEdit): Text field for entering user initials.
+        user_password (QtWidgets.QLineEdit): Text field for entering the password, supporting masked input.
+        sign_in (QtWidgets.QPushButton): Button that initiates the sign-in process.
+        user_info (QtWidgets.QLabel): Label for displaying informational messages.
+        user_error (QtWidgets.QLabel): Label for displaying error messages.
+        _errorTimer (QtCore.QTimer): Timer to clear error messages after a set interval.
+        _sessionTimer (QtCore.QTimer): Timer to periodically validate the user session.
+        visibleIcon (QtGui.QIcon): Icon shown when the password is visible.
+        hiddenIcon (QtGui.QIcon): Icon shown when the password is hidden.
+        password_shown (bool): Flag indicating whether the password is currently shown in plain text.
+        togglepasswordAction (QAction): Action to toggle password visibility.
+
+    Methods:
+        setupUi(MainWindow5: QtWidgets.QMainWindow, parent: QtWidgets.QMainWindow) -> None:
+            Initializes and arranges all UI components in the main window.
+        retranslateUi(MainWindow5: QtWidgets.QMainWindow) -> None:
+            Updates the window's icon and title based on localization and application settings.
+        on_toggle_password_Action() -> None:
+            Toggles the echo mode of the password field between masked and unmasked.
+        check_user_session() -> None:
+            Checks if the user session is valid; prompts re-authentication if the session has expired.
+        error_loggedout() -> None:
+            Displays an error message indicating that the user has been signed out.
+        error_invalid() -> None:
+            Displays an error message for invalid login credentials.
+        error_expired() -> None:
+            Displays an error message indicating that the user session has expired.
+        text_transform() -> None:
+            Converts the input text in the user initials field to uppercase.
+        action_sign_in() -> None:
+            Handles the sign-in process by validating credentials and initiating the user session.
+
+    Example:
+        >>> main_window = QtWidgets.QMainWindow()
+        >>> parent_window = QtWidgets.QMainWindow()
+        >>> login_ui = Ui_Login()
+        >>> login_ui.setupUi(main_window, parent_window)
+    """
+
+    def setupUi(self, MainWindow5: QtWidgets.QMainWindow, parent: QtWidgets.QMainWindow) -> None:
+        """Set up and configure the login user interface for the main window.
+
+        This method initializes and arranges all the UI elements required for a user
+        login interface within the provided main window. It creates labels, line edits,
+        and buttons, sets their properties (such as size, alignment, placeholder texts,
+        and event filters), and organizes them using grid and vertical layouts. In addition,
+        the method configures timers for error message handling and session checks, and
+        sets up a password visibility toggle with corresponding icons.
+
+        The Caps Lock key state is also checked at initialization to adjust the UI behavior
+        if needed.
+
+        Args:
+            MainWindow5 (QtWidgets.QMainWindow): The main window instance where the login UI
+                is to be set up.
+            parent (QtWidgets.QMainWindow): The parent window that may be used for event filtering
+                and further interactions. This is stored in the instance as `self.parent`.
+
+        Returns:
+            None
+        """
         self.parent = parent
+
+        # Variable to check and store the state of the Caps Lock key on init.
+        self.caps_lock_on = False  # set on focus of `user_password` field
+
         MainWindow5.setObjectName("MainWindow5")
         MainWindow5.setMinimumSize(QtCore.QSize(1000, 500))
         MainWindow5.resize(500, 500)
@@ -384,12 +469,21 @@ class Ui_Login(object):
         self.sign_in.clicked.connect(self.action_sign_in)
         self.sign_in.installEventFilter(MainWindow5)
         self.layout.addWidget(self.sign_in, 5, 2, 1, 1, QtCore.Qt.AlignCenter)
+
+        # User information message box on Login Window.
+        self.user_info = QtWidgets.QLabel("")
+        self.user_info.setStyleSheet("color: #000000; font-weight: bold;")
+        # self.user_info.setFixedHeight(50)
+        self.layout.addWidget(self.user_info, 6, 1, 1,
+                              3, QtCore.Qt.AlignCenter)
+
         self.user_error = QtWidgets.QLabel("")
         self.user_error.setStyleSheet("color: #ff0000;")
         # self.user_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.user_error.setFixedHeight(50)
-        self.layout.addWidget(self.user_error, 6, 1, 1,
+        # self.user_error.setFixedHeight(50)
+        self.layout.addWidget(self.user_error, 7, 1, 1,
                               3, QtCore.Qt.AlignCenter)
+
         v_layout = QtWidgets.QVBoxLayout()
         v_layout.addStretch()
         v_layout.addWidget(self.user_welcome)
@@ -427,7 +521,20 @@ class Ui_Login(object):
         self.togglepasswordAction.triggered.connect(
             self.on_toggle_password_Action)
 
-    def on_toggle_password_Action(self):
+    def on_toggle_password_Action(self) -> None:
+        """Toggle the visibility of the password input field.
+
+        This method switches the echo mode of the `user_password` QLineEdit widget between
+        normal text display and password (masked) mode. When the password is hidden (echo mode
+        set to Password), activating this method will make it visible by setting the echo mode to
+        Normal, update the internal state flag `password_shown` to True, and change the toggle icon
+        to indicate that clicking it again will hide the password. Conversely, if the password is
+        currently visible, the method sets the echo mode back to Password, updates `password_shown` to
+        False, and resets the icon to the visible state.
+
+        Returns:
+            None
+        """
         if not self.password_shown:
             self.user_password.setEchoMode(QtWidgets.QLineEdit.Normal)
             self.password_shown = True
@@ -437,7 +544,19 @@ class Ui_Login(object):
             self.password_shown = False
             self.togglepasswordAction.setIcon(self.visibleIcon)
 
-    def check_user_session(self):
+    def check_user_session(self) -> None:
+        """Check the current user's session and prompt for sign-in if expired.
+
+        This method retrieves session validity and associated information by invoking
+        `UserProfiles().session_info()`. If the session is found to be invalid (i.e., the
+        user is not signed in or the session has expired), a warning is logged, an
+        informational message is provided, and the user is prompted to sign in by calling
+        `self.parent.ControlsWin.set_user_profile()`. If the session is still valid, a
+        debug message is logged and the session timer is restarted to re-check after one hour.
+
+        Returns:
+            None
+        """
         valid, infos = UserProfiles().session_info()
         if not valid:  # user check required, but no user signed in
             Log.w(f"User session has expired.")
@@ -448,7 +567,18 @@ class Ui_Login(object):
             Log.d("User session is still valid at the hourly check.")
             self._sessionTimer.start()  # check again in another hour
 
-    def retranslateUi(self, MainWindow5):
+    def retranslateUi(self, MainWindow5: QtWidgets.QMainWindow) -> None:
+        """Update the main window's icon and title with localized content.
+
+        This method retrieves translation functions and sets up the main window's
+        appearance by loading an icon from the predefined file path and updating
+        the window title with the application title and version. The title is formatted
+        to include a "Login" suffix, indicating the purpose of the window.
+
+        Args:
+            MainWindow5 (QtWidgets.QMainWindow): The main window instance that will have its
+                icon and title updated.
+        """
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
@@ -456,11 +586,29 @@ class Ui_Login(object):
         MainWindow5.setWindowTitle(_translate(
             "MainWindow5", "{} {} - Login".format(Constants.app_title, Constants.app_version)))
 
-    def error_loggedout(self):
+    def error_loggedout(self) -> None:
+        """Display a logout error message and initiate a timer to clear it.
+
+        This method triggers a timer using `kickErrorTimer` that will clear the displayed error message
+        after a predefined duration. It then sets the error message on the `user_error`
+        widget to notify the user that they have been signed out.
+
+        Returns:
+            None
+        """
         self.kickErrorTimer()  # the following text will clear in 10s
         self.user_error.setText("You have been signed out")
 
-    def error_invalid(self):
+    def error_invalid(self) -> None:
+        """Display an error message for invalid credentials and schedule its clearance.
+
+        This method triggers a timer via `kickErrorTimer` to clear the error message after a
+        predefined interval. It then sets the error message on the
+        `user_error` widget to inform the user that the credentials provided are invalid.
+
+        Returns:
+            None
+        """
         self.kickErrorTimer()  # the following text will clear in 10s
         self.user_error.setText("Invalid credentials")
 
@@ -468,19 +616,47 @@ class Ui_Login(object):
         # self.kickErrorTimer() # the following text will clear in 10s
         self.user_error.setText("Your session has expired")
 
-    def kickErrorTimer(self):
+    def kickErrorTimer(self) -> None:
+        """Display an error message indicating that the user session has expired.
+
+        This method sets the error message on the `user_error` widget to inform the user that
+        their session has expired. The code for initiating a timer to clear the message (via
+        `kickErrorTimer`) is commented out, suggesting that the clearance behavior might be
+        managed elsewhere or was disabled intentionally.
+
+        Returns:
+            None
+        """
         if self._errorTimer.isActive():
             Log.d("Error Timer was restarted while running")
             self._errorTimer.stop()
         self._errorTimer.start(10000)
 
     def text_transform(self):
+        """Convert the input text in the user initials field to uppercase.
+
+        This method retrieves the current text from the `user_initials` QLineEdit widget.
+        If the text is non-empty, it converts the text to uppercase and updates the widget.
+        The update does not re-trigger the 'textEdited' signal, preventing potential recursive calls.
+
+        Returns:
+            None
+        """
         text = self.user_initials.text()
         if len(text) > 0:
             # will not fire 'textEdited' signal again
             self.user_initials.setText(text.upper())
 
-    def action_sign_in(self):
+    def action_sign_in(self) -> None:
+        """ Perform the sign-in action for a user given initials and a password.
+
+        This method attempts to sign in a user given that their provided initials and password
+        are non-empty and valid.  Upon sign-in, a new user session is opened along with as session timer.
+        If the use could not be authenticated, sign-in is skipped and the sign-form is cleared.
+
+        Returns:
+            None
+        """
         if len(self.user_initials.text()) == 0 and len(self.user_password.text()) == 0:
             Log.d("No initials or password entered. Ignoring Sign-In request.")
             return
@@ -544,7 +720,15 @@ class Ui_Login(object):
         else:
             self.error_invalid()
 
-    def clear_form(self):
+    def clear_form(self) -> None:
+        """Clears the user initials and password form and user error message box.
+
+        If password is shown, revert the password.  Additionally, revert focus back
+        to initials field on clear.
+
+        Returns:
+            None
+        """
         self.user_initials.clear()
         self.user_password.clear()
         self.user_error.clear()
@@ -554,6 +738,22 @@ class Ui_Login(object):
 
         if self.user_password.hasFocus():
             self.user_initials.setFocus()
+
+    def update_caps_lock_state(self, caps_lock_state: bool) -> None:
+        """
+        Method to update the message in the user_info message box
+        to inform the user that Caps Lock is on.
+
+        Args:
+            caps_lock_state (bool): The state of the Caps Lock on this device
+
+        Returns:
+            None
+        """
+        if caps_lock_state:
+            self.user_info.setText("Caps Lock is On")
+        else:
+            self.user_info.clear()
 
 
 class Ui_Controls(object):  # QtWidgets.QMainWindow

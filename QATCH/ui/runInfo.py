@@ -10,7 +10,7 @@ import numpy as np
 import os
 import datetime as dt
 import hashlib
-import re
+# import re
 import datetime
 TAG = "[RunInfo]"
 
@@ -413,6 +413,8 @@ class QueryRunInfo(QtWidgets.QWidget):
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
         super(QueryRunInfo, self).__init__(None)
         self.parent = parent
+
+        self.run_name_changed = False
         self.run_name = run_name
         self.run_path = run_path
         self.xml_path = run_path[0:-4] + ".xml"
@@ -1449,7 +1451,23 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         # Update the run_name to the name in the 'Run name' text box of the
         # Run Info window, after removing leading and trailing whitespace.
-        self.run_name = self.t_runname.text().strip()
+        name_invalid = False
+        self.run_name_changed = True if self.run_name != self.t_runname.text() else False
+        self.run_name = self.t_runname.text()
+        for invalidChar in Constants.invalidChars:
+            if invalidChar in self.run_name:
+                name_invalid = True
+            self.run_name = self.run_name.replace(invalidChar, '')
+        self.run_name = self.run_name.strip().replace(
+            ' ', '_')  # word spaces -> underscores
+        if name_invalid:
+            if not PopUp.question(self, "Invalid Characters", f"Run name changed to:\n{self.run_name}\n\nDo you accept?"):
+                return False  # allow further changes
+        if self.run_name == self.t_runname.text():
+            # run name was different, but after normalization they're the same again
+            self.run_name_changed = False
+        else:
+            self.t_runname.setText(self.run_name)
 
         # Mode of operation for the XML file at the xml_path attribute.
         # If the path already exists, the action is modification of parameters
@@ -1854,6 +1872,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     return f"{new_name}{suffix}", False
 
             return None, False
+
         try:
             # If file name is the same, it is fine to resave.  If the path already exists elsewhere,
             # return with an error.
@@ -1874,10 +1893,18 @@ class QueryRunInfo(QtWidgets.QWidget):
             # TODO: Modify regex to fit naming convention for files. [AJR: Is this still TODO?]
             # Validate new_name for security (e.g., no special characters, no path traversal)
             # This could work: r'^[\w\s\-.]+$' or ^[\w\-.]+(\s[\w\-.]+)*$ for trailing and leading spaces
-            if secure and not re.match(r'^[\w\-.]+(\s[\w\-.]+)*$', new_name):
-                Log.e(
-                    tag=TAG, msg=f"Invalid run name {new_name}. Allowed characters: letters, numbers, underscores, hyphens.")
-                return None, None, None
+            # and not re.match(r'^[\w\-.]+(\s[\w\-.]+)*$', new_name):
+            if secure:
+                name_invalid = False
+                for invalidChar in Constants.invalidChars:
+                    if invalidChar in new_name:
+                        name_invalid = True
+                    new_name = new_name.replace(invalidChar, '')
+                new_name = new_name.strip().replace(' ', '_')  # word spaces -> underscores
+                if name_invalid:
+                    Log.w(
+                        tag=TAG, msg=f"Modified run name to \"{new_name}\". Invalid characters: {Constants.invalidChars}")
+                # return None, None, None
 
             # Form new directory path and validate it is within grandparent_dir to avoid path traversal
             new_dir = os.path.join(grandparent_dir, new_name)

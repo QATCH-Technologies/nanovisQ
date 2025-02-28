@@ -1,7 +1,7 @@
 from enum import Enum
 from time import strftime, localtime
 import os
-
+import ctypes
 from QATCH.common.architecture import Architecture, OSType
 
 ###############################################################################
@@ -40,8 +40,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b51"
-    app_date = "2024-12-23"
+    app_version = "v2.6b54"
+    app_date = "2025-02-17"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -51,7 +51,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b46"
+    best_fw_version = "v2.6b53"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
@@ -214,6 +214,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    invalidChars = "\\/:*?\"'<>|"
 
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'
@@ -318,6 +319,20 @@ class Constants:
     UpdateEngine = UpdateEngines.GitHub
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
+
+    @staticmethod
+    def windll_is_caps_lock_on() -> bool:
+        """
+        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
+        if Caps Lock is on or False if Caps Lock is off.
+
+        Returns:
+            bool: The state of the Caps Lock; True if Caps Lock is on, False
+                if Caps Lock is off.
+        """
+        VK_CAPITAL = 0x14
+        # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
+        return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)
 
     @staticmethod
     def get_batch_param(batch, param=""):
