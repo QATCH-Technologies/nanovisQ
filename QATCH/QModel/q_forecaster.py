@@ -514,14 +514,16 @@ class QForecasterPredictor:
                            frequency_threshold=0.8, confidence_threshold=0.9, current_state=None):
         if self.accumulated_data is None:
             self.accumulated_data = pd.DataFrame(columns=new_data.columns)
-            self.last_valid_index = 0
+            self.num_valid_entries = 0
             self.last_seen_row = 0
-            self.last_seen_time = new_data.iloc[self.last_seen_row]['Relative_time']
+            self.last_seen_time = 0.0
+        if self.last_seen_time == 0.0 and not new_data.empty:
+            self.last_seen_time = new_data['Relative_time'].values[-1]
 
         matching_indices = new_data.index[new_data['Relative_time']
                                           == self.last_seen_time]
         if len(matching_indices) > 0:
-            self.next_row = matching_indices[0]
+            self.next_row = int(matching_indices[0])
         else:
             self.next_row = len(new_data)
 
@@ -531,8 +533,8 @@ class QForecasterPredictor:
             [self.accumulated_data, valid_new_data], ignore_index=True)
 
         if self.next_row < len(new_data):
-            self.last_seen_row = self.next_row
-            self.last_seen_time = new_data.iloc[self.last_seen_row]['Relative_time']
+            # self.last_seen_row = self.next_row
+            self.last_seen_time = new_data['Relative_time'][0]
 
         current_count = len(self.accumulated_data)
         self.batch_num += 1
@@ -541,7 +543,7 @@ class QForecasterPredictor:
         self.accumulated_data.drop(
             columns=['Resonance_Frequency'], inplace=True)
 
-        if current_count < self.last_valid_index + self.batch_threshold:
+        if current_count < self.num_valid_entries + self.batch_threshold:
             print(
                 f"[INFO] Accumulated {current_count} entries so far; waiting for exactly {self.batch_threshold} entries to run predictions.")
             return {
@@ -550,14 +552,15 @@ class QForecasterPredictor:
                 "accumulated_data": self.accumulated_data,
                 "predictions": None
             }
+        self.num_valid_entries += self.batch_threshold
         self.accumulated_data = QForecasterDataprocessor.compute_additional_features(
             self.accumulated_data)
-        plt.figure()
-        plt.plot(self.accumulated_data['Relative_time'].values, label='R-time')
-        # plt.plot(self.accumulated_data["Dissipation"], label='Dissipation')
-        plt.legend()
-        plt.show()
-        plt.waitforbuttonpress()
+        # plt.figure()
+        # plt.plot(self.accumulated_data['Relative_time'].values, label='R-time')
+        # # plt.plot(self.accumulated_data["Dissipation"], label='Dissipation')
+        # plt.legend()
+        # plt.show()
+        # plt.
         print(
             f"\n[INFO] Running predictions on batch {self.batch_num} with {current_count} entries.")
 
