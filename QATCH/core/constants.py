@@ -281,6 +281,7 @@ class Constants:
     # In general, the first model to return a valid result will
     # prevent the execution of lower priority order model(s).
     preload_tensorflow = False  # otherwise, it will be loaded if/when needed
+    USE_MULTIPROCESS_FILL_FORECASTER = True
 
     ######################
     # ANALYZE parameters #

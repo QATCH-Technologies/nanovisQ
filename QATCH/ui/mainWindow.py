@@ -1007,12 +1007,16 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
-        qfp_path = os.path.join(Architecture.get_path(),
-                                r"QATCH\QModel\SavedModels\forecaster")
-        self._forecaster = QForecasterPredictor(
-            batch_threshold=300, save_dir=qfp_path)
-        self._forecaster.load_models()
-        self.forecast_predictions = {}
+        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            pass
+        else:
+            qfp_path = os.path.join(Architecture.get_path(),
+                                    r"QATCH\QModel\SavedModels\forecaster")
+            self._forecaster = QForecasterPredictor(
+                batch_threshold=50, save_dir=qfp_path)
+            self._forecaster.load_models()
+        self.forecast_predictions = {'status': 'init'}
+
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -2695,11 +2699,18 @@ class MainWindow(QtWidgets.QMainWindow):
             vector2 = self.worker.get_d2_buffer(0)
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
+
             new_data = QForecasterDataprocessor.convert_to_dataframe(
                 self.worker)
-            self.forecast_predictions = self._forecaster.update_predictions(
-                new_data=new_data, ignore_before=50)
+            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+                self.worker._forecaster_in.put(new_data)
+                if not self.worker._forecaster_out.empty():
+                    self.forecast_predictions = self.worker._forecaster_out.get()
+            else:
+                self.forecast_predictions = self._forecaster.update_predictions(
+                    new_data=new_data, ignore_before=50)
             if self.forecast_predictions['status'] == 'completed':
+                self.forecast_predictions['status'] = 'processed'
                 short_results = self.forecast_predictions.get(
                     'pred_short', 0)
                 long_results = self.forecast_predictions.get(

@@ -10,7 +10,7 @@ import pandas as pd
 from tqdm import tqdm
 import xgboost as xgb
 import pickle
-from QATCH.core.worker import Worker
+# from QATCH.core.worker import Worker # avoid circular import
 import matplotlib.pyplot as plt
 FEATURES = [
     'Relative_time',
@@ -34,7 +34,7 @@ IGNORE_BEFORE = 50
 
 class QForecasterDataprocessor:
     @staticmethod
-    def convert_to_dataframe(worker: Worker) -> pd.DataFrame:
+    def convert_to_dataframe(worker) -> pd.DataFrame:
         resonance_frequency = worker.get_value0_buffer(0)
         relative_time = worker.get_t1_buffer(0)
         dissipation = worker.get_d1_buffer(0)
@@ -312,7 +312,7 @@ class QForecasterDataprocessor:
 ###############################################################################
 class QForecasterPredictor:
     def __init__(self, numerical_features: list = FEATURES, target: str = TARGET,
-                 save_dir: str = None, batch_threshold: int = 300):
+                 save_dir: str = None, batch_threshold: int = 50):
         """
         Args:
             numerical_features (list): List of numerical feature names.
