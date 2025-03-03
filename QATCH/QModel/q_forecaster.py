@@ -3,13 +3,11 @@ from scipy.signal import hilbert
 from scipy.signal import savgol_filter
 from scipy.signal import hilbert, savgol_filter
 import os
-import random
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import xgboost as xgb
 import pickle
-
+from QATCH.core.worker import Worker
 FEATURES = [
     'Relative_time',
     'Dissipation',
@@ -31,6 +29,21 @@ IGNORE_BEFORE = 50
 
 
 class QForecasterDataprocessor:
+    @staticmethod
+    def convert_to_dataframe(worker: Worker) -> pd.DataFrame:
+        relative_time = worker.get_t1_buffer(0)
+        dissipation = worker.get_d2_buffer(0)
+
+        if not (len(relative_time) == len(dissipation)):
+            raise ValueError("All buffers must have the same length.")
+
+        df = pd.DataFrame({
+            'Resonance_Frequency': dissipation,
+            'Relative_time': relative_time,
+            'Dissipation': dissipation
+        })
+
+        return df
 
     @staticmethod
     def find_time_delta(df: pd.DataFrame) -> int:
@@ -95,6 +108,10 @@ class QForecasterDataprocessor:
             df['Time_shift'] = 0
         else:
             df.loc[t_delta:, 'Time_shift'] = 1
+
+        # Replace any NaN or infinity values with 0
+        df.replace([np.inf, -np.inf], 0, inplace=True)
+        df.fillna(0, inplace=True)
 
         return df
 
@@ -201,8 +218,21 @@ class QForecasterPredictor:
         # Initialize accumulator if needed.
         if self.accumulated_data is None:
             self.accumulated_data = pd.DataFrame(columns=new_data.columns)
+            self.num_valid_entries = 0
+            self.last_seen_row = 0
+            self.last_seen_time = 0.0
+        if self.last_seen_time == 0.0 and not new_data.empty:
+            self.last_seen_time = new_data['Relative_time'].values[-1]
 
-        # Append the new data.
+        matching_indices = new_data.index[new_data['Relative_time']
+                                          == self.last_seen_time]
+        if len(matching_indices) > 0:
+            self.next_row = int(matching_indices[0])
+        else:
+            self.next_row = len(new_data)
+
+        valid_new_data = new_data.iloc[self.last_seen_row:self.next_row]
+        valid_new_data = valid_new_data.iloc[::-1]
         self.accumulated_data = pd.concat(
             [self.accumulated_data, new_data], ignore_index=True)
         current_count = len(self.accumulated_data)
@@ -210,7 +240,7 @@ class QForecasterPredictor:
             self.accumulated_data)
         if current_count < self.batch_threshold:
             print(
-                f"[INFO] Accumulated {current_count} entries so far; waiting for {self.batch_threshold} entries to run predictions.")
+                f"[INFO] Accumulated {current_count} entries so far; waiting for exactly {self.batch_threshold} entries to run predictions.")
             return {
                 "status": "waiting",
                 "accumulated_count": current_count,

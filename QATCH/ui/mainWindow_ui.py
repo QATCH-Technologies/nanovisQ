@@ -1156,14 +1156,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.sr_progress_bar = QtWidgets.QProgressBar()
         self.sr_progress_bar.setMinimum(0)
-        self.sr_progress_bar.setMaximum(5)
+        self.sr_progress_bar.setMaximum(4)
         self.sr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.sr_progress_bar.setObjectName("shortRunProgressBar")
         self.sr_progress_bar.setStyleSheet(styleBar)
 
         self.lr_progress_bar = QtWidgets.QProgressBar()
         self.lr_progress_bar.setMinimum(0)
-        self.lr_progress_bar.setMaximum(5)
+        self.lr_progress_bar.setMaximum(4)
         self.lr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.lr_progress_bar.setObjectName("longRunProgressBar")
         self.lr_progress_bar.setStyleSheet(styleBar)
@@ -1179,8 +1179,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                 self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
-        self.lr_progress_bar.setValue(1)
-        self.sr_progress_bar.setValue(2)
+        self.lr_progress_bar.setValue(0)
+        self.sr_progress_bar.setValue(0)
 
         self.lr_progress_bar.setFormat("Long Run: %v/%m (%p%)")
         self.sr_progress_bar.setFormat("Short Run: %v/%m (%p%)")
