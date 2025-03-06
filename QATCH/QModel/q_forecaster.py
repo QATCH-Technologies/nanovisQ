@@ -478,7 +478,7 @@ class QForecasterPredictor:
 
         # If fill hasn't started, report all data as no_fill (0).
         if init_fill_point == -1:
-            print("[INFO] Fill not yet started; reporting all data as no_fill (0).")
+            Log.d(TAG, "Fill not yet started; reporting all data as no_fill (0).")
             predictions = np.zeros(current_count, dtype=int)
             conf = np.zeros(current_count)
             for i in range(current_count):
