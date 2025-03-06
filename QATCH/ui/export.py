@@ -1,4 +1,5 @@
 from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -854,8 +855,14 @@ class Ui_Export(QtWidgets.QWidget):
                         self.importNow.setEnabled(True)
                         self.importCancel.setEnabled(False)
                         return
-                    local_data = os.path.join(
-                        os.getcwd(), Constants.log_export_path)
+                    preferences_load_path = UserProfiles.user_preferences._get_load_data_path()
+                    if preferences_load_path == "":
+                        local_data = os.path.join(
+                            os.getcwd(), Constants.log_export_path)
+                    else:
+                        # If user preferences are set, load from the prefered load path.
+                        local_data = os.path.join(
+                            os.getcwd(), preferences_load_path)
                     Log.i(f"Import from {path} to {local_data}")
                     all_info = f.infolist()
                     zippedFolders = []
@@ -1264,7 +1271,7 @@ class Ui_Export(QtWidgets.QWidget):
                     if num_files > 1:
                         # force to directory, not a file
                         dst = os.path.join(top_level, os.path.split(path)[
-                                           1]) + Constants.slash
+                            1]) + Constants.slash
                     else:
                         dst = top_level
                     Log.d(f"Moving nested folders from {src} to {dst}...")
