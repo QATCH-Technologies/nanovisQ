@@ -2700,37 +2700,34 @@ class MainWindow(QtWidgets.QMainWindow):
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
 
+            #  Build dataframe from worker databuffer.
             new_data = QForecasterDataprocessor.convert_to_dataframe(
                 self.worker)
+
+            # Flag to use the fill forecaster.
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
                     self.forecast_predictions = self.worker._forecaster_out.get()
             else:
                 self.forecast_predictions = self._forecaster.update_predictions(
-                    new_data=new_data, ignore_before=50)
+                    new_data=new_data)
+
+            # If status is complete, update the corresponding progress bars with latest results.
             if self.forecast_predictions['status'] == 'completed':
                 self.forecast_predictions['status'] = 'processed'
-                short_results = self.forecast_predictions.get(
-                    'pred_short', 0)
-                long_results = self.forecast_predictions.get(
-                    'pred_long', 0)
-                short_pred = max(short_results)
-                long_pred = max(long_results)
-
-                label_map = {
-                    0: "No Fill",
-                    1: "Initial Fill",
-                    2: "Channel 1",
-                    3: "Channel 2",
-                    4: "Full Fill"
-                }
-                self.ControlsWin.ui1.sr_progress_bar.setValue(short_pred)
-                self.ControlsWin.ui1.lr_progress_bar.setValue(long_pred)
-                self.ControlsWin.ui1.sr_progress_bar.setFormat(
-                    label_map.get(short_pred, ""))
-                self.ControlsWin.ui1.lr_progress_bar.setFormat(
-                    label_map.get(long_pred, ""))
+                results = self.forecast_predictions.get(
+                    'pred', 0)
+                stable_results = self.forecast_predictions.get(
+                    'stable_predictions', None)
+                if stable_results is not None:
+                    pred = max(results)
+                else:
+                    pred = max(list(stable_results.keys()))
+                self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+                    pred)
+                self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+                    Constants.FILL_TYPE_LABEL_MAP.get(pred, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 

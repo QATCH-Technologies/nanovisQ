@@ -1154,36 +1154,27 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.run_progress_bar.setObjectName("progressBar")
         self.run_progress_bar.setStyleSheet(styleBar)
 
-        self.sr_progress_bar = QtWidgets.QProgressBar()
-        self.sr_progress_bar.setMinimum(0)
-        self.sr_progress_bar.setMaximum(4)
-        self.sr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
-        self.sr_progress_bar.setObjectName("shortRunProgressBar")
-        self.sr_progress_bar.setStyleSheet(styleBar)
-
-        self.lr_progress_bar = QtWidgets.QProgressBar()
-        self.lr_progress_bar.setMinimum(0)
-        self.lr_progress_bar.setMaximum(4)
-        self.lr_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
-        self.lr_progress_bar.setObjectName("longRunProgressBar")
-        self.lr_progress_bar.setStyleSheet(styleBar)
+        self.fill_prediction_progress_bar = QtWidgets.QProgressBar()
+        self.fill_prediction_progress_bar.setMinimum(0)
+        self.fill_prediction_progress_bar.setMaximum(4)
+        self.fill_prediction_progress_bar.setGeometry(
+            QtCore.QRect(0, 0, 50, 10))
+        self.fill_prediction_progress_bar.setObjectName("fillProgressBar")
+        self.fill_prediction_progress_bar.setStyleSheet(styleBar)
 
         # self.progressBar.setProperty("value", 0)
 
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
-            self.sr_progress_bar.setFixedHeight(50)
-            self.lr_progress_bar.setFixedHeight(50)
+            self.fill_prediction_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
             self.run_progress_bar.valueChanged.connect(
                 self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
-        self.lr_progress_bar.setValue(0)
-        self.sr_progress_bar.setValue(0)
+        self.fill_prediction_progress_bar.setValue(0)
 
-        self.lr_progress_bar.setFormat("Long Run: %v/%m (%p%)")
-        self.sr_progress_bar.setFormat("Short Run: %v/%m (%p%)")
+        self.fill_prediction_progress_bar.setFormat("Run: %v/%m (No Fill)")
 
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
@@ -1347,8 +1338,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.toolLayout.addWidget(self.toolBarWidget)
         self.toolLayout.addWidget(self.run_progress_bar)
-        self.toolLayout.addWidget(self.sr_progress_bar)
-        self.toolLayout.addWidget(self.lr_progress_bar)
+        self.toolLayout.addWidget(self.fill_prediction_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
             # Remove bottom margin, leaving the rest as "default"
@@ -1385,12 +1375,6 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.retranslateUi(MainWindow1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow1)
-
-    def _update_sr_progress(self):
-        pass
-
-    def _update_lr_progress(self):
-        pass
 
     def _update_progress_text(self):
         # get innerText from HTML in infobar
@@ -1463,12 +1447,18 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
     def action_initialize(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
+            self.fill_prediction_progress_bar.setValue(0)
+            self.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
 
     def action_start(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.measurement.value)
+            self.fill_prediction_progress_bar.setValue(0)
+            self.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
             self.pButton_Start.clicked.emit()
 
     def action_stop(self):
@@ -1490,6 +1480,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             "<font color=#333333 > Program Status Standby </font>")
         self.cal_initialized = False
         self.tool_Start.setEnabled(False)
+        self.fill_prediction_progress_bar.setValue(0)
+        self.fill_prediction_progress_bar.setFormat(
+            Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
 

@@ -1,49 +1,72 @@
-# from QATCH.core.constants import Constants
-# from QATCH.core.ringBuffer import RingBuffer
+"""
+Forecaster for raw data gathered from the SerialProcess in parallel timing.
+
+This module provides a multiprocessor process that handles non-blocking real-time
+predictions to offer a live estimation of the current fill state during a run.
+It utilizes the QForecasterPredictor model from QATCH.QModel.q_forecaster to update
+predictions based on incoming data received via a multiprocessing queue.
+"""
+
+import os
+import sys
+import logging
+import multiprocessing
+from logging.handlers import QueueHandler
+from typing import Any, Optional, Dict
 from QATCH.common.architecture import Architecture
-# from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.q_forecaster import QForecasterPredictor
-# import numpy as np
-import multiprocessing
-from time import time
-import logging
-from logging.handlers import QueueHandler
-import sys
-import os
 
 TAG = "[FillForecaster]"
 
-################################################################################
-# Forecaster for the raw data gathered from the SerialProcess in parallel timing
-# Summary: This multiprocessor thread handles non-blocking real-time predictions
-#          to provide the user a live estimation of the run's current fill state
-# More Info: See QForecasterPredictor model in file QATCH\QModel\q_forecaster.py
-################################################################################
-
 
 class FillForecasterProcess(multiprocessing.Process):
+    """Process for handling real-time fill state predictions.
 
-    def __init__(self, queue_log, queue_in, queue_out):
-        """
-        :param parser_process: Reference to a ParserProcess instance.
-        :type parser_process: ParserProcess.
-        """
-        self._queueLog = queue_log  # Log.create()
+    This multiprocess-based class continuously reads incoming data from a queue,
+    processes it using a forecaster model, and sends completed prediction results
+    to an output queue. It is designed to operate in parallel with the main
+    application to provide non-blocking prediction updates.
+    """
 
+    def __init__(self,
+                 queue_log: multiprocessing.Queue,
+                 queue_in: multiprocessing.Queue,
+                 queue_out: multiprocessing.Queue) -> None:
+        """Initializes the FillForecasterProcess.
+
+        Params:
+            queue_log (multiprocessing.Queue): Queue used for logging messages.
+            queue_in (multiprocessing.Queue): Queue from which raw data is received.
+            queue_out (multiprocessing.Queue): Queue to output processed prediction results.
+
+        Returns:
+            None
+        """
+        self._queueLog: multiprocessing.Queue = queue_log
         multiprocessing.Process.__init__(self)
         self._exit = multiprocessing.Event()
         self._done = multiprocessing.Event()
-        self._queue_in = queue_in
-        self._queue_out = queue_out
+        self._queue_in: multiprocessing.Queue = queue_in
+        self._queue_out: multiprocessing.Queue = queue_out
+        self.forecast_predictions: Dict[str, Any] = {'status': 'init'}
 
-    ###########################################################################
-    # Processes incoming data and calculates outcoming data
-    ###########################################################################
+    def run(self) -> None:
+        """Runs the process to process incoming data and compute predictions.
 
-    def run(self):
+        This method performs the following steps:
+          1. Redirects stdout and stderr to suppress console output.
+          2. Configures the logger for the process and sets up the multiprocessing logger.
+          3. Initializes the QForecasterPredictor with a specified model path, loads the model,
+             and sets an initial prediction status.
+          4. Enters a loop that waits for incoming data on the input queue.
+             - It processes only the most recent data available.
+             - If the new data is valid and non-empty, it updates the prediction results.
+          5. If a prediction is marked as 'completed', it puts the result into the output queue.
+          6. Handles any exceptions by logging a detailed traceback.
+          7. Upon termination, logs the process shutdown and sets the done event.
+        """
         try:
-            # Log.create()
             sys.stdout = open(os.devnull, 'w')
             sys.stderr = open(os.devnull, 'w')
 
@@ -57,62 +80,59 @@ class FillForecasterProcess(multiprocessing.Process):
             multiprocessing_logger.setLevel(logging.WARNING)
 
             # Run once actions, on start of process:
-            qfp_path = os.path.join(Architecture.get_path(),
-                                    r"QATCH\QModel\SavedModels\forecaster")
+            qfp_path: str = os.path.join(Architecture.get_path(),
+                                         r"QATCH\QModel\SavedModels\forecaster")
             self._forecaster = QForecasterPredictor(
                 batch_threshold=50, save_dir=qfp_path)
             self._forecaster.load_models()
             self.forecast_predictions = {'status': 'init'}
 
             while not self._exit.is_set():
-                # Log.d"waiting for data!")
                 while self._queue_in.empty() and not self._exit.is_set():
-                    pass  # wait for queue to fill (or exit)
+                    pass
 
-                new_data = None
+                new_data: Optional[Any] = None
+
+                # Read all available data from the queue; process only the most recent one.
                 while not self._queue_in.empty():
-                    # Read in all available datas in queue, only process most-recent one
                     new_data = self._queue_in.get()
 
-                # Log.d("got data!")
+                # Process the new data if it exists and is not empty.
                 if new_data is not None and not new_data.empty:
-                    # Log.d(in_q)
-
-                    # call FillForecaster to process in-queued data
                     self.forecast_predictions = self._forecaster.update_predictions(
-                        new_data=new_data, ignore_before=50)
+                        new_data=new_data)
 
-                if self.forecast_predictions['status'] == 'completed':
-                    # add data to FillForecasterProcess out queue (back to MainWindow) for downstream LoggerProcess
-                    Log.d(
-                        TAG, f"Accumulated Count: {self.forecast_predictions['accumulated_count']}")
-                    if self.forecast_predictions['selected_model']:
-                        Log.d(
-                            TAG, f"Long Model: {self.forecast_predictions['pred_long'][-1]}")
-                    else:
-                        Log.d(
-                            TAG, f"Short Model: {self.forecast_predictions['pred_short'][-1]}")
+                # Output completed prediction results to the output queue.
+                if self.forecast_predictions.get('status') == 'completed':
                     self._queue_out.put(self.forecast_predictions)
 
-        except:
-            limit = None
+        except Exception:
+            # Capture and log the traceback in case of an exception.
+            limit: Optional[int] = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
             a_list = ['Traceback (most recent call last):']
-            a_list = a_list + format_tb(tb, limit)
+            a_list += format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
 
         finally:
-            Log.d(" FillForecasterProcess stopped.")
-
-            # gracefully end subprocess
+            # Gracefully end the subprocess and log the shutdown.
+            Log.d(TAG, "FillForecasterProcess stopped.")
             self._done.set()
 
-    def is_running(self):
+    def is_running(self) -> bool:
+        """Checks if the process is still running.
+
+        Returns:
+            bool: True if the process is active, False if it has completed or stopped.
+        """
         return not self._done.is_set()
 
-    def stop(self):
-        # Signals the process to stop when the parent process stops
+    def stop(self) -> None:
+        """Signals the process to stop.
+
+        Sets the exit event, which causes the main loop in run() to terminate gracefully.
+        """
         self._exit.set()
