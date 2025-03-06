@@ -1,6 +1,6 @@
 from QATCH.common.logger import Logger as Log
 from QATCH.common.fileStorage import FileStorage
-from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.common.userProfiles import UserProfiles, UserRoles, UserPreferences
 from QATCH.core.constants import Constants
 from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComboBox, QPushButton, QHBoxLayout, QLabel, QCheckBox, QLineEdit, QFileDialog, QSizePolicy
 from PyQt5.QtCore import Qt
@@ -17,6 +17,11 @@ class PreferencesUI(QWidget):
 
         # Assume non-admin user role until proven otherwise
         self._is_admin = False  # call 'check_user_role()' to set
+
+        # Create default user preferences object (initially "global" only)
+        UserProfiles.user_preferences = UserPreferences(
+            UserProfiles.get_session_file())
+        UserProfiles.user_preferences.set_preferences()
 
         self.setWindowTitle('Preferences')
         self.setWindowIcon(QIcon(r"QATCH\icons\preferences_icon.png"))
@@ -245,9 +250,9 @@ class PreferencesUI(QWidget):
             self.toggle_global_preferences)
         main_layout.addWidget(self.global_pref_toggle)
         # Submit button
-        submit_button = QPushButton('Save Preferences')
-        submit_button.clicked.connect(self.save_preferences)
-        main_layout.addWidget(submit_button)
+        self.submit_button = QPushButton('Save Preferences')
+        self.submit_button.clicked.connect(self.save_preferences)
+        main_layout.addWidget(self.submit_button)
         reset_button = QPushButton('Reset to Default Preferences')
         reset_button.clicked.connect(self.reset_to_default_preferences)
         main_layout.addWidget(reset_button)
@@ -258,6 +263,24 @@ class PreferencesUI(QWidget):
         super(PreferencesUI, self).hide()
         super(PreferencesUI, self).showNormal()
         self.resize(self.minimumSize())
+
+        # Reset labels to un-previewed states
+        self.preview_date_time_label.setText("Preview will appear here.")
+        self.preview_label.setText("Preview will appear here.")
+
+        self.check_user_role()  # updates self._is_admin
+        if UserProfiles().count() > 0 and self._is_admin is not None:
+            if not self.global_pref_toggle.isChecked():
+                # Toggle on first, forcing change handler to emit
+                self.global_pref_toggle.setChecked(True)
+            self.global_pref_toggle.setChecked(False)
+            self.global_pref_toggle.setEnabled(True)
+        else:  # is None:
+            if self.global_pref_toggle.isChecked():
+                # Toggle off first, forcing change handler to emit
+                self.global_pref_toggle.setChecked(False)
+            self.global_pref_toggle.setChecked(True)
+            self.global_pref_toggle.setEnabled(False)
 
         self.tab_widget.setCurrentIndex(tab_idx)
 
@@ -270,7 +293,7 @@ class PreferencesUI(QWidget):
         # Check if the file and folder preferences tab is selected
         if self.global_pref_toggle.isChecked():
             self.load_global_preferences()
-        else:
+        elif hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
             self.load_user_preferences()
 
     def open_load_file_dialog(self):
@@ -357,11 +380,23 @@ class PreferencesUI(QWidget):
         # Update the label
         self.global_pref_label.setText(
             "Use global preferences: ON" if is_checked else "Use global preferences: OFF")
+
         # Load preferences
         if is_checked:
             self.load_global_preferences()
-        else:
-            self.load_user_preferences()
+            if self._is_admin is None:
+                self.submit_button.setEnabled(False)
+            else:
+                # Allows global pref file write when there are no user profiles in the system
+                # thanks to the '_is_admin' flag returning True when no user profiles exist
+                self.submit_button.setEnabled(True)
+        else:  # not checked
+            if hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
+                self.load_user_preferences()
+            self.submit_button.setEnabled(True)
+
+        return  # skip the rest of this method, we only disable the submit button now
+
         if not self._is_admin:
             # Disable/Enable Date and Time dropdowns
             self.date_format_combo.setEnabled(not is_checked)
@@ -522,10 +557,19 @@ class PreferencesUI(QWidget):
                          for combo in self.folder_format_combos]
         file_delimiter = self.file_delimiter_combo.currentText()
         folder_delimiter = self.folder_delimiter_combo.currentText()
+        port_id = 0
         device_id = FileStorage.DEV_get_active(0)
+        if device_id.find("_"):  # for multiplex devices, parse port_id from device_id
+            port_id, device_id = device_id.split("_", 1)
+        port_id = int(port_id, base=16)
+        if port_id != port_id % 9:  # 4x6 system detected, PID A-D, not 1-4
+            # convert int(10) -> int(161)
+            # where int(10) refers to Port A, assuming active channel 1 of 6
+            port_id = (port_id << 4) + 0x01
         if device_id == "":
             device_id = "12345678"
-        port_id = 1
+            Log.w(
+                f"Failed to retrieve active 'Device'. Using ID \"{device_id}\" as an example.")
         # Generate a preview string based on the selected format
         file_preview = UserProfiles.user_preferences._build_save_path(
             file_format, "Runname", file_delimiter, device_id, port_id)
@@ -538,6 +582,7 @@ class PreferencesUI(QWidget):
     def save_preferences(self):
         load_data_path = self.load_directory_input.text()
         write_data_path = self.write_directory_input.text()
+        self.check_user_role()  # updates self._is_admin
 
         # Check if load path exists
         if not os.path.exists(load_data_path):
@@ -596,7 +641,18 @@ class PreferencesUI(QWidget):
             load_data_path=load_data_path)
         UserProfiles.user_preferences._set_write_data_path(
             write_data_path=write_data_path)
-        UserProfiles.user_preferences.write_user_preferences()
+
+        write_globals = False
+        if hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
+            UserProfiles.user_preferences.write_user_preferences()
+            if self._is_admin and self.global_pref_toggle.isChecked():
+                # Admin user is modifying global prefs, update both files
+                write_globals = True
+        elif self._is_admin:
+            # No user profiles exist, read/write global pref file only
+            write_globals = True
+        if write_globals:
+            UserProfiles.user_preferences.write_global_preferences()
 
         # Show a popup window to confirm preferences were saved
         msg_box = QMessageBox()

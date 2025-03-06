@@ -71,7 +71,10 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from keras.applications import VGG16
 from keras.models import Model
-from keras_preprocessing.image import img_to_array
+try:
+    from keras_preprocessing.image import img_to_array
+except:
+    from keras.preprocessing.image import img_to_array
 from PIL import Image
 from tqdm import tqdm
 

@@ -234,6 +234,7 @@ class Ui_Main(object):
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
+            self.parent.ControlsWin.ui_preferences.hide()
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet(
                 "padding: 10px; padding-left: 15px;")

@@ -1156,6 +1156,8 @@ class UserProfiles:
         if os.path.exists(file):
             Log.d("User session ended.")
             os.remove(file)
+        if hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
+            delattr(UserProfiles.user_preferences, "_user_preferences_path")
 
     @staticmethod
     def manage(existingUserName, existingUserRole):
@@ -1471,15 +1473,18 @@ class UserPreferences:
             self._set_global_preferences_path(global_preferences_path)
         else:
             Log.e(
-                tag=TAG, msg="No user or global file format preferences found. Writing global and using.")
+                tag=TAG, msg="No global file format preferences found. Writing global and using.")
             FileStorage.DEV_write_default_preferences(global_preferences_path)
-            FileStorage.DEV_write_default_preferences(user_preferences_path)
             self._set_global_preferences_path(global_preferences_path)
 
         if os.path.exists(user_preferences_path):
             Log.d(TAG, 'Using User Preferences')
             self._set_user_preferences_path(user_preferences_path)
             self.set_use_global(False)
+        elif user_info is not None:
+            Log.w(TAG, 'Creating User Preferences from default format and using global.')
+            FileStorage.DEV_write_default_preferences(user_preferences_path)
+            self._set_user_preferences_path(user_preferences_path)
 
     def set_preferences(self):
         import json
@@ -1537,6 +1542,10 @@ class UserPreferences:
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_global_preferences_path())
 
+    def write_global_preferences(self):
+        FileStorage.DEV_write_preferences(
+            save_path=self._get_global_preferences_path(), preferences=self.get_preferences())
+
     def reset_user_preferences(self):
         FileStorage.DEV_write_default_preferences(
             save_path=self._get_user_preferences_path())
@@ -1547,11 +1556,11 @@ class UserPreferences:
 
     def get_folder_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            pattern=self._get_folder_format_pattern(), delimiter=self._get_folder_delimiter(), runname=runname, device_id=device_id, port_id=port_id)
+            pattern=self._get_folder_format_pattern().split(self._get_folder_delimiter()), delimiter=self._get_folder_delimiter(), runname=runname, device_id=device_id, port_id=port_id)
 
     def get_file_save_path(self, runname: str, device_id: int, port_id: int) -> str:
         return self._build_save_path(
-            pattern=self._get_file_format_pattern(), delimiter=self._get_file_delimiter(),  runname=runname, device_id=device_id, port_id=port_id)
+            pattern=self._get_file_format_pattern().split(self._get_file_delimiter()), delimiter=self._get_file_delimiter(),  runname=runname, device_id=device_id, port_id=port_id)
 
     def set_use_global(self, use_global) -> None:
         self.use_global = use_global
@@ -1578,12 +1587,15 @@ class UserPreferences:
             elif tag == Constants.valid_tags[5]:
                 save_path = save_path + self._on_time()
             elif tag == Constants.valid_tags[6]:
+                if port_id == 0:
+                    Log.d(TAG, 'Single device does not use "Port" tag, skipping')
+                    continue  # skip "Port" tag if single device
                 save_path = save_path + self._on_port(port_id)
             elif tag == Constants.select_tag_prompt:
                 Log.w(TAG, 'Ignoring empty folder format tag pattern')
                 continue  # skip adding another delimeter
             else:
-                Log.e(TAG, 'Invalid folder format tag pattern')
+                Log.e(TAG, f'Invalid folder format tag pattern: {tag}')
                 raise ValueError('Invalid folder format tag pattern')
             if i < len(pattern) - 1:
                 save_path = save_path + delimiter
@@ -1636,7 +1648,12 @@ class UserPreferences:
         return QDateTime.currentDateTime().toString(self._get_time_format())
 
     def _on_port(self, port_id: int) -> str:
-        return str(port_id)
+        return self._portIDfromIndex(port_id)
+
+    def _portIDfromIndex(self, pid):  # convert ASCII byte to character
+        # For 4x1 system: expect pid 1-4, return "1" thru "4"
+        # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
+        return hex(pid)[2:].upper()
 
     # -- ACCESSOR METHODS -- #
 

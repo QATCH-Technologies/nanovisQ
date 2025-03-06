@@ -616,7 +616,13 @@ class Rename_Output_Files(QtCore.QObject):
                 if this_dir != current_directory:
                     current_directory = this_dir
                     path_split = os.path.split(this_dir)
-                    path_root = path_split[0]
+                    try:
+                        path_root = UserProfiles.user_preferences.get_preferences()[
+                            "write_data_path"]
+                    except:
+                        Log.e(
+                            "Failed to load user preference 'write_data_path'. Using cwd()")
+                        path_root = path_split[0]
                     dev_name = path_split[1]
                     try:
                         _dev_pid = 0
@@ -627,12 +633,20 @@ class Rename_Output_Files(QtCore.QObject):
                             # do not override 'dev_name'
                             _dev_name = _dev_parts[1]
 
-                        # Retrieve device info based on the deivce name and port-id
+                        # Retrieve device info based on the device name and port-id
                         dev_info = FileStorage.DEV_info_get(
                             _dev_pid, _dev_name)
                         if 'NAME' in dev_info:
                             if dev_info['NAME'] != _dev_name:
                                 dev_name = dev_info['NAME']
+
+                        if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
+                            # Convert PID to multiplex designation (i.e. int(1) -> int(162) for "A2")
+                            if self.has_active_multi_port():  # 4x6 system
+                                # mask in port, e.g. "A" -> "A1"
+                                _dev_pid = (
+                                    (_dev_pid + 9) << 4) | self.get_active_multi_port()
+                            # else: 4x1 system, nothing to do
                     except:
                         Log.e(
                             TAG, f"Unable to lookup device info for: {dev_name}")
@@ -662,29 +676,20 @@ class Rename_Output_Files(QtCore.QObject):
                             else:
                                 status_ok = False  # bad run, don't save with custom name
 
+                        # Remove any invalid characters from user input
+                        invalid_characters = "\\/:*?\"'<>|"
+                        for character in invalid_characters:
+                            input_text = input_text.replace(
+                                character, '')
+
                         # Fetch run and run_parent directories based on user preferences.
                         run_directory = UserProfiles.user_preferences.get_file_save_path(
-                            runname=input_text, device_id=dev_name, port_id=_dev_pid)
+                            runname=input_text, device_id=_dev_name, port_id=_dev_pid)
                         run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
-                            runname=input_text, device_id=dev_name, port_id=_dev_pid)
+                            runname=input_text, device_id=_dev_name, port_id=_dev_pid)
 
                         if status_ok:
                             ask_for_info = True
-                            # Remove any invalid characters from user input
-                            invalid_characters = "\\/:*?\"'<>|"
-                            for character in invalid_characters:
-                                input_text = input_text.replace(
-                                    character, '')
-                            # Potentially remove this vvvvv
-                            if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
-                                if self.has_active_multi_port():  # 4x6 system
-                                    # mask in port, e.g. "A" -> "A1"
-                                    _dev_pid = (
-                                        (_dev_pid + 9) << 4) | self.get_active_multi_port()
-                                # else: 4x1 system, nothing to do
-                                port_id = self._portIDfromIndex(_dev_pid)
-                                run_directory = UserProfiles.user_preferences.get_file_save_path(
-                                    runname=input_text, device_id=dev_name, port_id=port_id)
 
                             # Raise exception if runname retrieved from user is empty.
                             try:
