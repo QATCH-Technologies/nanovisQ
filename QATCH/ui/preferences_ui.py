@@ -559,23 +559,29 @@ class PreferencesUI(QWidget):
         folder_delimiter = self.folder_delimiter_combo.currentText()
         port_id = 0
         device_id = FileStorage.DEV_get_active(0)
-        if device_id.find("_"):  # for multiplex devices, parse port_id from device_id
+        if device_id == "" or device_id is None:
+            device_id = "12345678"
+            Log.w(TAG,
+                  f"Failed to retrieve active 'Device'. Using ID \"{device_id}\" as an example.")
+        if "_" in device_id:  # for multiplex devices, parse port_id from device_id
             port_id, device_id = device_id.split("_", 1)
-        port_id = int(port_id, base=16)
+        port_id = int(str(port_id), 16)
+        if port_id == "" or port_id is None:
+            Log.w(TAG,
+                  f"Failed to retrieve active 'Port ID'. Using ID \"{port_id}\" as an example.")
+            port_id = "1"
         if port_id != port_id % 9:  # 4x6 system detected, PID A-D, not 1-4
             # convert int(10) -> int(161)
             # where int(10) refers to Port A, assuming active channel 1 of 6
             port_id = (port_id << 4) + 0x01
-        if device_id == "":
-            device_id = "12345678"
-            Log.w(
-                f"Failed to retrieve active 'Device'. Using ID \"{device_id}\" as an example.")
+
         # Generate a preview string based on the selected format
         file_preview = UserProfiles.user_preferences._build_save_path(
             file_format, "Runname", file_delimiter, device_id, port_id)
         folder_preview = UserProfiles.user_preferences._build_save_path(
             folder_format, "Runname", folder_delimiter, device_id, port_id)
-
+        file_preview = file_preview.strip("-_ ")
+        folder_preview = folder_preview.strip("-_ ")
         preview_text = f"File Format Preview: {file_preview}\nFolder Format Preview: {folder_preview}"
         self.preview_label.setText(preview_text)
 
