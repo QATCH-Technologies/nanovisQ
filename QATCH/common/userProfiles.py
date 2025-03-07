@@ -1500,10 +1500,7 @@ class UserPreferences:
             Exception: Propagates any exception encountered during session retrieval, directory creation,
                     or writing default preferences.
         """
-        try:
-            user_info = self._get_user_session()
-        except Exception as e:
-            Log.e(TAG, f"Failed to retrieve user session: {e}")
+        user_info = self._get_user_session()
 
         # Build file paths for user and global preferences
         user_preferences_path = os.path.join(
