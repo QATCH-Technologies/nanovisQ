@@ -1931,6 +1931,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def summaryAt(self, idx):
         if not self.AI_SelectTool_Frame.isVisible():
             self.AI_Guess_Maxs = []
+
             for candidates, confidences in self.model_candidates:
                 self.AI_Guess_Maxs.append(len(candidates))
         self.AI_SelectTool_At = idx

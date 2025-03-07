@@ -860,6 +860,10 @@ class Ui_Export(QtWidgets.QWidget):
                         self.importNow.setEnabled(True)
                         self.importCancel.setEnabled(False)
                         return
+
+                    # Change working import directory to the user_preferences load directory.
+                    # i.e. load data to a specific directory as opposed ot just the logged_data
+                    # directory.
                     preferences_load_path = UserProfiles.user_preferences._get_load_data_path()
                     if preferences_load_path == "":
                         local_data = os.path.join(
@@ -868,6 +872,7 @@ class Ui_Export(QtWidgets.QWidget):
                         # If user preferences are set, load from the prefered load path.
                         local_data = os.path.join(
                             os.getcwd(), preferences_load_path)
+
                     Log.i(f"Import from {path} to {local_data}")
                     all_info = f.infolist()
                     zippedFolders = []
@@ -980,8 +985,21 @@ class Ui_Export(QtWidgets.QWidget):
                 #     path = os.path.join(path, Constants.log_export_path)
                 #     if not os.path.exists(path): raise ValueError("No logged data root found in archive.")
                 # relative = path[path.rindex(Constants.log_export_path):]
-                local_data = os.path.join(
-                    os.getcwd(), Constants.log_export_path)  # relative)
+
+                # Change working import directory to the user_preferences load directory.
+                # i.e. load data to a specific directory as opposed ot just the logged_data
+                # directory.
+                preferences_load_path = UserProfiles.user_preferences._get_load_data_path()
+                if preferences_load_path == "":
+                    local_data = os.path.join(
+                        os.getcwd(), Constants.log_export_path)
+                else:
+                    # If user preferences are set, load from the prefered load path.
+                    local_data = os.path.join(
+                        os.getcwd(), preferences_load_path)
+
+                # local_data = os.path.join(
+                #     os.getcwd(), Constants.log_export_path)  # relative)
                 archive_filename = os.path.split(path)[1]
                 xml_files, all_files = find_xml_files(path)
                 # Log.w(f"xmls: {xml_files}")

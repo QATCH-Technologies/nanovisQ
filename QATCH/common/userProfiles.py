@@ -1696,6 +1696,7 @@ class UserPreferences:
 
     def _set_load_data_path(self, load_data_path: str) -> None:
         self._load_data_path = load_data_path
+        Constants.log_export_path = self._load_data_path
 
     def _set_write_data_path(self, write_data_path: str) -> None:
         self._write_data_path = write_data_path
