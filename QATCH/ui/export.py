@@ -870,8 +870,7 @@ class Ui_Export(QtWidgets.QWidget):
                             os.getcwd(), Constants.log_export_path)
                     else:
                         # If user preferences are set, load from the prefered load path.
-                        local_data = os.path.join(
-                            os.getcwd(), preferences_load_path)
+                        local_data = os.path.join(preferences_load_path)
 
                     Log.i(f"Import from {path} to {local_data}")
                     all_info = f.infolist()
