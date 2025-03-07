@@ -1,5 +1,6 @@
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
+from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -417,6 +418,10 @@ class Ui_Export(QtWidgets.QWidget):
         self.layout.addWidget(self.tabs)
         # self.layout.addWidget(groupbox3)
         self.setLayout(self.layout)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH\icons\import-export.png')
+        icon = QtGui.QIcon(icon_path)
+        self.setWindowIcon(icon)
         self.setWindowTitle("Import/Export Data")
 
         self.usb_add.connect(self.ui_add)
