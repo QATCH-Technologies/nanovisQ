@@ -4,7 +4,7 @@ q_forecaster.py
 This module provides the core classes for data processing and prediction for forecasting the number of
 channels filled during a NanovisQ run.
 
-This system is designed to handle raw dissipation and relative time signal data, compute additional features, 
+This system is designed to handle raw dissipation and relative time signal data, compute additional features,
 and generate predictions using an XGBoost model combined with Viterbi decoding for robust state sequence estimation.
 
 Classes:
@@ -34,7 +34,7 @@ Usage Example:s
     predictor.load_models()
     new_data = QForecasterDataProcessor.convert_to_dataframe(worker: QATCH.core.worker.Worker)
     predicted_labels = predictor.update_predictions(new_data)
-    
+
 This module is an integral part of the QForecaster system and is intended to be used in real-time, batch
 dissipation data processing.
 """
@@ -91,24 +91,26 @@ class QForecasterDataprocessor:
         Args:
             worker (QATCH.core.worker.Worker): A Worker that provides buffer data through the methods
                           `get_t1_buffer(index: int)` and `get_d2_buffer(index: int)` where `t1` is the time
-                          buffer and `d2` is the dissipation buffer. 
+                          buffer and `d2` is the dissipation buffer.
 
         Returns:
             pd.DataFrame: A DataFrame with the columns 'Relative_time', 'Resonance_Frequency', and 'Dissipation'.
         """
         relative_time = worker.get_t1_buffer(0)
+        resonance_frequency = worker.get_d1_buffer(0)
         dissipation = worker.get_d2_buffer(0)
 
         # Determine the minimum length from both buffers
-        min_length = min(len(relative_time), len(dissipation))
-
-        # Truncate both buffers to the minimum length
+        min_length = min(len(relative_time), len(
+            dissipation), len(resonance_frequency))
+        # Truncate buffers to the minimum length
         relative_time_truncated = relative_time[:min_length]
         dissipation_truncated = dissipation[:min_length]
+        resonance_frequency_truncated = resonance_frequency[:min_length]
 
         df = pd.DataFrame({
             'Relative_time': relative_time_truncated,
-            'Resonance_Frequency': dissipation_truncated,
+            'Resonance_Frequency': resonance_frequency_truncated,
             'Dissipation': dissipation_truncated
         })
 
@@ -175,8 +177,8 @@ class QForecasterDataprocessor:
         df['Dissipation_ratio_to_ewm'] = df['Dissipation'] / df['Dissipation_ewm']
         df['Dissipation_envelope'] = np.abs(hilbert(df['Dissipation'].values))
 
-        if 'Resonance_Frequency' in df.columns:
-            df.drop(columns=['Resonance_Frequency'], inplace=True)
+        # if 'Resonance_Frequency' in df.columns:
+        #     df.drop(columns=['Resonance_Frequency'], inplace=True)
 
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
         df.fillna(0, inplace=True)
@@ -226,7 +228,7 @@ class QForecasterDataprocessor:
 
     @staticmethod
     def init_fill_point(
-        df: pd.DataFrame, baseline_window: int = 10, threshold_factor: float = 3.0
+        df: pd.DataFrame, baseline_window: int = 10, threshold_factor: float = 1.0
     ) -> int:
         """Identifies the initial fill point based on baseline noise.
 
@@ -249,19 +251,20 @@ class QForecasterDataprocessor:
         Raises:
             ValueError: If the 'Dissipation' column is not found in the DataFrame.
         """
-        if 'Dissipation' not in df.columns:
-            raise ValueError("Dissipation column not found in DataFrame.")
+        if 'Resonance_Frequency' not in df.columns:
+            raise ValueError(
+                "Resonance_Frequency column not found in DataFrame.")
         if len(df) < baseline_window:
             return -1
 
-        baseline_values = df['Dissipation'].iloc[:baseline_window]
+        baseline_values = df['Resonance_Frequency'].iloc[:baseline_window]
         baseline_mean = baseline_values.mean()
         baseline_std = baseline_values.std()
-        threshold = baseline_mean + threshold_factor * baseline_std
-        dissipation = df['Dissipation'].values
+        threshold = baseline_mean - threshold_factor * baseline_std
+        dissipation = df['Resonance_Frequency'].values
 
         for idx, value in enumerate(dissipation):
-            if value > threshold:
+            if value < threshold:
                 return idx
         return -1
 
@@ -474,7 +477,7 @@ class QForecasterPredictor:
 
         # Identify the initial fill point.
         init_fill_point = QForecasterDataprocessor.init_fill_point(
-            self.accumulated_data, 100, threshold_factor=20)
+            self.accumulated_data, baseline_window=100)
 
         # If fill hasn't started, report all data as no_fill (0).
         if init_fill_point == -1:
