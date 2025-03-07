@@ -616,13 +616,12 @@ class Rename_Output_Files(QtCore.QObject):
                 if this_dir != current_directory:
                     current_directory = this_dir
                     path_split = os.path.split(this_dir)
-                    try:
-                        path_root = UserProfiles.user_preferences.get_preferences()[
-                            "write_data_path"]
-                    except:
-                        Log.e(
-                            "Failed to load user preference 'write_data_path'. Using cwd()")
+                    preferences_write_path = UserProfiles.user_preferences._get_write_data_path()
+                    if preferences_write_path == "":
                         path_root = path_split[0]
+                    else:
+                        # If user preferences are set, load from the prefered write path.
+                        path_root = os.path.join(preferences_write_path)
                     dev_name = path_split[1]
                     try:
                         _dev_pid = 0
