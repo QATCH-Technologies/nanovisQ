@@ -1457,115 +1457,432 @@ class UserProfiles:
 
 
 class UserPreferences:
-    def __init__(self, user_session_key: str):
+    """Manages user preferences based on a user session.
+
+    This class is responsible for initializing the user preferences for a given
+    session by setting the user session key and performing any additional setup
+    required for managing user-specific configurations.
+
+    Attributes:
+        _user_session (str): The session key associated with the user.
+    """
+
+    def __init__(self, user_session_key: str) -> None:
+        """Initializes a new instance of UserPreferences.
+
+        This constructor sets the user session key by calling the internal
+        `_set_user_session` method and then calls `setup` to perform further
+        initialization of user preferences.
+
+        Args:
+            user_session_key (str):  A users session key as a string.
+        """
         self._set_user_session(user_session_key)
         self.setup()
 
     def setup(self) -> None:
-        user_info = self._get_user_session()
-        user_preferences_path = os.path.join(Constants.local_app_data_path, "profiles/users",
-                                             f"{user_info}-preferences.json")
-        global_preferences_path = os.path.join(
-            Constants.local_app_data_path, "global_preferences.json")
+        """
+        Sets up the user and global preferences for the application.
 
+        This function performs the following steps:
+        1. Retrieves the current user session information.
+        2. Constructs file paths for user-specific and global preferences based on the application's local data path.
+        3. Ensures that the directories for these paths exist; creates them if necessary.
+        4. Checks for an existing global preferences file:
+            - If it exists, sets the global preferences path.
+            - If it does not exist, logs an error, writes the default global preferences file, and then sets the path.
+        5. Checks for an existing user preferences file:
+            - If it exists, logs that user preferences will be used and sets the path, disabling global preferences.
+            - If it does not exist and user session information is available, logs a warning, writes the default user preferences file, and sets the path.
+            - If user session information is not available, logs a warning that user preferences cannot be created.
+
+        Raises:
+            Exception: Propagates any exception encountered during session retrieval, directory creation,
+                    or writing default preferences.
+        """
+        try:
+            user_info = self._get_user_session()
+        except Exception as e:
+            Log.e(TAG, f"Failed to retrieve user session: {e}")
+
+        # Build file paths for user and global preferences
+        user_preferences_path = os.path.join(
+            Constants.local_app_data_path, "profiles/users",
+            f"{user_info}-preferences.json"
+        )
+        global_preferences_path = os.path.join(
+            Constants.local_app_data_path, "global_preferences.json"
+        )
+
+        # Ensure the directories for preferences exist
+        try:
+            os.makedirs(os.path.dirname(user_preferences_path), exist_ok=True)
+        except Exception as e:
+            Log.e(TAG, f"Error creating user preferences directory: {e}")
+            raise
+
+        try:
+            os.makedirs(os.path.dirname(
+                global_preferences_path), exist_ok=True)
+        except Exception as e:
+            Log.e(TAG, f"Error creating global preferences directory: {e}")
+            raise
+
+        # Start with global preferences enabled
         self.set_use_global(True)
+
+        # Check if the global preferences file exists
         if os.path.exists(global_preferences_path):
             self._set_global_preferences_path(global_preferences_path)
         else:
             Log.e(
-                tag=TAG, msg="No global file format preferences found. Writing global and using.")
-            FileStorage.DEV_write_default_preferences(global_preferences_path)
+                TAG, "No global file format preferences found. Writing global and using.")
+            try:
+                FileStorage.DEV_write_default_preferences(
+                    global_preferences_path)
+            except Exception as e:
+                Log.e(TAG, f"Error writing default global preferences: {e}")
+                raise
             self._set_global_preferences_path(global_preferences_path)
 
+        # Check if the user preferences file exists
         if os.path.exists(user_preferences_path):
-            Log.d(TAG, 'Using User Preferences')
+            Log.d(TAG, "Using User Preferences")
             self._set_user_preferences_path(user_preferences_path)
             self.set_use_global(False)
         elif user_info is not None:
-            Log.w(TAG, 'Creating User Preferences from default format and using global.')
-            FileStorage.DEV_write_default_preferences(user_preferences_path)
+            Log.w(TAG, "Creating User Preferences from default format and using global.")
+            try:
+                FileStorage.DEV_write_default_preferences(
+                    user_preferences_path)
+            except Exception as e:
+                Log.e(TAG, f"Error writing default user preferences: {e}")
+                raise
             self._set_user_preferences_path(user_preferences_path)
-
-    def set_preferences(self):
-        import json
-        # Load and parse preferences file.
-        preferences_data = None
-        if self.get_use_global():
-            with open(self._get_global_preferences_path(), "r") as preferences_file:
-                preferences_data = json.load(preferences_file)
         else:
-            with open(self._get_user_preferences_path(), 'r') as preferences_file:
-                preferences_data = json.load(preferences_file)
+            Log.w(
+                TAG, "User session information is not available. User preferences not created.")
 
-        # Temporary variables to hold parsed contents
-        load_data_path = str(preferences_data["load_data_path"])
-        write_data_path = str(preferences_data["write_data_path"])
-        folder_tag_format = str(preferences_data["folder_format"])
-        file_tag_format = str(preferences_data["filename_format"])
-        folder_delimiter = str(
-            preferences_data["folder_format_delimiter"])
-        filename_delimiter = str(
-            preferences_data["filename_format_delimiter"])
-        date_format = str(preferences_data["date_format"])
-        time_format = str(preferences_data["time_format"])
+    def set_preferences(self) -> None:
+        """
+        Loads and applies user or global preferences from a JSON file.
 
-        # Set user preferences using accessor and mutators.
-        self._set_load_data_path(load_data_path)
-        self._set_write_data_path(write_data_path)
-        self._set_folder_format_pattern(folder_tag_format)
-        self._set_file_format_pattern(file_tag_format)
-        self._set_folder_delimiter(folder_delimiter)
-        self._set_file_delimiter(filename_delimiter)
-        self._set_date_format(date_format)
-        self._set_time_format(time_format)
+        This method performs the following steps:
+        1. Determines whether to use the global or user preferences file.
+        2. Opens and loads the preferences JSON file.
+        3. Validates that all required keys are present in the loaded JSON data.
+        4. Extracts the necessary configuration parameters and applies them using 
+            the corresponding setter methods.
+
+        Raises:
+            FileNotFoundError: If the preferences file does not exist.
+            json.JSONDecodeError: If the file contains invalid JSON.
+            KeyError: If any required preference key is missing.
+            Exception: For any other errors that occur during file I/O or setting preferences.
+        """
+        import json
+        preferences_data = None
+
+        # Attempt to open and load the correct preferences file
+        try:
+            if self.get_use_global():
+                global_path = self._get_global_preferences_path()
+                with open(global_path, "r") as preferences_file:
+                    preferences_data = json.load(preferences_file)
+            else:
+                user_path = self._get_user_preferences_path()
+                with open(user_path, "r") as preferences_file:
+                    preferences_data = json.load(preferences_file)
+        except FileNotFoundError as fnf_err:
+            Log.e(TAG, f"Preferences file not found: {fnf_err}")
+            raise
+        except json.JSONDecodeError as json_err:
+            Log.e(
+                TAG, f"Error decoding JSON from preferences file: {json_err}")
+            raise
+        except Exception as e:
+            Log.e(TAG, f"Unexpected error loading preferences: {e}")
+            raise
+
+        # Validate required keys in the JSON data
+        required_keys = [
+            "load_data_path",
+            "write_data_path",
+            "folder_format",
+            "filename_format",
+            "folder_format_delimiter",
+            "filename_format_delimiter",
+            "date_format",
+            "time_format",
+        ]
+        for key in required_keys:
+            if key not in preferences_data:
+                error_msg = f"Missing required preference key: {key}"
+                Log.e(TAG, error_msg)
+                raise KeyError(error_msg)
+
+        # Parse the preferences and apply them using the corresponding setters
+        try:
+            load_data_path = str(preferences_data["load_data_path"])
+            write_data_path = str(preferences_data["write_data_path"])
+            folder_tag_format = str(preferences_data["folder_format"])
+            file_tag_format = str(preferences_data["filename_format"])
+            folder_delimiter = str(preferences_data["folder_format_delimiter"])
+            filename_delimiter = str(
+                preferences_data["filename_format_delimiter"])
+            date_format = str(preferences_data["date_format"])
+            time_format = str(preferences_data["time_format"])
+
+            self._set_load_data_path(load_data_path)
+            self._set_write_data_path(write_data_path)
+            self._set_folder_format_pattern(folder_tag_format)
+            self._set_file_format_pattern(file_tag_format)
+            self._set_folder_delimiter(folder_delimiter)
+            self._set_file_delimiter(filename_delimiter)
+            self._set_date_format(date_format)
+            self._set_time_format(time_format)
+        except Exception as e:
+            Log.e(TAG, f"Error applying preferences: {e}")
+            raise
 
     def get_preferences(self) -> dict:
-        preferences_dict = {
-            "load_data_path": self._get_load_data_path(),
-            "write_data_path": self._get_write_data_path(),
-            "folder_format": self._get_folder_format_pattern(),
-            "filename_format": self._get_file_format_pattern(),
-            "folder_format_delimiter": self._get_folder_delimiter(),
-            "filename_format_delimiter": self._get_file_delimiter(),
-            "date_format": self._get_date_format(),
-            "time_format": self._get_time_format(),
-        }
+        """
+        Retrieves the current preferences settings.
+
+        This method collects the current configuration for load and write data paths,
+        file and folder formatting patterns, delimiters, and date/time formats via the
+        respective accessor methods, and returns them as a dictionary.
+
+        Returns:
+            dict: A dictionary containing the following keys:
+                - load_data_path
+                - write_data_path
+                - folder_format
+                - filename_format
+                - folder_format_delimiter
+                - filename_format_delimiter
+                - date_format
+                - time_format
+
+        Raises:
+            Exception: If an error occurs while retrieving any of the preferences.
+        """
+        try:
+            preferences_dict = {
+                "load_data_path": self._get_load_data_path(),
+                "write_data_path": self._get_write_data_path(),
+                "folder_format": self._get_folder_format_pattern(),
+                "filename_format": self._get_file_format_pattern(),
+                "folder_format_delimiter": self._get_folder_delimiter(),
+                "filename_format_delimiter": self._get_file_delimiter(),
+                "date_format": self._get_date_format(),
+                "time_format": self._get_time_format(),
+            }
+        except Exception as e:
+            Log.e(TAG, f"Error retrieving preferences: {e}")
+            raise
+
         return preferences_dict
 
     def load_user_preferences(self) -> dict:
-        return FileStorage.DEV_load_preferences(self._get_user_preferences_path())
+        """
+        Loads and returns the user preferences from the user preferences file.
+
+        Returns:
+            dict: The preferences data loaded from the user preferences file.
+
+        Raises:
+            FileNotFoundError: If the user preferences file does not exist.
+            Exception: For any other errors encountered during loading.
+        """
+        try:
+            user_preferences_path = self._get_user_preferences_path()
+            preferences = FileStorage.DEV_load_preferences(
+                user_preferences_path)
+            return preferences
+        except Exception as e:
+            Log.e(TAG, f"Error loading user preferences: {e}")
+            raise
 
     def load_global_preferences(self) -> dict:
-        return FileStorage.DEV_load_preferences(self._get_global_preferences_path())
+        """
+        Loads and returns the global preferences from the global preferences file.
 
-    def reset_global_preferences(self):
-        FileStorage.DEV_write_default_preferences(
-            save_path=self._get_global_preferences_path())
+        Returns:
+            dict: The preferences data loaded from the global preferences file.
 
-    def write_global_preferences(self):
-        FileStorage.DEV_write_preferences(
-            save_path=self._get_global_preferences_path(), preferences=self.get_preferences())
+        Raises:
+            FileNotFoundError: If the global preferences file does not exist.
+            Exception: For any other errors encountered during loading.
+        """
+        try:
+            global_preferences_path = self._get_global_preferences_path()
+            preferences = FileStorage.DEV_load_preferences(
+                global_preferences_path)
+            return preferences
+        except Exception as e:
+            Log.e(TAG, f"Error loading global preferences: {e}")
+            raise
 
-    def reset_user_preferences(self):
-        FileStorage.DEV_write_default_preferences(
-            save_path=self._get_user_preferences_path())
+    def reset_global_preferences(self) -> None:
+        """
+        Resets the global preferences to their default values by writing the default 
+        preferences to the global preferences file.
 
-    def write_user_preferences(self):
-        FileStorage.DEV_write_preferences(
-            save_path=self._get_user_preferences_path(), preferences=self.get_preferences())
+        Raises:
+            Exception: If an error occurs while writing default preferences.
+        """
+        try:
+            global_preferences_path = self._get_global_preferences_path()
+            FileStorage.DEV_write_default_preferences(
+                save_path=global_preferences_path)
+        except Exception as e:
+            Log.e(TAG, f"Error resetting global preferences: {e}")
+            raise
+
+    def write_global_preferences(self) -> None:
+        """
+        Writes the current preferences to the global preferences file.
+
+        The current preferences are retrieved using get_preferences() and then saved.
+
+        Raises:
+            Exception: If an error occurs during writing the preferences.
+        """
+        try:
+            global_preferences_path = self._get_global_preferences_path()
+            preferences = self.get_preferences()
+            FileStorage.DEV_write_preferences(
+                save_path=global_preferences_path, preferences=preferences)
+        except Exception as e:
+            Log.e(TAG, f"Error writing global preferences: {e}")
+            raise
+
+    def reset_user_preferences(self) -> None:
+        """
+        Resets the user preferences to their default values by writing the default 
+        preferences to the user preferences file.
+
+        Raises:
+            Exception: If an error occurs while writing default preferences.
+        """
+        try:
+            user_preferences_path = self._get_user_preferences_path()
+            FileStorage.DEV_write_default_preferences(
+                save_path=user_preferences_path)
+        except Exception as e:
+            Log.e(TAG, f"Error resetting user preferences: {e}")
+            raise
+
+    def write_user_preferences(self) -> None:
+        """
+        Writes the current preferences to the user preferences file.
+
+        The current preferences are retrieved using get_preferences() and then saved.
+
+        Raises:
+            Exception: If an error occurs during writing the preferences.
+        """
+        try:
+            user_preferences_path = self._get_user_preferences_path()
+            preferences = self.get_preferences()
+            FileStorage.DEV_write_preferences(
+                save_path=user_preferences_path, preferences=preferences)
+        except Exception as e:
+            Log.e(TAG, f"Error writing user preferences: {e}")
+            raise
 
     def get_folder_save_path(self, runname: str, device_id: int, port_id: int) -> str:
-        return self._build_save_path(
-            pattern=self._get_folder_format_pattern().split(self._get_folder_delimiter()), delimiter=self._get_folder_delimiter(), runname=runname, device_id=device_id, port_id=port_id)
+        """
+        Constructs and returns the folder save path based on the folder format pattern.
+
+        The folder format pattern is obtained and split using the configured delimiter,
+        then passed to the internal _build_save_path method along with runname, device_id,
+        and port_id.
+
+        Args:
+            runname (str): The name of the run.
+            device_id (int): The identifier for the device.
+            port_id (int): The identifier for the port.
+
+        Returns:
+            str: The constructed folder save path.
+
+        Raises:
+            Exception: If an error occurs while building the folder save path.
+        """
+        try:
+            pattern = self._get_folder_format_pattern().split(self._get_folder_delimiter())
+            delimiter = self._get_folder_delimiter()
+            return self._build_save_path(pattern=pattern, delimiter=delimiter, runname=runname,
+                                         device_id=device_id, port_id=port_id)
+        except Exception as e:
+            Log.e(TAG, f"Error constructing folder save path: {e}")
+            raise
 
     def get_file_save_path(self, runname: str, device_id: int, port_id: int) -> str:
-        return self._build_save_path(
-            pattern=self._get_file_format_pattern().split(self._get_file_delimiter()), delimiter=self._get_file_delimiter(),  runname=runname, device_id=device_id, port_id=port_id)
+        """
+        Constructs and returns the file save path based on the file format pattern.
 
-    def set_use_global(self, use_global) -> None:
+        The file format pattern is obtained and split using the configured delimiter,
+        then passed to the internal _build_save_path method along with runname, device_id,
+        and port_id.
+
+        Args:
+            runname (str): The name of the run.
+            device_id (int): The identifier for the device.
+            port_id (int): The identifier for the port.
+
+        Returns:
+            str: The constructed file save path.
+
+        Raises:
+            Exception: If an error occurs while building the file save path.
+        """
+        try:
+            pattern = self._get_file_format_pattern().split(self._get_file_delimiter())
+            delimiter = self._get_file_delimiter()
+            return self._build_save_path(pattern=pattern, delimiter=delimiter, runname=runname,
+                                         device_id=device_id, port_id=port_id)
+        except Exception as e:
+            Log.e(TAG, f"Error constructing file save path: {e}")
+            raise
+
+    def set_use_global(self, use_global: bool) -> None:
+        """
+        Sets the flag indicating whether to use global preferences.
+
+        Args:
+            use_global (bool): True to use global preferences; False to use user preferences.
+
+        Raises:
+            TypeError: If the provided use_global value is not a boolean.
+        """
+        if not isinstance(use_global, bool):
+            error_msg = f"use_global must be a boolean, got {type(use_global).__name__}"
+            Log.e(TAG, error_msg)
+            raise TypeError(error_msg)
         self.use_global = use_global
 
     def get_use_global(self) -> bool:
+        """
+        Retrieves the current setting that indicates whether global preferences are used.
+
+        Returns:
+            bool: True if global preferences are in use; False otherwise.
+
+        Raises:
+            AttributeError: If the 'use_global' attribute is not defined.
+            TypeError: If the value of 'use_global' is not a boolean.
+        """
+        if not hasattr(self, 'use_global'):
+            error_msg = "The 'use_global' attribute is not set."
+            Log.e(TAG, error_msg)
+            raise AttributeError(error_msg)
+        if not isinstance(self.use_global, bool):
+            error_msg = f"The 'use_global' attribute should be a boolean, but got {type(self.use_global).__name__}."
+            Log.e(TAG, error_msg)
+            raise TypeError(error_msg)
         return self.use_global
     # -- Private Utilities -- #
 
