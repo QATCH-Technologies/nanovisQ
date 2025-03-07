@@ -1887,7 +1887,6 @@ class UserPreferences:
         save_path = ""
 
         for i, tag in enumerate(pattern):
-            print(save_path)
             if tag == Constants.valid_tags[0]:
                 save_path = save_path + self._on_username()
             elif tag == Constants.valid_tags[1]:
