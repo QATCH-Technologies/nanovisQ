@@ -3246,8 +3246,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     def updateViews2(_plt2, _plt3):
                         _plt2.clear()
                         _plt3.clear()
-                        _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
-                        _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
+                        _plt3etGeometry(_plt2.vb.sceneBoundingRect())
+                        _plt3.s.linkedViewChanged(_plt2.vb, _plt3.XAxis)
                     # updates for multiple plot y-axes
                     updateViews2(_plt2, _plt3)
                     # _plt2.vb.sigResized.connect(updateViews2)
@@ -3324,10 +3324,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         _plt3.setLimits(yMax=(
                             self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0], yMin=0, minYRange=Constants.plot_min_range_diss)
 
-                        _plt2.enableAutoRange(axis='x', enable=True)
+                        # Enable autorange with padding on _plt2 x and y axis of 10% of the data range.  Can be decreased
+                        # to any floating percentage of the available data range.
+                        _plt2.enableAutoRange(
+                            axis='x', enable=True, defaultPadding=Constants.default_plot_padding)
                         _plt3.enableAutoRange(axis='x', enable=True)
 
-                        _plt2.enableAutoRange(axis='y', enable=True)
+                        _plt2.enableAutoRange(
+                            axis='y', enable=True, defaultPadding=Constants.default_plot_padding)
                         _plt3.enableAutoRange(axis='y', enable=True)
 
                     _plt3.addItem(pg.PlotCurveItem(self.worker.get_t2_buffer(i)[
