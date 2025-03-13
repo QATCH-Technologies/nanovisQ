@@ -3246,8 +3246,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     def updateViews2(_plt2, _plt3):
                         _plt2.clear()
                         _plt3.clear()
-                        _plt3etGeometry(_plt2.vb.sceneBoundingRect())
-                        _plt3.s.linkedViewChanged(_plt2.vb, _plt3.XAxis)
+                        _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
+                        _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
                     # updates for multiple plot y-axes
                     updateViews2(_plt2, _plt3)
                     # _plt2.vb.sigResized.connect(updateViews2)
