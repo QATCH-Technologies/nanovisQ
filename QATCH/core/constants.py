@@ -132,8 +132,9 @@ class Constants:
     plot_min_range_freq = 1000  # Hz
     plot_min_range_diss = 10e-6  # Hz
 
-    # A fraction of the available data to pad _plt2 and _plt3 in mainWindow.py
-    default_plot_padding = 0.1
+    # Apply extra padding to _plt2 in mainWindow.py:_update_plot()
+    # to match the existing data padding already applied to _plt3
+    default_plot_padding = 0.05
 
     # SHOW PHASE [None/True/False]
     # None = let FW decide (see #define REPORT_PHASE)
