@@ -3053,10 +3053,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ws = self.getContextWidth()[0]
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            clipped = False
+            if slice_start < 0:
+                slice_start = 0
+                clipped = True
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+                clipped = True
+            if slice_start >= slice_end:
+                slice_start = slice_end - 1  # 0
+                slice_end = slice_start + 1  # len(self.xs) - 1
+                clipped = True
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             if False:  # diff_only
                 mn = np.amin(self.ys_diff[tx0:tx2])
                 mx = np.amax(self.ys_diff[tx0:tx2])
@@ -3073,35 +3086,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 4:
-                try:
+                if not clipped:
                     ax1.setYRange(
-                        np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_freq_fit[slice_start: slice_end]),
+                        np.max(self.ys_freq_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax2.setYRange(
-                        np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_diff_fit[slice_start: slice_end]),
+                        np.max(self.ys_diff_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax3.setYRange(
-                        np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_fit[slice_start: slice_end]),
+                        np.max(self.ys_fit[slice_start: slice_end]),
                         padding=pad,
                     )
-                except ValueError as e:
+                else:  # clipped
                     Log.d(
                         "Skipping to next step, due to missing channel in data selection (represented by ValueError exception below):"
                     )
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.d(line)
                     # skip to next view
                     Log.w(
                         f"Skipping Step {self.stateStep+2}... User indicated this point is missing from the dataset in Step 2."
@@ -3111,36 +3115,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         self.action_next()  # repeat last action
                     return  # do not execute remainder of this function, let the above nested 'action_next' call supercede
-                except Exception as e:
-                    Log.e(
-                        f"An error occurred while moving to the next step: {str(e)}")
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.e(line)
-
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
                 pos2 = np.column_stack((self.xs[tx1], self.ys_diff_fit[tx1]))
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -3588,25 +3579,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 return  # do not process skipped points on marker move
             ws = self.getContextWidth()[0]
             pad = 0.05 if self.stateStep >= 4 else 0.05
-            if tx1 + ws >= len(self.xs) - 1:
-                ws = len(self.xs) - tx1 - 1
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            if slice_start < 0:
+                slice_start = 0
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+            if slice_start >= slice_end:
+                slice_start = 0
+                slice_end = len(self.xs) - 1
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             if self.stateStep >= 4:
                 ax1.setYRange(
-                    np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq_fit[slice_start: slice_end]),
+                    np.max(self.ys_freq_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff_fit[slice_start: slice_end]),
+                    np.max(self.ys_diff_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_fit[slice_start: slice_end]),
+                    np.max(self.ys_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
@@ -3614,18 +3612,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
