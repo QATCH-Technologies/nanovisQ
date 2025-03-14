@@ -3314,13 +3314,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     if self._get_source() == OperationType.measurement:
                         _ymin = np.amin(vector1)
                         _ymax = np.amax(vector1)
-                        if _ymax - _ymin < Constants.plot_min_range_freq:
+                        _yrange = _ymax - _ymin
+                        if _yrange < Constants.plot_min_range_freq:
                             _yavg = int(np.average(vector1))
                             _ymin = _yavg - (Constants.plot_min_range_freq / 2)
                             _ymax = _yavg + (Constants.plot_min_range_freq / 2)
 
+                        # Apply padding to _plt2 range to match that of _plt3
+                        _ymin -= Constants.default_plot_padding * _yrange
+                        _ymax += Constants.default_plot_padding * _yrange
+
                         _plt2.setLimits(
-                            yMax=_ymax, yMin=_ymin, minYRange=Constants.plot_min_range_freq, maxYRange=10000)
+                            yMax=_ymax, yMin=_ymin, minYRange=Constants.plot_min_range_freq)  # remove maxYRange limit
                         _plt3.setLimits(yMax=(
                             self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0], yMin=0, minYRange=Constants.plot_min_range_diss)
 
