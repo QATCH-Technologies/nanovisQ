@@ -539,7 +539,7 @@ class DropEffectCorrection(CurveOptimizer):
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
                              rf_threshold_ratio: float = 0.00001,
-                             plot_corrections: bool = True) -> tuple:
+                             plot_corrections: bool = False) -> tuple:
         """
         Corrects drop effects for both the dissipation and resonance frequency curves independently.
         The detection and correction steps remain the same, but each curve’s corrections are applied
@@ -653,7 +653,7 @@ class DropEffectCorrection(CurveOptimizer):
         indices = np.arange(len(original_diss))
         fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
-        # Plot for Dissipation.
+        Plot for Dissipation.
         axs[0].plot(indices, original_diss,
                     label='Original Dissipation', color='blue')
         axs[0].plot(indices, corrected_diss,
