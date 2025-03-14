@@ -620,7 +620,7 @@ class QPredictor:
 
         if md_guess is not None:
             # Define the maximum allowable deviation (adjust as needed)
-            MAX_DEVIATION = 50
+            MAX_DEVIATION = 100
             if abs(adjusted_guess - md_guess) > MAX_DEVIATION:
                 adjusted_guess = md_guess
             return adjusted_guess
