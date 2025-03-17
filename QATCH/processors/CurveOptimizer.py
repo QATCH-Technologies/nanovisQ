@@ -654,26 +654,26 @@ class DropEffectCorrection(CurveOptimizer):
         fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
         # Plot for Dissipation.
-        # axs[0].plot(indices, original_diss,
-        #             label='Original Dissipation', color='blue')
-        # axs[0].plot(indices, corrected_diss,
-        #             label='Corrected Dissipation', color='red', linestyle='--')
-        # axs[0].axvline(self._left_bound['index'])
-        # axs[0].axvline(self._right_bound['index'])
-        # axs[0].set_title('Dissipation Correction')
-        # axs[0].set_xlabel('Index')
-        # axs[0].set_ylabel('Dissipation')
-        # axs[0].legend()
+        axs[0].plot(indices, original_diss,
+                    label='Original Dissipation', color='blue')
+        axs[0].plot(indices, corrected_diss,
+                    label='Corrected Dissipation', color='red', linestyle='--')
+        axs[0].axvline(self._left_bound['index'])
+        axs[0].axvline(self._right_bound['index'])
+        axs[0].set_title('Dissipation Correction')
+        axs[0].set_xlabel('Index')
+        axs[0].set_ylabel('Dissipation')
+        axs[0].legend()
 
-        # # Plot for Resonance Frequency.
-        # axs[1].plot(indices, original_rf,
-        #             label='Original Resonance Frequency', color='blue')
-        # axs[1].plot(indices, corrected_rf,
-        #             label='Corrected Resonance Frequency', color='red', linestyle='--')
-        # axs[1].set_title('Resonance Frequency Correction')
-        # axs[1].set_xlabel('Index')
-        # axs[1].set_ylabel('Resonance Frequency')
-        # axs[1].legend()
+        # Plot for Resonance Frequency.
+        axs[1].plot(indices, original_rf,
+                    label='Original Resonance Frequency', color='blue')
+        axs[1].plot(indices, corrected_rf,
+                    label='Corrected Resonance Frequency', color='red', linestyle='--')
+        axs[1].set_title('Resonance Frequency Correction')
+        axs[1].set_xlabel('Index')
+        axs[1].set_ylabel('Resonance Frequency')
+        axs[1].legend()
 
-        # plt.tight_layout()
-        # plt.show()
+        plt.tight_layout()
+        plt.show()
