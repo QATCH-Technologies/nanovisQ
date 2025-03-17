@@ -5037,19 +5037,22 @@ class AnalyzerWorker(QtCore.QObject):
                 os.path.split(data_path)[0], f"{data_title}_cal.csv"
             )
 
-            # calculate and apply temperature adjusted contact angle offset
-            avg_run_temp = round(np.average(temperature), 1)
-            CA_temp_factor = round(
-                (avg_run_temp - 25.0) * Constants.temp_adjusted_CA_factor, 1
-            )
-            Log.d(f"Applying temperature adjusted CA offset:")
-            Log.d(
-                f"Temp CA offset = ({avg_run_temp}-25.0)*{Constants.temp_adjusted_CA_factor} = {CA_temp_factor}"
-            )
-            Log.d(
-                f"Changing CA from {CA} to {CA + CA_temp_factor} with temperature offset {CA_temp_factor}"
-            )
-            CA += CA_temp_factor
+            # NOTE: Temp CA offset removed from support as of 2025-03-17
+            # # calculate and apply temperature adjusted contact angle offset
+            # real_temps = [x for x in temperature if ~np.isnan(x)]
+            # avg_run_temp = round(np.average(real_temps),
+            #                      1) if len(real_temps) else 25.0
+            # CA_temp_factor = round(
+            #     (avg_run_temp - 25.0) * Constants.temp_adjusted_CA_factor, 1
+            # )
+            # Log.d(f"Applying temperature adjusted CA offset:")
+            # Log.d(
+            #     f"Temp CA offset = ({avg_run_temp}-25.0)*{Constants.temp_adjusted_CA_factor} = {CA_temp_factor}"
+            # )
+            # Log.d(
+            #     f"Changing CA from {CA} to {CA + CA_temp_factor} with temperature offset {CA_temp_factor}"
+            # )
+            # CA += CA_temp_factor
 
             START_IDX = 0  # start-of-fill
             FILL_IDX = 1  # end-of-fill
@@ -7436,7 +7439,14 @@ class AnalyzerWorker(QtCore.QObject):
                 "Temperature (C)": in_temp,
             }
             rows = len(in_shear_rate)
-            cols = 4
+            cols = len(data)
+            # On multiplex systems, all `in_temp` will be NaN
+            real_temps = [x for x in in_temp if ~np.isnan(x)]
+            if len(real_temps) == 0:
+                Log.w(
+                    "Hiding \"Temperature (C)\" column, as all temperature values are 'nan'.")
+                data.pop("Temperature (C)")
+                cols -= 1
             # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
             tableWidget = TableView(data, rows, cols)
             # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")

@@ -296,7 +296,7 @@ class Constants:
     baseline_smooth = 9  # must be an odd integer, greater than 1
     consider_points_above_pct = 0.60
     default_diff_factor = 2.0
-    temp_adjusted_CA_factor = 0
+    # temp_adjusted_CA_factor = 0
     drop_effect_multiplier_low = 1.025
     drop_effect_multiplier_high = 1.299
     drop_effect_cutoff_freq = 32
