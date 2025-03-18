@@ -4022,10 +4022,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals[-1],
                     ]  # take first and last only, allow user input
 
-            # raw data
-            xs = relative_time
-            ys = dissipation
-
             # Computes initial difference cancelations for difference, resonance frequency
             # and dissipation and applies them to the UI curves.
             canceled_diss, canceled_rf = None, None
@@ -4033,7 +4029,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 canceled_diss, canceled_rf = self._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
-                    ys = canceled_diss
+                    dissipation = canceled_diss
+
+            # raw data
+            xs = relative_time
+            ys = dissipation
 
             # use rough smoothing based on total runtime to figure start/stop
             total_runtime = xs[-1]
@@ -5080,10 +5080,6 @@ class AnalyzerWorker(QtCore.QObject):
             ).tolist()  # convert string to numpy array and then to a list
             normal_pts = [0.2, 0.4, 0.6, 0.8]
 
-            # raw data
-            xs = relative_time
-            ys = dissipation
-
             self.update(status_label)
 
             # Computes initial difference cancelations for difference, resonance frequency
@@ -5093,7 +5089,11 @@ class AnalyzerWorker(QtCore.QObject):
                 canceled_diss, canceled_rf = self.parent._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
-                    ys = canceled_diss
+                    dissipation = canceled_diss
+
+            # raw data
+            xs = relative_time
+            ys = dissipation
 
             self.update(status_label)
 
