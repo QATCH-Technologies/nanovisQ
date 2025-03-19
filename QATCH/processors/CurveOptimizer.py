@@ -11,8 +11,6 @@ TAG = ["CurveOptimizer"]
 HEAD_TRIM_PERCENTAGE = 0.05
 """ The percentage of the run data to ignore from the tail of a difference curve. """
 TAIL_TRIM_PERCENTAGE = 0.5
-""" Sets the left bound of the region behind ROI. """
-BASE_OFFSET = 0.005
 """ Restricts the difference factor. """
 DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 
@@ -24,11 +22,15 @@ DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 # index where the drop is applied.
 INIT_DROP_SETBACK = 0.014
 
+# Adjust the detected left-bound index by subtracting a proportion (BASE_OFFSET) of the data length,
+# effectively shifting the boundary left to better capture the true start of the drop.
+BASE_OFFSET = 0.003
+
 # This is the detection senstivity for the dissipation and RF drop effects.  Increasing these values should independently
 # increase how large a delta needs to be in order to be counted as a drop effect essentially correcting fewer deltas resulting
 # in a less aggressive correction.
 DISSIPATION_SENSITIVITY = 2
-RF_SENSITVITY = 12
+RF_SENSITVITY = 11
 ##########################################
 # CHANGE THESE
 ##########################################
@@ -534,12 +536,74 @@ class DropEffectCorrection(CurveOptimizer):
             TAG, f"Detected drop effects in {col_name} at indices {[de[0] for de in drop_effects]} with deltas {[de[1] for de in drop_effects]}")
         return drop_effects
 
+    def augment_flat_regions(self, corrected_rf, rf_threshold_ratio, baseline_rf):
+        """
+        Searches for flat regions in corrected_rf (where consecutive values are identical),
+        establishes a linear trend between the value before the flat region (left boundary)
+        and after the region (right boundary), then augments the flat region values to better 
+        follow the trend using a threshold-based adjustment.
+
+        Parameters:
+        corrected_rf (list or array): the data array.
+        rf_threshold_ratio (float): ratio to compute allowed gap.
+        baseline_rf (float): baseline upper cap for the adjustment.
+
+        Returns:
+        The updated corrected_rf.
+        """
+        n = len(corrected_rf)
+        i = 0
+
+        while i < n:
+            # Detect a flat region by checking if the next value equals the current one.
+            start = i
+            while i + 1 < n and corrected_rf[i + 1] == corrected_rf[start]:
+                i += 1
+            end = i  # end index of the flat region
+
+            # Process the region if it is "flat" (length > 1)
+            if end > start:
+                # Determine left and right boundary values:
+                # If no left neighbor, use the start value; if no right neighbor, use the end value.
+                left_val = corrected_rf[start -
+                                        1] if start > 0 else corrected_rf[start]
+                right_val = corrected_rf[end + 1] if end + \
+                    1 < n else corrected_rf[end]
+
+                region_length = end - start + 1
+                # Initialize running_min with the left boundary value.
+                running_min = left_val
+
+                # Process each index within the flat region
+                for idx, pos in enumerate(range(start, end + 1)):
+                    # Establish a linear trend value for this index
+                    trend_value = left_val + \
+                        (right_val - left_val) * (idx + 1) / (region_length + 1)
+
+                    # Use the provided logic to adjust values:
+                    if trend_value > running_min:
+                        gap = trend_value - running_min
+                        allowed_gap = running_min * rf_threshold_ratio
+                        if gap > allowed_gap:
+                            # Adjust by choosing a random value within the allowed range.
+                            corrected_rf[pos] = random.uniform(
+                                running_min, min(running_min + allowed_gap, baseline_rf))
+                        else:
+                            corrected_rf[pos] = trend_value
+                    else:
+                        corrected_rf[pos] = trend_value
+                        running_min = trend_value
+            # Move to the next value after the region (or the single non-flat value)
+            i += 1
+
+        return corrected_rf
+
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
-                             rf_threshold_ratio: float = 0.00001,
-                             plot_corrections: bool = False) -> tuple:
+                             rf_threshold_ratio: float = 0.00000001,
+                             plot_corrections: bool = True) -> tuple:
         """
         Corrects drop effects for both the dissipation and resonance frequency curves independently.
         The detection and correction steps remain the same, but each curve’s corrections are applied
@@ -621,9 +685,8 @@ class DropEffectCorrection(CurveOptimizer):
                         max(running_max - allowed_gap, baseline_diss), running_max)
             else:
                 running_max = corrected_diss[i]
-
-        # For Resonance Frequency: enforce a running minimum with a relative threshold.
         running_min = corrected_rf[left_idx]
+
         for i in range(left_idx, right_idx):
             if corrected_rf[i] > running_min:
                 gap = corrected_rf[i] - running_min
@@ -633,6 +696,8 @@ class DropEffectCorrection(CurveOptimizer):
                         running_min + allowed_gap, baseline_rf))
             else:
                 running_min = corrected_rf[i]
+        # corrected_rf = self.augment_flat_regions(
+        #     corrected_rf=corrected_rf, rf_threshold_ratio=rf_threshold_ratio, baseline_rf=baseline_rf)
 
         if plot_corrections:
             self._plot_corrections(
@@ -674,6 +739,8 @@ class DropEffectCorrection(CurveOptimizer):
         axs[1].set_xlabel('Index')
         axs[1].set_ylabel('Resonance Frequency')
         axs[1].legend()
+        axs[1].axvline(self._left_bound['index'])
+        axs[1].axvline(self._right_bound['index'])
 
         plt.tight_layout()
         plt.show()
