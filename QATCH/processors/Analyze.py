@@ -4727,8 +4727,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             with secure_open(file_header, "r", "capture") as f:
                 file_header = BytesIO(f.read())
+                if hasattr(self, 'diff_factor'):
+                    diff_factor = self.diff_factor
+                else:
+                    diff_factor = 2.0
                 dec = DropEffectCorrection(
-                    file_buffer=file_header, initial_diff_factor=self.diff_factor)
+                    file_buffer=file_header, initial_diff_factor=diff_factor)
                 corrected_data = dec.correct_drop_effects()
 
                 Log.i(

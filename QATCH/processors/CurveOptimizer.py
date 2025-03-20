@@ -5,6 +5,8 @@ from scipy.optimize import minimize
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 import random
+from scipy.stats import linregress
+from scipy.signal import find_peaks
 TAG = ["CurveOptimizer"]
 
 """ The percentage of the run data to ignore from the head of a difference curve. """
@@ -31,6 +33,16 @@ BASE_OFFSET = 0.003
 # in a less aggressive correction.
 DISSIPATION_SENSITIVITY = 2
 RF_SENSITVITY = 11
+
+# This constant controls the scale of the jitter reintroduced during the trend enforcement step of the post process.
+# Increasing this value (in range between 0-1) increases the scale of localized noise within the correction region.
+# Decreasing this vale decreases the noise making the data appear smoother.
+JITTER_SCALE = 0.1
+# This constant controls the size of the window to establish and enforce a trend over.
+# Increasing this value results in a larger window to build a trend and detect outliers through leading to a more
+# "global" trend enforcement (i.e. keeps globalized features).  Decreasing this window results in more localized
+# features and trend shifts to appear in the data.
+LOCALIZED_WINDOW = 20
 ##########################################
 # CHANGE THESE
 ##########################################
@@ -536,74 +548,81 @@ class DropEffectCorrection(CurveOptimizer):
             TAG, f"Detected drop effects in {col_name} at indices {[de[0] for de in drop_effects]} with deltas {[de[1] for de in drop_effects]}")
         return drop_effects
 
-    def augment_flat_regions(self, corrected_rf, rf_threshold_ratio, baseline_rf):
-        """
-        Searches for flat regions in corrected_rf (where consecutive values are identical),
-        establishes a linear trend between the value before the flat region (left boundary)
-        and after the region (right boundary), then augments the flat region values to better 
-        follow the trend using a threshold-based adjustment.
+    def _enforce_trend(self,
+                       original_data: np.array,
+                       corrected_data: np.array,
+                       left_idx: int,
+                       right_idx: int,
+                       window_size: int = 20):
+        """Enforces a local trend on the corrected data by identifying and adjusting 
+        deviations while preserving peaks and troughs.
 
-        Parameters:
-        corrected_rf (list or array): the data array.
-        rf_threshold_ratio (float): ratio to compute allowed gap.
-        baseline_rf (float): baseline upper cap for the adjustment.
+        This method identifies peaks and troughs within a segment of the original 
+        signal, estimates the jitter scale, and applies local trend enforcement 
+        to the corrected data. It then restores the peaks and troughs with a small 
+        jitter correction to maintain natural signal variations.
+
+        Args:
+            original_data (np.array): The original uncorrected data array.
+            corrected_data (np.array): The corrected data array to be adjusted.
+            left_idx (int): The starting index of the segment to be adjusted.
+            right_idx (int): The ending index (exclusive) of the segment to be adjusted.
+            window_size (int, optional): The window size for local trend fitting. Defaults to 20.
 
         Returns:
-        The updated corrected_rf.
+            np.array: The corrected data array with enforced trend adjustments.
         """
-        n = len(corrected_rf)
-        i = 0
+        corrected_data = np.array(corrected_data)
+        original_data = np.array(original_data)
+        segment = original_data[left_idx:right_idx].copy()
+        peaks, _ = find_peaks(segment)
+        troughs, _ = find_peaks(-segment)
 
-        while i < n:
-            # Detect a flat region by checking if the next value equals the current one.
-            start = i
-            while i + 1 < n and corrected_rf[i + 1] == corrected_rf[start]:
-                i += 1
-            end = i  # end index of the flat region
+        # Compute peak-to-trough differences to estimate jitter scale
+        peak_vals = segment[peaks] if len(peaks) > 0 else np.array([])
+        trough_vals = segment[troughs] if len(troughs) > 0 else np.array([])
+        peak_trough_deltas = np.abs(
+            np.diff(np.concatenate((peak_vals, trough_vals))))
 
-            # Process the region if it is "flat" (length > 1)
-            if end > start:
-                # Determine left and right boundary values:
-                # If no left neighbor, use the start value; if no right neighbor, use the end value.
-                left_val = corrected_rf[start -
-                                        1] if start > 0 else corrected_rf[start]
-                right_val = corrected_rf[end + 1] if end + \
-                    1 < n else corrected_rf[end]
+        # Estimate jitter distribution
+        jitter_std = np.std(peak_trough_deltas) if len(
+            peak_trough_deltas) > 1 else 0
+        jitter_iqr = np.percentile(
+            peak_trough_deltas, 75) - np.percentile(peak_trough_deltas, 25)
 
-                region_length = end - start + 1
-                # Initialize running_min with the left boundary value.
-                running_min = left_val
+        for i in range(left_idx, right_idx - window_size + 1):
+            window = corrected_data[i: i + window_size]
+            x = np.arange(len(window))
+            slope, intercept, _, _, _ = linregress(x, window)
+            trend = slope * x + intercept
+            residuals = window - trend
+            q25, q75 = np.percentile(residuals, [25, 75])
+            iqr = q75 - q25
+            noise_threshold = iqr * 1.5
+            outliers = np.abs(residuals) > noise_threshold
+            window[outliers] = trend[outliers]
+            corrected_data[i: i + window_size] = window
 
-                # Process each index within the flat region
-                for idx, pos in enumerate(range(start, end + 1)):
-                    # Establish a linear trend value for this index
-                    trend_value = left_val + \
-                        (right_val - left_val) * (idx + 1) / (region_length + 1)
+        # Restore peaks and troughs with jitter
+        for idx in peaks:
+            js = max(jitter_std, jitter_iqr, 1e-6)
+            correction_factor = JITTER_SCALE * js
+            corrected_data[idx + left_idx] = corrected_data[idx +
+                                                            left_idx] - correction_factor
 
-                    # Use the provided logic to adjust values:
-                    if trend_value > running_min:
-                        gap = trend_value - running_min
-                        allowed_gap = running_min * rf_threshold_ratio
-                        if gap > allowed_gap:
-                            # Adjust by choosing a random value within the allowed range.
-                            corrected_rf[pos] = random.uniform(
-                                running_min, min(running_min + allowed_gap, baseline_rf))
-                        else:
-                            corrected_rf[pos] = trend_value
-                    else:
-                        corrected_rf[pos] = trend_value
-                        running_min = trend_value
-            # Move to the next value after the region (or the single non-flat value)
-            i += 1
-
-        return corrected_rf
+        for idx in troughs:
+            js = max(jitter_std, jitter_iqr, 1e-6)
+            correction_factor = JITTER_SCALE * js
+            corrected_data[idx + left_idx] = corrected_data[idx +
+                                                            left_idx] + correction_factor
+        return corrected_data
 
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
                              rf_threshold_ratio: float = 0.00000001,
-                             plot_corrections: bool = True) -> tuple:
+                             plot_corrections: bool = False) -> tuple:
         """
         Corrects drop effects for both the dissipation and resonance frequency curves independently.
         The detection and correction steps remain the same, but each curve’s corrections are applied
@@ -685,6 +704,8 @@ class DropEffectCorrection(CurveOptimizer):
                         max(running_max - allowed_gap, baseline_diss), running_max)
             else:
                 running_max = corrected_diss[i]
+        corrected_diss = self._enforce_trend(original_data=self._dataframe['Dissipation'].values,
+                                             corrected_data=corrected_diss, left_idx=left_idx, right_idx=right_idx)
         running_min = corrected_rf[left_idx]
 
         for i in range(left_idx, right_idx):
@@ -696,9 +717,9 @@ class DropEffectCorrection(CurveOptimizer):
                         running_min + allowed_gap, baseline_rf))
             else:
                 running_min = corrected_rf[i]
-        # corrected_rf = self.augment_flat_regions(
-        #     corrected_rf=corrected_rf, rf_threshold_ratio=rf_threshold_ratio, baseline_rf=baseline_rf)
 
+        corrected_rf = self._enforce_trend(original_data=self._dataframe['Resonance_Frequency'].values,
+                                           corrected_data=corrected_rf, left_idx=left_idx, right_idx=right_idx)
         if plot_corrections:
             self._plot_corrections(
                 original_diss, original_rf, corrected_diss, corrected_rf)
