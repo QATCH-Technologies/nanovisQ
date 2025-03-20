@@ -1472,33 +1472,52 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
 
-    def enable_buttons(self, refocus=True, enable=True):
-        enable_load = (
-            len(self.cBox_Runs.currentText().strip()) > 0
-            and self.cBox_Runs.currentText() != "No Runs Found"
-        )
-        enable_info = self.xml_path != None
-        enable_cancel = self.xml_path != None
+    def enable_buttons(self, refocus: bool = True, enable: bool = True) -> None:
+        """Enables or disables UI buttons based on the current state.
+
+            This function adjusts the availability of various UI buttons based on, the presence of an XML path,
+            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the 
+            system is busy.
+
+            Args:
+                refocus (bool, optional): If True, refocuses the UI on `graphWidget2`. Defaults to True.
+                enable (bool, optional): If False, disables all buttons (e.g., during processing). Defaults to True.
+
+            Behavior:
+            - If `enable` is False, all buttons are disabled.
+            - The "Modify" button state is toggled based on whether `enable_cancel` is True and `enable_analyze` is False.
+            - Navigation buttons ("Back" and "Next") are disabled if modifications are not allowed.
+            - "Advanced" options are only enabled when `enable_cancel` is True.
+        """
+        # Determine initial button states
+        enable_load = bool(self.cBox_Runs.currentText().strip(
+        )) and self.cBox_Runs.currentText() != "No Runs Found"
+        enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
-        enable_modify = self.xml_path != None
         enable_analyze = len(self.poi_markers) > 2
-        if not enable:  # False when busy
-            enable_load = enable_info = enable_cancel = enable_back = enable_next = (
-                enable_modify
-            ) = enable_analyze = False
+
+        # If disabled globally (e.g., busy state), disable everything
+        if not enable:
+            enable_load = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
+
+        # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
             if not self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(True)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = True
-        if not enable_cancel:
+        elif not enable_cancel:
             if self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(False)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = False
+
+        # If modification is not allowed, disable navigation buttons
         if not self.allow_modify:
             enable_back = enable_next = False
+
+        # Apply button states
         self.tool_Load.setEnabled(enable_load)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
@@ -1506,14 +1525,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Next.setEnabled(enable_next)
         self.tool_Modify.setEnabled(enable_modify)
         self.tool_Analyze.setEnabled(enable_analyze)
+
+        # Handle advanced tool enabling
+        self.tool_Advanced.setEnabled(enable_cancel)
+
+        # Refocus if required
         if refocus:
             self.graphWidget2.setFocus()
-
-    # def change_drop_effect(self, object):
-    #     if not self.correct_drop_effect.isChecked():
-    #         self.tbox_diff_factor.setText(
-    #             f"{Constants.default_diff_factor:1.3f}")
-    #     self.set_new_diff_factor()
 
     def use_difference_factor_optimizer(self, object):
         """
@@ -2473,6 +2491,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
 
         self.enable_buttons(False, False)
+
         self._update_analyze_progress(
             0, "Reading Run Data..."
         )  # reset internal buffer with 0
