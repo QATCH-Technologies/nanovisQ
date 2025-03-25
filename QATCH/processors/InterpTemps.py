@@ -48,15 +48,29 @@ class ActionType(Enum):
     interp = 1  # interp nan temperatures from file in command using prior load
     # NOTE: use `flag_missing` in command dictionary to flag interp values as missing (red in output table)
 
+    def __str__(self):
+        return str(self.name)
+
 
 class QueueCommandFormat(object):
 
-    def __init__(self, action, filename) -> None:
-        self.action = action
+    def __init__(self, filename, action) -> None:
         self.filename = filename
+        self.action = action
+
+    def asdict(self) -> Dict[str, str]:
+        return {"filename": self.filename, "action": str(self.action)}
+
+
+class QueueResultFormat(object):
+
+    def __init__(self, filename, result, details="") -> None:
+        self.filename = filename
+        self.result = result
+        self.details = details
 
     def asdict(self) -> Dict[str, Any]:
-        return {"action": self.action, "filename": self.filename}
+        return {"filename": self.filename, "result": self.result, "details": self.details}
 
 
 class InterpTempsProcess(multiprocessing.Process):
@@ -70,15 +84,20 @@ class InterpTempsProcess(multiprocessing.Process):
 
     def __init__(self,
                  queue_log: multiprocessing.Queue,
-                 queue_cmd: multiprocessing.Queue) -> None:
+                 queue_cmd: multiprocessing.Queue,
+                 queue_out: multiprocessing.Queue) -> None:
         """Initializes the InterpTempsProcess.
 
         Params:
             queue_log (multiprocessing.Queue): Queue used for logging messages.
             queue_cmd (multiprocessing.Queue): Queue for passing in files to be processed.
+            queue_out (multiprocessing.Queue): Queue for passing results to caller.
 
         Command Format:
-            Dict[str, Any] = {"action": ActionType, "filename": str}
+            Dict[str, Any] = {"filename": str, "action": str(ActionType)}
+
+        Result Format:
+            Dict[str, Any] = {"filename": str, "result": bool, "details": str}
 
         Returns:
             None
@@ -86,9 +105,12 @@ class InterpTempsProcess(multiprocessing.Process):
         multiprocessing.Process.__init__(self)
         self._queueLog: multiprocessing.Queue = queue_log
         self._queueCmd: multiprocessing.Queue = queue_cmd
+        self._queueOut: multiprocessing.Queue = queue_out
+        self._started = multiprocessing.Event()
         self._exit = multiprocessing.Event()
         self._done = multiprocessing.Event()
 
+        self._count = 0
         self._waiting = False
         self._cache_reset()
 
@@ -140,6 +162,14 @@ class InterpTempsProcess(multiprocessing.Process):
                 Log.d(TAG, f"Setting cache with {len(relative_time)} entries")
                 self._cache_set(time_start, relative_time, temperature)
 
+            self._queueOut.put(
+                QueueResultFormat(
+                    filename=filename,
+                    result=True,
+                    details="Loaded temperature values to cache."
+                ).asdict()
+            )
+
         except:
             # Capture and log the traceback in case of an exception.
             limit: Optional[int] = None
@@ -150,6 +180,14 @@ class InterpTempsProcess(multiprocessing.Process):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+            self._queueOut.put(
+                QueueResultFormat(
+                    filename=filename,
+                    result=False,
+                    details=a_list[-1]
+                ).asdict()
+            )
 
     def _interp(self, filename: str) -> None:
         try:
@@ -194,8 +232,8 @@ class InterpTempsProcess(multiprocessing.Process):
                 Log.d(TAG, f"np.min(Temps) = {np.min(interp_temps)}, " +
                       f"np.max(Temps) = {np.max(interp_temps)}")
 
-                Log.i(TAG, "Propagating temperatures" +
-                      f" for run \"{os.path.basename(filename)}\"...")
+                Log.d(TAG, "Propagating temperatures" +
+                      f" for run \"{filename}\"...")
                 for i, line in enumerate(lines):
                     if i == 0:  # header row
                         Log.d(TAG, "Skipping header row")
@@ -207,22 +245,39 @@ class InterpTempsProcess(multiprocessing.Process):
                         Log.w(TAG, f"Skipping row {i}: " +
                               "it does not contain 'nan' temp!")
 
-            # sanity check: all temperature values should have been "nan"
-            if updated_rows != len(interp_temps):
-                Log.e(TAG, "FAIL: Not all temperatures were propagated in the file!" +
-                      f" ({updated_rows} != {len(interp_temps)})")
-            else:
-                Log.i(
-                    TAG, "Propagated all temperature values (SUCCESS)")
-
             # NOTE: uncomment the line below to compare in/out files
-            filename = filename.replace(".csv", "_filled.csv")
+            # filename = filename.replace(".csv", "_filled.csv")
 
             # re-write the raw data file with the filled temperature data
             with open(filename, 'w') as w:
                 w.writelines(lines)
 
             Log.d(TAG, f"Written to file: '{filename}'")
+            self._count += 1
+
+            # sanity check: all temperature values should have been "nan"
+            if updated_rows != len(interp_temps):
+                Log.e(TAG, "FAIL: Not all temperatures were propagated in the file!" +
+                      f" ({updated_rows} != {len(interp_temps)})")
+
+                self._queueOut.put(
+                    QueueResultFormat(
+                        filename=filename,
+                        result=False,
+                        details="Not all temperatures were propagated in the file."
+                    ).asdict()
+                )
+            else:
+                Log.d(
+                    TAG, "Propagated all temperature values to file (SUCCESS)")
+
+                self._queueOut.put(
+                    QueueResultFormat(
+                        filename=filename,
+                        result=True,
+                        details="Successfully propagated temperature values to file."
+                    ).asdict()
+                )
 
         except:
             # Capture and log the traceback in case of an exception.
@@ -234,6 +289,14 @@ class InterpTempsProcess(multiprocessing.Process):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+            self._queueOut.put(
+                QueueResultFormat(
+                    filename=filename,
+                    result=False,
+                    details=a_list[-1]
+                ).asdict()
+            )
 
     def time_string_to_seconds(self, time_string, format="%H:%M:%S"):
         """Converts a time string to seconds.
@@ -274,6 +337,8 @@ class InterpTempsProcess(multiprocessing.Process):
           7. Upon termination, logs the process shutdown and sets the done event.
         """
         try:
+            self._started.set()
+
             sys.stdout = open(os.devnull, 'w')
             sys.stderr = open(os.devnull, 'w')
 
@@ -283,7 +348,7 @@ class InterpTempsProcess(multiprocessing.Process):
                 logger = logging.getLogger("QATCH.logger")
 
             logger.addHandler(QueueHandler(self._queueLog))
-            logger.setLevel(logging.INFO)
+            logger.setLevel(logging.DEBUG)
 
             from multiprocessing.util import get_logger
             multiprocessing_logger = get_logger()
@@ -312,12 +377,23 @@ class InterpTempsProcess(multiprocessing.Process):
                     filename = command.get("filename", None)
                     if action is None or filename is None:
                         Log.e(TAG, "Invalid command, missing required key(s)")
-                    elif action == ActionType.load:
+                        self._queueOut.put(
+                            QueueResultFormat(
+                                filename=filename,
+                                result=False,
+                                details="Invalid command, missing required key(s)."
+                            ).asdict()
+                        )
+                    elif action == str(ActionType.load):
                         self._load(filename)
-                    elif action == ActionType.interp:
+                    elif action == str(ActionType.interp):
                         self._interp(filename)
                 else:
-                    Log.i(TAG, "Propagated temps to all secondary files (DONE)")
+                    if self._count:
+                        Log.i(
+                            TAG, f"Propagated temps to {self._count} secondary files (DONE)")
+                    else:
+                        Log.i(TAG, "No run files modified (DONE)")
                     self.stop()
 
         except Exception:
@@ -342,7 +418,7 @@ class InterpTempsProcess(multiprocessing.Process):
         Returns:
             bool: True if the process is active, False if it has completed or stopped.
         """
-        return not self._done.is_set()
+        return self._started.is_set() and not self._done.is_set()
 
     def stop(self) -> None:
         """Signals the process to stop.
@@ -362,37 +438,40 @@ class InterpTempsTest:
         logger.setLevel(logging.INFO)
         self._queueLog = q
         self._queueCmd = multiprocessing.Queue()
+        self._queueOut = multiprocessing.Queue()
         self._test_process = InterpTempsProcess(
-            self._queueLog, self._queueCmd)
+            self._queueLog, self._queueCmd, self._queueOut)
 
     def run(self):
         # start test process
         Log.i(TAG, "Starting test process...")
         self._test_process.start()
+        while not self._test_process.is_running():
+            continue  # wait for process to start
         # load test commands
         Log.i(TAG, "Queueing test commands...")
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                ActionType.load,
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\1_13820290\D250224W3_4CP_B_1_1\capture\D250224W3_4CP_B_1_3rd.csv"
+                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\1_13820290\D250224W3_4CP_B_1_1\capture\D250224W3_4CP_B_1_3rd.csv",
+                ActionType.load
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                ActionType.interp,
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\2_15548760\D250224W3_4CP_B_1_2\capture\D250224W3_4CP_B_1_3rd.csv"
+                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\2_15548760\D250224W3_4CP_B_1_2\capture\D250224W3_4CP_B_1_3rd.csv",
+                ActionType.interp
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                ActionType.interp,
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\3_15519000\D250224W3_4CP_B_1_3\capture\D250224W3_4CP_B_1_3rd.csv"
+                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\3_15519000\D250224W3_4CP_B_1_3\capture\D250224W3_4CP_B_1_3rd.csv",
+                ActionType.interp
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                ActionType.interp,
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\4_15549230\D250224W3_4CP_B_1_4\capture\D250224W3_4CP_B_1_3rd.csv"
+                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\4_15549230\D250224W3_4CP_B_1_4\capture\D250224W3_4CP_B_1_3rd.csv",
+                ActionType.interp
             ).asdict()
         )
         # signal finished, ok to end process
@@ -400,7 +479,12 @@ class InterpTempsTest:
         # wait for test process, handle any logging
         Log.i(TAG, "Waiting for test process to finish...")
         while self._test_process.is_running():
-            continue
+            if not self._test_process._queueOut.empty():
+                result = self._test_process._queueOut.get()
+                Log.i(
+                    f"Got Result: '{result['result']}' for filename '{result['filename']}'")
+                if len(result['details']):
+                    Log.i(f"Result Details: {result['details']}")
         self._test_process.join()
 
     def logger_init(self):
