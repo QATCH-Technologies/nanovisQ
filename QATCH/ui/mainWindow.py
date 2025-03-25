@@ -16,6 +16,7 @@ from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.processors.Analyze import AnalyzeProcess
+from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -32,6 +33,7 @@ import hashlib
 import requests
 import stat
 import subprocess
+import logging
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -582,6 +584,16 @@ class Rename_Output_Files(QtCore.QObject):
         self.bThread = []
         self.bWorker = []
 
+        # data queues for InterpTemps
+        self._queueLog = multiprocessing.Queue()
+        self._queueCmd = multiprocessing.Queue()
+        self._queueOut = multiprocessing.Queue()
+        self.pInterpTemps = InterpTempsProcess(
+            self._queueLog, self._queueCmd, self._queueOut
+        )
+        self._logHandler = QtCore.QTimer()
+        self._logHandler.timeout.connect(self.interp_logger)
+
     def indicate_analyzing(self):
         color_err = '#333333'
         labelbar = "Run Stopped. Analyzing run..."
@@ -620,6 +632,45 @@ class Rename_Output_Files(QtCore.QObject):
         self.parent.ControlsWin.ui1.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
 
+    def interp_temps(self, new_files):
+        self._logHandler.start(100)
+        self.pInterpTemps.start()
+        cache_loaded = False
+        for file in new_files:
+            if "output_tec.csv" in file:
+                continue  # skip TEC files
+            # NOTE: Might need better filtering of files to load/interp correctly
+            # Assumption here is that alphabetical order yields primary dev 1st
+            # TODO: This will likely need modification to work with 4x6 devices
+            self.pInterpTemps._queueCmd.put(
+                QueueCommandFormat(
+                    file.rstrip(),
+                    ActionType.load if not cache_loaded else ActionType.interp
+                ).asdict()
+            )
+            cache_loaded = True
+        # signal finished, ok to end process
+        self.pInterpTemps._queueCmd.put(None)
+
+    def interp_logger(self):
+        if not self._queueLog.empty():
+            logger = logging.getLogger("QATCH")
+            while not self._queueLog.empty():
+                logger.handle(self._queueLog.get(False))
+
+    def interp_report(self):
+        while not self._queueOut.empty():
+            result = self._queueOut.get(False)
+            if not result["result"]:
+                # inform user of any failures
+                PopUp.critical(
+                    parent=self.parent,
+                    title="Temp Propagation Failure",
+                    message=f"ERROR: {result['details']}",
+                    details=f"Filename: {result['filename']}",
+                    ok_only=True
+                )
+
     #######################################################################
     # Prompt user for run name(s) and rename new output file(s) accordingly
     #######################################################################
@@ -638,6 +689,8 @@ class Rename_Output_Files(QtCore.QObject):
                     Constants.csv_default_prefix, localtime())
                 content = file.readlines()
                 content.sort()  # in alphabetical order
+            # Start InterpTempsProcess, if a multiplex run
+            self.interp_temps(content)
             currDir = ""  # current device directory
             subDir = ""
             text = ""
@@ -734,6 +787,15 @@ class Rename_Output_Files(QtCore.QObject):
                                 text += "_BAD"
                             # break (done below)
                         break
+
+                # We *must* wait here until InterpTempsProcess has finished
+                self._logHandler.stop()  # stop log handler timer
+                if self.pInterpTemps.is_running():
+                    Log.w("Waiting for InterpTempsProcess to finish...")
+                while self.pInterpTemps.is_running():
+                    self.interp_logger()  # wait for exit, handle logger
+                self.interp_report()  # report any failures to user
+
                 new_path = os.path.join(
                     path_root, dev_name, subDir, thisFile.replace(thisName, text))
                 try:
