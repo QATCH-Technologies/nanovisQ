@@ -653,7 +653,7 @@ class DropEffectCorrection(CurveOptimizer):
         indices = np.arange(len(original_diss))
         fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
-        Plot for Dissipation.
+        # Plot for Dissipation.
         axs[0].plot(indices, original_diss,
                     label='Original Dissipation', color='blue')
         axs[0].plot(indices, corrected_diss,
