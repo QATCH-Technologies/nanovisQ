@@ -43,6 +43,10 @@ JITTER_SCALE = 0.1
 # "global" trend enforcement (i.e. keeps globalized features).  Decreasing this window results in more localized
 # features and trend shifts to appear in the data.
 LOCALIZED_WINDOW = 20
+# This constant controls how tightly shifted data should attempt to follow the original data.  Increasing this value acts
+# as an IQR multiplier increasing the increasing range of values for the trend line.  Decreasing this value requires the fitted
+# line more closely follow the contours of the original line.
+TREND_IQR_MULTIPLIER = 1
 ##########################################
 # CHANGE THESE
 ##########################################
@@ -598,7 +602,7 @@ class DropEffectCorrection(CurveOptimizer):
             residuals = window - trend
             q25, q75 = np.percentile(residuals, [25, 75])
             iqr = q75 - q25
-            noise_threshold = iqr * 1.5
+            noise_threshold = iqr * TREND_IQR_MULTIPLIER
             outliers = np.abs(residuals) > noise_threshold
             window[outliers] = trend[outliers]
             corrected_data[i: i + window_size] = window
@@ -705,7 +709,9 @@ class DropEffectCorrection(CurveOptimizer):
             else:
                 running_max = corrected_diss[i]
         corrected_diss = self._enforce_trend(original_data=self._dataframe['Dissipation'].values,
-                                             corrected_data=corrected_diss, left_idx=left_idx, right_idx=right_idx)
+                                             corrected_data=corrected_diss,
+                                             left_idx=left_idx, right_idx=right_idx,
+                                             window_size=LOCALIZED_WINDOW)
         running_min = corrected_rf[left_idx]
 
         for i in range(left_idx, right_idx):
