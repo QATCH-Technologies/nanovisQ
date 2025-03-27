@@ -157,16 +157,16 @@ class InterpTempsProcess(multiprocessing.Process):
                  queue_out: multiprocessing.Queue) -> None:
         """Initializes the InterpTempsProcess.
 
-        Params:
-            queue_log (multiprocessing.Queue): Queue used for logging messages.
-            queue_cmd (multiprocessing.Queue): Queue for passing in files to be processed.
-            queue_out (multiprocessing.Queue): Queue for passing results to caller.
-
         Command Format:
             Dict[str, Any] = {"filename": str, "action": str(ActionType)}
 
         Result Format:
             Dict[str, Any] = {"filename": str, "result": bool, "details": str}
+
+        Args:
+            queue_log (multiprocessing.Queue): Queue used for logging messages.
+            queue_cmd (multiprocessing.Queue): Queue for passing in files to be processed.
+            queue_out (multiprocessing.Queue): Queue for passing results to caller.
 
         Returns:
             None
@@ -195,6 +195,7 @@ class InterpTempsProcess(multiprocessing.Process):
         self._cached_start: int = 0
         self._cached_xp: list = []
         self._cached_fp: list = []
+        self._cache_valid = False
 
     def _cache_set(self, t0: str, xp: np.ndarray, fp: np.ndarray) -> None:
         """
@@ -233,6 +234,7 @@ class InterpTempsProcess(multiprocessing.Process):
         self._cached_start = self.time_string_to_seconds(t0)
         self._cached_xp = xp
         self._cached_fp = fp
+        self._cache_valid = True
         Log.d(TAG, f"Set cache with {len(xp)} entries")
 
     def _load(self, filename: str) -> None:
@@ -247,6 +249,11 @@ class InterpTempsProcess(multiprocessing.Process):
         - Logs the full traceback.
         - Puts an error message into `_queueOut` containing the exception details.
 
+        The following exceptions are caught and reported in the '_queueLog' and '_queueOut' queues:
+            FileNotFoundError: If the specified file does not exist.
+            ValueError: If the file does not have the expected format or required data.
+            Exception: Propagates any other exceptions after logging the traceback.
+
         Args:
             filename (str): The path to the CSV file containing temperature data.
 
@@ -254,10 +261,7 @@ class InterpTempsProcess(multiprocessing.Process):
             None
 
         Raises:
-            FileNotFoundError: If the specified file does not exist.
-            ValueError: If the file does not have the expected format or required data.
-            Exception: Propagates any other exceptions after logging the traceback.
-
+            None
         """
         try:
             # Cache is blank if load fails.
@@ -325,28 +329,49 @@ class InterpTempsProcess(multiprocessing.Process):
                 QueueResultFormat(
                     filename=filename,
                     result=False,
-                    details=a_list[-1]
+                    details='\n'.join(a_list)
                 ).asdict()
             )
 
     def _interp(self, filename: str) -> None:
         """Interpolates missing temperature data in a CSV file and updates the file.
 
+        Before starting the interpolation sequence, this method checks that the cache is valid and
+        has previously been set by a 'load' command action. If not, it immediately returns an error.
         This method reads the CSV file specified by `filename`, calculates interpolated temperature
         values for rows with missing ('nan') temperatures, and writes the updated temperature data
         back to the file. The CSV file must have a header row and at least one data row. The second
         column of the first data row is used as the starting time for interpolation. The presence of the
         string "Ambient" in the header determines the column indices used for time and temperature data.
 
+        The following exceptions are caught and reported in the '_queueLog' and '_queueOut' queues:
+            FileNotFoundError: If the file specified by `filename` does not exist.
+            ValueError: If the file is missing expected rows or has an unexpected format.
+            IndexError: If the length of interpolated temperatures is different than the file.
+            Exception: Propagates any other exceptions after logging the traceback.
+
         Args:
             filename (str): The path to the CSV file to be processed.
 
+        Returns:
+            None
+
         Raises:
-            FileNotFoundError: If the file specified by `filename` does not exist.
-            ValueError: If the file is missing expected rows or has an unexpected format.
-            Exception: Propagates any other exceptions after logging the traceback.
+            None
         """
         try:
+            if not self._cache_valid:
+                Log.e(
+                    TAG, f"(FAIL): Cannot 'interp' with an invalid cache. Hint: Call 'load' first!")
+                self._queueOut.put(
+                    QueueResultFormat(
+                        filename=filename,
+                        result=False,
+                        details="Cannot 'interp' with an invalid cache.\n Hint: Call 'load' first!"
+                    ).asdict()
+                )
+                return
+
             # Initialize interplation array and utilties.
             lines = []
             interp_temps = []  # The array of interpolated temperatures.
@@ -380,7 +405,7 @@ class InterpTempsProcess(multiprocessing.Process):
                     csv_cols: Tuple[int, int] = (2, 3)
 
                 data = np.loadtxt(
-                    lines, delimiter=",", skiprows=1, usecols=csv_cols,
+                    lines.copy(), delimiter=",", skiprows=1, usecols=csv_cols,
                 )
                 # Data is formated as (relative_time, temperature)
                 relative_time = data[:, 0]
@@ -428,14 +453,20 @@ class InterpTempsProcess(multiprocessing.Process):
                             TAG, f"Skipping row {i}: it does not contain 'nan' temp!")
 
             # NOTE: uncomment the line below to compare in/out files
-            # filename = filename.replace(".csv", "_filled.csv")
+            # STANDALONE_MODE = True
+
+            if STANDALONE_MODE:
+                filename = filename.replace(".csv", "_filled.csv")
 
             # Re-write the file with the updated temperature data.
             with open(filename, 'w') as w:
                 w.writelines(lines)
 
             Log.d(TAG, f"Written to file: '{filename}'")
-            self._count += 1
+
+            # Increment file write count only if contents changed.
+            if updated_rows > 0:
+                self._count += 1
 
             # Sanity check: ensure the number of updated rows equals the number of interpolated values.
             if updated_rows != len(interp_temps):
@@ -468,11 +499,12 @@ class InterpTempsProcess(multiprocessing.Process):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
             self._queueOut.put(
                 QueueResultFormat(
                     filename=filename,
                     result=False,
-                    details=a_list[-1]
+                    details='\n'.join(a_list)
                 ).asdict()
             )
 
@@ -485,6 +517,9 @@ class InterpTempsProcess(multiprocessing.Process):
 
         Returns:
             float: The number of seconds represented by the time string.
+
+        Raises:
+            ValueError: When the input string does not match the format string provided. 
         """
         time_object = datetime.strptime(time_string, format).time()
         seconds = (time_object.hour * 3600) + \
@@ -501,6 +536,10 @@ class InterpTempsProcess(multiprocessing.Process):
 
         Returns:
             np.ndarray: An np.ndarray of rounded float values to the nearest quarter.
+
+        Raises:
+            AttributeError: As raised by NumPy when passed `None` objects.
+            TypeError: As raised by NumPy when passed non-numeric datatypes.
         """
         return np.round(np.array(floats) * 4) / 4
 
@@ -521,11 +560,16 @@ class InterpTempsProcess(multiprocessing.Process):
           6. Handles any exceptions by logging a detailed traceback.
           7. Upon termination, logs the process shutdown and sets the done event.
 
-        Raises:
+        The following exceptions are caught and reported in the '_queueLog' and '_queueOut' queues:
             AttributeError: If required queue attributes (_queueCmd, _queueOut, _queueLog) are not set.
+            RuntimeError: If no handlers are found in the multiprocessing logger.
             Exception: If errors occur during stdout/stderr redirection, logger configuration, or command processing,
-                    the exceptions are logged and re-raised.
+                    the exceptions are logged to the console (if possible) but are never re-raised.
+
         Returns:
+            None
+
+        Raises:
             None
         """
         try:
@@ -563,6 +607,7 @@ class InterpTempsProcess(multiprocessing.Process):
             except Exception as e:
                 Log.e(TAG, f"Multiprocessing logger configuration failed: {e}")
                 raise
+
             # Run one-time start actions (if any)
             # Place any one-time initialization code here.
             None
@@ -616,6 +661,14 @@ class InterpTempsProcess(multiprocessing.Process):
             for line in a_list:
                 Log.e(line)
 
+            self._queueOut.put(
+                QueueResultFormat(
+                    filename="[MainLoop]",
+                    result=False,
+                    details='\n'.join(a_list)
+                ).asdict()
+            )
+
         finally:
             # Gracefully end the subprocess and log the shutdown.
             Log.d(TAG, "InterpTempsProcess stopped.")
@@ -648,6 +701,9 @@ class InterpTempsTest:
         multiprocessing.log_to_stderr()
         logger = multiprocessing.get_logger()
         logger.setLevel(logging.INFO)
+        # move to QATCH documents folder
+        os.chdir(r"..\..\..\QATCH nanovisQ")
+        # create class instance, passing queues
         self._queueLog = q
         self._queueCmd = multiprocessing.Queue()
         self._queueOut = multiprocessing.Queue()
@@ -664,25 +720,25 @@ class InterpTempsTest:
         Log.i(TAG, "Queueing test commands...")
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\1_13820290\D250224W3_4CP_B_1_1\capture\D250224W3_4CP_B_1_3rd.csv",
+                r"logged_data\1_13820290\D250224W3_4CP_B_1_1\capture\D250224W3_4CP_B_1_3rd.csv",
                 ActionType.load
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\2_15548760\D250224W3_4CP_B_1_2\capture\D250224W3_4CP_B_1_3rd.csv",
+                r"logged_data\2_15548760\D250224W3_4CP_B_1_2\capture\D250224W3_4CP_B_1_3rd.csv",
                 ActionType.interp
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\3_15519000\D250224W3_4CP_B_1_3\capture\D250224W3_4CP_B_1_3rd.csv",
+                r"logged_data\3_15519000\D250224W3_4CP_B_1_3\capture\D250224W3_4CP_B_1_3rd.csv",
                 ActionType.interp
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
-                r"C:\Users\Alexander J. Ross\Documents\QATCH nanovisQ\logged_data\4_15549230\D250224W3_4CP_B_1_4\capture\D250224W3_4CP_B_1_3rd.csv",
+                r"logged_data\4_15549230\D250224W3_4CP_B_1_4\capture\D250224W3_4CP_B_1_3rd.csv",
                 ActionType.interp
             ).asdict()
         )
