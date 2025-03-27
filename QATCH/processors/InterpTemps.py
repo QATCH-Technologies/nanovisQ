@@ -265,13 +265,13 @@ class InterpTempsProcess(multiprocessing.Process):
 
             with open(filename, 'r') as f:
                 # Read and validate header row.
-                csv_headers = next(f, "").strip()
+                csv_headers = next(f, "")
                 if not csv_headers:
                     raise ValueError(
                         f"CSV file '{filename}' is missing header row.")
 
                 # Read and validate first data row.
-                csv_firstrow = next(f, "").strip()
+                csv_firstrow = next(f, "")
                 if not csv_firstrow:
                     raise ValueError(
                         f"CSV file '{filename}' is missing data rows.")
@@ -281,7 +281,7 @@ class InterpTempsProcess(multiprocessing.Process):
                 if len(parts) < 2:
                     raise ValueError(
                         f"CSV file '{filename}' first data row does not contain enough columns to extract start time.")
-                time_start = parts[1].strip()
+                time_start = parts[1]
                 if not time_start:
                     raise ValueError("Start time is empty.")
 
@@ -354,12 +354,12 @@ class InterpTempsProcess(multiprocessing.Process):
 
             with open(filename, 'r') as f:
                 # Read and validate the CSV file contains a header row.
-                csv_headers: str = next(f, "").strip()
+                csv_headers = next(f, "")
                 if not csv_headers:
                     raise ValueError("CSV file is missing header row.")
 
                 # Read and validate the CSV file contains a row after the header row.
-                csv_firstrow = next(f).strip()
+                csv_firstrow = next(f)
                 if not csv_firstrow:
                     raise ValueError("CSV file is missing data rows.")
 
