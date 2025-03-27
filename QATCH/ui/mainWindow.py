@@ -646,6 +646,10 @@ class Rename_Output_Files(QtCore.QObject):
         Returns:
             None
         """
+        # NOTE: Uncomment these 3 lines to skip entire process:
+        # self.pInterpTemps._started.set()
+        # self.pInterpTemps._done.set()
+        # return
         self._logHandler.start(100)
         self.pInterpTemps.start()
         cache_loaded = False
@@ -694,8 +698,9 @@ class Rename_Output_Files(QtCore.QObject):
                 PopUp.critical(
                     parent=self.parent,
                     title="Temp Propagation Failure",
-                    message=f"ERROR: {result['details']}",
-                    details=f"Filename: {result['filename']}",
+                    message="ERROR: Failed to write temps to secondary.\n" +
+                            f"Filename: \"{result['filename']}\"",
+                    details=result['details'],
                     ok_only=True
                 )
 
