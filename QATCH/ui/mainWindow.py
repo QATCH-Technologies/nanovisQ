@@ -585,7 +585,7 @@ class Rename_Output_Files(QtCore.QObject):
         self.bThread = []
         self.bWorker = []
 
-        # Data queues for InterpTemps
+        # Data queues for InterpTemps.
         self._queueLog = multiprocessing.Queue()
         self._queueCmd = multiprocessing.Queue()
         self._queueOut = multiprocessing.Queue()
