@@ -3070,6 +3070,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             if False:  # diff_only
                 mn = np.amin(self.ys_diff[tx0:tx2])
                 mx = np.amax(self.ys_diff[tx0:tx2])
@@ -3204,6 +3208,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -3561,6 +3569,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
