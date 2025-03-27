@@ -34,6 +34,7 @@ import requests
 import stat
 import subprocess
 import logging
+from typing import List
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -584,7 +585,7 @@ class Rename_Output_Files(QtCore.QObject):
         self.bThread = []
         self.bWorker = []
 
-        # data queues for InterpTemps
+        # Data queues for InterpTemps
         self._queueLog = multiprocessing.Queue()
         self._queueCmd = multiprocessing.Queue()
         self._queueOut = multiprocessing.Queue()
@@ -632,16 +633,30 @@ class Rename_Output_Files(QtCore.QObject):
         self.parent.ControlsWin.ui1.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
 
-    def interp_temps(self, new_files):
+    def interp_temps(self, new_files: List[str]) -> None:
+        """
+        The handler method for performing temperature interpolation on a list of files.
+
+        This method handles starting the `pInterpTemps` thread which interpolates temperature 
+        through a list of file paths.
+
+        Args:
+            new_files (List[str]): A list of file paths as strings.
+
+        Returns:
+            None
+        """
         self._logHandler.start(100)
         self.pInterpTemps.start()
         cache_loaded = False
         for file in new_files:
+            # Skip TEC files.
             if "output_tec.csv" in file:
-                continue  # skip TEC files
+                continue
+
             # NOTE: Might need better filtering of files to load/interp correctly
-            # Assumption here is that alphabetical order yields primary dev 1st
-            # TODO: This will likely need modification to work with 4x6 devices
+            # Assumption here is that alphabetical order yields primary dev 1st.
+            # TODO: This will likely need modification to work with 4x6 devices.
             self.pInterpTemps._queueCmd.put(
                 QueueCommandFormat(
                     file.rstrip(),
@@ -649,16 +664,29 @@ class Rename_Output_Files(QtCore.QObject):
                 ).asdict()
             )
             cache_loaded = True
-        # signal finished, ok to end process
+        # Signal finished and end process
         self.pInterpTemps._queueCmd.put(None)
 
-    def interp_logger(self):
+    def interp_logger(self) -> None:
+        """
+        Initializes the logging utility for the pInterpTemps thread.
+
+        Returns:
+            None
+        """
         if not self._queueLog.empty():
             logger = logging.getLogger("QATCH")
             while not self._queueLog.empty():
                 logger.handle(self._queueLog.get(False))
 
-    def interp_report(self):
+    def interp_report(self) -> None:
+        """
+        Generates the report after pInterpTemps thread executes.
+        Critical failures are propogated to the user via UI popups.
+
+        Returns:
+            None
+        """
         while not self._queueOut.empty():
             result = self._queueOut.get(False)
             if not result["result"]:
