@@ -2685,13 +2685,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # move markers to QModel predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                Log.i("[Run QModel Again] Restored QModel predictions for this run.")
+                Log.i("[Predict] Restored QModel predictions for this run.")
                 for i, pm in enumerate(self.poi_markers):
                     pm.setValue(self.xs[poi_vals[i]])
                 self.detect_change()
             else:
                 Log.w(
-                    "[Run QModel Again] QModel has no predictions for this run. Leaving points unchanged.")
+                    "[Predict] QModel has no predictions for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
             Log.d("QModel predicted with no run loaded. No action taken.")
