@@ -1472,33 +1472,52 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
 
-    def enable_buttons(self, refocus=True, enable=True):
-        enable_load = (
-            len(self.cBox_Runs.currentText().strip()) > 0
-            and self.cBox_Runs.currentText() != "No Runs Found"
-        )
-        enable_info = self.xml_path != None
-        enable_cancel = self.xml_path != None
+    def enable_buttons(self, refocus: bool = True, enable: bool = True) -> None:
+        """Enables or disables UI buttons based on the current state.
+
+            This function adjusts the availability of various UI buttons based on, the presence of an XML path,
+            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the 
+            system is busy.
+
+            Args:
+                refocus (bool, optional): If True, refocuses the UI on `graphWidget2`. Defaults to True.
+                enable (bool, optional): If False, disables all buttons (e.g., during processing). Defaults to True.
+
+            Behavior:
+            - If `enable` is False, all buttons are disabled.
+            - The "Modify" button state is toggled based on whether `enable_cancel` is True and `enable_analyze` is False.
+            - Navigation buttons ("Back" and "Next") are disabled if modifications are not allowed.
+            - "Advanced" options are only enabled when `enable_cancel` is True.
+        """
+        # Determine initial button states
+        enable_load = bool(self.cBox_Runs.currentText().strip(
+        )) and self.cBox_Runs.currentText() != "No Runs Found"
+        enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
-        enable_modify = self.xml_path != None
         enable_analyze = len(self.poi_markers) > 2
-        if not enable:  # False when busy
-            enable_load = enable_info = enable_cancel = enable_back = enable_next = (
-                enable_modify
-            ) = enable_analyze = False
+
+        # If disabled globally (e.g., busy state), disable everything
+        if not enable:
+            enable_load = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
+
+        # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
             if not self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(True)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = True
-        if not enable_cancel:
+        elif not enable_cancel:
             if self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(False)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = False
+
+        # If modification is not allowed, disable navigation buttons
         if not self.allow_modify:
             enable_back = enable_next = False
+
+        # Apply button states
         self.tool_Load.setEnabled(enable_load)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
@@ -1506,14 +1525,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Next.setEnabled(enable_next)
         self.tool_Modify.setEnabled(enable_modify)
         self.tool_Analyze.setEnabled(enable_analyze)
+
+        # Handle advanced tool enabling
+        self.tool_Advanced.setEnabled(enable_cancel)
+
+        # Refocus if required
         if refocus:
             self.graphWidget2.setFocus()
-
-    # def change_drop_effect(self, object):
-    #     if not self.correct_drop_effect.isChecked():
-    #         self.tbox_diff_factor.setText(
-    #             f"{Constants.default_diff_factor:1.3f}")
-    #     self.set_new_diff_factor()
 
     def use_difference_factor_optimizer(self, object):
         """
@@ -2473,6 +2491,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
 
         self.enable_buttons(False, False)
+
         self._update_analyze_progress(
             0, "Reading Run Data..."
         )  # reset internal buffer with 0
@@ -3053,10 +3072,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ws = self.getContextWidth()[0]
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            clipped = False
+            if slice_start < 0:
+                slice_start = 0
+                clipped = True
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+                clipped = True
+            if slice_start >= slice_end:
+                slice_start = slice_end - 1  # 0
+                slice_end = slice_start + 1  # len(self.xs) - 1
+                clipped = True
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             if False:  # diff_only
                 mn = np.amin(self.ys_diff[tx0:tx2])
                 mx = np.amax(self.ys_diff[tx0:tx2])
@@ -3073,35 +3109,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 4:
-                try:
+                if not clipped:
                     ax1.setYRange(
-                        np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_freq_fit[slice_start: slice_end]),
+                        np.max(self.ys_freq_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax2.setYRange(
-                        np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_diff_fit[slice_start: slice_end]),
+                        np.max(self.ys_diff_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax3.setYRange(
-                        np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_fit[slice_start: slice_end]),
+                        np.max(self.ys_fit[slice_start: slice_end]),
                         padding=pad,
                     )
-                except ValueError as e:
+                else:  # clipped
                     Log.d(
                         "Skipping to next step, due to missing channel in data selection (represented by ValueError exception below):"
                     )
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.d(line)
                     # skip to next view
                     Log.w(
                         f"Skipping Step {self.stateStep+2}... User indicated this point is missing from the dataset in Step 2."
@@ -3111,36 +3138,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         self.action_next()  # repeat last action
                     return  # do not execute remainder of this function, let the above nested 'action_next' call supercede
-                except Exception as e:
-                    Log.e(
-                        f"An error occurred while moving to the next step: {str(e)}")
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.e(line)
-
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
                 pos2 = np.column_stack((self.xs[tx1], self.ys_diff_fit[tx1]))
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -3213,6 +3227,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -3570,6 +3588,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -3588,25 +3610,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 return  # do not process skipped points on marker move
             ws = self.getContextWidth()[0]
             pad = 0.05 if self.stateStep >= 4 else 0.05
-            if tx1 + ws >= len(self.xs) - 1:
-                ws = len(self.xs) - tx1 - 1
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            if slice_start < 0:
+                slice_start = 0
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+            if slice_start >= slice_end:
+                slice_start = 0
+                slice_end = len(self.xs) - 1
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             if self.stateStep >= 4:
                 ax1.setYRange(
-                    np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq_fit[slice_start: slice_end]),
+                    np.max(self.ys_freq_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff_fit[slice_start: slice_end]),
+                    np.max(self.ys_diff_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_fit[slice_start: slice_end]),
+                    np.max(self.ys_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
@@ -3614,18 +3643,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -4022,10 +4051,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals[-1],
                     ]  # take first and last only, allow user input
 
-            # raw data
-            xs = relative_time
-            ys = dissipation
-
             # Computes initial difference cancelations for difference, resonance frequency
             # and dissipation and applies them to the UI curves.
             canceled_diss, canceled_rf = None, None
@@ -4033,7 +4058,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 canceled_diss, canceled_rf = self._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
-                    ys = canceled_diss
+                    dissipation = canceled_diss
+
+            # raw data
+            xs = relative_time
+            ys = dissipation
 
             # use rough smoothing based on total runtime to figure start/stop
             total_runtime = xs[-1]
@@ -5084,10 +5113,6 @@ class AnalyzerWorker(QtCore.QObject):
             ).tolist()  # convert string to numpy array and then to a list
             normal_pts = [0.2, 0.4, 0.6, 0.8]
 
-            # raw data
-            xs = relative_time
-            ys = dissipation
-
             self.update(status_label)
 
             # Computes initial difference cancelations for difference, resonance frequency
@@ -5097,7 +5122,11 @@ class AnalyzerWorker(QtCore.QObject):
                 canceled_diss, canceled_rf = self.parent._correct_drop_effect(
                     self.loaded_datapath)
                 if canceled_diss is not None:
-                    ys = canceled_diss
+                    dissipation = canceled_diss
+
+            # raw data
+            xs = relative_time
+            ys = dissipation
 
             self.update(status_label)
 
