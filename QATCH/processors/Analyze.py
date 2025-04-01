@@ -536,6 +536,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.tool_Load.addSeparator()
 
+        icon_predict = QtGui.QIcon()
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qmodel.png")
+        icon_predict.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
+        # icon_predict.addPixmap(QtGui.QPixmap('QATCH/icons/load-disabled.png'), QtGui.QIcon.Disabled)
+        self.tBtn_Predict = QtWidgets.QToolButton()
+        self.tBtn_Predict.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tBtn_Predict.setIcon(icon_predict)  # normal and disabled pixmaps
+        self.tBtn_Predict.setText("Predict")
+        self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
+        self.tool_Load.addWidget(self.tBtn_Predict)
+
         icon_info = QtGui.QIcon()
         icon_path = os.path.join(
             Architecture.get_path(), "QATCH/icons/info.png")
@@ -943,23 +955,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
         widget_dots.setStyleSheet("color: #515151;")
         layout_v4.addWidget(widget_dots)
 
-        self.QModel_widget = QtWidgets.QWidget(self)
-        self.QModel_widget.setWindowFlags(
-            QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
-        self.QModel_widget.setWindowTitle("QModel Widget")
-        self.QModel_runBtn = QtWidgets.QPushButton("Run QModel Again")
-        self.QModel_runBtn.clicked.connect(self._restore_qmodel_predictions)
-        # self.layout.addWidget(self.QModel_runBtn)
-        # self.QModel_runBtn.setParent(None)
-        self.QModel_widget.setFixedSize(self.QModel_runBtn.sizeHint())
-        self.QModel_widget.hide()
-        floating_layout = QtWidgets.QHBoxLayout()
-        floating_layout.setContentsMargins(0, 0, 0, 0)
-        floating_layout.addWidget(self.QModel_runBtn)
-        self.QModel_widget.setLayout(floating_layout)
-        # floating_widget.move(100, 100)  # Position relative to main window
-        # floating_widget.show()
-        # layout_v4.addWidget(floating_widget)
+        # self.QModel_widget = QtWidgets.QWidget(self)
+        # self.QModel_widget.setWindowFlags(
+        #     QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
+        # self.QModel_widget.setWindowTitle("QModel Widget")
+        # self.QModel_runBtn = QtWidgets.QPushButton("Run QModel Again")
+        # self.QModel_runBtn.clicked.connect(self._restore_qmodel_predictions)
+        # # self.layout.addWidget(self.QModel_runBtn)
+        # # self.QModel_runBtn.setParent(None)
+        # self.QModel_widget.setFixedSize(self.QModel_runBtn.sizeHint())
+        # self.QModel_widget.hide()
+        # floating_layout = QtWidgets.QHBoxLayout()
+        # floating_layout.setContentsMargins(0, 0, 0, 0)
+        # floating_layout.addWidget(self.QModel_runBtn)
+        # self.QModel_widget.setLayout(floating_layout)
+        # # floating_widget.move(100, 100)  # Position relative to main window
+        # # floating_widget.show()
+        # # layout_v4.addWidget(floating_widget)
 
         layout_v4.addWidget(self.graphStack)
         widget_h4.setLayout(layout_v4)
@@ -1380,7 +1392,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.allow_modify:
                 self.gotoStepNum(None, 2)  # step 2: select rough points
             else:
-                self.QModel_widget.hide()
+                # self.QModel_widget.hide()
                 self.gotoStepNum(None, 9)  # summary
 
     def action_analyze(self):
@@ -1528,6 +1540,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Handle advanced tool enabling
         self.tool_Advanced.setEnabled(enable_cancel)
+
+        # Handle predict tool enabling
+        self.tBtn_Predict.setEnabled(enable_info)
 
         # Refocus if required
         if refocus:
@@ -1845,7 +1860,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.clear()
 
         self.progressBar.setValue(0)  # Not started
-        self.QModel_widget.hide()
+        # self.QModel_widget.hide()
         self.setDotStepMarkers(0)
 
         self.stateStep = -1
@@ -2584,13 +2599,22 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def _restore_qmodel_predictions(self):
         try:
+            if self.model_engine == "None":
+                # no run is loaded
+                PopUp.information(
+                    self,
+                    "QModel Not Available",
+                    "Predictions cannot be run at this time.\nPlease load a run first."
+                )
+                # special exception case: indicates software declined action
+                raise ConnectionRefusedError()
             if not PopUp.question(
                 self,
                 "Are you sure?",
                 "Any manual points will be lost if you run QModel again.\n\nProceed?",
             ):
                 # special exception case: indicates user declined action
-                raise PermissionError()
+                raise ConnectionAbortedError()
 
             # restore QModel predictions
             poi_vals = []
@@ -2669,7 +2693,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.w(
                     "[Run QModel Again] QModel has no predictions for this run. Leaving points unchanged.")
 
-        except PermissionError:
+        except ConnectionRefusedError:
+            Log.d("QModel predicted with no run loaded. No action taken.")
+
+        except ConnectionAbortedError:
             Log.d("User declined QModel restore prompt. No action taken.")
 
         except Exception as e:
@@ -3299,12 +3326,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyzer_task.start()
         self.setDotStepMarkers(step_num)
 
-        # Show/Hide QModel re-run button if on Step 2 and run has prior points
-        if step_num == 2 and len(self.poi_markers) == 6:
-            self._position_floating_widget()
-            self.QModel_widget.show()
-        elif self.QModel_widget.isVisible():
-            self.QModel_widget.hide()
+        # # Show/Hide QModel re-run button if on Step 2 and run has prior points
+        # if step_num == 2 and len(self.poi_markers) == 6:
+        #     self._position_floating_widget()
+        #     self.QModel_widget.show()
+        # elif self.QModel_widget.isVisible():
+        #     self.QModel_widget.hide()
 
     def addDotStepHandlers(self):
         dots = [
@@ -4668,16 +4695,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("Showing analysis immediately")
             self.getPoints()  # confirm and analyze only if they want to view previous results
 
-    def _position_floating_widget(self):
-        pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
-            (self.width() - self.QModel_widget.width()) // 2
-        pos_Y = self.parent.MainWin.pos().y() + 250
-        self.QModel_widget.move(pos_X, pos_Y)
+    # def _position_floating_widget(self):
+    #     pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
+    #         (self.width() - self.QModel_widget.width()) // 2
+    #     pos_Y = self.parent.MainWin.pos().y() + 250
+    #     self.QModel_widget.move(pos_X, pos_Y)
 
     def resizeEvent(self, event):
-        # Position relative to main window
-        if self.QModel_widget.isVisible():
-            QtCore.QTimer.singleShot(100, self._position_floating_widget)
+        # # Position relative to main window
+        # if self.QModel_widget.isVisible():
+        #     QtCore.QTimer.singleShot(100, self._position_floating_widget)
         # if self.AI_SelectTool_Frame.isVisible():
         #     self.AI_SelectTool_Frame.setVisible(
         #         False
