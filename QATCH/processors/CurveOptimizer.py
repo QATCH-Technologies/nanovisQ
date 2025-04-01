@@ -37,7 +37,7 @@ RF_SENSITVITY = 11
 # This constant controls the scale of the jitter reintroduced during the trend enforcement step of the post process.
 # Increasing this value (in range between 0-1) increases the scale of localized noise within the correction region.
 # Decreasing this vale decreases the noise making the data appear smoother.
-JITTER_SCALE = 0.1
+JITTER_SCALE = 0.01
 # This constant controls the size of the window to establish and enforce a trend over.
 # Increasing this value results in a larger window to build a trend and detect outliers through leading to a more
 # "global" trend enforcement (i.e. keeps globalized features).  Decreasing this window results in more localized
@@ -725,7 +725,10 @@ class DropEffectCorrection(CurveOptimizer):
                 running_min = corrected_rf[i]
 
         corrected_rf = self._enforce_trend(original_data=self._dataframe['Resonance_Frequency'].values,
-                                           corrected_data=corrected_rf, left_idx=left_idx, right_idx=right_idx)
+                                           corrected_data=corrected_rf,
+                                           left_idx=left_idx,
+                                           right_idx=right_idx,
+                                           window_size=LOCALIZED_WINDOW)
         if plot_corrections:
             self._plot_corrections(
                 original_diss, original_rf, corrected_diss, corrected_rf)
