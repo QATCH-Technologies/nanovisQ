@@ -34,19 +34,6 @@ BASE_OFFSET = 0.003
 DISSIPATION_SENSITIVITY = 2
 RF_SENSITVITY = 11
 
-# This constant controls the scale of the jitter reintroduced during the trend enforcement step of the post process.
-# Increasing this value (in range between 0-1) increases the scale of localized noise within the correction region.
-# Decreasing this vale decreases the noise making the data appear smoother.
-JITTER_SCALE = 0.01
-# This constant controls the size of the window to establish and enforce a trend over.
-# Increasing this value results in a larger window to build a trend and detect outliers through leading to a more
-# "global" trend enforcement (i.e. keeps globalized features).  Decreasing this window results in more localized
-# features and trend shifts to appear in the data.
-LOCALIZED_WINDOW = 20
-# This constant controls how tightly shifted data should attempt to follow the original data.  Increasing this value acts
-# as an IQR multiplier increasing the increasing range of values for the trend line.  Decreasing this value requires the fitted
-# line more closely follow the contours of the original line.
-TREND_IQR_MULTIPLIER = 1
 ##########################################
 # CHANGE THESE
 ##########################################
@@ -552,96 +539,34 @@ class DropEffectCorrection(CurveOptimizer):
             TAG, f"Detected drop effects in {col_name} at indices {[de[0] for de in drop_effects]} with deltas {[de[1] for de in drop_effects]}")
         return drop_effects
 
-    def _enforce_trend(self,
-                       original_data: np.array,
-                       corrected_data: np.array,
-                       left_idx: int,
-                       right_idx: int,
-                       window_size: int = 20):
-        """Enforces a local trend on the corrected data by identifying and adjusting 
-        deviations while preserving peaks and troughs.
-
-        This method identifies peaks and troughs within a segment of the original 
-        signal, estimates the jitter scale, and applies local trend enforcement 
-        to the corrected data. It then restores the peaks and troughs with a small 
-        jitter correction to maintain natural signal variations.
-
-        Args:
-            original_data (np.array): The original uncorrected data array.
-            corrected_data (np.array): The corrected data array to be adjusted.
-            left_idx (int): The starting index of the segment to be adjusted.
-            right_idx (int): The ending index (exclusive) of the segment to be adjusted.
-            window_size (int, optional): The window size for local trend fitting. Defaults to 20.
-
-        Returns:
-            np.array: The corrected data array with enforced trend adjustments.
-        """
-        corrected_data = np.array(corrected_data)
-        original_data = np.array(original_data)
-        segment = original_data[left_idx:right_idx].copy()
-        peaks, _ = find_peaks(segment)
-        troughs, _ = find_peaks(-segment)
-
-        # Compute peak-to-trough differences to estimate jitter scale
-        peak_vals = segment[peaks] if len(peaks) > 0 else np.array([])
-        trough_vals = segment[troughs] if len(troughs) > 0 else np.array([])
-        peak_trough_deltas = np.abs(
-            np.diff(np.concatenate((peak_vals, trough_vals))))
-
-        # Estimate jitter distribution
-        jitter_std = np.std(peak_trough_deltas) if len(
-            peak_trough_deltas) > 1 else 0
-        jitter_iqr = np.percentile(
-            peak_trough_deltas, 75) - np.percentile(peak_trough_deltas, 25)
-
-        for i in range(left_idx, right_idx - window_size + 1):
-            window = corrected_data[i: i + window_size]
-            x = np.arange(len(window))
-            slope, intercept, _, _, _ = linregress(x, window)
-            trend = slope * x + intercept
-            residuals = window - trend
-            q25, q75 = np.percentile(residuals, [25, 75])
-            iqr = q75 - q25
-            noise_threshold = iqr * TREND_IQR_MULTIPLIER
-            outliers = np.abs(residuals) > noise_threshold
-            window[outliers] = trend[outliers]
-            corrected_data[i: i + window_size] = window
-
-        # Restore peaks and troughs with jitter
-        for idx in peaks:
-            js = max(jitter_std, jitter_iqr, 1e-6)
-            correction_factor = JITTER_SCALE * js
-            corrected_data[idx + left_idx] = corrected_data[idx +
-                                                            left_idx] - correction_factor
-
-        for idx in troughs:
-            js = max(jitter_std, jitter_iqr, 1e-6)
-            correction_factor = JITTER_SCALE * js
-            corrected_data[idx + left_idx] = corrected_data[idx +
-                                                            left_idx] + correction_factor
-        return corrected_data
-
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              baseline_rf: float = None,
                              diss_threshold_ratio: float = 0.01,
                              rf_threshold_ratio: float = 0.00000001,
-                             plot_corrections: bool = False) -> tuple:
+                             plot_corrections: bool = True) -> tuple:
         """
         Corrects drop effects for both the dissipation and resonance frequency curves independently.
         The detection and correction steps remain the same, but each curve’s corrections are applied
         based solely on its own detected anomalies.
+
+        For the resonance frequency curve: if a detected drop effect covers a large segment (i.e. the 
+        range of x values is large), the segment will be smoothed by linearly interpolating from one 
+        point before the segment to one point after the segment.
 
         Args:
             baseline_diss (float): Baseline value for dissipation correction.
             baseline_rf (float): Baseline value for resonance frequency correction.
             diss_threshold_ratio (float): Relative threshold for dissipation running correction.
             rf_threshold_ratio (float): Relative threshold for resonance frequency running correction.
+            large_segment_threshold (int): Number of points above which a segment is considered large and will be smoothed (applied only to rf).
             plot_corrections (bool): Flag to indicate whether to plot the before/after corrections.
 
         Returns:
             tuple: Corrected dissipation and resonance frequency arrays.
         """
+        import numpy as np  # Ensure numpy is imported
+
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
         original_rf = self._dataframe['Resonance_Frequency'].values.copy()
@@ -655,7 +580,6 @@ class DropEffectCorrection(CurveOptimizer):
         # Make working copies for corrections.
         corrected_diss = original_diss.copy()
         corrected_rf = original_rf.copy()
-
         # Detect drop effects independently for each curve.
         drop_effects_diss = self._detect_drop_effects_for_column(
             'Dissipation', threshold_factor=DISSIPATION_SENSITIVITY)
@@ -666,7 +590,7 @@ class DropEffectCorrection(CurveOptimizer):
         drop_effects_diss.sort(key=lambda x: x[0])
         drop_effects_rf.sort(key=lambda x: x[0])
 
-        # Process each detected drop effect for Dissipation.
+        # Process each detected drop effect for Dissipation (no smoothing applied here).
         for i, drop in enumerate(drop_effects_diss):
             idx, diss_delta = drop
             # Skip if the drop effect is at the very beginning.
@@ -674,22 +598,16 @@ class DropEffectCorrection(CurveOptimizer):
                 continue
             # Compute offset so that the value at the drop index matches the previous (good) value.
             offset_diss = corrected_diss[idx - 1] - original_diss[idx]
+            offset_rf = original_rf[idx - 1] - original_rf[idx]
             # Determine the segment end: from the current drop effect until the next drop effect,
             # or to the end of the data if this is the last drop.
-            next_idx = drop_effects_diss[i + 1][0] if i + \
+            next_idx_diss = drop_effects_diss[i + 1][0] if i + \
                 1 < len(drop_effects_diss) else len(corrected_diss)
-            # Apply the offset correction to the segment.
-            corrected_diss[idx:next_idx] += offset_diss
-
-        # Process each detected drop effect for Resonance Frequency.
-        for i, drop in enumerate(drop_effects_rf):
-            idx, rf_delta = drop
-            if idx <= 0:
-                continue
-            offset_rf = corrected_rf[idx - 1] - original_rf[idx]
-            next_idx = drop_effects_rf[i + 1][0] if i + \
+            next_idx_rf = drop_effects_rf[i + 1][0] if i + \
                 1 < len(drop_effects_rf) else len(corrected_rf)
-            corrected_rf[idx:next_idx] += offset_rf
+            # Apply the offset correction to the segment.
+            corrected_diss[idx:next_idx_diss] += offset_diss
+            corrected_rf[idx:next_idx_rf] += offset_rf
 
         # Post-correction adjustments: enforce running corrections independently for each curve.
         left_idx = self._left_bound['index']
@@ -708,27 +626,24 @@ class DropEffectCorrection(CurveOptimizer):
                         max(running_max - allowed_gap, baseline_diss), running_max)
             else:
                 running_max = corrected_diss[i]
-        corrected_diss = self._enforce_trend(original_data=self._dataframe['Dissipation'].values,
-                                             corrected_data=corrected_diss,
-                                             left_idx=left_idx, right_idx=right_idx,
-                                             window_size=LOCALIZED_WINDOW)
-        running_min = corrected_rf[left_idx]
 
-        for i in range(left_idx, right_idx):
-            if corrected_rf[i] > running_min:
-                gap = corrected_rf[i] - running_min
-                allowed_gap = running_min * rf_threshold_ratio
-                if gap > allowed_gap:
-                    corrected_rf[i] = random.uniform(running_min, min(
-                        running_min + allowed_gap, baseline_rf))
-            else:
-                running_min = corrected_rf[i]
+        i = left_idx
+        while i < right_idx:
+            start = i
+            while i + 1 < right_idx and corrected_rf[i + 1] == corrected_rf[start]:
+                i += 1
+            end = i
+            if end > start:
+                if start > left_idx and end < right_idx - 1:
+                    left_value = corrected_rf[start - 1]
+                    right_value = corrected_rf[end + 1]
+                    region_length = end - start + 1
+                    n_points = region_length + 2
+                    interp_values = np.linspace(
+                        left_value, right_value, n_points)
+                    corrected_rf[start:end + 1] = interp_values[1:-1]
+            i += 1
 
-        corrected_rf = self._enforce_trend(original_data=self._dataframe['Resonance_Frequency'].values,
-                                           corrected_data=corrected_rf,
-                                           left_idx=left_idx,
-                                           right_idx=right_idx,
-                                           window_size=LOCALIZED_WINDOW)
         if plot_corrections:
             self._plot_corrections(
                 original_diss, original_rf, corrected_diss, corrected_rf)

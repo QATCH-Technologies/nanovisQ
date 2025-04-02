@@ -4769,15 +4769,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             if corrected_data is not None:
                 Log.d(
-                    TAG, f"Dissipation drop effect cancelation successful.")
+                    TAG, f"Drop effect cancelation successful.")
                 return corrected_data
             else:
                 Log.d(
-                    TAG, f"Dissipation drop effect cancelation failed. Using original data.")
+                    TAG, f"Drop effect cancelation failed. Using original data.")
                 return [None, None]
         except Exception as e:
             Log.e(
-                TAG, f"Dissipation drop effect cancelation failed due to error. Using original data.")
+                TAG, f"Drop effect cancelation failed due to error. Using original data.")
             Log.e(TAG, f"Error Details: {str(e)}")
             return [None, None]
 
