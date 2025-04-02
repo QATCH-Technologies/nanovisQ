@@ -1023,7 +1023,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_folder = data_folder
         self.data_run = data_file
         if data_device == None:
-            for _, dirs, _ in os.walk(os.path.join(os.getcwd(), Constants.log_export_path)):
+            for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
             self.AnalyzeProc.scan_for_most_recent_run = True
@@ -1054,7 +1054,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.data_files = FileStorage.DEV_get_logged_data_files(
                 data_device, data_folder)
             if "capture.zip" in self.data_files:
-                zn = os.path.join(Constants.log_export_path,
+                zn = os.path.join(Constants.log_prefer_path,
                                   data_device, data_folder, "capture.zip")
                 if FileManager.file_exists(zn):
                     with pyzipper.AESZipFile(zn, 'r',
@@ -1114,7 +1114,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # do analysis here, we've been given a device, folder and file to get data from
         data_path = os.path.join(
-            Constants.log_export_path, data_device, data_folder, data_file)
+            Constants.log_prefer_path, data_device, data_folder, data_file)
 
         is_good = True  # AnalyzeProcess.Model_Data(data_path)
         if not is_good:

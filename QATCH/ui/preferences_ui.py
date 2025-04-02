@@ -8,6 +8,7 @@ from PyQt5.QtGui import QIcon
 import os
 TAG = '[Preferences]'
 SELECT_TAG_PROMPT = Constants.select_tag_prompt
+SUBFOLDER_FIELD = Constants.subfolder_field
 
 
 class PreferencesUI(QWidget):
@@ -234,7 +235,7 @@ class PreferencesUI(QWidget):
         # Add tabs to the tab widget
         self.tab_widget.addTab(date_time_tab, "Date and Time Preferences")
         self.tab_widget.addTab(file_folder_tab, "File and Folder Preferences")
-        self.tab_widget.addTab(default_data_tab, "Default Data Path")
+        self.tab_widget.addTab(default_data_tab, "Default Data Paths")
         # Connect tab change signal to handler
         self.tab_widget.currentChanged.connect(self.handle_tab_change)
 
@@ -337,6 +338,9 @@ class PreferencesUI(QWidget):
             combo = QComboBox()
             # Add the "Select tag" placeholder as the first item
             combo.addItem(SELECT_TAG_PROMPT)
+            # # Add "Subfolder" field as the 2nd item for folder format only
+            # if combo_list != self.file_format_combos:
+            #     combo.addItem(SUBFOLDER_FIELD)
             # Filter out already selected tags from the available options
             available_tags = [
                 tag for tag in self.tags if tag not in self.selected_tags]
@@ -620,6 +624,34 @@ class PreferencesUI(QWidget):
                          for combo in self.folder_format_combos]
         file_delimiter = self.file_delimiter_combo.currentText()
         folder_delimiter = self.folder_delimiter_combo.currentText()
+
+        # Check "Port" exists in format dropdowns
+        if not "Port" in file_format:
+            self.show_error_dialog(
+                "File Format Error",
+                "The \"Port\" tag must exist in the file format to create unique paths for multiplex runs.\n" +
+                "For single runs, the tag's value will be blank (unused).")
+            return
+        # if not "Port" in folder_format:
+        #     self.show_error_dialog(
+        #         "Folder Format Error",
+        #         "The \"Port\" tag must exist in the folder format to create unique paths for multiplex runs.\n" +
+        #         "For single runs, the tag's value will be blank (unused).")
+        #     return
+
+        # Check tag placeholder text does not exist in format dropdowns
+        if Constants.select_tag_prompt in file_format:
+            self.show_error_dialog(
+                "File Format Error",
+                f"The \"{Constants.select_tag_prompt}\" placeholder is not a valid tag.\n" +
+                "Please remove it from the file format and try again.")
+            return
+        if Constants.select_tag_prompt in folder_format:
+            self.show_error_dialog(
+                "Folder Format Error",
+                f"The \"{Constants.select_tag_prompt}\" placeholder is not a valid tag.\n" +
+                "Please remove it from the folder format and try again.")
+            return
 
         file_format_pattern = ""
         folder_format_pattern = ""

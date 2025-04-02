@@ -600,7 +600,7 @@ class FileStorage:
     @staticmethod
     def DEV_get_logged_data_folders(dev_name):
         try:
-            path = os.path.join(Constants.log_export_path, dev_name)
+            path = os.path.join(Constants.log_prefer_path, dev_name)
             return [folder for folder in os.listdir(path) if os.path.isdir(os.path.join(path, folder))]
         except:
             # most likely cause: this device has not yet produced any logged_data (thrown by listdir)
@@ -613,7 +613,7 @@ class FileStorage:
     @staticmethod
     def DEV_get_logged_data_files(dev_name, data_folder):
         try:
-            path = os.path.join(Constants.log_export_path,
+            path = os.path.join(Constants.log_prefer_path,
                                 dev_name, data_folder)
             return [file for file in os.listdir(path) if not os.path.isdir(os.path.join(path, file))]
         except:

@@ -170,6 +170,7 @@ class Constants:
     # LOG parameters #
     ##################
     log_export_path = "logged_data"
+    log_prefer_path = "logged_data"
     log_filename = "{}.log".format(app_title)
     log_max_bytes = 5120
     log_default_console_log = True
@@ -217,6 +218,7 @@ class Constants:
         local_app_data_path, "tokens", "auto_sign_key.pem")
 
     select_tag_prompt = '-- Select Tag --'
+    subfolder_field = f'/ (Subfolder)'
     valid_tags = ["Username", "Initials", "Device",
                   "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]

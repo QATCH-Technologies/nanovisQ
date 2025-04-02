@@ -1632,10 +1632,10 @@ class UserPreferences:
 
             self._set_load_data_path(load_data_path)
             self._set_write_data_path(write_data_path)
-            self._set_folder_format_pattern(folder_tag_format)
-            self._set_file_format_pattern(file_tag_format)
             self._set_folder_delimiter(folder_delimiter)
+            self._set_folder_format_pattern(folder_tag_format)
             self._set_file_delimiter(filename_delimiter)
+            self._set_file_format_pattern(file_tag_format)
             self._set_date_format(date_format)
             self._set_time_format(time_format)
         except Exception as e:
@@ -1904,6 +1904,10 @@ class UserPreferences:
                     Log.d(TAG, 'Single device does not use "Port" tag, skipping')
                     continue  # skip "Port" tag if single device
                 save_path = save_path + self._on_port(port_id)
+            elif tag == Constants.subfolder_field:
+                # only add '/' for new folder, stripping any delimeters
+                save_path = save_path.strip(delimiter) + '/'
+                continue  # skip adding another delimeter
             elif tag == Constants.select_tag_prompt:
                 Log.w(TAG, 'Ignoring empty folder format tag pattern')
                 continue  # skip adding another delimeter
@@ -1913,6 +1917,9 @@ class UserPreferences:
             if i < len(pattern) - 1:
                 save_path = save_path + delimiter
 
+        # Prevent path from starting/ending with '/' character
+        save_path = save_path.strip(Constants.slash)
+
         return save_path
 
     def _on_username(self) -> str:
@@ -1921,8 +1928,8 @@ class UserPreferences:
             username = user_info[0]
             return username
         else:
-            Log.e(TAG, 'Invalid user session')
-            raise ValueError("Invalid user session")
+            Log.e(TAG, 'Invalid user session. Using username "Anonymous User".')
+            return "Anonymous User"  # raise ValueError("Invalid user session")
 
     def _on_initials(self) -> str:
         is_valid, user_info = UserProfiles.session_info()
@@ -1930,8 +1937,8 @@ class UserPreferences:
             initials = user_info[1]
             return initials
         else:
-            Log.e(TAG, 'Invalid user session')
-            raise ValueError("Invalid user session")
+            Log.e(TAG, 'Invalid user session. Using initials "ANON".')
+            return "ANON"  # raise ValueError("Invalid user session")
 
     def _on_device(self, device_id: int) -> str:
         return str(device_id)
@@ -1974,18 +1981,20 @@ class UserPreferences:
         self._user_session = user_session_key
 
     def _set_folder_format_pattern(self, folder_format_pattern: str) -> None:
-        for delimiter in Constants.path_delimiters:
-            folder_format_pattern = folder_format_pattern.replace(
-                delimiter, '|')
-        split_parts = folder_format_pattern.split('|')
+        # for delimiter in Constants.path_delimiters:
+        #     folder_format_pattern = folder_format_pattern.replace(
+        #         delimiter, '|')
+        delimeter = self._get_folder_delimiter()
+        split_parts = folder_format_pattern.split(delimeter)
         tokens = [part for part in split_parts]
         self._folder_format_pattern = tokens
 
     def _set_file_format_pattern(self, file_format_pattern: str) -> None:
-        for delimiter in Constants.path_delimiters:
-            file_format_pattern = file_format_pattern.replace(
-                delimiter, '|')
-        split_parts = file_format_pattern.split('|')
+        # for delimiter in Constants.path_delimiters:
+        #     file_format_pattern = file_format_pattern.replace(
+        #         delimiter, '|')
+        delimeter = self._get_file_delimiter()
+        split_parts = file_format_pattern.split(delimeter)
         tokens = [part for part in split_parts]
         self._file_format_pattern = tokens
 
@@ -2009,7 +2018,7 @@ class UserPreferences:
 
     def _set_load_data_path(self, load_data_path: str) -> None:
         self._load_data_path = load_data_path
-        Constants.log_export_path = self._load_data_path
+        Constants.log_prefer_path = self._load_data_path
 
     def _set_write_data_path(self, write_data_path: str) -> None:
         self._write_data_path = write_data_path
