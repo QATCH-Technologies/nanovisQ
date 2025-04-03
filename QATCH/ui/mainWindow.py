@@ -15,7 +15,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.q_forecaster import QForecasterDataprocessor, QForecasterPredictor
+from QATCH.QModel.q_forecaster import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
@@ -1010,12 +1010,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
             pass
         else:
-            qfp_path = os.path.join(Architecture.get_path(),
-                                    r"QATCH\QModel\SavedModels\forecaster")
-            self._forecaster = QForecasterPredictor(
-                batch_threshold=50, save_dir=qfp_path)
-            self._forecaster.load_models()
-        self.forecast_predictions = {'status': 'init'}
+            start_booster_path = os.path.join(Architecture.get_path(),
+                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+            end_booster_path = os.path.join(Architecture.get_path(),
+                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+            scaler_path = os.path.join(Architecture.get_path(),
+                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+            self._forecaster = QForecastPredictor(
+                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+        self.forecast_status = FillStatus.NO_FILL
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -2701,33 +2704,22 @@ class MainWindow(QtWidgets.QMainWindow):
             vectoramb = self.worker.get_d4_buffer(0)
 
             #  Build dataframe from worker databuffer.
-            new_data = QForecasterDataprocessor.convert_to_dataframe(
+            new_data = QForecastDataProcessor.convert_to_dataframe(
                 self.worker)
 
             # Flag to use the fill forecaster.
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
-                    self.forecast_predictions = self.worker._forecaster_out.get()
+                    self.forecast_status = self.worker._forecaster_out.get()
             else:
-                self.forecast_predictions = self._forecaster.update_predictions(
+                self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)
 
-            # If status is complete, update the corresponding progress bars with latest results.
-            if self.forecast_predictions['status'] == 'completed':
-                self.forecast_predictions['status'] = 'processed'
-                results = self.forecast_predictions.get(
-                    'pred', 0)
-                stable_results = self.forecast_predictions.get(
-                    'stable_predictions', None)
-                if stable_results is not None:
-                    pred = max(results)
-                else:
-                    pred = max(list(stable_results.keys()))
-                self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-                    pred)
-                self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-                    Constants.FILL_TYPE_LABEL_MAP.get(pred, ""))
+            self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+                self.forecast_status.value)
+            self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 

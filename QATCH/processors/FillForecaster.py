@@ -15,7 +15,7 @@ from logging.handlers import QueueHandler
 from typing import Any, Optional, Dict
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from QATCH.QModel.q_forecaster import QForecasterPredictor
+from QATCH.QModel.q_forecaster import QForecastPredictor, FillStatus
 
 TAG = "[FillForecaster]"
 
@@ -49,7 +49,7 @@ class FillForecasterProcess(multiprocessing.Process):
         self._done = multiprocessing.Event()
         self._queue_in: multiprocessing.Queue = queue_in
         self._queue_out: multiprocessing.Queue = queue_out
-        self.forecast_predictions: Dict[str, Any] = {'status': 'init'}
+        self.state: FillStatus = FillStatus.NO_FILL
 
     def run(self) -> None:
         """Runs the process to process incoming data and compute predictions.
@@ -80,13 +80,15 @@ class FillForecasterProcess(multiprocessing.Process):
             multiprocessing_logger.setLevel(logging.WARNING)
 
             # Run once actions, on start of process:
-            qfp_path: str = os.path.join(Architecture.get_path(),
-                                         r"QATCH\QModel\SavedModels\forecaster")
-            self._forecaster = QForecasterPredictor(
-                batch_threshold=50, save_dir=qfp_path)
-            self._forecaster.load_models()
-            self.forecast_predictions = {'status': 'init'}
-
+            start_booster_path = os.path.join(Architecture.get_path(),
+                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+            end_booster_path = os.path.join(Architecture.get_path(),
+                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+            scaler_path = os.path.join(Architecture.get_path(),
+                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+            self._forecaster = QForecastPredictor(
+                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+            self.state = FillStatus.NO_FILL
             while not self._exit.is_set():
                 while self._queue_in.empty() and not self._exit.is_set():
                     pass
@@ -99,12 +101,9 @@ class FillForecasterProcess(multiprocessing.Process):
 
                 # Process the new data if it exists and is not empty.
                 if new_data is not None and not new_data.empty:
-                    self.forecast_predictions = self._forecaster.update_predictions(
+                    self._forecaster.update_predictions(
                         new_data=new_data)
-
-                # Output completed prediction results to the output queue.
-                if self.forecast_predictions.get('status') == 'completed':
-                    self._queue_out.put(self.forecast_predictions)
+                self._queue_out.put(self._forecaster.get_fill_status())
 
         except Exception:
             # Capture and log the traceback in case of an exception.
