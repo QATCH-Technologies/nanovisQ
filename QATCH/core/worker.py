@@ -6,6 +6,7 @@ from QATCH.core.constants import Constants, OperationType
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
 from QATCH.processors.Calibration import CalibrationProcess
+from QATCH.processors.FillForecaster import FillForecasterProcess
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.ringBuffer import RingBuffer
@@ -103,6 +104,11 @@ class Worker:
         self._acquisition_process = None
         self._parser_process = None
 
+        # live forecaster model
+        self._forecaster_process = None
+        self._forecaster_in = Queue()
+        self._forecaster_out = Queue()
+
         # others
         self._QCS_on = QCS_on  # QCS installed on device (unused now)
         self._port = port     # dynamically select COM vs Ethernet
@@ -163,6 +169,13 @@ class Worker:
                 else:
                     (self._overtone_name, self._overtone_value, self._fStep, self._readFREQ, SG_window_size,
                      spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
+
+                # Create and start live forecaster
+                self._forecaster_process = FillForecasterProcess(
+                    self._queueLog,
+                    self._forecaster_in,
+                    self._forecaster_out)
+                self._forecaster_process.start()
 
                 # Prepopulate frequency buffer before starting
                 for i in range(len(self._data0_buffer)):
@@ -235,6 +248,11 @@ class Worker:
         self._parser_process.stop()
         self._parser_process.terminate()
         self._parser_process.join()
+
+        if self._forecaster_process is not None:
+            self._forecaster_process.stop()
+            self._forecaster_process.terminate()
+            self._forecaster_process.join()
 
         Log.i(TAG, "Processes finished")
 
