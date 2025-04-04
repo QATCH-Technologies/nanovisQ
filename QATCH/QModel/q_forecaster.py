@@ -1,17 +1,17 @@
-# q_forecast_predictor.py
+#! q_forecast_predictor.py
 """
 This module provides the QForecastPredictor class, which uses XGBoost boosters 
 and a scaler to process forecast data and update prediction states. The predictor 
 maintains an internal data buffer and toggles between available boosters to signal 
 the fill status based on a prediction threshold.
 
-Author: 
+Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
     04-04-2025
 
-Version
+Version:
     V2
 """
 
@@ -59,7 +59,16 @@ class QForecastPredictor:
             start_booster_path (str): File path for the start booster model.
             end_booster_path (str): File path for the end booster model.
             scaler_path (str): File path for the scaler used for transforming data.
+
+        Raises:
+            ValueError: If any of the provided paths is not a non-empty string.
         """
+        for path, name in [(start_booster_path, "start_booster_path"),
+                           (end_booster_path, "end_booster_path"),
+                           (scaler_path, "scaler_path")]:
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError(f"{name} must be a non-empty string.")
+
         self._start_booster: xgb.Booster = self._load_model(start_booster_path)
         self._end_booster: xgb.Booster = self._load_model(end_booster_path)
         self._scaler: Pipeline = self._load_scaler(scaler_path)
@@ -86,8 +95,16 @@ class QForecastPredictor:
         Args:
             new_data (pd.DataFrame): New incoming data to add to the buffer.
             prediction_rate (int, optional): The number of data points required to trigger a prediction.
-                                              Defaults to 100.
+                                             Defaults to 100.
+
+        Raises:
+            ValueError: If new_data is not a DataFrame or prediction_rate is not a positive integer.
         """
+        if not isinstance(new_data, pd.DataFrame):
+            raise ValueError("new_data must be a pandas DataFrame.")
+        if not isinstance(prediction_rate, int) or prediction_rate <= 0:
+            raise ValueError("prediction_rate must be a positive integer.")
+
         self._extend_buffer(new_data=new_data)
         if self._prediction_buffer_size >= prediction_rate:
             self._prediction_buffer_size = 0
@@ -99,8 +116,17 @@ class QForecastPredictor:
 
         Args:
             new_data (pd.DataFrame): DataFrame containing new data to be appended.
+
+        Raises:
+            ValueError: If new_data does not contain the 'Relative_time' column.
         """
-        if self._data is None:
+        if not isinstance(new_data, pd.DataFrame):
+            raise ValueError("new_data must be a pandas DataFrame.")
+        if not new_data.empty and 'Relative_time' not in new_data.columns:
+            raise ValueError(
+                "new_data must contain the 'Relative_time' column.")
+
+        if self._data is None or self._data.empty:
             self._data = pd.DataFrame(columns=new_data.columns)
         self._data = pd.concat([self._data, new_data], ignore_index=True)
         self._prediction_buffer_size += len(new_data)
@@ -111,6 +137,9 @@ class QForecastPredictor:
 
         Returns:
             FillStatus: The updated fill status after processing predictions.
+
+        Raises:
+            Exception: If no valid booster is active.
         """
         if self._active_booster == AvailableBoosters.START:
             return self._process_prediction(
@@ -153,14 +182,26 @@ class QForecastPredictor:
         Returns:
             FillStatus: The updated fill status after processing prediction.
         """
+        if not isinstance(loc, dict):
+            raise ValueError("loc must be a dictionary.")
+
         start_index: int = loc.get('index')
         start_time: float = loc.get('time')
         predictions: np.ndarray = self._get_predictions(
             booster=booster, start_index=start_index, start_time=start_time)
+        if predictions.size == 0:
+            Logger.e(TAG, "No predictions were generated.")
+            raise ValueError("No predictions generated from the booster.")
+
         if (predictions == 1).any():
             new_index: int = int(np.argmax(predictions == 1))
             loc['index'] = new_index
-            loc['time'] = self._data.loc[new_index, 'Relative_time']
+            try:
+                loc['time'] = self._data.loc[new_index, 'Relative_time']
+            except Exception as e:
+                Logger.e(
+                    TAG, f"Error accessing 'Relative_time' at index {new_index}: {e}")
+                raise
             self._active_booster = next_active
             return completion_status
         return waiting_status
@@ -181,13 +222,28 @@ class QForecastPredictor:
 
         Returns:
             np.ndarray: An array of binary predictions based on the probability threshold.
+
+        Raises:
+            ValueError: If the processed features DataFrame is empty.
         """
         features: pd.DataFrame = QForecastDataProcessor.process_data(
             self._data, live=True, start_idx=start_index, start_time=start_time)
+        if features.empty:
+            Logger.e(
+                TAG, "Processed features are empty; unable to perform predictions.")
+            raise ValueError("Processed features are empty.")
         Logger.i(TAG, features.columns)
-        transformed_features = self._scaler.transform(features)
+        try:
+            transformed_features = self._scaler.transform(features)
+        except Exception as e:
+            Logger.e(TAG, f"Error transforming features: {e}")
+            raise
         dfeatures = xgb.DMatrix(transformed_features)
-        probabilities: np.ndarray = booster.predict(dfeatures)
+        try:
+            probabilities: np.ndarray = booster.predict(dfeatures)
+        except Exception as e:
+            Logger.e(TAG, f"Error during booster prediction: {e}")
+            raise
         predictions: np.ndarray = (
             probabilities > PREDICTION_THRESHOLD).astype(int)
         return predictions
@@ -203,8 +259,11 @@ class QForecastPredictor:
             xgb.Booster: The loaded XGBoost booster model.
 
         Raises:
+            ValueError: If booster_path is not a non-empty string.
             Exception: If the booster file does not exist or fails to load.
         """
+        if not isinstance(booster_path, str) or not booster_path.strip():
+            raise ValueError("booster_path must be a non-empty string.")
         if not os.path.exists(booster_path):
             Logger.e(TAG, f"Booster path `{booster_path}` does not exist.")
             raise Exception(f"Booster path `{booster_path}` does not exist.")
@@ -231,8 +290,11 @@ class QForecastPredictor:
             Pipeline: The loaded scaler pipeline.
 
         Raises:
+            ValueError: If scaler_path is not a non-empty string.
             Exception: If the scaler file does not exist or fails to load.
         """
+        if not isinstance(scaler_path, str) or not scaler_path.strip():
+            raise ValueError("scaler_path must be a non-empty string.")
         if not os.path.exists(scaler_path):
             Logger.e(TAG, f"Scaler path `{scaler_path}` does not exist.")
             raise Exception(f"Scaler path `{scaler_path}` does not exist.")
