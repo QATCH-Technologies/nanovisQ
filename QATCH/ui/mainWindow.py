@@ -587,6 +587,9 @@ class Rename_Output_Files(QtCore.QObject):
                 content = file.readlines()
                 content.sort()
 
+            # Start InterpTempsProcess, if a multiplex run
+            self.interp_temps(content)
+
             # Current device directory.
             current_directory = ""
 
@@ -676,8 +679,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 status_ok = False  # bad run, don't save with custom name
 
                         # Remove any invalid characters from user input
-                        invalid_characters = "\\/:*?\"'<>|"
-                        for character in invalid_characters:
+                        # invalid_characters = "\\/:*?\"'<>|"
+                        for character in Constants.invalidChars:
                             input_text = input_text.replace(
                                 character, '')
 
@@ -724,6 +727,14 @@ class Rename_Output_Files(QtCore.QObject):
                             if not force_save:
                                 input_text += "_BAD"
                         break
+
+                # We *must* wait here until InterpTempsProcess has finished
+                self._logHandler.stop()  # stop log handler timer
+                if self.pInterpTemps.is_running():
+                    Log.w("Waiting for InterpTempsProcess to finish...")
+                while self.pInterpTemps.is_running():
+                    self.interp_logger()  # wait for exit, handle logger
+                self.interp_report()  # report any failures to user
 
                 # Construct new run path to the new run path under run parent directory.
                 new_run_path = os.path.join(
