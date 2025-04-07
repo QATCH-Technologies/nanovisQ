@@ -1,15 +1,15 @@
 #! q_forecast_predictor.py
 """
-This module provides the QForecastPredictor class, which uses XGBoost boosters 
-and a scaler to process forecast data and update prediction states. The predictor 
-maintains an internal data buffer and toggles between available boosters to signal 
+This module provides the QForecastPredictor class, which uses XGBoost boosters
+and a scaler to process forecast data and update prediction states. The predictor
+maintains an internal data buffer and toggles between available boosters to signal
 the fill status based on a prediction threshold.
 
 Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    04-04-2025
+    04-07-2025
 
 Version:
     V2
@@ -20,13 +20,15 @@ import numpy as np
 import xgboost as xgb
 import pickle
 import pandas as pd
+import threading
 from enum import Enum
 from sklearn.pipeline import Pipeline
 from QATCH.common.logger import Logger
 from QATCH.QModel.q_forecast_data_processor import QForecastDataProcessor
 
 # Global constants
-PREDICTION_THRESHOLD: float = 0.75
+PREDICTION_THRESHOLD: float = 0.80
+WAIT_TIME = 2
 TAG: list = ['QForecastPredictor']
 
 
@@ -47,7 +49,7 @@ class QForecastPredictor:
     """
     Class for forecasting predictions using XGBoost models and a scaler.
 
-    This predictor maintains an internal buffer of data and alternates between two 
+    This predictor maintains an internal buffer of data and alternates between two
     boosters (start and end) to determine if the fill process is ongoing or complete.
     """
 
@@ -78,6 +80,9 @@ class QForecastPredictor:
         self._active_booster: AvailableBoosters = AvailableBoosters.START
         self._start_loc: dict = {'index': -1, 'time': -1.0}
         self._end_loc: dict = {'index': -1, 'time': -1.0}
+        self._last_max_time: float = 0.5
+        self._has_reported_full_fill = False
+        self._is_waiting_for_full_fill = False
 
     def get_fill_status(self) -> FillStatus:
         """
@@ -125,11 +130,20 @@ class QForecastPredictor:
         if not new_data.empty and 'Relative_time' not in new_data.columns:
             raise ValueError(
                 "new_data must contain the 'Relative_time' column.")
-
+        # time = new_data['Relative_time']
+        # Logger.i(TAG, f'{time}')
         if self._data is None or self._data.empty:
             self._data = pd.DataFrame(columns=new_data.columns)
-        self._data = pd.concat([self._data, new_data], ignore_index=True)
-        self._prediction_buffer_size += len(new_data)
+        new_data_filtered = new_data[new_data['Relative_time']
+                                     > self._last_max_time]
+        self._data = pd.concat(
+            [self._data, new_data_filtered], ignore_index=True)
+        self._prediction_buffer_size += len(new_data_filtered)
+        if not self._data.empty:
+            self._last_max_time = self._data['Relative_time'].max()
+            self._data.sort_values(
+                by='Relative_time', ascending=True, inplace=True)
+            self._data.reset_index(drop=True, inplace=True)
 
     def _predict(self) -> FillStatus:
         """
@@ -142,6 +156,7 @@ class QForecastPredictor:
             Exception: If no valid booster is active.
         """
         if self._active_booster == AvailableBoosters.START:
+            Logger.d(TAG, 'Using start booster.')
             return self._process_prediction(
                 booster=self._start_booster,
                 loc=self._start_loc,
@@ -150,13 +165,29 @@ class QForecastPredictor:
                 waiting_status=FillStatus.NO_FILL,
             )
         elif self._active_booster == AvailableBoosters.END:
-            return self._process_prediction(
+            Logger.d(TAG, 'Using end booster.')
+            # If FULL_FILL has already been finalized, return it immediately.
+            if self._has_reported_full_fill:
+                return FillStatus.FULL_FILL
+
+            result = self._process_prediction(
                 booster=self._end_booster,
                 loc=self._end_loc,
-                next_active=AvailableBoosters.END,  # or update as needed
+                next_active=AvailableBoosters.END,
                 completion_status=FillStatus.FULL_FILL,
                 waiting_status=FillStatus.FILLING,
             )
+
+            if result == FillStatus.FULL_FILL:
+                # If not already waiting, start a non-blocking timer.
+                if not self._is_waiting_for_full_fill:
+                    self._is_waiting_for_full_fill = True
+                    timer = threading.Timer(WAIT_TIME, self._set_full_fill)
+                    timer.start()
+                # While waiting, return FILLING to the caller.
+                return FillStatus.FILLING
+            else:
+                return result
         else:
             Logger.e(TAG, "No valid booster active.")
             raise Exception("No valid booster active.")
@@ -232,7 +263,6 @@ class QForecastPredictor:
             Logger.e(
                 TAG, "Processed features are empty; unable to perform predictions.")
             raise ValueError("Processed features are empty.")
-        Logger.i(TAG, features.columns)
         try:
             transformed_features = self._scaler.transform(features)
         except Exception as e:
@@ -241,6 +271,8 @@ class QForecastPredictor:
         dfeatures = xgb.DMatrix(transformed_features)
         try:
             probabilities: np.ndarray = booster.predict(dfeatures)
+            Logger.d(
+                TAG, f'Max prob {max(probabilities)} @ idx {np.argmax(probabilities)}, data length={len(self._data)}')
         except Exception as e:
             Logger.e(TAG, f"Error during booster prediction: {e}")
             raise
@@ -308,3 +340,8 @@ class QForecastPredictor:
             Logger.e(
                 TAG, f'Error loading scaler with path `{scaler_path}`: {e}.')
             raise
+
+    def _set_full_fill(self):
+        """Callback for the timer to finalize FULL_FILL reporting."""
+        self._has_reported_full_fill = True
+        self._is_waiting_for_full_fill = False

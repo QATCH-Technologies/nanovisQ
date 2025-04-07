@@ -17,7 +17,6 @@ Version:
 
 import os
 import random
-import logging
 from typing import Any, List, Tuple, Union, Dict
 import numpy as np
 import pandas as pd
@@ -536,12 +535,6 @@ class QForecastDataProcessor:
         xs = df["Relative_time"]
         i = next((x for x, t in enumerate(xs) if t > 0.5), None)
         j = next((x for x, t in enumerate(xs) if t > 2.5), None)
-
-        if i is None or j is None:
-            raise ValueError(
-                "Unable to determine valid indices for computing difference curve.")
-        if j <= i:
-            raise ValueError("Invalid indices: 'j' must be greater than 'i'.")
 
         avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()
         avg_diss = df["Dissipation"].iloc[i:j].mean()

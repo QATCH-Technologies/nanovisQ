@@ -5,6 +5,16 @@ This module provides a multiprocessor process that handles non-blocking real-tim
 predictions to offer a live estimation of the current fill state during a run.
 It utilizes the QForecasterPredictor model from QATCH.QModel.q_forecaster to update
 predictions based on incoming data received via a multiprocessing queue.
+
+Author(s):
+    Alexander Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    04-07-2025
+
+Version:
+    V2
 """
 
 import os
@@ -93,7 +103,7 @@ class FillForecasterProcess(multiprocessing.Process):
                 while self._queue_in.empty() and not self._exit.is_set():
                     pass
 
-                new_data: Optional[Any] = None
+                new_data = None
 
                 # Read all available data from the queue; process only the most recent one.
                 while not self._queue_in.empty():

@@ -1162,8 +1162,6 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.fill_prediction_progress_bar.setObjectName("fillProgressBar")
         self.fill_prediction_progress_bar.setStyleSheet(styleBar)
 
-        # self.progressBar.setProperty("value", 0)
-
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
             self.fill_prediction_progress_bar.setFixedHeight(50)
