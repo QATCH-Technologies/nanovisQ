@@ -234,6 +234,7 @@ class Ui_Main(object):
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
+            self.parent.ControlsWin.ui_preferences.hide()
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet(
                 "padding: 10px; padding-left: 15px;")
@@ -1054,7 +1055,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         def link(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
         self.title.linkActivated.connect(link)
-        self.title.setText('<a href="https://openqcm.com/openqcm-q-1-software"> <font color=#008EC0 >user guide</font>')
+        self.title.setText(
+            '<a href="https://openqcm.com/openqcm-q-1-software"> <font color=#008EC0 >user guide</font>')
         self.Layout_controls.addWidget(self.title, 2, 5, 1, 1)
         self.pixmap = QtGui.QPixmap("guide.ico")
         self.ico.setPixmap(self.pixmap)
@@ -1591,7 +1593,8 @@ class Ui_Plots(object):
         def link1(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
         self.label.linkActivated.connect(link1)
-        self.label.setText('<a href="https://openqcm.com/"> <font color=#333333 >Open-source Python application for displaying, processing and storing real-time data from openQCM Q-1 Device</font> </a>')
+        self.label.setText(
+            '<a href="https://openqcm.com/"> <font color=#333333 >Open-source Python application for displaying, processing and storing real-time data from openQCM Q-1 Device</font> </a>')
         """
 
         self.Layout_graphs.addWidget(self.pltB)
@@ -1834,8 +1837,10 @@ class Ui_Info(object):
 
         # Check internet connection -------------------------------------------------------------
         '''self.lweb2 = QtWidgets.QLabel()
-        self.lweb2.setStyleSheet('background: white; padding: 1px; border: 1px solid #cccccc')
-        self.lweb2.setText("<font color=#0000ff > Checking your internet connection </font>")
+        self.lweb2.setStyleSheet(
+            'background: white; padding: 1px; border: 1px solid #cccccc')
+        self.lweb2.setText(
+            "<font color=#0000ff > Checking your internet connection </font>")
         # self.lweb2.setFixedHeight(20)
         #self.lweb2.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.lweb2, 19, 0, 1, 1)'''

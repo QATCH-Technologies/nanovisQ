@@ -1518,7 +1518,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             enable_back = enable_next = False
 
         # Apply button states
-        self.tool_Load.setEnabled(enable_load)
+        self.tBtn_Load.setEnabled(enable_load)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
@@ -2077,6 +2077,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def summaryAt(self, idx):
         if not self.AI_SelectTool_Frame.isVisible():
             self.AI_Guess_Maxs = []
+
             for candidates, confidences in self.model_candidates:
                 self.AI_Guess_Maxs.append(len(candidates))
         self.AI_SelectTool_At = idx
@@ -2249,7 +2250,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 if self.run_timestamps.get(dict_key) == None:
                     doc = None
                     zn = os.path.join(
-                        Constants.log_export_path, data_device, data_folder, "audit.zip"
+                        Constants.log_prefer_path, data_device, data_folder, "audit.zip"
                     )
                     if FileManager.file_exists(zn):
                         with pyzipper.AESZipFile(
@@ -2279,7 +2280,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 x for x in data_files if x.endswith(".xml")
                             ][0]
                             xml_path = os.path.join(
-                                Constants.log_export_path,
+                                Constants.log_prefer_path,
                                 data_device,
                                 data_folder,
                                 xml_filename,

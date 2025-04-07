@@ -1,4 +1,6 @@
 from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles
+from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -38,8 +40,8 @@ class Ui_Export(QtWidgets.QWidget):
         super(Ui_Export, self).__init__(parent)
 
         USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
-        self.resize(500, 500)
-        self.move(500, 50)
+        self.setMinimumSize(500, 500)
+        # self.move(500, 50)
 
         self.layout = QtWidgets.QVBoxLayout(self)
 
@@ -416,6 +418,10 @@ class Ui_Export(QtWidgets.QWidget):
         self.layout.addWidget(self.tabs)
         # self.layout.addWidget(groupbox3)
         self.setLayout(self.layout)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH\icons\import-export.png')
+        icon = QtGui.QIcon(icon_path)
+        self.setWindowIcon(icon)
         self.setWindowTitle("Import/Export Data")
 
         self.usb_add.connect(self.ui_add)
@@ -439,6 +445,8 @@ class Ui_Export(QtWidgets.QWidget):
     def showNormal(self, tab_idx=0):
         super(Ui_Export, self).hide()
         super(Ui_Export, self).showNormal()
+        self.resize(self.minimumSize())
+
         self.tabs.setCurrentIndex(tab_idx)
         self.generateExportName()
 
@@ -852,8 +860,19 @@ class Ui_Export(QtWidgets.QWidget):
                         self.importNow.setEnabled(True)
                         self.importCancel.setEnabled(False)
                         return
-                    local_data = os.path.join(
-                        os.getcwd(), Constants.log_export_path)
+
+                    # # Change working import directory to the user_preferences load directory.
+                    # # i.e. load data to a specific directory as opposed ot just the logged_data
+                    # # directory.
+                    # preferences_load_path = UserProfiles.user_preferences._get_load_data_path()
+                    # if preferences_load_path == "":
+                    #     local_data = os.path.join(
+                    #         os.getcwd(), Constants.log_export_path)
+                    # else:
+                    #     # If user preferences are set, load from the prefered load path.
+                    #     local_data = os.path.join(preferences_load_path)
+
+                    local_data = os.path.join(Constants.log_prefer_path)
                     Log.i(f"Import from {path} to {local_data}")
                     all_info = f.infolist()
                     zippedFolders = []
@@ -968,8 +987,23 @@ class Ui_Export(QtWidgets.QWidget):
                             all_files.append(os.path.join(root, file))
                     return xml_files, all_files
 
-                local_data = os.path.join(
-                    os.getcwd(), Constants.log_export_path)
+                # if not Constants.log_export_path in path:
+                #     path = os.path.join(path, Constants.log_export_path)
+                #     if not os.path.exists(path): raise ValueError("No logged data root found in archive.")
+                # relative = path[path.rindex(Constants.log_export_path):]
+
+                # # Change working import directory to the user_preferences load directory.
+                # # i.e. load data to a specific directory as opposed ot just the logged_data
+                # # directory.
+                # preferences_load_path = UserProfiles.user_preferences._get_load_data_path()
+                # if preferences_load_path == "":
+                #     local_data = os.path.join(
+                #         os.getcwd(), Constants.log_export_path)
+                # else:
+                #     # If user preferences are set, load from the prefered load path.
+                #     local_data = os.path.join(preferences_load_path)
+
+                local_data = os.path.join(Constants.log_prefer_path)
                 archive_filename = os.path.split(path)[1]
                 xml_files, all_files = find_xml_files(path)
                 export_to = {}
@@ -1138,7 +1172,7 @@ class Ui_Export(QtWidgets.QWidget):
             else:
                 output_folder += Constants.slash
             drive_or_folder = "USB drive" if self.chk1 else "folder"
-            data_path = os.path.join(os.getcwd(), Constants.log_export_path)
+            data_path = os.path.join(Constants.log_prefer_path)
             if Constants.log_export_path in output_folder:
                 export_path = os.path.join(output_folder[0:output_folder.rindex(
                     Constants.log_export_path)], Constants.log_export_path)
@@ -1257,7 +1291,7 @@ class Ui_Export(QtWidgets.QWidget):
                     if num_files > 1:
                         # force to directory, not a file
                         dst = os.path.join(top_level, os.path.split(path)[
-                                           1]) + Constants.slash
+                            1]) + Constants.slash
                     else:
                         dst = top_level
                     Log.d(f"Moving nested folders from {src} to {dst}...")
@@ -1453,7 +1487,7 @@ class Ui_Export(QtWidgets.QWidget):
     def eraseTask(self, abort):
         self.freeze_gui.emit(False)
         try:
-            data_path = os.path.join(os.getcwd(), Constants.log_export_path)
+            data_path = os.path.join(Constants.log_prefer_path)
             Log.i(TAG1, "Erasing local data...")
             self.progress.emit(
                 "Erasing local data... please wait...", 0, 'r', 0)

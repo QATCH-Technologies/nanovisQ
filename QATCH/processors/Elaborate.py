@@ -346,7 +346,6 @@ class ElaborateProcess(multiprocessing.Process):
         )
 
 # TODO AJR: Consider moving file writing operations to a separate thread
-
         if self._export:
             # Storing acquired sweeps
             filename = "{}_{}_{}".format(
@@ -372,6 +371,7 @@ class ElaborateProcess(multiprocessing.Process):
             filenameCSV = "{}_{}".format(
                 Constants.csv_filename, self._overtone_name.split(' ')[0])
             write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
+
             FileStorage.CSVsave(0, filenameCSV, Constants.csv_export_path, w_time, temperature,
                                 peak_mag, peak_freq, dissipation, t_amb, (k % write_interval == 0))
 
