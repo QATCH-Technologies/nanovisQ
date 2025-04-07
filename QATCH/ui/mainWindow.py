@@ -17,6 +17,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
+from QATCH.QModel.q_forecaster import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from time import time, mktime, strftime, strptime, localtime
@@ -1208,6 +1209,19 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
+        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            pass
+        else:
+            start_booster_path = os.path.join(Architecture.get_path(),
+                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+            end_booster_path = os.path.join(Architecture.get_path(),
+                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+            scaler_path = os.path.join(Architecture.get_path(),
+                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+            self._forecaster = QForecastPredictor(
+                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+        self.forecast_status = FillStatus.NO_FILL
+
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
 
@@ -1759,7 +1773,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.infobar.setText(
                 "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
             self.ControlsWin.ui1._update_progress_text()
-            self.ControlsWin.ui1.progressBar.repaint()
+            self.ControlsWin.ui1.run_progress_bar.repaint()
 
             # set variable to preload tensorflow module, if desired
             # hide info/warning logs from tf # lazy load
@@ -1927,7 +1941,7 @@ class MainWindow(QtWidgets.QMainWindow):
             "<font color=#0000ff > Ref. Frequency </font>")
         self.InfoWin.ui3.inforef2.setText(
             "<font color=#0000ff > Ref. Dissipation </font>")
-        self.ControlsWin.ui1.progressBar.setValue(0)
+        self.ControlsWin.ui1.run_progress_bar.setValue(0)
         Log.i(TAG, "Clicked STOP")
         self._timer_plot.stop()
         self._enable_ui(True)
@@ -2890,6 +2904,25 @@ class MainWindow(QtWidgets.QMainWindow):
             vector2 = self.worker.get_d2_buffer(0)
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
+
+            #  Build dataframe from worker databuffer.
+            new_data = QForecastDataProcessor.convert_to_dataframe(
+                self.worker)
+
+            # Flag to use the fill forecaster.
+            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+                self.worker._forecaster_in.put(new_data)
+                if not self.worker._forecaster_out.empty():
+                    self.forecast_status = self.worker._forecaster_out.get()
+            else:
+                self.forecast_status = self._forecaster.update_predictions(
+                    new_data=new_data)
+
+            self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+                self.forecast_status.value)
+            self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
+
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
             if self._ser_err_usb > 0:
@@ -3129,7 +3162,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.infobar.setText(
                     "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
                 # progressbar
-                self.ControlsWin.ui1.progressBar.setValue(
+                self.ControlsWin.ui1.run_progress_bar.setValue(
                     int((self._ser_control / 10) % 100))
 
         # CALIBRATION: dynamic info in infobar at run-time
@@ -3210,7 +3243,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         stop_flag = 1
 
             # progressbar -------------
-            self.ControlsWin.ui1.progressBar.setValue(
+            self.ControlsWin.ui1.run_progress_bar.setValue(
                 0 if stop_flag else int(self._completed+1))  # dwight ver const was 10
             self.InfoWin.ui3.l6a.setText(
                 "<font color=#0000ff>  Temperature </font>" + label3)
@@ -3950,7 +3983,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 e.setYRange(min=0, max=1)
         if self._plt2_arr[0] != None:
             self._annotate_welcome_text()
-        self.ControlsWin.ui1.progressBar.setValue(0)
+        self.ControlsWin.ui1.run_progress_bar.setValue(0)
 
     ###########################################################################
     # Reference set/reset

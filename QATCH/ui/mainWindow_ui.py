@@ -1151,16 +1151,31 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
                  """  # background:url("openQCM/icons/openqcm-logo.png")
-        self.progressBar = QtWidgets.QProgressBar()
-        self.progressBar.setStyleSheet(styleBar)
-        # self.progressBar.setProperty("value", 0)
-        self.progressBar.setGeometry(QtCore.QRect(0, 0, 50, 10))
-        self.progressBar.setObjectName("progressBar")
+        self.run_progress_bar = QtWidgets.QProgressBar()
+        self.run_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        self.run_progress_bar.setObjectName("progressBar")
+        self.run_progress_bar.setStyleSheet(styleBar)
+
+        self.fill_prediction_progress_bar = QtWidgets.QProgressBar()
+        self.fill_prediction_progress_bar.setMinimum(0)
+        self.fill_prediction_progress_bar.setMaximum(2)
+        self.fill_prediction_progress_bar.setGeometry(
+            QtCore.QRect(0, 0, 50, 10))
+        self.fill_prediction_progress_bar.setObjectName("fillProgressBar")
+        self.fill_prediction_progress_bar.setStyleSheet(styleBar)
+
         if USE_FULLSCREEN:
-            self.progressBar.setFixedHeight(50)
+            self.run_progress_bar.setFixedHeight(50)
+            self.fill_prediction_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
-            self.progressBar.valueChanged.connect(self._update_progress_value)
-        self.progressBar.setValue(0)
+            self.run_progress_bar.valueChanged.connect(
+                self._update_progress_value)
+
+        self.run_progress_bar.setValue(0)
+        self.fill_prediction_progress_bar.setValue(0)
+
+        self.fill_prediction_progress_bar.setFormat("Run: %v/%m (No Fill)")
+
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
         self.Layout_controls.setColumnStretch(2, 0)
@@ -1168,8 +1183,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.Layout_controls.setColumnStretch(4, 2)
         self.Layout_controls.setColumnStretch(5, 2)
         self.Layout_controls.setColumnStretch(6, 2)
-        self.Layout_controls.addWidget(self.progressBar, 0, 7, 1, 1)
-
+        self.Layout_controls.addWidget(self.run_progress_bar, 0, 7, 1, 1)
         self.gridLayout.addLayout(self.Layout_controls, 7, 1, 1, 1)
         # ---------------------------------------------------------------------
 
@@ -1323,16 +1337,19 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.toolBarWidget.setStyleSheet("background: #DDDDDD;")
 
         self.toolLayout.addWidget(self.toolBarWidget)
-        self.toolLayout.addWidget(self.progressBar)
+        self.toolLayout.addWidget(self.run_progress_bar)
+        self.toolLayout.addWidget(self.fill_prediction_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
+            # Remove bottom margin, leaving the rest as "default"
+            self.toolLayout.setContentsMargins(11, 11, 11, 0)
             self.centralwidget.setLayout(self.toolLayout)
 
             self.Layout_controls.removeWidget(self.infosave)  # tec controller
             self.Layout_controls.removeWidget(self.lTemp)  # label
             self.Layout_controls.removeWidget(self.slTemp)  # slider
             self.Layout_controls.removeWidget(self.pTemp)  # start/stop button
-            self.Layout_controls.removeWidget(self.progressBar)
+            self.Layout_controls.removeWidget(self.run_progress_bar)
             self.Layout_controls.removeWidget(self.lg)  # user guide
             self.Layout_controls.removeWidget(self.lmail)  # email
             self.Layout_controls.removeWidget(self.l4)  # website
@@ -1376,7 +1393,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             plain_text = "Progress: Not Started"
         else:
             plain_text = "Status: {}".format(plain_text)
-        self.progressBar.setFormat(plain_text)
+        self.run_progress_bar.setFormat(plain_text)
         styleBar = """
                     QProgressBar
                     {
@@ -1391,13 +1408,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
                  """.replace("{COLOR}", color)
-        self.progressBar.setStyleSheet(styleBar)
+        self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
         if self.cBox_Source.currentIndex() == OperationType.measurement.value:
             pass  # self._update_progress_text() # defer to infobar text, not percentage
         else:
-            self.progressBar.setFormat("Progress: %p%")
+            self.run_progress_bar.setFormat("Progress: %p%")
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -1430,12 +1447,18 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
     def action_initialize(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
+            self.fill_prediction_progress_bar.setValue(0)
+            self.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
 
     def action_start(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.measurement.value)
+            self.fill_prediction_progress_bar.setValue(0)
+            self.fill_prediction_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
             self.pButton_Start.clicked.emit()
 
     def action_stop(self):
@@ -1457,6 +1480,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             "<font color=#333333 > Program Status Standby </font>")
         self.cal_initialized = False
         self.tool_Start.setEnabled(False)
+        self.fill_prediction_progress_bar.setValue(0)
+        self.fill_prediction_progress_bar.setFormat(
+            Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
 
@@ -1564,6 +1590,8 @@ class Ui_Plots(object):
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
         self.gridLayout.setObjectName("gridLayout")
+        # Remove top margin, leaving the rest as "default"
+        self.gridLayout.setContentsMargins(11, 0, 11, 11)
         self.Layout_graphs = QtWidgets.QSplitter(
             QtCore.Qt.Horizontal)  # QGridLayout()
         self.Layout_graphs.setObjectName("Layout_graphs")
@@ -1624,7 +1652,7 @@ class Ui_Plots(object):
         # self.handleSplitterButton(False)
         self.Layout_graphs.splitterMoved.connect(self.handleSplitterMoved)
 
-        self.gridLayout.addWidget(self.Layout_graphs, 3, 1, 1, 1)
+        self.gridLayout.addWidget(self.Layout_graphs, 2, 1, 1, 1)
         MainWindow2.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(MainWindow2)

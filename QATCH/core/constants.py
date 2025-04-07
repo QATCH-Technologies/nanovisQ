@@ -316,7 +316,12 @@ class Constants:
     # In general, the first model to return a valid result will
     # prevent the execution of lower priority order model(s).
     preload_tensorflow = False  # otherwise, it will be loaded if/when needed
-
+    USE_MULTIPROCESS_FILL_FORECASTER = True
+    FILL_TYPE_LABEL_MAP = {
+        0: "Run: %v/%m (No Fill)",
+        1: "Run: %v/%m (Filling)",
+        2: "Run: %v/%m (Full Fill)",
+    }
     ######################
     # ANALYZE parameters #
     ######################
