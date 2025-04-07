@@ -1,8 +1,7 @@
 from enum import Enum
 from time import strftime, localtime
 import os
-import json
-
+import ctypes
 from QATCH.common.architecture import Architecture, OSType
 
 ###############################################################################
@@ -216,6 +215,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = '-- Select Tag --'
     subfolder_field = f'/ (Subfolder)'
