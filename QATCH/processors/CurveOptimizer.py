@@ -27,6 +27,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
+from scipy.signal import savgol_filter
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 TAG = ["CurveOptimizer"]
@@ -537,6 +538,7 @@ class DropEffectCorrection(CurveOptimizer):
 
         region_slice = slice(left_idx, right_idx + 1)
         values = self._dataframe[col_name].values[region_slice]
+        values = savgol_filter(values, window_length=11, polyorder=3)
 
         # Compute differences with the specified offset to smooth out noise.
         local_indices = np.arange(diff_offset, len(values))
