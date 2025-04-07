@@ -1453,6 +1453,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.allow_modify = False
         if not self.allow_modify:
             enable_back = enable_next = False
+
+        # Apply button states
         self.tBtn_Load.setEnabled(enable_load)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
