@@ -1,6 +1,5 @@
+#! curve_optimizer.py
 """
-Module: curve_optimizer.py
-
 This module provides utilities for analyzing, optimizing, and correcting curves derived from run data,
 particularly focusing on dissipation and resonance frequency measurements. It is designed to work with CSV
 input files and leverages popular scientific libraries such as pandas, numpy, matplotlib, and SciPy for data
@@ -590,6 +589,32 @@ class DropEffectCorrection(CurveOptimizer):
     def correct_drop_effects(self,
                              baseline_diss: float = None,
                              plot_corrections: bool = False) -> tuple:
+        """
+        Corrects drop effects in dissipation and resonance frequency data.
+
+        This method detects sudden drop effects in the 'Dissipation' column of the internal
+        dataframe and applies corresponding offset corrections to both 'Dissipation' and
+        'Resonance_Frequency' columns. A drop effect is defined as a sudden decrease in the value
+        compared to the previous (good) data point. The correction adjusts the subsequent segment
+        of data so that the drop point matches the preceding value. Optionally, the method can
+        plot the original and corrected data for visualization.
+
+        Args:
+            baseline_diss (float, optional): The baseline dissipation value to use for correction.
+                If not provided, the baseline is determined by taking the dissipation value at the
+                index given by `self._left_bound['index'] - 500` from the original data.
+                Defaults to None.
+            plot_corrections (bool, optional): If True, the method will generate a plot to visualize
+                the corrections applied. Defaults to False.
+
+        Returns:
+            tuple: A tuple containing two numpy arrays:
+                - The first array contains the corrected dissipation values.
+                - The second array contains the corrected resonance frequency values.
+
+        Example:
+            >>> corrected_diss, corrected_rf = instance.correct_drop_effects(baseline_diss=0.05, plot_corrections=True)
+        """
         # Save original data for plotting.
         original_diss = self._dataframe['Dissipation'].values.copy()
         original_rf = self._dataframe['Resonance_Frequency'].values.copy()
