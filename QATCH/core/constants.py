@@ -40,8 +40,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b49"
-    app_date = "2024-11-08"
+    app_version = "v2.6b55"
+    app_date = "2025-03-17"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -51,7 +51,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b46"
+    best_fw_version = "v2.6b53"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
@@ -131,6 +131,10 @@ class Constants:
     plot_max_lines = len(plot_colors)
     plot_min_range_freq = 1000  # Hz
     plot_min_range_diss = 10e-6  # Hz
+
+    # Apply extra padding to _plt2 in mainWindow.py:_update_plot()
+    # to match the existing data padding already applied to _plt3
+    default_plot_padding = 0.05
 
     # SHOW PHASE [None/True/False]
     # None = let FW decide (see #define REPORT_PHASE)
@@ -323,7 +327,7 @@ class Constants:
     baseline_smooth = 9  # must be an odd integer, greater than 1
     consider_points_above_pct = 0.60
     default_diff_factor = 2.0
-    temp_adjusted_CA_factor = 0
+    # temp_adjusted_CA_factor = 0
     drop_effect_multiplier_low = 1.025
     drop_effect_multiplier_high = 1.299
     drop_effect_cutoff_freq = 32
@@ -350,6 +354,20 @@ class Constants:
     UpdateEngine = UpdateEngines.GitHub
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
+
+    @staticmethod
+    def windll_is_caps_lock_on() -> bool:
+        """
+        WINDOWS ONLY: Checks the state of the Caps Lock key and returns True
+        if Caps Lock is on or False if Caps Lock is off.
+
+        Returns:
+            bool: The state of the Caps Lock; True if Caps Lock is on, False
+                if Caps Lock is off.
+        """
+        VK_CAPITAL = 0x14
+        # GetKeyState returns a short, where the low-order bit is 1 if the key is toggled.
+        return bool(ctypes.windll.user32.GetKeyState(VK_CAPITAL) & 0x0001)
 
     @staticmethod
     def get_batch_param(batch, param=""):

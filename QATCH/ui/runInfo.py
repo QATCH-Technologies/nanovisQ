@@ -1,4 +1,5 @@
 from QATCH.common.architecture import Architecture
+from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
@@ -9,7 +10,8 @@ import numpy as np
 import os
 import datetime as dt
 import hashlib
-
+# import re
+import datetime
 TAG = "[RunInfo]"
 
 
@@ -405,11 +407,14 @@ class RunInfoWindow(QtWidgets.QWidget):
 
 class QueryRunInfo(QtWidgets.QWidget):
     finished = QtCore.pyqtSignal()
+    updated_run = QtCore.pyqtSignal(str, str, str, str)
+    updated_xml_path = QtCore.pyqtSignal(str)
 
     def __init__(self, run_name, run_path, run_ruling, user_name="NONE", recall_from=Constants.query_info_recall_path, parent=None):
         super(QueryRunInfo, self).__init__(None)
         self.parent = parent
 
+        self.run_name_changed = False
         self.run_name = run_name
         self.run_path = run_path
         self.xml_path = run_path[0:-4] + ".xml"
@@ -423,6 +428,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.run_count = 0
         self.run_idx = 0
         self.run_port = ""  # if multirun, will be something like "_1"
+        self.auto_st = 0
+        self.auto_ca = 0
+        self.auto_dn = 0
 
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
@@ -675,16 +683,16 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.sign.textEdited.connect(self.text_transform)
             layout_r4.addWidget(self.sign)
             # layout_v.addLayout(layout_r4) # hide here, show in external widget
-            self.signed_at = "[NEVER]"
-            self.signature_required = True
-            self.signature_received = False
+            self.parent.signed_at = "[NEVER]"
+            self.parent.signature_required = True
+            self.parent.signature_received = False
         else:
             self.sign = QtWidgets.QLineEdit()
             self.sign.setText("[NONE]")
             self.initials = self.sign.text()
-            self.signed_at = self.sign.text()
-            self.signature_required = False
-            self.signature_received = False
+            self.parent.signed_at = self.sign.text()
+            self.parent.signature_required = False
+            self.parent.signature_received = False
 
         # START CAPTURE SIGNATURE CODE:
         # This code also exists in popUp.py in class QueryRunInfo for "ANALYZE SIGNATURE CODE"
@@ -1073,8 +1081,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.initials = new_initials
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                self.signature_received = False
-                self.signature_required = True
+                self.parent.signature_received = False
+                self.parent.signature_required = True
                 self.sign.setReadOnly(False)
                 self.sign.setMaxLength(4)
                 self.sign.clear()
@@ -1130,8 +1138,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.sign.setText(sign_text)
             self.sign.setReadOnly(True)
             self.signed.setText(f"CAPTURE by\t=")
-            self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True
+            self.parent.signed_at = dt.datetime.now().isoformat()
+            self.parent.signature_received = True
             self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
@@ -1305,15 +1313,30 @@ class QueryRunInfo(QtWidgets.QWidget):
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return, QtCore.Qt.Key_Space]:
-                if self.signature_received:
+                if self.parent.signature_received:
                     self.sign_ok.clicked.emit()
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
         return super().eventFilter(obj, event)
 
-    def confirm(self, force=False):
+    def confirm(self, force: bool = False):
+        """
+        On confirmation click, the corresponding run_info tag is updated match the run information
+        parameterized by the user in the 'Run Info' form of the Analyze window.
+        Modifications to the run_name cause a rewrite of the entire run directory and
+        corresponding data files to reflect the modified run_name.
+
+        Args:
+            force (bool) : (Optional) Flag to force the writing of the run XML file regardless of errors
+                or other preventative measure.
+
+        Returns:
+            bool : True if confirmation and writing of run_info was successful.  On errors, Flase is returned
+                indicating a failed writing attempt.
+        """
         from QATCH.processors.Analyze import AnalyzeProcess
 
+        # Parameter initialization
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
@@ -1323,53 +1346,65 @@ class QueryRunInfo(QtWidgets.QWidget):
         manual_ca = (ca != self.auto_ca)
         manual_dn = (density != self.auto_dn)
 
+        # Form input error checking for valid Surfactant, Concentration, Surface Tension,
+        # Contact Angle, and Density. Errors are logged to the user and the input_error flag
+        # is set to True.
         input_error = False
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
-            Log.e("Input Error: Surfactant must be between {} and {}."
+            Log.e(tags=TAG, msg="Input Error: Surfactant must be between {} and {}."
                   .format(
                       self.validSurfactant.bottom(),
                       self.validSurfactant.top()))
             input_error = True
         if self.t4.isEnabled() and not self.t4.hasAcceptableInput():
-            Log.e("Input Error: Concentration must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Concentration must be between {} and {}."
                   .format(
                       self.validConcentration.bottom(),
                       self.validConcentration.top()))
             input_error = True
         if not self.t1.hasAcceptableInput():
-            Log.e("Input Error: Surface Tension must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Surface Tension must be between {} and {}."
                   .format(
                       self.validSurfaceTension.bottom(),
                       self.validSurfaceTension.top()))
             input_error = True
         if not self.t2.hasAcceptableInput():
-            Log.e("Input Error: Contact Angle must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Contact Angle must be between {} and {}."
                   .format(
                       self.validContactAngle.bottom(),
                       self.validContactAngle.top()))
             input_error = True
         if not self.t5.hasAcceptableInput():
-            Log.e("Input Error: Density must be between {} and {}."
+            Log.e(tag=TAG, msg="Input Error: Density must be between {} and {}."
                   .format(
                       self.validDensity.bottom(),
                       self.validDensity.top()))
             input_error = True
+
+        # If the force parameter is set to True, input errors are ignored.
         if force:
-            Log.w("Forcing XML write regardless of input errors!")
+            Log.w(tag=TAG, msg="Forcing XML write regardless of input errors!")
             input_error = False
         if input_error:
-            Log.w("Input error: Not saving Run Info.")
+            Log.w(tag=TAG, msg="Input error: Not saving Run Info.")
             return False
 
-        if self.signature_received == False and self.sign_do_not_ask.isChecked():
+        # Error checking for valid signature per captured run: If the do not ask option
+        # is checked, then signatures are ignored for this session.
+        if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
             Log.w(
-                f"Signing CAPTURE with initials {self.initials} (not asking again)")
-            self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True  # Do not ask again this session
-        if self.signature_required and not self.signature_received:  # missing initials
+                tag=TAG, msg=f"Signing CAPTURE with initials {self.initials} (not asking again)")
+            self.parent.signed_at = dt.datetime.now().isoformat()
+            self.parent.signature_received = True  # Do not ask again this session
+
+        # Error checking for valid signature per captured run: If the signature is still required
+        # the user should be prompted to provide a valid signature as a valid batch parameter. With the
+        # force flag enabled, this step is ignored.
+        if self.parent.signature_required and not self.parent.signature_received:  # missing initials
             if force or self.run_idx != 0:
-                Log.w(f"Auto-signing CAPTURE with initials {self.initials}")
-                self.signed_at = dt.datetime.now().isoformat()
+                Log.w(
+                    tag=TAG, msg=f"Auto-signing CAPTURE with initials {self.initials}")
+                self.parent.signed_at = dt.datetime.now().isoformat()
             else:
                 if self.run_idx == 0 and self.batch_found == False and self.batch_warned == False:
                     if not PopUp.question(self, Constants.app_title,
@@ -1378,6 +1413,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                                           "Are you sure you want to save this info?", False):
                         return False  # do not save, allow further changes, user doesn't want to save with invalid Batch Number
                     self.batch_warned = True
+
+                # Check 'Run Info' form for unsaved changes.  Notify the user if they are about to
+                # exit the form without saving edits.  The user may ignore this warning an
+                # and close without saving edits.
                 if self.unsaved_changes:
                     if self.signForm.isVisible():
                         self.signForm.hide()
@@ -1392,12 +1431,14 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.signForm.move(left, top)
                     self.signForm.setVisible(True)
                     self.sign.setFocus()
-                    Log.d("Saving Run Info, requesting signature.")
+                    Log.d(tag=TAG, msg="Saving Run Info, requesting signature.")
                 else:
-                    Log.d("Nothing to save, closing Run Info.")
+                    Log.d(tag=TAG, msg="Nothing to save, closing Run Info.")
                     self.close()  # nothing to save
                 return False
 
+        # If sign_do_not_ask attribute is checked, provide the latest session key to the
+        # user to allow fo rmodification of the XML.
         if self.sign_do_not_ask.isChecked():
             session_key_path = os.path.join(
                 Constants.user_profiles_path, "session.key")
@@ -1408,6 +1449,35 @@ class QueryRunInfo(QtWidgets.QWidget):
                     with open(Constants.auto_sign_key_path, 'w') as f:
                         f.write(session_key)
 
+        # Update the run_name to the name in the 'Run name' text box of the
+        # Run Info window, after removing leading and trailing whitespace.
+        name_invalid = False
+        self.run_name_changed = True if self.run_name != self.t_runname.text() else False
+        self.run_name = self.t_runname.text()
+        for invalidChar in Constants.invalidChars:
+            if invalidChar in self.run_name:
+                name_invalid = True
+            self.run_name = self.run_name.replace(invalidChar, '')
+        self.run_name = self.run_name.strip().replace(
+            ' ', '_')  # word spaces -> underscores
+        if name_invalid:
+            if not PopUp.question(self, "Invalid Characters", f"Run name changed to:\n{self.run_name}\n\nDo you accept?"):
+                return False  # allow further changes
+        if self.run_name == self.t_runname.text():
+            # run name was different, but after normalization they're the same again
+            self.run_name_changed = False
+        else:
+            self.t_runname.setText(self.run_name)
+
+        # Mode of operation for the XML file at the xml_path attribute.
+        # If the path already exists, the action is modification of parameters
+        # in which caase, the corresponding XML document is parsed for usage later while
+        # the 'name' field in the 'run_info' header tag is updated to match the
+        # parameterized name by the user.
+        #
+        # If the xml_path is new, the action is to CAPTURE i.e. write a new XML file
+        # for a new run.  This mode of operation writes the entire run_info tag and all
+        # child tags of run_info to a new XML document object.
         if secure_open.file_exists(self.xml_path):
             audit_action = "PARAMS"
             run = minidom.parse(self.xml_path)
@@ -1421,22 +1491,24 @@ class QueryRunInfo(QtWidgets.QWidget):
             try:
                 dev_name = FileStorage.DEV_get_active(self.run_idx + 1)
             except Exception as e:
-                Log.e("Unable to get active device for RUN_IDX =", self.run_idx)
+                Log.e(
+                    tag=TAG, msg=f"Unable to get active device for RUN_IDX ={self.run_idx}")
                 dev_name = "UNKNOWN"
-                Log.e("ERROR:", e)
+                Log.e(tag=TAG, msg=f"ERROR: {e}")
 
+            # Set machine, device, name, and ruling field for top-level run_info tag.
             xml.setAttribute('machine', Architecture.get_os_name())
             xml.setAttribute('device', dev_name)
             xml.setAttribute('name', self.run_name)
             xml.setAttribute('ruling', self.run_ruling)
 
+            # BUILD REMAINING XML DOCUMENT #
             metrics = run.createElement('metrics')
             xml.appendChild(metrics)
 
             try:
-                # Log.w(f"run_path: {self.run_path}")
                 if self.run_path.endswith(".zip"):
-                    Log.e("ZIP file passed as 'run_path' incorrectly!")
+                    Log.e(tag=TAG, msg=f"ZIP file passed as 'run_path' incorrectly!")
                     raise Exception()
 
                 if self.run_path.endswith(".csv"):
@@ -1467,7 +1539,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     duration /= 60.0
                     duration_units = "minutes"
                 samples = str(samples)
-                Log.d(f"{start}, {stop}, {duration}, {samples}")
+                Log.d(tag=TAG, msg=f"{start}, {stop}, {duration}, {samples}")
 
                 # Get time of last cal - based on file timestamp
                 cal_file_path = Constants.cvs_peakfrequencies_path
@@ -1515,7 +1587,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             xml.appendChild(audits)
 
         # create or append new params element
-        recorded_at = self.signed_at if self.signature_required else dt.datetime.now().isoformat()
+        recorded_at = self.parent.signed_at if self.parent.signature_required else dt.datetime.now().isoformat()
         params = run.createElement('params')
         params.setAttribute('recorded', recorded_at)
         xml.appendChild(params)
@@ -1634,7 +1706,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         signature = hash.hexdigest()
         params.setAttribute('signature', signature)
 
-        if self.signature_required:
+        if self.parent.signature_required:
             from QATCH.common.userProfiles import UserProfiles
             valid, infos = UserProfiles.session_info()
             if valid:
@@ -1651,7 +1723,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 salt = UserProfiles.find(username, initials)[1][:-4]
                 userrole = UserProfiles.get_user_info(f"{salt}.xml")[2]
 
-            timestamp = self.signed_at
+            timestamp = self.parent.signed_at
             machine = Architecture.get_os_name()
             hash = hashlib.sha256()
             hash.update(salt.encode())  # aka 'profile'
@@ -1676,9 +1748,40 @@ class QueryRunInfo(QtWidgets.QWidget):
         else:
             pass  # leave 'audits' block as empty
 
-        os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
+        if not self.post_run:
+            # Get date from XML for secure file writing.
+            metrics = xml.getElementsByTagName('metric')
+            stop_value = None
+            for metric in metrics:
+                if metric.getAttribute('name') == 'stop':
+                    stop_value = metric.getAttribute('value')
+                    break
+            stop_datetime = datetime.date.fromisoformat(
+                stop_value.split('T')[0])
+            # Update the run data files and directory to reflect changes made to
+            # the run name in the RunInfo window.
+            updated_name, new_name, old_name = self.update_run_name(
+                self.xml_path, self.run_name, secure=True, date=stop_datetime)
+            if not updated_name:
+                Log.e(tag=TAG, msg="Could not update directory due path error.")
+                # return False
+            # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
+            # secure_open(self.xml_path, 'w', "audit") as f:
+            elif old_name != new_name:
+                # self.run_name = new_name
+                if xml.hasAttribute('name'):
+                    xml.setAttribute('name', new_name)
+                    hash = hashlib.sha256()
+                    for name, value in xml.attributes.items():
+                        hash.update(name.encode())
+                        hash.update(value.encode())
+                    signature = hash.hexdigest()
+                    xml.setAttribute('signature', signature)
+                    Log.d(
+                        tag=TAG, msg=f"Updated 'name' field to: {new_name}")
+                else:
+                    Log.e(tag=TAG, msg="No 'name' field found.")
 
-        # secure_open(self.xml_path, 'w', "audit") as f:
         with open(self.xml_path, 'w') as f:
             xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
             f.write(xml_str)
@@ -1699,9 +1802,229 @@ class QueryRunInfo(QtWidgets.QWidget):
             with open(self.recall_xml, 'w') as f:
                 f.write(run.toxml())
 
+        if not self.post_run:
+            if updated_name:
+                Log.d(tag=TAG, msg=f"Emitting {self.xml_path}")
+                self.updated_run.emit(
+                    self.xml_path, new_name, old_name, str(stop_datetime))
+                self.updated_xml_path.emit(self.xml_path)
+
         self.unsaved_changes = False
         self.close()
         return True
+
+    def update_run_name(self, previous_xml_path: str, new_name: str, date: datetime.date, secure: bool = False):
+        """
+        Renames the the run directory and corresponding run data files to the updated name parameterized
+        by the RunInfo window.
+
+        TODO: Discuss how to have this match in the XML file.  Currently, the XML can contain an invalid
+        file name and will display in the dropdown.  I can just remove this if its more of a nuisance than
+        of benefit. [AJR: If it's not readable data or is 'invalid' and cannot be processed, remove it]
+
+        Args:
+            previous_xml_path (str): The file path to the XML file whose directory is to be renamed.
+            new_name (str): The new name for the directory and the files within it.
+            date (datetime.date): The stop date of the run to rename.
+            secure (bool): (Optional) Flag for secure directory creation. Set to False by default.
+
+        Returns:
+            str: The name of the new directory if the operation was successful, None otherwise.
+            str: The name of the renamed file without the any additional tags such as _3rd, _tec, _lower, etc.
+            str: The name of the old base directory that is being renamed
+
+        Raises:
+            ValueError: If the `previous_xml_path` is not a valid file or is not within the base directory.
+            ValueError: If the `new_name` is invalid (contains special characters or path traversal).
+            PermissionError: If the function is denied permission to access directories or rename files.
+            OSError: If any OS-level error occurs during renaming or file operations.
+        """
+        import pyzipper
+        from io import BytesIO
+
+        def rename_file(file_name: str, new_name: str):
+            """
+            A helper function to rename files based on their suffixes.
+
+            Args:
+                file_name (str): The file name prefix to update each type of run file to.
+                new_name (str): The new prefix for the file.
+
+            Returns:
+                tuple: The name of the file with a new prefix and a flag indicating if it is XML.
+                    If the file does not have a matching suffix, (None, False) is returned.
+            """
+            xml_suffixes = ['_3rd.xml', '.xml']
+            csv_suffixes = [
+                '_3rd_cal.csv', '_cal.csv', '_3rd_poi.csv', '_poi.csv',
+                '_3rd_tec.csv', '_tec.csv', '_3rd.csv', '_3rd_lower.csv', '_lower.csv', '.csv'
+            ]
+            crc_suffixes = [
+                '_3rd_tec.crc', '_tec.crc', '_3rd.crc', '_3rd_lower.crc', '_lower.crc'
+            ]
+
+            for suffix in xml_suffixes:
+                if file_name.endswith(suffix):
+                    return f"{new_name}{suffix}", True
+
+            for suffix in csv_suffixes + crc_suffixes:
+                if file_name.endswith(suffix):
+                    return f"{new_name}{suffix}", False
+
+            return None, False
+
+        try:
+            # If file name is the same, it is fine to resave.  If the path already exists elsewhere,
+            # return with an error.
+            if not previous_xml_path.endswith(new_name) and not os.path.isfile(previous_xml_path):
+                Log.e(
+                    tag=TAG, msg=f"Previous XML path {previous_xml_path} does not exist or is not a file.")
+                return None, None, None
+
+            # Prevents file creation outside of logged_data directory.
+            # if not os.path.abspath(previous_xml_path).startswith(Constants.log_export_path):
+            #     Log.e(
+            #         tag=TAG, msg=f"Operation outside of secure directory is not allowed.")
+            #     return False
+
+            parent_dir = os.path.dirname(previous_xml_path)
+            grandparent_dir = os.path.dirname(parent_dir)
+
+            # TODO: Modify regex to fit naming convention for files. [AJR: Is this still TODO?]
+            # Validate new_name for security (e.g., no special characters, no path traversal)
+            # This could work: r'^[\w\s\-.]+$' or ^[\w\-.]+(\s[\w\-.]+)*$ for trailing and leading spaces
+            # and not re.match(r'^[\w\-.]+(\s[\w\-.]+)*$', new_name):
+            if secure:
+                name_invalid = False
+                for invalidChar in Constants.invalidChars:
+                    if invalidChar in new_name:
+                        name_invalid = True
+                    new_name = new_name.replace(invalidChar, '')
+                new_name = new_name.strip().replace(' ', '_')  # word spaces -> underscores
+                if name_invalid:
+                    Log.w(
+                        tag=TAG, msg=f"Modified run name to \"{new_name}\". Invalid characters: {Constants.invalidChars}")
+                # return None, None, None
+
+            # Form new directory path and validate it is within grandparent_dir to avoid path traversal
+            new_dir = os.path.join(grandparent_dir, new_name)
+            if secure and not os.path.abspath(new_dir).startswith(os.path.abspath(grandparent_dir)):
+                Log.w(
+                    tag=TAG, msg=f"Path traversal attempt detected in new name: {new_name}")
+                return None, None, None
+             # Symlink avoidance by rejecting symbolic links in directory hierarchy
+            # NOTE: The PYCODE releases do actually have a hard symbolic link for the 'logged_data' folder
+            # We can confirm that this rejection of symlinks does not break renaming for PYCODE builds; however,
+            # it may when the naming structure folder config for the logged_data folder is only one dir deep.
+            if secure and any(os.path.islink(d) for d in [previous_xml_path, parent_dir, grandparent_dir]):
+                Log.e(
+                    tag=TAG, msg="Symbolic links are not allowed in the directory path.")
+                return None, None, None
+
+            # Check if new directory path is valid
+            new_dir = os.path.join(grandparent_dir, new_name)
+            old_name = os.path.basename(parent_dir)
+            # Solves case change issue in run names.
+            case_change = old_name.lower() == new_name.lower() and old_name != new_name
+            if os.path.exists(new_dir) and not case_change:
+                Log.i(
+                    tag=TAG, msg=f"Path {new_dir} already exists, no action taken.")
+                return None, None, None
+
+            os.rename(parent_dir, new_dir)
+            Log.i(tag=TAG, msg=f"Updating directory {parent_dir} to {new_dir}")
+
+            # List files in the new directory
+            try:
+                files = os.listdir(new_dir)
+            except PermissionError:
+                Log.e(
+                    tag=TAG, msg=f"Permission denied: Cannot access {new_dir}")
+                return None, None, None
+
+            is_xml = False
+            # Rename each file to match the new directory name
+            for root, _, files in os.walk(new_dir):
+                for file_name in files:
+                    file_path = os.path.join(root, file_name)
+
+                    # Set a temporary directory to write renamed files too.  This directory is
+                    # renamed to the capture.zip directory at the end of the process.
+                    temp_dir = None
+                    if file_name.endswith('capture.zip'):
+
+                        # Get a secure list of the contents of a capture.zip archive using the
+                        # path to the zip folder.
+                        capture_contents = secure_open.get_namelist(
+                            zip_path=file_path)
+                        # Set the path of the temporary archive to write renamed files to.
+                        temp_dir = os.path.join(root, "~capture.zip")
+
+                        # For each file in the secure archive, read it as bytes and then write
+                        # the bytes to the temporary zip directory.
+                        for capture_file in capture_contents:
+                            capture_path = os.path.join(
+                                root, capture_file)
+                            with secure_open(capture_path, "r", "capture") as f:
+                                f_bytes = BytesIO(f.read())
+
+                                # Create each new file name for the contents of the secure
+                                # archive directory.
+                                new_file_name, _ = rename_file(
+                                    capture_file, new_name)
+
+                            # For each file, securely write it to the temporary location using the
+                            # date of the stop time along with the name of the renamed run.
+                            with pyzipper.AESZipFile(temp_dir, 'a',
+                                                     compression=pyzipper.ZIP_DEFLATED,
+                                                     allowZip64=True,
+                                                     encryption=pyzipper.WZ_AES) as zf:
+                                friendly_name = f"{new_name} ({date})"
+                                zf.comment = friendly_name.encode()
+                                enabled, _, _ = UserProfiles.checkDevMode()
+
+                                # TODO: If already password protected, dev mode should not allow the decryption
+                                # and rewriting of already encrypted files.
+                                if UserProfiles.count() > 0 and enabled == False:
+                                    # create a protected archive
+                                    zf.setpassword(hashlib.sha256(
+                                        zf.comment).hexdigest().encode())
+                                else:
+                                    zf.setencryption(None)
+                                    if enabled:
+                                        Log.d(
+                                            tag=TAG, msg="Developer Mode is ENABLED - NOT encrypting ZIP file")
+
+                                # Write the bytes string to the new zip file location.
+                                zf.writestr(
+                                    zinfo_or_arcname=new_file_name, data=f_bytes.read())
+
+                        # Remove the old capture.zip archive and rename the temporary capture.zip archive to capture.zip.
+                        os.remove(file_path)
+                        os.rename(temp_dir, file_path)
+                    else:
+                        # Process the rest of the files in the renamed direcotry.
+                        new_file_name, is_xml = rename_file(
+                            file_name, new_name)
+                        if new_file_name:
+                            new_file_path = os.path.join(
+                                root, new_file_name)
+                            if os.path.exists(new_file_path):
+                                Log.d(
+                                    tag=TAG, msg=f"File {new_file_path} already exists. Skipping rename for {new_file_path}")
+                                continue
+                            os.rename(file_path, new_file_path)
+                            Log.d(
+                                tag=TAG, msg=f"Renamed file {file_path} to {new_file_path}")
+                            if is_xml:
+                                self.xml_path = new_file_path
+                                self.recall_xml = new_file_path
+                                xml_name_to_write = os.path.splitext(
+                                    os.path.basename(new_file_path))[0]
+            return xml_name_to_write, new_name, old_name
+        except Exception as e:
+            Log.e(tag=TAG, msg=f"An unexpected error occurred: {e}")
+            return None, None, None
 
     def closeEvent(self, event):
         if self.unsaved_changes:

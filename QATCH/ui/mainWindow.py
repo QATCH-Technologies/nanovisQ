@@ -18,6 +18,7 @@ from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.processors.Analyze import AnalyzeProcess
+from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -29,14 +30,15 @@ from xml.dom import minidom
 import numpy as np
 import sys
 import os
-import io
 import pyzipper
 import hashlib
 import requests
 import stat
 import subprocess
+import logging
+from typing import List
 
-TAG = ""  # "[MainWindow]"
+TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
 
 ##########################################################################################
@@ -63,31 +65,114 @@ class _MainWindow(QtWidgets.QMainWindow):
 
 
 # ------------------------------------------------------------------------------
-class LoginWindow(QtWidgets.QMainWindow):
 
-    def __init__(self, parent):
+
+class LoginWindow(QtWidgets.QMainWindow):
+    """Main window for handling user login events.
+
+    This class provides a login window that manages user interactions, and the window close event.
+    It initializes the login UI and processes events to either authenticate the user,
+    clear the login form, or update the UI state (e.g., toggling the Caps Lock indicator).
+
+    Attributes:
+        ui5 (Ui_Login): An instance of the login UI class used to set up and manage
+            the login interface view.
+    """
+
+    def __init__(self, parent: QtWidgets.QMainWindow) -> None:
+        """Initializes the LoginWindow with the given parent window.
+
+        This method sets up the user interface for the login window by creating an instance
+        of the UI class and initializing it with the current window and parent window.
+
+        Args:
+            parent (QtWidgets.QMainWindow): The parent widget for this login window.
+        """
         super().__init__()
         self.ui5 = Ui_Login()
         self.ui5.setupUi(self, parent)
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj, event: QtCore.QEvent) -> bool:
+        """Intercepts and processes key press events for the login window.
+
+        This method handles `KeyPress` events to facilitate the following user interactions:
+          - **Enter/Return**: If the password field is empty, the focus is set to the field;
+            otherwise, the sign-in action is triggered.
+          - **Escape**: Clears the login form.
+          - **Caps Lock**: Toggles the state of the Caps Lock indicator on the UI.
+
+        This method handles `FocusIn` events to facilitate the following user interactions:
+          - **user_password**: Show Caps Lock indicator if CapsLock key is already active.
+
+        This method handles `FocusOut` events to facilitate the following user interactions:
+          - **user_password**: Hide Caps Lock indicator if CapsLock key is still active.
+
+        Args:
+            obj: The UI object for which the event is being filtered.
+            event (QtCore.QEvent): The object containing details about type of event;
+                if `type()` is `KeyPress`: `key()` contains details about the key pressed.
+
+        Returns:
+            bool: The result of the event filtering. In all cases, whether handled here or not,
+            it is passed to the base class implementation for default event handling as well.
+        """
+        # Handles key press events for all registered objects.
         if event.type() == QtCore.QEvent.KeyPress:
-            # Log.i(f"Key {event.key()} pressed!")
+
+            # Handles focus for user password field and sign-in action.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
                 if len(self.ui5.user_password.text()) == 0:
                     self.ui5.user_password.setFocus()
                 else:
                     self.ui5.action_sign_in()
+
+            # Handles clearing the login form on EscapeKey press.
             if event.key() == QtCore.Qt.Key_Escape:
                 self.ui5.clear_form()
+
+            # Handles toggling Caps Lock indicator while password field has focus.
+            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
+                self.ui5.caps_lock_on = not self.ui5.caps_lock_on
+                self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+
+        # Handles focus in events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusIn:
+
+            # Handles showing Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
+                if self.ui5.caps_lock_on:
+                    self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
+                # else: already hidden (no need to clear `user_info`)
+
+        # Handles focus out events for all registered objects.
+        if event.type() == QtCore.QEvent.FocusOut:
+
+            # Handles hiding Caps Lock indicator when CapsLock key is active.
+            if obj is self.ui5.user_password:
+                if self.ui5.caps_lock_on:
+                    self.ui5.user_info.clear()
+                # else: already hidden (no need to clear `user_info`)
+
+        # Always process default event handling, too.
         return super().eventFilter(obj, event)
 
-    def closeEvent(self, event):
-        # Log.d(" Exit Real-Time Plot GUI")
+    def closeEvent(self, event: QtCore.QEvent) -> None:
+        """Handles the window close event by prompting the user for confirmation.
+
+        When a close event occurs, this method displays a confirmation dialog asking the user
+        whether they wish to quit the application. If the user confirms, the application quits;
+        otherwise, the event is ignored, and the window remains open.
+
+        Args:
+            event (QtCore.QEvent): The close event triggered when the user attempts to close the window.
+
+        Returns:
+            None
+        """
         res = PopUp.question(self, Constants.app_title,
                              "Are you sure you want to quit QATCH Q-1 application now?", True)
         if res:
-            # self.close()
             QtWidgets.QApplication.quit()
         else:
             event.ignore()
@@ -122,7 +207,8 @@ class PlotsWindow(QtWidgets.QMainWindow):
     '''
     def closeEvent(self, event):
         #Log.d(" Exit Real-Time Plot GUI")
-        res =PopUp.question(self, Constants.app_title, "Are you sure you want to quit QATCH Q-1 application now?")
+        res =PopUp.question(self, Constants.app_title,
+                            "Are you sure you want to quit QATCH Q-1 application now?")
         if res:
            #self.close()
            QtWidgets.QApplication.quit()
@@ -512,6 +598,16 @@ class Rename_Output_Files(QtCore.QObject):
         self.bThread = []
         self.bWorker = []
 
+        # Data queues for InterpTemps.
+        self._queueLog = multiprocessing.Queue()
+        self._queueCmd = multiprocessing.Queue()
+        self._queueOut = multiprocessing.Queue()
+        self.pInterpTemps = InterpTempsProcess(
+            self._queueLog, self._queueCmd, self._queueOut
+        )
+        self._logHandler = QtCore.QTimer()
+        self._logHandler.timeout.connect(self.interp_logger)
+
     def indicate_analyzing(self):
         color_err = '#333333'
         labelbar = "Run Stopped. Analyzing run..."
@@ -549,6 +645,77 @@ class Rename_Output_Files(QtCore.QObject):
     def infobar_write(self, color_err, labelbar):
         self.parent.ControlsWin.ui1.infobar.setText(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
+
+    def interp_temps(self, new_files: List[str]) -> None:
+        """
+        The handler method for performing temperature interpolation on a list of files.
+
+        This method handles starting the `pInterpTemps` thread which interpolates temperature 
+        through a list of file paths.
+
+        Args:
+            new_files (List[str]): A list of file paths as strings.
+
+        Returns:
+            None
+        """
+        # NOTE: Uncomment these 3 lines to skip entire process:
+        # self.pInterpTemps._started.set()
+        # self.pInterpTemps._done.set()
+        # return
+        self._logHandler.start(100)
+        self.pInterpTemps.start()
+        cache_loaded = False
+        for file in new_files:
+            # Skip TEC files.
+            if "output_tec.csv" in file:
+                continue
+
+            # NOTE: Might need better filtering of files to load/interp correctly
+            # Assumption here is that alphabetical order yields primary dev 1st.
+            # TODO: This will likely need modification to work with 4x6 devices.
+            self.pInterpTemps._queueCmd.put(
+                QueueCommandFormat(
+                    file.rstrip(),
+                    ActionType.load if not cache_loaded else ActionType.interp
+                ).asdict()
+            )
+            cache_loaded = True
+        # Signal finished and end process
+        self.pInterpTemps._queueCmd.put(None)
+
+    def interp_logger(self) -> None:
+        """
+        Initializes the logging utility for the pInterpTemps thread.
+
+        Returns:
+            None
+        """
+        if not self._queueLog.empty():
+            logger = logging.getLogger("QATCH")
+            while not self._queueLog.empty():
+                logger.handle(self._queueLog.get(False))
+
+    def interp_report(self) -> None:
+        """
+        Generates the report after pInterpTemps thread executes.
+        Critical failures are propogated to the user via UI popups.
+
+        Returns:
+            None
+        """
+        while not self._queueOut.empty():
+            result = self._queueOut.get(False)
+            if not result["result"]:
+                # inform user of any failures
+                PopUp.critical(
+                    parent=self.parent,
+                    title="Temp Propagation Failure",
+                    message="ERROR: Failed to write temps to secondary.\n" +
+                            f"Filename: \"{result['filename']}\"",
+                    details=result['details'],
+                    ok_only=True
+                )
 
     #######################################################################
     # Prompt user for run name(s) and rename new output file(s) accordingly
@@ -871,6 +1038,20 @@ class Rename_Output_Files(QtCore.QObject):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    """
+    MainWindow is the primary interface class for the application, extending QMainWindow to manage the overall
+    layout and functionality of the program. It is responsible for initializing, configuring, and coordinating
+    various child windows, plots, background tasks, and application settings.
+
+    Attributes:
+        ReadyToShow (bool): Indicates if the main window is fully initialized and ready to be displayed.
+        set_cal1 (str): Calibration setting or identifier for the first calibration parameter.
+        set_cal2 (str): Calibration setting or identifier for the second calibration parameter.
+
+    Usage:
+        The MainWindow class is instantiated at the start of the application to construct the user interface,
+        set up all child components, and prepare the system for user interaction and data acquisition.
+    """
 
     ReadyToShow = False
     set_cal1 = "0"
@@ -880,10 +1061,25 @@ class MainWindow(QtWidgets.QMainWindow):
     # Initializes methods, values and sets the UI
     ###########################################################################
     def __init__(self, samples=Constants.argument_default_samples):
+        """ Handles the main window layout.
 
-        # :param samples: Default samples shown in the plot :type samples: int.
-        # to be always placed at the beginning, initializes some important methods
+        This method setups up the various child windows and layout of the main application
+        window.  This initializer also establishes the layout of the various plots for each 
+        application mode.  Last, the initializer sets the various signals for each thread and
+        enables the UI.
+
+        Parameters:
+            samples (int): The number default number of samples shown in the plot (Optional).
+
+        Returns:
+            None
+        """
         QtWidgets.QMainWindow.__init__(self)
+
+        # The MainWindow now manages the state of audit signatures.
+        self.signature_required = True
+        self.signature_received = False
+        self.signed_at = "[NEVER]"
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -1147,6 +1343,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
+            Log.d(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1174,6 +1371,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.AnalyzeProc.Analyze_Data(data_path)
 
+    def refresh_data_files(self):
+        Log.i(TAG, "Refreshing data files...")
+        # print(self.data_files) # DEBUG ONLY
+        self.data_files = FileStorage.DEV_get_logged_data_files(
+            self.data_device, self.data_folder)
+
     def analyze_data_get_data_device(self):
         idx = self.aWorker.clickedButton()
         if idx >= 0:
@@ -1196,10 +1399,12 @@ class MainWindow(QtWidgets.QMainWindow):
             Log.w("User aborted data folder selection.")
 
     def analyze_data_get_data_file(self):
+        self.refresh_data_files()
+
         idx = self.aWorker.clickedButton()
         if idx >= 0:
             self.data_file = self.data_files[idx]
-            Log.i("Selected data file = {}".format(self.data_file))
+            Log.i(TAG, f"Selected data file = {self.data_file}")
             self.analyze_data(self.data_device, self.data_folder,
                               self.data_file)  # continue analysis
         else:
@@ -1228,26 +1433,127 @@ class MainWindow(QtWidgets.QMainWindow):
         if chk4 != self.ControlsWin.chk4.isChecked():
             self.ControlsWin.toggle_RandD()
 
+    def parse_ports_from_file(self, path_to_plate_config: str = r'plate-config.json'):
+        """
+        Parses a JSON file containing a nested list of booleans and maps them to port names.
+
+        Parameters:
+            json_file_path (str): Path to the JSON file containing the nested list (Default='plate-config.json').
+
+        Returns:
+            dict: A dictionary mapping port names (A1, B1, ...) to their boolean states.
+            list: A list of active port names (e.g., ['A1', 'A2', ...]).
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ValueError: If the file does not contain the expected nested list structure.
+        """
+        import json
+        # Check if file exists
+        if not os.path.exists(path_to_plate_config):
+            Log.e(
+                tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
+            raise FileNotFoundError(
+                f"The file '{path_to_plate_config}' does not exist.")
+
+        # Read the JSON file
+        try:
+            with open(path_to_plate_config, 'r') as file:
+                matrix = json.load(file)
+        except json.JSONDecodeError as e:
+            Log.e(
+                tag=TAG, msg=f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+            raise ValueError(
+                f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+
+        # Validate the JSON structure
+        if not isinstance(matrix, list) or not all(isinstance(row, list) for row in matrix):
+            Log.e(
+                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+            raise ValueError(
+                f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+
+        # Check all elements are booleans
+        if not all(all(isinstance(value, bool) for value in row) for row in matrix):
+            Log.e(
+                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+            raise ValueError(
+                f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+
+        # Map rows to numbers (1-6) and columns to letters (A-D)
+        rows = range(1, len(matrix) + 1)  # 1 through number of rows
+        columns = ['A', 'B', 'C', 'D']   # A through D
+
+        # Ensure each row has the correct number of columns
+        num_columns = len(columns)
+        if any(len(row) != num_columns for row in matrix):
+            raise ValueError(
+                f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements.")
+
+        # Create the dictionary of ports and their states, and track active ports
+        ports_dict = {}
+        active_ports = []
+        for row_index, row in enumerate(matrix):
+            for col_index, state in enumerate(row):
+                port_name = f"{columns[col_index]}{row_index + 1}"
+                ports_dict[port_name] = state
+                if state:  # If the port is active, add to the list
+                    active_ports.append(port_name)
+
+        return ports_dict, active_ports
+
     ###########################################################################
     # Starts the acquisition of the selected serial port
     ###########################################################################
 
     def start(self):
+        """
+        Starts the acquisition of the selected serial port.
+
+        The start() method initially validates signed in user permissions and requested CAPTURE action.  If a
+        user does not have CAPTURE permissions, the method returns to caller.  Next, the method handles orphaned run
+        files from previous runs, uniqufiying run names.  Next, error checking for the correct number of ports is 
+        determined.  More than 2 ports or no ports results in a return to caller and error message.  Then, the user profile
+        and calibration data is validated for developer mode and recency respecitvely. Last, the mode of capture is set to
+        either multiplex or single mode.
+
+        Returns:
+            None to caller on error.
+        """
+        # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result == None:  # user check required, but no user signed in
-            Log.w(
-                f"Not signed in: User with role {action_role.name} is required to perform this action.")
-            Log.i("Please sign in to continue.")
-            self.ControlsWin.set_user_profile()  # prompt for sign-in
-            check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role)  # check again
-        if not check_result:  # no user signed in or user not authorized
-            Log.w(
-                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
-            return  # deny action
+        # if check_result == None:  # user check required, but no user signed in
+        #     Log.w(
+        #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
+        #     Log.i("Please sign in to continue.")
+        #     self.ControlsWin.set_user_profile()  # prompt for sign-in
+        #     check_result = UserProfiles().check(
+        #         self.ControlsWin.userrole, action_role)  # check again
+        # if not check_result:  # no user signed in or user not authorized
+        #     Log.w(
+        #         f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+        #     return  # deny action
 
-        Log.d("GUI: Clear console window")
+        # User check required, but no user signed in.
+        if check_result == None:
+            Log.w(
+                tag=TAG, msg=f"Not signed in: User with role {action_role.name} is required to perform this action.")
+            Log.i(tag=TAG, msg="Please sign in to continue.")
+
+            # Prompt user for sign-in.
+            self.ControlsWin.set_user_profile()
+            check_result = UserProfiles().check(
+                self.ControlsWin.userrole, action_role)
+
+        # No user signed in or user not authorized to perform capture.  Notify user and deny action request returning to
+        # caller.
+        if not check_result:
+            Log.w(
+                tag=TAG, msg=f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+            return
+
+        Log.d(tag=TAG, msg="GUI: Clear console window")
         # NOTE: Calling 'os.system' causes a console window to blink in and disappear when launched with 'pythonw.exe':
         # os.system('cls' if os.name == 'nt' else 'clear')
 
@@ -1258,43 +1564,53 @@ class MainWindow(QtWidgets.QMainWindow):
         self._enable_ui(False)
 
         # This function is connected to the clicked signal of the Start button.
-        Log.i(TAG, "Clicked START")
+        Log.i(tag=TAG, msg="Clicked START")
 
         # Focus plots window (useful if hidden)
         self.PlotsWin.raise_()
 
-        ### BEGIN HANDLE ORPHANED FILES ###
+        # BEGIN HANDLE ORPHANED FILES:
         # Move any existing orphaned CSV files in the output directories from prior Returns
         # This is to prevent new files from being missed and not renamed at the end of a run
         try:
             if os.path.exists(Constants.new_files_path):
                 os.remove(Constants.new_files_path)
             import glob
-            # get a recursive list of file paths that matches pattern including sub directories
+
+            # Get a recursive list of file paths that matches pattern including sub directories
             fileList = glob.glob(os.path.join(
                 os.getcwd(), Constants.csv_export_path, '*/*.csv'))
+
             # Iterate over the list of filepaths & remove each file.
             for old_path in fileList:
                 subDir = "_unnamed"
                 path_parts = os.path.split(old_path)
-                # filenames in list will be left alone
+
+                # Filenames in list will be left alone ignoring files with 'output_tec.csv' as their file
+                # name.
                 if path_parts[1] in ["output_tec.csv"]:
-                    continue  # only ignore certain filenames
-                Log.w(TAG, "WARNING: Found an orphaned output file!")
+                    continue
+
+                Log.w(tag=TAG, msg="Found an orphaned output file!")
                 os.makedirs(os.path.join(path_parts[0], subDir), exist_ok=True)
+
+                # Uniquify file names.
                 new_file_time = strftime(
-                    Constants.csv_default_prefix, localtime())  # uniquify
+                    Constants.csv_default_prefix, localtime())
+
                 new_path = os.path.join(
                     path_parts[0], subDir, "{}_{}".format(new_file_time, path_parts[1]))
                 try:
                     os.rename(old_path, new_path)
-                    Log.i(' Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
+                    Log.i(
+                        tag=TAG, msg='Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
                 except:
-                    Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(
+                    Log.e(tag=TAG, msg='Failed to rename "{}" to "{}"!'.format(
                         old_path, new_path))
         except:
             Log.e(
-                TAG, "ERROR: Failed to move prior created files. Some new files may not be renamed.")
+                tag=TAG, msg="Failed to move prior created files. Some new files may not be renamed.")
+
         ### END HANDLE ORPHANED FILES ###
 
         # Add TEC output file to new files list (if exists)
@@ -1303,44 +1619,71 @@ class MainWindow(QtWidgets.QMainWindow):
             with open(Constants.new_files_path, 'a') as tempFile:
                 tempFile.write(tec_log_path + "\n")
 
+        # Select a valid port for for the current data displayed.  If selected port is None or the
+        # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
+        # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if selected_port == None:
             selected_port = ''  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ''  # Dissallow Action
 
+        # If the selected port has been disallowed, the application scans for connected devices.
         if selected_port == '':
-            self.ControlsWin.ui1.pButton_Refresh.clicked.emit()  # look for devices
 
+            # Scan for connected devices.
+            self.ControlsWin.ui1.pButton_Refresh.clicked.emit()
+
+            # Try the same port validation sequence from before disallowing None type or 'CMD_DEV_INFO'
+            # port returns.
             now_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if now_port == None:
-                now_port = ''  # Dissallow None
+            if now_port is None:
+                now_port = ''
             if now_port == "CMD_DEV_INFO":
-                now_port = ''  # Dissallow Action
+                now_port = ''
 
-            if now_port == '' or now_port == None:
-                if self.ControlsWin.ui1.cBox_Port.count() > 2:  # multiple devices
+            if now_port == '' or now_port is None:
+                # If ports are empty or None type, determine the number of devices connected.  If multiple devices (>2)
+                # are connected, warn the user.  Otherwise, pressume there are no deives connected and warn the user again and
+                # return to caller.
+                if self.ControlsWin.ui1.cBox_Port.count() > 2:
                     Log.e(
-                        "Multiple devices detected. Please select a device and try again.")
+                        tag=TAG, msg="Multiple devices detected. Please select a device and try again.")
                     PopUp.warning(
                         self, Constants.app_title, "Multiple devices detected. Please select a device in Advanced Settings and try again.")
                 else:
                     Log.e(
-                        "No device is detected. Please connect a device and try again.")
+                        tag=TAG, msg="No device is detected. Please connect a device and try again.")
                     PopUp.warning(
                         self, Constants.app_title, "No device is detected. Please connect a device and try again.")
                 self._enable_ui(True)
                 return
             else:
+                # If the port is initailized, set the valid port to the selected port.
                 selected_port = now_port
 
+        # TODO AJR: This code still requires the existence of `plate-config.json`
+        #           Removing it, for now; this code should create the file if none exists:
+        '''
+        # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
+        active_port_dict, active_port_list = self.parse_ports_from_file()
+        Log.d(TAG, active_port_dict)
+        '''
+        active_port_list = range(self.multiplex_plots)
+
+        # Sets the number of ports to use for a multiplex device.
         if self.multiplex_plots > 1:
             selected_port = []
-            for i in range(self.multiplex_plots):
-                if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
-                    selected_port.append(
-                        self.ControlsWin.ui1.cBox_Port.itemData(i))
+            for port_id in active_port_list:
+                if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
 
+                    # TODO: Figure out what value needs to be appended to the active ports list.
+                    # Format is PORT_SERIALDEVICE from Last_Used.txt
+                    selected_port.append(
+                        self.ControlsWin.ui1.cBox_Port.itemData(port_id))
+
+        # Determine the measurement type and user profile is not in developer mode.  If the user profile is in developer
+        # mode, and there is an error or expires is empty, warn the user.
         if self._get_source() == OperationType.measurement:
             enabled, error, expires = UserProfiles.checkDevMode()
             if enabled == False and (error == True or expires != ""):
@@ -1348,6 +1691,8 @@ class MainWindow(QtWidgets.QMainWindow):
                               "Developer Mode has expired and this data capture will be encrypted.\n" +
                               "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
 
+        # Check for the latest calibrations.  If the last calibration data is not recent, recomend to the user
+        # to recalibrate their device.
         if self._get_source() == OperationType.measurement:
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
@@ -1359,8 +1704,10 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.i(TAG, "Initialize was last performed {} minute{} ago.".format(
                     age_in_mins, "" if age_in_mins == 1 else "s"))
-            # application EXE hangs on close if we do not check before doing a measurement run every single time
+
+            # Application EXE hangs on close if we do not check before doing a measurement run every single time.
             self.fwUpdater.checkAgain()
+
         else:
             # Check for and remove any invalid calibration files in root of config folder on CAL start
             paths = [Constants.csv_calibration_path,
@@ -1391,18 +1738,22 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = self.fwUpdater._port
                 self.worker._port = selected_port
             if not do_continue:
+                # If firmware is incompatible with software, notify the user and return to caller.
                 Log.e(
-                    "Firmware is incompatible for running with this version of software.")
+                    tag=TAG, msg="Firmware is incompatible for running with this version of software.")
                 self._enable_ui(True)
                 return
         except Exception as e:
-            Log.e(f"Error during pre-run FW check: {e}")
+            # Catch any exceptions and return to caller if firmware update is unsucessful.
+            Log.e(tag=TAG, msg=f"Error during pre-run FW check: {e}")
             self._enable_ui(True)
             return
 
-        self.setMultiMode()
+        # Set the number of plots to display for multiplex devices based on the number of devices connected.
+        self.set_multi_mode()
 
         if self._get_source() == OperationType.measurement:
+            # Set the style-space for measurments.
             color_err = "#333333"
             labelbar = "Starting..."
             self.ControlsWin.ui1.infobar.setText(
@@ -1418,16 +1769,19 @@ class MainWindow(QtWidgets.QMainWindow):
                 logging.ERROR)  # suppress AutoGraph warnings
             if Constants.preload_tensorflow and Constants.Tensorflow_predict:
                 # load tensorflow library once per session
-                Log.d("GUI: Force repaint events")
-                Log.w("Loading tensorflow modules...")
+                Log.d(tag=TAG, msg="GUI: Force repaint events")
+                Log.w(tag=TAG, msg="Loading tensorflow modules...")
                 import tensorflow as tf  # lazy load
-                Log.d("LOADED: tensorflow as tf")
-                Log.d("GUI: Normal repaint events")
+                Log.d(tag=TAG, msg="Loaded tensorflow as tf")
+                Log.d(tag=TAG, msg="GUI: Normal repaint events")
 
+        # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
+
             # Gets frequency range
             self._readFREQ = self.worker.get_frequency_range()
+
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
@@ -1443,10 +1797,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._reference_value_dissipation = [0]
             self._labelref1 = "not set"
             self._labelref2 = "not set"
-            # progressbar variables
+
+            # Progressbar variables.
             self._completed = 0
             self._ser_control = 0
-            # error variables
+
+            # Error variables.
             self._ser_error1 = 0
             self._ser_error2 = 0
             self._ser_err_usb = 0
@@ -1454,10 +1810,10 @@ class MainWindow(QtWidgets.QMainWindow):
             # self.get_web_info()
             #####
 
-            # check for invalid range and abort if bad
+            # Check for invalid range and abort if bad logging error message and returning to the caller.
             if self._readFREQ[0] >= self._readFREQ[-1]:
                 Log.e(
-                    "Invalid frequency range calculated. Re-Initialize and try again. Aborting run...")
+                    tag=TAG, msg="Invalid frequency range calculated. Re-Initialize and try again. Aborting run...")
                 self._enable_ui(True)
                 return
 
@@ -1468,7 +1824,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 overtones_number = len(
                     self.worker.get_source_speeds(OperationType.measurement))
 
-                # set the quartz sensor
+                # Set the quartz sensor
                 if overtones_number == 5:
                     label_quartz = "@5MHz_QCM"
                 elif overtones_number == 3:
@@ -1544,12 +1900,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.pButton_Reference.setEnabled(
                     False)  # insert
         elif worker_check == 0:
-            Log.w(TAG, "Warning: port is not available")
+            Log.w(tag=TAG, msg="Port is not available")
             PopUp.warning(self, Constants.app_title, "Warning: Selected Port [{}] is not available!".format(
                 self.ControlsWin.ui1.cBox_Port.currentText()))
             self._enable_ui(True)
         elif worker_check == -1:
-            Log.w(TAG, "Warning: No peak magnitudes found. Rerun Initialize.")
+            Log.w(tag=TAG, msg="No peak magnitudes found. Rerun Initialize.")
             PopUp.warning(self, Constants.app_title, "Warning: No peak magnitudes found. Rerun Initialize on port {}".format(
                 self.ControlsWin.ui1.cBox_Port.currentText()))
             self._enable_ui(True)
@@ -1903,7 +2259,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.cBox_Port.currentIndexChanged.connect(
             self._port_changed)
         self.ControlsWin.ui1.cBox_MultiMode.currentIndexChanged.connect(
-            self.setMultiMode)
+            self.set_multi_mode)
         self.ControlsWin.ui1.pTemp.clicked.connect(self._enable_tec)
         # --------
         self.InfoWin.ui3.pButton_Download.clicked.connect(self.start_download)
@@ -2178,8 +2534,16 @@ class MainWindow(QtWidgets.QMainWindow):
             # Log.w(f"Conflicts should automatically resolve once the port is FW checked.")
         self._refresh_speeds()
 
-    def setMultiMode(self):
+    def set_multi_mode(self):
+        """
+        Sets the application in multi-port mode for multiplex devices.
+
+        Sets the number of multiplex plots and clears and redraws current plots
+        with the correct plot count.  Exceptions are logged as errors and returned to the 
+        main ui window.
+        """
         try:
+
             self.multiplex_plots = max(
                 1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()))
             self.PlotsWin.ui2.plt.clear()
@@ -2187,8 +2551,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.clear()  # erase any saved data shown on plots
             self._configure_plot()  # re-draw plots with new count
         except Exception as e:
-            Log.e("ERROR: Unable to set count of multiplex plots.")
-            Log.e("Details: " + str(e))
+            Log.e(tag=TAG, msg="Unable to set count of multiplex plots.")
+            Log.e(tag=TAG, msg=f"Details: {str(e)}")
 
     ###########################################################################
     # Run user through the device information configuration prompts
@@ -2249,8 +2613,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                                   text=friendly_name)
         if ok:
             # remove any invalid characters from user input
-            invalidChars = "\\/:*?\"'<>|"
-            for invalidChar in invalidChars:
+            # invalidChars = "\\/:*?\"'<>|"
+            for invalidChar in Constants.invalidChars:
                 text = text.replace(invalidChar, '')
             text = text.strip().replace(' ', '_')  # word spaces -> underscores
             # limit length of input
@@ -3123,13 +3487,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     if self._get_source() == OperationType.measurement:
                         _ymin = np.amin(vector1)
                         _ymax = np.amax(vector1)
-                        if _ymax - _ymin < Constants.plot_min_range_freq:
+                        _yrange = _ymax - _ymin
+                        if _yrange < Constants.plot_min_range_freq:
                             _yavg = int(np.average(vector1))
                             _ymin = _yavg - (Constants.plot_min_range_freq / 2)
                             _ymax = _yavg + (Constants.plot_min_range_freq / 2)
 
+                        # Apply padding to _plt2 range to match that of _plt3
+                        _ymin -= Constants.default_plot_padding * _yrange
+                        _ymax += Constants.default_plot_padding * _yrange
+
                         _plt2.setLimits(
-                            yMax=_ymax, yMin=_ymin, minYRange=Constants.plot_min_range_freq, maxYRange=10000)
+                            yMax=_ymax, yMin=_ymin, minYRange=Constants.plot_min_range_freq)  # remove maxYRange limit
                         _plt3.setLimits(yMax=(
                             self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0], yMin=0, minYRange=Constants.plot_min_range_diss)
 
@@ -4689,9 +5058,20 @@ class MainWindow(QtWidgets.QMainWindow):
         do_launch_inline = do_launch_inline if not do_launch_inline is None else self.do_launch_inline
 
         if os.path.exists(save_to):
+            zip_filename = os.path.basename(save_to)[:-4]
+            if os.path.basename(new_install_path) != zip_filename:
+                new_install_path = os.path.join(new_install_path, zip_filename)
             # Extract ZIP and launch new build
             with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(os.path.dirname(new_install_path))
+                zf.extractall(new_install_path)
+            nested_path_wrong = os.path.join(new_install_path, zip_filename)
+            if os.path.exists(nested_path_wrong):
+                # this guarantees files are extracted where we want them
+                os.renames(nested_path_wrong, new_install_path + "_temp")
+                if os.path.dirname(save_to) == new_install_path:
+                    os.renames(save_to, os.path.join(
+                        new_install_path + "_temp", zip_filename + ".zip"))
+                os.renames(new_install_path + "_temp", new_install_path)
             os.remove(save_to)
 
             Log.w("Launching setup script for new build...")

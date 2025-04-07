@@ -852,7 +852,7 @@ class Ui_Export(QtWidgets.QWidget):
                     self.progress.emit(
                         "<b>Verifying ZIP file integrity...</b><br/>please wait...", 0, 'b', 1)
                     test_result = f.testzip()
-                    if test_result != None:
+                    if test_result is not None:
                         self.progress.emit(
                             "<b>Import Error: Corrupt ZIP file selected!</b><br/>Please try again...", 100, 'r', 1)
                         Log.e(
@@ -879,6 +879,9 @@ class Ui_Export(QtWidgets.QWidget):
                     zippedFiles = []
                     zippedXMLs = []
                     for info in all_info:
+                        # Skip any file or folder within a __MACOSX directory
+                        if info.filename.split('/')[0] == "__MACOSX":
+                            continue
                         if info.filename[-1] == '/':
                             zippedFolders.append(info)
                         else:
@@ -898,7 +901,7 @@ class Ui_Export(QtWidgets.QWidget):
                             Log.e(
                                 f"XML {xf.filename} did not provide the device name. Using cwd() since full-path is in ZIP.")
                             exp = os.getcwd()
-                        elif xfp.count('/') == 0:  # or not device in xfp:
+                        elif xfp.count('/') == 0:
                             if device == zip_filename:
                                 Log.e(
                                     f"XML {xf.filename} did not provide the device name. Using \"{device}\" as a fallback.")
@@ -908,7 +911,7 @@ class Ui_Export(QtWidgets.QWidget):
                         export_to[xfp] = exp
                     for idx, xf in enumerate(zippedFiles):
                         xfp = os.path.split(xf.filename)[0]
-                        if export_to.get(xfp) == None:
+                        if export_to.get(xfp) is None:
                             if xf.filename.find(Constants.log_export_path) >= 0:
                                 Log.e(
                                     f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
@@ -927,7 +930,9 @@ class Ui_Export(QtWidgets.QWidget):
                         pct = min(99, max(1, int(100 * (x + 1) / num_files)))
                         if abort():
                             self.progress.emit(
-                                "<b>Import {}: Operation cancelled.</b><br/>Parital import was performed.".format(zip_src), pct, 'b', 1)
+                                "<b>Import {}: Operation cancelled.</b><br/>Partial import was performed.".format(
+                                    zip_src),
+                                pct, 'b', 1)
                             Log.w("Import thread killed prematurely!")
                             return
                         sp0 = os.path.split(zf.filename)
@@ -938,7 +943,9 @@ class Ui_Export(QtWidgets.QWidget):
                         except:
                             pass
                         self.progress.emit(
-                            "<b>Importing {}... please wait...</b><br/>Importing '{}'".format(zip_src, run), pct, 'g', 1)
+                            "<b>Importing {}... please wait...</b><br/>Importing '{}'".format(
+                                zip_src, run),
+                            pct, 'g', 1)
                         d = os.path.join(os.getcwd(), zf.filename)
                         allow_copy = False
                         if self.btnGroup4.checkedId() == 1:
@@ -953,8 +960,6 @@ class Ui_Export(QtWidgets.QWidget):
                             # 2 sec resolution on zf.date_time
                             if last_modified - exist_modified > datetime.timedelta(seconds=2):
                                 allow_copy = True
-                        # elif self.btnGroup4.checkedId() == 4:
-                        #    Log.w("User selected to cancel the copy operation.")
                         item = zf.filename
                         if allow_copy:
                             if item.endswith(".xml"):
@@ -970,11 +975,12 @@ class Ui_Export(QtWidgets.QWidget):
                             if item.endswith(".xml"):
                                 skipped += 1
             else:
-
                 def find_xml_files(directory):
                     xml_files = []
                     all_files = []
                     for root, dirs, files in os.walk(directory):
+                        # Skip __MACOSX directories from being traversed
+                        dirs[:] = [d for d in dirs if d != "__MACOSX"]
                         for file in files:
                             if file.endswith(".xml"):
                                 xml_files.append(os.path.join(root, file))
@@ -1000,7 +1006,6 @@ class Ui_Export(QtWidgets.QWidget):
                 local_data = os.path.join(Constants.log_prefer_path)
                 archive_filename = os.path.split(path)[1]
                 xml_files, all_files = find_xml_files(path)
-                # Log.w(f"xmls: {xml_files}")
                 export_to = {}
                 for idx, xf in enumerate(xml_files):
                     xfp = os.path.split(xf)[0]
@@ -1022,20 +1027,17 @@ class Ui_Export(QtWidgets.QWidget):
                         Log.e(
                             f"XML {xf} did not provide the device name. Using cwd() since full-path is in ZIP.")
                         exp = os.path.join(os.getcwd(), relative)
-                    # or not device in xfp:
                     elif relative.count(Constants.slash) == 0:
                         if not found_dev:
                             if name == archive_filename:
                                 run_path = os.path.join(path, name)
-                                # check if the archive folder root was selected, not the run itself
                                 if os.path.exists(run_path):
-                                    # the archive has the same name as the run, nothing to do
                                     pass
-                                else:  # they selected a run within an archive to import, the archive name is one level up
+                                else:
                                     Log.d(
                                         "A run within an archive folder was selected. The archive name is one higher in the tree.")
-                                    archive_filename = os.path.split(os.path.split(path)[0])[
-                                        1]  # take one level up
+                                    archive_filename = os.path.split(
+                                        os.path.split(path)[0])[1]
                                     device = archive_filename
                             Log.e(
                                 f"XML {xf} did not provide the device name. Using \"{device}\" as a fallback.")
@@ -1048,11 +1050,11 @@ class Ui_Export(QtWidgets.QWidget):
                     xfp = os.path.split(xf)[0]
                     relative = xfp.replace(path, "")
                     if len(relative) > 0:
-                        if relative[0] == Constants.slash:  # trim leading slash
+                        if relative[0] == Constants.slash:
                             relative = relative[1:]
-                        if relative[-1] == Constants.slash:  # trim trailing slash
+                        if relative[-1] == Constants.slash:
                             relative = relative[:-1]
-                    if export_to.get(xfp) == None:
+                    if export_to.get(xfp) is None:
                         if relative.find(Constants.log_export_path) >= 0:
                             Log.e(
                                 f"XML missing for run {xfp}. Using cwd() since full-path is in ZIP.")
@@ -1062,19 +1064,16 @@ class Ui_Export(QtWidgets.QWidget):
                             name = os.path.split(xfp)[1]
                             if name == archive_filename:
                                 run_path = os.path.join(path, name)
-                                # check if the archive folder root was selected, not the run itself
                                 if os.path.exists(run_path):
-                                    # the archive has the same name as the run, nothing to do
                                     pass
-                                else:  # they selected a run within an archive to import, the archive name is one level up
+                                else:
                                     Log.d(
                                         "A run within an archive folder was selected. The archive name is one higher in the tree.")
-                                    archive_filename = os.path.split(os.path.split(path)[0])[
-                                        1]  # take one level up
+                                    archive_filename = os.path.split(
+                                        os.path.split(path)[0])[1]
                                     device = archive_filename
                             Log.e(
                                 f"XML missing for run {xfp}. Using \"{device}\" as a fallback.")
-
                             exp = os.path.join(local_data, device, name)
                         else:
                             exp = os.path.join(local_data, relative)
@@ -1107,7 +1106,7 @@ class Ui_Export(QtWidgets.QWidget):
                     f.write(
                         f"<small>Skipped {skipped} run(s) since overwrites were disabled.</small><br/>\n")
                 f.write(f"<br/>\n")
-                f.write(log_lines)  # pre-pend data to log file
+                f.write(log_lines)
             finished_msg = f"<b>Imported {copied} run(s) from archive!</b><br/>Import process complete."
             if skipped > 0:
                 finished_msg += f" {skipped} run(s) were skipped."

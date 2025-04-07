@@ -439,7 +439,21 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         self.update_table_data()
 
-    def remove_user(self, filename=None):
+    def remove_user(self, filename: str = None):
+        """ Deletes a user given a path to the user profiles file.
+
+        If the filename is not None, administrator authentication is requested.  If an
+        administrator is currently logged in, the delete action is allowed to proceed, otherwise,
+        only non-administrator accounts are allowed to be deleted.  Deleting the last user account
+        triggers additional warning dialogue and resets user fields to default. On delete,
+        the user in the userProfiles file is marked as deleted and the cached user table is updated.
+
+        Parameters:
+            filename (str): the path to the userProfiles file to delete a user from (Optional).
+
+        Returns
+            None
+        """
         action = "Delete User"
 
         if filename == None:
@@ -480,8 +494,11 @@ class UserProfilesManager(QtWidgets.QWidget):
                         self.parent.userrole = UserRoles.NONE
                         self.parent.signinout.setText("&Sign In")
                         self.parent.manage.setText("&Manage Users...")
-                        self.parent.ui1.tool_User.setText(name)
-                        self.parent.parent.AnalyzeProc.tool_User.setText(name)
+
+                        # Set user names to "Anonymous" if there are no users left.
+                        self.parent.ui1.tool_User.setText("Anonymous")
+                        self.parent.parent.AnalyzeProc.tool_User.setText(
+                            "Anonymous")
                         self.close()
                     else:
                         return
@@ -491,7 +508,7 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         file = os.path.join(UserProfiles.PATH, filename)
 
-        # mark user profile as deleted
+        # Mark user profile as deleted
         ts_type = "deleted"
         ts_val = dt.datetime.now().isoformat()
         salt = filename[:-4]
@@ -505,7 +522,7 @@ class UserProfilesManager(QtWidgets.QWidget):
             f.write(
                 f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
 
-        # delete user
+        # Delete the user.
         folder_name, file_name = os.path.split(file)
         archive_to = os.path.join(folder_name, "archived")
         FileManager.create_dir(archive_to)

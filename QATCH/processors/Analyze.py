@@ -21,6 +21,7 @@ from QATCH.core.constants import Constants
 from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
+from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -55,8 +56,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-        if concentration > 5:  # mg/ml
-            ST1 = 60
+        if concentration > 2:  # mg/ml
+            ST1 = 57.5
         return ST1  # always
 
         if concentration < 0.01:
@@ -358,11 +359,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.step_direction = "forwards"
         self.allow_modify = False
         self.moved_markers = [False, False, False, False, False, False]
-        self.signed_at = "[NEVER]"
+        self.parent.signed_at = "[NEVER]"
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
-
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
 
@@ -395,7 +395,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.layout = QtWidgets.QVBoxLayout(self)
 
-        self.text_Devices = QtWidgets.QLabel("Device:")
+        # Fixes #30
+        self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
         self.text_Runs = QtWidgets.QLabel("Run:")
         self.cBox_Runs = QtWidgets.QComboBox()
@@ -734,7 +735,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Devices ------------------------------------------------------
         self.l0 = QtWidgets.QLabel()
         self.l0.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.l0.setText("<font color=#ffffff >Device Selection</font> </a>")
+
+        # Fixing issue #30
+        self.l0.setText("<font color=#ffffff >Run Selection</font> </a>")
         if USE_FULLSCREEN:
             self.l0.setFixedHeight(50)
         # else:
@@ -746,8 +749,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.cBox_Devices, 2, 2, 1, 2
         )  # row, col, rowspan, colspan
 
+        # Fixes #30
         self.showRunsFromAllDevices = QtWidgets.QCheckBox(
-            "Show runs from all devices")
+            "Show all available runs")
         self.showRunsFromAllDevices.setChecked(True)
         self.showRunsFromAllDevices.clicked.connect(
             self.showRunsFromAllDevices_clicked)
@@ -816,11 +820,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.option_remove_dups.setChecked(True)
         self.gridLayout.addWidget(self.option_remove_dups, 2, 5, 1, 3)
-        self.correct_drop_effect = QtWidgets.QCheckBox(
-            "Apply drop effect vectors")
-        self.correct_drop_effect.setChecked(True)
-        self.correct_drop_effect.clicked.connect(self.change_drop_effect)
-        self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
+        # self.correct_drop_effect = QtWidgets.QCheckBox(
+        #     "Apply drop effect vectors")
+        # # per issue #26, disable by default
+        # self.correct_drop_effect.setChecked(False)
+        # self.correct_drop_effect.clicked.connect(self.change_drop_effect)
+        # self.gridLayout.addWidget(self.correct_drop_effect, 3, 5, 1, 3)
+
+        # Add the checkbox and call-backs for using the curve-optimizer utility.
+        self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
+            "Auto-Calculate \"Difference Factor\"")
+
+        self.difference_factor_optimizer_checkbox.setChecked(False)
+        self.difference_factor_optimizer_checkbox.clicked.connect(
+            self.use_difference_factor_optimizer)
+        self.gridLayout.addWidget(
+            self.difference_factor_optimizer_checkbox, 3, 5, 1, 3)
+
+        self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
+            "Drop effect correction")
+
+        self.drop_effect_cancelation_checkbox.setChecked(False)
+        self.drop_effect_cancelation_checkbox.clicked.connect(
+            self.use_drop_effect_cancelation)
+        self.gridLayout.addWidget(
+            self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -918,6 +942,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
         widget_dots.setLayout(layout_h4)
         widget_dots.setStyleSheet("color: #515151;")
         layout_v4.addWidget(widget_dots)
+
+        self.QModel_widget = QtWidgets.QWidget(self)
+        self.QModel_widget.setWindowFlags(
+            QtCore.Qt.Tool | QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
+        self.QModel_widget.setWindowTitle("QModel Widget")
+        self.QModel_runBtn = QtWidgets.QPushButton("Run QModel Again")
+        self.QModel_runBtn.clicked.connect(self._restore_qmodel_predictions)
+        # self.layout.addWidget(self.QModel_runBtn)
+        # self.QModel_runBtn.setParent(None)
+        self.QModel_widget.setFixedSize(self.QModel_runBtn.sizeHint())
+        self.QModel_widget.hide()
+        floating_layout = QtWidgets.QHBoxLayout()
+        floating_layout.setContentsMargins(0, 0, 0, 0)
+        floating_layout.addWidget(self.QModel_runBtn)
+        self.QModel_widget.setLayout(floating_layout)
+        # floating_widget.move(100, 100)  # Position relative to main window
+        # floating_widget.show()
+        # layout_v4.addWidget(floating_widget)
+
         layout_v4.addWidget(self.graphStack)
         widget_h4.setLayout(layout_v4)
         widget_h4.setObjectName("AnalyzerFrame")
@@ -1016,7 +1059,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.textEdited.connect(self.sign_edit)
         self.sign.textEdited.connect(self.text_transform)
         self.btn_Info.pressed.connect(self.getRunInfo)
-        self.graphWidget.scene().sigMouseClicked.connect(self.summaryClick)
+        # self.graphWidget.scene().sigMouseClicked.connect(self.summaryClick)
         self.graphWidget1.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget2.scene().sigMouseClicked.connect(self.onClick)
         self.graphWidget3.scene().sigMouseClicked.connect(self.onClick)
@@ -1025,6 +1068,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.askForPOIs = True
 
+        '''
         # create main graph summary point selection tool (initially hidden)
         self.AI_SelectTool_At = 0
         self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
@@ -1106,6 +1150,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         )
         self.ai_prev.setVisible(False)
         self.ai_next.setVisible(False)
+        '''
 
         self.progressValue.connect(
             lambda value: self.progressBar.setValue(value))
@@ -1114,8 +1159,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
 
-    def hideSelectTool(self, event):
-        self.AI_SelectTool_Frame.hide()
+    # def hideSelectTool(self, event):
+    #     self.AI_SelectTool_Frame.hide()
 
     def get_results_split_auto_sizes(self, setMinimumWidth=True):
         tableWidget = self.results_split.widget(0)
@@ -1169,8 +1214,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.initials = new_initials
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                self.signature_received = False
-                self.signature_required = True
+                self.parent.signature_received = False
+                self.parent.signature_required = True
                 self.sign.setReadOnly(False)
                 self.sign.setMaxLength(4)
                 self.sign.clear()
@@ -1335,19 +1380,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.allow_modify:
                 self.gotoStepNum(None, 2)  # step 2: select rough points
             else:
+                self.QModel_widget.hide()
                 self.gotoStepNum(None, 9)  # summary
 
     def action_analyze(self):
-        if self.signature_required and (
+        if self.parent.signature_required and (
             self.unsaved_changes or self.model_run_this_load
         ):
-            if self.signature_received == False and self.sign_do_not_ask.isChecked():
+            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
                 Log.w(
                     f"Signing ANALYZE with initials {self.initials} (not asking again)"
                 )
-                self.signed_at = dt.datetime.now().isoformat()
-                self.signature_received = True  # Do not ask again this session
-            if not self.signature_received:
+                self.parent.signed_at = dt.datetime.now().isoformat()
+                self.parent.signature_received = True  # Do not ask again this session
+            if not self.parent.signature_received:
                 if self.signForm.isVisible():
                     self.signForm.hide()
                 self.signedInAs.setText(self.username)
@@ -1426,31 +1472,48 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
 
-    def enable_buttons(self, refocus=True, enable=True):
-        enable_load = (
-            len(self.cBox_Runs.currentText().strip()) > 0
-            and self.cBox_Runs.currentText() != "No Runs Found"
-        )
-        enable_info = self.xml_path != None
-        enable_cancel = self.xml_path != None
+    def enable_buttons(self, refocus: bool = True, enable: bool = True) -> None:
+        """Enables or disables UI buttons based on the current state.
+
+            This function adjusts the availability of various UI buttons based on, the presence of an XML path,
+            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the 
+            system is busy.
+
+            Args:
+                refocus (bool, optional): If True, refocuses the UI on `graphWidget2`. Defaults to True.
+                enable (bool, optional): If False, disables all buttons (e.g., during processing). Defaults to True.
+
+            Behavior:
+            - If `enable` is False, all buttons are disabled.
+            - The "Modify" button state is toggled based on whether `enable_cancel` is True and `enable_analyze` is False.
+            - Navigation buttons ("Back" and "Next") are disabled if modifications are not allowed.
+            - "Advanced" options are only enabled when `enable_cancel` is True.
+        """
+        # Determine initial button states
+        enable_load = bool(self.cBox_Runs.currentText().strip(
+        )) and self.cBox_Runs.currentText() != "No Runs Found"
+        enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
-        enable_modify = self.xml_path != None
         enable_analyze = len(self.poi_markers) > 2
-        if not enable:  # False when busy
-            enable_load = enable_info = enable_cancel = enable_back = enable_next = (
-                enable_modify
-            ) = enable_analyze = False
+
+        # If disabled globally (e.g., busy state), disable everything
+        if not enable:
+            enable_load = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
+
+        # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
             if not self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(True)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = True
-        if not enable_cancel:
+        elif not enable_cancel:
             if self.tool_Modify.isChecked():
                 self.tool_Modify.setChecked(False)
                 self.tool_Modify.clicked.emit()
                 self.allow_modify = False
+
+        # If modification is not allowed, disable navigation buttons
         if not self.allow_modify:
             enable_back = enable_next = False
 
@@ -1462,16 +1525,95 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Next.setEnabled(enable_next)
         self.tool_Modify.setEnabled(enable_modify)
         self.tool_Analyze.setEnabled(enable_analyze)
+
+        # Handle advanced tool enabling
+        self.tool_Advanced.setEnabled(enable_cancel)
+
+        # Refocus if required
         if refocus:
             self.graphWidget2.setFocus()
 
-    def change_drop_effect(self, object):
-        if not self.correct_drop_effect.isChecked():
+    def use_difference_factor_optimizer(self, object):
+        """
+        Adjusts the difference factor based on the state of the curve optimizer checkbox.
+
+        If the curve optimizer checkbox is not checked, this method resets the 
+        diff factor to the default value specified in `Constants.default_diff_factor`. 
+        It then updates the new diff factor value by calling `self.set_new_diff_factor()`.
+
+        Args:
+            object (QWidget): The widget or object interacting with this method. Typically, 
+                this could represent the checkbox or related UI component triggering the event.
+        """
+        if not self.difference_factor_optimizer_checkbox.isChecked():
             self.tbox_diff_factor.setText(
                 f"{Constants.default_diff_factor:1.3f}")
         self.set_new_diff_factor()
 
+    def use_drop_effect_interpolation(self, object):
+        try:
+            self.action_cancel()  # ask if they mean it if there are unsaved changes
+            if not self.hasUnsavedChanges():  # only proceed if they say yes
+                try:
+                    self.diff_factor = round(
+                        float(self.tbox_diff_factor.text()), 3)
+                    Log.d(f"Difference Factor = {self.diff_factor}")
+                except:
+                    if hasattr(self, "diff_factor"):
+                        del (
+                            self.diff_factor
+                        )  # unset to revert to default auto-calc value
+                        Log.d("Difference Factor deleted")
+                self.loadRun()  # refresh plots to show new diff factor
+        except:
+            Log.e("Failed to set new difference factor!")
+
+    def use_drop_effect_cancelation(self, object):
+        try:
+            self.action_cancel()  # ask if they mean it if there are unsaved changes
+            if not self.hasUnsavedChanges():  # only proceed if they say yes
+                try:
+                    self.diff_factor = round(
+                        float(self.tbox_diff_factor.text()), 3)
+                    Log.d(f"Difference Factor = {self.diff_factor}")
+                except:
+                    if hasattr(self, "diff_factor"):
+                        del (
+                            self.diff_factor
+                        )  # unset to revert to default auto-calc value
+                        Log.d("Difference Factor deleted")
+                self.loadRun()  # refresh plots to show new diff factor
+        except:
+            Log.e("Failed to set new difference factor!")
+
     def set_new_diff_factor(self):
+        """
+        Validates and sets a new difference factor based on user input.
+
+        This method checks if the input in `tbox_diff_factor` is valid and within 
+        the acceptable range defined by `self.validFactor`. If valid, it confirms 
+        any unsaved changes before proceeding to update the `diff_factor` with the 
+        provided input. If the input is invalid, it logs an error message. After 
+        updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
+
+        Raises an error if the process fails.
+
+        Behavior:
+            - If `tbox_diff_factor` input is invalid:
+                - Logs an error message.
+                - Exits without making changes.
+            - If there are unsaved changes:
+                - Calls `self.action_cancel()` to confirm changes.
+            - If confirmed:
+                - Updates `diff_factor` with the validated input value.
+                - If input parsing fails, reverts to the default auto-calculated value.
+                - Logs the updated or reverted state.
+            - Refreshes the plots to reflect the new difference factor.
+
+        Exceptions:
+            Logs an error message if setting the new difference factor fails.
+
+        """
         try:
             if not self.tbox_diff_factor.hasAcceptableInput():
                 Log.e(
@@ -1485,7 +1627,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if not self.hasUnsavedChanges():  # only proceed if they say yes
                 try:
                     self.diff_factor = round(
-                        float(self.tbox_diff_factor.text()), 1)
+                        float(self.tbox_diff_factor.text()), 3)
                     Log.d(f"Difference Factor = {self.diff_factor}")
                 except:
                     if hasattr(self, "diff_factor"):
@@ -1703,15 +1845,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sign.clear()
 
         self.progressBar.setValue(0)  # Not started
+        self.QModel_widget.hide()
         self.setDotStepMarkers(0)
 
         self.stateStep = -1
         self.poi_markers = []
         self.xml_path = None  # used to indicate whether a run is loaded
         self.unsaved_changes = False
-        self.signed_at = "[NEVER]"
-        self.signature_required = True  # secure assumption, set on load
-        self.signature_received = False
+        self.parent.signed_at = "[NEVER]"
+        self.parent.signature_required = True  # secure assumption, set on load
+        self.parent.signature_received = False
         self.model_result = -1
         self.model_candidates = None
         self.model_engine = "None"
@@ -1752,17 +1895,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # get active session info, if available
         active, info = UserProfiles.session_info()
         if active:
-            self.signature_required = True
-            self.signature_received = False
+            self.parent.signature_required = True
+            self.parent.signature_received = False
             self.username, self.initials = info[0], info[1]
         else:
-            self.signature_required = False
+            self.parent.signature_required = False
 
     def detect_change(self):
         if not self.unsaved_changes:
             Log.d("There are unsaved changes detected.")
-        if self.signature_received:
-            self.signature_received = False
+        if self.parent.signature_received:
+            self.parent.signature_received = False
             self.sign.setReadOnly(False)
             self.sign.setMaxLength(4)
             self.sign.clear()
@@ -1774,8 +1917,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.sign.setMaxLength(len(sign_text))
             self.sign.setText(sign_text)
             self.sign.setReadOnly(True)
-            self.signed_at = dt.datetime.now().isoformat()
-            self.signature_received = True
+            self.parent.signed_at = dt.datetime.now().isoformat()
+            self.parent.signature_received = True
             self.sign_do_not_ask.setEnabled(True)
 
     def text_transform(self):
@@ -1784,6 +1927,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # will not fire 'textEdited' signal again
             self.sign.setText(text.upper())
 
+    '''
     def AI_Prev_Guess(self):
         min_val = 0 if not self.AI_has_starting_values else -1
         cur_val = self.AI_Guess_Idxs[self.AI_SelectTool_At]
@@ -1910,7 +2054,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 event._scenePos
             )
         closest_marker = None
-        if mousePoint != None:
+        if mousePoint != None and len(self.poi_markers) > 0:
             index = mousePoint.x()
             Log.d(f"Mouse click @ xs = {index}")
             # find nearest POI by X value, show popup there
@@ -1942,7 +2086,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.AI_SelectTool_Body.adjustSize()
         self.ai_backBtn.setFixedHeight(self.AI_SelectTool_Body.height())
         self.ai_nextBtn.setFixedHeight(self.AI_SelectTool_Body.height())
-        self.AI_SelectTool_Frame.setVisible(True)
+        # self.AI_SelectTool_Frame.setVisible(True) # per issue #25, keep hidden
         self.AI_SelectTool_Frame.adjustSize()
         scene_pos_x = self.graphWidget.getPlotItem().vb.mapViewToScene(
             QtCore.QPointF(marker_xs, 0)
@@ -1955,6 +2099,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.ai_backBtn.setEnabled(enable_back)
         # enable_next = (self.AI_SelectTool_At < 5)
         # self.ai_nextBtn.setEnabled(enable_next)
+    '''
 
     def onClick(self, event):
         ax1 = self.graphWidget1
@@ -1986,7 +2131,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 QtCore.Qt.Key_Return,
                 QtCore.Qt.Key_Space,
             ]:
-                if self.signature_received:
+                if self.parent.signature_received:
                     self.sign_ok.clicked.emit()
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
@@ -2060,6 +2205,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.poi_markers[px])
 
     def setXmlPath(self, xml_path):
+        Log.d(TAG, f'Setting xml filepath to: {xml_path}')
         self.xml_path = xml_path
 
     def updateDev(self, idx):
@@ -2072,7 +2218,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             return
         self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
-        run = run[0: run.find("(") - 1]
+        run = run[0: run.rfind("(") - 1]
         dev = self.run_devices.get(run)
         if dev != None:
             self.cBox_Devices.setCurrentText(dev)
@@ -2234,10 +2380,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("User declined load action. There are unsaved changes.")
             return
 
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(
-                False
-            )  # require re-click to show popup tool incorrect position
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(
+        #         False
+        #     )  # require re-click to show popup tool incorrect position
 
         try:
             if not self.QModel_modules_loaded:
@@ -2346,6 +2492,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.w("Cannot disconnect non-existent method from ProgressBar.")
 
         self.enable_buttons(False, False)
+
         self._update_analyze_progress(
             0, "Reading Run Data..."
         )  # reset internal buffer with 0
@@ -2390,18 +2537,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(True)
         self.stateStep -= 2
         if self.stateStep < -1:
-            if PopUp.question(
-                self,
-                "Are you sure?",
-                "Any manual points will be lost if you go back to Step 1.\n\nProceed?",
-            ):
-                self.parent.analyze_data(
-                    self.cBox_Devices.currentText(),
-                    self.getFolderFromRun(self.cBox_Runs.currentText()),
-                    None,
-                )  # force back to step 1 of 8
-            else:
-                self.stateStep = 0
+            self.stateStep = 0
+            self._restore_qmodel_predictions()
+            # if PopUp.question(
+            #     self,
+            #     "Are you sure?",
+            #     "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            # ):
+            # self.parent.analyze_data(
+            #     self.cBox_Devices.currentText(),
+            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     None,
+            # )  # force back to step 1 of 8
+            # else:
+            # self.stateStep = 0
         else:
             self.moved_markers = [False, False, False, False, False, False]
             self.getPoints()
@@ -2420,7 +2569,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if px in range(len(self.poi_markers)):
             tt1 = self.poi_markers[px].value()
         else:
-            tt1 = self.poi_markers[self.AI_SelectTool_At].value()
+            # self.poi_markers[self.AI_SelectTool_At].value()
+            tt1 = self.xs[-1]
         tx1 = next(x for x, y in enumerate(self.xs) if y >= tt1)
         if tx1 - ws < 0:
             clipped = True
@@ -2432,6 +2582,109 @@ class AnalyzeProcess(QtWidgets.QWidget):
             clipped = True
             ws = 10
         return [ws, clipped]
+
+    def _restore_qmodel_predictions(self):
+        try:
+            if not PopUp.question(
+                self,
+                "Are you sure?",
+                "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            ):
+                # special exception case: indicates user declined action
+                raise PermissionError()
+
+            # restore QModel predictions
+            poi_vals = []
+            self.model_result = -1
+            self.model_candidates = None
+            self.model_engine = "None"
+            if Constants.QModel_predict:
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        label = self.QModel_clusterer.predict_label(fh)
+                        fh.seek(0)
+                        act_poi = [None] * 6  # no initial guesses
+                        candidates = getattr(
+                            self, f"QModel_predict_{label}"
+                        ).predict(fh, run_type=label, act=act_poi)
+                        predictions = []
+                        for p, c in candidates:
+                            predictions.append(
+                                p[0]
+                            )  # assumes 1st point is best point
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = "QModel"
+                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
+                        if True:  # len(poi_vals) != 6:
+                            Log.d(
+                                "Model ran, updating 'poi_vals' on re-run request")
+                            poi_vals = self.model_result.copy()
+                            out_of_order = False
+                            last_p = 0
+                            for i, p in enumerate(poi_vals):
+                                if p < last_p:
+                                    if not out_of_order:
+                                        # print this on 1st indication only
+                                        Log.e(
+                                            tag=f"[{self.model_engine}]",
+                                            msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                        )
+                                    out_of_order = True
+                                    if i == 0:  # first POI
+                                        poi_vals[i] = int(poi_vals[1] / 2)
+                                    elif i == len(poi_vals) - 1:  # last POI
+                                        poi_vals[i] = int(
+                                            (poi_vals[i-1] + len(self.ys)) / 2)
+                                    else:  # any other POI, not first nor last
+                                        poi_vals[i] = int(
+                                            (poi_vals[i-1] + poi_vals[i+1]) / 2)
+                                    Log.e(
+                                        tag=f"[{self.model_engine}]",
+                                        msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
+                                    )
+                                last_p = p
+                        else:
+                            Log.d(
+                                "Model ran, but not updating 'poi_vals' since we DO have prior points")
+                    else:
+                        self.model_result = -1  # try fallback model
+
+                except Exception as e:
+                    Log.e(e)
+                    Log.e(
+                        "Error using 'QModel'... Using 'ModelData' as fallback (less accurate)."
+                    )
+                    # raise e # debug only
+                    self.model_result = -1  # try fallback model
+
+            # move markers to QModel predicted points (if re-ran)
+            if self.model_result != -1 and len(self.poi_markers) == 6:
+                Log.i("[Run QModel Again] Restored QModel predictions for this run.")
+                for i, pm in enumerate(self.poi_markers):
+                    pm.setValue(self.xs[poi_vals[i]])
+                self.detect_change()
+            else:
+                Log.w(
+                    "[Run QModel Again] QModel has no predictions for this run. Leaving points unchanged.")
+
+        except PermissionError:
+            Log.d("User declined QModel restore prompt. No action taken.")
+
+        except Exception as e:
+            Log.e(f"QModel restore failed: {str(e)}")
+
+            limit = None
+            t, v, tb = sys.exc_info()
+            from traceback import format_tb
+
+            a_list = ["Traceback (most recent call last):"]
+            a_list = a_list + format_tb(tb, limit)
+            a_list.append(f"{t.__name__}: {str(v)}")
+            for line in a_list:
+                Log.e(line)
 
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
@@ -2535,12 +2788,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                 start_time = min(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
-                )
+                ) if len(self.poi_markers) else min(self.xs[poi_vals])
                 start_time = next(x for x, y in enumerate(
                     self.xs) if y >= start_time)
                 stop_time = max(
                     self.poi_markers[0].value(), self.poi_markers[-1].value()
-                )
+                ) if len(self.poi_markers) else max(self.xs[poi_vals])
                 stop_time = next(x for x, y in enumerate(
                     self.xs) if y >= stop_time)
 
@@ -2654,7 +2907,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(True)
                 marker.setPen(color="blue")
                 marker.addMarker("<|>")
-            self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
+            # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
         elif self.stateStep in range(1, 7):
             if self.stateStep + 2 == 3:  # stateStep 1 = Step 3 of 8
                 # sort poi_markers by time, in case the user messed up the order moving things around manually in Step 2
@@ -2820,10 +3073,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ws = self.getContextWidth()[0]
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            clipped = False
+            if slice_start < 0:
+                slice_start = 0
+                clipped = True
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+                clipped = True
+            if slice_start >= slice_end:
+                slice_start = slice_end - 1  # 0
+                slice_end = slice_start + 1  # len(self.xs) - 1
+                clipped = True
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             if False:  # diff_only
                 mn = np.amin(self.ys_diff[tx0:tx2])
                 mx = np.amax(self.ys_diff[tx0:tx2])
@@ -2840,35 +3110,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 4:
-                try:
+                if not clipped:
                     ax1.setYRange(
-                        np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_freq_fit[slice_start: slice_end]),
+                        np.max(self.ys_freq_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax2.setYRange(
-                        np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_diff_fit[slice_start: slice_end]),
+                        np.max(self.ys_diff_fit[slice_start: slice_end]),
                         padding=pad,
                     )
                     ax3.setYRange(
-                        np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                        np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                        np.min(self.ys_fit[slice_start: slice_end]),
+                        np.max(self.ys_fit[slice_start: slice_end]),
                         padding=pad,
                     )
-                except ValueError as e:
+                else:  # clipped
                     Log.d(
                         "Skipping to next step, due to missing channel in data selection (represented by ValueError exception below):"
                     )
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.d(line)
                     # skip to next view
                     Log.w(
                         f"Skipping Step {self.stateStep+2}... User indicated this point is missing from the dataset in Step 2."
@@ -2878,36 +3139,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         self.action_next()  # repeat last action
                     return  # do not execute remainder of this function, let the above nested 'action_next' call supercede
-                except Exception as e:
-                    Log.e(
-                        f"An error occurred while moving to the next step: {str(e)}")
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.e(line)
-
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
                 pos2 = np.column_stack((self.xs[tx1], self.ys_diff_fit[tx1]))
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -2955,10 +3203,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.gstars1.setData(pos=pos1)
             self.gstars2.setData(pos=pos2)
             self.gstars3.setData(pos=pos3)
-            # Show AI Tool on current point marker after everything settles:
-            QtCore.QTimer.singleShot(
-                1, lambda: self.summaryAt(max(0, min(5, self.stateStep - 1)))
-            )
+            # # Show AI Tool on current point marker after everything settles:
+            # QtCore.QTimer.singleShot(
+            #     1, lambda: self.summaryAt(max(0, min(5, self.stateStep - 1)))
+            # )
         elif self.stateStep == 7:
             self._update_progress_value(
                 100,
@@ -2980,6 +3228,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -2994,11 +3246,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             for i, marker in enumerate(self.poi_markers):
                 Log.d(f"Marker {i} = ", marker.value())
             self.btn_Next.setText("Analyze")
-            self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
+            # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
         else:
             self.stateStep = 8
             if self.unsaved_changes:
-                if self.signature_required and not self.signature_received:
+                if self.parent.signature_required and not self.parent.signature_received:
                     Log.e(
                         f"Input Error: Initials do not match current user info ({self.initials})"
                     )
@@ -3015,7 +3267,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if self.unsaved_changes:
                 Log.d("Storing new <points> in XML file")
                 self.unsaved_changes = False
-                if self.signature_required:
+                if self.parent.signature_required:
                     self.appendAuditToXml()
                 self.appendPointsToXml(poi_vals)
             # self.showAnalysis(poi_vals)
@@ -3047,6 +3299,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyze_work.finished.connect(self.enable_buttons)
                 self.analyzer_task.start()
         self.setDotStepMarkers(step_num)
+
+        # Show/Hide QModel re-run button if on Step 2 and run has prior points
+        if step_num == 2 and len(self.poi_markers) == 6:
+            self._position_floating_widget()
+            self.QModel_widget.show()
+        elif self.QModel_widget.isVisible():
+            self.QModel_widget.hide()
 
     def addDotStepHandlers(self):
         dots = [
@@ -3112,12 +3371,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 step_num = i + 1
                 break
 
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(False)
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(False)
 
         if self.allow_modify == False and step_num < 9:
             self.tool_Modify.setChecked(True)
             self.action_modify()  # self.tool_Modify.clicked.emit()
+            return  # action_modify() always calls this function again
 
         # determine step direction
         if step_num < self.stateStep + 2:
@@ -3143,17 +3403,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
         elif self.stateStep + 2 == step_num:
             Log.d("User clicked step jumper dot of current step. No action.")
         elif step_num == 1:
-            if PopUp.question(
-                self,
-                "Are you sure?",
-                "Any manual points will be lost if you go back to Step 1.\n\nProceed?",
-            ):
-                self.parent.analyze_data(
-                    self.cBox_Devices.currentText(),
-                    self.getFolderFromRun(self.cBox_Runs.currentText()),
-                    None,
-                )  # force back to step 1 of 8
-                self.enable_buttons()
+            self._restore_qmodel_predictions()
+            self.enable_buttons()
+            # if PopUp.question(
+            #     self,
+            #     "Are you sure?",
+            #     "Any manual points will be lost if you run QModel again.\n\nProceed?",
+            # ):
+            # self.parent.analyze_data(
+            #     self.cBox_Devices.currentText(),
+            #     self.getFolderFromRun(self.cBox_Runs.currentText()),
+            #     None,
+            # )  # force back to step 1 of 8
+            # self.enable_buttons()
         elif enable_analyze:
             self.stateStep = step_num - 3
             self.getPoints()  # increment to next step
@@ -3206,7 +3468,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 userrole = userinfo[2]
 
             audit_action = "ANALYZE"
-            timestamp = self.signed_at
+            timestamp = self.parent.signed_at
             machine = Architecture.get_os_name()
             hash = hashlib.sha256()
             hash.update(salt.encode())  # aka 'profile'
@@ -3270,8 +3532,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # create new points element
             recorded_at = (
-                self.signed_at
-                if self.signature_required
+                self.parent.signed_at
+                if self.parent.signature_required
                 else dt.datetime.now().isoformat()
             )
             points = run.createElement("points")
@@ -3317,7 +3579,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 f"Marker {marker_idx} has been moved by the user! Flagged for model tuning."
             )
         # clear flag if it moved from AI directive; only set on manual movement
-        self.moved_markers[marker_idx] = True if not self.AI_moving_marker else False
+        # if not self.AI_moving_marker else False
+        self.moved_markers[marker_idx] = True
         self.detect_change()
         # setXRange for 'ax' all the time on marker move to keep markers in view (except for Step 2)
         if self.stateStep > 0:
@@ -3326,6 +3589,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tt2 = self.poi_markers[-1].value()
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
+            # Prevent empty slices
+            if tx0 == tx2:
+                tx0 -= 1
+                tx2 += 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -3344,25 +3611,32 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 return  # do not process skipped points on marker move
             ws = self.getContextWidth()[0]
             pad = 0.05 if self.stateStep >= 4 else 0.05
-            if tx1 + ws >= len(self.xs) - 1:
-                ws = len(self.xs) - tx1 - 1
-            ax1.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax2.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
-            ax3.setXRange(self.xs[tx1 - ws], self.xs[tx1 + ws], padding=0)
+            # Calculate safe index boundaries prior to setting ranges
+            slice_start, slice_end = [tx1 - ws, tx1 + ws]
+            if slice_start < 0:
+                slice_start = 0
+            if slice_end > len(self.xs) - 1:
+                slice_end = len(self.xs) - 1
+            if slice_start >= slice_end:
+                slice_start = 0
+                slice_end = len(self.xs) - 1
+            ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
+            ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             if self.stateStep >= 4:
                 ax1.setYRange(
-                    np.min(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq_fit[slice_start: slice_end]),
+                    np.max(self.ys_freq_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff_fit[slice_start: slice_end]),
+                    np.max(self.ys_diff_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys_fit[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_fit[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_fit[slice_start: slice_end]),
+                    np.max(self.ys_fit[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq_fit[tx1]))
@@ -3370,18 +3644,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 pos3 = np.column_stack((self.xs[tx1], self.ys_fit[tx1]))
             else:
                 ax1.setYRange(
-                    np.min(self.ys_freq[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_freq[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_freq[slice_start: slice_end]),
+                    np.max(self.ys_freq[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax2.setYRange(
-                    np.min(self.ys_diff[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys_diff[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys_diff[slice_start: slice_end]),
+                    np.max(self.ys_diff[slice_start: slice_end]),
                     padding=pad,
                 )
                 ax3.setYRange(
-                    np.min(self.ys[tx1 - ws: tx1 + ws]),
-                    np.max(self.ys[tx1 - ws: tx1 + ws]),
+                    np.min(self.ys[slice_start: slice_end]),
+                    np.max(self.ys[slice_start: slice_end]),
                     padding=pad,
                 )
                 pos1 = np.column_stack((self.xs[tx1], self.ys_freq[tx1]))
@@ -3390,32 +3664,71 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.star1.setData(pos=pos1)
             self.star2.setData(pos=pos2)
             self.star3.setData(pos=pos3)
-        if (
-            self.moved_markers[self.AI_SelectTool_At]
-            and self.AI_SelectTool_Frame.isVisible()
-        ):
-            # move AI Tool to new marker location
-            self.summaryAt(self.AI_SelectTool_At)
+        # if (
+        #     self.moved_markers[self.AI_SelectTool_At]
+        #     and self.AI_SelectTool_Frame.isVisible()
+        # ):
+        #     # move AI Tool to new marker location
+        #     self.summaryAt(self.AI_SelectTool_At)
 
     def getRunInfo(self):
+        """
+        Load and display information about a run from an XML file, initializing
+        a GUI to view or edit the run's details.
+
+        This method reads an XML file specified by `self.xml_path` to extract
+        attributes such as the run's name, associated CSV file path, ruling
+        (e.g., good or bad), and optionally, the username of the parent control.
+        It ensures that only one instance of the Run Info GUI is active, and
+        manages communication between the main thread and a worker thread for
+        GUI display and user interaction.
+
+        If the XML path is invalid or not provided, the method does nothing.
+
+        Attributes:
+            self.xml_path (str): Path to the XML file containing the run information.
+            self.parent: Reference to the parent object (if any), used to extract the
+                username for run metadata.
+            self.bThread (QtCore.QThread): Thread handling the Run Info GUI worker.
+            self.bWorker (QueryRunInfo): Worker object for the Run Info GUI.
+
+        Raises:
+            Exception: If there are issues reading or parsing the XML file, or if
+                GUI initialization fails.
+
+        Example:
+            self.xml_path = "path/to/run_info.xml"
+            self.getRunInfo()
+        """
+        # Check if the XML path is provided
         if self.xml_path != None:
+            Log.d(tag=TAG, msg=f"Loaded xml_path={self.xml_path}")
+
+            # Read the XML file's content.
             xml_text = ""
             with open(self.xml_path, "r") as f:
                 xml_text = f.read()
+
+            # Decode if the content is in bytes format.
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
+
+            # Parse the XML content and extract attributes from
+            # the XML.
             xml = minidom.parseString(xml_text)
             run = xml.documentElement
             run_name = run.getAttribute("name")
             run_path = self.xml_path[0:-4] + ".csv"
             is_good = run.getAttribute("ruling")
+
+            # Get the username from the parent control, if available.
             user_name = (
                 None
                 if self.parent == None
                 else self.parent.ControlsWin.username.text()[6:]
             )
             # check signatures of XML, render a new QueryRunInfo() and allow saving changes
-            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE)
+            # (when editing runinfo, append to existing audit, not overwrite as new CAPTURE).
             if hasattr(self, "bThread"):
                 if self.bThread.isRunning():
                     Log.w("Run Info GUI already open. Re-showing instead.")
@@ -3423,14 +3736,97 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.bWorker.show()
                     return
 
+            # Initialize the thread and worker for the Run Info GUI.
             self.bThread = QtCore.QThread()
             self.bWorker = QueryRunInfo(
-                run_name, run_path, is_good, user_name, self.xml_path, self.parent
+                run_name=run_name,
+                run_path=run_path,
+                run_ruling=is_good,
+                user_name=user_name,
+                recall_from=self.xml_path,
+                parent=self.parent,
             )  # TODO: more secure to pass user_hash (filename)
+
+            # Configure the Run Info GUI worker.
             self.bWorker.setRuns(1, 0)
             self.bThread.started.connect(self.bWorker.show)
             self.bWorker.finished.connect(self.bThread.quit)
+            self.bWorker.finished.connect(self.update_run_names)
+
+            # IPC signal to get the updated path name from the Run Info window on
+            # change.
+            self.bWorker.updated_run.connect(self.update_current_run_info)
+            self.bWorker.updated_xml_path.connect(self.setXmlPath)
+
+            # Start the thread to display the Run Info GUI
             self.bThread.start()
+
+    def update_current_run_info(self, xml_path, new_name, old_name, date):
+        """
+        Updates the current run information in the combo box and the `run_names` dictionary.
+
+        Args:
+            new_name (str): The new name to update in the combo box and dictionary.
+            old_name (str): The old name to search for in the combo box and dictionary.
+            date (str): The date associated with the run, used to form the complete name.
+
+        Raises:
+            None: Logs an error message if the old name with the specified date is not found in the combo box.
+
+        Updates:
+            - If the item with the old name exists in the combo box, updates it with the new name.
+            - Searches for a key in the `run_names` dictionary that contains the old name followed by a colon (:).
+            If found, extracts the part of the key after the colon, removes the old key, and adds a new key with 
+            the new name and the extracted value.
+            - Updates the `text_Created` field to display the new name and date.
+
+        Example:
+            If the combo box contains "OldName (2024-11-20)" and the `run_names` dictionary contains:
+                {
+                    "OldName:Details": "value1"
+                }
+            Calling `update_current_run_info("NewName", "OldName", "2024-11-20")` will:
+            - Update the combo box to "NewName (2024-11-20)"
+            - Update the dictionary to:
+                {
+                    "NewName:Details": "NewName"
+                }
+            - Set `text_Created` to "NewName (2024-11-20)".
+        """
+        index = self.cBox_Runs.findText(f"{old_name} ({date})")
+
+        # Check if the old name exists in the combo box
+        if index != -1:
+            # Update the item with the new name
+            self.cBox_Runs.setItemText(index, f"{new_name} ({date})")
+        else:
+            Log.e(
+                TAG, f"Item with name '{old_name} ({date})' not found in the combo box.")
+        for key in list(self.run_names.keys()):  # Use list to avoid runtime changes
+            if f"{old_name}:" in key:
+                # Extract the part of the key after the ':'
+                _, after_colon = key.split(":", 1)  # Split at the first ':'
+                # Store the value and remove the entry
+                value = self.run_names.pop(key)
+                after_colon = after_colon.strip()
+                break
+        value = self.run_timestamps.pop(key)
+        self.run_timestamps[f'{new_name}:{after_colon}'] = value
+        self.run_names[f'{new_name}:{after_colon}'] = new_name
+        self.text_Created.setText(f'Loaded: {new_name} ({date})')
+        self.loaded_datapath = xml_path[:-4] + ".csv"
+
+    def update_run_names(self):
+        """
+        Used as a reciever from QueryRunInfo to update the xml_path name
+        to the modified xml_path name.
+        """
+        if self.bWorker.run_name_changed:
+            loaded_idx = self.cBox_Runs.currentIndex()
+            devs = FileStorage.DEV_get_all_device_dirs()
+            for i, _ in enumerate(devs):
+                self.updateRun(i)
+            self.cBox_Runs.setCurrentIndex(loaded_idx)
 
     def Analyze_Data(self, data_path):
 
@@ -3514,8 +3910,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     else:
                         Log.d("No points found in XML file for this run.")
                 else:
-                    Log.w(
-                        f'Missing XML file: Expected at "{xml_path}" for this run.')
+                    Log.w(TAG,
+                          f'Missing XML file: Expected at "{xml_path}" for this run.')
             self.show_analysis_immediately = False
             self.model_run_this_load = False
             if self.askForPOIs and len(poi_vals) == 6:
@@ -3569,7 +3965,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             if len(poi_vals) != 6:
                                 Log.d(
                                     "Model ran, updating 'poi_vals' since we DO NOT have prior points")
-                                poi_vals = self.model_result
+                                poi_vals = self.model_result.copy()
+                                out_of_order = False
+                                last_p = 0
+                                for i, p in enumerate(poi_vals):
+                                    if p < last_p:
+                                        if not out_of_order:
+                                            # print this on 1st indication only
+                                            Log.e(
+                                                tag=f"[{self.model_engine}]",
+                                                msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                            )
+                                        out_of_order = True
+                                        if i == 0:  # first POI
+                                            poi_vals[i] = int(poi_vals[1] / 2)
+                                        elif i == len(poi_vals) - 1:  # last POI
+                                            poi_vals[i] = int(
+                                                (poi_vals[i-1] + len(dissipation)) / 2)
+                                        else:  # any other POI, not first nor last
+                                            poi_vals[i] = int(
+                                                (poi_vals[i-1] + poi_vals[i+1]) / 2)
+                                        Log.e(
+                                            tag=f"[{self.model_engine}]",
+                                            msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
+                                        )
+                                    last_p = p
                             else:
                                 Log.d(
                                     "Model ran, but not updating 'poi_vals' since we DO have prior points")
@@ -3631,6 +4051,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals[0],
                         poi_vals[-1],
                     ]  # take first and last only, allow user input
+
+            # Computes initial difference cancelations for difference, resonance frequency
+            # and dissipation and applies them to the UI curves.
+            canceled_diss, canceled_rf = None, None
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                canceled_diss, canceled_rf = self._correct_drop_effect(
+                    self.loaded_datapath)
+                if canceled_diss is not None:
+                    dissipation = canceled_diss
 
             # raw data
             xs = relative_time
@@ -3763,10 +4192,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
             ys = ys * avg / 2
+
             ys_fit = ys_fit * avg / 2
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
+            # 'RF' Drop Effect Correction
+            if self.drop_effect_cancelation_checkbox.isChecked():
+                if canceled_rf is not None:
+                    ys_freq = avg - canceled_rf
+
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
             if extend_data:
@@ -3777,62 +4212,67 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
                 ys_freq_fit = np.concatenate((ys_freq_fit, ys_freq_fit_ext))
 
-            # APPLY DROP EFFECT VECTORS
-            drop_offsets = np.zeros(ys.shape)
-            try:
-                if self.correct_drop_effect.isChecked():
-                    baseline = np.average(ys[t_0p5:t_1p0])
-                    base_std = np.std(ys[t_0p5:t_1p0])
-                    drop_start = next(
-                        x - 1 for x, y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_start = next(x for x, t in enumerate(
-                        xs) if t > xs[drop_start] + 0.1)
-                    # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
-                    drop_diss = ys[drop_start]
-                    if drop_diss > Constants.drop_effect_cutoff_freq:
-                        self.diff_factor = Constants.drop_effect_multiplier_high
-                    else:
-                        self.diff_factor = Constants.drop_effect_multiplier_low
-                    with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-                        data = np.loadtxt(
-                            f.readlines(), delimiter=",", skiprows=1)
-                        col = (
-                            1
-                            if self.diff_factor == Constants.drop_effect_multiplier_low
-                            else 2
-                        )
-                        RR_offset = data[:, col]
-                        if drop_start + len(RR_offset) > len(drop_offsets):
-                            # RR vector is longer than the actual run data, truncate it
-                            drop_offsets[drop_start:] = RR_offset[
-                                : len(drop_offsets) - drop_start
-                            ]
-                        else:
-                            # RR vector is shorter and needs to be padded with the final value
-                            drop_offsets[drop_start: drop_start + len(RR_offset)] = (
-                                RR_offset
-                            )
-                            drop_offsets[drop_start +
-                                         len(RR_offset):] = RR_offset[-1]
-                    Log.d(
-                        f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
-                    )
-                    Log.d(
-                        f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
-                    )
-                    Log.d(
-                        f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
-                    )
-            except Exception as e:
-                Log.e("ERROR:", e)
+            # # APPLY DROP EFFECT VECTORS
+            # drop_offsets = np.zeros(ys.shape)
+            # try:
+            #     if self.correct_drop_effect.isChecked():
+            #         baseline = np.average(ys[t_0p5:t_1p0])
+            #         base_std = np.std(ys[t_0p5:t_1p0])
+            #         drop_start = next(
+            #             x - 1 for x, y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+            #         drop_start = next(x for x, t in enumerate(
+            #             xs) if t > xs[drop_start] + 0.1)
+            #         # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+            #         drop_diss = ys[drop_start]
+            #         if drop_diss > Constants.drop_effect_cutoff_freq:
+            #             self.diff_factor = Constants.drop_effect_multiplier_high
+            #         else:
+            #             self.diff_factor = Constants.drop_effect_multiplier_low
+            #         with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
+            #             data = np.loadtxt(
+            #                 f.readlines(), delimiter=",", skiprows=1)
+            #             col = (
+            #                 1
+            #                 if self.diff_factor == Constants.drop_effect_multiplier_low
+            #                 else 2
+            #             )
+            #             RR_offset = data[:, col]
+            #             if drop_start + len(RR_offset) > len(drop_offsets):
+            #                 # RR vector is longer than the actual run data, truncate it
+            #                 drop_offsets[drop_start:] = RR_offset[
+            #                     : len(drop_offsets) - drop_start
+            #                 ]
+            #             else:
+            #                 # RR vector is shorter and needs to be padded with the final value
+            #                 drop_offsets[drop_start: drop_start + len(RR_offset)] = (
+            #                     RR_offset
+            #                 )
+            #                 drop_offsets[drop_start +
+            #                              len(RR_offset):] = RR_offset[-1]
+            #         Log.d(
+            #             f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
+            #         )
+            #         Log.d(
+            #             f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
+            #         )
+            #         Log.d(
+            #             f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
+            #         )
+            # except Exception as e:
+            #     Log.e("ERROR:", e)
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = (
                 Constants.default_diff_factor
             )  # 1.0 if baseline < 50e-6 else 1.5
+
+            # Automatically compute optimal difference factor
+            if self.difference_factor_optimizer_checkbox.isChecked():
+                self.diff_factor = self._optimize_curve(self.loaded_datapath)
+
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
-            ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
+            ys_diff = ys_freq - (diff_factor * ys)
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
@@ -4170,8 +4610,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.data_freq = resonance_frequency
         self.data_diss = dissipation
 
-        self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
-        self.AI_has_starting_values = False
+        # self.AI_Guess_Idxs = [0, 0, 0, 0, 0, 0]
+        # self.AI_has_starting_values = False
         if (
             self.model_run_this_load and self.stateStep != 6
         ):  # model has guess(es) and there is no prior run
@@ -4182,6 +4622,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.d(
                     f"Model Result = {self.model_engine}: {self.model_result}")
                 self.stateStep = 6  # show summary
+
+                def get_logger_for_confidence(confidence):
+                    logger = Log.e  # less than 33%
+                    if confidence > 66:
+                        logger = Log.i  # greater than 66%
+                    elif confidence > 33:
+                        logger = Log.w  # from 33% to 66%
+                    return logger
+
+                point_names = ["start", "end_fill",
+                               "post", "ch1", "ch2", "ch3"]
+                for i, (candidates, confidences) in enumerate(self.model_candidates):
+                    if i == 2:
+                        # do not print confidence of "post" point, it doesn't matter
+                        continue
+                    point_name = point_names[i]
+                    confidence = 100 * \
+                        confidences[0] if len(confidences) > 0 else 0
+                    num_spaces = len(point_names[1]) - len(point_name) + 1
+                    get_logger_for_confidence(confidence)(
+                        tag=f"[{self.model_engine}]",
+                        msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
+                    )
+                # POIs changed by QModel, mark as audit required
+                self.detect_change()
             else:
                 Log.e(
                     "Please manually select points of interest to Analyze this dataset."
@@ -4189,7 +4654,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         else:
             # model not run this load
             if self.stateStep == 6:
-                self.AI_has_starting_values = True
+                # self.AI_has_starting_values = True
                 Log.i("Loaded points of interest from a prior run of Analyze tool.")
             else:
                 Log.e(
@@ -4204,11 +4669,118 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("Showing analysis immediately")
             self.getPoints()  # confirm and analyze only if they want to view previous results
 
+    def _position_floating_widget(self):
+        pos_X = 20 + self.parent.MainWin.pos().x() + self.parent.MainWin.ui0.modemenu.width() + \
+            (self.width() - self.QModel_widget.width()) // 2
+        pos_Y = self.parent.MainWin.pos().y() + 250
+        self.QModel_widget.move(pos_X, pos_Y)
+
     def resizeEvent(self, event):
-        if self.AI_SelectTool_Frame.isVisible():
-            self.AI_SelectTool_Frame.setVisible(
-                False
-            )  # require re-click to show popup tool incorrect position
+        # Position relative to main window
+        if self.QModel_widget.isVisible():
+            QtCore.QTimer.singleShot(100, self._position_floating_widget)
+        # if self.AI_SelectTool_Frame.isVisible():
+        #     self.AI_SelectTool_Frame.setVisible(
+        #         False
+        #     )  # require re-click to show popup tool incorrect position
+        pass
+
+    def _optimize_curve(self, data_path):
+        """
+        Optimizes the difference factor for a given data file.
+
+        This method reads a data file securely, processes its header, and runs a 
+        curve optimization algorithm to determine the optimal difference factor 
+        and its associated score. If an optimal factor is found, it is returned. 
+        Otherwise, the default difference factor is used.
+
+        Args:
+            data_path (str): Path to the data file to be optimized.
+
+        Returns:
+            float: The optimal difference factor if found; otherwise, the default 
+            difference factor (`Constants.default_diff_factor`).
+
+        Raises:
+            Any exception during the secure file operation or optimization process 
+            will propagate and should be handled by the caller.
+
+        Example:
+            optimal_factor = self._optimize_curve("path/to/data/file")
+        """
+        try:
+            optimal_factor = None
+            with secure_open(data_path, "r", "capture") as f:
+                file_header = BytesIO(f.read())
+                optimizer = DifferenceFactorOptimizer(file_header)
+                optimal_factor, lb, rb = optimizer.optimize()
+                Log.i(
+                    TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
+
+            if optimal_factor is not None:
+                Log.d(
+                    TAG, f"Reporting difference factor of {optimal_factor}.")
+                return optimal_factor
+            else:
+                Log.d(
+                    TAG, f"No optimal difference factor found, reporting default of {Constants.default_diff_factor}.")
+                return Constants.default_diff_factor
+        except Exception as e:
+            Log.e(
+                TAG, f"Difference factor optimizer failed due to error. Using default factor.")
+            Log.e(TAG, f"Error Details: {str(e)}")
+            return Constants.default_diff_factor
+
+    def _correct_drop_effect(self, file_header: str) -> tuple:
+        """
+        Corrects the dissipation drop effect in the provided file.
+
+        This method reads the contents of the file specified by `file_header`, 
+        applies a drop effect correction algorithm using the specified 
+        difference factor, and returns the corrected data if successful.
+
+        Args:
+            file_header (str): Path to the file containing the data to be corrected.
+
+        Returns:
+            tuple or None: The corrected data if the correction is successful; 
+            otherwise, returns None and logs that the original data will be used.
+
+        Logs:
+            - Info: Indicates the start of the drop effect cancellation process with the difference factor.
+            - Debug: Indicates whether the drop effect cancellation was successful or not.
+
+        Raises:
+            IOError: If there is an issue opening or reading the file.
+            Exception: For any unexpected errors during the correction process.
+        """
+        try:
+            with secure_open(file_header, "r", "capture") as f:
+                file_header = BytesIO(f.read())
+                if hasattr(self, 'diff_factor'):
+                    diff_factor = self.diff_factor
+                else:
+                    diff_factor = 2.0
+                dec = DropEffectCorrection(
+                    file_buffer=file_header, initial_diff_factor=diff_factor)
+                corrected_data = dec.correct_drop_effects()
+
+                Log.i(
+                    TAG, f'Performing drop effect cancelation with difference factor {self.diff_factor}.')
+
+            if corrected_data is not None:
+                Log.d(
+                    TAG, f"Drop effect cancelation successful.")
+                return corrected_data
+            else:
+                Log.d(
+                    TAG, f"Drop effect cancelation failed. Using original data.")
+                return [None, None]
+        except Exception as e:
+            Log.e(
+                TAG, f"Drop effect cancelation failed due to error. Using original data.")
+            Log.e(TAG, f"Error Details: {str(e)}")
+            return [None, None]
 
 
 class AnalyzerWorker(QtCore.QObject):
@@ -4499,19 +5071,22 @@ class AnalyzerWorker(QtCore.QObject):
                 os.path.split(data_path)[0], f"{data_title}_cal.csv"
             )
 
-            # calculate and apply temperature adjusted contact angle offset
-            avg_run_temp = round(np.average(temperature), 1)
-            CA_temp_factor = round(
-                (avg_run_temp - 25.0) * Constants.temp_adjusted_CA_factor, 1
-            )
-            Log.d(f"Applying temperature adjusted CA offset:")
-            Log.d(
-                f"Temp CA offset = ({avg_run_temp}-25.0)*{Constants.temp_adjusted_CA_factor} = {CA_temp_factor}"
-            )
-            Log.d(
-                f"Changing CA from {CA} to {CA + CA_temp_factor} with temperature offset {CA_temp_factor}"
-            )
-            CA += CA_temp_factor
+            # NOTE: Temp CA offset removed from support as of 2025-03-17
+            # # calculate and apply temperature adjusted contact angle offset
+            # real_temps = [x for x in temperature if ~np.isnan(x)]
+            # avg_run_temp = round(np.average(real_temps),
+            #                      1) if len(real_temps) else 25.0
+            # CA_temp_factor = round(
+            #     (avg_run_temp - 25.0) * Constants.temp_adjusted_CA_factor, 1
+            # )
+            # Log.d(f"Applying temperature adjusted CA offset:")
+            # Log.d(
+            #     f"Temp CA offset = ({avg_run_temp}-25.0)*{Constants.temp_adjusted_CA_factor} = {CA_temp_factor}"
+            # )
+            # Log.d(
+            #     f"Changing CA from {CA} to {CA + CA_temp_factor} with temperature offset {CA_temp_factor}"
+            # )
+            # CA += CA_temp_factor
 
             START_IDX = 0  # start-of-fill
             FILL_IDX = 1  # end-of-fill
@@ -4538,6 +5113,17 @@ class AnalyzerWorker(QtCore.QObject):
                 distances, sep=" "
             ).tolist()  # convert string to numpy array and then to a list
             normal_pts = [0.2, 0.4, 0.6, 0.8]
+
+            self.update(status_label)
+
+            # Computes initial difference cancelations for difference, resonance frequency
+            # and dissipation and applies them to the UI curves.
+            canceled_diss, canceled_rf = None, None
+            if self.parent.drop_effect_cancelation_checkbox.isChecked():
+                canceled_diss, canceled_rf = self.parent._correct_drop_effect(
+                    self.loaded_datapath)
+                if canceled_diss is not None:
+                    dissipation = canceled_diss
 
             # raw data
             xs = relative_time
@@ -4671,10 +5257,16 @@ class AnalyzerWorker(QtCore.QObject):
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
             ys = ys * avg / 2
+
             ys_fit = ys_fit * avg / 2
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
+            # 'RF' Drop Effect Correction
+            if self.parent.drop_effect_cancelation_checkbox.isChecked():
+                if canceled_rf is not None:
+                    ys_freq = avg - canceled_rf
+
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
             if extend_data:
@@ -4687,52 +5279,57 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            # APPLY DROP EFFECT VECTORS
-            drop_offsets = np.zeros(ys.shape)
-            try:
-                if self.parent.correct_drop_effect.isChecked():
-                    # baseline = np.average(ys[t_0p5:t_1p0])
-                    # base_std = np.std(ys[t_0p5:t_1p0])
-                    # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
-                    drop_start = poi_vals[0]
-                    # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
-                    drop_diss = ys[drop_start]
-                    if drop_diss > Constants.drop_effect_cutoff_freq:
-                        self.diff_factor = Constants.drop_effect_multiplier_high
-                    else:
-                        self.diff_factor = Constants.drop_effect_multiplier_low
-                    with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
-                        data = np.loadtxt(
-                            f.readlines(), delimiter=",", skiprows=1)
-                        col = (
-                            1
-                            if self.diff_factor == Constants.drop_effect_multiplier_low
-                            else 2
-                        )
-                        RR_offset = data[:, col]
-                        if drop_start + len(RR_offset) > len(drop_offsets):
-                            # RR vector is longer than the actual run data, truncate it
-                            drop_offsets[drop_start:] = RR_offset[
-                                : len(drop_offsets) - drop_start
-                            ]
-                        else:
-                            # RR vector is shorter and needs to be padded with the final value
-                            drop_offsets[drop_start: drop_start + len(RR_offset)] = (
-                                RR_offset
-                            )
-                            drop_offsets[drop_start +
-                                         len(RR_offset):] = RR_offset[-1]
-                    Log.d(
-                        f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
-                    )
-                    Log.d(
-                        f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
-                    )
-                    Log.d(
-                        f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
-                    )
-            except Exception as e:
-                Log.e("ERROR:", e)
+            # # APPLY DROP EFFECT VECTORS
+            # drop_offsets = np.zeros(ys.shape)
+            # try:
+            #     if self.parent.correct_drop_effect.isChecked():
+            #         # baseline = np.average(ys[t_0p5:t_1p0])
+            #         # base_std = np.std(ys[t_0p5:t_1p0])
+            #         # next(x - 1 for x,y in enumerate(ys) if y > baseline + 4*base_std and x > t_1p0)
+            #         drop_start = poi_vals[0]
+            #         # next(ys[x + 2] for x,y in enumerate(ys) if y > Constants.drop_effect_cutoff_freq / 2 and x > t_1p0)
+            #         drop_diss = ys[drop_start]
+            #         if drop_diss > Constants.drop_effect_cutoff_freq:
+            #             self.diff_factor = Constants.drop_effect_multiplier_high
+            #         else:
+            #             self.diff_factor = Constants.drop_effect_multiplier_low
+            #         with open("QATCH/resources/lookup_drop_effect.csv", "r") as f:
+            #             data = np.loadtxt(
+            #                 f.readlines(), delimiter=",", skiprows=1)
+            #             col = (
+            #                 1
+            #                 if self.diff_factor == Constants.drop_effect_multiplier_low
+            #                 else 2
+            #             )
+            #             RR_offset = data[:, col]
+            #             if drop_start + len(RR_offset) > len(drop_offsets):
+            #                 # RR vector is longer than the actual run data, truncate it
+            #                 drop_offsets[drop_start:] = RR_offset[
+            #                     : len(drop_offsets) - drop_start
+            #                 ]
+            #             else:
+            #                 # RR vector is shorter and needs to be padded with the final value
+            #                 drop_offsets[drop_start: drop_start + len(RR_offset)] = (
+            #                     RR_offset
+            #                 )
+            #                 drop_offsets[drop_start +
+            #                              len(RR_offset):] = RR_offset[-1]
+            #         Log.d(
+            #             f"Applying vectors starting at time 't = {xs[drop_start]:1.3f}s'"
+            #         )
+            #         Log.d(
+            #             f"Drop effect 'cutoff' dissipation frequency is {drop_diss:1.1f}Hz"
+            #         )
+            #         Log.d(
+            #             f"Using {'low' if col == 1 else 'high'} viscosity drop effect 'diff_factor' and vector"
+            #         )
+            # except Exception as e:
+            #     Log.e("ERROR:", e)
+
+            # Automatically compute optimal difference factor
+            if self.parent.difference_factor_optimizer_checkbox.isChecked():
+                self.diff_factor = self.parent._optimize_curve(
+                    self.loaded_datapath)
 
             baseline = np.average(dissipation[t_0p5:t_1p0])
             diff_factor = (
@@ -4740,7 +5337,7 @@ class AnalyzerWorker(QtCore.QObject):
             )  # 1.0 if baseline < 50e-6 else 1.5
             if hasattr(self, "diff_factor"):
                 diff_factor = self.diff_factor
-            ys_diff = ys_freq - (diff_factor * ys + drop_offsets)
+            ys_diff = ys_freq - (diff_factor * ys)
 
             # Invert difference curve if drop applied to outlet
             if np.average(ys_diff) < 0:
@@ -5843,21 +6440,72 @@ class AnalyzerWorker(QtCore.QObject):
 
             ####################################
             # NEW CODE for 2022-12-06 TESTING:
-            m = len(initial_fill) - (len(log_velocity) - len(log_velocity_46))
-            mlen = int(np.floor(m / 5))
+            # ADDED `try-except` protection on 2025-02-17
+            # Initialize result velocity and position lists.
             log_velocity_20p = []
             log_position_20p = []
-            for hh in range(0, mlen):
-                log_velocity_20p.append(log_velocity_46[hh])
-                log_position_20p.append(log_position_46[hh])
-            for hh in range(1, 5):
-                log_velocity_20p.append(
-                    np.average(log_velocity_46[hh * mlen: (hh + 1) * mlen - 1])
-                )
-                log_position_20p.append(
-                    np.average(log_position_46[hh * mlen: (hh + 1) * mlen - 1])
-                )
-                # Log.d(f"idx = {(hh+1)*mlen-1}, max = {m-1}")
+            try:
+                # Ensure that log_velocity_46 and log_position_46 have the same length
+                if len(log_velocity_46) != len(log_position_46):
+                    raise ValueError(
+                        "log_velocity_46 and log_position_46 must be the same length.")
+
+                # Compute m based on ==> m = |initial_fill| - |log_velocity| - |lov_velocity_46|.
+                m = len(initial_fill) - \
+                    (len(log_velocity) - len(log_velocity_46))
+                if m < 5:
+                    raise ValueError(
+                        "Not enough valid data points based on initial_fill and log_velocity lengths.")
+
+                # Calculate the chunk length (mlen) and ensure it is positive.
+                mlen = int(np.floor(m / 5))
+                if mlen <= 0:
+                    raise ValueError(
+                        "Calculated mlen is not positive. Check input lengths.")
+
+                # Ensure that the maximum index needed is within bounds.
+                max_required_index = 5 * mlen  # roughly the maximum index accessed
+                if max_required_index > len(log_velocity_46):
+                    raise ValueError(
+                        "Not enough entries in log_velocity_46 for the computed mlen.")
+
+                # Process the first mlen elements.
+                for hh in range(mlen):
+                    if hh >= len(log_velocity_46) or hh >= len(log_position_46):
+                        raise IndexError(
+                            f"Index {hh} out of range for log_velocity_46 or log_position_46.")
+                    log_velocity_20p.append(log_velocity_46[hh])
+                    log_position_20p.append(log_position_46[hh])
+
+                # Process the remaining four chunks using slicing and averaging.
+                for hh in range(1, 5):
+                    start_index = hh * mlen
+                    end_index = (hh + 1) * mlen - 1
+
+                    # Clamp the end_index to the length of the list if necessary.
+                    if end_index > len(log_velocity_46):
+                        end_index = len(log_velocity_46)
+                    if end_index > len(log_position_46):
+                        end_index = len(log_position_46)
+
+                    # Create velocity & position slices.
+                    slice_vel = log_velocity_46[start_index:end_index]
+                    slice_pos = log_position_46[start_index:end_index]
+
+                    # Check that the velocity and position slices are not empty.
+                    if len(slice_vel) == 0 or len(slice_pos) == 0:
+                        raise ValueError(
+                            f"Slice from {start_index} to {end_index} resulted in an empty list.")
+
+                    # Compute the averages of velocity and position slices.
+                    avg_vel = np.average(slice_vel)
+                    avg_pos = np.average(slice_pos)
+
+                    log_velocity_20p.append(avg_vel)
+                    log_position_20p.append(avg_pos)
+            except Exception as e:
+                Log.w(TAG, f"Bad initial fill region, skipping analysis of this reigon.")
+                Log.d(TAG, f"With error: {e}")
             ### END NEW CODE ###################
 
             self.update(status_label)
@@ -6825,7 +7473,14 @@ class AnalyzerWorker(QtCore.QObject):
                 "Temperature (C)": in_temp,
             }
             rows = len(in_shear_rate)
-            cols = 4
+            cols = len(data)
+            # On multiplex systems, all `in_temp` will be NaN
+            real_temps = [x for x in in_temp if ~np.isnan(x)]
+            if len(real_temps) == 0:
+                Log.w(
+                    "Hiding \"Temperature (C)\" column, as all temperature values are 'nan'.")
+                data.pop("Temperature (C)")
+                cols -= 1
             # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
             tableWidget = TableView(data, rows, cols)
             # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")

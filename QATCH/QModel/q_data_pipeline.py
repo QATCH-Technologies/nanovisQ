@@ -96,6 +96,7 @@ import numpy as np
 from scipy.signal import savgol_filter, butter, filtfilt, detrend
 from sklearn.preprocessing import StandardScaler
 
+
 M_TARGET = "Class"
 
 
