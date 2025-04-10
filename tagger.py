@@ -1,5 +1,5 @@
 from QATCH.core.constants import Constants
-
+from subprocess import Popen, PIPE
 import logging
 import os
 import shutil
@@ -179,6 +179,67 @@ class QatchTagger():
         with open(targets_path, 'w') as f:
             # change file contents to "ALL" after tag verification tests PASS
             f.write("WINDOWS-AN4Q851")
+
+        # PUSH THE NEW TAG TO THE REPO
+        try:
+            # installer_dst = os.path.join(path_to_tag, "dist")
+            script_path = os.path.join(os.getcwd(), 'push_tag.bat')
+            logging.info(
+                f"Updating '{os.path.basename(script_path)}' script...")
+            with open(script_path, 'w') as f:
+                f.write(
+                    f"git tag -a {Constants.app_version} -m \"{tag_name}\"\n")
+                f.write(
+                    f"git push origin {Constants.app_version}\n")
+                f.write(
+                    f"git tag -l --sort=taggerdate > tags.txt\n")
+                f.write(
+                    f"REM move 'tags.txt' to 'dist' folder\n")
+                f.write(
+                    f"pause"
+                )
+
+            push = input("Enter 'push' to tag now: ").lower()
+            if push == "push":
+                logging.info("Pushing tag to origin...")
+                p = Popen(script_path, cwd=os.path.dirname(script_path),
+                          shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
+                stdout, stderr = p.communicate(b'exit\n')
+                if stdout is not None:
+                    for line in stdout.decode().splitlines():
+                        line = line.strip()
+                        if len(line):
+                            logging.debug(line)
+                if stderr is not None:
+                    for line in stderr.decode().splitlines():
+                        line = line.strip()
+                        if len(line):
+                            logging.error(line)
+                if p.returncode == 0:
+                    logging.info("Successfully pushed tag to origin.")
+                else:
+                    logging.error(
+                        f"Failed to push tag. Return code: {p.returncode}. Check debug script output above.")
+
+                logging.info("Moving 'tags.txt' to 'dist' folder...")
+                tags_path = os.path.join(os.getcwd(), 'tags.txt')
+                move_to = os.path.join(
+                    installer_dst, os.path.basename(tags_path))
+                if not os.path.exists(tags_path):
+                    raise FileNotFoundError(
+                        f"Missing file: \"{tags_path}\"")
+                if os.path.exists(move_to):
+                    raise PermissionError(
+                        f"File already exists: \"{move_to}\"")
+                shutil.copyfile(tags_path, os.path.dirname(move_to))
+
+            else:
+                logging.warning(
+                    "User declined tagging. Not pushing tag to repo. Run 'push_tag.bat' when ready.")
+
+        except Exception as e:
+            logging.error(e)
+            return
 
 
 if __name__ == '__main__':
