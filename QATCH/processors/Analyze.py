@@ -7012,8 +7012,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
-            # NOTE: Disabled 2025-04-11 when initial fill plotting changed to just a few points
-            enable_bandaid_3 = False
+            enable_bandaid_3 = True
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
             point_factor_limit = 0.25
@@ -7026,7 +7025,7 @@ class AnalyzerWorker(QtCore.QObject):
                 )
                 enable_bandaid_3 = False
             if enable_bandaid_3:
-                P1_value = fit_visc[-1]
+                P1_value = sm_trendline[-1]
                 P2_value = high_shear_15y
                 lower_factor = 1 - point_factor_limit
                 upper_factor = 1 + point_factor_limit
@@ -7038,9 +7037,10 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.d(
                     f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
                 )
-                Log.d(f"Initial Fill Trendline ends at: {fit_visc[0]:2.2f}")
+                Log.d(
+                    f"Initial Fill Trendline ends at: {sm_trendline[0]:2.2f}")
                 if (
-                    min_fit_end > fit_visc[0] or max_fit_end < fit_visc[0]
+                    min_fit_end > sm_trendline[0] or max_fit_end < sm_trendline[0]
                 ):  # Point 2 (right) is less than Point 1 (left)
                     Log.w(
                         f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
