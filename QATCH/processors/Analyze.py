@@ -7010,6 +7010,10 @@ class AnalyzerWorker(QtCore.QObject):
             # ax7.plot(out_shear_rate, out_viscosity, 'rx')
             # ax7.plot(shear_rate, viscosity, 'r:')
 
+            # New trendline variable for smoothing the initial fill small blue diamond points
+            sm_trendline = savgol_filter(
+                in_viscosity[:-len(distances)], len(in_viscosity)-len(distances), 1)
+
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
             enable_bandaid_3 = True
@@ -7051,8 +7055,6 @@ class AnalyzerWorker(QtCore.QObject):
             if initial_fill[-1] >= 90 and not hide_initial_fill:
                 # Truncate the initial fill region to just a few evenly spaced points
                 # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                sm_trendline = savgol_filter(
-                    in_viscosity[:-len(distances)], len(in_viscosity)-len(distances), 1)
                 num_fill_pts = 5
                 shear_at_fill_start = in_shear_rate[0]
                 shear_at_fill_end = in_shear_rate[-len(distances)-1]
