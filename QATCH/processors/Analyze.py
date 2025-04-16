@@ -6446,10 +6446,20 @@ class AnalyzerWorker(QtCore.QObject):
 
             p0 = (1, 0)  # start with values near those we expect
             n_slope, n_offset = p0  # default, not yet optimized
+            best_fit_idx = log_velocity_46
             best_fit_pts = log_position_46  # default, not yet optimized
+            # kludgy code to remove the 20% and 40% fill points from fit
+            best_fit_idx = np.delete(best_fit_idx,
+                                     len(log_velocity_46)-len(distances)+2)
+            best_fit_idx = np.delete(best_fit_idx,
+                                     len(log_velocity_46)-len(distances)+1)
+            best_fit_pts = np.delete(best_fit_pts,
+                                     len(log_position_46)-len(distances)+2)
+            best_fit_pts = np.delete(best_fit_pts,
+                                     len(log_position_46)-len(distances)+1)
             try:
                 params, cv = curve_fit(
-                    monoLine, log_velocity_46, log_position_46, p0)
+                    monoLine, best_fit_idx, best_fit_pts, p0)
                 n_slope, n_offset = params
                 best_fit_pts = monoLine(log_velocity_46, n_slope, n_offset)
             except:
@@ -6505,7 +6515,7 @@ class AnalyzerWorker(QtCore.QObject):
                     log_position_20p.append(log_position_46[hh])
 
                 # Process the remaining four chunks using slicing and averaging.
-                for hh in range(1, 5):
+                for hh in range(1, 4):
                     start_index = hh * mlen
                     end_index = (hh + 1) * mlen - 1
 
@@ -6546,6 +6556,11 @@ class AnalyzerWorker(QtCore.QObject):
                 for i in range(-len(distances), 0):
                     ax6.plot(
                         log_velocity_46[i], log_position_46[i], "d", color="black")
+                # mark the 20% and 40% points as not being included in the fit approximation
+                ax6.plot(log_velocity_46[len(log_velocity_46)-len(distances)+2],
+                         log_position_46[len(log_position_46)-len(distances)+2], "x", color="red")
+                ax6.plot(log_velocity_46[len(log_velocity_46)-len(distances)+1],
+                         log_position_46[len(log_position_46)-len(distances)+1], "x", color="red")
                 ax6.set_title(
                     f"Power log coefficient: {data_title}\nn = {n:.2f}"
                     + r"$ \pm $"
@@ -6939,15 +6954,15 @@ class AnalyzerWorker(QtCore.QObject):
                 std_viscosity = np.std(
                     np.delete(in_viscosity, [idx1, idx2])
                 )  # all of in_viscosity, just not 2 points
-                min_visc = min(np.min(avg_viscosity),
-                               np.min(fill_visc)) - std_viscosity
-                max_visc = max(np.max(avg_viscosity),
-                               np.max(fill_visc)) + std_viscosity
+                min_visc = 0.9*min(viscosity[-len(distances)],
+                                   viscosity[-1])
+                max_visc = 1.1*max(viscosity[-len(distances)],
+                                   viscosity[-1])
                 Log.d(
                     f"Expected viscosity = {avg_viscosity} +/- {std_viscosity}, min = {min_visc}, max = {max_visc}"
                 )
                 Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
-                for i in range(idx1, idx3):
+                for i in range(-len(distances), 0):
                     if min_visc <= viscosity[i] <= max_visc:
                         continue
                     Log.d(
@@ -6960,6 +6975,7 @@ class AnalyzerWorker(QtCore.QObject):
                     shear_rate = np.delete(shear_rate, i)
                     fill_visc = np.delete(fill_visc, i)
                     fill_shear = np.delete(fill_shear, i)
+                    distances = np.delete(distances, -i)
             except Exception as e:
                 Log.e("ERROR:", e)
                 Log.e("Unable to remove outliers from the dataset prior to plotting.")
@@ -6994,6 +7010,10 @@ class AnalyzerWorker(QtCore.QObject):
             # ax7.plot(out_shear_rate, out_viscosity, 'rx')
             # ax7.plot(shear_rate, viscosity, 'r:')
 
+            # New trendline variable for smoothing the initial fill small blue diamond points
+            sm_trendline = savgol_filter(
+                in_viscosity[:-len(distances)], len(in_viscosity)-len(distances), 1)
+
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
             enable_bandaid_3 = True
@@ -7009,7 +7029,7 @@ class AnalyzerWorker(QtCore.QObject):
                 )
                 enable_bandaid_3 = False
             if enable_bandaid_3:
-                P1_value = fit_visc[-1]
+                P1_value = sm_trendline[-1]
                 P2_value = high_shear_15y
                 lower_factor = 1 - point_factor_limit
                 upper_factor = 1 + point_factor_limit
@@ -7021,9 +7041,10 @@ class AnalyzerWorker(QtCore.QObject):
                 Log.d(
                     f"Trendline must be within range from {min_fit_end:2.2f} to {max_fit_end:2.2f}"
                 )
-                Log.d(f"Initial Fill Trendline ends at: {fit_visc[0]:2.2f}")
+                Log.d(
+                    f"Initial Fill Trendline ends at: {sm_trendline[0]:2.2f}")
                 if (
-                    min_fit_end > fit_visc[0] or max_fit_end < fit_visc[0]
+                    min_fit_end > sm_trendline[0] or max_fit_end < sm_trendline[0]
                 ):  # Point 2 (right) is less than Point 1 (left)
                     Log.w(
                         f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
@@ -7032,28 +7053,58 @@ class AnalyzerWorker(QtCore.QObject):
             ##################
 
             if initial_fill[-1] >= 90 and not hide_initial_fill:
-                mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                ax7.scatter(
-                    in_shear_rate[:mlen],
-                    in_viscosity[:mlen],
-                    marker=".",
-                    s=15,
-                    c="blue",
-                )
-                ax7.scatter(
-                    in_shear_rate[mlen:], in_viscosity[mlen:], marker="d", s=1, c="blue"
-                )
-                ax7.plot(fit_shear, fit_visc, color="black", marker=",")
-                for hh in range(1, 5):
-                    xp = np.average(
-                        in_shear_rate[hh * mlen: (hh + 1) * mlen - 1])
-                    yp = np.average(
-                        in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
-                    stdev = np.std(
-                        in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
-                    # ax7.plot(xp, yp, 'b.')
-                    ax7.errorbar(xp, yp, stdev, fmt="b.",
-                                 ecolor="blue", capsize=3)
+                # Truncate the initial fill region to just a few evenly spaced points
+                # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
+                num_fill_pts = 5
+                shear_at_fill_start = in_shear_rate[0]
+                shear_at_fill_end = in_shear_rate[-len(distances)-1]
+                shear_points = np.geomspace(  # like `linspace` but for log10
+                    shear_at_fill_end, shear_at_fill_start, num_fill_pts)
+                local_shear = []
+                local_visc = []
+                local_linv = []
+                local_temp = []
+                # skip first point, reverse order
+                for pt in shear_points[1:][::-1]:
+                    idx = next(x for x, y in enumerate(
+                        in_shear_rate) if y <= pt)
+                    local_shear.append(in_shear_rate[idx])
+                    local_visc.append(sm_trendline[idx])
+                    local_linv.append(lin_viscosity[idx])
+                    local_temp.append(in_temp[idx])
+                    ax7.scatter(
+                        in_shear_rate[idx],
+                        sm_trendline[idx],
+                        marker="d",
+                        s=15,
+                        c="blue",
+                    )
+                for idx in range(len(distances)):
+                    local_shear.append(in_shear_rate[-len(distances)+idx])
+                    local_visc.append(in_viscosity[-len(distances)+idx])
+                    # local_linv.append(lin_viscosity[-len(distances)+idx])
+                    local_temp.append(in_temp[-len(distances)+idx])
+                in_shear_rate = local_shear
+                in_viscosity = local_visc
+                lin_viscosity = local_linv
+                in_temp = local_temp
+                # These plots are useful for debugging, but are not usually shown:
+                # ax7.scatter(
+                #     in_shear_rate, in_viscosity, marker="d", s=1, c="blue"
+                # )
+                # ax7.plot(in_shear_rate[:-len(distances)], sm_trendline,
+                #          color="black", marker=",")
+                # ax7.plot(fit_shear, fit_visc, color="black", marker=",")
+                # for hh in range(1, 5):
+                #     xp = np.average(
+                #         in_shear_rate[hh * mlen: (hh + 1) * mlen - 1])
+                #     yp = np.average(
+                #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
+                #     stdev = np.std(
+                #         in_viscosity[hh * mlen: (hh + 1) * mlen - 1])
+                #     # ax7.plot(xp, yp, 'b.')
+                #     ax7.errorbar(xp, yp, stdev, fmt="b.",
+                #                  ecolor="blue", capsize=3)
             else:
                 # Remove initial fill points from output table later
                 remove_initial_fill = True
@@ -7158,7 +7209,7 @@ class AnalyzerWorker(QtCore.QObject):
             for i in range(len(in_shear_rate)):
                 err_viscosity.append(in_viscosity[i] * 0.10)
                 str_viscosity.append(
-                    f"{lin_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
+                    f"{in_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
                 )  # plus-or-minus = \u00b1
 
             try:
