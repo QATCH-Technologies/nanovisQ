@@ -1781,7 +1781,7 @@ class MainWindow(QtWidgets.QMainWindow):
             import logging
             logging.getLogger("tensorflow").setLevel(
                 logging.ERROR)  # suppress AutoGraph warnings
-            if Constants.preload_tensorflow and Constants.Tensorflow_predict:
+            if Constants.preload_tensorflow and Constants.TensorFlow_predict:
                 # load tensorflow library once per session
                 Log.d(tag=TAG, msg="GUI: Force repaint events")
                 Log.w(tag=TAG, msg="Loading tensorflow modules...")
