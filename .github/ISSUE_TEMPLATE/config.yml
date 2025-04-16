@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+    - name: View Issues
+      url: https://github.com/QATCH-Technologies/nanovisQ/issues
+      about: Please report bugs and feature requests here.
+    - name: View Wiki
+      url: https://github.com/QATCH-Technologies/nanovisQ/wiki
+      about: Please read the latest wiki information here.
