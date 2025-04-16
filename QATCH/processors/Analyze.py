@@ -242,7 +242,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             "Error modeling data... Using 'tensorflow' as a backup (slow)."
                         )
 
-                if Constants.Tensorflow_predict:
+                if Constants.TensorFlow_predict:
                     # raw data
                     xs = relative_time
                     ys = dissipation
@@ -857,6 +857,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.use_drop_effect_cancelation)
         self.gridLayout.addWidget(
             self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
+
+        # Predict Model ------------------------------------------------------
+        self.l3 = QtWidgets.QLabel()
+        self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
+        self.l3.setText("<font color=#ffffff >Predict Model</font> </a>")
+        if USE_FULLSCREEN:
+            self.l3.setFixedHeight(50)
+        # else:
+        #    self.l3.setFixedHeight(15)
+        self.gridLayout.addWidget(self.l3, 5, 5, 1, 3)
+
+        self.cBox_Models = QtWidgets.QComboBox()
+        self.cBox_Models.addItems(Constants.list_predict_models)
+        if Constants.QModel3_predict:
+            self.cBox_Models.setCurrentIndex(0)
+        elif Constants.QModel2_predict:
+            self.cBox_Models.setCurrentIndex(1)
+        elif Constants.ModelData_predict:
+            self.cBox_Models.setCurrentIndex(2)
+        self.cBox_Models.currentTextChanged.connect(
+            self.set_new_prediction_model)
+        self.gridLayout.addWidget(self.cBox_Models, 6, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -1668,6 +1690,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d(f"Channel thickness = {Constants.channel_thickness}")
         except:
             Log.e("Failed to set new channel thickness!")
+
+    def set_new_prediction_model(self, text):
+        default = "QModel v3"
+        if default in Constants.list_predict_models:
+            index = len(Constants.list_predict_models) - \
+                Constants.list_predict_models.index(default)
+        else:
+            index = 3
+        if text in Constants.list_predict_models:
+            index = len(Constants.list_predict_models) - \
+                Constants.list_predict_models.index(text)
+        else:
+            Log.e(
+                TAG, f"Unknown predict model '{text}', using default '{default}'")
+        Constants.ModelData_predict = True if index >= 1 else False
+        Constants.QModel2_predict = True if index >= 2 else False
+        Constants.QModel3_predict = True if index >= 3 else False
 
     def _update_progress_value(self, value=0, status=None):
         pct = self.progressBar.value()
@@ -2612,7 +2651,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if not PopUp.question(
                 self,
                 "Are you sure?",
-                "Any manual points will be lost if you run QModel again.\n\nProceed?",
+                "Any manual points will be lost if you run \"Predict\" again.\n\nProceed?",
             ):
                 # special exception case: indicates user declined action
                 raise ConnectionAbortedError()
@@ -2622,7 +2661,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel_predict:
+            if Constants.QModel2_predict:
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
@@ -2640,7 +2679,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = "QModel"
+                        self.model_engine = "QModel v2"
                     if isinstance(self.model_result, list) and len(self.model_result) == 6:
                         if True:  # len(poi_vals) != 6:
                             Log.d(
@@ -2679,29 +2718,93 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 except Exception as e:
                     Log.e(e)
                     Log.e(
-                        "Error using 'QModel'... Using 'ModelData' as fallback (less accurate)."
+                        "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
                     )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
 
-            # move markers to QModel predicted points (if re-ran)
+            if self.model_result == -1 and Constants.ModelData_predict:
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        csv_headers = next(f)
+
+                        if isinstance(csv_headers, bytes):
+                            csv_headers = csv_headers.decode()
+
+                        if "Ambient" in csv_headers:
+                            csv_cols = (2, 4, 6, 7)
+                        else:
+                            csv_cols = (2, 3, 5, 6)
+
+                        data = loadtxt(
+                            f.readlines(), delimiter=",", skiprows=0, usecols=csv_cols
+                        )
+                    relative_time = data[:, 0]
+                    # temperature = data[:, 1]
+                    resonance_frequency = data[:, 2]
+                    dissipation = data[:, 3]
+
+                    self.model_run_this_load = True
+                    self.model_result = self.dataModel.IdentifyPoints(
+                        self.loaded_datapath, relative_time, resonance_frequency, dissipation
+                    )
+                    self.model_engine = "ModelData"
+                    if isinstance(self.model_result, list):
+                        poi_vals.clear()
+                        # show point with highest confidence for each:
+                        self.model_select = []
+                        self.model_candidates = []
+                        for point in self.model_result:
+                            self.model_select.append(0)
+                            if isinstance(point, list):
+                                self.model_candidates.append(point)
+                                select_point = point[self.model_select[-1]]
+                                select_index = select_point[0]
+                                select_confidence = select_point[1]
+                                poi_vals.append(select_index)
+                            else:
+                                self.model_candidates.append([point])
+                                poi_vals.append(point)
+                    elif self.model_result == -1:
+                        Log.w(
+                            "Model failed to auto-calculate points of interest for this run!"
+                        )
+                        pass
+                    else:
+                        Log.e(
+                            "Model encountered an unexpected response. Please manually select points."
+                        )
+                        pass
+                except:
+                    limit = None
+                    t, v, tb = sys.exc_info()
+                    from traceback import format_tb
+
+                    a_list = ["Traceback (most recent call last):"]
+                    a_list = a_list + format_tb(tb, limit)
+                    a_list.append(f"{t.__name__}: {str(v)}")
+                    for line in a_list:
+                        Log.e(line)
+
+            # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                Log.i("[Predict] Restored QModel predictions for this run.")
+                Log.i(
+                    f"[Predict] Restored {self.model_engine} predictions for this run.")
                 for i, pm in enumerate(self.poi_markers):
                     pm.setValue(self.xs[poi_vals[i]])
                 self.detect_change()
             else:
                 Log.w(
-                    "[Predict] QModel has no predictions for this run. Leaving points unchanged.")
+                    "[Predict] No predictions for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
-            Log.d("QModel predicted with no run loaded. No action taken.")
+            Log.d("Restore prediction with no run loaded. No action taken.")
 
         except ConnectionAbortedError:
-            Log.d("User declined QModel restore prompt. No action taken.")
+            Log.d("User declined prediction restore prompt. No action taken.")
 
         except Exception as e:
-            Log.e(f"QModel restore failed: {str(e)}")
+            Log.e(f"Prediction restore failed: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
@@ -2780,7 +2883,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_candidates = None
                 self.model_engine = "None"
 
-                if Constants.QModel_predict:
+                if Constants.QModel2_predict:
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
@@ -2797,7 +2900,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 )  # assumes 1st point is best point
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = "QModel"
+                            self.model_engine = "QModel v2"
                         if (
                             isinstance(self.model_result, list)
                             and len(self.model_result) == 6
@@ -2808,7 +2911,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     except Exception as e:
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel'... Using 'ModelData' as fallback (less accurate)."
+                            "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -3062,7 +3165,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.e(f"Error Details: {str(e)}")
 
                 else:  # self.model_engine != "ModelData":
-                    # do nothing here if "QModel" or "None"
+                    # do nothing here if "QModel v2" or "None"
                     pass
 
             # in stateStep 2 thru 6 (Steps 4 thru 8 of 8)
@@ -3969,7 +4072,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel_predict:
+                if Constants.QModel2_predict:
                     try:
                         with secure_open(data_path, "r", "capture") as f:
                             fh = BytesIO(f.read())
@@ -3987,7 +4090,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = "QModel"
+                            self.model_engine = "QModel v2"
                         if isinstance(self.model_result, list) and len(self.model_result) == 6:
                             if len(poi_vals) != 6:
                                 Log.d(
@@ -4025,7 +4128,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     except Exception as e:
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel'... Using 'ModelData' as fallback (less accurate)."
+                            "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -4672,7 +4775,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         tag=f"[{self.model_engine}]",
                         msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
                     )
-                # POIs changed by QModel, mark as audit required
+                # POIs changed by AI prediction, mark as audit required
                 self.detect_change()
             else:
                 Log.e(
