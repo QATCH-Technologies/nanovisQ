@@ -10,6 +10,8 @@ from scipy.signal import argrelextrema
 from scipy.signal import savgol_filter
 from tsmoothie.smoother import *
 TAG = "[ModelData]"
+__version__ = "1.6.42"
+__release__ = "2024-11-11"
 try:
     from QATCH.common.logger import Logger as Log
 except:

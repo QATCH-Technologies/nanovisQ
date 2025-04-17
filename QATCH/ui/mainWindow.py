@@ -315,16 +315,45 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
+        from QATCH.models.ModelData import __version__ as ModelData_version
+        from QATCH.models.ModelData import __release__ as ModelData_release
+        from QATCH.QModel.__init__ import __version__ as QModel2_version
+        from QATCH.QModel.__init__ import __release__ as QModel2_release
+        QModel3a_version = "3.1.0"
+        QModel3a_release = "2025-04-18"
+        QModel3b_version = "3.2.0"
+        QModel3b_release = "2025-04-19"
+        qmodel_versions_menu = self.menubar[3].addMenu(
+            'Model versions (4 available)')
+        self.menubar.append(qmodel_versions_menu)
+        self.q_version_v1 = self.menubar[5].addAction('ModelData v{} ({})'.format(
+            ModelData_version, ModelData_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("ModelData"))
+        self.q_version_v1.setCheckable(True)
+        self.q_version_v2 = self.menubar[5].addAction('QModel v{} ({})'.format(
+            QModel2_version, QModel2_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v2"))
+        self.q_version_v2.setCheckable(True)
+        self.q_version_v3a = self.menubar[5].addAction('QModel v{} ({})'.format(
+            QModel3a_version, QModel3a_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3a"))
+        self.q_version_v3a.setCheckable(True)
+        self.q_version_v3b = self.menubar[5].addAction('QModel v{} ({})'.format(
+            QModel3b_version, QModel3b_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3b"))
+        self.q_version_v3b.setCheckable(True)
+        if Constants.QModel3b_predict:
+            self.q_version_v3b.setChecked(True)
+        elif Constants.QModel3a_predict:
+            self.q_version_v3a.setChecked(True)
+        elif Constants.QModel2_predict:
+            self.q_version_v2.setChecked(True)
+        elif Constants.ModelData_predict:
+            self.q_version_v1.setChecked(True)
+        else:
+            Log.w(TAG, "No model selected on startup")
+        self.menubar[3].addSeparator()
         sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
             Constants.app_version,
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
-        from QATCH.QModel.__init__ import __version__ as QModel_version
-        from QATCH.QModel.__init__ import __release__ as QModel_release
-        q_version = self.menubar[3].addAction('QModel v{} ({})'.format(
-            QModel_version, QModel_release))
-        q_version.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():

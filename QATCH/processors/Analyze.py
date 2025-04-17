@@ -870,12 +870,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel3_predict:
-            self.cBox_Models.setCurrentIndex(0)
+        if Constants.QModel3b_predict:
+            self.cBox_Models.setCurrentIndex(3)
+        elif Constants.QModel3a_predict:
+            self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel2_predict:
             self.cBox_Models.setCurrentIndex(1)
         elif Constants.ModelData_predict:
-            self.cBox_Models.setCurrentIndex(2)
+            self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(
             self.set_new_prediction_model)
         self.gridLayout.addWidget(self.cBox_Models, 6, 5, 1, 3)
@@ -1692,21 +1694,39 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("Failed to set new channel thickness!")
 
     def set_new_prediction_model(self, text):
-        default = "QModel v3"
+        default = "QModel v2"
         if default in Constants.list_predict_models:
-            index = len(Constants.list_predict_models) - \
-                Constants.list_predict_models.index(default)
+            index = Constants.list_predict_models.index(default)
         else:
             index = 3
         if text in Constants.list_predict_models:
-            index = len(Constants.list_predict_models) - \
-                Constants.list_predict_models.index(text)
+            index = Constants.list_predict_models.index(text)
         else:
             Log.e(
                 TAG, f"Unknown predict model '{text}', using default '{default}'")
-        Constants.ModelData_predict = True if index >= 1 else False
-        Constants.QModel2_predict = True if index >= 2 else False
-        Constants.QModel3_predict = True if index >= 3 else False
+        try:
+            # these flags are set above `index` as a fallback option
+            Constants.ModelData_predict = True if index >= 0 else False
+            Constants.QModel2_predict = True if index >= 1 else False
+            Constants.QModel3a_predict = True if index >= 2 else False
+            Constants.QModel3b_predict = True if index >= 3 else False
+        except:
+            Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
+        try:
+            self.cBox_Models.setCurrentIndex(index)
+        except:
+            Log.e(TAG, "Failed to set model dropdown menu in Advanced Settings")
+        try:
+            self.parent.ControlsWin.q_version_v1.setChecked(
+                True if index == 0 else False)
+            self.parent.ControlsWin.q_version_v2.setChecked(
+                True if index == 1 else False)
+            self.parent.ControlsWin.q_version_v3a.setChecked(
+                True if index == 2 else False)
+            self.parent.ControlsWin.q_version_v3b.setChecked(
+                True if index == 3 else False)
+        except:
+            Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
     def _update_progress_value(self, value=0, status=None):
         pct = self.progressBar.value()
@@ -2661,7 +2681,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel2_predict:
+            if Constants.QModel3b_predict:
+                Log.e(TAG, NotImplementedError(
+                    "QModel v3b does not exist yet"))
+            if self.model_result == -1 and Constants.QModel3a_predict:
+                Log.e(TAG, NotImplementedError(
+                    "QModel v3a does not exist yet"))
+            if self.model_result == -1 and Constants.QModel2_predict:
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
@@ -2883,7 +2909,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_candidates = None
                 self.model_engine = "None"
 
-                if Constants.QModel2_predict:
+                if Constants.QModel3b_predict:
+                    Log.e(TAG, NotImplementedError(
+                        "QModel v3b does not exist yet"))
+                if self.model_result == -1 and Constants.QModel3a_predict:
+                    Log.e(TAG, NotImplementedError(
+                        "QModel v3a does not exist yet"))
+                if self.model_result == -1 and Constants.QModel2_predict:
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
@@ -4072,7 +4104,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel2_predict:
+                if Constants.QModel3b_predict:
+                    Log.e(TAG, NotImplementedError(
+                        "QModel v3b does not exist yet"))
+                if self.model_result == -1 and Constants.QModel3a_predict:
+                    Log.e(TAG, NotImplementedError(
+                        "QModel v3a does not exist yet"))
+                if self.model_result == -1 and Constants.QModel2_predict:
                     try:
                         with secure_open(data_path, "r", "capture") as f:
                             fh = BytesIO(f.read())

@@ -308,10 +308,12 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["QModel v3",
+    list_predict_models = ["ModelData",
                            "QModel v2",
-                           "ModelData"]
-    QModel3_predict = False  # not yet implemented
+                           "QModel v3a",
+                           "QModel v3b"]
+    QModel3b_predict = False  # not yet implemented
+    QModel3a_predict = False  # not yet implemented
     QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
