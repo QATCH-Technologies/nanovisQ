@@ -191,13 +191,13 @@ class RunInfoWindow(QtWidgets.QWidget):
         self.notes.textChanged.connect(self.detect_change)
         self.RunInfoLayout.addWidget(self.notes, 0, 2, 2, col-1)
 
-        self.q5 = QtWidgets.QCheckBox("Remember for next run")
-        self.q5.setChecked(True)
-        self.q5.setEnabled(self.unsaved_changes)
-        self.q5.stateChanged.connect(self.detect_change)
-        self.q5.stateChanged.connect(self.update_hidden_child_fields)
+        self.q_recall = QtWidgets.QCheckBox("Remember for next run")
+        self.q_recall.setChecked(True)
+        self.q_recall.setEnabled(self.unsaved_changes)
+        self.q_recall.stateChanged.connect(self.detect_change)
+        self.q_recall.stateChanged.connect(self.update_hidden_child_fields)
         self.RunInfoLayout.addWidget(
-            self.q5, row+1, 0, 1, col+1, QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.q_recall, row+1, 0, 1, col+1, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.btn = QtWidgets.QPushButton("Save")
         self.btn.pressed.connect(self.confirm)
@@ -343,7 +343,7 @@ class RunInfoWindow(QtWidgets.QWidget):
         run_name = self.t_runname.text()
         batch_num = self.t_batch.text()
         notes_txt = self.notes.toPlainText()
-        do_recall = self.q5.isChecked()
+        do_recall = self.q_recall.isChecked()
         for i in range(self.num_runs_saved):
             self.bWorker[i].setHiddenFields(
                 run_name, batch_num, notes_txt, do_recall)
@@ -586,6 +586,70 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t4.textChanged.connect(self.calc_params)
         self.t4.editingFinished.connect(self.calc_params)
 
+        # Surfactant Type
+        self.q5 = QtWidgets.QHBoxLayout()
+        self.l9 = QtWidgets.QLabel()
+        self.l9.setText("Type\t\t=")
+        self.q5.addWidget(self.l9)
+        self.c5 = QtWidgets.QComboBox()
+        self.load_surfactant_types()  # read from settings file
+        self.q5.addWidget(self.c5)
+        self.h7 = QtWidgets.QLabel()
+        self.h7.setText("<u>?</u>")
+        self.h7.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q5.addWidget(self.h7)
+        self.c5.currentTextChanged.connect(self.new_surfactant_type)
+        # self.c5.textChanged.connect(self.lookup_completer)
+        # self.c5.editingFinished.connect(self.enforce_completer)
+
+        # Surfactant Concentration
+        self.q6 = QtWidgets.QHBoxLayout()
+        self.l6 = QtWidgets.QLabel()
+        self.l6.setText("Concentration\t=")
+        self.q6.addWidget(self.l6)
+        self.t6 = QtWidgets.QLineEdit()
+        self.validConcentration = QtGui.QDoubleValidator(0, 1, 3)
+        self.validConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t6.setValidator(self.validConcentration)
+        self.q6.addWidget(self.t6)
+        self.h6 = QtWidgets.QLabel()
+        self.h6.setText("<u>%w</u>")
+        self.h6.setToolTip("<b>Hint:</b> For 0.010%w enter \"0.010\".")
+        self.q6.addWidget(self.h4)
+        self.t6.textChanged.connect(self.calc_params)
+        self.t6.editingFinished.connect(self.calc_params)
+
+        # Surfactant Groupbox
+        self.groupbox1 = QtWidgets.QGroupBox("Surfactant Information")
+        self.groupbox1.setCheckable(True)
+        self.vbox1 = QtWidgets.QVBoxLayout()
+        self.groupbox1.setLayout(self.vbox1)
+        self.vbox1.addLayout(self.q5)
+        self.vbox1.addLayout(self.q6)
+
+        # Stabilizer Type
+
+        # Stabilizer Concentration
+        self.q8 = QtWidgets.QHBoxLayout()
+        self.l8 = QtWidgets.QLabel()
+        self.l8.setText("Concentration\t=")
+        self.q8.addWidget(self.l8)
+        self.t8 = QtWidgets.QLineEdit()
+        self.validConcentration = QtGui.QDoubleValidator(0, 1, 3)
+        self.validConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t8.setValidator(self.validConcentration)
+        self.q8.addWidget(self.t8)
+        self.h8 = QtWidgets.QLabel()
+        self.h8.setText("<u>M</u>")
+        self.h8.setToolTip(
+            "<b>Hint:</b> For a molar mass of 0.50 enter \"0.50\".")
+        self.q8.addWidget(self.h8)
+        self.t8.textChanged.connect(self.calc_params)
+        self.t8.editingFinished.connect(self.calc_params)
+
         self.r1 = QtWidgets.QHBoxLayout()
         self.l6 = QtWidgets.QLabel()
         self.l6.setText("Surface Tension\t=")
@@ -640,21 +704,22 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addLayout(self.q_runname)
         layout_v.addLayout(self.q_batch)
         layout_v.addWidget(self.notes)
-        layout_v.addLayout(self.q1)
-        layout_v.addLayout(self.q2)
+        layout_v.addLayout(self.q1)  # show "Is this a bioformulation?"
+        # layout_v.addLayout(self.q2) # hide Solvent
         # layout_v.addLayout(self.q3) # hide Surfactant
-        layout_v.addLayout(self.q4)
+        # layout_v.addLayout(self.q4) # hide Concentration
+        layout_v.addWidget(self.groupbox1)
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
         # layout_v.addWidget(self.l5)
         # layout_v.addLayout(self.r1) # hide Surface Tension
-        layout_v.addLayout(self.r2)
-        layout_v.addLayout(self.r3)
-        self.q5 = QtWidgets.QCheckBox("Remember for next run")
-        self.q5.setChecked(True)
-        self.q5.setEnabled(self.unsaved_changes)
+        # layout_v.addLayout(self.r2) # hide Contact Angle
+        layout_v.addLayout(self.r3)  # show Density
+        self.q_recall = QtWidgets.QCheckBox("Remember for next run")
+        self.q_recall.setChecked(True)
+        self.q_recall.setEnabled(self.unsaved_changes)
         layout_v.addWidget(
-            self.q5, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         from QATCH.common.userProfiles import UserProfiles
         valid, infos = UserProfiles.session_info()
@@ -809,7 +874,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
         self.highlight_manual_entry()  # run now
         self.g1.buttonClicked.connect(self.detect_change)
-        self.q5.stateChanged.connect(self.detect_change)
+        self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
 
         if self.post_run:
@@ -869,7 +934,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t_batch.setVisible(show_single_fields)
         self.h_batch.setVisible(show_single_fields)
         self.notes.setVisible(show_single_fields)
-        self.q5.setVisible(show_single_fields)
+        self.q_recall.setVisible(show_single_fields)
         self.btn.setVisible(show_single_fields)
 
     def getRunParams(self):
@@ -884,7 +949,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t_runname.setText(run_name + self.run_port)
         self.t_batch.setText(batch_num)
         self.notes.setPlainText(notes_txt)
-        self.q5.setChecked(do_recall)
+        self.q_recall.setChecked(do_recall)
 
     def recallFromXML(self):
         recalled = False
@@ -985,7 +1050,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                 if len(params.childNodes) == 0:
                     # uncheck "Remember for next time"
-                    self.q5.setChecked(False)
+                    self.q_recall.setChecked(False)
                 recalled = True
         except:
             Log.e("Failed to recall info from saved file.")
@@ -1156,6 +1221,67 @@ class QueryRunInfo(QtWidgets.QWidget):
         left = int((area.width() - width) / 2)
         top = int((area.height() - height) / 2)
         self.setGeometry(left, top, width, height)
+
+    def new_surfactant_type(self, text):
+        if text == "add new...":
+            self.add_surfactant_type = QtWidgets.QWidget()
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Surfactant Types:")
+            self.surfactant_types_multiline = QtWidgets.QPlainTextEdit()
+            self.surfactant_types_multiline.setPlainText(
+                "\n".join(self.available_surfactant_types))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_surfactant_types)
+            layout.addWidget(label)
+            layout.addWidget(self.surfactant_types_multiline)
+            layout.addWidget(save)
+            self.add_surfactant_type.setLayout(layout)
+            self.add_surfactant_type.show()
+            self.surfactant_types_multiline.setFocus()
+            self.surfactant_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text == "none":
+            self.t6.clear()  # clear Surfactant Concentration
+        else:
+            pass  # do nothing if any other value was selected
+
+    def load_surfactant_types(self):
+        try:
+            path_to_types_file = os.path.join(
+                Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+            if not os.path.isfile(path_to_types_file):
+                self.save_surfactant_types()  # load and create file with defaults
+            else:
+                with open(path_to_types_file, "r") as f:
+                    self.available_surfactant_types = f.read.splitlines()
+        except:
+            Log.e("Failed to load surfactant types list from file.")
+
+    def save_surfactant_types(self):
+        try:
+            self.available_surfactant_types = self.surfactant_types_multiline.toPlainText().splitlines()
+        except:
+            Log.w("Creating default surfactant types list...")
+            self.available_surfactant_types = ["none", "tween-20", "tween-80"]
+        try:
+            path_to_types_file = os.path.join(
+                Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+            with open(path_to_types_file, "w") as f:
+                f.writelines("\n".join(self.available_surfactant_types))
+        except:
+            Log.e("Failed to save surfactant types list to file.")
+        try:
+            num_items = self.c5.count()
+            self.c5.clear()
+            self.c5.addItems(self.available_surfactant_types)
+            self.c5.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                self.c5.setCurrentText(self.available_surfactant_types[-1])
+            else:
+                self.c5.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update surfactant list after saving.")
 
     def lookup_completer(self):
         try:
@@ -1787,12 +1913,12 @@ class QueryRunInfo(QtWidgets.QWidget):
             f.write(xml_str)
             Log.i(f"Created XML file: {self.xml_path}")
 
-        if self.q5.isEnabled():
+        if self.q_recall.isEnabled():
             run = minidom.Document()
             xml = run.createElement('run_info')
             xml.setAttribute('name', 'recall')
             run.appendChild(xml)
-            if self.q5.isChecked():  # remember for next time
+            if self.q_recall.isChecked():  # remember for next time
                 Log.i("Run info remembered for next time.")
             else:
                 params = run.createElement('params')  # blank it
