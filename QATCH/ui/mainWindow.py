@@ -319,12 +319,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.QModel.__init__ import __version__ as QModel2_version
         from QATCH.QModel.__init__ import __release__ as QModel2_release
-        QModel3a_version = "3.1.0"
-        QModel3a_release = "2025-04-18"
-        QModel3b_version = "3.2.0"
-        QModel3b_release = "2025-04-19"
+        QModel3_version = "3.1.0"
+        QModel3_release = "2025-04-18"
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (4 available)')
+            'Model versions (3 available)')
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction('ModelData v{} ({})'.format(
             ModelData_version, ModelData_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("ModelData"))
@@ -332,16 +330,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.q_version_v2 = self.menubar[5].addAction('QModel v{} ({})'.format(
             QModel2_version, QModel2_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v2"))
         self.q_version_v2.setCheckable(True)
-        self.q_version_v3a = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel3a_version, QModel3a_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3a"))
-        self.q_version_v3a.setCheckable(True)
-        self.q_version_v3b = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel3b_version, QModel3b_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3b"))
-        self.q_version_v3b.setCheckable(True)
-        if Constants.QModel3b_predict:
-            self.q_version_v3b.setChecked(True)
-        elif Constants.QModel3a_predict:
-            self.q_version_v3a.setChecked(True)
+        self.q_version_v3 = self.menubar[5].addAction('QModel v{} ({})'.format(
+            QModel3_version, QModel3_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3a"))
+        self.q_version_v3.setCheckable(True)
+        if Constants.QModel3_predict:
+            self.q_version_v3.setChecked(True)
         elif Constants.QModel2_predict:
             self.q_version_v2.setChecked(True)
         elif Constants.ModelData_predict:

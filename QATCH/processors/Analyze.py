@@ -870,9 +870,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel3b_predict:
-            self.cBox_Models.setCurrentIndex(3)
-        elif Constants.QModel3a_predict:
+        if Constants.QModel3_predict:
             self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel2_predict:
             self.cBox_Models.setCurrentIndex(1)
@@ -1708,8 +1706,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # these flags are set above `index` as a fallback option
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel2_predict = True if index >= 1 else False
-            Constants.QModel3a_predict = True if index >= 2 else False
-            Constants.QModel3b_predict = True if index >= 3 else False
+            Constants.QModel3_predict = True if index >= 2 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -1721,10 +1718,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 True if index == 0 else False)
             self.parent.ControlsWin.q_version_v2.setChecked(
                 True if index == 1 else False)
-            self.parent.ControlsWin.q_version_v3a.setChecked(
+            self.parent.ControlsWin.q_version_v3.setChecked(
                 True if index == 2 else False)
-            self.parent.ControlsWin.q_version_v3b.setChecked(
-                True if index == 3 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2681,12 +2676,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
-            if Constants.QModel3b_predict:
+            if Constants.QModel3_predict:
                 Log.e(TAG, NotImplementedError(
-                    "QModel v3b does not exist yet"))
-            if self.model_result == -1 and Constants.QModel3a_predict:
-                Log.e(TAG, NotImplementedError(
-                    "QModel v3a does not exist yet"))
+                    "QModel v3 does not exist yet"))
             if self.model_result == -1 and Constants.QModel2_predict:
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -2909,12 +2901,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_candidates = None
                 self.model_engine = "None"
 
-                if Constants.QModel3b_predict:
+                if Constants.QModel3_predict:
                     Log.e(TAG, NotImplementedError(
-                        "QModel v3b does not exist yet"))
-                if self.model_result == -1 and Constants.QModel3a_predict:
-                    Log.e(TAG, NotImplementedError(
-                        "QModel v3a does not exist yet"))
+                        "QModel v3 does not exist yet"))
                 if self.model_result == -1 and Constants.QModel2_predict:
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -4104,12 +4093,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel3b_predict:
+                if Constants.QModel3_predict:
                     Log.e(TAG, NotImplementedError(
-                        "QModel v3b does not exist yet"))
-                if self.model_result == -1 and Constants.QModel3a_predict:
-                    Log.e(TAG, NotImplementedError(
-                        "QModel v3a does not exist yet"))
+                        "QModel v3 does not exist yet"))
                 if self.model_result == -1 and Constants.QModel2_predict:
                     try:
                         with secure_open(data_path, "r", "capture") as f:
