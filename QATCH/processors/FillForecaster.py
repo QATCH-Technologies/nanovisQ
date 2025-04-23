@@ -25,7 +25,7 @@ from logging.handlers import QueueHandler
 from typing import Any, Optional, Dict
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from QATCH.QModel.q_forecaster import QForecastPredictor, FillStatus
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus
 
 TAG = "[FillForecaster]"
 

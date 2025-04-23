@@ -308,9 +308,13 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    QModel_predict = True
+    list_predict_models = ["ModelData",
+                           "QModel v2",
+                           "QModel v3"]
+    QModel3_predict = True
+    QModel2_predict = True
     ModelData_predict = True
-    Tensorflow_predict = True
+    TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.
     # In general, the first model to return a valid result will
