@@ -311,7 +311,7 @@ class Constants:
     list_predict_models = ["ModelData",
                            "QModel v2",
                            "QModel v3"]
-    QModel3_predict = False  # not yet implemented
+    QModel3_predict = True
     QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True

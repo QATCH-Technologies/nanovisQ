@@ -17,7 +17,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.q_forecaster import QForecastDataProcessor, QForecastPredictor, FillStatus
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from time import time, mktime, strftime, strptime, localtime
@@ -317,10 +317,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __version__ as ModelData_version
         from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.QModel.__init__ import __version__ as QModel2_version
-        from QATCH.QModel.__init__ import __release__ as QModel2_release
-        QModel3_version = "3.1.0"
-        QModel3_release = "2025-04-18"
+        from QATCH.QModel.src.models.static_v2.__init__ import __version__ as QModel2_version
+        from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
+        from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
+        from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
         qmodel_versions_menu = self.menubar[3].addMenu(
             'Model versions (3 available)')
         self.menubar.append(qmodel_versions_menu)
