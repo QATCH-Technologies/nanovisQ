@@ -231,7 +231,7 @@ class QatchTagger():
                 if os.path.exists(move_to):
                     raise PermissionError(
                         f"File already exists: \"{move_to}\"")
-                shutil.copyfile(tags_path, os.path.dirname(move_to))
+                shutil.copyfile(tags_path, move_to)
 
             else:
                 logging.warning(
