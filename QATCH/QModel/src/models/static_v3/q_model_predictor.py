@@ -8,8 +8,8 @@ file validation, feature extraction, probability formatting, and bias correction
 POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 04-18-2025
-Version: QModel.Ver3.0
+Date: 04-24-2025
+Version: QModel.Ver3.1
 """
 
 import xgboost as xgb
