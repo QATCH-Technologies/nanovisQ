@@ -40,8 +40,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b56"
-    app_date = "2025-04-07"
+    app_version = "v2.6b57"
+    app_date = "2025-04-23"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -308,9 +308,13 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    QModel_predict = True
+    list_predict_models = ["ModelData",
+                           "QModel v2",
+                           "QModel v3"]
+    QModel3_predict = True
+    QModel2_predict = True
     ModelData_predict = True
-    Tensorflow_predict = True
+    TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
     # in the same priority order as they are listed above.
     # In general, the first model to return a valid result will
