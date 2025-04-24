@@ -6509,6 +6509,7 @@ class AnalyzerWorker(QtCore.QObject):
                 fig_dbg.show()
 
             idx_of_normal_pts_to_remove = []
+            idx_of_normal_pts_to_retain = []
             for p in normal_pts:
                 midpoint_p_i = next(
                     x for x, y in enumerate(ys_normal) if y >= p) + tp
@@ -6525,6 +6526,8 @@ class AnalyzerWorker(QtCore.QObject):
                 times.append(midpoint_p_i)
                 if p == 0.2 or p == 0.4:
                     idx_of_normal_pts_to_remove.append(midpoint_p_i)
+                else:
+                    idx_of_normal_pts_to_retain.append(midpoint_p_i)
             times.sort()  # sort again, so midpoints are in proper order
 
             self.update(status_label)
@@ -7222,29 +7225,32 @@ class AnalyzerWorker(QtCore.QObject):
 
             viscosity_at_1p15 = viscosity[-len(distances)]
 
+            # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 10% of POI2 and POI4
             try:
-                idx0 = -6
-                idx1 = -5
-                idx2 = -4
-                idx3 = -3
-                avg_viscosity = np.average(
-                    [in_viscosity[idx0], in_viscosity[idx3]])
-                std_viscosity = np.std(
-                    np.delete(in_viscosity, [idx1, idx2])
-                )  # all of in_viscosity, just not 2 points
-                min_visc = 0.9*min(viscosity[-len(distances)],
-                                   viscosity[-1])
-                max_visc = 1.1*max(viscosity[-len(distances)],
-                                   viscosity[-1])
-                Log.d(
-                    f"Expected viscosity = {avg_viscosity} +/- {std_viscosity}, min = {min_visc}, max = {max_visc}"
+                normal_idxs = []
+                for i in idx_of_normal_pts_to_retain:
+                    normal_idxs.append(-len(distances)+times.index(i))
+                idx0 = np.min(normal_idxs)-1  # POI2
+                idx1 = np.max(normal_idxs)+1  # POI4
+                # avg_viscosity = np.average(
+                #     [in_viscosity[idx0], in_viscosity[idx3]])
+                # std_viscosity = np.std(
+                #     np.delete(in_viscosity, [idx1, idx2])
+                # )  # all of in_viscosity, just not 2 points
+                min_visc = 0.9*min(viscosity[idx0],
+                                   viscosity[idx1])
+                max_visc = 1.1*max(viscosity[idx0],
+                                   viscosity[idx1])
+                Log.i(
+                    f"Expected normal viscosity range = (min = {min_visc}, max = {max_visc})"
                 )
-                Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
-                for i in range(-len(distances), 0):
+                # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
+                for x, i in enumerate(normal_idxs):
+                    pt = "60%" if x == 0 else "80%"
                     if min_visc <= viscosity[i] <= max_visc:
                         continue
-                    Log.d(
-                        f"Removed point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
+                    Log.w(
+                        f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
                     )
                     in_shear_rate = np.delete(in_shear_rate, i)
                     in_viscosity = np.delete(in_viscosity, i)
@@ -7328,6 +7334,23 @@ class AnalyzerWorker(QtCore.QObject):
                         f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
                     )
                     hide_initial_fill = True
+            ##################
+
+            ### BANDAID #4 ###
+            # PURPOSE: Hide 60% and/or 80% points when trending in the wrong direction surrounding POI2 and POI4
+            # enable_bandaid_4 = True
+            # if enable_bandaid_4:
+            #     for i in idx_of_normal_pts_to_retain:
+            #         try:
+            #             idx = times.index(i)
+            #             Log.d(
+            #                 f"Removing index {idx} from distances with value {distances[idx]}."
+            #             )
+            #             distances = np.delete(distances, idx)
+            #             Log.d(f"Removing index {idx} from times with value {i}.")
+            #             times.remove(i)
+            #         except Exception as e:
+            #             Log.e("Error removing midpoint from dataset:", str(e))
             ##################
 
             if initial_fill[-1] >= 90 and not hide_initial_fill:
