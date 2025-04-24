@@ -569,6 +569,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t3.textChanged.connect(self.calc_params)
         self.t3.editingFinished.connect(self.calc_params)
 
+        # Protein Type
+
+        # Protein Concentration
         self.q4 = QtWidgets.QHBoxLayout()
         self.l4 = QtWidgets.QLabel()
         self.l4.setText("Concentration\t=")
@@ -585,6 +588,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.q4.addWidget(self.h4)
         self.t4.textChanged.connect(self.calc_params)
         self.t4.editingFinished.connect(self.calc_params)
+
+        # Protein Groupbox
 
         # Surfactant Type
         self.q5 = QtWidgets.QHBoxLayout()
@@ -622,10 +627,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t6.editingFinished.connect(self.calc_params)
 
         # Surfactant Groupbox
-        self.groupbox1 = QtWidgets.QGroupBox("Surfactant Information")
-        self.groupbox1.setCheckable(True)
+        self.groupSurfactant = QtWidgets.QGroupBox("Surfactant Information")
+        self.groupSurfactant.setCheckable(True)
         self.vbox1 = QtWidgets.QVBoxLayout()
-        self.groupbox1.setLayout(self.vbox1)
+        self.groupSurfactant.setLayout(self.vbox1)
         self.vbox1.addLayout(self.q5)
         self.vbox1.addLayout(self.q6)
 
@@ -649,6 +654,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.q8.addWidget(self.h8)
         self.t8.textChanged.connect(self.calc_params)
         self.t8.editingFinished.connect(self.calc_params)
+
+        # Stabilizer Groupbox
 
         self.r1 = QtWidgets.QHBoxLayout()
         self.l6 = QtWidgets.QLabel()
@@ -708,7 +715,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         # layout_v.addLayout(self.q2) # hide Solvent
         # layout_v.addLayout(self.q3) # hide Surfactant
         # layout_v.addLayout(self.q4) # hide Concentration
-        layout_v.addWidget(self.groupbox1)
+        layout_v.addWidget(self.groupSurfactant)
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
         # layout_v.addWidget(self.l5)
