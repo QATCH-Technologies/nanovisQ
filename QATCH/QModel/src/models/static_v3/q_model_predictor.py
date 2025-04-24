@@ -13,16 +13,20 @@ Version: QModel.Ver3.0
 """
 
 import xgboost as xgb
-from QATCH.common.logger import Logger as Log
+
 from sklearn.pipeline import Pipeline
 import pickle
 import os
 import pandas as pd
-from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
-from QATCH.models.ModelData import ModelData
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import find_peaks
+from QATCH.common.logger import Logger as Log
+from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
+from QATCH.models.ModelData import ModelData
+from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
+from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
+from QATCH.common.architecture import Architecture
 
 
 class QModelPredictor:
@@ -149,6 +153,67 @@ class QModelPredictor:
                 elif isinstance(pt, list) and pt:
                     model_data_points.append(max(pt, key=lambda x: x[1])[0])
         return model_data_points
+
+    def _get_qmodel_v2_predictions(self, file_buffer: str):
+
+        qmodel_v2_points = []
+        cluster_model_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH", "QModel", "SavedModels", "qmodel_v2",
+            "cluster.joblib"
+        )
+        self.QModel_clusterer = QClusterer(
+            model_path=cluster_model_path)
+
+        predict_model_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH", "QModel", "SavedModels", "qmodel_v2",
+            "QMultiType_{}.json",
+        )
+
+        clusterer = QClusterer(model_path=cluster_model_path)
+
+        try:
+            label = clusterer.predict_label(file_buffer)
+        except Exception as e:
+            label = 0
+            Log.w(
+                f'Failed to retrieve clustering in static_v3, using classifier (0): {e}.')
+        file_buffer.seek(0)
+        QModel_v2_predictor = None
+        try:
+            if label == 0:
+                QModel_v2_predictor = QPredictor(
+                    model_path=predict_model_path.format(0)
+                )
+            elif label == 1:
+                QModel_v2_predictor = QPredictor(
+                    model_path=predict_model_path.format(1)
+                )
+
+            else:
+                QModel_v2_predictor = QPredictor(
+                    model_path=predict_model_path.format(2)
+                )
+
+        except:
+            Log.w(
+                f'Failed to set predictor in static_v3, using classifier (0): {e}.')
+            QModel_v2_predictor = QPredictor(
+                model_path=predict_model_path.format(0)
+            )
+
+        try:
+            print(file_buffer)
+            candidates = QModel_v2_predictor.predict(
+                file_buffer=file_buffer, run_type=label)
+            for c in candidates:
+                qmodel_v2_points.append(c[0][0])
+            return qmodel_v2_points
+        except Exception as e:
+            Log.w(
+                f'Failed to predict in static_v3, returning ModelData positions: {e}.')
+            return self._get_model_data_predictions(file_buffer=file_buffer)
 
     def _reset_file_buffer(self, file_buffer: str):
         """
@@ -290,7 +355,7 @@ class QModelPredictor:
     def _select_best_predictions(
         self,
         predictions: dict,
-        model_data_labels: list,
+        ground_truth: list,
         relative_time: np.ndarray,
         dissipation: np.ndarray,
     ) -> dict:
@@ -299,7 +364,7 @@ class QModelPredictor:
 
         Args:
             predictions (dict): Initial POI prediction candidates.
-            model_data_labels (list): Ground-truth indices from ModelData.
+            ground_truth_predictions (list): Ground-truth indices from ModelData or qmodel_v2.
             relative_time (np.ndarray): Time points for the data.
             dissipation (np.ndarray): Dissipation values over time.
 
@@ -312,8 +377,8 @@ class QModelPredictor:
 
         # 1) define your [POI3, POI6] window and its thirds
         t0 = None
-        if len(model_data_labels) > 2:
-            idx3 = model_data_labels[2]
+        if len(ground_truth) > 2:
+            idx3 = ground_truth[2]
             if isinstance(idx3, (int, np.integer)) and 0 <= idx3 < len(relative_time):
                 t0 = relative_time[idx3]
 
@@ -332,8 +397,8 @@ class QModelPredictor:
         times = []
 
         # 1) model_data_labels[5]
-        if len(model_data_labels) > 5:
-            idx6 = model_data_labels[5]
+        if len(ground_truth) > 5:
+            idx6 = ground_truth[5]
             if isinstance(idx6, (int, np.integer)) and 0 <= idx6 < len(relative_time):
                 times.append(relative_time[idx6])
 
@@ -355,12 +420,12 @@ class QModelPredictor:
               if cut1 <= relative_time[i] <= cut2]
         q6 = [i for i in best_positions["POI6"]["indices"]
               if relative_time[i] >= cut2]
-        if len(model_data_labels) > 3:
-            q4.append(model_data_labels[3])
-        if len(model_data_labels) > 4:
-            q5.append(model_data_labels[4])
-        if len(model_data_labels) > 5:
-            q6.append(model_data_labels[5])
+        if len(ground_truth) > 3:
+            q4.append(ground_truth[3])
+        if len(ground_truth) > 4:
+            q5.append(ground_truth[4])
+        if len(ground_truth) > 5:
+            q6.append(ground_truth[5])
 
         def choose_and_insert(lst):
             if not lst:
@@ -392,7 +457,7 @@ class QModelPredictor:
 
             # 4a) all -1’s → rollback to model_data_label
             if all(i == -1 for i in lst):
-                fallback = model_data_labels[poi_num - 1]
+                fallback = ground_truth[poi_num - 1]
                 best_positions[key]["indices"] = [fallback]
                 continue
 
@@ -414,18 +479,22 @@ class QModelPredictor:
             # 5a) if empty, seed with model_data_label
             if not inds:
                 best_positions[key]["indices"] = [
-                    model_data_labels[poi_num - 1]]
+                    ground_truth[poi_num - 1]]
                 inds = best_positions[key]["indices"]
 
             # determine the “previous” index
             if best_positions.get(prev_key, {}).get("indices"):
                 prev_idx = best_positions[prev_key]["indices"][0]
             else:
-                prev_idx = model_data_labels[poi_num - 2]
+                prev_idx = ground_truth[poi_num - 2]
 
             # 5b) enforce strict ordering: current > previous
             if inds[0] <= prev_idx:
-                best_positions[key]["indices"][0] = model_data_labels[poi_num - 1]
+                best_positions[key]["indices"][0] = ground_truth[poi_num - 1]
+        if len(ground_truth) > 1:
+            best_positions["POI1"]["indices"].insert(0, ground_truth[0])
+        if len(ground_truth) > 4:
+            best_positions["POI4"]["indices"].insert(0, ground_truth[3])
         for key, data in best_positions.items():
             inds = data.get("indices", [])
             confs = data.get("confidences")
@@ -434,7 +503,7 @@ class QModelPredictor:
                 data["confidences"] = confs[: len(inds)]
         return best_positions
 
-    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None) -> dict:
+    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = True) -> dict:
         """
         Predict POI indices from dissipation CSV data using the loaded model and scaler.
 
@@ -453,9 +522,13 @@ class QModelPredictor:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
+        qmodel_v2_labels = self._get_qmodel_v2_predictions(
+            file_buffer=file_buffer)
+        self._qmodel_v2_labels = qmodel_v2_labels
         model_data_labels = self._get_model_data_predictions(
             file_buffer=file_buffer)
         self._model_data_labels = model_data_labels
+
         ###
         # Sanity check to avoid throwing an `IndexError` later on
         if len(model_data_labels) == 0:
@@ -472,10 +545,40 @@ class QModelPredictor:
         predicted_probabilites = self._booster.predict(ddata)
         extracted_predictions = self._extract_predictions(
             predicted_probabilites, model_data_labels)
-        extracted_predictions = self._select_best_predictions(
-            extracted_predictions, model_data_labels, df["Relative_time"].values, feature_vector["Dissipation_smooth"].values)
+        final_predictions = self._select_best_predictions(
+            predictions=extracted_predictions,
+            ground_truth=qmodel_v2_labels,
+            relative_time=df["Relative_time"].values,
+            dissipation=feature_vector["Dissipation_smooth"].values)
+        if plotting:
+            plt.figure(figsize=(10, 6))
 
-        return extracted_predictions
+            plt.plot(df["Relative_time"],
+                     df["Dissipation"],
+                     linewidth=1.5,
+                     label="Dissipation")
+
+            # Overlay each POI’s candidate points
+            cmap = plt.get_cmap("tab10")
+            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
+                idxs = poi_info["indices"]
+                times = df["Relative_time"].iloc[idxs]
+                values = df["Dissipation"].iloc[idxs]
+
+                plt.scatter(times,
+                            values,
+                            marker="x",
+                            s=100,
+                            color=cmap(i),
+                            label=poi_name)
+
+            plt.xlabel("Relative time")
+            plt.ylabel("Dissipation")
+            plt.title("Dissipation curve with candidate POIs")
+            plt.legend()
+            plt.tight_layout()
+            plt.show()
+        return final_predictions
 
 
 if __name__ == "__main__":
