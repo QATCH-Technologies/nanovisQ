@@ -8,8 +8,8 @@ file validation, feature extraction, probability formatting, and bias correction
 POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 04-24-2025
-Version: QModel.Ver3.1
+Date: 04-18-2025
+Version: QModel.Ver3.4
 """
 
 import xgboost as xgb
@@ -20,6 +20,7 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from typing import Dict, List, Any
 from scipy.signal import find_peaks
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
@@ -308,202 +309,367 @@ class QModelPredictor:
 
     def _correct_bias(self, dissipation: np.ndarray, relative_time: np.ndarray, candidates: list) -> int:
         """
-        Adjust candidate selection by identifying steep slope onset and choosing nearest base.
-
-        Args:
-            dissipation (np.ndarray): Dissipation time series data.
-            relative_time (np.ndarray): Corresponding time points.
-            candidates (list): Candidate indices to choose from.
-
-        Returns:
-            int: Index of the best candidate after bias correction.
+        Adjust candidate selection by:
+        • iteratively lowering the slope threshold from 100→90th percentile in 0.5 steps,
+        • keeping only peaks within [min(candidates), max(candidates)],
+        • picking the candidate on the left base of the nearest valid peak,
+        • falling back on 90th percentile if needed,
+        • and plotting dissipation & slope with annotations.
         """
         t = relative_time
-        # 1) compute slope
         slope = np.gradient(dissipation, t)
 
-        # 2) pick a threshold for “steep” — e.g. 90th percentile of slopes
-        thresh = np.percentile(slope, 95)
+        cmin, cmax = min(candidates), max(candidates)
+        chosen_perc = None
+        valid_peaks = np.array([], dtype=int)
+        valid_bases = []
+        valid_filtered = []
 
-        # 3) find peaks in the slope (these mark the on‑ramps of your jumps)
-        peaks, props = find_peaks(slope, height=thresh)
+        # 1) Try percentiles 100→90 in 0.5 steps
+        for perc in np.arange(100.0, 89.5, -0.5):
+            thresh = np.percentile(slope, perc)
+            peaks, _ = find_peaks(slope, height=thresh)
 
-        # 4) for each slope‑peak, walk backwards to find where slope ≺ 0 (the base)
-        bases = []
-        for p in peaks:
-            j = p
-            # walk back until slope is non‑positive (or you hit the start)
-            while j > 0 and slope[j] > 0:
-                j -= 1
-            bases.append(j)
+            # **re-apply the candidate‐range filter**
+            peaks = peaks[(peaks >= cmin) & (peaks <= cmax)]
+            if peaks.size == 0:
+                continue
 
-        if not bases:
+            # compute bases for each in‐range peak
+            bases = []
+            for p in peaks:
+                j = p
+                while j > 0 and slope[j] > 0:
+                    j -= 1
+                bases.append(j)
+
+            # helper: distance if candidate ≤ at least one peak
+            def dist_if_left(c):
+                valid = [(p_i, b_i)
+                         for p_i, b_i in zip(peaks, bases) if p_i >= c]
+                if not valid:
+                    return np.inf
+                pk, bs = min(valid, key=lambda x: abs(x[0] - c))
+                return abs(c - bs)
+
+            filtered = [c for c in candidates if c < np.inf]
+            if filtered:
+                chosen_perc = perc
+                valid_peaks, valid_bases = peaks, bases
+                valid_filtered = filtered
+                break
+
+        # 2) Fallback at 90th percentile
+        if chosen_perc is None:
             Log.w(
-                "No steep jump detected!  Try lowering your threshold.")
-            return candidates[0]
-        if len(candidates) <= 0:
-            Log.w(
-                "Candidates list is empty")
-            return candidates
+                "No valid pick found down to the 90th percentile; falling back on 90th.")
+            chosen_perc = 90.0
+            thresh = np.percentile(slope, chosen_perc)
+            peaks, _ = find_peaks(slope, height=thresh)
+            peaks = peaks[(peaks >= cmin) & (peaks <= cmax)]
+            valid_peaks = peaks
+            valid_bases = []
+            for p in peaks:
+                j = p
+                while j > 0 and slope[j] > 0:
+                    j -= 1
+                valid_bases.append(j)
+            valid_filtered = candidates
 
-        def min_dist_to_bases(cand):
-            return min(abs(cand - b) for b in bases)
+            def dist_if_left(c):
+                valid = [(p_i, b_i) for p_i, b_i in zip(
+                    valid_peaks, valid_bases) if p_i >= c]
+                if not valid:
+                    return np.inf
+                pk, bs = min(valid, key=lambda x: abs(x[0] - c))
+                return abs(c - bs)
 
-        best_idx = min(candidates, key=min_dist_to_bases)
+        # 3) Pick best candidate
+        best_idx = min(valid_filtered, key=dist_if_left)
+
+        # 4) Plotting
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        # Dissipation
+        ax1.plot(t, dissipation, lw=1.5, label="Dissipation")
+        ax1.scatter(t[valid_peaks], dissipation[valid_peaks], marker="^", s=100,
+                    c="red", label="Slope Peaks")
+        ax1.scatter(t[valid_bases], dissipation[valid_bases], marker="o", s=80,
+                    c="blue", label="Bases")
+        ax1.scatter(t[candidates], dissipation[candidates], marker="o", s=60,
+                    edgecolors="orange", facecolors="none", label="Candidates")
+        ax1.scatter(t[best_idx], dissipation[best_idx], marker="*", s=200,
+                    c="green", label="Chosen")
+        ax1.set_ylabel("Dissipation")
+        ax1.set_title(
+            f"Bias Correction (threshold: {chosen_perc:.1f}th percentile)")
+        ax1.legend(loc="upper left")
+
+        # Slope
+        ax2.plot(t, slope, lw=1.5, label="Slope")
+        ax2.axhline(np.percentile(slope, chosen_perc), color="gray", ls="--",
+                    label=f"{chosen_perc:.1f}th %ile")
+        ax2.scatter(t[valid_peaks], slope[valid_peaks], marker="^", s=100,
+                    c="red", label="Slope Peaks")
+        ax2.scatter(t[valid_bases], slope[valid_bases], marker="o", s=80,
+                    c="blue", label="Bases")
+        ax2.scatter(t[candidates], slope[candidates], marker="o", s=60,
+                    edgecolors="orange", facecolors="none", label="Candidates")
+        ax2.scatter(t[best_idx], slope[best_idx], marker="*", s=200,
+                    c="green", label="Chosen")
+        ax2.set_xlabel("Time")
+        ax2.set_ylabel("Slope")
+        ax2.legend(loc="upper left")
+
+        plt.tight_layout()
+        plt.show()
+
         return best_idx
 
     def _select_best_predictions(
         self,
-        predictions: dict,
-        ground_truth: list,
+        predictions: Dict[str, Dict[str, Any]],
+        model_data_labels: List[int],
+        ground_truth: List[int],
         relative_time: np.ndarray,
         dissipation: np.ndarray,
-    ) -> dict:
+        dissipation_raw: np.ndarray,
+    ) -> Dict[str, Dict[str, Any]]:
         """
-        Refine predictions for POI4-6 by timing windows and bias correction.
-
-        Args:
-            predictions (dict): Initial POI prediction candidates.
-            ground_truth_predictions (list): Ground-truth indices from ModelData or qmodel_v2.
-            relative_time (np.ndarray): Time points for the data.
-            dissipation (np.ndarray): Dissipation values over time.
-
-        Returns:
-            dict: Updated POI predictions with ordered 'indices' lists.
+        Refine POI predictions by applying baseline filtering, timing windows, and bias correction.
         """
-        # make a shallow copy so we don't clobber the original dict
-        best_positions = {k: {"indices": v["indices"][:], "confidences": v.get("confidences")}
-                          for k, v in predictions.items()}
+        filtered_poi1 = self._filter_poi1_baseline(
+            predictions.get('POI1', {}).get('indices', []),
+            predictions.get('POI1', {}).get('confidences', []),
+            dissipation_raw,
+            relative_time
+        )
+        predictions['POI1'] = {
+            'indices': filtered_poi1,
+            'confidences': predictions.get('POI1', {}).get('confidences')
+        }
+        # 1) copy inputs to avoid side-effects
+        best_positions = self._copy_predictions(predictions)
+        # 1.1) boost POI6 confidences toward ground truth without overriding original confidences
+        if len(ground_truth) >= 6 and len(model_data_labels) >= 6:
+            ground_truth[5] = max(ground_truth[5], model_data_labels[5])
+        self._filter_poi6_near_ground_truth(
+            best_positions, ground_truth, relative_time)
 
-        # 1) define your [POI3, POI6] window and its thirds
-        t0 = None
-        if len(ground_truth) > 2:
-            idx3 = ground_truth[2]
-            if isinstance(idx3, (int, np.integer)) and 0 <= idx3 < len(relative_time):
-                t0 = relative_time[idx3]
+        self._sort_by_confidence(best_positions, 'POI6')
+        # 2) determine time anchors
+        t0 = self._determine_t0(ground_truth, best_positions, relative_time)
+        t3 = self._determine_t3(ground_truth, best_positions, relative_time)
+        cut1, cut2 = self._compute_cuts(t0, t3)
 
-        # Fallback: first POI3 candidate
-        if t0 is None:
-            cand3 = predictions.get("POI3", {}).get("indices", [])
-            if cand3 and isinstance(cand3[0], (int, np.integer)) and 0 <= cand3[0] < len(relative_time):
-                t0 = relative_time[cand3[0]]
+        # 3) filter POI4-6 windows
+        windows = self._filter_windows(
+            best_positions, ground_truth, relative_time, cut1, cut2)
+        # 4) apply bias correction and ranking
+        for poi in ("POI4", "POI5", "POI6"):
+            windows[poi] = self._choose_and_insert(
+                windows[poi], dissipation, relative_time)
 
-        # Last‐resort: start of the curve
-        if t0 is None:
-            t0 = relative_time[0]
+        # 5) update positions with new windows
+        best_positions = self._update_positions(best_positions, windows)
 
-        # --- SAFE t3 (POI6) ---
-        # Collect all valid sources, then pick the earliest (min) time
-        times = []
+        # 6) handle special -1 cases
+        self._handle_negatives(best_positions, ground_truth, relative_time)
+        if len(model_data_labels) >= 2:
+            best_positions["POI2"]["indices"].insert(0, model_data_labels[1])
+        # 7) enforce strict ordering across POIs
+        self._enforce_strict_ordering(best_positions, ground_truth)
 
-        # 1) model_data_labels[5]
-        if len(ground_truth) > 5:
-            idx6 = ground_truth[5]
-            if isinstance(idx6, (int, np.integer)) and 0 <= idx6 < len(relative_time):
-                times.append(relative_time[idx6])
+        # 8) truncate confidences to match indices length
+        self._truncate_confidences(best_positions)
 
-        # 2) first POI6 candidate
-        cand6 = predictions.get("POI6", {}).get("indices", [])
-        if cand6 and isinstance(cand6[0], (int, np.integer)) and 0 <= cand6[0] < len(relative_time):
-            times.append(relative_time[cand6[0]])
-
-        # 3) fallback to end of curve if nothing valid
-        t3 = min(times) if times else relative_time[-1]
-        delta = abs(t3 - t0)
-        part = delta / 3.0
-        cut1, cut2 = t0 + part, t0 + 2*part
-
-        # 2) window‑filter each POI’s candidates
-        q4 = [i for i in best_positions["POI4"]["indices"]
-              if relative_time[i] <= cut1]
-        q5 = [i for i in best_positions["POI5"]["indices"]
-              if cut1 <= relative_time[i] <= cut2]
-        q6 = [i for i in best_positions["POI6"]["indices"]
-              if relative_time[i] >= cut2]
-        if len(ground_truth) > 3:
-            q4.append(ground_truth[3])
-        if len(ground_truth) > 4:
-            q5.append(ground_truth[4])
-        if len(ground_truth) > 5:
-            q6.append(ground_truth[5])
-
-        def choose_and_insert(lst):
-            if not lst:
-                return lst
-            best = self._correct_bias(dissipation, relative_time, lst)
-            # coerce to scalar int if needed
-            if isinstance(best, (list, np.ndarray)):
-                best = int(np.array(best).flat[0])
-            else:
-                best = int(best)
-            return [best] + [i for i in lst if i != best]
-
-        q4 = choose_and_insert(q4)
-        q5 = choose_and_insert(q5)
-        # q6 = choose_and_insert(q6)
-
-        best_positions["POI4"]["indices"] = q4
-        best_positions["POI5"]["indices"] = q5
-        best_positions["POI6"]["indices"] = q6
-
-        # 4) SPECIAL -1 HANDLING:
-        #    If a POI’s list is *only* [-1,…], fall back to the ground‑truth label.
-        #    Additionally, if POI6’s *first* candidate is -1, use 2%‐from‐end.
-        for poi_num in (4, 5, 6):
-            key = f"POI{poi_num}"
-            lst = best_positions[key]["indices"]
-            if not lst:
-                continue
-
-            # 4a) all -1’s → rollback to model_data_label
-            if all(i == -1 for i in lst):
-                fallback = ground_truth[poi_num - 1]
-                best_positions[key]["indices"] = [fallback]
-                continue
-
-            # 4b) POI6 partial -1 in position 0 → 2% from end
-            if key == "POI6" and lst[0] == -1:
-                fallback = int(len(relative_time) * 0.98)
-                best_positions[key]["indices"][0] = fallback
-
-        # 5) FINAL ORDERING CHECK:
-        #    Ensure each POI’s top candidate strictly follows the prior one,
-        #    else fall back to its model_data_label.
-        for poi_num in range(2, 7):  # POI2 … POI6
-            key = f"POI{poi_num}"
-            prev_key = f"POI{poi_num - 1}"
-
-            # get the list (may be missing or empty)
-            inds = best_positions.get(key, {}).get("indices", [])
-
-            # 5a) if empty, seed with model_data_label
-            if not inds:
-                best_positions[key]["indices"] = [
-                    ground_truth[poi_num - 1]]
-                inds = best_positions[key]["indices"]
-
-            # determine the “previous” index
-            if best_positions.get(prev_key, {}).get("indices"):
-                prev_idx = best_positions[prev_key]["indices"][0]
-            else:
-                prev_idx = ground_truth[poi_num - 2]
-
-            # 5b) enforce strict ordering: current > previous
-            if inds[0] <= prev_idx:
-                best_positions[key]["indices"][0] = ground_truth[poi_num - 1]
-        if len(ground_truth) > 1:
-            best_positions["POI1"]["indices"].insert(0, ground_truth[0])
-        if len(ground_truth) > 4:
-            best_positions["POI4"]["indices"].insert(0, ground_truth[3])
-        for key, data in best_positions.items():
-            inds = data.get("indices", [])
-            confs = data.get("confidences")
-            if confs is not None:
-                # truncate or leave as-is if shorter
-                data["confidences"] = confs[: len(inds)]
         return best_positions
 
-    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = True) -> dict:
+    def _filter_poi1_baseline(
+        self,
+        indices: List[int],
+        confidences: List[float],
+        dissipation: np.ndarray,
+        relative_time: np.ndarray
+    ) -> List[int]:
+        """
+        Remove POI1 candidates that lie within baseline dissipation (first 1-3% of run).
+        Also plots the baseline window, original candidates, filtered candidates, and best.
+        """
+        if len(relative_time) < 2:
+            return indices
+        # define baseline window
+        t_start, t_end = relative_time[0], relative_time[-1]
+        duration = t_end - t_start
+        low_t = t_start + 0.01 * duration
+        high_t = t_start + 0.03 * duration
+        mask = (relative_time >= low_t) & (relative_time <= high_t)
+        if mask.any():
+            baseline = float(np.mean(dissipation[mask]))
+        else:
+            n = max(1, int(0.03 * len(dissipation)))
+            baseline = float(np.mean(dissipation[:n]))
+        filtered = [i for i in indices if dissipation[i] > baseline]
+        return filtered
+
+    def _sort_by_confidence(
+        self,
+        positions: Dict[str, Any],
+        poi_key: str
+    ):
+        """
+        Sort the indices and confidences for a given POI by descending confidence.
+        """
+        if poi_key not in positions:
+            return
+        inds = positions[poi_key].get('indices', [])
+        confs = positions[poi_key].get('confidences')
+        if not inds or confs is None:
+            return
+        # sort pairs by confidence desc
+        pairs = sorted(zip(confs, inds), key=lambda x: x[0], reverse=True)
+        sorted_confs, sorted_inds = zip(*pairs)
+        positions[poi_key]['indices'] = list(sorted_inds)
+        positions[poi_key]['confidences'] = list(sorted_confs)
+
+    def _filter_poi6_near_ground_truth(
+        self,
+        positions: Dict[str, Any],
+        ground_truth: List[int],
+        relative_time: np.ndarray,
+        pct: float = 0.05
+    ):
+        """
+        Remove POI6 candidates whose time is farther than pct*total_duration from ground-truth POI6.
+        """
+        key = 'POI6'
+        if key not in positions or len(ground_truth) <= 5:
+            return
+        inds = positions[key]['indices']
+        confs = positions[key].get('confidences')
+        if confs is None or not inds:
+            return
+        gt6 = ground_truth[5]
+        if not self._valid_index(gt6, relative_time):
+            return
+
+        total_duration = relative_time[-1] - relative_time[0]
+        threshold = pct * total_duration
+
+        new_inds: List[int] = []
+        new_confs: List[float] = []
+        for i, c in zip(inds, confs):
+            if abs(relative_time[i] - relative_time[gt6]) <= threshold:
+                new_inds.append(i)
+                new_confs.append(c)
+
+        positions[key]['indices'] = new_inds
+        positions[key]['confidences'] = new_confs
+
+    def _copy_predictions(self, predictions):
+        return {
+            k: {"indices": v["indices"][:], "confidences": v.get(
+                "confidences")}  # type: ignore
+            for k, v in predictions.items()
+        }
+
+    def _determine_t0(self, ground_truth, predictions, relative_time):
+        if len(ground_truth) > 2:
+            idx = ground_truth[2]
+            if self._valid_index(idx, relative_time):
+                return relative_time[idx]
+        cand = predictions.get("POI3", {}).get("indices", [])
+        if cand and self._valid_index(cand[0], relative_time):
+            return relative_time[cand[0]]
+        return relative_time[0]
+
+    def _determine_t3(self, ground_truth, predictions, relative_time):
+        times = []
+        if len(ground_truth) > 5 and self._valid_index(ground_truth[5], relative_time):
+            times.append(relative_time[ground_truth[5]])
+        cand = predictions.get("POI6", {}).get("indices", [])
+        if cand and self._valid_index(cand[0], relative_time):
+            times.append(relative_time[cand[0]])
+        return min(times) if times else relative_time[-1]
+
+    def _compute_cuts(self, t0, t3):
+        delta = abs(t3 - t0)
+        part = delta / 3.0
+        return t0 + part, t0 + 2 * part
+
+    def _filter_windows(
+        self,
+        positions,
+        ground_truth,
+        relative_time,
+        cut1,
+        cut2,
+    ) -> Dict[str, List[int]]:
+        windows = {
+            'POI4': [i for i in positions['POI4']['indices'] if relative_time[i] <= cut1],
+            'POI5': [i for i in positions['POI5']['indices'] if cut1 <= relative_time[i] <= cut2],
+            'POI6': [i for i in positions['POI6']['indices'] if relative_time[i] >= cut2]
+        }
+        if len(ground_truth) > 3:
+            windows['POI4'].append(ground_truth[3])
+        if len(ground_truth) > 4:
+            windows['POI5'].append(ground_truth[4])
+        if len(ground_truth) > 5:
+            windows['POI6'].append(ground_truth[5])
+        return windows
+
+    def _choose_and_insert(self, indices, dissipation, relative_time):
+        if not indices:
+            return []
+        best = self._correct_bias(dissipation, relative_time, indices)
+        best_idx = int(np.array(best).flat[0]) if isinstance(
+            best, (list, np.ndarray)) else int(best)
+        return [best_idx] + [i for i in indices if i != best_idx]
+
+    def _update_positions(self, positions, windows):
+        for poi, inds in windows.items():
+            positions[poi]['indices'] = inds
+        return positions
+
+    def _handle_negatives(self, positions, ground_truth, relative_time):
+        for num in (4, 5, 6):
+            key = f"POI{num}"
+            lst = positions[key]['indices']
+            if not lst:
+                continue
+            if all(i == -1 for i in lst):
+                positions[key]['indices'] = [ground_truth[num - 1]]
+                continue
+            if key == 'POI6' and lst[0] == -1:
+                positions[key]['indices'][0] = int(len(relative_time) * 0.98)
+
+    def _enforce_strict_ordering(self, positions, ground_truth):
+        for num in range(2, 7):
+            key = f"POI{num}"
+            prev_key = f"POI{num - 1}"
+            inds = positions.get(key, {}).get('indices', [])
+            if not inds:
+                positions[key]['indices'] = [ground_truth[num - 1]]
+                continue
+            prev_idx = (
+                positions[prev_key]['indices'][0]
+                if positions.get(prev_key, {}).get('indices')
+                else ground_truth[num - 2]
+            )
+            if inds[0] <= prev_idx:
+                positions[key]['indices'][0] = ground_truth[num - 1]
+
+    def _truncate_confidences(self, positions):
+        for data in positions.values():
+            inds = data.get('indices', [])
+            confs = data.get('confidences')
+            if confs is not None:
+                data['confidences'] = confs[:len(inds)]
+
+    @staticmethod
+    def _valid_index(idx, arr):
+        return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
+
+    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = False) -> dict:
         """
         Predict POI indices from dissipation CSV data using the loaded model and scaler.
 
@@ -548,8 +714,10 @@ class QModelPredictor:
         final_predictions = self._select_best_predictions(
             predictions=extracted_predictions,
             ground_truth=qmodel_v2_labels,
+            model_data_labels=model_data_labels,
             relative_time=df["Relative_time"].values,
-            dissipation=feature_vector["Dissipation_smooth"].values)
+            dissipation=feature_vector["Dissipation_smooth"].values,
+            dissipation_raw=df["Dissipation"].values)
         if plotting:
             plt.figure(figsize=(10, 6))
 
@@ -571,6 +739,8 @@ class QModelPredictor:
                             s=100,
                             color=cmap(i),
                             label=poi_name)
+
+                plt.axvline(df["Relative_time"].iloc[idxs[0]], color=cmap(i))
 
             plt.xlabel("Relative time")
             plt.ylabel("Dissipation")
