@@ -9,7 +9,7 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-18-2025
-Version: QModel.Ver3.4
+Version: QModel.Ver3.6
 """
 
 import xgboost as xgb
@@ -307,7 +307,7 @@ class QModelPredictor:
                                     "confidences": sorted_confidences}
         return poi_results
 
-    def _correct_bias(self, dissipation: np.ndarray, relative_time: np.ndarray, candidates: list) -> int:
+    def _correct_bias(self, dissipation: np.ndarray, relative_time: np.ndarray, candidates: list, poi: str, ground_truth: list) -> int:
         """
         Adjust candidate selection by:
         • iteratively lowering the slope threshold from 100→90th percentile in 0.5 steps,
@@ -318,15 +318,14 @@ class QModelPredictor:
         """
         t = relative_time
         slope = np.gradient(dissipation, t)
-
         cmin, cmax = min(candidates), max(candidates)
         chosen_perc = None
         valid_peaks = np.array([], dtype=int)
         valid_bases = []
         valid_filtered = []
-
+        min_iter = 50 if poi == "POI6" else 89.6
         # 1) Try percentiles 100→90 in 0.5 steps
-        for perc in np.arange(100.0, 89.5, -0.5):
+        for perc in np.arange(100.0, min_iter, -0.5):
             thresh = np.percentile(slope, perc)
             peaks, _ = find_peaks(slope, height=thresh)
 
@@ -363,7 +362,7 @@ class QModelPredictor:
         if chosen_perc is None:
             Log.w(
                 "No valid pick found down to the 90th percentile; falling back on 90th.")
-            chosen_perc = 90.0
+            chosen_perc = min_iter
             thresh = np.percentile(slope, chosen_perc)
             peaks, _ = find_peaks(slope, height=thresh)
             peaks = peaks[(peaks >= cmin) & (peaks <= cmax)]
@@ -386,42 +385,51 @@ class QModelPredictor:
 
         # 3) Pick best candidate
         best_idx = min(valid_filtered, key=dist_if_left)
-
+        # POI 4 slip-check ---
+        if poi == "POI4" and ground_truth is not None and len(ground_truth) >= 4:
+            poi3_gt = ground_truth[2]
+            poi4_gt = ground_truth[3]
+            if abs(best_idx - poi3_gt) < abs(best_idx - poi4_gt):
+                Log.w(
+                    "Bias correction for POI4 slipped back toward POI3; skipping adjustment.")
+                nearest_to_poi4 = min(
+                    candidates, key=lambda c: abs(c - poi4_gt))
+                best_idx = nearest_to_poi4
         # 4) Plotting
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-        # Dissipation
-        ax1.plot(t, dissipation, lw=1.5, label="Dissipation")
-        ax1.scatter(t[valid_peaks], dissipation[valid_peaks], marker="^", s=100,
-                    c="red", label="Slope Peaks")
-        ax1.scatter(t[valid_bases], dissipation[valid_bases], marker="o", s=80,
-                    c="blue", label="Bases")
-        ax1.scatter(t[candidates], dissipation[candidates], marker="o", s=60,
-                    edgecolors="orange", facecolors="none", label="Candidates")
-        ax1.scatter(t[best_idx], dissipation[best_idx], marker="*", s=200,
-                    c="green", label="Chosen")
-        ax1.set_ylabel("Dissipation")
-        ax1.set_title(
-            f"Bias Correction (threshold: {chosen_perc:.1f}th percentile)")
-        ax1.legend(loc="upper left")
+        # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
+        # # Dissipation
+        # ax1.plot(t, dissipation, lw=1.5, label="Dissipation")
+        # ax1.scatter(t[valid_peaks], dissipation[valid_peaks], marker="^", s=100,
+        #             c="red", label="Slope Peaks")
+        # ax1.scatter(t[valid_bases], dissipation[valid_bases], marker="o", s=80,
+        #             c="blue", label="Bases")
+        # ax1.scatter(t[candidates], dissipation[candidates], marker="o", s=60,
+        #             edgecolors="orange", facecolors="none", label="Candidates")
+        # ax1.scatter(t[best_idx], dissipation[best_idx], marker="*", s=200,
+        #             c="green", label="Chosen")
+        # ax1.set_ylabel("Dissipation")
+        # ax1.set_title(
+        #     f"Bias Correction (threshold: {chosen_perc:.1f}th percentile)")
+        # ax1.legend(loc="upper left")
 
-        # Slope
-        ax2.plot(t, slope, lw=1.5, label="Slope")
-        ax2.axhline(np.percentile(slope, chosen_perc), color="gray", ls="--",
-                    label=f"{chosen_perc:.1f}th %ile")
-        ax2.scatter(t[valid_peaks], slope[valid_peaks], marker="^", s=100,
-                    c="red", label="Slope Peaks")
-        ax2.scatter(t[valid_bases], slope[valid_bases], marker="o", s=80,
-                    c="blue", label="Bases")
-        ax2.scatter(t[candidates], slope[candidates], marker="o", s=60,
-                    edgecolors="orange", facecolors="none", label="Candidates")
-        ax2.scatter(t[best_idx], slope[best_idx], marker="*", s=200,
-                    c="green", label="Chosen")
-        ax2.set_xlabel("Time")
-        ax2.set_ylabel("Slope")
-        ax2.legend(loc="upper left")
+        # # Slope
+        # ax2.plot(t, slope, lw=1.5, label="Slope")
+        # ax2.axhline(np.percentile(slope, chosen_perc), color="gray", ls="--",
+        #             label=f"{chosen_perc:.1f}th %ile")
+        # ax2.scatter(t[valid_peaks], slope[valid_peaks], marker="^", s=100,
+        #             c="red", label="Slope Peaks")
+        # ax2.scatter(t[valid_bases], slope[valid_bases], marker="o", s=80,
+        #             c="blue", label="Bases")
+        # ax2.scatter(t[candidates], slope[candidates], marker="o", s=60,
+        #             edgecolors="orange", facecolors="none", label="Candidates")
+        # ax2.scatter(t[best_idx], slope[best_idx], marker="*", s=200,
+        #             c="green", label="Chosen")
+        # ax2.set_xlabel("Time")
+        # ax2.set_ylabel("Slope")
+        # ax2.legend(loc="upper left")
 
-        plt.tight_layout()
-        plt.show()
+        # plt.tight_layout()
+        # plt.show()
 
         return best_idx
 
@@ -467,7 +475,7 @@ class QModelPredictor:
         # 4) apply bias correction and ranking
         for poi in ("POI4", "POI5", "POI6"):
             windows[poi] = self._choose_and_insert(
-                windows[poi], dissipation, relative_time)
+                windows[poi], dissipation, relative_time, poi=poi, ground_truth=ground_truth)
 
         # 5) update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
@@ -617,10 +625,11 @@ class QModelPredictor:
             windows['POI6'].append(ground_truth[5])
         return windows
 
-    def _choose_and_insert(self, indices, dissipation, relative_time):
+    def _choose_and_insert(self, indices, dissipation, relative_time, poi, ground_truth):
         if not indices:
             return []
-        best = self._correct_bias(dissipation, relative_time, indices)
+        best = self._correct_bias(
+            dissipation, relative_time, indices, poi, ground_truth)
         best_idx = int(np.array(best).flat[0]) if isinstance(
             best, (list, np.ndarray)) else int(best)
         return [best_idx] + [i for i in indices if i != best_idx]
