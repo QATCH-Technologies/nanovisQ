@@ -16,7 +16,7 @@ def _enable_foreign_keys(conn):
 
 
 DB_PATH = Path(os.path.join(os.path.expandvars(
-    r"%LOCALAPPDATA%"), 'data', 'app.db'))
+    r"%LOCALAPPDATA%"), 'QATCH', 'nanovisQ', 'data', 'app.db'))
 
 
 class SQLiteDB:
