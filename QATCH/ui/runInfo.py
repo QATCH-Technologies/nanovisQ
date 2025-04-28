@@ -4,6 +4,7 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.VisQAI.src.db.sqlite_db import SQLiteDB
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np
@@ -432,6 +433,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_ca = 0
         self.auto_dn = 0
 
+        self.excipient_db = SQLiteDB()
+
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
         self.l_runname = QtWidgets.QLabel()
@@ -569,6 +572,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t3.textChanged.connect(self.calc_params)
         self.t3.editingFinished.connect(self.calc_params)
 
+        self.load_all_excipient_types()  # read from excipient DB
+
         # Protein Type
 
         # Protein Concentration
@@ -597,7 +602,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l9.setText("Type\t\t=")
         self.q5.addWidget(self.l9)
         self.c5 = QtWidgets.QComboBox()
-        self.load_surfactant_types()  # read from settings file
+        self.populate_excipient_surfactants()  # read from excipient DB
         self.q5.addWidget(self.c5)
         self.h7 = QtWidgets.QLabel()
         self.h7.setText("<u>?</u>")
@@ -1236,9 +1241,9 @@ class QueryRunInfo(QtWidgets.QWidget):
             label = QtWidgets.QLabel("Available Surfactant Types:")
             self.surfactant_types_multiline = QtWidgets.QPlainTextEdit()
             self.surfactant_types_multiline.setPlainText(
-                "\n".join(self.available_surfactant_types))
+                "\n".join(self.excipient_surfactants))
             save = QtWidgets.QPushButton("Save")
-            save.clicked.connect(self.save_surfactant_types)
+            save.clicked.connect(self.save_excipient_surfactants)
             layout.addWidget(label)
             layout.addWidget(self.surfactant_types_multiline)
             layout.addWidget(save)
@@ -1252,43 +1257,116 @@ class QueryRunInfo(QtWidgets.QWidget):
         else:
             pass  # do nothing if any other value was selected
 
-    def load_surfactant_types(self):
-        try:
-            path_to_types_file = os.path.join(
-                Constants.local_app_data_path, "settings", "surfactantTypes.txt")
-            if not os.path.isfile(path_to_types_file):
-                self.save_surfactant_types()  # load and create file with defaults
-            else:
-                with open(path_to_types_file, "r") as f:
-                    self.available_surfactant_types = f.read.splitlines()
-        except:
-            Log.e("Failed to load surfactant types list from file.")
+    def load_all_excipient_types(self):
+        self.excipient_proteins = []
+        self.excipient_surfactants = []
+        self.excipient_stabilizers = []
+        for e in self.excipient_db.list_base_excipients():
+            if e['etype'] == "Protein":
+                self.excipient_proteins.append(e['name'])
+            if e['etype'] == "Surfactant":
+                self.excipient_surfactants.append(e['name'])
+            if e['etype'] == "Stabilizer":
+                self.excipient_stabilizers.append(e['name'])
+        self.excipient_proteins.sort()
+        self.excipient_surfactants.sort()
+        self.excipient_stabilizers.sort()
+        Log.d("Proteins:", self.excipient_proteins)
+        Log.d("Surfactants:", self.excipient_surfactants)
+        Log.d("Stabilizers:", self.excipient_stabilizers)
 
-    def save_surfactant_types(self):
-        try:
-            self.available_surfactant_types = self.surfactant_types_multiline.toPlainText().splitlines()
-        except:
-            Log.w("Creating default surfactant types list...")
-            self.available_surfactant_types = ["none", "tween-20", "tween-80"]
-        try:
-            path_to_types_file = os.path.join(
-                Constants.local_app_data_path, "settings", "surfactantTypes.txt")
-            with open(path_to_types_file, "w") as f:
-                f.writelines("\n".join(self.available_surfactant_types))
-        except:
-            Log.e("Failed to save surfactant types list to file.")
+    def save_excipient_proteins(self):
+        old_proteins = self.excipient_proteins.copy()
+        new_proteins = self.protein_types_multiline.toPlainText().splitlines()
+        for name in new_proteins:
+            if name not in old_proteins:
+                self.excipient_db.add_base_excipient("Protein", name)
+                self.excipient_proteins.append(name)
+        for name in old_proteins:
+            if name not in new_proteins:
+                self.excipient_db.delete_base_excipient("Protein", name)
+                self.excipient_proteins.remove(name)
+        self.excipient_proteins.sort()
+
+    def save_excipient_surfactants(self):
+        old_surfactants = self.excipient_surfactants.copy()
+        new_surfactants = self.surfactant_types_multiline.toPlainText().splitlines()
+        for name in new_surfactants:
+            if name not in old_surfactants:
+                self.excipient_db.add_base_excipient("Surfactant", name)
+                self.excipient_surfactants.append(name)
+        for name in old_surfactants:
+            if name not in new_surfactants:
+                self.excipient_db.delete_base_excipient("Surfactant", name)
+                self.excipient_surfactants.remove(name)
+        self.excipient_surfactants.sort()
+        self.populate_excipient_surfactants()
+
+    def populate_excipient_surfactants(self):
         try:
             num_items = self.c5.count()
             self.c5.clear()
-            self.c5.addItems(self.available_surfactant_types)
+            self.c5.addItem("none")
+            self.c5.addItems(self.excipient_surfactants)
             self.c5.addItem("add new...")
             if num_items:
                 # select newly entered value (last in list)
-                self.c5.setCurrentText(self.available_surfactant_types[-1])
+                self.c5.setCurrentText(self.excipient_surfactants[-1])
             else:
                 self.c5.setCurrentIndex(0)  # initial load value: none
         except:
             Log.e("Failed to update surfactant list after saving.")
+
+    def save_excipient_stabilizers(self):
+        old_stabilizers = self.excipient_stabilizers.copy()
+        new_stabilizers = self.stabilizer_types_multiline.toPlainText().splitlines()
+        for name in new_stabilizers:
+            if name not in old_stabilizers:
+                self.excipient_db.add_base_excipient("Stabilizer", name)
+                self.excipient_stabilizers.append(name)
+        for name in old_stabilizers:
+            if name not in new_stabilizers:
+                self.excipient_db.delete_base_excipient("Stabilizer", name)
+                self.excipient_stabilizers.remove(name)
+        self.excipient_stabilizers.sort()
+
+    # def load_surfactant_types(self):
+    #     try:
+    #         path_to_types_file = os.path.join(
+    #             Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+    #         if not os.path.isfile(path_to_types_file):
+    #             self.save_surfactant_types()  # load and create file with defaults
+    #         else:
+    #             with open(path_to_types_file, "r") as f:
+    #                 self.available_surfactant_types = f.read.splitlines()
+    #     except:
+    #         Log.e("Failed to load surfactant types list from file.")
+
+    # def save_surfactant_types(self):
+    #     try:
+    #         self.available_surfactant_types = self.surfactant_types_multiline.toPlainText().splitlines()
+    #     except:
+    #         Log.w("Creating default surfactant types list...")
+    #         self.available_surfactant_types = ["none", "tween-20", "tween-80"]
+    #     try:
+    #         path_to_types_file = os.path.join(
+    #             Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+    #         with open(path_to_types_file, "w") as f:
+    #             f.writelines("\n".join(self.available_surfactant_types))
+    #     except:
+    #         Log.e("Failed to save surfactant types list to file.")
+    #     try:
+    #         num_items = self.c5.count()
+    #         self.c5.clear()
+    #         self.c5.addItems(self.available_surfactant_types)
+    #         self.c5.addItem("add new...")
+    #         if num_items:
+    #             # select newly entered value (last in list)
+    #             self.c5.setCurrentText(self.available_surfactant_types[-1])
+    #         else:
+    #             self.c5.setCurrentIndex(0)  # initial load value: none
+    #     except:
+    #         Log.e("Failed to update surfactant list after saving.")
 
     def lookup_completer(self):
         try:
