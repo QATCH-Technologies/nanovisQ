@@ -7229,7 +7229,12 @@ class AnalyzerWorker(QtCore.QObject):
             try:
                 normal_idxs = []
                 for i in idx_of_normal_pts_to_retain:
-                    normal_idxs.append(-len(distances)+times.index(i))
+                    if i in times:
+                        normal_idxs.append(-len(distances)+times.index(i))
+                    else:
+                        Log.w(f"Index for {i} in `times` cannot be found in list. Skipping point")
+                if len(normal_idxs) == 0:
+                    raise Exception("Empty list cannot be reduced further")
                 idx0 = np.min(normal_idxs)-1  # POI2
                 idx1 = np.max(normal_idxs)+1  # POI4
                 # avg_viscosity = np.average(
