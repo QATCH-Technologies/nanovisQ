@@ -462,13 +462,11 @@ class QModelPredictor:
             ground_truth[5] = max(ground_truth[5], model_data_labels[5])
         self._filter_poi6_near_ground_truth(
             best_positions, ground_truth, relative_time)
-
         self._sort_by_confidence(best_positions, 'POI6')
         # 2) determine time anchors
         t0 = self._determine_t0(ground_truth, best_positions, relative_time)
         t3 = self._determine_t3(ground_truth, best_positions, relative_time)
         cut1, cut2 = self._compute_cuts(t0, t3)
-
         # 3) filter POI4-6 windows
         windows = self._filter_windows(
             best_positions, ground_truth, relative_time, cut1, cut2)
@@ -476,19 +474,32 @@ class QModelPredictor:
         for poi in ("POI4", "POI5", "POI6"):
             windows[poi] = self._choose_and_insert(
                 windows[poi], dissipation, relative_time, poi=poi, ground_truth=ground_truth)
-
         # 5) update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
-
         # 6) handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
-        if len(model_data_labels) >= 2:
-            best_positions["POI2"]["indices"].insert(0, model_data_labels[1])
+        # if len(model_data_labels) >= 2:
+        #     best_positions["POI2"]["indices"].insert(0, model_data_labels[1])
         # 7) enforce strict ordering across POIs
         self._enforce_strict_ordering(best_positions, ground_truth)
-
         # 8) truncate confidences to match indices length
         self._truncate_confidences(best_positions)
+        # make sure best_positions has entries for all POIs
+        for i in range(1, 7):
+            poi = f"POI{i}"
+            # ensure the sub‐dict exists
+            entry = best_positions.setdefault(poi, {})
+            # ensure both lists exist
+            inds = entry.setdefault("indices", [])
+            confs = entry.setdefault("confidences", [])
+
+            # if no indices but we have a ground_truth for this POI, inject it
+            if not inds and len(ground_truth) >= i:
+                inds.append(int(model_data_labels[i - 1]))
+                confs.append(1.0)
+            # otherwise, if we somehow have indices but no confidences, fill them with 1.0
+            elif inds and not confs:
+                entry["confidences"] = [1.0] * len(inds)
 
         return best_positions
 
@@ -678,7 +689,7 @@ class QModelPredictor:
     def _valid_index(idx, arr):
         return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
 
-    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = False) -> dict:
+    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = True) -> dict:
         """
         Predict POI indices from dissipation CSV data using the loaded model and scaler.
 
@@ -757,6 +768,7 @@ class QModelPredictor:
             plt.legend()
             plt.tight_layout()
             plt.show()
+        print(final_predictions)
         return final_predictions
 
 
