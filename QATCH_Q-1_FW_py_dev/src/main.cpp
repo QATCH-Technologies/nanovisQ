@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r46"
-#define RELEASE_DATE "2024-08-18"
+#define CODE_VERSION "v2.6b58"
+#define RELEASE_DATE "2025-04-30"
 
 /************************** LIBRARIES **************************/
 
@@ -1174,9 +1174,14 @@ void QATCH_loop()
       // (i.e. we could end sleep prematurely due to rollover, not a message rx)
       time_of_last_msg = sleepTimerInt_us;
     }
-    if (l298nhb_auto_off_at > millis() && l298nhb.active()) // not yet time to auto off
+    if ((l298nhb_auto_off_at - millis()) < L298NHB_AUTOOFF && l298nhb.active()) // not yet time to auto off
     {
       l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
+      // special case in event of rollover in prior line math
+      if (l298nhb_auto_off_at == 0) 
+      {
+        l298nhb_auto_off_at = 1;
+      }
     }
 
     String message_str;
@@ -1459,9 +1464,14 @@ void QATCH_loop()
       //        client->println(max31855.simulate_err);
       //        return;
       //      }
-      if (l298nhb_auto_off_at > millis() && l298nhb.active()) // not yet time to auto off
+      if ((l298nhb_auto_off_at - millis()) < L298NHB_AUTOOFF && l298nhb.active()) // not yet time to auto off
       {
         l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
+        // special case in event of rollover in prior line math
+        if (l298nhb_auto_off_at == 0) 
+        {
+          l298nhb_auto_off_at = 1;
+        }
       }
       bool updateAmbient = false;
       if (message_str.substring(5) == "ON")
@@ -1639,6 +1649,11 @@ void QATCH_loop()
       else if (message_str.substring(4).trim().length())
       {
         l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
+        // special case in event of rollover in prior line math
+        if (l298nhb_auto_off_at == 0) 
+        {
+          l298nhb_auto_off_at = 1;
+        }
         if (!l298nhb.active())
           updateAmbient = true;
 
@@ -1734,7 +1749,7 @@ void QATCH_loop()
           client->printf("HEAT");
       }
       else if ((l298nhb_auto_off_at > 0) &&
-               (l298nhb_auto_off_at < millis())) // auto off triggered
+               ((l298nhb_auto_off_at - millis()) > L298NHB_AUTOOFF)) // auto off triggered
       {
         client->printf("AUTO,OFF");
       }
@@ -2665,9 +2680,14 @@ void QATCH_loop()
       quack_counter = quack_interval + 1; // force timeout
     }
 
-    if (l298nhb_auto_off_at > millis() && l298nhb.active()) // not yet time to auto off
+    if ((l298nhb_auto_off_at - millis()) < L298NHB_AUTOOFF && l298nhb.active()) // not yet time to auto off
     {
       l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
+      // special case in event of rollover in prior line math
+      if (l298nhb_auto_off_at == 0) 
+      {
+        l298nhb_auto_off_at = 1;
+      }
     }
 
     // end sweep
@@ -2698,7 +2718,7 @@ void QATCH_loop()
 
     if (Serial.dtr() || identifying)
     {
-      if (identifying && stop_identify_at < millis())
+      if (identifying && (stop_identify_at - millis()) > 60000)
       {
         ledWrite(LED_WHITE_PIN, LOW);
         identifying = false;
@@ -2888,7 +2908,7 @@ void QATCH_loop()
       //   // digitalWrite(FAN_HIGH_LOW, LOW); // low speed fan
       // }
     }
-    if (l298nhb_auto_off_at < millis() && l298nhb.active()) // time to auto off
+    if ((l298nhb_auto_off_at - millis()) > L298NHB_AUTOOFF && l298nhb.active()) // time to auto off
     {
       l298nhb.shutdown();
       // digitalWrite(FAN_HIGH_LOW, LOW); // low speed fan
@@ -2915,7 +2935,7 @@ void QATCH_loop()
       if (!streaming)
         tft_cooldown(); // update countdown, already started
 
-      if (l298nhb_auto_off_at < millis()) // time to auto off
+      if ((l298nhb_auto_off_at - millis()) > L298NHB_COOLDOWN) // time to end cooldown
       {
         l298nhb_auto_off_at = 0;
         //        segmentDisplay.displayDecimalPoint(false);
@@ -3793,6 +3813,11 @@ void tft_cooldown_start()
 {
   // Serial.println("TFT Cooldown started");
   l298nhb_auto_off_at = millis() + L298NHB_COOLDOWN; // calculate time to idle
+  // special case in event of rollover in prior line math
+  if (l298nhb_auto_off_at == 0) 
+  {
+    l298nhb_auto_off_at = 1;
+  }
   tft_cooldown();                                    // will also call _prepare() when drawing full cooldown UI
 }
 
