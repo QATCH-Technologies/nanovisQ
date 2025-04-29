@@ -9,11 +9,10 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-18-2025
-Version: QModel.Ver3.9
+Version: QModel.Ver3.10
 """
 
 import xgboost as xgb
-
 from sklearn.pipeline import Pipeline
 import pickle
 import os
@@ -21,7 +20,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Dict, List, Any
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, detrend
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
 from QATCH.models.ModelData import ModelData
@@ -386,8 +385,18 @@ class QModelPredictor:
 
         # 3) Pick best candidate
         best_idx = min(valid_filtered, key=dist_if_left)
-        if poi == "POI6":
-            best_idx = max(valid_filtered, key=lambda c: dissipation[c])
+        if poi == "POI6" and valid_filtered:
+            # determine slice bounds
+            start_idx = min(valid_filtered)
+            end_idx = max(valid_filtered)
+            # slice the dissipation data (inclusive of end_idx)
+            segment = dissipation[start_idx: end_idx + 1]
+            # detrend the segment
+            detrended_segment = detrend(segment)
+            # find the peak in the detrended segment
+            peak_rel_idx = int(np.argmax(detrended_segment))
+            # map back to the original index space
+            best_idx = start_idx + peak_rel_idx
         # POI 4 slip-check ---
         if poi == "POI4" and ground_truth is not None and len(ground_truth) >= 4:
             poi3_gt = ground_truth[2]
@@ -398,7 +407,7 @@ class QModelPredictor:
                 nearest_to_poi4 = min(
                     candidates, key=lambda c: abs(c - poi4_gt))
                 best_idx = ground_truth[3]
-        # 4) Plotting
+        # # 4) Plotting
         # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         # # Dissipation
         # ax1.plot(t, dissipation, lw=1.5, label="Dissipation")
@@ -449,7 +458,7 @@ class QModelPredictor:
         poi1_idxs = positions.get("POI1", {}).get("indices", [])
         poi3_idxs = positions.get("POI3", {}).get("indices", [])
         poi2_idxs = positions.get("POI2", {}).get("indices", [])
-        return min(poi3_idxs) - 5
+        return min(poi3_idxs) - 2
         # --- determine window for slope search (POI1 → POI3/POI2) ---
         if poi1_idxs:
             lim1 = max(poi1_idxs)
@@ -653,7 +662,7 @@ class QModelPredictor:
             ]
 
         if filtered:
-            leftmost = min(filtered)
+            leftmost = min(filtered) + 2
             others = [idx for idx in filtered if idx != leftmost]
             filtered = [leftmost] + others
 
