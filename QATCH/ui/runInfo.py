@@ -1394,7 +1394,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         old_proteins = self.excipient_proteins.copy()
         new_proteins = self.protein_types_multiline.toPlainText().splitlines()
         for name in new_proteins:
-            if name not in old_proteins:
+            name = name.strip()
+            if name not in old_proteins and len(name):
                 self.excipient_db.add_base_excipient("Protein", name)
                 self.excipient_proteins.append(name)
         for name in old_proteins:
@@ -1411,7 +1412,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         old_surfactants = self.excipient_surfactants.copy()
         new_surfactants = self.surfactant_types_multiline.toPlainText().splitlines()
         for name in new_surfactants:
-            if name not in old_surfactants:
+            name = name.strip()
+            if name not in old_surfactants and len(name):
                 self.excipient_db.add_base_excipient("Surfactant", name)
                 self.excipient_surfactants.append(name)
         for name in old_surfactants:
@@ -1428,7 +1430,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         old_stabilizers = self.excipient_stabilizers.copy()
         new_stabilizers = self.stabilizer_types_multiline.toPlainText().splitlines()
         for name in new_stabilizers:
-            if name not in old_stabilizers:
+            name = name.strip()
+            if name not in old_stabilizers and len(name):
                 self.excipient_db.add_base_excipient("Stabilizer", name)
                 self.excipient_stabilizers.append(name)
         for name in old_stabilizers:
