@@ -9,7 +9,7 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-18-2025
-Version: QModel.Ver3.6
+Version: QModel.Ver3.9
 """
 
 import xgboost as xgb
@@ -205,7 +205,6 @@ class QModelPredictor:
             )
 
         try:
-            print(file_buffer)
             candidates = QModel_v2_predictor.predict(
                 file_buffer=file_buffer, run_type=label)
             for c in candidates:
@@ -307,7 +306,7 @@ class QModelPredictor:
                                     "confidences": sorted_confidences}
         return poi_results
 
-    def _correct_bias(self, dissipation: np.ndarray, relative_time: np.ndarray, candidates: list, poi: str, ground_truth: list) -> int:
+    def _correct_bias(self, dissipation: np.ndarray, relative_time: np.ndarray, candidates: list, feature_vector: pd.DataFrame, poi: str, ground_truth: list) -> int:
         """
         Adjust candidate selection by:
         • iteratively lowering the slope threshold from 100→90th percentile in 0.5 steps,
@@ -317,13 +316,15 @@ class QModelPredictor:
         • and plotting dissipation & slope with annotations.
         """
         t = relative_time
-        slope = np.gradient(dissipation, t)
+
         cmin, cmax = min(candidates), max(candidates)
         chosen_perc = None
         valid_peaks = np.array([], dtype=int)
         valid_bases = []
         valid_filtered = []
         min_iter = 50 if poi == "POI6" else 89.6
+        dissipation = feature_vector["Detrend_Difference"].values if poi == "POI6" else dissipation
+        slope = np.gradient(dissipation, t)
         # 1) Try percentiles 100→90 in 0.5 steps
         for perc in np.arange(100.0, min_iter, -0.5):
             thresh = np.percentile(slope, perc)
@@ -385,6 +386,8 @@ class QModelPredictor:
 
         # 3) Pick best candidate
         best_idx = min(valid_filtered, key=dist_if_left)
+        if poi == "POI6":
+            best_idx = max(valid_filtered, key=lambda c: dissipation[c])
         # POI 4 slip-check ---
         if poi == "POI4" and ground_truth is not None and len(ground_truth) >= 4:
             poi3_gt = ground_truth[2]
@@ -394,7 +397,7 @@ class QModelPredictor:
                     "Bias correction for POI4 slipped back toward POI3; skipping adjustment.")
                 nearest_to_poi4 = min(
                     candidates, key=lambda c: abs(c - poi4_gt))
-                best_idx = nearest_to_poi4
+                best_idx = ground_truth[3]
         # 4) Plotting
         # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
         # # Dissipation
@@ -433,15 +436,121 @@ class QModelPredictor:
 
         return best_idx
 
+    def _move(self, positions, feature_vector, relative_time, ground_truth):
+        """
+        Select POI2 by finding the valley (local minimum) in the POI2 candidate range
+        that sits at the base of the steepest slope (where POI3 lives).
+        """
+        t = relative_time
+        data = feature_vector["Dissipation"].values
+        n = len(data)
+
+        # --- unpack positions ---
+        poi1_idxs = positions.get("POI1", {}).get("indices", [])
+        poi3_idxs = positions.get("POI3", {}).get("indices", [])
+        poi2_idxs = positions.get("POI2", {}).get("indices", [])
+        return min(poi3_idxs) - 5
+        # --- determine window for slope search (POI1 → POI3/POI2) ---
+        if poi1_idxs:
+            lim1 = max(poi1_idxs)
+        else:
+            lim1 = self._model_data_labels[0]
+
+        if poi3_idxs:
+            if ground_truth[2] > poi3_idxs[0]:
+                lim2 = ground_truth[2]
+            else:
+                lim2 = int(poi3_idxs[0])
+        else:
+            lim2 = ground_truth[2]
+        if max(poi2_idxs) >= min(poi3_idxs):
+            return min(poi3_idxs)
+        start = max(0, lim1)
+        end = min(n - 1, lim2)
+        if start > end:
+            raise ValueError(f"Invalid window: start={start}, end={end}")
+
+        # --- compute slope and find its peak in [start,end] ---
+        slope = np.gradient(data, t)
+        idx_window = np.arange(start, end + 1)
+        slope_window = slope[idx_window]
+        if slope_window.size == 0:
+            raise ValueError("No points in slope window after indexing.")
+        rel_peak = np.argmax(slope_window)
+        peak_idx = idx_window[rel_peak]
+
+        # --- restrict valley search to the POI2 range ---
+        if poi2_idxs:
+            region_start = min(poi2_idxs)
+            region_end = max(poi2_idxs)
+        else:
+            region_start, region_end = start, end
+
+        # find all local minima (valleys) in the entire curve
+        minima, _ = find_peaks(-data)
+
+        # pick valleys within POI2 region AND to the left of the slope peak
+        candidate_bases = minima[
+            (minima >= region_start) &
+            (minima <= region_end) &
+            (minima < peak_idx)
+        ]
+
+        if candidate_bases.size > 0:
+            # choose the valley closest to the slope‐peak
+            base_idx = int(candidate_bases[np.argmin(
+                np.abs(candidate_bases - peak_idx)
+            )])
+        else:
+            # fallback: lowest dissipation in POI2 region
+            segment = data[region_start: region_end + 1]
+            rel_min = np.argmin(segment)
+            base_idx = region_start + int(rel_min)
+
+        # --- optional plotting for verification ---
+        plt.figure(figsize=(8, 5))
+        plt.plot(t, data, label="Dissipation")
+        plt.plot(t,
+                 slope / np.max(np.abs(slope)) * np.max(data),
+                 label="Slope (scaled)")
+        plt.axvline(t[peak_idx], color="orange",
+                    linestyle="--", label="Max slope")
+        plt.scatter(t[peak_idx], data[peak_idx], color="orange", zorder=5)
+        plt.axvline(t[base_idx], color="green",
+                    linestyle="--", label="Chosen base")
+        plt.scatter(t[base_idx], data[base_idx], color="green", zorder=5)
+        plt.text(t[base_idx], data[base_idx],
+                 f"base @ idx={base_idx}", ha="left", va="bottom")
+        plt.xlabel("Time")
+        plt.ylabel("Dissipation")
+        plt.title("POI2 Base (Left‐of‐Peak Valley in POI2 Range)")
+        plt.legend(loc="lower right")
+        plt.tight_layout()
+        plt.show()
+
+        return base_idx
+
+    def _choose_and_insert(self, indices, dissipation, relative_time, feature_vector, poi, ground_truth):
+        if not indices:
+            return []
+        if poi in ("POI4", "POI5", "POI6"):
+            best = self._correct_bias(
+                dissipation, relative_time, indices, feature_vector, poi, ground_truth)
+        best_idx = int(np.array(best).flat[0]) if isinstance(
+            best, (list, np.ndarray)) else int(best)
+        return [best_idx] + [i for i in indices if i != best_idx]
+
     def _select_best_predictions(
         self,
         predictions: Dict[str, Dict[str, Any]],
         model_data_labels: List[int],
         ground_truth: List[int],
         relative_time: np.ndarray,
-        dissipation: np.ndarray,
-        dissipation_raw: np.ndarray,
+        feature_vector: pd.DataFrame,
+        raw_vector: pd.DataFrame
     ) -> Dict[str, Dict[str, Any]]:
+        dissipation = feature_vector["Dissipation_smooth"].values
+        dissipation_raw = raw_vector["Dissipation"].values
         """
         Refine POI predictions by applying baseline filtering, timing windows, and bias correction.
         """
@@ -473,16 +582,20 @@ class QModelPredictor:
         # 4) apply bias correction and ranking
         for poi in ("POI4", "POI5", "POI6"):
             windows[poi] = self._choose_and_insert(
-                windows[poi], dissipation, relative_time, poi=poi, ground_truth=ground_truth)
+                windows[poi], dissipation, relative_time, feature_vector, poi=poi, ground_truth=ground_truth)
         # 5) update positions with new windows
+
         best_positions = self._update_positions(best_positions, windows)
         # 6) handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
-        # if len(model_data_labels) >= 2:
-        #     best_positions["POI2"]["indices"].insert(0, model_data_labels[1])
+        if len(model_data_labels) >= 2:
+            best_positions["POI2"]["indices"].insert(0, ground_truth[1])
         # 7) enforce strict ordering across POIs
+        best_poi2 = self._move(
+            positions=best_positions, feature_vector=feature_vector, relative_time=relative_time, ground_truth=ground_truth)
+        best_positions["POI2"]['indices'].insert(0, best_poi2)
         self._enforce_strict_ordering(best_positions, ground_truth)
-        # 8) truncate confidences to match indices length
+
         self._truncate_confidences(best_positions)
         # make sure best_positions has entries for all POIs
         for i in range(1, 7):
@@ -516,18 +629,34 @@ class QModelPredictor:
         """
         if len(relative_time) < 2:
             return indices
-        # define baseline window
-        t_start, t_end = relative_time[0], relative_time[-1]
-        duration = t_end - t_start
-        low_t = t_start + 0.01 * duration
-        high_t = t_start + 0.03 * duration
+
+        t0, tN = relative_time[0], relative_time[-1]
+        duration = tN - t0
+        low_t, high_t = t0 + 0.01*duration, t0 + 0.03*duration
         mask = (relative_time >= low_t) & (relative_time <= high_t)
         if mask.any():
             baseline = float(np.mean(dissipation[mask]))
         else:
             n = max(1, int(0.03 * len(dissipation)))
             baseline = float(np.mean(dissipation[:n]))
+
         filtered = [i for i in indices if dissipation[i] > baseline]
+        if filtered:
+            vals = np.array([dissipation[i] for i in filtered])
+            q1, q3 = np.percentile(vals, [25, 75])
+            iqr = q3 - q1
+            lower, upper = q1 - 1.5*iqr, q3 + 1.5*iqr
+
+            filtered = [
+                idx for idx, val in zip(filtered, vals)
+                if lower <= val <= upper
+            ]
+
+        if filtered:
+            leftmost = min(filtered)
+            others = [idx for idx in filtered if idx != leftmost]
+            filtered = [leftmost] + others
+
         return filtered
 
     def _sort_by_confidence(
@@ -555,7 +684,7 @@ class QModelPredictor:
         positions: Dict[str, Any],
         ground_truth: List[int],
         relative_time: np.ndarray,
-        pct: float = 0.05
+        pct: float = 0.1
     ):
         """
         Remove POI6 candidates whose time is farther than pct*total_duration from ground-truth POI6.
@@ -628,22 +757,13 @@ class QModelPredictor:
             'POI5': [i for i in positions['POI5']['indices'] if cut1 <= relative_time[i] <= cut2],
             'POI6': [i for i in positions['POI6']['indices'] if relative_time[i] >= cut2]
         }
-        if len(ground_truth) > 3:
-            windows['POI4'].append(ground_truth[3])
-        if len(ground_truth) > 4:
-            windows['POI5'].append(ground_truth[4])
-        if len(ground_truth) > 5:
-            windows['POI6'].append(ground_truth[5])
+        # if len(ground_truth) > 3:
+        #     windows['POI4'].append(ground_truth[3])
+        # if len(ground_truth) > 4:
+        #     windows['POI5'].append(ground_truth[4])
+        # if len(self._model_data_labels) > 5:
+        #     windows['POI6'].append(ground_truth[5])
         return windows
-
-    def _choose_and_insert(self, indices, dissipation, relative_time, poi, ground_truth):
-        if not indices:
-            return []
-        best = self._correct_bias(
-            dissipation, relative_time, indices, poi, ground_truth)
-        best_idx = int(np.array(best).flat[0]) if isinstance(
-            best, (list, np.ndarray)) else int(best)
-        return [best_idx] + [i for i in indices if i != best_idx]
 
     def _update_positions(self, positions, windows):
         for poi, inds in windows.items():
@@ -689,7 +809,7 @@ class QModelPredictor:
     def _valid_index(idx, arr):
         return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
 
-    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = True) -> dict:
+    def predict(self, file_buffer: str, forecast_start: int = -1, forecast_end: int = -1, actual_poi_indices: np.ndarray = None, plotting: bool = False) -> dict:
         """
         Predict POI indices from dissipation CSV data using the loaded model and scaler.
 
@@ -736,8 +856,8 @@ class QModelPredictor:
             ground_truth=qmodel_v2_labels,
             model_data_labels=model_data_labels,
             relative_time=df["Relative_time"].values,
-            dissipation=feature_vector["Dissipation_smooth"].values,
-            dissipation_raw=df["Dissipation"].values)
+            feature_vector=feature_vector,
+            raw_vector=df)
         if plotting:
             plt.figure(figsize=(10, 6))
 
@@ -768,7 +888,6 @@ class QModelPredictor:
             plt.legend()
             plt.tight_layout()
             plt.show()
-        print(final_predictions)
         return final_predictions
 
 
