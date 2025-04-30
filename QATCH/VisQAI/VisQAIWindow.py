@@ -10,8 +10,8 @@ from numpy import loadtxt
 import numpy as np
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
-from QATCH.QModel.q_image_clusterer import QClusterer
-from QATCH.QModel.q_multi_model import QPredictor
+# from QATCH.QModel.q_image_clusterer import QClusterer
+# from QATCH.QModel.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.fileManager import FileManager
