@@ -45,11 +45,14 @@ class Ui_Main(object):
         self.mode_run.mousePressEvent = self.setRunMode
         self.mode_analyze = QtWidgets.QLabel("Analyze")
         self.mode_analyze.mousePressEvent = self.setAnalyzeMode
+        self.mode_learn = QtWidgets.QLabel("VisQ.AI<sup>TM</sup>")
+        self.mode_learn.mousePressEvent = self.setLearnMode
         modelayout.setContentsMargins(0, 0, 0, 0)
         modelayout.addWidget(self.logolabel)
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
+        modelayout.addWidget(self.mode_learn)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
@@ -108,6 +111,19 @@ class Ui_Main(object):
         self.analyze.setWidgetResizable(True)
         self.analyze.setWidget(parent.AnalyzeProc)
         self.analyze.setMinimumSize(QtCore.QSize(1000, 122))
+
+        # learn mode view frame: VisQ.AI
+        self.learn_ui = QtWidgets.QScrollArea()
+        self.learn_ui.setObjectName("learn_ui")
+        self.learn_ui.setStyleSheet(
+            "#learn_ui {border: 1px solid #DDDDDD; border-radius: 2px;}")
+        self.learn_ui.setFrameShape(
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+        self.learn_ui.setLineWidth(0)
+        self.learn_ui.setMidLineWidth(0)
+        self.learn_ui.setWidgetResizable(True)
+        self.learn_ui.setWidget(parent.VisQAIWin)
+        self.learn_ui.setMinimumSize(QtCore.QSize(1000, 122))
 
         # log view frame: Logger
         self.logview = QtWidgets.QScrollArea()
@@ -238,6 +254,8 @@ class Ui_Main(object):
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet(
                 "padding: 10px; padding-left: 15px;")
+            self.mode_learn.setStyleSheet(
+                "padding: 10px; padding-left: 15px;")
             self.splitter.replaceWidget(0, self.userview)
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
             self.parent.viewTutorialPage([1, 2, 0])
@@ -265,7 +283,13 @@ class Ui_Main(object):
         if self.parent.AnalyzeProc.hasUnsavedChanges():
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
-        if not self.parent.AnalyzeProc.hasUnsavedChanges():
+        if self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+                self.parent.VisQAIWin.clear()  # lose unsaved changes
+        if (self.splitter.widget(0) == self.userview or
+           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
+           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
+           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
             action_role = UserRoles.CAPTURE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
             if check_result == None:  # user check required, but no user signed in
@@ -280,6 +304,8 @@ class Ui_Main(object):
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;")
                 self.mode_analyze.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.runview)
                 if UserProfiles.count() == 0:
@@ -299,8 +325,12 @@ class Ui_Main(object):
                     f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
                 Log.e("You are not authorized to access Run mode.")
         else:
-            Log.e(
-                "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
+            if self.splitter.widget(0) == self.analyze:
+                Log.e(
+                    "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
+            else:
+                Log.e(
+                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
         if obj == None:
             return False
 
@@ -310,7 +340,16 @@ class Ui_Main(object):
             if obj == None:
                 return True
             return
-        if self.parent.ControlsWin.ui1.pButton_Start.isEnabled():
+        if self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+                self.parent.AnalyzeProc.clear()  # lose unsaved changes
+        if self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+                self.parent.VisQAIWin.clear()  # lose unsaved changes
+        if (self.splitter.widget(0) == self.userview or
+           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
+           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
+           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
             self.parent.analyze_data()
             action_role = UserRoles.ANALYZE
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
@@ -320,6 +359,8 @@ class Ui_Main(object):
                     "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;")
+                self.mode_learn.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
                 self.splitter.replaceWidget(0, self.analyze)
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj == None:
@@ -329,7 +370,63 @@ class Ui_Main(object):
             else:
                 Log.e("You are not authorized to access Analyze mode.")
         else:
-            Log.e("Please stop the current run before switching modes.")
+            if self.splitter.widget(0) == self.runview:
+                Log.e("Please stop the current run before switching modes.")
+            else:
+                Log.e(
+                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
+        if obj == None:
+            return False
+
+    def setLearnMode(self, obj):
+        if self.splitter.widget(0) == self.learn_ui and not self._force_splitter_mode_set:
+            Log.d(
+                "VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request.")
+            if obj == None:
+                return True
+            return
+        if self.parent.AnalyzeProc.hasUnsavedChanges():
+            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+                self.parent.AnalyzeProc.clear()  # lose unsaved changes
+        if self.parent.VisQAIWin.hasUnsavedChanges():
+            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+                self.parent.VisQAIWin.clear()  # lose unsaved changes
+        if (self.splitter.widget(0) == self.userview or
+           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
+           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
+           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
+            self.parent.VisQAIWin.reset()
+            action_role = UserRoles.OPERATE
+            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            if check_result == None:  # user check required, but no user signed in
+                Log.w(
+                    f"Not signed in: User with role {action_role.name} is required to perform this action.")
+                Log.i("Please sign in to continue.")
+                self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
+                check_result = UserProfiles().check(
+                    self.parent.ControlsWin.userrole, action_role)  # check again
+            if check_result:
+                self.parent.VisQAIWin.enable(True)
+                self.mode_run.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet(
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;")
+                self.splitter.replaceWidget(0, self.learn_ui)
+                self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
+                if obj == None:
+                    return True
+            elif check_result == None:
+                Log.e("Please sign in to access VisQ.AI<sup>TM</sup> mode.")
+            else:
+                Log.e("You are not authorized to access VisQ.AI<sup>TM</sup> mode.")
+        else:
+            if self.splitter.widget(0) == self.runview:
+                Log.e("Please stop the current run before switching modes.")
+            else:
+                Log.e(
+                    "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
         if obj == None:
             return False
 

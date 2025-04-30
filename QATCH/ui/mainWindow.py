@@ -20,6 +20,7 @@ from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManag
 from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
+from QATCH.VisQAI.VisQAIWindow import VisQAIWindow
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -1124,6 +1125,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # self.PlotsWin.show()
         # self.InfoWin.show()
         self.AnalyzeProc = AnalyzeProcess(self)
+
+        self.VisQAIWin = VisQAIWindow(self)
 
         self.tecWorker = TECTask()
 
