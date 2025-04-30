@@ -89,8 +89,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return CA
 
     @staticmethod
-    def Lookup_DN(surfactant, concentration):
-        return 1 + 2.62e-4 * concentration
+    def Lookup_DN(surfactant, concentration, stabilizer_type="none", stabilizer_concentration=0):
+        stabilizer_offset = 0
+        if stabilizer_type == "sucrose":  # expect caller `casefold()` stabilizer type
+            stabilizer_offset = 0.13 * stabilizer_concentration
+        return 1 + 2.62e-4 * concentration + stabilizer_offset
 
     @staticmethod
     def Lookup_Table(table_path, surfactant, concentration):
@@ -5217,6 +5220,13 @@ class AnalyzerWorker(QtCore.QObject):
                     # if name == "surface_tension":
                     # if name == "contact_angle":
                     # if name == "density":
+
+                    # if name == "protein_type":
+                    # if name == "protein_concentration":
+                    # if name == "surfactant_type":
+                    # if name == "surfactant_concentration":
+                    # if name == "stabilizer_type":
+                    # if name == "stabilizer_concentration":
 
                 batch = str(
                     xml_params.get("batch_number", "N/A")
