@@ -4965,20 +4965,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 logger = Log.w  # from 33% to 66%
             return logger
 
-        point_names = ["start", "end_fill",
-                       "post", "ch1", "ch2", "ch3"]
-        for i, (candidates, confidences) in enumerate(self.model_candidates):
-            if i == 2:
-                # do not print confidence of "post" point, it doesn't matter
-                continue
-            point_name = point_names[i]
-            confidence = 100 * \
-                confidences[0] if len(confidences) > 0 else 0
-            num_spaces = len(point_names[1]) - len(point_name) + 1
-            get_logger_for_confidence(confidence)(
-                tag=f"[{self.model_engine}]",
-                msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
-            )
+        try:
+            point_names = ["start", "end_fill",
+                           "post", "ch1", "ch2", "ch3"]
+            for i, (candidates, confidences) in enumerate(self.model_candidates):
+                if i == 2:
+                    # do not print confidence of "post" point, it doesn't matter
+                    continue
+                point_name = point_names[i]
+                # issue: QModel is returning a single `float` instead of a `list`
+                if type(confidences) is float:
+                    confidences = [confidences]
+                confidence = 100 * \
+                    confidences[0] if len(confidences) > 0 else 0
+                num_spaces = len(point_names[1]) - len(point_name) + 1
+                get_logger_for_confidence(confidence)(
+                    tag=f"[{self.model_engine}]",
+                    msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
+                )
+        except:
+            Log.e("Error printing confidences from QModel response.")
 
     def resizeEvent(self, event):
         # # Position relative to main window
@@ -7229,7 +7235,13 @@ class AnalyzerWorker(QtCore.QObject):
             try:
                 normal_idxs = []
                 for i in idx_of_normal_pts_to_retain:
-                    normal_idxs.append(-len(distances)+times.index(i))
+                    if i in times:
+                        normal_idxs.append(-len(distances)+times.index(i))
+                    else:
+                        Log.w(
+                            f"Index for {i} in `times` cannot be found in list. Skipping point")
+                if len(normal_idxs) == 0:
+                    raise Exception("Empty list cannot be reduced further")
                 idx0 = np.min(normal_idxs)-1  # POI2
                 idx1 = np.max(normal_idxs)+1  # POI4
                 # avg_viscosity = np.average(
