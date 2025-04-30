@@ -9,7 +9,7 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-30-2025
-Version: QModel.Ver3.11
+Version: QModel.Ver3.12
 """
 
 import xgboost as xgb
@@ -20,15 +20,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Dict, List, Any, Union, Optional
-from scipy.signal import find_peaks
+from scipy.signal import find_peaks, savgol_filter
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
 from QATCH.models.ModelData import ModelData
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
-POI_1_OFFSET = 3
-POI_2_OFFSET = -8
+POI_1_OFFSET = 2
+POI_2_OFFSET = -2
 
 TAG = ["QModel V3"]
 
@@ -582,9 +582,17 @@ class QModelPredictor:
         # Special handling for POI6: slide to max dissipation then base of nearest RF peak
         if poi == "POI6" and valid_filtered:
             start_idx, end_idx = cmin, cmax
+            knee_point = self._poi_6_knee_point(
+                start_of_segment=start_idx,
+                end_of_segment=end_idx,
+                feature_vector=feature_vector,
+                relative_time=relative_time
+            )
             segment = diss[start_idx: end_idx + 1]
             peak_rel = int(np.argmax(segment))
-            best_idx = start_idx + peak_rel
+            candidate_idx = start_idx + peak_rel
+
+            best_idx = max(knee_point, candidate_idx)
 
             rf = feature_vector.get("Resonance_Frequency_smooth")
             if rf is None:
@@ -604,10 +612,6 @@ class QModelPredictor:
                     local_seg = rf_vals[start_idx: peak_idx + 1]
                     base_rel = int(np.argmin(local_seg))
                     best_idx = start_idx + base_rel
-
-            # If run is very long, pick last candidate
-            if relative_time.max() > 600:
-                best_idx = max(valid_filtered)
 
         # Slip-check for POI4: ensure bias correction didn't drift toward POI3
         if poi == "POI4" and len(ground_truth) >= 4:
@@ -671,47 +675,73 @@ class QModelPredictor:
         if not isinstance(poi1_entry, dict):
             raise ValueError(
                 "Missing or invalid entry for 'POI1' in positions.")
+        poi2_entry = positions.get("POI2")
+        if not isinstance(poi2_entry, dict):
+            raise ValueError(
+                "Missing or invalid entry for 'POI2' in positions.")
 
         poi3_indices = poi3_entry.get("indices")
         if not isinstance(poi3_indices, (list, tuple)) or not poi3_indices:
             poi3_indices = [self._model_data_labels[2]]
         if not all(isinstance(idx, int) for idx in poi3_indices):
             raise TypeError("All entries in 'POI3' indices must be integers.")
+        poi2_indices = poi2_entry.get("indices")
+        if not isinstance(poi3_indices, (list, tuple)) or not poi3_indices:
+            poi2_indices = [self._model_data_labels[1]]
+        if not all(isinstance(idx, int) for idx in poi3_indices):
+            raise TypeError("All entries in 'POI3' indices must be integers.")
 
-        poi1_indices = poi1_entry.get("indices")
-        if not isinstance(poi1_indices, (list, tuple)) or not poi1_indices:
-            return min(poi3_indices) - 2
-        if not all(isinstance(idx, int) for idx in poi1_indices):
-            raise TypeError("All entries in 'POI1' indices must be integers.")
-        start_of_segment = poi1_indices[0]
-        end_of_segment = max(poi3_indices)
-        diff = feature_vector['Difference_smooth'].values
+        # --- 2) Compute candidates ---
+        base2 = max(poi2_indices) + POI_2_OFFSET
+        base3 = min(poi3_indices) + POI_2_OFFSET
+        first3 = poi3_indices[0]
 
-        segment_time = relative_time[start_of_segment: end_of_segment + 1]
-        segment_diff = diff[start_of_segment: end_of_segment + 1]
-
-        # Compute the instantaneous slope over the segment
-        slope = np.gradient(segment_diff, segment_time)
-
-        # Find where slope falls below X% of its maximum
-        frac = 0.2
-        threshold = np.max(slope) * frac
-        peak_rel_idx = np.argmax(slope)
-        flatten_rel_idxs = np.where(slope[peak_rel_idx:] < threshold)[0]
-
-        if len(flatten_rel_idxs) > 0:
-            flat_rel_idx = peak_rel_idx + flatten_rel_idxs[0]
-            flat_idx = start_of_segment + flat_rel_idx
-            flat_time = relative_time[flat_idx]
-            flat_value = diff[flat_idx]
+        # --- 3) Log everything so you can trace the decision ---
+        Log.d(f"POI2 max(poi2)={max(poi2_indices)}, OFFSET={base2}")
+        Log.d(f"POI3 min(poi3)={min(poi3_indices)}, OFFSET={base3}")
+        Log.d(f"First POI3 index: {first3}")
+        # --- 4) Make the final pick ---
+        if base2 < first3:
+            result = max(base3, base2)
+            Log.d(f"Choosing max(base3, base2) {result}")
         else:
-            # fallback: just take the end of the segment
-            flat_idx = end_of_segment
-            flat_time = relative_time[flat_idx]
-            flat_value = diff[flat_idx]
+            result = base3
+            Log.d(f"base2 >= first3; falling back to base3 {result}")
 
-        # Compute and return the offset index
-        return flat_idx + POI_2_OFFSET
+        return result
+
+    def _poi_6_knee_point(self,
+                          start_of_segment: int,
+                          end_of_segment: int,
+                          feature_vector: pd.DataFrame,
+                          relative_time: np.ndarray) -> int:
+
+        n = abs(start_of_segment - end_of_segment)
+        if n < 3:
+            diff = feature_vector['Detrend_Difference'].values
+        else:
+            w = max(3, int(n * 0.05))
+            if w % 2 == 0:
+                w += 1
+            w = min(w, n if n % 2 == 1 else n - 1)
+            polyorder = 1
+            po = min(polyorder, w - 1)
+            diff = savgol_filter(
+                feature_vector['Detrend_Difference'].values, window_length=w, polyorder=po)
+        seg_d = diff[start_of_segment:end_of_segment+1]
+        seg_t = relative_time[start_of_segment:end_of_segment+1]
+        slope = np.gradient(seg_d, seg_t)
+        valley_rel = int(np.argmin(slope))
+        peaks, _ = find_peaks(seg_d)
+        pre_peaks = peaks[peaks < valley_rel]
+
+        if pre_peaks.size > 0:
+            knee_rel = int(pre_peaks[-1])
+        else:
+            knee_rel = int(np.argmax(seg_d[:valley_rel+1]))
+
+        knee_idx = start_of_segment + knee_rel
+        return knee_idx
 
     def _choose_and_insert(
         self,
