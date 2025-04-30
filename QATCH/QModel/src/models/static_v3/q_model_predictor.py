@@ -9,7 +9,7 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-30-2025
-Version: QModel.Ver3.12
+Version: QModel.Ver3.13
 """
 
 import xgboost as xgb
@@ -27,7 +27,7 @@ from QATCH.models.ModelData import ModelData
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
-POI_1_OFFSET = 2
+POI_1_OFFSET = 1
 POI_2_OFFSET = -2
 
 TAG = ["QModel V3"]
