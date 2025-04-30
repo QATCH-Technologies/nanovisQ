@@ -572,21 +572,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t3.textChanged.connect(self.calc_params)
         self.t3.editingFinished.connect(self.calc_params)
 
-        # Protein Type
-        self.q10 = QtWidgets.QHBoxLayout()
-        self.l10 = QtWidgets.QLabel()
-        self.l10.setText("Type\t\t=")
-        self.q10.addWidget(self.l10)
-        self.c10 = QtWidgets.QComboBox()
-        self.q10.addWidget(self.c10, 1)
-        self.h10 = QtWidgets.QLabel()
-        self.h10.setText("<u>?</u>")
-        self.h10.setToolTip(
-            "<b>Hint:</b> If not listed, add a new entry to the list.")
-        self.q10.addWidget(self.h10)
-        self.c10.currentTextChanged.connect(self.new_protein_type)
-
-        # Protein Concentration
         self.q4 = QtWidgets.QHBoxLayout()
         self.l4 = QtWidgets.QLabel()
         self.l4.setText("Concentration\t=")
@@ -604,13 +589,45 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t4.textChanged.connect(self.calc_params)
         self.t4.editingFinished.connect(self.calc_params)
 
+        # Protein Type
+        self.q10 = QtWidgets.QHBoxLayout()
+        self.l10 = QtWidgets.QLabel()
+        self.l10.setText("Type\t\t=")
+        self.q10.addWidget(self.l10)
+        self.c10 = QtWidgets.QComboBox()
+        self.q10.addWidget(self.c10, 1)
+        self.h10 = QtWidgets.QLabel()
+        self.h10.setText("<u>?</u>")
+        self.h10.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q10.addWidget(self.h10)
+        self.c10.currentTextChanged.connect(self.new_protein_type)
+
+        # Protein Concentration
+        self.q12 = QtWidgets.QHBoxLayout()
+        self.l12 = QtWidgets.QLabel()
+        self.l12.setText("Concentration\t=")
+        self.q12.addWidget(self.l12)
+        self.t12 = QtWidgets.QLineEdit()
+        self.validProteinConcentration = QtGui.QDoubleValidator(0, 1000, 3)
+        self.validProteinConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t12.setValidator(self.validProteinConcentration)
+        self.q12.addWidget(self.t12)
+        self.h12 = QtWidgets.QLabel()
+        self.h12.setText("<u>mg/mL</u>")
+        self.h12.setToolTip("<b>Hint:</b> For 100mg/mL enter \"100\".")
+        self.q12.addWidget(self.h12)
+        self.t12.textChanged.connect(self.calc_params)
+        self.t12.editingFinished.connect(self.calc_params)
+
         # Protein Groupbox
         self.groupProtein = QtWidgets.QGroupBox("Protein Information")
         self.groupProtein.setCheckable(False)
         self.vbox2 = QtWidgets.QVBoxLayout()
         self.groupProtein.setLayout(self.vbox2)
         self.vbox2.addLayout(self.q10)
-        self.vbox2.addLayout(self.q4)
+        self.vbox2.addLayout(self.q12)
 
         # Surfactant Type
         self.q9 = QtWidgets.QHBoxLayout()
@@ -632,10 +649,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l6.setText("Concentration\t=")
         self.q6.addWidget(self.l6)
         self.t6 = QtWidgets.QLineEdit()
-        self.validConcentration = QtGui.QDoubleValidator(0, 1, 3)
-        self.validConcentration.setNotation(
+        self.validSurfactantConcentration = QtGui.QDoubleValidator(0, 1, 5)
+        self.validSurfactantConcentration.setNotation(
             QtGui.QDoubleValidator.StandardNotation)
-        self.t6.setValidator(self.validConcentration)
+        self.t6.setValidator(self.validSurfactantConcentration)
         self.q6.addWidget(self.t6)
         self.h6 = QtWidgets.QLabel()
         self.h6.setText("<u>%w</u>")
@@ -672,10 +689,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l8.setText("Concentration\t=")
         self.q8.addWidget(self.l8)
         self.t8 = QtWidgets.QLineEdit()
-        self.validConcentration = QtGui.QDoubleValidator(0, 1, 3)
-        self.validConcentration.setNotation(
+        self.validStabilizerConcentration = QtGui.QDoubleValidator(0, 1, 3)
+        self.validStabilizerConcentration.setNotation(
             QtGui.QDoubleValidator.StandardNotation)
-        self.t8.setValidator(self.validConcentration)
+        self.t8.setValidator(self.validStabilizerConcentration)
         self.q8.addWidget(self.t8)
         self.h8 = QtWidgets.QLabel()
         self.h8.setText("<u>M</u>")
@@ -907,7 +924,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.highlight_timer.setSingleShot(True)
 
         tb_elems = [self.t_runname, self.t_batch, self.t0,
-                    self.t1, self.t2, self.t3, self.t4, self.t5]
+                    self.t1, self.t2, self.t3, self.t4, self.t5,
+                    self.t6, self.t8, self.t12]
         self.reset_actions = []
         for tb in tb_elems:
             tb.textChanged.connect(self.detect_change)
@@ -927,6 +945,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.g1.buttonClicked.connect(self.detect_change)
         self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
+        self.c9.currentTextChanged.connect(self.detect_change)
+        self.c10.currentTextChanged.connect(self.detect_change)
+        self.c11.currentTextChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -1026,6 +1047,10 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     if name == "bioformulation":
                         bval = eval(value)
+                        # if bval:
+                        #     self.b1.click()
+                        # else:
+                        #     self.b2.click()
                         self.b1.setChecked(bval)
                         self.b2.setChecked(not bval)
                     # if name == "protein":
@@ -1053,7 +1078,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 notes_txt = self.notes.toPlainText()
                                 if os.path.exists(notes_path):
                                     with open(notes_path, 'r') as f:
-                                        file_txt = "\n".join(f.readlines())
+                                        file_txt = "\n".join(
+                                            f.read().splitlines())
                                     if file_txt != notes_txt:
                                         if Constants.import_notes_from_txt_file:
                                             Log.w(
@@ -1099,12 +1125,50 @@ class QueryRunInfo(QtWidgets.QWidget):
                             auto_dn = value
                         # auto_dn = value if input == "auto" else 0
 
+                    # new parameters for revamped run info
+
+                    if name == "protein_type":
+                        if value in self.excipient_proteins:
+                            self.c10.setCurrentText(value)
+                        elif value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Protein Type: \"{value}\" not in list")
+                    if name == "protein_concentration":
+                        self.t12.setText(value)
+                    if name == "surfactant_type":
+                        if value in self.excipient_surfactants:
+                            self.c9.setCurrentText(value)
+                        elif value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Surfactant Type: \"{value}\" not in list")
+                    if name == "surfactant_concentration":
+                        self.t6.setText(value)
+                    if name == "stabilizer_type":
+                        if value in self.excipient_stabilizers:
+                            self.c11.setCurrentText(value)
+                        elif value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Stabilizer Type: \"{value}\" not in list")
+                    if name == "stabilizer_concentration":
+                        self.t8.setText(value)
+
                 if len(params.childNodes) == 0:
                     # uncheck "Remember for next time"
                     self.q_recall.setChecked(False)
                 recalled = True
         except:
             Log.e("Failed to recall info from saved file.")
+
+            import sys
+            from traceback import format_tb
+
+            limit = None
+            t, v, tb = sys.exc_info()
+            a_list = ["Traceback (most recent call last):"]
+            a_list = a_list + format_tb(tb, limit)
+            a_list.append(f"{t.__name__}: {str(v)}")
+            for line in a_list:
+                Log.e(line)
 
         self.show_hide_gui(None)  # enable/disable elements
 
@@ -1273,8 +1337,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         top = int((area.height() - height) / 2)
         self.setGeometry(left, top, width, height)
 
-    def new_protein_type(self, text):
-        if text == "add new...":
+    def new_protein_type(self, text: str):
+        if text.casefold() == "add new...":
             self.add_protein_type = QtWidgets.QWidget()
             self.add_protein_type.setWindowTitle("Protein Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1292,15 +1356,16 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.protein_types_multiline.setFocus()
             self.protein_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text == "none":
-            self.t4.clear()  # clear Protein Concentration
-            self.t4.setEnabled(False)
+        elif text.casefold() == "none":
+            self.t12.setText("0")  # clear Protein Concentration
+            self.t12.setEnabled(False)
+            self.b2.click()  # check "no" to bioformulation question
         else:
-            self.t4.setEnabled(True)
+            self.t12.setEnabled(True)
             pass  # do nothing if any other value was selected
 
-    def new_surfactant_type(self, text):
-        if text == "add new...":
+    def new_surfactant_type(self, text: str):
+        if text.casefold() == "add new...":
             self.add_surfactant_type = QtWidgets.QWidget()
             self.add_surfactant_type.setWindowTitle("Surfactant Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1318,15 +1383,15 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.surfactant_types_multiline.setFocus()
             self.surfactant_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text == "none":
-            self.t6.clear()  # clear Surfactant Concentration
+        elif text.casefold() == "none":
+            self.t6.setText("0")  # clear Surfactant Concentration
             self.t6.setEnabled(False)
         else:
             self.t6.setEnabled(True)
             pass  # do nothing if any other value was selected
 
-    def new_stabilizer_type(self, text):
-        if text == "add new...":
+    def new_stabilizer_type(self, text: str):
+        if text.casefold() == "add new...":
             self.add_stabilizer_type = QtWidgets.QWidget()
             self.add_stabilizer_type.setWindowTitle("Stabilizer Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1344,8 +1409,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.stabilizer_types_multiline.setFocus()
             self.stabilizer_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text == "none":
-            self.t8.clear()  # clear Stabilizer Concentration
+        elif text.casefold() == "none":
+            self.t8.setText("0")  # clear Stabilizer Concentration
             self.t8.setEnabled(False)
         else:
             self.t8.setEnabled(True)
@@ -1585,12 +1650,16 @@ class QueryRunInfo(QtWidgets.QWidget):
             if is_bioformulation != True:
                 self.t3.clear()
                 self.t4.clear()
+                # setting protein type to "none" will disable protein contentration
+                self.c10.setCurrentIndex(0)
             else:
                 self.t0.clear()
 
-            self.t0.setEnabled(is_bioformulation == False)
+            self.t0.setEnabled(is_bioformulation == False)  # solvent (hidden)
+            # surfactant (hidden)
             self.t3.setEnabled(is_bioformulation == True)
-            self.t4.setEnabled(is_bioformulation == True)  # is_protein)
+            self.t4.setEnabled(is_bioformulation == True)  # protein (hidden)
+            self.c10.setEnabled(is_bioformulation == True)  # protein type
 
             if object == None:
                 self.auto_st = float(self.t1.text()) if len(
@@ -1599,6 +1668,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.t2.text()) else 0
                 self.auto_dn = float(self.t5.text()) if len(
                     self.t5.text()) else 0
+            elif curr_state == None:
+                return  # Run Info not visible, stop here
             elif is_bioformulation != None:
                 self.calc_params()
             else:  # form is blank
@@ -1631,15 +1702,24 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         if self.t3.text() != "0":
             self.t3.setText("0")  # Surfactant locked
+        if self.t4.text() != "0":
+            self.t4.setText("0")  # Concentration locked
 
         try:
             surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
             concentration = float(self.t4.text()) if len(self.t4.text()) else 0
+            protein_concentration = float(
+                self.t12.text()) if len(self.t12.text()) else 0
+            stabilizer_type = self.c11.currentText().casefold()  # i.e. "sucrose"
+            stabilizer_concentration = float(
+                self.t8.text()) if len(self.t8.text()) else 0
         except Exception as e:
             return
 
         input_error = False
-        if len(self.t3.text()) == 0 or len(self.t4.text()) == 0:
+        if (len(self.t3.text()) == 0 or len(self.t4.text()) == 0 or
+                len(self.t12.text()) == 0 or len(self.t8.text()) == 0 or
+                not self.isVisible()):
             input_error = True
         if not input_error:
             # perform additional validations only if fields are not blank
@@ -1655,10 +1735,23 @@ class QueryRunInfo(QtWidgets.QWidget):
                           self.validConcentration.bottom(),
                           self.validConcentration.top()))
                 input_error = True
+            if not self.t12.hasAcceptableInput():
+                Log.e("Input Error: Protein Concentration must be between {} and {}."
+                      .format(
+                          self.validProteinConcentration.bottom(),
+                          self.validProteinConcentration.top()))
+                input_error = True
+            if not self.t8.hasAcceptableInput():
+                Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
+                      .format(
+                          self.validStabilizerConcentration.bottom(),
+                          self.validStabilizerConcentration.top()))
+                input_error = True
         if input_error:
-            self.t1.clear()
-            self.t2.clear()
-            self.t5.clear()
+            if self.isVisible():
+                self.t1.clear()  # surface tension (hidden)
+                self.t2.clear()  # contact angle (hidden)
+                self.t5.clear()  # density
             return
 
         try:
@@ -1666,7 +1759,10 @@ class QueryRunInfo(QtWidgets.QWidget):
             surface_tension = AnalyzeProcess.Lookup_ST(
                 surfactant, concentration)
             contact_angle = AnalyzeProcess.Lookup_CA(surfactant, concentration)
-            density = AnalyzeProcess.Lookup_DN(surfactant, concentration)
+            density = AnalyzeProcess.Lookup_DN(surfactant=surfactant,
+                                               concentration=protein_concentration,
+                                               stabilizer_type=stabilizer_type,
+                                               stabilizer_concentration=stabilizer_concentration)
             self.t1.setText("{:3.3f}".format(surface_tension))
             self.t2.setText("{:2.1f}".format(contact_angle))
             self.t5.setText("{:1.3f}".format(density))
@@ -1679,9 +1775,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Lookup Error: Failed to estimate ST and/or CA.")
-            self.t1.clear()
-            self.t2.clear()
-            self.t5.clear()
+            self.t1.clear()  # surface tension (hidden)
+            self.t2.clear()  # contact angle (hidden)
+            self.t5.clear()  # density
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
@@ -1752,6 +1848,42 @@ class QueryRunInfo(QtWidgets.QWidget):
                   .format(
                       self.validDensity.bottom(),
                       self.validDensity.top()))
+            input_error = True
+        if not self.t12.hasAcceptableInput():
+            Log.e("Input Error: Protein Concentration must be between {} and {}."
+                  .format(
+                      self.validProteinConcentration.bottom(),
+                      self.validProteinConcentration.top()))
+            input_error = True
+        if not self.t6.hasAcceptableInput():
+            Log.e("Input Error: Surfactant Concentration must be between {} and {}."
+                  .format(
+                      self.validSurfactantConcentration.bottom(),
+                      self.validSurfactantConcentration.top()))
+            input_error = True
+        if not self.t8.hasAcceptableInput():
+            Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
+                  .format(
+                      self.validStabilizerConcentration.bottom(),
+                      self.validStabilizerConcentration.top()))
+            input_error = True
+        if self.c10.currentText().casefold() == "none" and self.c10.isEnabled():
+            Log.e(
+                "Input Error: You must provide a Protein Type if this is a bioformulation.")
+            Log.e(
+                "Either select a Protein Type other than \"none\" or click \"no\" for \"Is this a bioformulation?\"")
+            input_error = True
+        if self.t12.text() == "0" and self.t12.isEnabled():
+            Log.e(
+                "Input Error: Protein Concentration should be non-zero when Protein Type is not \"none\".")
+            input_error = True
+        if self.t6.text() == "0" and self.t6.isEnabled():
+            Log.e(
+                "Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not \"none\".")
+            input_error = True
+        if self.t8.text() == "0" and self.t8.isEnabled():
+            Log.e(
+                "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\".")
             input_error = True
 
         # If the force parameter is set to True, input errors are ignored.
@@ -2007,9 +2139,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         if self.b2.isChecked():  # is NOT bioformulation
             param2 = run.createElement('param')
             param2.setAttribute('name', 'solvent')
-            param2.setAttribute('value', self.t0.text())
-            param2.setAttribute(
-                'input', 'auto' if self.t0.text() in self.fluids else 'manual')
+            if len(self.t0.text()) == 0:
+                # default, if blank
+                param2.setAttribute('value', 'Water (25C)')
+                param2.setAttribute('input', 'default')
+            else:
+                param2.setAttribute('value', self.t0.text())
+                param2.setAttribute(
+                    'input', 'auto' if self.t0.text() in self.fluids else 'manual')
             params.appendChild(param2)
 
         if self.b1.isChecked():  # IS bioformulation
@@ -2052,6 +2189,41 @@ class QueryRunInfo(QtWidgets.QWidget):
         param7.setAttribute('units', 'g/cm^3')
         param7.setAttribute('input', 'manual' if manual_dn else 'auto')
         params.appendChild(param7)
+
+        # new parameters for revamped run info
+
+        param8 = run.createElement('param')
+        param8.setAttribute('name', 'protein_type')
+        param8.setAttribute('value', self.c10.currentText())
+        params.appendChild(param8)
+
+        param9 = run.createElement('param')
+        param9.setAttribute('name', 'protein_concentration')
+        param9.setAttribute('value', self.t12.text())
+        param9.setAttribute('units', 'mg/mL')
+        params.appendChild(param9)
+
+        param10 = run.createElement('param')
+        param10.setAttribute('name', 'surfactant_type')
+        param10.setAttribute('value', self.c9.currentText())
+        params.appendChild(param10)
+
+        param11 = run.createElement('param')
+        param11.setAttribute('name', 'surfactant_concentration')
+        param11.setAttribute('value', self.t6.text())
+        param11.setAttribute('units', '%w')
+        params.appendChild(param11)
+
+        param12 = run.createElement('param')
+        param12.setAttribute('name', 'stabilizer_type')
+        param12.setAttribute('value', self.c11.currentText())
+        params.appendChild(param12)
+
+        param13 = run.createElement('param')
+        param13.setAttribute('name', 'stabilizer_concentration')
+        param13.setAttribute('value', self.t8.text())
+        param13.setAttribute('units', 'M')
+        params.appendChild(param13)
 
         # add hashes for security and verification
         if not os.path.exists(self.xml_path):
