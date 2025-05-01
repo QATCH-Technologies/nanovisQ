@@ -493,7 +493,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         self.q2 = QtWidgets.QHBoxLayout()
         self.l2 = QtWidgets.QLabel()
-        self.l2.setText("Solvent\t\t=")
+        self.l2.setText("Type\t\t=")  # solvent type
         self.q2.addWidget(self.l2)
         self.t0 = QtWidgets.QLineEdit()
 
@@ -554,6 +554,13 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.q2.addWidget(self.h0)
         self.t0.textChanged.connect(self.lookup_completer)
         self.t0.editingFinished.connect(self.enforce_completer)
+
+        # Solvent Groupbox
+        self.groupSolvent = QtWidgets.QGroupBox("Solvent Information")
+        self.groupSolvent.setCheckable(False)
+        self.vbox0 = QtWidgets.QVBoxLayout()
+        self.groupSolvent.setLayout(self.vbox0)
+        self.vbox0.addLayout(self.q2)
 
         self.q3 = QtWidgets.QHBoxLayout()
         self.l3 = QtWidgets.QLabel()
@@ -771,9 +778,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addLayout(self.q_batch)
         layout_v.addWidget(self.notes)
         layout_v.addLayout(self.q1)  # show "Is this a bioformulation?"
-        # layout_v.addLayout(self.q2) # hide Solvent
+        # layout_v.addLayout(self.q2)  # hide Solvent
         # layout_v.addLayout(self.q3) # hide Surfactant
         # layout_v.addLayout(self.q4) # hide Concentration
+        layout_v.addWidget(self.groupSolvent)
         layout_v.addWidget(self.groupProtein)
         layout_v.addWidget(self.groupSurfactant)
         layout_v.addWidget(self.groupStabilizer)
@@ -1651,15 +1659,30 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.t3.clear()
                 self.t4.clear()
                 # setting protein type to "none" will disable protein contentration
-                self.c10.setCurrentIndex(0)
+                # self.c10.setCurrentIndex(0)
             else:
-                self.t0.clear()
+                # self.t0.clear()
+                pass
 
-            self.t0.setEnabled(is_bioformulation == False)  # solvent (hidden)
+            self.t0.setEnabled(is_bioformulation == False)  # solvent
             # surfactant (hidden)
             self.t3.setEnabled(is_bioformulation == True)
             self.t4.setEnabled(is_bioformulation == True)  # protein (hidden)
-            self.c10.setEnabled(is_bioformulation == True)  # protein type
+
+            self.groupSolvent.setVisible(
+                is_bioformulation == False)  # solvent group
+            self.groupProtein.setVisible(
+                is_bioformulation == True)  # protein group
+            self.groupSurfactant.setVisible(
+                is_bioformulation == True)  # surfactant group
+            self.groupStabilizer.setVisible(
+                is_bioformulation == True)  # stabilizer group
+
+            if curr_state is not None:
+                # resize vertically to fit fields (if visible)
+                # NOTE: use timer to add to scheduler after redraw event
+                QtCore.QTimer.singleShot(
+                    1, lambda: self.resize(self.width(), self.minimumHeight()))
 
             if object == None:
                 self.auto_st = float(self.t1.text()) if len(
@@ -1671,7 +1694,10 @@ class QueryRunInfo(QtWidgets.QWidget):
             elif curr_state == None:
                 return  # Run Info not visible, stop here
             elif is_bioformulation != None:
-                self.calc_params()
+                if is_bioformulation:
+                    self.calc_params()
+                else:
+                    self.lookup_completer()
             else:  # form is blank
                 self.t1.clear()
                 self.t2.clear()
@@ -1867,21 +1893,21 @@ class QueryRunInfo(QtWidgets.QWidget):
                       self.validStabilizerConcentration.bottom(),
                       self.validStabilizerConcentration.top()))
             input_error = True
-        if self.c10.currentText().casefold() == "none" and self.c10.isEnabled():
+        if self.c10.currentText().casefold() == "none" and self.c10.isEnabled() and self.c10.isVisible():
             Log.e(
                 "Input Error: You must provide a Protein Type if this is a bioformulation.")
             Log.e(
                 "Either select a Protein Type other than \"none\" or click \"no\" for \"Is this a bioformulation?\"")
             input_error = True
-        if self.t12.text() == "0" and self.t12.isEnabled():
+        if self.t12.text() == "0" and self.t12.isEnabled() and self.t12.isVisible():
             Log.e(
                 "Input Error: Protein Concentration should be non-zero when Protein Type is not \"none\".")
             input_error = True
-        if self.t6.text() == "0" and self.t6.isEnabled():
+        if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
             Log.e(
                 "Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not \"none\".")
             input_error = True
-        if self.t8.text() == "0" and self.t8.isEnabled():
+        if self.t8.text() == "0" and self.t8.isEnabled() and self.t8.isVisible():
             Log.e(
                 "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\".")
             input_error = True
@@ -2139,14 +2165,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         if self.b2.isChecked():  # is NOT bioformulation
             param2 = run.createElement('param')
             param2.setAttribute('name', 'solvent')
-            if len(self.t0.text()) == 0:
-                # default, if blank
-                param2.setAttribute('value', 'Water (25C)')
-                param2.setAttribute('input', 'default')
-            else:
-                param2.setAttribute('value', self.t0.text())
-                param2.setAttribute(
-                    'input', 'auto' if self.t0.text() in self.fluids else 'manual')
+            param2.setAttribute('value', self.t0.text())
+            param2.setAttribute(
+                'input', 'auto' if self.t0.text() in self.fluids else 'manual')
             params.appendChild(param2)
 
         if self.b1.isChecked():  # IS bioformulation
@@ -2165,6 +2186,41 @@ class QueryRunInfo(QtWidgets.QWidget):
             param4.setAttribute('units', '%w')
             param4.setAttribute('input', 'manual')
             params.appendChild(param4)
+
+            # new parameters for revamped run info
+
+            param8 = run.createElement('param')
+            param8.setAttribute('name', 'protein_type')
+            param8.setAttribute('value', self.c10.currentText())
+            params.appendChild(param8)
+
+            param9 = run.createElement('param')
+            param9.setAttribute('name', 'protein_concentration')
+            param9.setAttribute('value', self.t12.text())
+            param9.setAttribute('units', 'mg/mL')
+            params.appendChild(param9)
+
+            param10 = run.createElement('param')
+            param10.setAttribute('name', 'surfactant_type')
+            param10.setAttribute('value', self.c9.currentText())
+            params.appendChild(param10)
+
+            param11 = run.createElement('param')
+            param11.setAttribute('name', 'surfactant_concentration')
+            param11.setAttribute('value', self.t6.text())
+            param11.setAttribute('units', '%w')
+            params.appendChild(param11)
+
+            param12 = run.createElement('param')
+            param12.setAttribute('name', 'stabilizer_type')
+            param12.setAttribute('value', self.c11.currentText())
+            params.appendChild(param12)
+
+            param13 = run.createElement('param')
+            param13.setAttribute('name', 'stabilizer_concentration')
+            param13.setAttribute('value', self.t8.text())
+            param13.setAttribute('units', 'M')
+            params.appendChild(param13)
 
         param5 = run.createElement('param')
         param5.setAttribute('name', 'surface_tension')
@@ -2189,41 +2245,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         param7.setAttribute('units', 'g/cm^3')
         param7.setAttribute('input', 'manual' if manual_dn else 'auto')
         params.appendChild(param7)
-
-        # new parameters for revamped run info
-
-        param8 = run.createElement('param')
-        param8.setAttribute('name', 'protein_type')
-        param8.setAttribute('value', self.c10.currentText())
-        params.appendChild(param8)
-
-        param9 = run.createElement('param')
-        param9.setAttribute('name', 'protein_concentration')
-        param9.setAttribute('value', self.t12.text())
-        param9.setAttribute('units', 'mg/mL')
-        params.appendChild(param9)
-
-        param10 = run.createElement('param')
-        param10.setAttribute('name', 'surfactant_type')
-        param10.setAttribute('value', self.c9.currentText())
-        params.appendChild(param10)
-
-        param11 = run.createElement('param')
-        param11.setAttribute('name', 'surfactant_concentration')
-        param11.setAttribute('value', self.t6.text())
-        param11.setAttribute('units', '%w')
-        params.appendChild(param11)
-
-        param12 = run.createElement('param')
-        param12.setAttribute('name', 'stabilizer_type')
-        param12.setAttribute('value', self.c11.currentText())
-        params.appendChild(param12)
-
-        param13 = run.createElement('param')
-        param13.setAttribute('name', 'stabilizer_concentration')
-        param13.setAttribute('value', self.t8.text())
-        param13.setAttribute('units', 'M')
-        params.appendChild(param13)
 
         # add hashes for security and verification
         if not os.path.exists(self.xml_path):
