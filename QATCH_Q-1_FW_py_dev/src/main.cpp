@@ -3826,7 +3826,9 @@ void tft_cooldown_prepare()
   // prepare cooldown variables init
   // const short num_ring_steps = 4;                           // outer ring is broken into four segments
   // short total_time = L298NHB_COOLDOWN / 1000;               // total countdown duration, in seconds
-  last_pct = ((l298nhb_auto_off_at - millis()) / 1000) + 1; // total seconds for cooldown, decremented
+  last_pct = (((l298nhb_auto_off_at - millis())                // total seconds for cooldown, decremented, aligned with task timer
+             - (l298nhb_auto_off_at % 1000)
+             + (l298nhb_task_timer % 1000)) / 1000) + 1;
   // last_pct = max(0, min(total_time, last_pct));             // bound within range of 0 to 'total_time'
   // last_op = floor(total_time / num_ring_steps);             // seconds between ring steps, constant
   // last_sp = num_ring_steps - floor(last_pct / last_op) - 1; // ring step counter, incremented
