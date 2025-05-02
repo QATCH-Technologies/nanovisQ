@@ -2742,10 +2742,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     a_list = a_list + format_tb(tb, limit)
                     a_list.append(f"{t.__name__}: {str(v)}")
                     for line in a_list:
-                        Log.e(line)
+                        Log.d(line)
                     Log.e(e)
                     Log.e(TAG,
-                          f"Error using 'QModel v3'... Using a fallback model for predictions {e}."
+                          f"Error using 'QModel v3'... Using a fallback model for predictions."
                           )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
@@ -3004,6 +3004,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             else:
                                 self.model_result = -1  # try fallback model
                     except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
                         Log.e(e)
                         Log.e(
                             "Error using 'QModel v3'... Using a fallback model for predictions."
@@ -4242,6 +4251,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             else:
                                 self.model_result = -1  # try fallback model
                     except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
                         Log.e(e)
                         Log.e(
                             "Error using 'QModel v3'... Using a fallback model for predictions."
