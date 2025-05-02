@@ -28,6 +28,15 @@ jobs:
       - name: Run nightly build script
         run: python trunk/tagger.py --nightly
 
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-nightly-dist
+          path: |
+            tags/nightly/**/dist
+          if-no-files-found: error
+          retention-days: 7
+
   check_date:
     runs-on: windows-latest
     name: Check latest commit

@@ -247,7 +247,7 @@ class QatchTagger():
                 )
 
             if self.args.nightly:
-                push = "push"
+                push = "no"
             else:
                 push = input("Enter 'push' to tag now: ").lower()
             if push == "push":
