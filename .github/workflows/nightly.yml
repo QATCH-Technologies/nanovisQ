@@ -15,7 +15,7 @@ jobs:
       - name: Checkout main repo
         uses: actions/checkout@v4
         with:
-          path: main
+          path: trunk
         
       - name: Setup Python environment
         uses: actions/setup-python@v5
@@ -36,7 +36,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: main  
+          path: trunk
       - name: Print latest_commit
         run: echo ${{ github.sha }}
 
