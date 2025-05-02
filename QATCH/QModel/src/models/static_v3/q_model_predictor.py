@@ -9,7 +9,7 @@ POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 04-30-2025
-Version: QModel.Ver3.13
+Version: QModel.Ver3.15
 """
 
 import xgboost as xgb
@@ -112,9 +112,9 @@ class QModelPredictor:
     def _filter_labels(self, predicted_labels: np.ndarray, multiplier: float = 1.5) -> np.ndarray:
         """Filter outlier class labels based on median absolute deviation in index space.
 
-        For each class label in 1–6, computes the median index of occurrences
+        For each class label in 1-6, computes the median index of occurrences
         and removes any occurrences whose distance from that median exceeds
-        `multiplier` × MAD (median absolute deviation). Outliers are replaced with 0.
+        `multiplier` x MAD (median absolute deviation). Outliers are replaced with 0.
 
         Args:
             predicted_labels (np.ndarray): 1D array of integer class labels.
@@ -369,7 +369,9 @@ class QModelPredictor:
     def _extract_predictions(
         self,
         predicted_probabilities: np.ndarray,
-        model_data_labels: np.ndarray
+        model_data_labels: np.ndarray,
+        threshold: float = 0.5,
+        min_count: int = 5
     ) -> Dict[str, Dict[str, List[float]]]:
         """Extract POI indices and confidence scores from predicted probabilities.
 
@@ -405,45 +407,51 @@ class QModelPredictor:
                 is less than 7 (to cover classes 0–6), or if `model_data_labels`
                 has fewer than 6 elements.
         """
-        # Input validation
+        # --- input validation (unchanged + threshold/min_count checks) ---
         if not isinstance(predicted_probabilities, np.ndarray):
             raise TypeError(
                 "`predicted_probabilities` must be a numpy.ndarray.")
         if predicted_probabilities.ndim != 2:
-            raise ValueError("`predicted_probabilities` must be a 2D array.")
+            raise ValueError("`predicted_probabilities` must be 2D.")
         n_classes = predicted_probabilities.shape[1]
         if n_classes < 7:
+            raise ValueError("Need at least 7 columns for classes 0–6.")
+
+        if not hasattr(model_data_labels, "__len__") or len(model_data_labels) < 6:
             raise ValueError(
-                "`predicted_probabilities` must have at least 7 columns for classes 0–6."
-            )
+                "`model_data_labels` must have at least 6 elements.")
 
-        if not isinstance(model_data_labels, list):
-            raise TypeError("`model_data_labels` must be a list")
+        if not (0.0 <= threshold <= 1.0):
+            raise ValueError("`threshold` must be between 0 and 1.")
+        if min_count < 1:
+            raise ValueError("`min_count` must be ≥ 1.")
+
         poi_results: Dict[str, Dict[str, List[float]]] = {}
-        # Determine the most likely class at each sample index
-        predicted_labels = np.argmax(predicted_probabilities, axis=1)
 
-        # Process POIs 1 through 6
+        # --- for each POI class 1–6 ---
         for poi in range(1, 7):
             key = f"POI{poi}"
-            # Find all indices predicted as this POI
-            indices = np.where(predicted_labels == poi)[0]
-            if indices.size == 0:
-                # Fallback to the ground truth label index with zero confidence
+            confs = predicted_probabilities[:, poi]
+            order = np.argsort(-confs)
+            sorted_confs = confs[order]
+
+            # 3) if*all confidences are zero, fallback to ground truth
+            if sorted_confs[0] == 0.0:
                 poi_results[key] = {
                     "indices": [int(model_data_labels[poi - 1])],
                     "confidences": [0.0]
                 }
-            else:
-                # Gather confidence scores and sort descending
-                confidences = predicted_probabilities[indices, poi]
-                order = np.argsort(-confidences)
-                sorted_indices = indices[order].tolist()
-                sorted_confidences = confidences[order].tolist()
-                poi_results[key] = {
-                    "indices": sorted_indices,
-                    "confidences": sorted_confidences
-                }
+                continue
+            above_mask = sorted_confs >= threshold
+            selected_indices = order[above_mask]
+            selected_confs = sorted_confs[above_mask]
+            if selected_indices.size < min_count:
+                selected_indices = order[:min_count]
+                selected_confs = sorted_confs[:min_count]
+            poi_results[key] = {
+                "indices": selected_indices.tolist(),
+                "confidences": selected_confs.tolist()
+            }
 
         return poi_results
 
@@ -505,12 +513,17 @@ class QModelPredictor:
             raise TypeError("`ground_truth` must be a list of integers.")
         # --- Core logic ---
         if len(candidates) == 0:
+            Log.d(
+                TAG, f'No candidates available for {poi} during bias correction; restoring ground truth.')
             if poi == 'POI4':
                 candidates = [ground_truth[3]]
             elif poi == 'POI5':
                 candidates = [ground_truth[4]]
             else:
                 candidates = [ground_truth[5]]
+        if len(candidates) <= 1:
+            Log.d(TAG,
+                  'Found less than 1 candidate for {poi} during bias correction.')
         cmin, cmax = min(candidates), max(candidates)
         chosen_perc = None
         valid_peaks = np.array([], dtype=int)
@@ -623,8 +636,8 @@ class QModelPredictor:
         if poi == "POI4" and len(ground_truth) >= 4:
             poi3_gt, poi4_gt = ground_truth[2], ground_truth[3]
             if abs(best_idx - poi3_gt) < abs(best_idx - poi4_gt):
-                Log.w(
-                    "Bias correction for POI4 slipped toward POI3; skipping adjustment.")
+                Log.d(TAG,
+                      "Bias correction for POI4 slipped toward POI3; skipping adjustment.")
                 best_idx = poi4_gt
 
         return best_idx
@@ -696,17 +709,10 @@ class QModelPredictor:
             poi2_indices = [self._model_data_labels[1]]
         if not all(isinstance(idx, int) for idx in poi3_indices):
             raise TypeError("All entries in 'POI3' indices must be integers.")
-
-        # --- 2) Compute candidates ---
         base2 = max(poi2_indices) + POI_2_OFFSET
         base3 = min(poi3_indices) + POI_2_OFFSET
         first3 = poi3_indices[0]
 
-        # --- 3) Log everything so you can trace the decision ---
-        Log.d(f"POI2 max(poi2)={max(poi2_indices)}, OFFSET={base2}")
-        Log.d(f"POI3 min(poi3)={min(poi3_indices)}, OFFSET={base3}")
-        Log.d(f"First POI3 index: {first3}")
-        # --- 4) Make the final pick ---
         if base2 < first3:
             result = max(base3, base2)
             Log.d(f"Choosing max(base3, base2) {result}")
@@ -1240,6 +1246,11 @@ class QModelPredictor:
             mapping to the list of candidate indices falling in the respective
             time window.
         """
+        for poi in ("POI4", "POI5", "POI6"):
+            inds = positions.get(poi).get('indices')
+            if len(inds) <= 1 or inds is None:
+                Log.d(
+                    TAG, f'Found less than 1 candidate {poi} pre-filtering.')
         windows = {
             'POI4': [
                 i for i in positions['POI4']['indices']
@@ -1504,7 +1515,6 @@ class QModelPredictor:
 
         # update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
-
         # handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
         if len(model_data_labels) >= 2:
