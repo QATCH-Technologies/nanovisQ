@@ -27,7 +27,7 @@ from QATCH.models.ModelData import ModelData
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
-POI_1_OFFSET = 1
+POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
 TAG = ["QModel V3"]
@@ -503,8 +503,14 @@ class QModelPredictor:
             raise ValueError("`poi` must be one of 'POI1' … 'POI6'.")
         if not isinstance(ground_truth, list):
             raise TypeError("`ground_truth` must be a list of integers.")
-
         # --- Core logic ---
+        if len(candidates) == 0:
+            if poi == 'POI4':
+                candidates = [ground_truth[3]]
+            elif poi == 'POI5':
+                candidates = [ground_truth[4]]
+            else:
+                candidates = [ground_truth[5]]
         cmin, cmax = min(candidates), max(candidates)
         chosen_perc = None
         valid_peaks = np.array([], dtype=int)
@@ -833,7 +839,8 @@ class QModelPredictor:
         self,
         indices: List[Union[int, np.integer]],
         dissipation: np.ndarray,
-        relative_time: np.ndarray
+        relative_time: np.ndarray,
+        difference: np.ndarray
     ) -> List[int]:
         """Filter POI1 candidates using an early-run baseline and IQR outlier removal.
 
@@ -901,10 +908,43 @@ class QModelPredictor:
                 if lower <= val <= upper
             ]
 
-        # Reorder with leftmost + offset first
+        def find_local_trough(
+            poi_idx: int,
+            difference: np.ndarray,
+            window: int = 20
+        ) -> int:
+
+            n = difference.shape[0]
+            start = max(0, poi_idx - window)
+            end = min(n - 1, poi_idx + window)
+            region = difference[start:end+1]
+            trough_rel = int(np.argmin(region))
+            trough_idx = start + trough_rel
+            return trough_idx
         if filtered:
+            trough_idx = find_local_trough(
+                min(filtered) + POI_1_OFFSET, difference=difference)
+
+            t0, tN = float(relative_time[0]), float(relative_time[-1])
+            duration = tN - t0
+            low_t, high_t = t0 + 0.01 * duration, t0 + 0.03 * duration
+            mask = (relative_time >= low_t) & (relative_time <= high_t)
+            if mask.any():
+                baseline_diff = float(np.mean(difference[mask]))
+            else:
+                baseline_diff = float(difference[0])
+
+            # 4) search to the right of trough for return‐to‐baseline
+            return_idx = trough_idx
+            for j in range(trough_idx + 1, difference.shape[0]):
+                if difference[j] >= baseline_diff:
+                    return_idx = j
+                    break
             leftmost = min(filtered) + POI_1_OFFSET
             leftmost = int(leftmost)
+            if leftmost < return_idx:
+                Log.i(TAG, "Returing to baseline")
+                leftmost = return_idx
             others = [idx for idx in filtered if idx != leftmost]
             filtered = [leftmost] + others
 
@@ -1431,7 +1471,8 @@ class QModelPredictor:
         filtered_poi1 = self._filter_poi1_baseline(
             predictions.get('POI1', {}).get('indices', []),
             dissipation_raw,
-            relative_time
+            relative_time,
+            feature_vector['Difference_smooth'].values
         )
         predictions['POI1'] = {
             'indices': filtered_poi1,
