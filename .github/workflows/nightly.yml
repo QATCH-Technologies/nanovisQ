@@ -25,7 +25,7 @@ jobs:
       - run: pip install -r main/requirements.txt
           
       - name: Run nightly build script
-      - run: python main/tagger.py --nightly
+        run: python main/tagger.py --nightly
 
   check_date:
     runs-on: windows-latest
