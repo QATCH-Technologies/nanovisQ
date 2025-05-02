@@ -54,6 +54,13 @@ class QatchTagger():
 
         # MOVE TRUNK TO TAG (IF NOT EXISTS)
         try:
+            if os.path.exists(path_to_tag):
+                if len(os.listdir(path_to_tag)) == 0:
+                    # remove empty folder
+                    logging.warning(
+                        "Removing empty tag directory (probably from failed prior run)")
+                    os.rmdir(path_to_tag)
+
             os.makedirs(path_to_tag)  # may raise OSError
             for f in os.listdir(path_to_trunk):
                 if f.startswith(".git"):
@@ -73,7 +80,8 @@ class QatchTagger():
                 for file in contents:
                     logging.error(f"> {file}")
             except:
-                raise e
+                logging.error("Failed to print existing file contents!")
+            raise e
             return
 
         except Exception as e:
