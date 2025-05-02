@@ -16,7 +16,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: main
-      - run: git pull
         
       - name: Setup Python environment
         uses: actions/setup-python@v5
