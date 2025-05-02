@@ -1,8 +1,10 @@
 from QATCH.core.constants import Constants
 from subprocess import Popen, PIPE
+from datetime import date
 import logging
 import os
 import shutil
+import argparse
 
 
 class QatchTagger():
@@ -12,13 +14,38 @@ class QatchTagger():
         log = logging.getLogger()
         log.setLevel(logging.DEBUG)
 
+        # set up argument parser
+        parser = argparse.ArgumentParser(
+            description='QATCH nanovisQ software tagger utility')
+        parser.add_argument("--nightly", action="store_true",
+                            help="Set to build a nightly build")
+
+        # get arguments
+        args = parser.parse_args()
+        self.args = args
+
     def run(self):
 
+        if self.args.nightly:
+            logging.info("Creating a nightly build...")
+            Constants.app_version = f"{Constants.app_version}_nightly"
+            Constants.app_date = date.today().strftime("%Y-%m-%d")
+
         tag_name = f"nanovisQ_SW_{Constants.app_version} ({Constants.app_date})"
+
+        os.chdir(os.path.dirname(__file__))  # change cwd to location of file
         path_to_trunk = os.path.join(os.path.dirname(os.getcwd()), "trunk")
         path_to_tag = os.path.join(
             os.path.dirname(os.getcwd()), "tags", tag_name)
         path_to_dev = os.path.join(os.path.dirname(os.getcwd()), "dev")
+        installer_dst = os.path.join(path_to_tag, "dist")
+
+        if self.args.nightly:
+            dirname, basename = os.path.split(path_to_tag)
+            path_to_tag = os.path.join(dirname, "nightly", basename)
+
+        logging.info(f"Tag name: {tag_name}")
+        logging.info(f"Path to tag: {path_to_tag}")
 
         # TEST CODE, do not keep
         # path_to_tag += " test"
@@ -94,88 +121,93 @@ class QatchTagger():
             logging.error(e)
             return
 
-        # MOVE BACK IN THE PRE-COMPILED EXE TO DIST FOLDER
-        try:
-            logging.debug("Moving EXE dist to tag...")
-            path_to_dist_src = os.path.join(
-                path_to_trunk, "dist", "QATCH nanovisQ")
-            path_to_dist_dst = os.path.join(
-                path_to_tag, "dist", "QATCH nanovisQ")
-            shutil.copytree(path_to_dist_src, path_to_dist_dst)
-            logging.debug("Moved successfully.")
+        if not self.args.nightly:
 
-        except Exception as e:
-            logging.error(e)
-            return
+            # MOVE BACK IN THE PRE-COMPILED EXE TO DIST FOLDER
+            try:
+                logging.debug("Moving EXE dist to tag...")
+                path_to_dist_src = os.path.join(
+                    path_to_trunk, "dist", "QATCH nanovisQ")
+                path_to_dist_dst = os.path.join(
+                    path_to_tag, "dist", "QATCH nanovisQ")
+                shutil.copytree(path_to_dist_src, path_to_dist_dst)
+                logging.debug("Moved successfully.")
 
-        # REMOVE FIRMWARE SOURCE FROM EXE BUILD
-        # try:
-        #   if 'r' in Constants.best_fw_version:
-        #     logging.debug("Removing FW source files from EXE build...")
-        #     fw_main_path = os.path.join(path_to_tag, f"QATCH_Q-1_FW_py_{Constants.best_fw_version}")
-        #     for f in os.listdir(fw_main_path):
-        #       f = os.path.join(fw_main_path, f)
-        #       keep = False
-        #       if f.endswith(".hex") or f.endswith(".md") or f.endswith(".pdf"):
-        #         keep = True
-        #       if not keep:
-        #         logging.debug(f"Removing: {f}")
-        #         if os.path.isdir(f):
-        #           shutil.rmtree(f)
-        #         elif os.path.isfile(f):
-        #           os.remove(f)
-        #         else:
-        #           raise Exception(f"Unknown file type: '{os.path.basename(f)}' is not a file or folder.")
-        #     logging.debug("Removed successfully.")
-        #   else:
-        #     logging.debug("Skipping FW source removal for 'b' build.")
-        #
-        # except Exception as e:
-        #   logging.error(e)
-        #   return
+            except Exception as e:
+                logging.error(e)
+                return
 
-        # CREATE THE EXE CODE ZIP
-        try:
-            logging.info("Making ZIP of bundled code... (may take a while)")
-            archive_name = os.path.join(
-                path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_exe"
-            zip_exe = shutil.make_archive(
-                archive_name, "zip", path_to_dist_dst)
-            logging.debug(f"Removing {path_to_dist_dst}")
-            shutil.rmtree(path_to_dist_dst)
-            logging.info(f"Bundled ZIP: {zip_exe}")
+            # REMOVE FIRMWARE SOURCE FROM EXE BUILD
+            # try:
+            #   if 'r' in Constants.best_fw_version:
+            #     logging.debug("Removing FW source files from EXE build...")
+            #     fw_main_path = os.path.join(path_to_tag, f"QATCH_Q-1_FW_py_{Constants.best_fw_version}")
+            #     for f in os.listdir(fw_main_path):
+            #       f = os.path.join(fw_main_path, f)
+            #       keep = False
+            #       if f.endswith(".hex") or f.endswith(".md") or f.endswith(".pdf"):
+            #         keep = True
+            #       if not keep:
+            #         logging.debug(f"Removing: {f}")
+            #         if os.path.isdir(f):
+            #           shutil.rmtree(f)
+            #         elif os.path.isfile(f):
+            #           os.remove(f)
+            #         else:
+            #           raise Exception(f"Unknown file type: '{os.path.basename(f)}' is not a file or folder.")
+            #     logging.debug("Removed successfully.")
+            #   else:
+            #     logging.debug("Skipping FW source removal for 'b' build.")
+            #
+            # except Exception as e:
+            #   logging.error(e)
+            #   return
 
-        except Exception as e:
-            logging.error(e)
-            return
+            # CREATE THE EXE CODE ZIP
+            try:
+                logging.info(
+                    "Making ZIP of bundled code... (may take a while)")
+                archive_name = os.path.join(
+                    path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_exe"
+                zip_exe = shutil.make_archive(
+                    archive_name, "zip", path_to_dist_dst)
+                logging.debug(f"Removing {path_to_dist_dst}")
+                shutil.rmtree(path_to_dist_dst)
+                logging.info(f"Bundled ZIP: {zip_exe}")
 
-        # CREATE THE INSTALLER CODE ZIP USING INSTALLER FROM DEV TOOLS
-        try:
-            logging.info("Making ZIP of installer code... (may take a while)")
-            installer_version = "1.0.0.2"
-            # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
-            installer_src = os.path.join(
-                path_to_dev, "tools", "installer", "tags", installer_version, "dist", "QATCH installer.exe")
-            installer_crc = os.path.join(
-                path_to_dev, "tools", "installer", "tags", installer_version, "dist", "installer.checksum")
-            installer_dst = os.path.join(path_to_tag, "dist")  # , "installer")
-            os.makedirs(installer_dst, exist_ok=True)
-            shutil.copy2(installer_src, installer_dst)
-            shutil.copy2(installer_crc, installer_dst)
-            # shutil.copy2(zip_exe, installer_dst)
-            # zip_installer = shutil.make_archive(archive_name, "zip", installer_dst)
-            # logging.debug(f"Removing {installer_dst}")
-            # shutil.rmtree(installer_dst)
-            # logging.info(f"Installer ZIP: {zip_installer}")
-            logging.info(
-                f"Installer EXE: {os.path.join(installer_dst, 'QATCH installer.exe')}")
+            except Exception as e:
+                logging.error(e)
+                return
 
-        except Exception as e:
-            logging.error(e)
-            return
+            # CREATE THE INSTALLER CODE ZIP USING INSTALLER FROM DEV TOOLS
+            try:
+                logging.info(
+                    "Making ZIP of installer code... (may take a while)")
+                installer_version = "1.0.0.2"
+                # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
+                installer_src = os.path.join(
+                    path_to_dev, "tools", "installer", "tags", installer_version, "dist", "QATCH installer.exe")
+                installer_crc = os.path.join(
+                    path_to_dev, "tools", "installer", "tags", installer_version, "dist", "installer.checksum")
+                # installer_dst = os.path.join(path_to_tag, "dist")  # , "installer")
+                os.makedirs(installer_dst, exist_ok=True)
+                shutil.copy2(installer_src, installer_dst)
+                shutil.copy2(installer_crc, installer_dst)
+                # shutil.copy2(zip_exe, installer_dst)
+                # zip_installer = shutil.make_archive(archive_name, "zip", installer_dst)
+                # logging.debug(f"Removing {installer_dst}")
+                # shutil.rmtree(installer_dst)
+                # logging.info(f"Installer ZIP: {zip_installer}")
+                logging.info(
+                    f"Installer EXE: {os.path.join(installer_dst, 'QATCH installer.exe')}")
+
+            except Exception as e:
+                logging.error(e)
+                return
 
         # CREATE DEFAULT TARGETS FILE
         targets_path = os.path.join(installer_dst, 'targets.csv')
+        os.makedirs(installer_dst, exist_ok=True)
         with open(targets_path, 'w') as f:
             # change file contents to "ALL" after tag verification tests PASS
             f.write("WINDOWS-AN4Q851")
@@ -199,7 +231,10 @@ class QatchTagger():
                     f"pause"
                 )
 
-            push = input("Enter 'push' to tag now: ").lower()
+            if self.args.nightly:
+                push = "push"
+            else:
+                push = input("Enter 'push' to tag now: ").lower()
             if push == "push":
                 logging.info("Pushing tag to origin...")
                 p = Popen(script_path, cwd=os.path.dirname(script_path),

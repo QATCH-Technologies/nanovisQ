@@ -22,6 +22,7 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip' # caching pip dependencies
+      - run: pip install --upgrade pip
       - run: pip install -r main/requirements.txt
           
       - name: Run nightly build script
