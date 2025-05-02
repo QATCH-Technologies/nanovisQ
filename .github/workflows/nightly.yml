@@ -22,8 +22,8 @@ jobs:
         with:
           python-version: '3.11'
           cache: 'pip' # caching pip dependencies
-      - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r main/requirements.txt
+      - run: python -m pip install --upgrade pip # might as well
+      #- run: python -m pip install -r main/requirements.txt
           
       - name: Run nightly build script
         run: python main/tagger.py --nightly
@@ -35,6 +35,8 @@ jobs:
       should_run: ${{ steps.should_run.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: main  
       - name: Print latest_commit
         run: echo ${{ github.sha }}
 

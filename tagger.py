@@ -67,6 +67,13 @@ class QatchTagger():
 
         except OSError as e:
             logging.error(f"Tag already exists: {tag_name}. Cannot continue.")
+            try:
+                contents = os.listdir(path_to_tag)
+                logging.error("Existing folder contents:")
+                for file in contents:
+                    logging.error(f"> {file}")
+            except:
+                raise e
             return
 
         except Exception as e:
