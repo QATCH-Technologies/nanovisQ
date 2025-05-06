@@ -45,18 +45,18 @@ jobs:
 
       - name: Print build output values
         run: |
-          echo Build Name: ${{ steps.tagger.outputs.build_name }}
-          echo Build Date: ${{ steps.tagger.outputs.build_date }}
-          echo Artifact Name: ${{ steps.tagger.outputs.build_name }}
-          echo Tag Name: ${{ steps.tagger.outputs.build_name }} ${{ steps.tagger.outputs.build_date }}
+          echo "Build Name: ${{ steps.tagger.outputs.build_name }}"
+          echo "Build Date: ${{ steps.tagger.outputs.build_date }}"
+          echo "Artifact Name: ${{ steps.tagger.outputs.build_name }}"
+          echo "Tag Name: ${{ steps.tagger.outputs.build_name }} ${{ steps.tagger.outputs.build_date }}"
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
         env:
-          build_name: ${{ steps.tagger.outputs.build_name }}
-          build_date: ${{ steps.tagger.outputs.build_date }}
-          artifact_name: ${{ env.build_name }}
-          tag_name: ${{ env.build_name }} ${{ env.build_date }}
+          build_name: "${{ steps.tagger.outputs.build_name }}"
+          build_date: "${{ steps.tagger.outputs.build_date }}"
+          artifact_name: "${{ env.build_name }}"
+          tag_name: "${{ env.build_name }} ${{ env.build_date }}"
         with:
           name: ${{ env.artifact_name }}
           path: tags/nightly/${{ env.tag_name }}/dist/*.zip
