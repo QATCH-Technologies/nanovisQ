@@ -30,15 +30,15 @@ jobs:
         run: |
           python trunk/tagger.py --nightly
           trunk/tagger-outputs.bat
-          echo "artifact_name=%build_name%" >> "$GITHUB_OUTPUT"
-          echo "tag_name=%build_name% %build_date%" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=%build_name%" >> "$GITHUB_ENV"
+          echo "tag_name=%build_name% %build_date%" >> "$GITHUB_ENV"
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.tagger.outputs.artifact_name }}
+          name: ${{ env.artifact_name }}
           path: |
-            tags/nightly/${{ steps.tagger.outputs.tag_name }}/dist/*.zip
+            tags/nightly/${{ env.tag_name }}/dist/*.zip
           if-no-files-found: error
           retention-days: 7
 
