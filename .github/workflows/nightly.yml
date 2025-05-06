@@ -32,7 +32,7 @@ jobs:
         id: build-info
         run: |
           echo "artifact_name=%build_name%" >> "$GITHUB_OUTPUT"
-          echo "tag_name=%build_name% %build_date" >> "$GITHUB_OUTPUT"
+          echo "tag_name=%build_name% %build_date%" >> "$GITHUB_OUTPUT"
 
       - name: Archive build artifacts
         uses: actions/upload-artifact@v4
