@@ -34,8 +34,8 @@ jobs:
           python trunk/tagger.py --nightly
           trunk/tagger-outputs.bat
           echo "$env:GITHUB_OUTPUT"
-          echo "artifact_name=%build_name%" >> "$env:$GITHUB_OUTPUT"
-          echo "tag_name=%build_name% %build_date%" >> "$env:$GITHUB_OUTPUT"
+          echo "artifact_name=%build_name%" >> "$env:GITHUB_OUTPUT"
+          echo "tag_name=%build_name% %build_date%" >> "$env:GITHUB_OUTPUT"
         # echo "::set-output name=artifact_name::%build_name%"
         # echo "::set-output name=tag_name::%build_name% %build_date%"
 
@@ -69,4 +69,4 @@ jobs:
         if: ${{ github.event_name == 'schedule' }}
         run: |
           test -z $(git rev-list  --after="24 hours"  ${{ github.sha }})
-          echo "should_run=false" >> "$GITHUB_OUTPUT"
+          echo "should_run=false" >> "$env:GITHUB_OUTPUT"
