@@ -29,7 +29,7 @@ jobs:
         id: tagger
         run: |
           python trunk/tagger.py --nightly
-          tagger-outputs.bat
+          trunk/tagger-outputs.bat
           echo "artifact_name=%build_name%" >> "$GITHUB_OUTPUT"
           echo "tag_name=%build_name% %build_date%" >> "$GITHUB_OUTPUT"
 
