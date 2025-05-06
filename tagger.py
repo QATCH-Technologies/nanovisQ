@@ -45,12 +45,8 @@ class QatchTagger():
             path_to_tag = os.path.join(dirname, "nightly", basename)
 
             # write tag name to environment variables for GH workflow processing
-            build_name, build_date = \
-                tag_name.split(maxsplit=1)
-            with open(os.path.join(path_to_parent, "build_name.var"), "w") as f:
-                f.write(build_name)
-            with open(os.path.join(path_to_parent, "build_date.var"), "w") as f:
-                f.write(build_date)
+            with open(os.path.join(path_to_parent, "tag_name.var"), "w") as f:
+                f.write(tag_name)
 
         logging.info(f"Tag name: {tag_name}")
         logging.info(f"Path to tag: {path_to_tag}")
