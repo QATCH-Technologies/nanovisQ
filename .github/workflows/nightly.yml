@@ -55,8 +55,8 @@ jobs:
         env:
           build_name: "${{ steps.tagger.outputs.build_name }}"
           build_date: "${{ steps.tagger.outputs.build_date }}"
-          artifact_name: "${{ env.build_name }}"
-          tag_name: "${{ env.build_name }} ${{ env.build_date }}"
+          artifact_name: "${{ steps.tagger.outputs.build_name }}"
+          tag_name: "${{ steps.tagger.outputs.build_name }} ${{ steps.tagger.outputs.build_date }}"
         with:
           name: ${{ env.artifact_name }}
           path: tags/nightly/${{ env.tag_name }}/dist/*.zip
