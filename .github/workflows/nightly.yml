@@ -28,9 +28,10 @@ jobs:
       - name: Run nightly build script
         run: python trunk/tagger.py --nightly
 
-      - name: Set build info
+      - name: Set outputs from tagger script
         id: build-info
         run: |
+          call tagger-outputs
           echo "artifact_name=%build_name%" >> "$GITHUB_OUTPUT"
           echo "tag_name=%build_name% %build_date%" >> "$GITHUB_OUTPUT"
 
