@@ -34,10 +34,10 @@ class QatchTagger():
         tag_name = f"nanovisQ_SW_{Constants.app_version} ({Constants.app_date})"
 
         os.chdir(os.path.dirname(__file__))  # change cwd to location of file
-        path_to_trunk = os.path.join(os.path.dirname(os.getcwd()), "trunk")
-        path_to_tag = os.path.join(
-            os.path.dirname(os.getcwd()), "tags", tag_name)
-        path_to_dev = os.path.join(os.path.dirname(os.getcwd()), "dev")
+        path_to_parent = os.path.dirname(os.getcwd())
+        path_to_trunk = os.path.join(path_to_parent, "trunk")
+        path_to_tag = os.path.join(path_to_parent, "tags", tag_name)
+        path_to_dev = os.path.join(path_to_parent, "dev")
         installer_dst = os.path.join(path_to_tag, "dist")
 
         if self.args.nightly:
@@ -45,11 +45,12 @@ class QatchTagger():
             path_to_tag = os.path.join(dirname, "nightly", basename)
 
             # write tag name to environment variables for GH workflow processing
-            with open("tagger-outputs.bat", "w") as f:
-                build_name, build_date = \
-                    tag_name.split(maxsplit=1)
-                f.write(f'set "build_name={build_name}"\n')
-                f.write(f'set "build_date={build_date}"\n')
+            build_name, build_date = \
+                tag_name.split(maxsplit=1)
+            with open(os.path.join(path_to_parent, "build_name.var"), "w") as f:
+                f.write(build_name)
+            with open(os.path.join(path_to_parent, "build_date.var"), "w") as f:
+                f.write(build_date)
 
         logging.info(f"Tag name: {tag_name}")
         logging.info(f"Path to tag: {path_to_tag}")

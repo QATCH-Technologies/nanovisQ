@@ -32,10 +32,11 @@ jobs:
         id: tagger
         run: |
           python trunk/tagger.py --nightly
-          trunk/tagger-outputs.bat
-          echo "$env:GITHUB_OUTPUT"
-          echo "artifact_name=%build_name%" >> "$env:GITHUB_OUTPUT"
-          echo "tag_name=%build_name% %build_date%" >> "$env:GITHUB_OUTPUT"
+          build_name=$(< build_name.var)
+          build_date=$(< build_date.var)
+          echo "artifact_name=$build_name" >> "$env:GITHUB_OUTPUT"
+          echo "tag_name=$build_name $build_date" >> "$env:GITHUB_OUTPUT"
+        # echo "$env:GITHUB_OUTPUT"
         # echo "::set-output name=artifact_name::%build_name%"
         # echo "::set-output name=tag_name::%build_name% %build_date%"
 
