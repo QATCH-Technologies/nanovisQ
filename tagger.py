@@ -48,8 +48,8 @@ class QatchTagger():
             with open("tagger-outputs.bat", "w") as f:
                 build_name, build_date = \
                     tag_name.split(maxsplit=1)
-                f.write(f'set "build_name={build_name}"')
-                f.write(f'set "build_date={build_date}"')
+                f.write(f'set "build_name={build_name}"\n')
+                f.write(f'set "build_date={build_date}"\n')
 
         logging.info(f"Tag name: {tag_name}")
         logging.info(f"Path to tag: {path_to_tag}")
