@@ -8,7 +8,7 @@ on:
 jobs:
   nightly_build:
     needs: check_date
-    if: ${{ needs.check_date.outputs.should_run != 'false' }}
+    if: ${{ needs.check_date.outputs.should_run == 'true' }}
     runs-on: windows-latest
     name: Nightly build nanovisQ
     outputs:
