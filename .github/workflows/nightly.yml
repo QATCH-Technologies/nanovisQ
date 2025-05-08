@@ -50,7 +50,7 @@ jobs:
   skipped_marker:
     needs: check_date
     if: ${{ needs.check_date.outputs.should_run == 'false' }}
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     steps:
       - name: Mark as Skipped
         run: |
@@ -58,20 +58,18 @@ jobs:
           exit 78  # Special exit code that marks a step as "neutral" (used by GitHub)
 
   check_date:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     name: Check latest commit
     outputs:
       should_run: ${{ steps.should_run.outputs.should_run }}
     steps:
       - uses: actions/checkout@v4
-        # with:
-        #   path: trunk
       - name: Print latest_commit
         run: echo ${{ github.sha }}
-
       - id: should_run
         continue-on-error: true
         name: Check latest commit is less than a day
         run: |
-          test -z $(git rev-list  --after="24 hours"  ${{ github.sha }})
-          echo "should_run=false" >> "$env:GITHUB_OUTPUT"
+          test -n "$(git rev-list --after="24 hours" ${{ github.sha }})" \
+            && echo "should_run=true" >> "$GITHUB_OUTPUT" \
+            || echo "should_run=false" >> "$GITHUB_OUTPUT"
