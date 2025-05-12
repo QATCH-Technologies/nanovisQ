@@ -23,7 +23,7 @@ from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
-
+from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
@@ -387,6 +387,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # lazy load these modules on 'loadRun()' call (if selected)
         self.QModel_v3_modules_loaded = False
         self.QModel_v3_predictor = None
+
+        self.PF_modules_loaded = False
+        self.PF_predictor = None
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
@@ -888,6 +891,51 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.set_new_prediction_model)
         self.gridLayout.addWidget(self.cBox_Models, 6, 5, 1, 3)
 
+        # ----------- Number of Channels (Start) -----------------
+        self.slider_channels = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+        self.slider_channels.setMinimum(0)
+        self.slider_channels.setMaximum(3)
+        self.slider_channels.setTickInterval(1)
+        self.slider_channels.setTickPosition(QtWidgets.QSlider.TicksBelow)
+        self.slider_channels.setValue(0)
+
+        # Style the groove, sub-page (left of handle), add-page (right of handle), and handle
+        self.slider_channels.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: 1px solid #999;
+                height: 8px;
+                background: #ccc;
+                margin: 2px 0;
+                border-radius: 4px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #008ec0;
+                border-radius: 4px;
+            }
+            QSlider::add-page:horizontal {
+                background: #ccc;
+                border-radius: 4px;
+            }
+            QSlider::handle:horizontal {
+                background: white;
+                border: 1px solid #444;
+                width: 14px;
+                margin: -3px 0;
+                border-radius: 7px;
+            }
+        """)
+
+        self.slider_channels.valueChanged.connect(
+            self.on_channel_slider_changed)
+        self.gridLayout.addWidget(self.slider_channels, 7, 5, 1, 3)
+
+        # 3. centered label
+        self.lbl_channel_desc = QtWidgets.QLabel("No fill")
+        self.lbl_channel_desc.setAlignment(
+            QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
+        self.gridLayout.addWidget(self.lbl_channel_desc, 8, 5, 1, 3)
+
+        # ----------- Number of Channels (End) -----------------
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
             QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint
@@ -2492,25 +2540,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("Failed to load 'QModel v2' modules at load of run.")
 
         try:
-            if Constants.QModel3_predict and not self.QModel_v3_modules_loaded:
-                booster_path = os.path.join(
+            if Constants.PF_predict and not self.PF_modules_loaded:
+                model_dir = os.path.join(
                     Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v3",
-                    "qmodel_v3_booster.json"
-                )
-                scaler_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v3",
-                    "qmodel_v3_scaler.pkl",
-                )
-                self.QModel_v3_predictor = QModelPredictor(
-                    booster_path=booster_path,
-                    scaler_path=scaler_path)
-                self.QModel_v3_modules_loaded = True
+                    "QATCH", "QModel", "SavedModels", "pf")
+
+                self.PF_predictor = PFPredictor(
+                    model_dir=model_dir)
+                self.PF_modules_loaded = True
         except Exception as e:
             Log.e("ERROR:", e)
-            Log.e("Failed to load 'QModel v3' modules at load of run.")
-
+            Log.e("Failed to load 'Partial Fill Model' modules at load of run.")
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -2625,6 +2665,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 None,
             )
             self.enable_buttons()
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                fh = BytesIO(f.read())
+                num_poi = self.PF_predictor.predict(
+                    file_buffer=fh, detected_poi1=None)
+                num_channels = 0
+                if num_poi in [1, 2, 3, 4]:
+                    num_channels = 1
+                elif num_poi == 5:
+                    num_channels = 2
+                elif num_poi == 6:
+                    num_channels == 3
+                else:
+                    num_channels = 0
+                self.slider_channels.setValue(num_channels)
         except Exception as e:
             Log.e(
                 f"An error occurred while loading the selected run: {str(e)}")
@@ -2907,6 +2961,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+    def on_channel_slider_changed(self, val: int):
+        # map the integer to a human‐readable description
+        desc = {
+            0: "No fill",
+            1: "Channel 1 fill",
+            2: "Channel 2 fill",
+            3: "Full fill"
+        }[val]
+        # if you added the label:
+        self.lbl_channel_desc.setText(desc)
+
+        # now do whatever you need with `val`
+        # e.g. store it for prediction:
+        self.predicted_channel_count = val
 
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
