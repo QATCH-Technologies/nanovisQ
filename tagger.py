@@ -96,12 +96,18 @@ class QatchTagger():
         try:
             keepers = ["docs", "QATCH", f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
                        "tools", "app.py", "launch.bat", "requirements.txt"]
+            exclude = ["nightly"]
+            if self.args.nightly:
+                exclude.clear()
             for f in os.listdir(path_to_tag):
                 f = os.path.join(path_to_tag, f)
                 keep = False
                 for k in keepers:
                     if f.endswith(k):
                         keep = True
+                for e in exclude:
+                    if f.endswith(e):
+                        keep = False
                 if not keep:
                     logging.debug(f"Removing: {f}")
                     if os.path.isdir(f):

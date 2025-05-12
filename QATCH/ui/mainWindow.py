@@ -1191,6 +1191,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # Initiates an Upgrader class
         self.fwUpdater = FW_Updater()
 
+        # Check for nightly build option, set if available
+        try:
+            from QATCH.nightly.interface import UpdaterTask_Nightly
+            Constants.UpdateEngine = UpdateEngines.Nightly
+        except:
+            pass  # no nightly build option available
+
         # Restore mode index for speed comboBox
         self.restore_mode_idx = np.full(len(OperationType), -1, int)
 
@@ -4273,6 +4280,23 @@ class MainWindow(QtWidgets.QMainWindow):
             labelweb2 = 'ONLINE'
             labelweb3 = 'UNKNOWN!'
 
+            if Constants.UpdateEngine == UpdateEngines.Nightly:
+                try:
+                    from QATCH.nightly.interface import GH_Interface
+                    ((update_available, update_now),
+                     (build, key)) = GH_Interface(self).update_check()
+                    color = '#00ff00' if not update_available else '#ff0000'
+                    if update_now:
+                        self.url_download = {"date": build['created_at'].split('T')[0],
+                                             "name": f"{build['name'].split()[0]}.zip",
+                                             "path": build['archive_download_url'],
+                                             "size": build['size_in_bytes']}
+                        self.start_download()
+                    return color, labelweb2
+                except:
+                    # raise  # TODO: testing only, comment out!
+                    pass
+
             if "v2.3" in Constants.app_version:
                 branch = "v2.3x"
             elif "v2.4" in Constants.app_version:
@@ -4317,6 +4341,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         except Exception as e:
             Log.e("Update Task error:", e)
+            # raise e  # TODO: testing only, comment out!
 
     def update_ping(self):
         # periodic check for update task completion
@@ -5060,10 +5085,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def newUpdaterTask(self, src, dest, size):
         _updaterTask = None
+        if Constants.UpdateEngine == UpdateEngines.Nightly:
+            try:
+                from QATCH.nightly.interface import UpdaterTask_Nightly
+                _updaterTask = UpdaterTask_Nightly(dest, src, size)
+            except:
+                Log.e("Cannot use nightly updater. Falling back to GitHub...")
+                Constants.UpdateEngine = UpdateEngines.GitHub
         if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
             # InstallWorker(proceed, copy_src, copy_dst)
             _updaterTask = UpdaterTask_Dbx(
-                self._dbx_connection, dest, src, size)
+                dest, src, size, self._dbx_connection)
         if Constants.UpdateEngine == UpdateEngines.GitHub:
             _updaterTask = UpdaterTask_Git(dest, src, size)
         if not _updaterTask:
@@ -5227,75 +5259,8 @@ class UpdaterProcess_Dbx(multiprocessing.Process):
         md = self._dbx_conn.files_download_to_file(file_local, file_remote)
 
 
-class UpdaterTask_Dbx(QtCore.QThread):
-    finished = QtCore.pyqtSignal()
-    exception = QtCore.pyqtSignal(str)
-    progress = QtCore.pyqtSignal(str, int)
-    _cancel = False
-
-    def __init__(self, dbx_conn, local_file, remote_file, total_size):
-        super().__init__()
-        self._dbx_connection = dbx_conn
-        self.local_file = local_file
-        self.remote_file = remote_file
-        self.total_size = total_size
-
-    def cancel(self):
-        Log.d("GUI: Toggle progress mode")
-        # Log.w("Process kill request")
-        self._cancel = True
-        # self.progressTaskHandle.terminate()
-        self.progressTaskHandle.kill()
-        # self._dbx_connection.close() # force abort of active file download
-
-    def run(self):
-        try:
-            TAG1 = "[UpdaterTask]"
-            save_to = self.local_file
-            path = self.remote_file
-            size = self.total_size
-            last_pct = -1
-
-            self.progressTaskHandle = UpdaterProcess_Dbx(
-                self._dbx_connection, save_to, path)
-            self.progressTaskHandle.start()
-
-            while True:
-                try:
-                    curr_size = os.path.getsize(save_to)
-                except FileNotFoundError as e:
-                    curr_size = 0
-                except Exception as e:
-                    curr_size = 0
-                    Log.e(TAG1, f"ERROR: {e}")
-                    self.exception.emit(str(e))
-                pct = int(100 * curr_size / size)
-                if pct != last_pct or curr_size == size:
-                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                    if curr_size == 0:
-                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
-                    Log.i(TAG1, status_str)
-                    self.progress.emit(
-                        status_str[:status_str.rfind(' (')], pct)
-                    need_repaint = True
-                    last_pct = pct
-                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
-                    break
-            if not self._cancel:
-                Log.d("GUI: Toggle progress mode")
-                Log.i(TAG1, "Finshed downloading!")
-            else:
-                self.progressTaskHandle.join()
-                if os.path.exists(save_to):
-                    Log.d(f"Removing partial file download: {save_to}")
-                    os.remove(save_to)
-        except Exception as e:
-            Log.e(TAG1, f"ERROR: {e}")
-            self.exception.emit(str(e))
-        self.finished.emit()
-
-
-class UpdaterTask_Git(QtCore.QThread):
+class UpdaterTask(QtCore.QThread):
+    TAG = "[UpdaterTask]"
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(str, int)
@@ -5313,15 +5278,76 @@ class UpdaterTask_Git(QtCore.QThread):
         self._cancel = True
 
     def run(self):
+        raise NotImplementedError("Subclass must define a custom run() method")
+
+
+class UpdaterTask_Dbx(UpdaterTask):
+
+    def __init__(self, local_file, remote_file, total_size, dbx_conn):
+        super().__init__(local_file, remote_file, total_size)
+        self._dbx_connection = dbx_conn
+
+    def cancel(self):
+        super().cancel()
+        self.progressTaskHandle.kill()
+
+    def run(self):
         try:
-            TAG1 = "[UpdaterTask]"
+            save_to = self.local_file
+            path = self.remote_file
+            size = self.total_size
+            last_pct = -1
+
+            self.progressTaskHandle = UpdaterProcess_Dbx(
+                self._dbx_connection, save_to, path)
+            self.progressTaskHandle.start()
+
+            while True:
+                try:
+                    curr_size = os.path.getsize(save_to)
+                except FileNotFoundError as e:
+                    curr_size = 0
+                except Exception as e:
+                    curr_size = 0
+                    Log.e(self.TAG, f"ERROR: {e}")
+                    self.exception.emit(str(e))
+                pct = int(100 * curr_size / size)
+                if pct != last_pct or curr_size == size:
+                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
+                    if curr_size == 0:
+                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
+                    Log.i(self.TAG, status_str)
+                    self.progress.emit(
+                        status_str[:status_str.rfind(' (')], pct)
+                    need_repaint = True
+                    last_pct = pct
+                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
+                    break
+            if not self._cancel:
+                Log.d("GUI: Toggle progress mode")
+                Log.i(self.TAG, "Finshed downloading!")
+            else:
+                self.progressTaskHandle.join()
+                if os.path.exists(save_to):
+                    Log.d(f"Removing partial file download: {save_to}")
+                    os.remove(save_to)
+        except Exception as e:
+            Log.e(self.TAG, f"ERROR: {e}")
+            self.exception.emit(str(e))
+        self.finished.emit()
+
+
+class UpdaterTask_Git(UpdaterTask):
+
+    def run(self):
+        try:
             save_to = self.local_file
             path = self.remote_file
             size = self.total_size
             last_pct = -1
 
             status_str = f"Starting Download: {os.path.basename(path)} (0%)"
-            Log.i(TAG1, status_str)
+            Log.i(self.TAG, status_str)
             self.progress.emit(status_str[:status_str.rfind(' (')], 0)
 
             file_remote = path
@@ -5341,20 +5367,20 @@ class UpdaterTask_Git(QtCore.QThread):
                         pct = int(100 * curr_size / size)
                         if pct != last_pct or curr_size == size:
                             status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                            Log.i(TAG1, status_str)
+                            Log.i(self.TAG, status_str)
                             self.progress.emit(
                                 status_str[:status_str.rfind(' (')], pct)
                             last_pct = pct
 
             if not self._cancel:
                 Log.d("GUI: Toggle progress mode")
-                Log.i(TAG1, "Finshed downloading!")
+                Log.i(self.TAG, "Finshed downloading!")
             else:
                 if os.path.exists(save_to):
                     Log.d(f"Removing partial file download: {save_to}")
                     os.remove(save_to)
         except Exception as e:
-            Log.e(TAG1, f"ERROR: {e}")
+            Log.e(self.TAG, f"ERROR: {e}")
             self.exception.emit(str(e))
         self.finished.emit()
 
