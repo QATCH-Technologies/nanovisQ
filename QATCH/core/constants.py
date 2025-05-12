@@ -29,6 +29,7 @@ class MinimalPython:
 class UpdateEngines(Enum):
     DropboxAPI = 0
     GitHub = 1
+    Nightly = 2
 
 
 ###############################################################################
