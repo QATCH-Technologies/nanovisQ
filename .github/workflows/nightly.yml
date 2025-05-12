@@ -10,7 +10,7 @@ jobs:
     needs: check_date
     if: ${{ needs.check_date.outputs.should_run == 'true' }}
     runs-on: windows-latest
-    name: Nightly build nanovisQ
+    name: Build nanovisQ nightly
     outputs:
       tag_name: ${{ steps.tagger.outputs.tag_name }}
     steps:
@@ -46,16 +46,6 @@ jobs:
           path: tags/nightly/${{ env.tag_name }}/dist/*.zip
           if-no-files-found: error
           retention-days: 7
-
-  skipped_marker:
-    needs: check_date
-    if: ${{ needs.check_date.outputs.should_run == 'false' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Mark as Skipped
-        run: |
-          echo "Main job was skipped. Failing this job to reflect that."
-          exit 78  # Special exit code that marks a step as "neutral" (used by GitHub)
 
   check_date:
     runs-on: ubuntu-latest
