@@ -96,9 +96,9 @@ class QatchTagger():
         try:
             keepers = ["docs", "QATCH", f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
                        "tools", "app.py", "launch.bat", "requirements.txt"]
-            exclude = ["nightly"]
-            if self.args.nightly:
-                exclude.clear()
+            exclude = [".gitignore"]
+            if not self.args.nightly:
+                exclude.append("nightly")
             for f in os.listdir(path_to_tag):
                 f = os.path.join(path_to_tag, f)
                 keep = False

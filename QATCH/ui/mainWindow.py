@@ -4284,9 +4284,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     from QATCH.nightly.interface import GH_Interface
                     ((update_available, update_now),
-                     (build, key)) = GH_Interface(self).update_check()
+                     latest_bundle) = GH_Interface(self).update_check()
                     color = '#00ff00' if not update_available else '#ff0000'
                     if update_now:
+                        (build, key) = latest_bundle
                         self.url_download = {"date": build['created_at'].split('T')[0],
                                              "name": f"{build['name'].split()[0]}.zip",
                                              "path": build['archive_download_url'],

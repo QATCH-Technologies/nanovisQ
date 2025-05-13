@@ -217,6 +217,8 @@ class GH_Artifacts:
         return extracted
 
     def write_latest_build_file(self, latest: dict) -> None:
+        # do not export the download url to json file
+        latest.pop("archive_download_url", None)
         with open(self.latest_build_file, 'w') as fp:
             j.dump(latest, fp, indent=2)
 
