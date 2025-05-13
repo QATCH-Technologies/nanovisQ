@@ -2059,7 +2059,6 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                         first = first_line.split(',')
                         last = last_line.split(',')
-
                 start = dt.datetime.strptime(
                     f"{first[0]} {first[1]}", "%Y-%m-%d %H:%M:%S").isoformat()
                 stop = dt.datetime.strptime(
@@ -2105,16 +2104,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                 metric4.setAttribute('name', 'samples')
                 metric4.setAttribute('value', samples)
                 metrics.appendChild(metric4)
-
-                metric5 = run.createElement('metric')
-                metric5.setAttribute('name', 'est_sor')
-                metric5.setAttribute('value', samples)
-                metrics.appendChild(metric5)
-
-                metric6 = run.createElement('metric')
-                metric6.setAttribute('name', 'est_eor')
-                metric6.setAttribute('value', samples)
-                metrics.appendChild(metric6)
             except Exception as e:
                 Log.e(
                     "Metrics Error: Failed to open/parse CSV file for XML file run info metrics.")

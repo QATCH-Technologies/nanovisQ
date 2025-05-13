@@ -14,6 +14,7 @@ TAG = ["PartialFill"]
 
 
 class PFDataProcessor:
+    SAMPLE_FACTOR = 400
     """
     Processor for PF run data. Handles loading raw content files and generating
     a comprehensive set of statistical, spectral, and temporal features.
@@ -256,8 +257,7 @@ class PFDataProcessor:
     @staticmethod
     def generate_features(
         dataframe: pd.DataFrame,
-        sampling_rate: float = 1.0,
-        detected_poi1: Optional[Union[int, np.integer]] = None
+        sampling_rate: float = 1.0
     ) -> pd.DataFrame:
         """
         Generate a full feature set for a single PF run.
@@ -266,78 +266,72 @@ class PFDataProcessor:
             dataframe: Raw run DataFrame containing at least:
                        'Dissipation', 'Resonance_Frequency', 'Relative_time'.
             sampling_rate: Sampling frequency of the data.
-            detected_poi1: Index of the first fill event, or None.
-
         Returns:
             DataFrame with one row of concatenated features.
 
         Raises:
             ValueError: If required columns are missing or inputs invalid.
         """
-        # Validate DataFrame
-        if not isinstance(dataframe, pd.DataFrame):
-            raise TypeError("`dataframe` must be a pandas DataFrame.")
-        required = ['Dissipation', 'Resonance_Frequency', 'Relative_time']
-        missing = [c for c in required if c not in dataframe.columns]
-        if missing:
-            raise ValueError(f"Missing required columns: {missing}")
+        feat_columns = ["Dissipation", "Resonance_Frequency"]
+        dataframe = dataframe[feat_columns].copy()
+        feats = pd.DataFrame()
+        # feats["run_length"] = [len(dataframe)]
 
-        # Copy and baseline-correct
-        df = dataframe[required].copy()
+        n = len(dataframe)
+        win = max(3, int(np.ceil(0.05 * n)))
+        if win % 2 == 0:
+            win += 1
+        diss = dataframe["Dissipation"].values
+        rf = dataframe["Resonance_Frequency"].values
+        # diss = savgol_filter(
+        #     diss, window_length=win, polyorder=2)
+        # rf = savgol_filter(
+        #     rf, window_length=win, polyorder=2)
 
-        # Normalize detected_poi1
-        if detected_poi1 is None:
-            idx = None
-        else:
-            try:
-                idx = int(np.atleast_1d(detected_poi1).flat[0])
-            except Exception:
-                raise ValueError(
-                    "`detected_poi1` must be integer-like or None.")
+        n_baseline = max(1, int(len(dataframe) * 0.05))
+        baseline_diss = diss[:n_baseline].mean()
+        baseline_rf = rf[:n_baseline].mean()
+        diss_re = diss - baseline_diss
+        rf_re = rf - baseline_rf
+        rf_flipped = -rf_re
+        num_points = PFDataProcessor.SAMPLE_FACTOR
+        idxs = np.linspace(0, n-1, num=num_points, dtype=int)
+        diss_sel = diss_re[idxs]
+        rf_sel = rf_flipped[idxs]
+        d_min, d_max = diss_sel.min(),    diss_sel.max()
+        r_min, r_max = rf_sel.min(),      rf_sel.max()
 
-        # Baseline subtraction
-        meas = ['Dissipation', 'Resonance_Frequency']
-        if idx is not None and 0 < idx < len(df):
-            baseline = df[meas].iloc[:idx].mean()
-        else:
-            baseline = df[meas].mean()
-        df[meas] = df[meas] - baseline
+        diss_scaled = (diss_sel - d_min) / (d_max - d_min)
+        rf_scaled = (rf_sel - r_min) / (r_max - r_min)
 
-        # Scale time to fraction of 30-minute window
-        df['Relative_time'] = df['Relative_time'] / (30*60)
+        sampled_df = pd.DataFrame({
+            "Dissipation":         diss_scaled,
+            "Resonance_Frequency": rf_scaled
+        })
 
-        # Initialize feature dict
-        feat = {
-            'run_length': float(len(df))
-        }
-        # Time since fill
-        if idx is not None and 0 <= idx < len(df):
-            delta = df['Relative_time'].iloc[-1] - \
-                df['Relative_time'].iloc[idx]
-            feat['time_since_detected_fill'] = float(np.clip(delta, 0, 1))
-        else:
-            feat['time_since_detected_fill'] = 0.0
+        # plt.figure(figsize=(8, 4))
+        # plt.plot(diss_scaled,
+        #          linestyle='-', label="Diss [200 pts]")
+        # plt.plot(rf_scaled,
+        #          linestyle='-', label="RF   [200 pts]")
+        # plt.legend(loc="upper right")
+        # plt.xlabel("Sample # (evenly spaced)")
+        # plt.ylabel("Scaled & rebaselined value")
+        # plt.title("200-Point Representation of Each Curve")
+        # plt.tight_layout()
+        # plt.show()
+        feats = pd.concat(
+            [feats, PFDataProcessor._curve_stats(sampled_df)], axis=1)
+        feats = pd.concat(
+            [feats, PFDataProcessor._peak_features(sampled_df)], axis=1)
+        feats = pd.concat(
+            [feats, PFDataProcessor._curve_dynamics(sampled_df)], axis=1)
+        feats = pd.concat([feats, PFDataProcessor._fft_features(
+            sampled_df, sampling_rate)], axis=1)
+        feats = pd.concat(
+            [feats, PFDataProcessor._cross_corr_features(sampled_df)], axis=1)
 
-        features = pd.DataFrame([feat])
-
-        # Aggregate all feature sets
-        features = pd.concat(
-            [features, PFDataProcessor._curve_stats(df)], axis=1)
-        features = pd.concat(
-            [features, PFDataProcessor._peak_features(df)], axis=1)
-        features = pd.concat(
-            [features, PFDataProcessor._curve_dynamics(df)], axis=1)
-        features = pd.concat(
-            [features, PFDataProcessor._fft_features(df, sampling_rate)], axis=1
-        )
-        features = pd.concat(
-            [features, PFDataProcessor._cross_corr_features(df)], axis=1
-        )
-        features = pd.concat(
-            [features, PFDataProcessor._sample_interval_features(df)], axis=1
-        )
-
-        return features
+        return feats
 
 
 if __name__ == '__main__':

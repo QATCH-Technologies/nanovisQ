@@ -158,7 +158,6 @@ class PFPredictor:
     def predict(
         self,
         file_buffer: Union[str, pd.DataFrame],
-        detected_poi1: Optional[int] = None,
         show_plot: bool = False
     ) -> int:
         """
@@ -186,19 +185,18 @@ class PFPredictor:
             except Exception as e:
                 Log.w(TAG, f"Unable to plot dissipation curve: {e}")
 
-        # Validate detected_poi1
-        if detected_poi1 is not None and not isinstance(detected_poi1, (int, np.integer)):
-            Log.e(TAG, "Invalid detected_poi1 type")
-            raise TypeError("`detected_poi1` must be an integer if provided.")
-        Log.d(TAG, f"Using detected_poi1={detected_poi1}")
-
         # Feature generation
+        if len(df) <= PFDataProcessor.SAMPLE_FACTOR:
+            Log.i(
+                TAG, f"Run contains less than {PFDataProcessor.SAMPLE_FACTOR:} samples.")
+            return 0
+
         try:
             Log.d(TAG, "Generating features")
+
             features = PFDataProcessor.generate_features(
                 dataframe=df,
                 sampling_rate=1.0,
-                detected_poi1=detected_poi1
             )
             Log.i(TAG, f"Features generated: {features.shape[1]} columns")
         except Exception as e:

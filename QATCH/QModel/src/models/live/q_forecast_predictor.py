@@ -117,6 +117,24 @@ class QForecastPredictor:
             self._prediction_buffer_size = 0
             self._fill_state = self._predict()
 
+    def get_start_time(self) -> float:
+        """
+        Retrieves the estimated start time of the fill.
+
+        Returns:
+            float: The estimated start time of the fill.
+        """
+        return self._start_loc['time']
+
+    def get_end_time(self) -> float:
+        """
+        Retrieves the estimated end time of the fill.
+
+        Returns:
+            float: The estimated end time of the fill.
+        """
+        return self._end_loc['time']
+
     def _extend_buffer(self, new_data: pd.DataFrame) -> None:
         """
         Extend the internal data buffer with new data.

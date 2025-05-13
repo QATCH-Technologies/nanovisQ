@@ -19,11 +19,12 @@ from QATCH.common.fileManager import FileManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
-from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.models.ModelData import ModelData
+
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
@@ -925,11 +926,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             }
         """)
 
-        self.slider_channels.valueChanged.connect(
+        self.slider_channels.sliderMoved.connect(
             self.on_channel_slider_changed)
         self.gridLayout.addWidget(self.slider_channels, 7, 5, 1, 3)
-
-        # 3. centered label
         self.lbl_channel_desc = QtWidgets.QLabel("No fill")
         self.lbl_channel_desc.setAlignment(
             QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop)
@@ -2667,18 +2666,30 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.enable_buttons()
             with secure_open(self.loaded_datapath, "r", "capture") as f:
                 fh = BytesIO(f.read())
-                num_poi = self.PF_predictor.predict(
-                    file_buffer=fh, detected_poi1=None)
-                num_channels = 0
-                if num_poi in [1, 2, 3, 4]:
-                    num_channels = 1
-                elif num_poi == 5:
-                    num_channels = 2
-                elif num_poi == 6:
-                    num_channels == 3
-                else:
-                    num_channels = 0
+                raw = self.PF_predictor.predict(
+                    file_buffer=fh)
+                num_poi = int(raw)
+                poi_to_channels = {
+                    0: 0,
+                    1: 0,
+                    2: 0,
+                    3: 0,
+                    4: 1,
+                    5: 2,
+                    6: 3,
+                }
+                num_channels = poi_to_channels.get(num_poi, 0)
+                Log.d(
+                    TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
                 self.slider_channels.setValue(num_channels)
+                desc = {
+                    0: "Null-Channel",
+                    1: "Mono-Channel",
+                    2: "Dual-Channel",
+                    3: "Tri-Channel"
+                }
+                self.lbl_channel_desc.setText(desc.get(num_channels, 0))
+
         except Exception as e:
             Log.e(
                 f"An error occurred while loading the selected run: {str(e)}")
@@ -2963,18 +2974,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.e(line)
 
     def on_channel_slider_changed(self, val: int):
-        # map the integer to a human‐readable description
         desc = {
-            0: "No fill",
-            1: "Channel 1 fill",
-            2: "Channel 2 fill",
-            3: "Full fill"
+            0: "Null-Channel",
+            1: "Mono-Channel",
+            2: "Dual-Channel",
+            3: "Tri-Channel"
         }[val]
-        # if you added the label:
         self.lbl_channel_desc.setText(desc)
-
-        # now do whatever you need with `val`
-        # e.g. store it for prediction:
         self.predicted_channel_count = val
 
     def getPoints(self):

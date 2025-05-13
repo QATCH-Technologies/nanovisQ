@@ -612,6 +612,7 @@ class QModelPredictor:
             candidate_idx = start_idx + peak_rel
 
             best_idx = max(knee_point, candidate_idx)
+            best_idx = knee_point
 
             rf = feature_vector.get("Resonance_Frequency_smooth")
             if rf is None:
@@ -1551,7 +1552,7 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = False) -> Dict[str, Any]:
+                plotting: bool = True) -> Dict[str, Any]:
         """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
@@ -1620,16 +1621,16 @@ class QModelPredictor:
             plt.figure(figsize=(10, 6))
 
             plt.plot(df["Relative_time"],
-                     df["Dissipation"],
+                     feature_vector["Detrend_Difference"],
                      linewidth=1.5,
-                     label="Dissipation")
+                     label="Detrend_Difference")
 
             # Overlay each POI’s candidate points
             cmap = plt.get_cmap("tab10")
             for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
                 idxs = poi_info["indices"]
                 times = df["Relative_time"].iloc[idxs]
-                values = df["Dissipation"].iloc[idxs]
+                values = feature_vector["Detrend_Difference"].iloc[idxs]
 
                 plt.scatter(times,
                             values,
@@ -1641,8 +1642,8 @@ class QModelPredictor:
                 plt.axvline(df["Relative_time"].iloc[idxs[0]], color=cmap(i))
 
             plt.xlabel("Relative time")
-            plt.ylabel("Dissipation")
-            plt.title("Dissipation curve with candidate POIs")
+            plt.ylabel("Difference")
+            plt.title("Difference curve with candidate POIs")
             plt.legend()
             plt.tight_layout()
             plt.show()
