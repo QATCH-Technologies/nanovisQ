@@ -4295,6 +4295,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return color, labelweb2
                 except:
                     # raise  # TODO: testing only, comment out!
+                    if hasattr(self, "url_download"):
+                        delattr(self, "url_download")
                     pass
 
             if "v2.3" in Constants.app_version:
@@ -5028,7 +5030,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         Architecture.get_path(), 'QATCH/icons/download_icon.ico')
                     self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                     self.progressBar.setWindowTitle(
-                        f"Downloading SW {os.path.basename(new_install_path)}")
+                        f" Installing SW {os.path.basename(new_install_path)}")
                     self.progressBar.setWindowFlag(
                         QtCore.Qt.WindowContextHelpButtonHint, False)
                     self.progressBar.setWindowFlag(
@@ -5148,21 +5150,31 @@ class MainWindow(QtWidgets.QMainWindow):
         do_launch_inline = do_launch_inline if not do_launch_inline is None else self.do_launch_inline
 
         if os.path.exists(save_to):
-            zip_filename = os.path.basename(save_to)[:-4]
-            if os.path.basename(new_install_path) != zip_filename:
-                new_install_path = os.path.join(new_install_path, zip_filename)
-            # Extract ZIP and launch new build
-            with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(new_install_path)
-            nested_path_wrong = os.path.join(new_install_path, zip_filename)
-            if os.path.exists(nested_path_wrong):
-                # this guarantees files are extracted where we want them
-                os.renames(nested_path_wrong, new_install_path + "_temp")
-                if os.path.dirname(save_to) == new_install_path:
-                    os.renames(save_to, os.path.join(
-                        new_install_path + "_temp", zip_filename + ".zip"))
-                os.renames(new_install_path + "_temp", new_install_path)
-            os.remove(save_to)
+
+            self.progressBar = QtWidgets.QProgressDialog(
+                f"Extracting SW {os.path.basename(new_install_path)}...", "Cancel", 0, 0, self)
+            icon_path = os.path.join(
+                Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+            self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+            self.progressBar.setWindowTitle(
+                f" Installing SW {os.path.basename(new_install_path)}")
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowStaysOnTopHint, True)
+            self.progressBar.canceled.disconnect()
+            self.progressBar.setFixedSize(
+                int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+            self.progressBar.findChild(QtWidgets.QPushButton). \
+                setEnabled(False)  # disable "cancel" button
+
+            extract_thread = ExtractWorker(save_to, new_install_path)
+            # extract_thread.label_text.connect(self.progressBar.setLabelText)
+            extract_thread.set_range.connect(self.progressBar.setRange)
+            extract_thread.progress.connect(self.progressBar.setValue)
+            extract_thread.finished.connect(self.progressBar.reset)
+            extract_thread.start()
+            self.progressBar.exec_()  # wait for reset() call from thread
 
             Log.w("Launching setup script for new build...")
             start_new_build = os.path.join(new_install_path, "launch.bat")
@@ -5224,7 +5236,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"ERROR: File {save_to} does not exist. Failed to download from {engine} server.")
 
         if setup_finished or not do_install:
-            if PopUp.question_FW(self, "QATCH Software Ready!", "Would you like to close this instance and\nlaunch the new application now?"):
+            if PopUp.question_FW(self, "QATCH Software Ready!", "<b>Install Success!</b><br/><br/>Would you like to close this instance and<br/>launch the new application now?"):
 
                 # launch new instance
                 launch_file = "QATCH nanovisQ.lnk" if do_launch_inline else "launch.bat"
@@ -5243,6 +5255,53 @@ class MainWindow(QtWidgets.QMainWindow):
                            "Setup of new application encountered a fatal error.\nSee log for details.", ok_only=True)
 
         # Log.d("GUI: Normal repaint events") # no longer needed
+
+
+class ExtractWorker(QtCore.QThread):
+    label_text = QtCore.pyqtSignal(str)
+    set_range = QtCore.pyqtSignal(int, int)
+    progress = QtCore.pyqtSignal(int)
+    finished = QtCore.pyqtSignal()
+
+    def __init__(self, save_to, new_install_path):
+        super().__init__()
+        self.save_to = save_to
+        self.new_install_path = new_install_path
+
+    def run(self):
+        save_to = self.save_to
+        new_install_path = self.new_install_path
+        zip_filename = os.path.basename(save_to)[:-4]
+
+        if os.path.basename(new_install_path) != zip_filename:
+            new_install_path = os.path.join(
+                new_install_path, zip_filename)
+
+        # Extract ZIP and launch new build
+        with pyzipper.AESZipFile(save_to, 'r') as zf:
+            file_list = zf.namelist()
+            total = len(file_list)
+            self.set_range.emit(0, total)
+
+            for i, file in enumerate(file_list):
+                zf.extract(file, new_install_path)
+                self.label_text.emit(f"Extracting: {file}")
+                self.progress.emit(i)
+
+        self.label_text.emit("Finalizing...")
+        nested_path_wrong = os.path.join(
+            new_install_path, zip_filename)
+
+        if os.path.exists(nested_path_wrong):
+            # this guarantees files are extracted where we want them
+            os.renames(nested_path_wrong, new_install_path + "_temp")
+            if os.path.dirname(save_to) == new_install_path:
+                os.renames(save_to, os.path.join(
+                    new_install_path + "_temp", zip_filename + ".zip"))
+            os.renames(new_install_path + "_temp", new_install_path)
+
+        os.remove(save_to)
+        self.finished.emit()
 
 
 class UpdaterProcess_Dbx(multiprocessing.Process):
