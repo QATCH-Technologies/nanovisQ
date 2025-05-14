@@ -4,6 +4,7 @@ import threading
 import sys
 import pyqtgraph as pg
 import datetime as dt
+import pandas as pd
 from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
@@ -23,8 +24,9 @@ from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus
 from QATCH.models.ModelData import ModelData
+
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -2520,7 +2522,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 model_dir = os.path.join(
                     Architecture.get_path(),
                     "QATCH", "QModel", "SavedModels", "pf")
-                forecaster_path = os.path.join()
+                start_booster_path = os.path.join(Architecture.get_path(),
+                                                  r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+                end_booster_path = os.path.join(Architecture.get_path(),
+                                                r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+                scaler_path = os.path.join(Architecture.get_path(),
+                                           r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+                self.forecaster = QForecastPredictor(
+                    start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
                 self.PF_predictor = PFPredictor(
                     model_dir=model_dir)
                 self.PF_modules_loaded = True
@@ -2647,6 +2656,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 fh = BytesIO(f.read())
                 raw = self.PF_predictor.predict(
                     file_buffer=fh)
+                try:
+
+                    if hasattr(fh, "seekable") and fh.seekable():
+                        fh.seek(0)
+                    else:
+                        raise Exception(
+                            "Cannot `seek` stream prior to passing to processing.")
+                    df = pd.read_csv(fh)
+                    df = df.iloc[::5]
+                    df.reset_index(drop=True)
+                except pd.errors.EmptyDataError:
+                    raise ValueError("The provided data file is empty.")
+                f_type = self.forecaster.update_predictions(df)
+
                 num_poi = int(raw)
                 poi_to_channels = {
                     0: 0,
@@ -2658,6 +2681,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     6: 3,
                 }
                 num_channels = poi_to_channels.get(num_poi, 0)
+                if f_type == FillStatus.FULL_FILL:
+                    num_channels = 3
                 self.parent.num_channels = num_channels
                 Log.d(
                     TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
