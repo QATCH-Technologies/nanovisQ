@@ -636,6 +636,27 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.vbox2.addLayout(self.q10)
         self.vbox2.addLayout(self.q12)
 
+        # Buffer Type
+        self.q13 = QtWidgets.QHBoxLayout()
+        self.l13 = QtWidgets.QLabel()
+        self.l13.setText("Type\t\t=")
+        self.q13.addWidget(self.l13)
+        self.c13 = QtWidgets.QComboBox()
+        self.q13.addWidget(self.c13, 1)
+        self.h13 = QtWidgets.QLabel()
+        self.h13.setText("<u>?</u>")
+        self.h13.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q13.addWidget(self.h13)
+        self.c13.currentTextChanged.connect(self.new_buffer_type)
+
+        # Buffer Groupbox
+        self.groupBuffer = QtWidgets.QGroupBox("Buffer Information")
+        self.groupBuffer.setCheckable(False)
+        self.vbox3 = QtWidgets.QVBoxLayout()
+        self.groupBuffer.setLayout(self.vbox3)
+        self.vbox3.addLayout(self.q13)
+
         # Surfactant Type
         self.q9 = QtWidgets.QHBoxLayout()
         self.l9 = QtWidgets.QLabel()
@@ -720,6 +741,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         # read from excipient DB
         self.load_all_excipient_types()
         self.populate_excipient_proteins()
+        self.populate_excipient_buffers()
         self.populate_excipient_surfactants()
         self.populate_excipient_stabilizers()
 
@@ -783,6 +805,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         # layout_v.addLayout(self.q4) # hide Concentration
         layout_v.addWidget(self.groupSolvent)
         layout_v.addWidget(self.groupProtein)
+        layout_v.addWidget(self.groupBuffer)
         layout_v.addWidget(self.groupSurfactant)
         layout_v.addWidget(self.groupStabilizer)
         self.l5 = QtWidgets.QLabel()
@@ -956,6 +979,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.c9.currentTextChanged.connect(self.detect_change)
         self.c10.currentTextChanged.connect(self.detect_change)
         self.c11.currentTextChanged.connect(self.detect_change)
+        self.c13.currentTextChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -1143,6 +1167,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 f"Unknown Protein Type: \"{value}\" not in list")
                     if name == "protein_concentration":
                         self.t12.setText(value)
+                    if name == "buffer_type":
+                        if value in self.excipient_buffers:
+                            self.c13.setCurrentText(value)
+                        elif value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Buffer Type: \"{value}\" not in list")
                     if name == "surfactant_type":
                         if value in self.excipient_surfactants:
                             self.c9.setCurrentText(value)
@@ -1372,6 +1402,32 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t12.setEnabled(True)
             pass  # do nothing if any other value was selected
 
+    def new_buffer_type(self, text: str):
+        if text.casefold() == "add new...":
+            self.add_buffer_type = QtWidgets.QWidget()
+            self.add_buffer_type.setWindowTitle("Buffer Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Buffer Types:")
+            self.buffer_types_multiline = QtWidgets.QPlainTextEdit()
+            self.buffer_types_multiline.setPlainText(
+                "\n".join(self.excipient_buffers))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_excipient_buffers)
+            layout.addWidget(label)
+            layout.addWidget(self.buffer_types_multiline)
+            layout.addWidget(save)
+            self.add_buffer_type.setLayout(layout)
+            self.add_buffer_type.show()
+            self.buffer_types_multiline.setFocus()
+            self.buffer_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        # elif text.casefold() == "none":
+        #     self.tx.setText("0")  # clear Buffer Concentration
+        #     self.tx.setEnabled(False)
+        else:
+            # self.tx.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
     def new_surfactant_type(self, text: str):
         if text.casefold() == "add new...":
             self.add_surfactant_type = QtWidgets.QWidget()
@@ -1426,15 +1482,16 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def load_all_excipient_types(self):
         self.excipient_proteins = []
+        self.excipient_buffers = []
         self.excipient_surfactants = []
         self.excipient_stabilizers = []
         excipients = self.excipient_db.list_base_excipients()
 
         # Create default excipients list (if none exist)
         if len(excipients) == 0:
-            self.excipient_db.add_base_excipient("Protein", "BGG")
-            self.excipient_db.add_base_excipient("Protein", "BSA")
-            self.excipient_db.add_base_excipient("Protein", "poly-hlgG")
+            self.excipient_db.add_base_excipient("Buffer", "Acetate")
+            self.excipient_db.add_base_excipient("Buffer", "Histidine")
+            self.excipient_db.add_base_excipient("Buffer", "PBS")
             self.excipient_db.add_base_excipient("Surfactant", "TWEEN20")
             self.excipient_db.add_base_excipient("Surfactant", "TWEEN80")
             self.excipient_db.add_base_excipient("Stabilizer", "Sucrose")
@@ -1444,6 +1501,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         for e in excipients:
             if e['etype'] == "Protein":
                 self.excipient_proteins.append(e['name'])
+            if e['etype'] == "Buffer":
+                self.excipient_buffers.append(e['name'])
             if e['etype'] == "Surfactant":
                 self.excipient_surfactants.append(e['name'])
             if e['etype'] == "Stabilizer":
@@ -1455,11 +1514,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         # this is a using case-insensitive sorting method:
         self.excipient_proteins = sorted(
             self.excipient_proteins, key=str.casefold)
+        self.excipient_buffers = sorted(
+            self.excipient_buffers, key=str.casefold)
         self.excipient_surfactants = sorted(
             self.excipient_surfactants, key=str.casefold)
         self.excipient_stabilizers = sorted(
             self.excipient_stabilizers, key=str.casefold)
         Log.d("Proteins:", self.excipient_proteins)
+        Log.d("Buffers:", self.excipient_buffers)
         Log.d("Surfactants:", self.excipient_surfactants)
         Log.d("Stabilizers:", self.excipient_stabilizers)
 
@@ -1480,6 +1542,24 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.excipient_proteins, key=str.casefold)
         self.populate_excipient_proteins()
         self.add_protein_type.close()
+
+    def save_excipient_buffers(self):
+        old_buffers = self.excipient_buffers.copy()
+        new_buffers = self.buffer_types_multiline.toPlainText().splitlines()
+        for name in new_buffers:
+            name = name.strip()
+            if name not in old_buffers and len(name):
+                self.excipient_db.add_base_excipient("Buffer", name)
+                self.excipient_buffers.append(name)
+        for name in old_buffers:
+            if name not in new_buffers:
+                self.excipient_db.delete_base_excipient("Buffer", name)
+                self.excipient_buffers.remove(name)
+        # self.excipient_buffers.sort()
+        self.excipient_buffers = sorted(
+            self.excipient_buffers, key=str.casefold)
+        self.populate_excipient_buffers()
+        self.add_buffer_type.close()
 
     def save_excipient_surfactants(self):
         old_surfactants = self.excipient_surfactants.copy()
@@ -1532,6 +1612,22 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.c10.setCurrentIndex(0)  # initial load value: none
         except:
             Log.e("Failed to update proteins list after saving.")
+
+    def populate_excipient_buffers(self):
+        try:
+            num_items = self.c13.count()
+            self.c13.clear()
+            self.c13.addItem("none")
+            self.c13.addItems(self.excipient_buffers)
+            self.c13.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c13.setCurrentText(self.excipient_buffers[-1])
+            else:
+                self.c13.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update buffers list after saving.")
 
     def populate_excipient_surfactants(self):
         try:
@@ -1673,6 +1769,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == False)  # solvent group
             self.groupProtein.setVisible(
                 is_bioformulation == True)  # protein group
+            self.groupBuffer.setVisible(
+                is_bioformulation == True)  # buffer group
             self.groupSurfactant.setVisible(
                 is_bioformulation == True)  # surfactant group
             self.groupStabilizer.setVisible(
@@ -2199,6 +2297,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             param9.setAttribute('value', self.t12.text())
             param9.setAttribute('units', 'mg/mL')
             params.appendChild(param9)
+
+            param14 = run.createElement('param')
+            param14.setAttribute('name', 'buffer_type')
+            param14.setAttribute('value', self.c13.currentText())
+            params.appendChild(param14)
 
             param10 = run.createElement('param')
             param10.setAttribute('name', 'surfactant_type')
