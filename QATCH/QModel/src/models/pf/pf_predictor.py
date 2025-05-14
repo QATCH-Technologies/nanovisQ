@@ -1,12 +1,27 @@
+"""
+pf_predictor.py
+
+This module defines the PFPredictor class, which encapsulates loading
+and applying a preprocessing scaler and an XGBoost booster model to predict
+the number of points of interest (POIs) in partial-fill (PF) runs.
+
+Author(s):
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    05-14-2025
+
+Version:
+    V1.0.1
+"""
+
 import os
 import pickle
-from typing import Union, Optional, Any
-
+from typing import Union, Any
 import numpy as np
 import pandas as pd
 import xgboost as xgb
 import matplotlib.pyplot as plt
-
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.pf.pf_data_processor import PFDataProcessor
 
@@ -15,7 +30,7 @@ TAG = ['PartialFill']
 
 class PFPredictor:
     """
-    Standalone predictor for PF runs. Handles loading model artifacts,
+    Standalone predictor for partially filled runs. Handles loading model artifacts,
     preprocessing, and outputting POI count predictions for individual runs.
 
     Attributes:
@@ -26,8 +41,23 @@ class PFPredictor:
 
     def __init__(self, model_dir: str) -> None:
         """
-        Initialize PFPredictor by validating the model directory and loading
+        Initialize the PFPredictor by validating the model directory and loading
         the scaler and booster from disk.
+
+        Args:
+            model_dir (str): Path to the directory containing the trained model
+                artifacts (scaler and booster).
+
+        Raises:
+            NotADirectoryError: If the specified model_dir does not exist or is
+                not a directory.
+
+        Attributes:
+            model_dir (str): The validated path to the model directory.
+            scaler (sklearn.preprocessing._data.StandardScaler): The loaded
+                scaler used for feature normalization.
+            booster (xgboost.core.Booster): The loaded XGBoost booster model for
+                making predictions.
         """
         Log.d(TAG, f"Initializing PFPredictor with model_dir={model_dir}")
         if not os.path.isdir(model_dir):
@@ -41,7 +71,14 @@ class PFPredictor:
 
     def _load_scaler(self) -> Any:
         """
-        Load the scaler pipeline from a pickle file.
+        Load the scaler pipeline from a pickle file stored in the model directory.
+
+        Returns:
+            Any: The deserialized scaler object used for feature normalization.
+
+        Raises:
+            FileNotFoundError: If the scaler pickle file does not exist at the expected path.
+            Exception: If an error occurs during file opening or unpickling.
         """
         scaler_path = os.path.join(self.model_dir, 'pf_scaler.pkl')
         Log.d(TAG, f"Attempting to load scaler from {scaler_path}")
@@ -59,7 +96,14 @@ class PFPredictor:
 
     def _load_booster(self) -> xgb.Booster:
         """
-        Load the XGBoost Booster from a JSON file.
+        Load the XGBoost Booster model from a JSON file stored in the model directory.
+
+        Returns:
+            xgb.Booster: The loaded XGBoost booster model used for making predictions.
+
+        Raises:
+            FileNotFoundError: If the booster JSON file does not exist at the expected path.
+            Exception: If an error occurs during booster instantiation or loading.
         """
         booster_path = os.path.join(self.model_dir, 'pf_booster.json')
         Log.d(TAG, f"Attempting to load booster from {booster_path}")
@@ -103,7 +147,7 @@ class PFPredictor:
             raise Exception(
                 "Cannot `seek` stream prior to passing to processing.")
 
-    def _validate_file_buffer(self, file_buffer: str) -> pd.DataFrame:
+    def _validate_file_buffer(self, file_buffer: Union[str, pd.DataFrame]) -> pd.DataFrame:
         """
         Load and validate a CSV data file into a pandas DataFrame.
 
@@ -125,6 +169,8 @@ class PFPredictor:
                         required columns are missing.
         """
         # Reset buffer if necessary
+        if isinstance(file_buffer, pd.DataFrame):
+            return file_buffer
         try:
             file_buffer = self._reset_file_buffer(file_buffer=file_buffer)
         except Exception:
@@ -161,7 +207,21 @@ class PFPredictor:
         show_plot: bool = False
     ) -> int:
         """
-        Predict the number of POIs for a single PF run.
+        Predict the number of points of interest (POIs) for a single PF run.
+
+        Args:
+            file_buffer (Union[str, pd.DataFrame]): File path or DataFrame containing
+                the PF run data. Must include a 'Dissipation' column.
+            show_plot (bool): Whether to plot the dissipation curve before prediction.
+                Defaults to False.
+
+        Returns:
+            int: Predicted POI class label.
+
+        Raises:
+            ValueError: If input lacks the required 'Dissipation' column or if feature
+                generation or scaling fails.
+            RuntimeError: If the model prediction step encounters an error.
         """
         Log.d(TAG, "Entering predict()")
         df = self._validate_file_buffer(file_buffer=file_buffer)
@@ -198,7 +258,7 @@ class PFPredictor:
                 dataframe=df,
                 sampling_rate=1.0,
             )
-            Log.i(TAG, f"Features generated: {features.shape[1]} columns")
+            Log.d(TAG, f"Features generated: {features.shape[1]} columns")
         except Exception as e:
             Log.e(TAG, f"Feature generation failed: {e}")
             raise ValueError(
@@ -208,7 +268,7 @@ class PFPredictor:
         try:
             Log.d(TAG, "Scaling features")
             X_scaled = self.scaler.transform(features)
-            Log.i(TAG, f"Features scaled: {X_scaled.shape}")
+            Log.d(TAG, f"Features scaled: {X_scaled.shape}")
         except Exception as e:
             Log.e(TAG, f"Scaling features failed: {e}")
             raise ValueError("Feature scaling failed.") from e

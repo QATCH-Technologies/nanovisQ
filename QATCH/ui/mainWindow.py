@@ -1246,6 +1246,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._forecaster = QForecastPredictor(
                 start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_status = FillStatus.NO_FILL
+        self.forecast_start_time = -1.0
+        self.forecast_end_time = -1.0
+
+        # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
+        self.num_channels = -1
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -2938,7 +2943,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
-                    self.forecast_status = self.worker._forecaster_out.get()
+                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
             else:
                 self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)
