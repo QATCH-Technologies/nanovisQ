@@ -3,7 +3,7 @@ name: "nightly"
 on:
   workflow_dispatch: # allows manual triggering
   schedule:
-    - cron: '34 12 * * 1-5' # runs daily at 12:34 UTC, Mon - Fri only
+    - cron: '5 5 * * 1-5' # runs daily at 05:05 UTC, Mon - Fri only
 
 jobs:
   nightly_build:
