@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.pf.pf_data_processor import PFDataProcessor
 
-TAG = ['PartialFill']
+TAG = '[PartialFill]'
 
 
 class PFPredictor:

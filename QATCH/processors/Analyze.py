@@ -4,11 +4,11 @@ import threading
 import sys
 import pyqtgraph as pg
 import datetime as dt
-import pandas as pd
 from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
 import numpy as np
+import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
@@ -24,9 +24,8 @@ from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
 from QATCH.models.ModelData import ModelData
-
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -2529,7 +2528,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 scaler_path = os.path.join(Architecture.get_path(),
                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
                 self.forecaster = QForecastPredictor(
-                    start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+                    start_booster_path=start_booster_path,
+                    end_booster_path=end_booster_path,
+                    scaler_path=scaler_path)
                 self.PF_predictor = PFPredictor(
                     model_dir=model_dir)
                 self.PF_modules_loaded = True
@@ -2651,7 +2652,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )
             self.enable_buttons()
 
-            # ----------- Determine the number of filled channels ----------- #
             with secure_open(self.loaded_datapath, "r", "capture") as f:
                 fh = BytesIO(f.read())
                 raw = self.PF_predictor.predict(
@@ -2668,8 +2668,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     df.reset_index(drop=True)
                 except pd.errors.EmptyDataError:
                     raise ValueError("The provided data file is empty.")
-                f_type = self.forecaster.update_predictions(df)
-
+                self.forecaster._active_booster = AvailableBoosters.START
+                self.forecaster._fill_state = FillStatus.NO_FILL
+                self.forecaster.no_wait()
+                self.forecaster.update_predictions(df)
+                start_f_type = self.forecaster.get_fill_status()
+                self.parent.forecast_start_time = self.forecaster.get_start_time()
+                self.forecaster._data = None
+                self.forecaster._active_booster = AvailableBoosters.END
+                self.forecaster._fill_state = FillStatus.FILLING
+                self.forecaster.no_wait()
+                self.forecaster.update_predictions(df)
+                end_f_type = self.forecaster.get_fill_status()
+                self.parent.forecast_end_time = self.forecaster.get_end_time()
                 num_poi = int(raw)
                 poi_to_channels = {
                     0: 0,
@@ -2681,8 +2692,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     6: 3,
                 }
                 num_channels = poi_to_channels.get(num_poi, 0)
-                if f_type == FillStatus.FULL_FILL:
+                if end_f_type == FillStatus.FULL_FILL:
                     num_channels = 3
+                    num_poi = 6
                 self.parent.num_channels = num_channels
                 Log.d(
                     TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")

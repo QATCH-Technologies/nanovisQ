@@ -2153,15 +2153,15 @@ class QueryRunInfo(QtWidgets.QWidget):
                 metrics.appendChild(metric4)
 
                 # ------------ Forecast start and end time ------------ #
-                metric5 = run.createElement('metric')
-                metric4.setAttribute('name', 'est_start_time')
-                metric4.setAttribute('value', est_start_time)
-                metrics.appendChild(metric5)
+                # metric5 = run.createElement('metric')
+                # metric5.setAttribute('name', 'est_start_time')
+                # metric5.setAttribute('value', est_start_time)
+                # metrics.appendChild(metric5)
 
-                metric6 = run.createElement('metric')
-                metric6.setAttribute('name', 'est_end_time')
-                metric6.setAttribute('value', est_end_time)
-                metrics.appendChild(metric6)
+                # metric6 = run.createElement('metric')
+                # metric6.setAttribute('name', 'est_end_time')
+                # metric6.setAttribute('value', est_end_time)
+                # metrics.appendChild(metric6)
                 # ----------------------------------------------------- #
             except Exception as e:
                 Log.e(

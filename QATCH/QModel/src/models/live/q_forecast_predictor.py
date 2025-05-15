@@ -32,9 +32,9 @@ from QATCH.common.architecture import Architecture
 
 
 # Global constants
-PREDICTION_THRESHOLD: float = 0.80
-WAIT_TIME = 1
-TAG: list = ['QForecastPredictor']
+PREDICTION_THRESHOLD: float = 0.75
+WAIT_TIME: int = 1
+TAG: str = '[QForecastPredictor]'
 
 
 class AvailableBoosters(Enum):
@@ -88,6 +88,7 @@ class QForecastPredictor:
         self._last_max_time: float = 0.5
         self._has_reported_full_fill = False
         self._is_waiting_for_full_fill = False
+        self._no_wait = False
         model_dir = os.path.join(
             Architecture.get_path(),
             "QATCH", "QModel", "SavedModels", "pf")
@@ -142,6 +143,15 @@ class QForecastPredictor:
         """
         return self._end_loc['time']
 
+    def no_wait(self) -> None:
+        """
+        Bypasses wait time for hysteresis on channel 3 exit.
+
+        Returns:
+            None
+        """
+        self._no_wait = True
+
     def _extend_buffer(self, new_data: pd.DataFrame) -> None:
         """
         Extend the internal data buffer with new data.
@@ -160,14 +170,17 @@ class QForecastPredictor:
         # time = new_data['Relative_time']
         # Log.i(TAG, f'{time}')
         if self._data is None or self._data.empty:
-            self._data = pd.DataFrame(columns=new_data.columns)
-        new_data_filtered = new_data[new_data['Relative_time']
-                                     > self._last_max_time]
-        new_data_aligned = new_data_filtered.reindex(
-            columns=self._data.columns)
-        self._data = pd.concat(
-            [self._data, new_data_aligned], ignore_index=True)
-        self._prediction_buffer_size += len(new_data_filtered)
+            self._data = new_data.copy()
+            self._prediction_buffer_size = len(self._data)
+        else:
+            new_data_filtered = new_data[new_data['Relative_time']
+                                         > self._last_max_time]
+            new_data_aligned = new_data_filtered.reindex(
+                columns=self._data.columns)
+            self._data = pd.concat(
+                [self._data, new_data_aligned], ignore_index=True)
+            self._prediction_buffer_size += len(new_data_filtered)
+
         if not self._data.empty:
             self._last_max_time = self._data['Relative_time'].max()
             self._data.sort_values(
@@ -207,7 +220,7 @@ class QForecastPredictor:
                 waiting_status=FillStatus.FILLING,
             )
 
-            if result == FillStatus.FULL_FILL:
+            if result == FillStatus.FULL_FILL and self._no_wait == False:
                 # If not already waiting, start a non-blocking timer.
                 if not self._is_waiting_for_full_fill:
                     self._is_waiting_for_full_fill = True
@@ -297,7 +310,9 @@ class QForecastPredictor:
                 TAG, "Processed features are empty; unable to perform predictions.")
             raise ValueError("Processed features are empty.")
         try:
-            transformed_features = self._scaler.transform(features)
+            transformed_features = self._scaler.transform(features.to_numpy())
+
+            # transformed_features = self._scaler.transform(features)
         except Exception as e:
             Log.e(TAG, f"Error transforming features: {e}")
             raise
