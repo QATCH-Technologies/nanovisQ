@@ -78,6 +78,8 @@
 #include "font_Poppins-Bold.h"
 #include "icons.h"
 
+#include "DualHBridgeStepper.h"
+
 /*********************** DEFINE I/O PINS ***********************/
 
 // #define NET_TCP_DEBUG
@@ -317,7 +319,7 @@ AD8302 ad8302 = AD8302();
 
 #if USE_L298NHB
 // Create the L298NHB PWM temperature setpoint object
-L298NHB l298nhb = L298NHB(L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2, L298NHB_COOL, L298NHB_INIT);
+L298NHB l298nhb = L298NHB(255, 255, 255, 255, 0, 0); //L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2, L298NHB_COOL, L298NHB_INIT);
 unsigned long l298nhb_task_timer = 0;  // time of most recent update
 unsigned long l298nhb_auto_off_at = 0; // time to auto-off (if no input)
 int8_t l298nhb_status = 0;
@@ -468,6 +470,8 @@ byte EEPROM_pid = 0;
 IntervalTimer busyTimer;
 volatile byte busyTimerState;
 const unsigned long busyTimerInt_us = 15000;
+
+DualHBridgeStepper stepper(L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2);
 
 void busyTimerTask(bool dp)
 {
@@ -944,6 +948,10 @@ void QATCH_setup()
 
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
+
+  stepper.setMaxSpeed(1000);
+  stepper.setAcceleration(200);
+  stepper.moveTo(1000);
 }
 
 // helper function since PJRC library doesn't handle mode switching
@@ -2948,6 +2956,7 @@ void QATCH_loop()
     }
   }
 #endif
+stepper.run();
 }
 
 /************************** FUNCTION ***************************/
