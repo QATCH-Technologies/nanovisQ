@@ -24,6 +24,8 @@ from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
 from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.QModel.src.models.pf.q_model_predictor_ch1 import QModelPredictorCh1
+from QATCH.QModel.src.models.pf.q_model_predictor_ch2 import QModelPredictorCh2
 from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
 from QATCH.models.ModelData import ModelData
 
@@ -2511,14 +2513,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.QModel_v3_predictor = QModelPredictor(
                     booster_path=booster_path,
                     scaler_path=scaler_path)
+
                 self.QModel_v3_modules_loaded = True
+
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v3' modules at load of run.")
-
         try:
             if Constants.PF_predict and not self.PF_modules_loaded:
-                model_dir = os.path.join(
+                f_type_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf")
+                poi_model_dir = os.path.join(
                     Architecture.get_path(),
                     "QATCH", "QModel", "SavedModels", "pf")
                 start_booster_path = os.path.join(Architecture.get_path(),
@@ -2532,7 +2538,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     end_booster_path=end_booster_path,
                     scaler_path=scaler_path)
                 self.PF_predictor = PFPredictor(
-                    model_dir=model_dir)
+                    model_dir=f_type_model_dir)
+                self.QModel_ch1_predictor = QModelPredictorCh1(poi_model_dir)
+                self.QModel_ch2_predictor = QModelPredictorCh2(poi_model_dir)
                 self.PF_modules_loaded = True
         except Exception as e:
             Log.e("ERROR:", e)
