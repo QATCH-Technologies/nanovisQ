@@ -27,7 +27,7 @@ a = Analysis(
         # ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
     ],
     datas=data_files,
-    hiddenimports=['charset_normalizer.md__mypyc'],
+    hiddenimports=['charset_normalizer.md__mypyc', 'numpy.core.multiarray'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
