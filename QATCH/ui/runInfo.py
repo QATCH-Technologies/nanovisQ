@@ -979,6 +979,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.c9.currentTextChanged.connect(self.detect_change)
         self.c10.currentTextChanged.connect(self.detect_change)
         self.c11.currentTextChanged.connect(self.detect_change)
+        self.t_channels.valueChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -2304,13 +2305,13 @@ class QueryRunInfo(QtWidgets.QWidget):
         param7.setAttribute('input', 'manual' if manual_dn else 'auto')
         params.appendChild(param7)
 
-        # Add the fill_type parameter to the XML with options for number of channeld
+        # Add the fill_type parameter to the XML with options for number of channels
         # and if the value was auto generated or manually set.
-        param8 = run.createElement('param')
-        param8.setAttribute('name', 'fill_type')
-        param8.setAttribute('value', str(num_channels))
-        param8.setAttribute('input', 'manual' if manual_nc else 'auto')
-        params.appendChild(param8)
+        param14 = run.createElement('param')
+        param14.setAttribute('name', 'fill_type')
+        param14.setAttribute('value', str(num_channels))
+        param14.setAttribute('input', 'manual' if manual_nc else 'auto')
+        params.appendChild(param14)
 
         # add hashes for security and verification
         if not os.path.exists(self.xml_path):

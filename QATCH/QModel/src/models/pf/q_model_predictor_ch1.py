@@ -127,7 +127,9 @@ class QModelPredictorCh1:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
-        X = QDataProcessor.process_data(df)
+        # `file_buffer` passed to `process_data` must be seekable, but `df` is not seekable
+        file_buffer = self._reset_file_buffer(file_buffer)
+        X = QDataProcessor.process_data(file_buffer)
         X_scaled = self._scaler.transform(X)
         dmat = xgb.DMatrix(X_scaled)
         preds = self._booster.predict(dmat)

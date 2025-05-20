@@ -322,19 +322,36 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
         from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
         from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
+        from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
+        from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (3 available)')
+            'Model versions (4 available)')
         self.menubar.append(qmodel_versions_menu)
-        self.q_version_v1 = self.menubar[5].addAction('ModelData v{} ({})'.format(
-            ModelData_version, ModelData_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("ModelData"))
+        self.q_version_v1 = self.menubar[5].addAction(
+            'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[0]))
         self.q_version_v1.setCheckable(True)
-        self.q_version_v2 = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel2_version, QModel2_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v2"))
+        self.q_version_v2 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel2_version, QModel2_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[1]))
         self.q_version_v2.setCheckable(True)
-        self.q_version_v3 = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel3_version, QModel3_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3a"))
+        self.q_version_v3 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel3_version, QModel3_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]))
         self.q_version_v3.setCheckable(True)
-        if Constants.QModel3_predict:
+        self.pf_version = self.menubar[5].addAction(
+            'Partial Fills v{} ({})'.format(PF_version, PF_release))
+        self.pf_version.triggered.connect(
+            lambda checked: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[3 if checked else 2]))
+        self.pf_version.setCheckable(True)
+        if Constants.PF_predict:
+            self.q_version_v3.setChecked(True)
+            self.pf_version.setChecked(True)
+        elif Constants.QModel3_predict:
             self.q_version_v3.setChecked(True)
         elif Constants.QModel2_predict:
             self.q_version_v2.setChecked(True)
