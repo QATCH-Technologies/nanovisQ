@@ -8,6 +8,7 @@ from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
 import numpy as np
+import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
@@ -19,10 +20,14 @@ from QATCH.common.fileManager import FileManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
-from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
+from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.QModel.src.models.pf.q_model_predictor_ch1 import QModelPredictorCh1
+from QATCH.QModel.src.models.pf.q_model_predictor_ch2 import QModelPredictorCh2
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
+from QATCH.models.ModelData import ModelData
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -387,6 +392,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # lazy load these modules on 'loadRun()' call (if selected)
         self.QModel_v3_modules_loaded = False
         self.QModel_v3_predictor = None
+
+        self.PF_modules_loaded = False
+        self.PF_predictor = None
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
@@ -2490,7 +2498,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v2' modules at load of run.")
-
         try:
             if Constants.QModel3_predict and not self.QModel_v3_modules_loaded:
                 booster_path = os.path.join(
@@ -2506,11 +2513,38 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.QModel_v3_predictor = QModelPredictor(
                     booster_path=booster_path,
                     scaler_path=scaler_path)
+
                 self.QModel_v3_modules_loaded = True
+
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v3' modules at load of run.")
-
+        try:
+            if Constants.PF_predict and not self.PF_modules_loaded:
+                f_type_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf")
+                poi_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf")
+                start_booster_path = os.path.join(Architecture.get_path(),
+                                                  r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+                end_booster_path = os.path.join(Architecture.get_path(),
+                                                r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+                scaler_path = os.path.join(Architecture.get_path(),
+                                           r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+                self.forecaster = QForecastPredictor(
+                    start_booster_path=start_booster_path,
+                    end_booster_path=end_booster_path,
+                    scaler_path=scaler_path)
+                self.PF_predictor = PFPredictor(
+                    model_dir=f_type_model_dir)
+                self.QModel_ch1_predictor = QModelPredictorCh1(poi_model_dir)
+                self.QModel_ch2_predictor = QModelPredictorCh2(poi_model_dir)
+                self.PF_modules_loaded = True
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'Partial Fill Model' modules at load of run.")
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -2625,6 +2659,54 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 None,
             )
             self.enable_buttons()
+
+            with secure_open(self.loaded_datapath, "r", "capture") as f:
+                fh = BytesIO(f.read())
+                raw = self.PF_predictor.predict(
+                    file_buffer=fh)
+                try:
+
+                    if hasattr(fh, "seekable") and fh.seekable():
+                        fh.seek(0)
+                    else:
+                        raise Exception(
+                            "Cannot `seek` stream prior to passing to processing.")
+                    df = pd.read_csv(fh)
+                    df = df.iloc[::5]
+                    df.reset_index(drop=True)
+                except pd.errors.EmptyDataError:
+                    raise ValueError("The provided data file is empty.")
+                self.forecaster._active_booster = AvailableBoosters.START
+                self.forecaster._fill_state = FillStatus.NO_FILL
+                self.forecaster.no_wait()
+                self.forecaster.update_predictions(df)
+                start_f_type = self.forecaster.get_fill_status()
+                self.parent.forecast_start_time = self.forecaster.get_start_time()
+                self.forecaster._data = None
+                self.forecaster._active_booster = AvailableBoosters.END
+                self.forecaster._fill_state = FillStatus.FILLING
+                self.forecaster.no_wait()
+                self.forecaster.update_predictions(df)
+                end_f_type = self.forecaster.get_fill_status()
+                self.parent.forecast_end_time = self.forecaster.get_end_time()
+                num_poi = int(raw)
+                poi_to_channels = {
+                    0: 0,
+                    1: 0,
+                    2: 0,
+                    3: 0,
+                    4: 1,
+                    5: 2,
+                    6: 3,
+                }
+                num_channels = poi_to_channels.get(num_poi, 0)
+                if end_f_type == FillStatus.FULL_FILL:
+                    num_channels = 3
+                    num_poi = 6
+                self.parent.num_channels = num_channels
+                Log.d(
+                    TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
+            # --------------------------------------------------------------- #
         except Exception as e:
             Log.e(
                 f"An error occurred while loading the selected run: {str(e)}")
