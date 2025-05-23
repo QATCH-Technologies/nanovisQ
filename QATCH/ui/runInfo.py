@@ -432,6 +432,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_st = 0
         self.auto_ca = 0
         self.auto_dn = 0
+        self.auto_nc = 0
 
         self.excipient_db = SQLiteDB()
 
@@ -771,7 +772,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.r3.addWidget(self.h5)
 
         # -------------- Number of Channels (Start) --------------
-        self.l_channels = QtWidgets.QLabel("Num Channels\t=")
+        self.l_channels = QtWidgets.QLabel("Fill Channels\t=")
+        self.f_channels = QtWidgets.QFrame()
+        f_channels_layout = QtWidgets.QHBoxLayout()
+        f_channels_layout.setContentsMargins(0, 0, 0, 0)
         self.t_channels = QtWidgets.QSpinBox()
         self.t_channels.setRange(0, 3)            # enforce 0–3
         # arrows increment/decrement by 1
@@ -779,14 +783,20 @@ class QueryRunInfo(QtWidgets.QWidget):
         # if you want units, you could add " channels"
         self.t_channels.setSuffix("")
         self.t_channels.setValue(
-            getattr(self.parent, 'num_channels', 0)
+            getattr(self.parent, 'num_channels', 3)
             if not (hasattr(self.parent, 'forecast_end_time') and self.parent.forecast_end_time > 0)
             else 3
         )
-
+        f_channels_layout.addWidget(self.t_channels)
+        self.f_channels.setLayout(f_channels_layout)
+        self.l_channels_hint = QtWidgets.QLabel()
+        self.l_channels_hint.setText("<u>?</u>")
+        self.l_channels_hint.setToolTip(
+            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value.")
         h_channels = QtWidgets.QHBoxLayout()
         h_channels.addWidget(self.l_channels)
-        h_channels.addWidget(self.t_channels)
+        h_channels.addWidget(self.f_channels, 1)  # stretch
+        h_channels.addWidget(self.l_channels_hint)
         # -------------- Number of Channels (End) --------------
 
         layout_v = QtWidgets.QVBoxLayout()
@@ -972,7 +982,9 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.reset_actions[-1].triggered.connect(
                     self.clear_manual_entry)
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
+        self.t_channels.valueChanged.connect(self.highlight_channels_box)
         self.highlight_manual_entry()  # run now
+        self.highlight_channels_box()  # run now
         self.g1.buttonClicked.connect(self.detect_change)
         self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
@@ -1069,9 +1081,33 @@ class QueryRunInfo(QtWidgets.QWidget):
                     xml_text = f.read()
                 doc = minidom.parseString(xml_text)
                 params = doc.getElementsByTagName(
-                    "params")[-1]  # most recent element
+                    "params")
 
-                for p in params.childNodes:
+                # search for first "fill_type" that is "auto"
+                for i in range(len(params)):
+                    param = params[i]  # scan n-th element
+
+                    if param.nodeType == param.TEXT_NODE:
+                        continue  # only process elements
+
+                    for p in param.childNodes:
+                        if p.nodeType == p.TEXT_NODE:
+                            continue  # only process elements
+
+                        name = p.getAttribute("name")
+                        if name == "fill_type":
+                            input = p.getAttribute("input")
+                            if input == "auto":
+                                value = p.getAttribute("value")
+                                auto_nc = value  # save for later
+                                break
+
+                    if auto_nc != 0:
+                        break  # found value, skip to last element processing
+
+                param = params[-1]  # most recent element
+
+                for p in param.childNodes:
                     if p.nodeType == p.TEXT_NODE:
                         continue  # only process elements
 
@@ -1190,7 +1226,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     if name == "fill_type":
                         self.t_channels.setValue(int(value))
 
-                if len(params.childNodes) == 0:
+                if len(param.childNodes) == 0:
                     # uncheck "Remember for next time"
                     self.q_recall.setChecked(False)
                 recalled = True
@@ -1275,11 +1311,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             manual_dn = float(self.t5.text()) != float(
                 f"{self.auto_dn:1.3f}") if allow_reset else True
             self.t1.setStyleSheet(
-                "border: 1px solid black;" if manual_st else "background-color: #eee;")
+                "border: 2px solid black;" if manual_st else "background-color: #eee;")
             self.t2.setStyleSheet(
-                "border: 1px solid black;" if manual_ca else "background-color: #eee;")
+                "border: 2px solid black;" if manual_ca else "background-color: #eee;")
             self.t5.setStyleSheet(
-                "border: 1px solid black;" if manual_dn else "background-color: #eee;")
+                "border: 2px solid black;" if manual_dn else "background-color: #eee;")
             self.reset_actions[0].setVisible(
                 manual_st if allow_reset else False)
             self.reset_actions[1].setVisible(
@@ -1288,6 +1324,21 @@ class QueryRunInfo(QtWidgets.QWidget):
                 manual_dn if allow_reset else False)
         except Exception as e:
             Log.e(f"Invalid parameter: {e}")
+
+    def highlight_channels_box(self):
+        num_channels = int(self.t_channels.text()) if len(
+            self.t_channels.text()) else 3
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
+        if manual_nc:
+            self.t_channels.setPalette(
+                QtWidgets.QApplication.palette())  # reset background
+            self.f_channels.setStyleSheet(
+                "QFrame { border: 1px solid black; }")  # set border
+        else:
+            palette = self.t_channels.palette()
+            palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#eeeeee"))
+            self.f_channels.setStyleSheet("")  # reset border
+            self.t_channels.setPalette(palette)  # set background
 
     def switch_user_at_sign_time(self):
         from QATCH.common.userProfiles import UserProfiles, UserRoles
@@ -1654,8 +1705,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.t2.text()) else 0  # contact_angle
                 self.auto_dn = float(self.t5.text()) if len(
                     self.t5.text()) else 0  # density
-                self.auto_nc = int(self.t_channels.text()) if len(
-                    self.t_channels.text()) else 0
             else:
                 self.t1.clear()
                 self.t2.clear()
@@ -1723,8 +1772,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.t2.text()) else 0
                 self.auto_dn = float(self.t5.text()) if len(
                     self.t5.text()) else 0
-                self.auto_nc = int(self.t_channels.text()) if len(
-                    self.t_channels.text()) else 0
             elif curr_state == None:
                 return  # Run Info not visible, stop here
             elif is_bioformulation != None:
@@ -1832,8 +1879,6 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.t2.text()) else 0  # contact_angle
             self.auto_dn = float(self.t5.text()) if len(
                 self.t5.text()) else 0  # density
-            self.auto_cn = int(self.t_channels.text()) if len(
-                self.t_channels.text()) else 0
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Lookup Error: Failed to estimate ST and/or CA.")
@@ -1874,14 +1919,15 @@ class QueryRunInfo(QtWidgets.QWidget):
         ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
 
+        manual_st = (st != self.auto_st)
+        manual_ca = (ca != self.auto_ca)
+        manual_dn = (density != self.auto_dn)
+
         # Get the number of channels from the textbox.  Default to full fill if
         # they cannot be processed.
         num_channels = int(self.t_channels.text()) if len(
             self.t_channels.text()) else 3
-        manual_st = (st != self.auto_st)
-        manual_ca = (ca != self.auto_ca)
-        manual_dn = (density != self.auto_dn)
-        manual_nc = (num_channels != self.auto_nc)
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
 
         # Form input error checking for valid Surfactant, Concentration, Surface Tension,
         # Contact Angle, and Density. Errors are logged to the user and the input_error flag
