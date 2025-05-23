@@ -141,14 +141,19 @@ class QModelPredictorCh2:
         pred_confidences = np.max(preds, axis=1)
         result: Dict[str, Dict[str, Any]] = {}
         n_classes = preds.shape[1]
-        for class_idx in range(1, n_classes):
+        for class_idx in range(1, 7):
             poi_key = f"POI{class_idx}"
-            mask = pred_indices == class_idx
-            indices = np.nonzero(mask)[0]
-            confidences = pred_confidences[mask]
-            order = np.argsort(confidences)[::-1]
-            sorted_indices = indices[order].tolist()
-            sorted_confidences = confidences[order].tolist()
+            if class_idx < n_classes:
+                mask = pred_indices == class_idx
+                indices = np.nonzero(mask)[0]
+                confidences = pred_confidences[mask]
+                order = np.argsort(confidences)[::-1]
+                sorted_indices = indices[order].tolist()
+                sorted_confidences = confidences[order].tolist()
+            else:
+                # POI not in dataset, move marker to end of run
+                sorted_indices = [-1]
+                sorted_confidences = [1.0]
             result[poi_key] = {"indices": sorted_indices,
                                "confidences": sorted_confidences}
         return result
