@@ -1,6 +1,6 @@
 import os
 import pickle
-from typing import Union
+from typing import Union, Dict, Any
 import pandas as pd
 import numpy as np
 import xgboost as xgb
@@ -127,13 +127,27 @@ class QModelPredictorCh2:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
-        # `file_buffer` passed to `process_data` must be seekable, but `df` is not seekable
-        file_buffer = self._reset_file_buffer(file_buffer)
-        X = QDataProcessor.process_data(file_buffer)
-        X_scaled = self._scaler.transform(X)
-        dmat = xgb.DMatrix(X_scaled)
-        preds = self._booster.predict(dmat)
-        if preds.ndim == 2:
-            return np.argmax(preds, axis=1)
-        else:
-            return (preds > 0.5).astype(int)
+        X_processed = QDataProcessor.process_data(df)
+        X_arr = X_processed.values if isinstance(
+            X_processed, pd.DataFrame) else X_processed
+        X_scaled = self.scaler.transform(X_arr)
+        ddata = xgb.DMatrix(X_scaled)
+        preds = self.booster.predict(ddata)
+        if preds.ndim != 2:
+            raise ValueError(
+                "Expected multiclass probabilities for grouping per POI")
+        pred_indices = np.argmax(preds, axis=1)
+        pred_confidences = np.max(preds, axis=1)
+        result: Dict[str, Dict[str, Any]] = {}
+        n_classes = preds.shape[1]
+        for class_idx in range(1, n_classes):
+            poi_key = f"POI{class_idx}"
+            mask = pred_indices == class_idx
+            indices = np.nonzero(mask)[0]
+            confidences = pred_confidences[mask]
+            order = np.argsort(confidences)[::-1]
+            sorted_indices = indices[order].tolist()
+            sorted_confidences = confidences[order].tolist()
+            result[poi_key] = {"indices": sorted_indices,
+                               "confidences": sorted_confidences}
+        return result
