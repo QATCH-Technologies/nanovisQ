@@ -131,9 +131,9 @@ class QModelPredictorCh2:
         feature_vector = QDataProcessor.process_data(file_buffer)
         X_arr = feature_vector.values if isinstance(
             feature_vector, pd.DataFrame) else feature_vector
-        transformed_feature_vector = self.scaler.transform(X_arr)
+        transformed_feature_vector = self._scaler.transform(X_arr)
         ddata = xgb.DMatrix(transformed_feature_vector)
-        preds = self.booster.predict(ddata)
+        preds = self._booster.predict(ddata)
         if preds.ndim != 2:
             raise ValueError(
                 "Expected multiclass probabilities for grouping per POI")
