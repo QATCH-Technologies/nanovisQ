@@ -127,11 +127,12 @@ class QModelPredictorCh1:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
-        X_processed = QDataProcessor.process_data(df)
-        X_arr = X_processed.values if isinstance(
-            X_processed, pd.DataFrame) else X_processed
-        X_scaled = self.scaler.transform(X_arr)
-        ddata = xgb.DMatrix(X_scaled)
+        file_buffer = self._reset_file_buffer(file_buffer=file_buffer)
+        feature_vector = QDataProcessor.process_data(file_buffer)
+        X_arr = feature_vector.values if isinstance(
+            feature_vector, pd.DataFrame) else feature_vector
+        transformed_feature_vector = self.scaler.transform(X_arr)
+        ddata = xgb.DMatrix(transformed_feature_vector)
         preds = self.booster.predict(ddata)
         if preds.ndim != 2:
             raise ValueError(
