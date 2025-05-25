@@ -782,11 +782,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t_channels.setSingleStep(1)
         # if you want units, you could add " channels"
         self.t_channels.setSuffix("")
-        self.t_channels.setValue(
-            getattr(self.parent, 'num_channels', 3)
-            if not (hasattr(self.parent, 'forecast_end_time') and self.parent.forecast_end_time > 0)
-            else 3
-        )
+        # NOTE: setting the value must be after XML recall
         f_channels_layout.addWidget(self.t_channels)
         self.f_channels.setLayout(f_channels_layout)
         self.l_channels_hint = QtWidgets.QLabel()
@@ -959,6 +955,16 @@ class QueryRunInfo(QtWidgets.QWidget):
             QtCore.Qt.Key_Escape), self, activated=self.close)
 
         self.recallFromXML()
+
+        # Pre-populate number of channels when saving run using cached run-mode fill predictor result
+        if self.post_run:
+            # TODO: Using below code yields fixed '3' channels when `forecast_end_time > 0`
+            #       This behavior seems like an incomplete implementation. Is this right?
+            self.t_channels.setValue(
+                getattr(self.parent, 'num_channels', 3)
+                if not (hasattr(self.parent, 'forecast_end_time') and self.parent.forecast_end_time > 0)
+                else 3
+            )
 
         self.highlight_timer = QtCore.QTimer()  # for highlight check
         self.highlight_timer.timeout.connect(self.highlight_manual_entry)
@@ -2487,6 +2493,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.updated_run.emit(
                     self.xml_path, new_name, old_name, str(stop_datetime))
                 self.updated_xml_path.emit(self.xml_path)
+
+            if hasattr(self.parent, 'num_channels') and num_channels != self.parent.num_channels:
+                Log.d("Number of fill channels changed by user in Run Info.")
+                Log.w(
+                    "Fill channels count changed! Re-run \"Predict\" to update points.")
+                self.parent.num_channels = num_channels
 
         self.unsaved_changes = False
         self.close()
