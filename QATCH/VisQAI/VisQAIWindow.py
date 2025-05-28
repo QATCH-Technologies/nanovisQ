@@ -1,8 +1,12 @@
 from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
+from random import randint
+import copy
 import os
+import numpy as np
 
+from fileStorage import secure_open
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
@@ -40,7 +44,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
 
         self.tab_widget.addTab(FrameStep1(self, 1),
-                               "\u2460 Select Candidate")
+                               "\u2460 Select Run")
         self.tab_widget.addTab(FrameStep1(self, 2),
                                "\u2461 Suggest Experiments")
         self.tab_widget.addTab(FrameStep1(self, 3),
@@ -62,7 +66,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.all_files = {}
 
         if step == 1:
-            self.setWindowTitle("Select Candidate")
+            self.setWindowTitle("Select Run")
         elif step == 2:
             self.setWindowTitle("Suggest Experiments")
         elif step == 3:
@@ -75,12 +79,12 @@ class FrameStep1(QtWidgets.QDialog):
         h_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         main_layout.addWidget(h_splitter)
 
-        # Left panel: Candidate selection
+        # Left panel: Run selection
         left_widget = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left_widget)
         form_layout = QtWidgets.QFormLayout()
         if step == 1:
-            left_group = QtWidgets.QGroupBox("Candidate Run")
+            left_group = QtWidgets.QGroupBox("Select Run")
         elif step == 2:
             left_group = QtWidgets.QGroupBox("Suggested Runs")
         elif step == 3:
@@ -91,23 +95,24 @@ class FrameStep1(QtWidgets.QDialog):
         left_group_layout.addLayout(form_layout)
         left_layout.addWidget(left_group)
 
-        # Browse candidate
+        # Browse run
         self.file_dialog = QtWidgets.QFileDialog()
+        path = "logged_data_test/maria data/4_15549230/D250224W3_4CP_B_2_4"
+        self.file_dialog.setDirectory(path)  # TODO restore
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setDirectory("logged_data")
         self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
         self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
-        self.select_candidate = QtWidgets.QPushButton(
+        self.select_run = QtWidgets.QPushButton(
             "Add Run..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No file selected")
         self.select_label.setReadOnly(True)
-        # candidate_select = QtWidgets.QHBoxLayout()
-        # candidate_select.addWidget(self.select_candidate)
-        # candidate_select.addWidget(self.select_label)
+        # run_select = QtWidgets.QHBoxLayout()
+        # run_select.addWidget(self.select_run)
+        # run_select.addWidget(self.select_label)
 
         if step == 1:
-            form_layout.addRow(self.select_candidate, self.select_label)
+            form_layout.addRow(self.select_run, self.select_label)
         elif step == 2 or step == 3 or step == 5:
             self.list_view = QtWidgets.QListView()
             self.list_view.setEditTriggers(
@@ -122,7 +127,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.model.appendRow(QtGui.QStandardItem(string))
             self.list_view.setModel(self.model)
             if step == 1 or step == 3:
-                form_layout.addRow(self.select_candidate, self.list_view)
+                form_layout.addRow(self.select_run, self.list_view)
             elif step == 2:
                 form_layout.addRow("Experiment:", self.list_view)
             elif step == 5:
@@ -146,6 +151,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_name = QtWidgets.QLabel()
         self.run_date_time = QtWidgets.QLabel()
         self.run_duration = QtWidgets.QLabel()
+        self.run_temperature = QtWidgets.QLabel()
         self.run_batch = QtWidgets.QLabel()
         self.run_fill_type = QtWidgets.QLabel()
 
@@ -164,6 +170,7 @@ class FrameStep1(QtWidgets.QDialog):
             form_layout.addRow("Name:", self.run_name)
             form_layout.addRow("Date / Time:", self.run_date_time)
             form_layout.addRow("Duration:", self.run_duration)
+            form_layout.addRow("Temperature (avg):", self.run_temperature)
             form_layout.addRow("Batch Number:", self.run_batch)
             form_layout.addRow("Fill Type:", self.run_fill_type)
             form_layout.addRow("Captured:", self.run_captured)
@@ -210,9 +217,8 @@ class FrameStep1(QtWidgets.QDialog):
                                            "",
                                            "", "%w",
                                            "", "M"]}
-        self.default_rows, self.default_cols = \
-            (len(list(self.default_features.values())[0]),
-             len(list(self.default_features.keys())))
+        self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
+                                                len(list(self.default_features.keys())))
 
         self.feature_table = TableView(self.default_features,
                                        self.default_rows, self.default_cols)
@@ -220,8 +226,6 @@ class FrameStep1(QtWidgets.QDialog):
         right_group.addWidget(self.feature_table)
 
         # TODO: Testing only, create dummy features
-        from random import randint
-        import copy
         self.dummy_features = []
         for i in range(4):
             dummy_feature = copy.deepcopy(self.default_features)
@@ -249,6 +253,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
+        self.run_figure_valid = False
         self.run_canvas = FigureCanvas(self.run_figure)
         v_splitter.addWidget(self.run_canvas)
 
@@ -262,7 +267,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.btn_cancel.clicked.connect(
             lambda: self.file_selected(None))
         self.btn_next.clicked.connect(self.next_step)
-        self.select_candidate.clicked.connect(self.file_dialog.show)
+        self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
 
     def next_step(self):
@@ -270,10 +275,12 @@ class FrameStep1(QtWidgets.QDialog):
         # Yes, if and only if:
         #   1. All audits contain valid values
         #   2. All initial features are set
+        #   3. Analyze results are valid
         if (len(self.run_captured.text()) and
             len(self.run_updated.text()) and
             len(self.run_analyzed.text()) and
-                self.feature_table.allSet()):
+                self.feature_table.allSet() and
+                self.run_figure_valid):
             # ready to proceed
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
@@ -287,9 +294,9 @@ class FrameStep1(QtWidgets.QDialog):
                 None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
 
     def file_selected(self, path: str | None):
-        self.candidate_file_run = path
-        self.candidate_file_xml = None
-        self.candidate_file_analyze = None
+        self.run_file_run = path
+        self.run_file_xml = None
+        self.run_file_analyze = None
 
         # clear all fields, before repopulating them
         self.select_label.clear()
@@ -297,12 +304,14 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_name.clear()
         self.run_date_time.clear()
         self.run_duration.clear()
+        self.run_temperature.clear()
         self.run_batch.clear()
         self.run_fill_type.clear()
         self.run_captured.clear()
         self.run_updated.clear()
         self.run_analyzed.clear()
         self.run_figure.clear()
+        self.run_figure_valid = False
         self.run_canvas.draw()
         self.feature_table.clear()
 
@@ -311,8 +320,15 @@ class FrameStep1(QtWidgets.QDialog):
                 self.list_view.clearSelection()
             return
 
+        namelist = secure_open.get_namelist(self.run_file_run)
+        for file in namelist:
+            if file.endswith(".csv"):
+                self.run_file_run = os.path.join(
+                    os.path.dirname(self.run_file_run), file)
+                break
+
         self.select_label.setText(
-            os.path.basename(os.path.dirname(self.candidate_file_run)))
+            os.path.basename(os.path.dirname(self.run_file_run)))
 
         if self.step == 3:
             item = QtGui.QStandardItem(self.select_label.text())
@@ -323,24 +339,29 @@ class FrameStep1(QtWidgets.QDialog):
                 self.list_view.setCurrentIndex(new_index)
                 self.all_files[item.text()] = path
 
-        folder = os.path.dirname(self.candidate_file_run)
+        folder = os.path.dirname(self.run_file_run)
         files: list[str] = os.listdir(folder)
+        max_index = 0
         for f in files:
             if f.endswith(".xml"):
-                self.candidate_file_xml = os.path.join(folder, f)
+                self.run_file_xml = os.path.join(folder, f)
             if f.startswith("analyze") and f.endswith(".zip"):
-                self.candidate_file_analyze = os.path.join(folder, f)
-        if self.candidate_file_xml == None:
+                this_index = int(f[f.index("-")+1:f.index(".")])
+                if this_index > max_index:
+                    max_index = this_index
+                self.run_file_analyze = os.path.join(folder,
+                                                     f.replace(str(this_index), str(max_index)))
+        if self.run_file_xml == None:
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText("ERROR: Cannot find XML file for this run!")
             return
-        if self.candidate_file_analyze == None:
+        if self.run_file_analyze == None:
             self.run_notes.setTextBackgroundColor(Color.light_yellow)
             self.run_notes.setText("This run has not been analyzed yet.\n" +
                                    "Please Analyze and try again!")
             return
 
-        doc = minidom.parse(self.candidate_file_xml)
+        doc = minidom.parse(self.run_file_xml)
 
         xml_metrics = {}
         metrics = doc.getElementsByTagName(
@@ -437,7 +458,7 @@ class FrameStep1(QtWidgets.QDialog):
             except ValueError:
                 return False
 
-        run_features = self.default_features.copy()
+        run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
                       "buffer_type",
                       "surfactant_type", "surfactant_concentration",
@@ -453,12 +474,81 @@ class FrameStep1(QtWidgets.QDialog):
                 print(e)
         self.feature_table.setData(run_features)
 
+        # Import most recent analysis
+        try:
+            base_run_name: str = os.path.basename(self.run_file_run)
+            base_run_name = base_run_name[:base_run_name.rfind("_")]
+            csv_file = os.path.join(os.path.dirname(
+                self.run_file_analyze), f"{base_run_name}_analyze_out.csv")
+            zip_filename = os.path.splitext(
+                os.path.basename(self.run_file_analyze))[0]
+            with secure_open(csv_file, "r", zip_filename, insecure=True) as f:
+                csv_headers = next(f)
+                csv_cols = (0, 2, 4)
+                data = np.loadtxt(
+                    f.readlines(), delimiter=",", skiprows=0, usecols=csv_cols
+                )
+            in_shear_rate = data[:, 0]
+            in_viscosity = data[:, 1]
+            in_temperature = data[:, 2]
+        except Exception as e:
+            print(e)
+            in_shear_rate = []
+            in_viscosity = []
+            in_temperature = []
+
         self.run_figure.clear()
+        self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
-        ax.set_xlabel("Shear rate")
-        ax.set_ylabel("Viscosity")
-        ax.legend()
+        ax.set_title(f"Shear-rate vs. Viscosity: {self.run_name.text()}")
+        ax.set_xlabel("Shear-rate (1/s)")
+        ax.set_ylabel("Viscosity (cP)")
+        if len(in_viscosity) > 0:
+            lower_limit = np.amin(in_viscosity) / 1.5
+            power = 1
+            while power > -5:
+                if lower_limit > 10**power:
+                    lower_limit = 10**power
+                    break
+                power -= 1
+            upper_limit = np.amax(in_viscosity) * 1.5
+            power = 0
+            while power < 5:
+                if upper_limit < 10**power:
+                    upper_limit = 10**power
+                    break
+                power += 1
+            if lower_limit >= upper_limit:
+                print(
+                    "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
+                )
+                ax.set_ylim([0, 1000])
+            elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
+                print(
+                    f"Auto-calculated y-range limits for Figure 4 are: [{lower_limit}, {upper_limit}]"
+                )
+                ax.set_ylim([lower_limit, upper_limit])
+            else:
+                print(
+                    "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
+                )
+                ax.set_ylim([0, 1000])
+            ax.plot(data[:, 0], data[:, 1], "bd")
+            self.run_figure_valid = True
+        else:
+            ax.text(0.5, 0.5, "Invalid Results",
+                    transform=ax.transAxes,
+                    ha='center', va='center',
+                    bbox=dict(facecolor='yellow', edgecolor='black'))
+        ax.set_xscale("log")
+        ax.set_yscale("log")
         self.run_canvas.draw()
+
+        avg_temp = np.average(data[:, 2])
+        if np.isnan(avg_temp):
+            self.run_temperature.setText("(Unknown)")
+        else:
+            self.run_temperature.setText(f"{avg_temp:2.2f}C")
 
 
 class FrameStep2(QtWidgets.QDialog):
@@ -531,6 +621,7 @@ class TableView(QtWidgets.QTableWidget):
             for m, item in enumerate(self.data[key]):
                 if isinstance(item, list):
                     newitem = QtWidgets.QComboBox()
+                    newitem.addItem("none")
                     newitem.addItems(item)
                     newitem.addItem("add new...")
                     if len(item) > 1:
