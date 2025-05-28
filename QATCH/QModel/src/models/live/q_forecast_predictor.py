@@ -11,10 +11,10 @@ Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    04-07-2025
+    05-14-2025
 
 Version:
-    V2
+    V2.0.1
 """
 
 import os
@@ -26,12 +26,15 @@ import threading
 from enum import Enum
 from sklearn.pipeline import Pipeline
 from QATCH.QModel.src.models.live.q_forecast_data_processor import QForecastDataProcessor
-from QATCH.common.logger import Logger
+from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.common.logger import Logger as Log
+from QATCH.common.architecture import Architecture
+
 
 # Global constants
-PREDICTION_THRESHOLD: float = 0.80
-WAIT_TIME = 2
-TAG: list = ['QForecastPredictor']
+PREDICTION_THRESHOLD: float = 0.75
+WAIT_TIME: int = 1
+TAG: str = '[QForecastPredictor]'
 
 
 class AvailableBoosters(Enum):
@@ -85,6 +88,11 @@ class QForecastPredictor:
         self._last_max_time: float = 0.5
         self._has_reported_full_fill = False
         self._is_waiting_for_full_fill = False
+        self._no_wait = False
+        model_dir = os.path.join(
+            Architecture.get_path(),
+            "QATCH", "QModel", "SavedModels", "pf")
+        self._pf_predictor = PFPredictor(model_dir=model_dir)
 
     def get_fill_status(self) -> FillStatus:
         """
@@ -117,6 +125,33 @@ class QForecastPredictor:
             self._prediction_buffer_size = 0
             self._fill_state = self._predict()
 
+    def get_start_time(self) -> float:
+        """
+        Retrieves the estimated start time of the fill.
+
+        Returns:
+            float: The estimated start time of the fill.
+        """
+        return self._start_loc['time']
+
+    def get_end_time(self) -> float:
+        """
+        Retrieves the estimated end time of the fill.
+
+        Returns:
+            float: The estimated end time of the fill.
+        """
+        return self._end_loc['time']
+
+    def no_wait(self) -> None:
+        """
+        Bypasses wait time for hysteresis on channel 3 exit.
+
+        Returns:
+            None
+        """
+        self._no_wait = True
+
     def _extend_buffer(self, new_data: pd.DataFrame) -> None:
         """
         Extend the internal data buffer with new data.
@@ -133,14 +168,19 @@ class QForecastPredictor:
             raise ValueError(
                 "new_data must contain the 'Relative_time' column.")
         # time = new_data['Relative_time']
-        # Logger.i(TAG, f'{time}')
+        # Log.i(TAG, f'{time}')
         if self._data is None or self._data.empty:
-            self._data = pd.DataFrame(columns=new_data.columns)
-        new_data_filtered = new_data[new_data['Relative_time']
-                                     > self._last_max_time]
-        self._data = pd.concat(
-            [self._data, new_data_filtered], ignore_index=True)
-        self._prediction_buffer_size += len(new_data_filtered)
+            self._data = new_data.copy()
+            self._prediction_buffer_size = len(self._data)
+        else:
+            new_data_filtered = new_data[new_data['Relative_time']
+                                         > self._last_max_time]
+            new_data_aligned = new_data_filtered.reindex(
+                columns=self._data.columns)
+            self._data = pd.concat(
+                [self._data, new_data_aligned], ignore_index=True)
+            self._prediction_buffer_size += len(new_data_filtered)
+
         if not self._data.empty:
             self._last_max_time = self._data['Relative_time'].max()
             self._data.sort_values(
@@ -158,7 +198,7 @@ class QForecastPredictor:
             Exception: If no valid booster is active.
         """
         if self._active_booster == AvailableBoosters.START:
-            Logger.d(TAG, 'Using start booster.')
+            Log.d(TAG, 'Using start booster.')
             return self._process_prediction(
                 booster=self._start_booster,
                 loc=self._start_loc,
@@ -167,7 +207,7 @@ class QForecastPredictor:
                 waiting_status=FillStatus.NO_FILL,
             )
         elif self._active_booster == AvailableBoosters.END:
-            Logger.d(TAG, 'Using end booster.')
+            Log.d(TAG, 'Using end booster.')
             # If FULL_FILL has already been finalized, return it immediately.
             if self._has_reported_full_fill:
                 return FillStatus.FULL_FILL
@@ -180,7 +220,7 @@ class QForecastPredictor:
                 waiting_status=FillStatus.FILLING,
             )
 
-            if result == FillStatus.FULL_FILL:
+            if result == FillStatus.FULL_FILL and self._no_wait == False:
                 # If not already waiting, start a non-blocking timer.
                 if not self._is_waiting_for_full_fill:
                     self._is_waiting_for_full_fill = True
@@ -191,7 +231,7 @@ class QForecastPredictor:
             else:
                 return result
         else:
-            Logger.e(TAG, "No valid booster active.")
+            Log.e(TAG, "No valid booster active.")
             raise Exception("No valid booster active.")
 
     def _process_prediction(
@@ -223,16 +263,20 @@ class QForecastPredictor:
         predictions: np.ndarray = self._get_predictions(
             booster=booster, start_index=start_index, start_time=start_time)
         if predictions.size == 0:
-            Logger.e(TAG, "No predictions were generated.")
+            Log.e(TAG, "No predictions were generated.")
             raise ValueError("No predictions generated from the booster.")
 
         if (predictions == 1).any():
+            num_pois = self._pf_predictor.predict(file_buffer=self._data)
+            if completion_status == FillStatus.FULL_FILL and num_pois < 6:
+                return waiting_status
+
             new_index: int = int(np.argmax(predictions == 1))
             loc['index'] = new_index
             try:
                 loc['time'] = self._data.loc[new_index, 'Relative_time']
             except Exception as e:
-                Logger.e(
+                Log.e(
                     TAG, f"Error accessing 'Relative_time' at index {new_index}: {e}")
                 raise
             self._active_booster = next_active
@@ -262,21 +306,23 @@ class QForecastPredictor:
         features: pd.DataFrame = QForecastDataProcessor.process_data(
             self._data, live=True, start_idx=start_index, start_time=start_time)
         if features.empty:
-            Logger.e(
+            Log.e(
                 TAG, "Processed features are empty; unable to perform predictions.")
             raise ValueError("Processed features are empty.")
         try:
-            transformed_features = self._scaler.transform(features)
+            transformed_features = self._scaler.transform(features.to_numpy())
+
+            # transformed_features = self._scaler.transform(features)
         except Exception as e:
-            Logger.e(TAG, f"Error transforming features: {e}")
+            Log.e(TAG, f"Error transforming features: {e}")
             raise
         dfeatures = xgb.DMatrix(transformed_features)
         try:
             probabilities: np.ndarray = booster.predict(dfeatures)
-            Logger.d(
+            Log.d(
                 TAG, f'Max prob {max(probabilities)} @ idx {np.argmax(probabilities)}, data length={len(self._data)}')
         except Exception as e:
-            Logger.e(TAG, f"Error during booster prediction: {e}")
+            Log.e(TAG, f"Error during booster prediction: {e}")
             raise
         predictions: np.ndarray = (
             probabilities > PREDICTION_THRESHOLD).astype(int)
@@ -299,17 +345,17 @@ class QForecastPredictor:
         if not isinstance(booster_path, str) or not booster_path.strip():
             raise ValueError("booster_path must be a non-empty string.")
         if not os.path.exists(booster_path):
-            Logger.e(TAG, f"Booster path `{booster_path}` does not exist.")
+            Log.e(TAG, f"Booster path `{booster_path}` does not exist.")
             raise Exception(f"Booster path `{booster_path}` does not exist.")
 
         booster: xgb.Booster = xgb.Booster()
         try:
             booster.load_model(booster_path)
-            Logger.i(
+            Log.i(
                 TAG, f'Booster successfully loaded from path `{booster_path}`.')
             return booster
         except Exception as e:
-            Logger.e(
+            Log.e(
                 TAG, f'Error loading booster with path `{booster_path}`: {e}.')
             raise
 
@@ -330,16 +376,16 @@ class QForecastPredictor:
         if not isinstance(scaler_path, str) or not scaler_path.strip():
             raise ValueError("scaler_path must be a non-empty string.")
         if not os.path.exists(scaler_path):
-            Logger.e(TAG, f"Scaler path `{scaler_path}` does not exist.")
+            Log.e(TAG, f"Scaler path `{scaler_path}` does not exist.")
             raise Exception(f"Scaler path `{scaler_path}` does not exist.")
         try:
             with open(scaler_path, "rb") as f:
                 scaler: Pipeline = pickle.load(f)
-            Logger.i(
+            Log.i(
                 TAG, f"Scaler successfully loaded from path `{scaler_path}`.")
             return scaler
         except Exception as e:
-            Logger.e(
+            Log.e(
                 TAG, f'Error loading scaler with path `{scaler_path}`: {e}.')
             raise
 

@@ -311,7 +311,9 @@ class Constants:
     ######################
     list_predict_models = ["ModelData",
                            "QModel v2",
-                           "QModel v3"]
+                           "QModel v3",
+                           "QModel v3 + Partial Fills"]
+    PF_predict = True
     QModel3_predict = True
     QModel2_predict = True
     ModelData_predict = True

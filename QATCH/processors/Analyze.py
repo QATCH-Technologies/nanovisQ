@@ -8,6 +8,7 @@ from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
 import numpy as np
+import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
@@ -19,10 +20,14 @@ from QATCH.common.fileManager import FileManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
-from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
+from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.QModel.src.models.pf.q_model_predictor_ch1 import QModelPredictorCh1
+from QATCH.QModel.src.models.pf.q_model_predictor_ch2 import QModelPredictorCh2
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
+from QATCH.models.ModelData import ModelData
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -387,6 +392,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # lazy load these modules on 'loadRun()' call (if selected)
         self.QModel_v3_modules_loaded = False
         self.QModel_v3_predictor = None
+
+        self.PF_modules_loaded = False
+        self.PF_predictor = None
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
@@ -878,7 +886,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel3_predict:
+        if Constants.PF_predict:
+            self.cBox_Models.setCurrentIndex(3)
+        elif Constants.QModel3_predict:
             self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel2_predict:
             self.cBox_Models.setCurrentIndex(1)
@@ -1518,7 +1528,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Enables or disables UI buttons based on the current state.
 
             This function adjusts the availability of various UI buttons based on, the presence of an XML path,
-            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the 
+            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the
             system is busy.
 
             Args:
@@ -1582,12 +1592,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Adjusts the difference factor based on the state of the curve optimizer checkbox.
 
-        If the curve optimizer checkbox is not checked, this method resets the 
-        diff factor to the default value specified in `Constants.default_diff_factor`. 
+        If the curve optimizer checkbox is not checked, this method resets the
+        diff factor to the default value specified in `Constants.default_diff_factor`.
         It then updates the new diff factor value by calling `self.set_new_diff_factor()`.
 
         Args:
-            object (QWidget): The widget or object interacting with this method. Typically, 
+            object (QWidget): The widget or object interacting with this method. Typically,
                 this could represent the checkbox or related UI component triggering the event.
         """
         if not self.difference_factor_optimizer_checkbox.isChecked():
@@ -1635,10 +1645,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Validates and sets a new difference factor based on user input.
 
-        This method checks if the input in `tbox_diff_factor` is valid and within 
-        the acceptable range defined by `self.validFactor`. If valid, it confirms 
-        any unsaved changes before proceeding to update the `diff_factor` with the 
-        provided input. If the input is invalid, it logs an error message. After 
+        This method checks if the input in `tbox_diff_factor` is valid and within
+        the acceptable range defined by `self.validFactor`. If valid, it confirms
+        any unsaved changes before proceeding to update the `diff_factor` with the
+        provided input. If the input is invalid, it logs an error message. After
         updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
 
         Raises an error if the process fails.
@@ -1700,11 +1710,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("Failed to set new channel thickness!")
 
     def set_new_prediction_model(self, text):
-        default = "QModel v2"
-        if default in Constants.list_predict_models:
-            index = Constants.list_predict_models.index(default)
-        else:
-            index = 3
+        index = len(Constants.list_predict_models) - 1
+        default = Constants.list_predict_models[index]
         if text in Constants.list_predict_models:
             index = Constants.list_predict_models.index(text)
         else:
@@ -1715,6 +1722,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel2_predict = True if index >= 1 else False
             Constants.QModel3_predict = True if index >= 2 else False
+            Constants.PF_predict = True if index >= 3 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -1727,7 +1735,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.parent.ControlsWin.q_version_v2.setChecked(
                 True if index == 1 else False)
             self.parent.ControlsWin.q_version_v3.setChecked(
-                True if index == 2 else False)
+                True if index >= 2 else False)
+            self.parent.ControlsWin.pf_version.setChecked(
+                True if index == 3 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2490,7 +2500,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v2' modules at load of run.")
-
         try:
             if Constants.QModel3_predict and not self.QModel_v3_modules_loaded:
                 booster_path = os.path.join(
@@ -2506,11 +2515,40 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.QModel_v3_predictor = QModelPredictor(
                     booster_path=booster_path,
                     scaler_path=scaler_path)
+
                 self.QModel_v3_modules_loaded = True
+
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v3' modules at load of run.")
-
+        try:
+            if Constants.PF_predict and not self.PF_modules_loaded:
+                f_type_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf")
+                poi_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf", "ch_{}")  # must be formatted with channel
+                start_booster_path = os.path.join(Architecture.get_path(),
+                                                  r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+                end_booster_path = os.path.join(Architecture.get_path(),
+                                                r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+                scaler_path = os.path.join(Architecture.get_path(),
+                                           r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+                self.forecaster = QForecastPredictor(
+                    start_booster_path=start_booster_path,
+                    end_booster_path=end_booster_path,
+                    scaler_path=scaler_path)
+                self.PF_predictor = PFPredictor(
+                    model_dir=f_type_model_dir)
+                self.QModel_ch1_predictor = QModelPredictorCh1(
+                    poi_model_dir.format(1))
+                self.QModel_ch2_predictor = QModelPredictorCh2(
+                    poi_model_dir.format(2))
+                self.PF_modules_loaded = True
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'Partial Fill Model' modules at load of run.")
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -2625,6 +2663,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 None,
             )
             self.enable_buttons()
+
         except Exception as e:
             Log.e(
                 f"An error occurred while loading the selected run: {str(e)}")
@@ -2713,7 +2752,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predict_result = self.QModel_v3_predictor.predict(fh)
+                        predictor = self.QModel_v3_predictor
+                        if Constants.PF_predict:
+                            if self.parent.num_channels == 2:
+                                predictor = self.QModel_ch2_predictor
+                            if self.parent.num_channels == 1:
+                                predictor = self.QModel_ch1_predictor
+                        predict_result = predictor.predict(fh)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -2982,8 +3027,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predict_result = self.QModel_v3_predictor.predict(
-                                fh)
+                            predictor = self.QModel_v3_predictor
+                            if Constants.PF_predict:
+                                if self.parent.num_channels == 2:
+                                    predictor = self.QModel_ch2_predictor
+                                if self.parent.num_channels == 1:
+                                    predictor = self.QModel_ch1_predictor
+                            predict_result = predictor.predict(fh)
                             predictions = []
                             candidates = []
                             for i in range(6):
@@ -4155,6 +4205,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
 
             poi_vals = []
+            fill_type = -1  # if exists, will be in range 0 - 3 (inclusive)
             if self.askForPOIs:
                 xml_path = (
                     data_path[0:-4] +
@@ -4178,6 +4229,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals.sort()
                     else:
                         Log.d("No points found in XML file for this run.")
+                    params = doc.getElementsByTagName("params")
+                    if len(params) > 0:
+                        params = params[-1]  # most recent element
+                        for p in params.childNodes:
+                            if p.nodeType == p.TEXT_NODE:
+                                continue  # only process elements
+                            name = p.getAttribute("name")
+                            value = p.getAttribute("value")
+                            try:
+                                if name == "fill_type":
+                                    fill_type = int(value)
+                            except:
+                                Log.e(
+                                    f'Param "{name}" in XML is not an integer.'
+                                )
+                    else:
+                        Log.d("No params found in XML file for this run.")
                 else:
                     Log.w(TAG,
                           f'Missing XML file: Expected at "{xml_path}" for this run.')
@@ -4209,6 +4277,64 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.askForPOIs = (
                     False  # re-analyze Step 1, don't auto advance to Summary
                 )
+            if Constants.PF_predict and fill_type == -1:
+                Log.d("Running partial fill predictor...")
+                with secure_open(self.loaded_datapath, "r", "capture") as f:
+                    fh = BytesIO(f.read())
+                    raw = self.PF_predictor.predict(
+                        file_buffer=fh)
+                    try:
+
+                        if hasattr(fh, "seekable") and fh.seekable():
+                            fh.seek(0)
+                        else:
+                            raise Exception(
+                                "Cannot `seek` stream prior to passing to processing.")
+                        df = pd.read_csv(fh)
+                        df = df.iloc[::5]
+                        df.reset_index(drop=True)
+                    except pd.errors.EmptyDataError:
+                        raise ValueError("The provided data file is empty.")
+                    self.forecaster._active_booster = AvailableBoosters.START
+                    self.forecaster._fill_state = FillStatus.NO_FILL
+                    self.forecaster.no_wait()
+                    self.forecaster.update_predictions(df)
+                    start_f_type = self.forecaster.get_fill_status()
+                    self.parent.forecast_start_time = self.forecaster.get_start_time()
+                    self.forecaster._data = None
+                    self.forecaster._active_booster = AvailableBoosters.END
+                    self.forecaster._fill_state = FillStatus.FILLING
+                    self.forecaster.no_wait()
+                    self.forecaster.update_predictions(df)
+                    end_f_type = self.forecaster.get_fill_status()
+                    self.parent.forecast_end_time = self.forecaster.get_end_time()
+                    num_poi = int(raw)
+                    poi_to_channels = {
+                        0: 0,
+                        1: 0,
+                        2: 0,
+                        3: 0,
+                        4: 1,
+                        5: 2,
+                        6: 3,
+                    }
+                    num_channels = poi_to_channels.get(num_poi, 0)
+                    if end_f_type == FillStatus.FULL_FILL:
+                        num_channels = 3
+                        num_poi = 6
+                    self.parent.num_channels = num_channels
+                    if num_channels == 3:
+                        Log.i("Full Fill Detected!")
+                    else:
+                        Log.w(
+                            f"Partial Fill Detected: {num_channels} Channels")
+                    Log.d(
+                        TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
+            else:
+                Log.d(f"Number of channels (fill_type): {fill_type}")
+                self.parent.num_channels = fill_type  # pulled from XML
+            # --------------------------------------------------------------- #
+
             if self.model_result == -1:  # self.stateStep != 6:
                 self.model_result = -1
                 self.model_candidates = None
@@ -4228,8 +4354,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predict_result = self.QModel_v3_predictor.predict(
-                                fh)
+                            predictor = self.QModel_v3_predictor
+                            if Constants.PF_predict:
+                                if self.parent.num_channels == 2:
+                                    predictor = self.QModel_ch2_predictor
+                                if self.parent.num_channels == 1:
+                                    predictor = self.QModel_ch1_predictor
+                            predict_result = predictor.predict(fh)
                             predictions = []
                             candidates = []
                             for i in range(6):
