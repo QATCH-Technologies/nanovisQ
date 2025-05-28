@@ -980,6 +980,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.c10.currentTextChanged.connect(self.detect_change)
         self.c11.currentTextChanged.connect(self.detect_change)
         self.c13.currentTextChanged.connect(self.detect_change)
+        self.t_channels.valueChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
