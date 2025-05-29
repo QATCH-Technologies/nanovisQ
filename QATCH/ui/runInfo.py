@@ -432,6 +432,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_st = 0
         self.auto_ca = 0
         self.auto_dn = 0
+        self.auto_nc = 0
 
         self.excipient_db = SQLiteDB()
 
@@ -807,6 +808,30 @@ class QueryRunInfo(QtWidgets.QWidget):
             "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value.")
         self.r3.addWidget(self.h5)
 
+        # -------------- Number of Channels (Start) --------------
+        self.l_channels = QtWidgets.QLabel("Fill Channels\t=")
+        self.f_channels = QtWidgets.QFrame()
+        f_channels_layout = QtWidgets.QHBoxLayout()
+        f_channels_layout.setContentsMargins(0, 0, 0, 0)
+        self.t_channels = QtWidgets.QSpinBox()
+        self.t_channels.setRange(0, 3)            # enforce 0–3
+        # arrows increment/decrement by 1
+        self.t_channels.setSingleStep(1)
+        # if you want units, you could add " channels"
+        self.t_channels.setSuffix("")
+        # NOTE: setting the value must be after XML recall
+        f_channels_layout.addWidget(self.t_channels)
+        self.f_channels.setLayout(f_channels_layout)
+        self.l_channels_hint = QtWidgets.QLabel()
+        self.l_channels_hint.setText("<u>?</u>")
+        self.l_channels_hint.setToolTip(
+            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value.")
+        h_channels = QtWidgets.QHBoxLayout()
+        h_channels.addWidget(self.l_channels)
+        h_channels.addWidget(self.f_channels, 1)  # stretch
+        h_channels.addWidget(self.l_channels_hint)
+        # -------------- Number of Channels (End) --------------
+
         layout_v = QtWidgets.QVBoxLayout()
         self.l0 = QtWidgets.QLabel()
         self.l0.setText(f"<b><u>Run Info for \"{self.run_name}\":</b></u>")
@@ -823,12 +848,16 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addWidget(self.groupBuffer)
         layout_v.addWidget(self.groupSurfactant)
         layout_v.addWidget(self.groupStabilizer)
+        self.l_channels = QtWidgets.QLabel("Number of Channels:")
+
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
         # layout_v.addWidget(self.l5)
         # layout_v.addLayout(self.r1) # hide Surface Tension
         # layout_v.addLayout(self.r2) # hide Contact Angle
         layout_v.addLayout(self.r3)  # show Density
+        # self.l_channels.setAlignment(QtCore.Qt.AlignCenter)
+        layout_v.addLayout(h_channels)
         self.q_recall = QtWidgets.QCheckBox("Remember for next run")
         self.q_recall.setChecked(True)
         self.q_recall.setEnabled(self.unsaved_changes)
@@ -965,6 +994,16 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         self.recallFromXML()
 
+        # Pre-populate number of channels when saving run using cached run-mode fill predictor result
+        if self.post_run:
+            # TODO: Using below code yields fixed '3' channels when `forecast_end_time > 0`
+            #       This behavior seems like an incomplete implementation. Is this right?
+            self.t_channels.setValue(
+                getattr(self.parent, 'num_channels', 3)
+                if not (hasattr(self.parent, 'forecast_end_time') and self.parent.forecast_end_time > 0)
+                else 3
+            )
+
         self.highlight_timer = QtCore.QTimer()  # for highlight check
         self.highlight_timer.timeout.connect(self.highlight_manual_entry)
         self.highlight_timer.setSingleShot(True)
@@ -987,7 +1026,9 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.reset_actions[-1].triggered.connect(
                     self.clear_manual_entry)
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
+        self.t_channels.valueChanged.connect(self.highlight_channels_box)
         self.highlight_manual_entry()  # run now
+        self.highlight_channels_box()  # run now
         self.g1.buttonClicked.connect(self.detect_change)
         self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
@@ -995,6 +1036,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.c10.currentTextChanged.connect(self.detect_change)
         self.c11.currentTextChanged.connect(self.detect_change)
         self.c13.currentTextChanged.connect(self.detect_change)
+        self.t_channels.valueChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -1075,6 +1117,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         auto_st = 0
         auto_ca = 0
         auto_dn = 0
+        auto_nc = 0
         try:
             if secure_open.file_exists(self.recall_xml):
                 xml_text = ""
@@ -1083,9 +1126,33 @@ class QueryRunInfo(QtWidgets.QWidget):
                     xml_text = f.read()
                 doc = minidom.parseString(xml_text)
                 params = doc.getElementsByTagName(
-                    "params")[-1]  # most recent element
+                    "params")
 
-                for p in params.childNodes:
+                # search for first "fill_type" that is "auto"
+                for i in range(len(params)):
+                    param = params[i]  # scan n-th element
+
+                    if param.nodeType == param.TEXT_NODE:
+                        continue  # only process elements
+
+                    for p in param.childNodes:
+                        if p.nodeType == p.TEXT_NODE:
+                            continue  # only process elements
+
+                        name = p.getAttribute("name")
+                        if name == "fill_type":
+                            input = p.getAttribute("input")
+                            if input == "auto":
+                                value = p.getAttribute("value")
+                                auto_nc = value  # save for later
+                                break
+
+                    if auto_nc != 0:
+                        break  # found value, skip to last element processing
+
+                param = params[-1]  # most recent element
+
+                for p in param.childNodes:
                     if p.nodeType == p.TEXT_NODE:
                         continue  # only process elements
 
@@ -1235,7 +1302,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                             new_excipient_type,
                             value)
 
-                if len(params.childNodes) == 0:
+                    # Set the fill type to the recalled number of channels from the XML
+                    # file.
+                    if name == "fill_type":
+                        self.t_channels.setValue(int(value))
+
+                if len(param.childNodes) == 0:
                     # uncheck "Remember for next time"
                     self.q_recall.setChecked(False)
                 recalled = True
@@ -1260,7 +1332,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.auto_st = float(auto_st)
             self.auto_ca = float(auto_ca)
             self.auto_dn = float(auto_dn)
-
+            self.auto_nc = int(auto_nc)
         return recalled
 
     def prevent_duplicate_scans(self):
@@ -1320,11 +1392,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             manual_dn = float(self.t5.text()) != float(
                 f"{self.auto_dn:1.3f}") if allow_reset else True
             self.t1.setStyleSheet(
-                "border: 1px solid black;" if manual_st else "background-color: #eee;")
+                "border: 2px solid black;" if manual_st else "background-color: #eee;")
             self.t2.setStyleSheet(
-                "border: 1px solid black;" if manual_ca else "background-color: #eee;")
+                "border: 2px solid black;" if manual_ca else "background-color: #eee;")
             self.t5.setStyleSheet(
-                "border: 1px solid black;" if manual_dn else "background-color: #eee;")
+                "border: 2px solid black;" if manual_dn else "background-color: #eee;")
             self.reset_actions[0].setVisible(
                 manual_st if allow_reset else False)
             self.reset_actions[1].setVisible(
@@ -1333,6 +1405,21 @@ class QueryRunInfo(QtWidgets.QWidget):
                 manual_dn if allow_reset else False)
         except Exception as e:
             Log.e(f"Invalid parameter: {e}")
+
+    def highlight_channels_box(self):
+        num_channels = int(self.t_channels.text()) if len(
+            self.t_channels.text()) else 3
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
+        if manual_nc:
+            self.t_channels.setPalette(
+                QtWidgets.QApplication.palette())  # reset background
+            self.f_channels.setStyleSheet(
+                "QFrame { border: 1px solid black; }")  # set border
+        else:
+            palette = self.t_channels.palette()
+            palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#eeeeee"))
+            self.f_channels.setStyleSheet("")  # reset border
+            self.t_channels.setPalette(palette)  # set background
 
     def switch_user_at_sign_time(self):
         from QATCH.common.userProfiles import UserProfiles, UserRoles
@@ -1980,9 +2067,16 @@ class QueryRunInfo(QtWidgets.QWidget):
         st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
         ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
+
         manual_st = (st != self.auto_st)
         manual_ca = (ca != self.auto_ca)
         manual_dn = (density != self.auto_dn)
+
+        # Get the number of channels from the textbox.  Default to full fill if
+        # they cannot be processed.
+        num_channels = int(self.t_channels.text()) if len(
+            self.t_channels.text()) else 3
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
 
         # Form input error checking for valid Surfactant, Concentration, Surface Tension,
         # Contact Angle, and Density. Errors are logged to the user and the input_error flag
@@ -2212,7 +2306,6 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                         first = first_line.split(',')
                         last = last_line.split(',')
-
                 start = dt.datetime.strptime(
                     f"{first[0]} {first[1]}", "%Y-%m-%d %H:%M:%S").isoformat()
                 stop = dt.datetime.strptime(
@@ -2223,6 +2316,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                     duration /= 60.0
                     duration_units = "minutes"
                 samples = str(samples)
+                est_start_time = self.parent.forecast_start_time
+                est_end_time = self.parent.forecast_end_time
+                if est_start_time < 0:
+                    est_start_time = 0.0
+                if est_end_time < 0:
+                    est_end_time = 0.0
                 Log.d(tag=TAG, msg=f"{start}, {stop}, {duration}, {samples}")
 
                 # Get time of last cal - based on file timestamp
@@ -2258,6 +2357,18 @@ class QueryRunInfo(QtWidgets.QWidget):
                 metric4.setAttribute('name', 'samples')
                 metric4.setAttribute('value', samples)
                 metrics.appendChild(metric4)
+
+                # ------------ Forecast start and end time ------------ #
+                # metric5 = run.createElement('metric')
+                # metric5.setAttribute('name', 'est_start_time')
+                # metric5.setAttribute('value', est_start_time)
+                # metrics.appendChild(metric5)
+
+                # metric6 = run.createElement('metric')
+                # metric6.setAttribute('name', 'est_end_time')
+                # metric6.setAttribute('value', est_end_time)
+                # metrics.appendChild(metric6)
+                # ----------------------------------------------------- #
             except Exception as e:
                 Log.e(
                     "Metrics Error: Failed to open/parse CSV file for XML file run info metrics.")
@@ -2409,6 +2520,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         param7.setAttribute('input', 'manual' if manual_dn else 'auto')
         params.appendChild(param7)
 
+        # Add the fill_type parameter to the XML with options for number of channels
+        # and if the value was auto generated or manually set.
+        param14 = run.createElement('param')
+        param14.setAttribute('name', 'fill_type')
+        param14.setAttribute('value', str(num_channels))
+        param14.setAttribute('input', 'manual' if manual_nc else 'auto')
+        params.appendChild(param14)
+
         # add hashes for security and verification
         if not os.path.exists(self.xml_path):
 
@@ -2537,6 +2656,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.updated_run.emit(
                     self.xml_path, new_name, old_name, str(stop_datetime))
                 self.updated_xml_path.emit(self.xml_path)
+
+            if hasattr(self.parent, 'num_channels') and num_channels != self.parent.num_channels:
+                Log.d("Number of fill channels changed by user in Run Info.")
+                Log.w(
+                    "Fill channels count changed! Re-run \"Predict\" to update points.")
+                self.parent.num_channels = num_channels
 
         self.unsaved_changes = False
         self.close()

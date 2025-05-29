@@ -322,19 +322,36 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
         from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
         from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
+        from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
+        from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (3 available)')
+            'Model versions (4 available)')
         self.menubar.append(qmodel_versions_menu)
-        self.q_version_v1 = self.menubar[5].addAction('ModelData v{} ({})'.format(
-            ModelData_version, ModelData_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("ModelData"))
+        self.q_version_v1 = self.menubar[5].addAction(
+            'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[0]))
         self.q_version_v1.setCheckable(True)
-        self.q_version_v2 = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel2_version, QModel2_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v2"))
+        self.q_version_v2 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel2_version, QModel2_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[1]))
         self.q_version_v2.setCheckable(True)
-        self.q_version_v3 = self.menubar[5].addAction('QModel v{} ({})'.format(
-            QModel3_version, QModel3_release), lambda: self.parent.AnalyzeProc.set_new_prediction_model("QModel v3a"))
+        self.q_version_v3 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel3_version, QModel3_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]))
         self.q_version_v3.setCheckable(True)
-        if Constants.QModel3_predict:
+        self.pf_version = self.menubar[5].addAction(
+            'Partial Fills v{} ({})'.format(PF_version, PF_release))
+        self.pf_version.triggered.connect(
+            lambda checked: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[3 if checked else 2]))
+        self.pf_version.setCheckable(True)
+        if Constants.PF_predict:
+            self.q_version_v3.setChecked(True)
+            self.pf_version.setChecked(True)
+        elif Constants.QModel3_predict:
             self.q_version_v3.setChecked(True)
         elif Constants.QModel2_predict:
             self.q_version_v2.setChecked(True)
@@ -1253,6 +1270,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._forecaster = QForecastPredictor(
                 start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_status = FillStatus.NO_FILL
+        self.forecast_start_time = -1.0
+        self.forecast_end_time = -1.0
+
+        # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
+        self.num_channels = -1
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -2945,7 +2967,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
-                    self.forecast_status = self.worker._forecaster_out.get()
+                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
             else:
                 self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)

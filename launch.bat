@@ -25,6 +25,7 @@ timeout 3
 
 cls
 cd /d %~dp0
+if exist "..\QATCH\nightly" goto :InstallNightly
 if exist "requirements.txt" goto :CheckPyVer
 goto :Launch
 
@@ -134,7 +135,8 @@ echo oLink.WorkingDirectory = "%CD%" >> %SCRIPT%
 echo oLink.Save >> %SCRIPT%
 cscript /nologo %SCRIPT%
 del %SCRIPT%
-choice /m "Create desktop shortcut (default:'Y' in 3s)" /T 3 /D Y
+if exist "QATCH\nightly" ( set default=N ) else ( set default=Y )
+choice /m "Create desktop shortcut (default:'%default%' in 3s)" /T 3 /D %default%
 if %errorlevel% neq 1 (
 echo Desktop shortcut not created.
 goto :FinishReqsInstall
@@ -169,7 +171,10 @@ echo This window will close in 3 seconds, or press any key to continue...
 timeout 3 >nul 2>&1
 color & REM this will restore normal console colors
 if exist "requirements.txt" goto :NoSelfDestruct
-(goto) 2>nul & del "%~f0"
+(exit) 2>nul & del "%~f0"
+
+:InstallNightly
+start ..\QATCH\nightly\install
 
 :NoSelfDestruct
-
+exit
