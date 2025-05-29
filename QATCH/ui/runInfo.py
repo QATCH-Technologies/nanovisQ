@@ -4,6 +4,7 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.VisQAI.src.db.sqlite_db import SQLiteDB
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np
@@ -191,13 +192,13 @@ class RunInfoWindow(QtWidgets.QWidget):
         self.notes.textChanged.connect(self.detect_change)
         self.RunInfoLayout.addWidget(self.notes, 0, 2, 2, col-1)
 
-        self.q5 = QtWidgets.QCheckBox("Remember for next run")
-        self.q5.setChecked(True)
-        self.q5.setEnabled(self.unsaved_changes)
-        self.q5.stateChanged.connect(self.detect_change)
-        self.q5.stateChanged.connect(self.update_hidden_child_fields)
+        self.q_recall = QtWidgets.QCheckBox("Remember for next run")
+        self.q_recall.setChecked(True)
+        self.q_recall.setEnabled(self.unsaved_changes)
+        self.q_recall.stateChanged.connect(self.detect_change)
+        self.q_recall.stateChanged.connect(self.update_hidden_child_fields)
         self.RunInfoLayout.addWidget(
-            self.q5, row+1, 0, 1, col+1, QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.q_recall, row+1, 0, 1, col+1, QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.btn = QtWidgets.QPushButton("Save")
         self.btn.pressed.connect(self.confirm)
@@ -343,7 +344,7 @@ class RunInfoWindow(QtWidgets.QWidget):
         run_name = self.t_runname.text()
         batch_num = self.t_batch.text()
         notes_txt = self.notes.toPlainText()
-        do_recall = self.q5.isChecked()
+        do_recall = self.q_recall.isChecked()
         for i in range(self.num_runs_saved):
             self.bWorker[i].setHiddenFields(
                 run_name, batch_num, notes_txt, do_recall)
@@ -431,6 +432,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_st = 0
         self.auto_ca = 0
         self.auto_dn = 0
+        self.auto_nc = 0
+
+        self.excipient_db = SQLiteDB()
 
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
@@ -490,7 +494,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         self.q2 = QtWidgets.QHBoxLayout()
         self.l2 = QtWidgets.QLabel()
-        self.l2.setText("Solvent\t\t=")
+        self.l2.setText("Type\t\t=")  # solvent type
         self.q2.addWidget(self.l2)
         self.t0 = QtWidgets.QLineEdit()
 
@@ -552,6 +556,13 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t0.textChanged.connect(self.lookup_completer)
         self.t0.editingFinished.connect(self.enforce_completer)
 
+        # Solvent Groupbox
+        self.groupSolvent = QtWidgets.QGroupBox("Solvent Information")
+        self.groupSolvent.setCheckable(False)
+        self.vbox0 = QtWidgets.QVBoxLayout()
+        self.groupSolvent.setLayout(self.vbox0)
+        self.vbox0.addLayout(self.q2)
+
         self.q3 = QtWidgets.QHBoxLayout()
         self.l3 = QtWidgets.QLabel()
         self.l3.setText("Surfactant\t=")
@@ -585,6 +596,170 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.q4.addWidget(self.h4)
         self.t4.textChanged.connect(self.calc_params)
         self.t4.editingFinished.connect(self.calc_params)
+
+        # Protein Type
+        self.q10 = QtWidgets.QHBoxLayout()
+        self.l10 = QtWidgets.QLabel()
+        self.l10.setText("Type\t\t=")
+        self.q10.addWidget(self.l10)
+        self.c10 = QtWidgets.QComboBox()
+        self.q10.addWidget(self.c10, 1)
+        self.h10 = QtWidgets.QLabel()
+        self.h10.setText("<u>?</u>")
+        self.h10.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q10.addWidget(self.h10)
+        self.c10.currentTextChanged.connect(self.new_protein_type)
+
+        # Protein Concentration
+        self.q12 = QtWidgets.QHBoxLayout()
+        self.l12 = QtWidgets.QLabel()
+        self.l12.setText("Concentration\t=")
+        self.q12.addWidget(self.l12)
+        self.t12 = QtWidgets.QLineEdit()
+        self.validProteinConcentration = QtGui.QDoubleValidator(0, 1000, 3)
+        self.validProteinConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t12.setValidator(self.validProteinConcentration)
+        self.q12.addWidget(self.t12)
+        self.h12 = QtWidgets.QLabel()
+        self.h12.setText("<u>mg/mL</u>")
+        self.h12.setToolTip("<b>Hint:</b> For 100mg/mL enter \"100\".")
+        self.q12.addWidget(self.h12)
+        self.t12.textChanged.connect(self.calc_params)
+        self.t12.editingFinished.connect(self.calc_params)
+
+        # Protein Groupbox
+        self.groupProtein = QtWidgets.QGroupBox("Protein Information")
+        self.groupProtein.setCheckable(False)
+        self.vbox2 = QtWidgets.QVBoxLayout()
+        self.groupProtein.setLayout(self.vbox2)
+        self.vbox2.addLayout(self.q10)
+        self.vbox2.addLayout(self.q12)
+
+        # Buffer Type
+        self.q13 = QtWidgets.QHBoxLayout()
+        self.l13 = QtWidgets.QLabel()
+        self.l13.setText("Type\t\t=")
+        self.q13.addWidget(self.l13)
+        self.c13 = QtWidgets.QComboBox()
+        self.q13.addWidget(self.c13, 1)
+        self.h13 = QtWidgets.QLabel()
+        self.h13.setText("<u>?</u>")
+        self.h13.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q13.addWidget(self.h13)
+        self.c13.currentTextChanged.connect(self.new_buffer_type)
+
+        # Buffer Concentration
+        self.q14 = QtWidgets.QHBoxLayout()
+        self.l14 = QtWidgets.QLabel()
+        self.l14.setText("Concentration\t=")
+        self.q14.addWidget(self.l14)
+        self.t14 = QtWidgets.QLineEdit()
+        self.validBufferConcentration = QtGui.QDoubleValidator(0, 1000, 1)
+        self.validBufferConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t14.setValidator(self.validBufferConcentration)
+        self.q14.addWidget(self.t14)
+        self.h14 = QtWidgets.QLabel()
+        self.h14.setText("<u>mg/mL</u>")
+        self.h14.setToolTip("<b>Hint:</b> For 10mg/mL enter \"10\".")
+        self.q14.addWidget(self.h14)
+
+        # Buffer Groupbox
+        self.groupBuffer = QtWidgets.QGroupBox("Buffer Information")
+        self.groupBuffer.setCheckable(False)
+        self.vbox3 = QtWidgets.QVBoxLayout()
+        self.groupBuffer.setLayout(self.vbox3)
+        self.vbox3.addLayout(self.q13)
+        self.vbox3.addLayout(self.q14)
+
+        # Surfactant Type
+        self.q9 = QtWidgets.QHBoxLayout()
+        self.l9 = QtWidgets.QLabel()
+        self.l9.setText("Type\t\t=")
+        self.q9.addWidget(self.l9)
+        self.c9 = QtWidgets.QComboBox()
+        self.q9.addWidget(self.c9, 1)
+        self.h9 = QtWidgets.QLabel()
+        self.h9.setText("<u>?</u>")
+        self.h9.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q9.addWidget(self.h9)
+        self.c9.currentTextChanged.connect(self.new_surfactant_type)
+
+        # Surfactant Concentration
+        self.q6 = QtWidgets.QHBoxLayout()
+        self.l6 = QtWidgets.QLabel()
+        self.l6.setText("Concentration\t=")
+        self.q6.addWidget(self.l6)
+        self.t6 = QtWidgets.QLineEdit()
+        self.validSurfactantConcentration = QtGui.QDoubleValidator(0, 1, 5)
+        self.validSurfactantConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t6.setValidator(self.validSurfactantConcentration)
+        self.q6.addWidget(self.t6)
+        self.h6 = QtWidgets.QLabel()
+        self.h6.setText("<u>%w</u>")
+        self.h6.setToolTip("<b>Hint:</b> For 0.010%w enter \"0.010\".")
+        self.q6.addWidget(self.h6)
+
+        # Surfactant Groupbox
+        self.groupSurfactant = QtWidgets.QGroupBox("Surfactant Information")
+        self.groupSurfactant.setCheckable(False)
+        self.vbox1 = QtWidgets.QVBoxLayout()
+        self.groupSurfactant.setLayout(self.vbox1)
+        self.vbox1.addLayout(self.q9)
+        self.vbox1.addLayout(self.q6)
+
+        # Stabilizer Type
+        self.q11 = QtWidgets.QHBoxLayout()
+        self.l11 = QtWidgets.QLabel()
+        self.l11.setText("Type\t\t=")
+        self.q11.addWidget(self.l11)
+        self.c11 = QtWidgets.QComboBox()
+        self.q11.addWidget(self.c11, 1)
+        self.h11 = QtWidgets.QLabel()
+        self.h11.setText("<u>?</u>")
+        self.h11.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q11.addWidget(self.h11)
+        self.c11.currentTextChanged.connect(self.new_stabilizer_type)
+
+        # Stabilizer Concentration
+        self.q8 = QtWidgets.QHBoxLayout()
+        self.l8 = QtWidgets.QLabel()
+        self.l8.setText("Concentration\t=")
+        self.q8.addWidget(self.l8)
+        self.t8 = QtWidgets.QLineEdit()
+        self.validStabilizerConcentration = QtGui.QDoubleValidator(0, 1, 3)
+        self.validStabilizerConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t8.setValidator(self.validStabilizerConcentration)
+        self.q8.addWidget(self.t8)
+        self.h8 = QtWidgets.QLabel()
+        self.h8.setText("<u>M</u>")
+        self.h8.setToolTip(
+            "<b>Hint:</b> For a molar mass of 0.50 enter \"0.50\".")
+        self.q8.addWidget(self.h8)
+        self.t8.textChanged.connect(self.calc_params)
+        self.t8.editingFinished.connect(self.calc_params)
+
+        # Stabilizer Groupbox
+        self.groupStabilizer = QtWidgets.QGroupBox("Stabilizer Information")
+        self.groupStabilizer.setCheckable(False)
+        self.vbox3 = QtWidgets.QVBoxLayout()
+        self.groupStabilizer.setLayout(self.vbox3)
+        self.vbox3.addLayout(self.q11)
+        self.vbox3.addLayout(self.q8)
+
+        # read from excipient DB
+        self.load_all_excipient_types()
+        self.populate_excipient_proteins()
+        self.populate_excipient_buffers()
+        self.populate_excipient_surfactants()
+        self.populate_excipient_stabilizers()
 
         self.r1 = QtWidgets.QHBoxLayout()
         self.l6 = QtWidgets.QLabel()
@@ -633,6 +808,30 @@ class QueryRunInfo(QtWidgets.QWidget):
             "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value.")
         self.r3.addWidget(self.h5)
 
+        # -------------- Number of Channels (Start) --------------
+        self.l_channels = QtWidgets.QLabel("Fill Channels\t=")
+        self.f_channels = QtWidgets.QFrame()
+        f_channels_layout = QtWidgets.QHBoxLayout()
+        f_channels_layout.setContentsMargins(0, 0, 0, 0)
+        self.t_channels = QtWidgets.QSpinBox()
+        self.t_channels.setRange(0, 3)            # enforce 0–3
+        # arrows increment/decrement by 1
+        self.t_channels.setSingleStep(1)
+        # if you want units, you could add " channels"
+        self.t_channels.setSuffix("")
+        # NOTE: setting the value must be after XML recall
+        f_channels_layout.addWidget(self.t_channels)
+        self.f_channels.setLayout(f_channels_layout)
+        self.l_channels_hint = QtWidgets.QLabel()
+        self.l_channels_hint.setText("<u>?</u>")
+        self.l_channels_hint.setToolTip(
+            "<b>This field is auto-calculated.</b>\nYou can modify it to a custom value.")
+        h_channels = QtWidgets.QHBoxLayout()
+        h_channels.addWidget(self.l_channels)
+        h_channels.addWidget(self.f_channels, 1)  # stretch
+        h_channels.addWidget(self.l_channels_hint)
+        # -------------- Number of Channels (End) --------------
+
         layout_v = QtWidgets.QVBoxLayout()
         self.l0 = QtWidgets.QLabel()
         self.l0.setText(f"<b><u>Run Info for \"{self.run_name}\":</b></u>")
@@ -640,21 +839,30 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addLayout(self.q_runname)
         layout_v.addLayout(self.q_batch)
         layout_v.addWidget(self.notes)
-        layout_v.addLayout(self.q1)
-        layout_v.addLayout(self.q2)
+        layout_v.addLayout(self.q1)  # show "Is this a bioformulation?"
+        # layout_v.addLayout(self.q2)  # hide Solvent
         # layout_v.addLayout(self.q3) # hide Surfactant
-        layout_v.addLayout(self.q4)
+        # layout_v.addLayout(self.q4) # hide Concentration
+        layout_v.addWidget(self.groupSolvent)
+        layout_v.addWidget(self.groupProtein)
+        layout_v.addWidget(self.groupBuffer)
+        layout_v.addWidget(self.groupSurfactant)
+        layout_v.addWidget(self.groupStabilizer)
+        self.l_channels = QtWidgets.QLabel("Number of Channels:")
+
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
         # layout_v.addWidget(self.l5)
         # layout_v.addLayout(self.r1) # hide Surface Tension
-        layout_v.addLayout(self.r2)
-        layout_v.addLayout(self.r3)
-        self.q5 = QtWidgets.QCheckBox("Remember for next run")
-        self.q5.setChecked(True)
-        self.q5.setEnabled(self.unsaved_changes)
+        # layout_v.addLayout(self.r2) # hide Contact Angle
+        layout_v.addLayout(self.r3)  # show Density
+        # self.l_channels.setAlignment(QtCore.Qt.AlignCenter)
+        layout_v.addLayout(h_channels)
+        self.q_recall = QtWidgets.QCheckBox("Remember for next run")
+        self.q_recall.setChecked(True)
+        self.q_recall.setEnabled(self.unsaved_changes)
         layout_v.addWidget(
-            self.q5, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
+            self.q_recall, alignment=QtCore.Qt.AlignmentFlag.AlignCenter)
 
         from QATCH.common.userProfiles import UserProfiles
         valid, infos = UserProfiles.session_info()
@@ -786,12 +994,23 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         self.recallFromXML()
 
+        # Pre-populate number of channels when saving run using cached run-mode fill predictor result
+        if self.post_run:
+            # TODO: Using below code yields fixed '3' channels when `forecast_end_time > 0`
+            #       This behavior seems like an incomplete implementation. Is this right?
+            self.t_channels.setValue(
+                getattr(self.parent, 'num_channels', 3)
+                if not (hasattr(self.parent, 'forecast_end_time') and self.parent.forecast_end_time > 0)
+                else 3
+            )
+
         self.highlight_timer = QtCore.QTimer()  # for highlight check
         self.highlight_timer.timeout.connect(self.highlight_manual_entry)
         self.highlight_timer.setSingleShot(True)
 
         tb_elems = [self.t_runname, self.t_batch, self.t0,
-                    self.t1, self.t2, self.t3, self.t4, self.t5]
+                    self.t1, self.t2, self.t3, self.t4, self.t5,
+                    self.t6, self.t8, self.t12, self.t14]
         self.reset_actions = []
         for tb in tb_elems:
             tb.textChanged.connect(self.detect_change)
@@ -807,10 +1026,17 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.reset_actions[-1].triggered.connect(
                     self.clear_manual_entry)
                 # self.reset_actions[-1].hovered.connect(QtWidgets.QToolTip.showText(tb.pos(), "Clear manual entry", tb))
+        self.t_channels.valueChanged.connect(self.highlight_channels_box)
         self.highlight_manual_entry()  # run now
+        self.highlight_channels_box()  # run now
         self.g1.buttonClicked.connect(self.detect_change)
-        self.q5.stateChanged.connect(self.detect_change)
+        self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
+        self.c9.currentTextChanged.connect(self.detect_change)
+        self.c10.currentTextChanged.connect(self.detect_change)
+        self.c11.currentTextChanged.connect(self.detect_change)
+        self.c13.currentTextChanged.connect(self.detect_change)
+        self.t_channels.valueChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
@@ -869,7 +1095,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t_batch.setVisible(show_single_fields)
         self.h_batch.setVisible(show_single_fields)
         self.notes.setVisible(show_single_fields)
-        self.q5.setVisible(show_single_fields)
+        self.q_recall.setVisible(show_single_fields)
         self.btn.setVisible(show_single_fields)
 
     def getRunParams(self):
@@ -884,13 +1110,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t_runname.setText(run_name + self.run_port)
         self.t_batch.setText(batch_num)
         self.notes.setPlainText(notes_txt)
-        self.q5.setChecked(do_recall)
+        self.q_recall.setChecked(do_recall)
 
     def recallFromXML(self):
         recalled = False
         auto_st = 0
         auto_ca = 0
         auto_dn = 0
+        auto_nc = 0
         try:
             if secure_open.file_exists(self.recall_xml):
                 xml_text = ""
@@ -899,9 +1126,33 @@ class QueryRunInfo(QtWidgets.QWidget):
                     xml_text = f.read()
                 doc = minidom.parseString(xml_text)
                 params = doc.getElementsByTagName(
-                    "params")[-1]  # most recent element
+                    "params")
 
-                for p in params.childNodes:
+                # search for first "fill_type" that is "auto"
+                for i in range(len(params)):
+                    param = params[i]  # scan n-th element
+
+                    if param.nodeType == param.TEXT_NODE:
+                        continue  # only process elements
+
+                    for p in param.childNodes:
+                        if p.nodeType == p.TEXT_NODE:
+                            continue  # only process elements
+
+                        name = p.getAttribute("name")
+                        if name == "fill_type":
+                            input = p.getAttribute("input")
+                            if input == "auto":
+                                value = p.getAttribute("value")
+                                auto_nc = value  # save for later
+                                break
+
+                    if auto_nc != 0:
+                        break  # found value, skip to last element processing
+
+                param = params[-1]  # most recent element
+
+                for p in param.childNodes:
                     if p.nodeType == p.TEXT_NODE:
                         continue  # only process elements
 
@@ -910,6 +1161,10 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     if name == "bioformulation":
                         bval = eval(value)
+                        # if bval:
+                        #     self.b1.click()
+                        # else:
+                        #     self.b2.click()
                         self.b1.setChecked(bval)
                         self.b2.setChecked(not bval)
                     # if name == "protein":
@@ -937,7 +1192,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 notes_txt = self.notes.toPlainText()
                                 if os.path.exists(notes_path):
                                     with open(notes_path, 'r') as f:
-                                        file_txt = "\n".join(f.readlines())
+                                        file_txt = "\n".join(
+                                            f.read().splitlines())
                                     if file_txt != notes_txt:
                                         if Constants.import_notes_from_txt_file:
                                             Log.w(
@@ -983,12 +1239,91 @@ class QueryRunInfo(QtWidgets.QWidget):
                             auto_dn = value
                         # auto_dn = value if input == "auto" else 0
 
-                if len(params.childNodes) == 0:
+                    # new parameters for revamped run info
+
+                    new_excipient = False
+                    new_excipient_type = ""
+
+                    if name == "protein_type":
+                        if value not in self.excipient_proteins and value.casefold() != "none":
+                            Log.w(
+                                f"Adding new Protein Type: \"{value}\"")
+                            self.excipient_proteins.append(value)
+                            self.excipient_proteins = sorted(
+                                self.excipient_proteins, key=str.casefold)
+                            self.populate_excipient_proteins()
+                            new_excipient = True
+                            new_excipient_type = "Protein"
+                        self.c10.setCurrentText(value)
+                    if name == "protein_concentration":
+                        self.t12.setText(value)
+                    if name == "buffer_type":
+                        if value not in self.excipient_buffers and value.casefold() != "none":
+                            Log.w(
+                                f"Adding new Buffer Type: \"{value}\"")
+                            self.excipient_buffers.append(value)
+                            self.excipient_buffers = sorted(
+                                self.excipient_buffers, key=str.casefold)
+                            self.populate_excipient_buffers()
+                            new_excipient = True
+                            new_excipient_type = "Buffer"
+                        self.c13.setCurrentText(value)
+                    if name == "buffer_concentration":
+                        self.t14.setText(value)
+                    if name == "surfactant_type":
+                        if value not in self.excipient_surfactants and value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Surfactant Type: \"{value}\" not in list")
+                            self.excipient_surfactants.append(value)
+                            self.excipient_surfactants = sorted(
+                                self.excipient_surfactants, key=str.casefold)
+                            self.populate_excipient_surfactants()
+                            new_excipient = True
+                            new_excipient_type = "Surfactant"
+                        self.c9.setCurrentText(value)
+                    if name == "surfactant_concentration":
+                        self.t6.setText(value)
+                    if name == "stabilizer_type":
+                        if value not in self.excipient_stabilizers and value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Stabilizer Type: \"{value}\" not in list")
+                            self.excipient_stabilizers.append(value)
+                            self.excipient_stabilizers = sorted(
+                                self.excipient_stabilizers, key=str.casefold)
+                            self.populate_excipient_stabilizers()
+                            new_excipient = True
+                            new_excipient_type = "Stabilizer"
+                        self.c11.setCurrentText(value)
+                    if name == "stabilizer_concentration":
+                        self.t8.setText(value)
+
+                    if new_excipient:
+                        self.excipient_db.add_base_excipient(
+                            new_excipient_type,
+                            value)
+
+                    # Set the fill type to the recalled number of channels from the XML
+                    # file.
+                    if name == "fill_type":
+                        self.t_channels.setValue(int(value))
+
+                if len(param.childNodes) == 0:
                     # uncheck "Remember for next time"
-                    self.q5.setChecked(False)
+                    self.q_recall.setChecked(False)
                 recalled = True
         except:
             Log.e("Failed to recall info from saved file.")
+
+            import sys
+            from traceback import format_tb
+
+            limit = None
+            t, v, tb = sys.exc_info()
+            a_list = ["Traceback (most recent call last):"]
+            a_list = a_list + format_tb(tb, limit)
+            a_list.append(f"{t.__name__}: {str(v)}")
+            for line in a_list:
+                Log.e(line)
 
         self.show_hide_gui(None)  # enable/disable elements
 
@@ -997,7 +1332,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.auto_st = float(auto_st)
             self.auto_ca = float(auto_ca)
             self.auto_dn = float(auto_dn)
-
+            self.auto_nc = int(auto_nc)
         return recalled
 
     def prevent_duplicate_scans(self):
@@ -1057,11 +1392,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             manual_dn = float(self.t5.text()) != float(
                 f"{self.auto_dn:1.3f}") if allow_reset else True
             self.t1.setStyleSheet(
-                "border: 1px solid black;" if manual_st else "background-color: #eee;")
+                "border: 2px solid black;" if manual_st else "background-color: #eee;")
             self.t2.setStyleSheet(
-                "border: 1px solid black;" if manual_ca else "background-color: #eee;")
+                "border: 2px solid black;" if manual_ca else "background-color: #eee;")
             self.t5.setStyleSheet(
-                "border: 1px solid black;" if manual_dn else "background-color: #eee;")
+                "border: 2px solid black;" if manual_dn else "background-color: #eee;")
             self.reset_actions[0].setVisible(
                 manual_st if allow_reset else False)
             self.reset_actions[1].setVisible(
@@ -1070,6 +1405,21 @@ class QueryRunInfo(QtWidgets.QWidget):
                 manual_dn if allow_reset else False)
         except Exception as e:
             Log.e(f"Invalid parameter: {e}")
+
+    def highlight_channels_box(self):
+        num_channels = int(self.t_channels.text()) if len(
+            self.t_channels.text()) else 3
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
+        if manual_nc:
+            self.t_channels.setPalette(
+                QtWidgets.QApplication.palette())  # reset background
+            self.f_channels.setStyleSheet(
+                "QFrame { border: 1px solid black; }")  # set border
+        else:
+            palette = self.t_channels.palette()
+            palette.setColor(QtGui.QPalette.Base, QtGui.QColor("#eeeeee"))
+            self.f_channels.setStyleSheet("")  # reset border
+            self.t_channels.setPalette(palette)  # set background
 
     def switch_user_at_sign_time(self):
         from QATCH.common.userProfiles import UserProfiles, UserRoles
@@ -1157,6 +1507,330 @@ class QueryRunInfo(QtWidgets.QWidget):
         top = int((area.height() - height) / 2)
         self.setGeometry(left, top, width, height)
 
+    def new_protein_type(self, text: str):
+        if text.casefold() == "add new...":
+            self.add_protein_type = QtWidgets.QWidget()
+            self.add_protein_type.setWindowTitle("Protein Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Protein Types:")
+            self.protein_types_multiline = QtWidgets.QPlainTextEdit()
+            self.protein_types_multiline.setPlainText(
+                "\n".join(self.excipient_proteins))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_excipient_proteins)
+            layout.addWidget(label)
+            layout.addWidget(self.protein_types_multiline)
+            layout.addWidget(save)
+            self.add_protein_type.setLayout(layout)
+            self.add_protein_type.show()
+            self.protein_types_multiline.setFocus()
+            self.protein_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text.casefold() == "none":
+            self.t12.setText("0")  # clear Protein Concentration
+            self.t12.setEnabled(False)
+            self.b2.click()  # check "no" to bioformulation question
+        else:
+            self.t12.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
+    def new_buffer_type(self, text: str):
+        if text.casefold() == "add new...":
+            self.add_buffer_type = QtWidgets.QWidget()
+            self.add_buffer_type.setWindowTitle("Buffer Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Buffer Types:")
+            self.buffer_types_multiline = QtWidgets.QPlainTextEdit()
+            self.buffer_types_multiline.setPlainText(
+                "\n".join(self.excipient_buffers))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_excipient_buffers)
+            layout.addWidget(label)
+            layout.addWidget(self.buffer_types_multiline)
+            layout.addWidget(save)
+            self.add_buffer_type.setLayout(layout)
+            self.add_buffer_type.show()
+            self.buffer_types_multiline.setFocus()
+            self.buffer_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text.casefold() == "none":
+            self.t14.setText("0")  # clear Buffer Concentration
+            self.t14.setEnabled(False)
+        else:
+            self.t14.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
+    def new_surfactant_type(self, text: str):
+        if text.casefold() == "add new...":
+            self.add_surfactant_type = QtWidgets.QWidget()
+            self.add_surfactant_type.setWindowTitle("Surfactant Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Surfactant Types:")
+            self.surfactant_types_multiline = QtWidgets.QPlainTextEdit()
+            self.surfactant_types_multiline.setPlainText(
+                "\n".join(self.excipient_surfactants))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_excipient_surfactants)
+            layout.addWidget(label)
+            layout.addWidget(self.surfactant_types_multiline)
+            layout.addWidget(save)
+            self.add_surfactant_type.setLayout(layout)
+            self.add_surfactant_type.show()
+            self.surfactant_types_multiline.setFocus()
+            self.surfactant_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text.casefold() == "none":
+            self.t6.setText("0")  # clear Surfactant Concentration
+            self.t6.setEnabled(False)
+        else:
+            self.t6.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
+    def new_stabilizer_type(self, text: str):
+        if text.casefold() == "add new...":
+            self.add_stabilizer_type = QtWidgets.QWidget()
+            self.add_stabilizer_type.setWindowTitle("Stabilizer Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Stabilizer Types:")
+            self.stabilizer_types_multiline = QtWidgets.QPlainTextEdit()
+            self.stabilizer_types_multiline.setPlainText(
+                "\n".join(self.excipient_stabilizers))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_excipient_stabilizers)
+            layout.addWidget(label)
+            layout.addWidget(self.stabilizer_types_multiline)
+            layout.addWidget(save)
+            self.add_stabilizer_type.setLayout(layout)
+            self.add_stabilizer_type.show()
+            self.stabilizer_types_multiline.setFocus()
+            self.stabilizer_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text.casefold() == "none":
+            self.t8.setText("0")  # clear Stabilizer Concentration
+            self.t8.setEnabled(False)
+        else:
+            self.t8.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
+    def load_all_excipient_types(self):
+        self.excipient_proteins = []
+        self.excipient_buffers = []
+        self.excipient_surfactants = []
+        self.excipient_stabilizers = []
+        excipients = self.excipient_db.list_base_excipients()
+
+        # Create default excipients list (if none exist)
+        if len(excipients) == 0:
+            self.excipient_db.add_base_excipient("Buffer", "Acetate")
+            self.excipient_db.add_base_excipient("Buffer", "Histidine")
+            self.excipient_db.add_base_excipient("Buffer", "PBS")
+            self.excipient_db.add_base_excipient("Surfactant", "TWEEN20")
+            self.excipient_db.add_base_excipient("Surfactant", "TWEEN80")
+            self.excipient_db.add_base_excipient("Stabilizer", "Sucrose")
+            self.excipient_db.add_base_excipient("Stabilizer", "Trehalose")
+            excipients = self.excipient_db.list_base_excipients()  # reload
+
+        for e in excipients:
+            if e['etype'] == "Protein":
+                self.excipient_proteins.append(e['name'])
+            if e['etype'] == "Buffer":
+                self.excipient_buffers.append(e['name'])
+            if e['etype'] == "Surfactant":
+                self.excipient_surfactants.append(e['name'])
+            if e['etype'] == "Stabilizer":
+                self.excipient_stabilizers.append(e['name'])
+        # this is case-sensitive, which is not what we want:
+        # self.excipient_proteins.sort()
+        # self.excipient_surfactants.sort()
+        # self.excipient_stabilizers.sort()
+        # this is using a case-insensitive sorting method:
+        self.excipient_proteins = sorted(
+            self.excipient_proteins, key=str.casefold)
+        self.excipient_buffers = sorted(
+            self.excipient_buffers, key=str.casefold)
+        self.excipient_surfactants = sorted(
+            self.excipient_surfactants, key=str.casefold)
+        self.excipient_stabilizers = sorted(
+            self.excipient_stabilizers, key=str.casefold)
+        Log.d("Proteins:", self.excipient_proteins)
+        Log.d("Buffers:", self.excipient_buffers)
+        Log.d("Surfactants:", self.excipient_surfactants)
+        Log.d("Stabilizers:", self.excipient_stabilizers)
+
+    def save_excipient_proteins(self):
+        old_proteins = self.excipient_proteins.copy()
+        new_proteins = self.protein_types_multiline.toPlainText().splitlines()
+        for name in new_proteins:
+            name = name.strip()
+            if name not in old_proteins and len(name):
+                self.excipient_db.add_base_excipient("Protein", name)
+                self.excipient_proteins.append(name)
+        for name in old_proteins:
+            if name not in new_proteins:
+                self.excipient_db.delete_base_excipient("Protein", name)
+                self.excipient_proteins.remove(name)
+        # self.excipient_proteins.sort()
+        self.excipient_proteins = sorted(
+            self.excipient_proteins, key=str.casefold)
+        self.populate_excipient_proteins()
+        self.add_protein_type.close()
+
+    def save_excipient_buffers(self):
+        old_buffers = self.excipient_buffers.copy()
+        new_buffers = self.buffer_types_multiline.toPlainText().splitlines()
+        for name in new_buffers:
+            name = name.strip()
+            if name not in old_buffers and len(name):
+                self.excipient_db.add_base_excipient("Buffer", name)
+                self.excipient_buffers.append(name)
+        for name in old_buffers:
+            if name not in new_buffers:
+                self.excipient_db.delete_base_excipient("Buffer", name)
+                self.excipient_buffers.remove(name)
+        # self.excipient_buffers.sort()
+        self.excipient_buffers = sorted(
+            self.excipient_buffers, key=str.casefold)
+        self.populate_excipient_buffers()
+        self.add_buffer_type.close()
+
+    def save_excipient_surfactants(self):
+        old_surfactants = self.excipient_surfactants.copy()
+        new_surfactants = self.surfactant_types_multiline.toPlainText().splitlines()
+        for name in new_surfactants:
+            name = name.strip()
+            if name not in old_surfactants and len(name):
+                self.excipient_db.add_base_excipient("Surfactant", name)
+                self.excipient_surfactants.append(name)
+        for name in old_surfactants:
+            if name not in new_surfactants:
+                self.excipient_db.delete_base_excipient("Surfactant", name)
+                self.excipient_surfactants.remove(name)
+        # self.excipient_surfactants.sort()
+        self.excipient_surfactants = sorted(
+            self.excipient_surfactants, key=str.casefold)
+        self.populate_excipient_surfactants()
+        self.add_surfactant_type.close()
+
+    def save_excipient_stabilizers(self):
+        old_stabilizers = self.excipient_stabilizers.copy()
+        new_stabilizers = self.stabilizer_types_multiline.toPlainText().splitlines()
+        for name in new_stabilizers:
+            name = name.strip()
+            if name not in old_stabilizers and len(name):
+                self.excipient_db.add_base_excipient("Stabilizer", name)
+                self.excipient_stabilizers.append(name)
+        for name in old_stabilizers:
+            if name not in new_stabilizers:
+                self.excipient_db.delete_base_excipient("Stabilizer", name)
+                self.excipient_stabilizers.remove(name)
+        # self.excipient_stabilizers.sort()
+        self.excipient_stabilizers = sorted(
+            self.excipient_stabilizers, key=str.casefold)
+        self.populate_excipient_stabilizers()
+        self.add_stabilizer_type.close()
+
+    def populate_excipient_proteins(self):
+        try:
+            num_items = self.c10.count()
+            self.c10.clear()
+            self.c10.addItem("none")
+            self.c10.addItems(self.excipient_proteins)
+            self.c10.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c10.setCurrentText(self.excipient_proteins[-1])
+            else:
+                self.c10.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update proteins list after saving.")
+
+    def populate_excipient_buffers(self):
+        try:
+            num_items = self.c13.count()
+            self.c13.clear()
+            self.c13.addItem("none")
+            self.c13.addItems(self.excipient_buffers)
+            self.c13.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c13.setCurrentText(self.excipient_buffers[-1])
+            else:
+                self.c13.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update buffers list after saving.")
+
+    def populate_excipient_surfactants(self):
+        try:
+            num_items = self.c9.count()
+            self.c9.clear()
+            self.c9.addItem("none")
+            self.c9.addItems(self.excipient_surfactants)
+            self.c9.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c9.setCurrentText(self.excipient_surfactants[-1])
+            else:
+                self.c9.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update surfactants list after saving.")
+
+    def populate_excipient_stabilizers(self):
+        try:
+            num_items = self.c11.count()
+            self.c11.clear()
+            self.c11.addItem("none")
+            self.c11.addItems(self.excipient_stabilizers)
+            self.c11.addItem("add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c11.setCurrentText(self.excipient_stabilizers[-1])
+            else:
+                self.c11.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update stabilizers list after saving.")
+
+    # def load_surfactant_types(self):
+    #     try:
+    #         path_to_types_file = os.path.join(
+    #             Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+    #         if not os.path.isfile(path_to_types_file):
+    #             self.save_surfactant_types()  # load and create file with defaults
+    #         else:
+    #             with open(path_to_types_file, "r") as f:
+    #                 self.available_surfactant_types = f.read.splitlines()
+    #     except:
+    #         Log.e("Failed to load surfactant types list from file.")
+
+    # def save_surfactant_types(self):
+    #     try:
+    #         self.available_surfactant_types = self.surfactant_types_multiline.toPlainText().splitlines()
+    #     except:
+    #         Log.w("Creating default surfactant types list...")
+    #         self.available_surfactant_types = ["none", "tween-20", "tween-80"]
+    #     try:
+    #         path_to_types_file = os.path.join(
+    #             Constants.local_app_data_path, "settings", "surfactantTypes.txt")
+    #         with open(path_to_types_file, "w") as f:
+    #             f.writelines("\n".join(self.available_surfactant_types))
+    #     except:
+    #         Log.e("Failed to save surfactant types list to file.")
+    #     try:
+    #         num_items = self.c5.count()
+    #         self.c5.clear()
+    #         self.c5.addItems(self.available_surfactant_types)
+    #         self.c5.addItem("add new...")
+    #         if num_items:
+    #             # select newly entered value (last in list)
+    #             self.c5.setCurrentText(self.available_surfactant_types[-1])
+    #         else:
+    #             self.c5.setCurrentIndex(0)  # initial load value: none
+    #     except:
+    #         Log.e("Failed to update surfactant list after saving.")
+
     def lookup_completer(self):
         try:
             solvent = self.t0.text()
@@ -1212,12 +1886,33 @@ class QueryRunInfo(QtWidgets.QWidget):
             if is_bioformulation != True:
                 self.t3.clear()
                 self.t4.clear()
+                # setting protein type to "none" will disable protein contentration
+                # self.c10.setCurrentIndex(0)
             else:
-                self.t0.clear()
+                # self.t0.clear()
+                pass
 
-            self.t0.setEnabled(is_bioformulation == False)
+            self.t0.setEnabled(is_bioformulation == False)  # solvent
+            # surfactant (hidden)
             self.t3.setEnabled(is_bioformulation == True)
-            self.t4.setEnabled(is_bioformulation == True)  # is_protein)
+            self.t4.setEnabled(is_bioformulation == True)  # protein (hidden)
+
+            self.groupSolvent.setVisible(
+                is_bioformulation == False)  # solvent group
+            self.groupProtein.setVisible(
+                is_bioformulation == True)  # protein group
+            self.groupBuffer.setVisible(
+                is_bioformulation == True)  # buffer group
+            self.groupSurfactant.setVisible(
+                is_bioformulation == True)  # surfactant group
+            self.groupStabilizer.setVisible(
+                is_bioformulation == True)  # stabilizer group
+
+            if curr_state is not None:
+                # resize vertically to fit fields (if visible)
+                # NOTE: use timer to add to scheduler after redraw event
+                QtCore.QTimer.singleShot(
+                    1, lambda: self.resize(self.width(), self.minimumHeight()))
 
             if object == None:
                 self.auto_st = float(self.t1.text()) if len(
@@ -1226,8 +1921,13 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.t2.text()) else 0
                 self.auto_dn = float(self.t5.text()) if len(
                     self.t5.text()) else 0
+            elif curr_state == None:
+                return  # Run Info not visible, stop here
             elif is_bioformulation != None:
-                self.calc_params()
+                if is_bioformulation:
+                    self.calc_params()
+                else:
+                    self.lookup_completer()
             else:  # form is blank
                 self.t1.clear()
                 self.t2.clear()
@@ -1258,15 +1958,24 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         if self.t3.text() != "0":
             self.t3.setText("0")  # Surfactant locked
+        if self.t4.text() != "0":
+            self.t4.setText("0")  # Concentration locked
 
         try:
             surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
             concentration = float(self.t4.text()) if len(self.t4.text()) else 0
+            protein_concentration = float(
+                self.t12.text()) if len(self.t12.text()) else 0
+            stabilizer_type = self.c11.currentText().casefold()  # i.e. "sucrose"
+            stabilizer_concentration = float(
+                self.t8.text()) if len(self.t8.text()) else 0
         except Exception as e:
             return
 
         input_error = False
-        if len(self.t3.text()) == 0 or len(self.t4.text()) == 0:
+        if (len(self.t3.text()) == 0 or len(self.t4.text()) == 0 or
+                len(self.t12.text()) == 0 or len(self.t8.text()) == 0 or
+                not self.isVisible()):
             input_error = True
         if not input_error:
             # perform additional validations only if fields are not blank
@@ -1282,10 +1991,23 @@ class QueryRunInfo(QtWidgets.QWidget):
                           self.validConcentration.bottom(),
                           self.validConcentration.top()))
                 input_error = True
+            if not self.t12.hasAcceptableInput():
+                Log.e("Input Error: Protein Concentration must be between {} and {}."
+                      .format(
+                          self.validProteinConcentration.bottom(),
+                          self.validProteinConcentration.top()))
+                input_error = True
+            if not self.t8.hasAcceptableInput():
+                Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
+                      .format(
+                          self.validStabilizerConcentration.bottom(),
+                          self.validStabilizerConcentration.top()))
+                input_error = True
         if input_error:
-            self.t1.clear()
-            self.t2.clear()
-            self.t5.clear()
+            if self.isVisible():
+                self.t1.clear()  # surface tension (hidden)
+                self.t2.clear()  # contact angle (hidden)
+                self.t5.clear()  # density
             return
 
         try:
@@ -1293,7 +2015,10 @@ class QueryRunInfo(QtWidgets.QWidget):
             surface_tension = AnalyzeProcess.Lookup_ST(
                 surfactant, concentration)
             contact_angle = AnalyzeProcess.Lookup_CA(surfactant, concentration)
-            density = AnalyzeProcess.Lookup_DN(surfactant, concentration)
+            density = AnalyzeProcess.Lookup_DN(surfactant=surfactant,
+                                               concentration=protein_concentration,
+                                               stabilizer_type=stabilizer_type,
+                                               stabilizer_concentration=stabilizer_concentration)
             self.t1.setText("{:3.3f}".format(surface_tension))
             self.t2.setText("{:2.1f}".format(contact_angle))
             self.t5.setText("{:1.3f}".format(density))
@@ -1306,9 +2031,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Lookup Error: Failed to estimate ST and/or CA.")
-            self.t1.clear()
-            self.t2.clear()
-            self.t5.clear()
+            self.t1.clear()  # surface tension (hidden)
+            self.t2.clear()  # contact angle (hidden)
+            self.t5.clear()  # density
 
     def eventFilter(self, obj, event):
         if event.type() == QtCore.QEvent.KeyPress and obj is self.sign and self.sign.hasFocus():
@@ -1342,9 +2067,16 @@ class QueryRunInfo(QtWidgets.QWidget):
         st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
         ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
+
         manual_st = (st != self.auto_st)
         manual_ca = (ca != self.auto_ca)
         manual_dn = (density != self.auto_dn)
+
+        # Get the number of channels from the textbox.  Default to full fill if
+        # they cannot be processed.
+        num_channels = int(self.t_channels.text()) if len(
+            self.t_channels.text()) else 3
+        manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
 
         # Form input error checking for valid Surfactant, Concentration, Surface Tension,
         # Contact Angle, and Density. Errors are logged to the user and the input_error flag
@@ -1379,6 +2111,52 @@ class QueryRunInfo(QtWidgets.QWidget):
                   .format(
                       self.validDensity.bottom(),
                       self.validDensity.top()))
+            input_error = True
+        if not self.t12.hasAcceptableInput():
+            Log.e("Input Error: Protein Concentration must be between {} and {}."
+                  .format(
+                      self.validProteinConcentration.bottom(),
+                      self.validProteinConcentration.top()))
+            input_error = True
+        if not self.t14.hasAcceptableInput():
+            Log.e("Input Error: Buffer Concentration must be between {} and {}."
+                  .format(
+                      self.validBufferConcentration.bottom(),
+                      self.validBufferConcentration.top()))
+            input_error = True
+        if not self.t6.hasAcceptableInput():
+            Log.e("Input Error: Surfactant Concentration must be between {} and {}."
+                  .format(
+                      self.validSurfactantConcentration.bottom(),
+                      self.validSurfactantConcentration.top()))
+            input_error = True
+        if not self.t8.hasAcceptableInput():
+            Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
+                  .format(
+                      self.validStabilizerConcentration.bottom(),
+                      self.validStabilizerConcentration.top()))
+            input_error = True
+        if self.c10.currentText().casefold() == "none" and self.c10.isEnabled() and self.c10.isVisible():
+            Log.e(
+                "Input Error: You must provide a Protein Type if this is a bioformulation.")
+            Log.e(
+                "Either select a Protein Type other than \"none\" or click \"no\" for \"Is this a bioformulation?\"")
+            input_error = True
+        if self.t12.text() == "0" and self.t12.isEnabled() and self.t12.isVisible():
+            Log.e(
+                "Input Error: Protein Concentration should be non-zero when Protein Type is not \"none\".")
+            input_error = True
+        if self.t14.text() == "0" and self.t14.isEnabled() and self.t14.isVisible():
+            Log.e(
+                "Input Error: Buffer Concentration should be non-zero when Buffer Type is not \"none\".")
+            input_error = True
+        if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
+            Log.e(
+                "Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not \"none\".")
+            input_error = True
+        if self.t8.text() == "0" and self.t8.isEnabled() and self.t8.isVisible():
+            Log.e(
+                "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\".")
             input_error = True
 
         # If the force parameter is set to True, input errors are ignored.
@@ -1528,7 +2306,6 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                         first = first_line.split(',')
                         last = last_line.split(',')
-
                 start = dt.datetime.strptime(
                     f"{first[0]} {first[1]}", "%Y-%m-%d %H:%M:%S").isoformat()
                 stop = dt.datetime.strptime(
@@ -1539,6 +2316,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                     duration /= 60.0
                     duration_units = "minutes"
                 samples = str(samples)
+                est_start_time = self.parent.forecast_start_time
+                est_end_time = self.parent.forecast_end_time
+                if est_start_time < 0:
+                    est_start_time = 0.0
+                if est_end_time < 0:
+                    est_end_time = 0.0
                 Log.d(tag=TAG, msg=f"{start}, {stop}, {duration}, {samples}")
 
                 # Get time of last cal - based on file timestamp
@@ -1574,6 +2357,18 @@ class QueryRunInfo(QtWidgets.QWidget):
                 metric4.setAttribute('name', 'samples')
                 metric4.setAttribute('value', samples)
                 metrics.appendChild(metric4)
+
+                # ------------ Forecast start and end time ------------ #
+                # metric5 = run.createElement('metric')
+                # metric5.setAttribute('name', 'est_start_time')
+                # metric5.setAttribute('value', est_start_time)
+                # metrics.appendChild(metric5)
+
+                # metric6 = run.createElement('metric')
+                # metric6.setAttribute('name', 'est_end_time')
+                # metric6.setAttribute('value', est_end_time)
+                # metrics.appendChild(metric6)
+                # ----------------------------------------------------- #
             except Exception as e:
                 Log.e(
                     "Metrics Error: Failed to open/parse CSV file for XML file run info metrics.")
@@ -1656,6 +2451,51 @@ class QueryRunInfo(QtWidgets.QWidget):
             param4.setAttribute('input', 'manual')
             params.appendChild(param4)
 
+            # new parameters for revamped run info
+
+            param8 = run.createElement('param')
+            param8.setAttribute('name', 'protein_type')
+            param8.setAttribute('value', self.c10.currentText())
+            params.appendChild(param8)
+
+            param9 = run.createElement('param')
+            param9.setAttribute('name', 'protein_concentration')
+            param9.setAttribute('value', self.t12.text())
+            param9.setAttribute('units', 'mg/mL')
+            params.appendChild(param9)
+
+            param14 = run.createElement('param')
+            param14.setAttribute('name', 'buffer_type')
+            param14.setAttribute('value', self.c13.currentText())
+            params.appendChild(param14)
+
+            param15 = run.createElement('param')
+            param15.setAttribute('name', 'buffer_concentration')
+            param15.setAttribute('value', self.t14.text())
+            params.appendChild(param15)
+
+            param10 = run.createElement('param')
+            param10.setAttribute('name', 'surfactant_type')
+            param10.setAttribute('value', self.c9.currentText())
+            params.appendChild(param10)
+
+            param11 = run.createElement('param')
+            param11.setAttribute('name', 'surfactant_concentration')
+            param11.setAttribute('value', self.t6.text())
+            param11.setAttribute('units', '%w')
+            params.appendChild(param11)
+
+            param12 = run.createElement('param')
+            param12.setAttribute('name', 'stabilizer_type')
+            param12.setAttribute('value', self.c11.currentText())
+            params.appendChild(param12)
+
+            param13 = run.createElement('param')
+            param13.setAttribute('name', 'stabilizer_concentration')
+            param13.setAttribute('value', self.t8.text())
+            param13.setAttribute('units', 'M')
+            params.appendChild(param13)
+
         param5 = run.createElement('param')
         param5.setAttribute('name', 'surface_tension')
         param5.setAttribute('value', "{0:0.{1}f}".format(
@@ -1679,6 +2519,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         param7.setAttribute('units', 'g/cm^3')
         param7.setAttribute('input', 'manual' if manual_dn else 'auto')
         params.appendChild(param7)
+
+        # Add the fill_type parameter to the XML with options for number of channels
+        # and if the value was auto generated or manually set.
+        param14 = run.createElement('param')
+        param14.setAttribute('name', 'fill_type')
+        param14.setAttribute('value', str(num_channels))
+        param14.setAttribute('input', 'manual' if manual_nc else 'auto')
+        params.appendChild(param14)
 
         # add hashes for security and verification
         if not os.path.exists(self.xml_path):
@@ -1787,12 +2635,12 @@ class QueryRunInfo(QtWidgets.QWidget):
             f.write(xml_str)
             Log.i(f"Created XML file: {self.xml_path}")
 
-        if self.q5.isEnabled():
+        if self.q_recall.isEnabled():
             run = minidom.Document()
             xml = run.createElement('run_info')
             xml.setAttribute('name', 'recall')
             run.appendChild(xml)
-            if self.q5.isChecked():  # remember for next time
+            if self.q_recall.isChecked():  # remember for next time
                 Log.i("Run info remembered for next time.")
             else:
                 params = run.createElement('params')  # blank it
@@ -1808,6 +2656,12 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.updated_run.emit(
                     self.xml_path, new_name, old_name, str(stop_datetime))
                 self.updated_xml_path.emit(self.xml_path)
+
+            if hasattr(self.parent, 'num_channels') and num_channels != self.parent.num_channels:
+                Log.d("Number of fill channels changed by user in Run Info.")
+                Log.w(
+                    "Fill channels count changed! Re-run \"Predict\" to update points.")
+                self.parent.num_channels = num_channels
 
         self.unsaved_changes = False
         self.close()

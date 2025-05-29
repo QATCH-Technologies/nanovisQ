@@ -17,7 +17,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.q_forecaster import QForecastDataProcessor, QForecastPredictor, FillStatus
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.VisQAIWindow import VisQAIWindow
@@ -316,16 +316,55 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
+        from QATCH.models.ModelData import __version__ as ModelData_version
+        from QATCH.models.ModelData import __release__ as ModelData_release
+        from QATCH.QModel.src.models.static_v2.__init__ import __version__ as QModel2_version
+        from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
+        from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
+        from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
+        from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
+        from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
+        qmodel_versions_menu = self.menubar[3].addMenu(
+            'Model versions (4 available)')
+        self.menubar.append(qmodel_versions_menu)
+        self.q_version_v1 = self.menubar[5].addAction(
+            'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[0]))
+        self.q_version_v1.setCheckable(True)
+        self.q_version_v2 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel2_version, QModel2_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[1]))
+        self.q_version_v2.setCheckable(True)
+        self.q_version_v3 = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel3_version, QModel3_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]))
+        self.q_version_v3.setCheckable(True)
+        self.pf_version = self.menubar[5].addAction(
+            'Partial Fills v{} ({})'.format(PF_version, PF_release))
+        self.pf_version.triggered.connect(
+            lambda checked: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[3 if checked else 2]))
+        self.pf_version.setCheckable(True)
+        if Constants.PF_predict:
+            self.q_version_v3.setChecked(True)
+            self.pf_version.setChecked(True)
+        elif Constants.QModel3_predict:
+            self.q_version_v3.setChecked(True)
+        elif Constants.QModel2_predict:
+            self.q_version_v2.setChecked(True)
+        elif Constants.ModelData_predict:
+            self.q_version_v1.setChecked(True)
+        else:
+            Log.w(TAG, "No model selected on startup")
+        self.menubar[3].addSeparator()
         sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
             Constants.app_version,
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
-        from QATCH.QModel.__init__ import __version__ as QModel_version
-        from QATCH.QModel.__init__ import __release__ as QModel_release
-        q_version = self.menubar[3].addAction('QModel v{} ({})'.format(
-            QModel_version, QModel_release))
-        q_version.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -1169,6 +1208,13 @@ class MainWindow(QtWidgets.QMainWindow):
         # Initiates an Upgrader class
         self.fwUpdater = FW_Updater()
 
+        # Check for nightly build option, set if available
+        try:
+            from QATCH.nightly.interface import UpdaterTask_Nightly
+            Constants.UpdateEngine = UpdateEngines.Nightly
+        except:
+            pass  # no nightly build option available
+
         # Restore mode index for speed comboBox
         self.restore_mode_idx = np.full(len(OperationType), -1, int)
 
@@ -1224,6 +1270,11 @@ class MainWindow(QtWidgets.QMainWindow):
             self._forecaster = QForecastPredictor(
                 start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_status = FillStatus.NO_FILL
+        self.forecast_start_time = -1.0
+        self.forecast_end_time = -1.0
+
+        # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
+        self.num_channels = -1
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -1784,7 +1835,7 @@ class MainWindow(QtWidgets.QMainWindow):
             import logging
             logging.getLogger("tensorflow").setLevel(
                 logging.ERROR)  # suppress AutoGraph warnings
-            if Constants.preload_tensorflow and Constants.Tensorflow_predict:
+            if Constants.preload_tensorflow and Constants.TensorFlow_predict:
                 # load tensorflow library once per session
                 Log.d(tag=TAG, msg="GUI: Force repaint events")
                 Log.w(tag=TAG, msg="Loading tensorflow modules...")
@@ -2916,7 +2967,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
-                    self.forecast_status = self.worker._forecaster_out.get()
+                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
             else:
                 self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)
@@ -4251,6 +4302,26 @@ class MainWindow(QtWidgets.QMainWindow):
             labelweb2 = 'ONLINE'
             labelweb3 = 'UNKNOWN!'
 
+            if Constants.UpdateEngine == UpdateEngines.Nightly:
+                try:
+                    from QATCH.nightly.interface import GH_Interface
+                    ((update_available, update_now),
+                     latest_bundle) = GH_Interface(self).update_check()
+                    color = '#00ff00' if not update_available else '#ff0000'
+                    if update_now:
+                        (build, key) = latest_bundle
+                        self.url_download = {"date": build['created_at'].split('T')[0],
+                                             "name": f"{build['name'].split()[0]}.zip",
+                                             "path": build['archive_download_url'],
+                                             "size": build['size_in_bytes']}
+                        self.start_download()
+                    return color, labelweb2
+                except:
+                    # raise  # TODO: testing only, comment out!
+                    if hasattr(self, "url_download"):
+                        delattr(self, "url_download")
+                    pass
+
             if "v2.3" in Constants.app_version:
                 branch = "v2.3x"
             elif "v2.4" in Constants.app_version:
@@ -4295,6 +4366,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         except Exception as e:
             Log.e("Update Task error:", e)
+            # raise e  # TODO: testing only, comment out!
 
     def update_ping(self):
         # periodic check for update task completion
@@ -4981,7 +5053,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         Architecture.get_path(), 'QATCH/icons/download_icon.ico')
                     self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                     self.progressBar.setWindowTitle(
-                        f"Downloading SW {os.path.basename(new_install_path)}")
+                        f" Installing SW {os.path.basename(new_install_path)}")
                     self.progressBar.setWindowFlag(
                         QtCore.Qt.WindowContextHelpButtonHint, False)
                     self.progressBar.setWindowFlag(
@@ -5038,10 +5110,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def newUpdaterTask(self, src, dest, size):
         _updaterTask = None
+        if Constants.UpdateEngine == UpdateEngines.Nightly:
+            try:
+                from QATCH.nightly.interface import UpdaterTask_Nightly
+                _updaterTask = UpdaterTask_Nightly(dest, src, size)
+            except:
+                Log.e("Cannot use nightly updater. Falling back to GitHub...")
+                Constants.UpdateEngine = UpdateEngines.GitHub
         if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
             # InstallWorker(proceed, copy_src, copy_dst)
             _updaterTask = UpdaterTask_Dbx(
-                self._dbx_connection, dest, src, size)
+                dest, src, size, self._dbx_connection)
         if Constants.UpdateEngine == UpdateEngines.GitHub:
             _updaterTask = UpdaterTask_Git(dest, src, size)
         if not _updaterTask:
@@ -5094,21 +5173,31 @@ class MainWindow(QtWidgets.QMainWindow):
         do_launch_inline = do_launch_inline if not do_launch_inline is None else self.do_launch_inline
 
         if os.path.exists(save_to):
-            zip_filename = os.path.basename(save_to)[:-4]
-            if os.path.basename(new_install_path) != zip_filename:
-                new_install_path = os.path.join(new_install_path, zip_filename)
-            # Extract ZIP and launch new build
-            with pyzipper.AESZipFile(save_to, 'r') as zf:
-                zf.extractall(new_install_path)
-            nested_path_wrong = os.path.join(new_install_path, zip_filename)
-            if os.path.exists(nested_path_wrong):
-                # this guarantees files are extracted where we want them
-                os.renames(nested_path_wrong, new_install_path + "_temp")
-                if os.path.dirname(save_to) == new_install_path:
-                    os.renames(save_to, os.path.join(
-                        new_install_path + "_temp", zip_filename + ".zip"))
-                os.renames(new_install_path + "_temp", new_install_path)
-            os.remove(save_to)
+
+            self.progressBar = QtWidgets.QProgressDialog(
+                f"Extracting SW {os.path.basename(new_install_path)}...", "Cancel", 0, 0, self)
+            icon_path = os.path.join(
+                Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+            self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+            self.progressBar.setWindowTitle(
+                f" Installing SW {os.path.basename(new_install_path)}")
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowStaysOnTopHint, True)
+            self.progressBar.canceled.disconnect()
+            self.progressBar.setFixedSize(
+                int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+            self.progressBar.findChild(QtWidgets.QPushButton). \
+                setEnabled(False)  # disable "cancel" button
+
+            extract_thread = ExtractWorker(save_to, new_install_path)
+            # extract_thread.label_text.connect(self.progressBar.setLabelText)
+            extract_thread.set_range.connect(self.progressBar.setRange)
+            extract_thread.progress.connect(self.progressBar.setValue)
+            extract_thread.finished.connect(self.progressBar.reset)
+            extract_thread.start()
+            self.progressBar.exec_()  # wait for reset() call from thread
 
             Log.w("Launching setup script for new build...")
             start_new_build = os.path.join(new_install_path, "launch.bat")
@@ -5170,7 +5259,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"ERROR: File {save_to} does not exist. Failed to download from {engine} server.")
 
         if setup_finished or not do_install:
-            if PopUp.question_FW(self, "QATCH Software Ready!", "Would you like to close this instance and\nlaunch the new application now?"):
+            if PopUp.question_FW(self, "QATCH Software Ready!", "<b>Install Success!</b><br/><br/>Would you like to close this instance and<br/>launch the new application now?"):
 
                 # launch new instance
                 launch_file = "QATCH nanovisQ.lnk" if do_launch_inline else "launch.bat"
@@ -5191,6 +5280,53 @@ class MainWindow(QtWidgets.QMainWindow):
         # Log.d("GUI: Normal repaint events") # no longer needed
 
 
+class ExtractWorker(QtCore.QThread):
+    label_text = QtCore.pyqtSignal(str)
+    set_range = QtCore.pyqtSignal(int, int)
+    progress = QtCore.pyqtSignal(int)
+    finished = QtCore.pyqtSignal()
+
+    def __init__(self, save_to, new_install_path):
+        super().__init__()
+        self.save_to = save_to
+        self.new_install_path = new_install_path
+
+    def run(self):
+        save_to = self.save_to
+        new_install_path = self.new_install_path
+        zip_filename = os.path.basename(save_to)[:-4]
+
+        if os.path.basename(new_install_path) != zip_filename:
+            new_install_path = os.path.join(
+                new_install_path, zip_filename)
+
+        # Extract ZIP and launch new build
+        with pyzipper.AESZipFile(save_to, 'r') as zf:
+            file_list = zf.namelist()
+            total = len(file_list)
+            self.set_range.emit(0, total)
+
+            for i, file in enumerate(file_list):
+                zf.extract(file, new_install_path)
+                self.label_text.emit(f"Extracting: {file}")
+                self.progress.emit(i)
+
+        self.label_text.emit("Finalizing...")
+        nested_path_wrong = os.path.join(
+            new_install_path, zip_filename)
+
+        if os.path.exists(nested_path_wrong):
+            # this guarantees files are extracted where we want them
+            os.renames(nested_path_wrong, new_install_path + "_temp")
+            if os.path.dirname(save_to) == new_install_path:
+                os.renames(save_to, os.path.join(
+                    new_install_path + "_temp", zip_filename + ".zip"))
+            os.renames(new_install_path + "_temp", new_install_path)
+
+        os.remove(save_to)
+        self.finished.emit()
+
+
 class UpdaterProcess_Dbx(multiprocessing.Process):
     def __init__(self, dbx_conn, local, remote):
         super().__init__()
@@ -5205,75 +5341,8 @@ class UpdaterProcess_Dbx(multiprocessing.Process):
         md = self._dbx_conn.files_download_to_file(file_local, file_remote)
 
 
-class UpdaterTask_Dbx(QtCore.QThread):
-    finished = QtCore.pyqtSignal()
-    exception = QtCore.pyqtSignal(str)
-    progress = QtCore.pyqtSignal(str, int)
-    _cancel = False
-
-    def __init__(self, dbx_conn, local_file, remote_file, total_size):
-        super().__init__()
-        self._dbx_connection = dbx_conn
-        self.local_file = local_file
-        self.remote_file = remote_file
-        self.total_size = total_size
-
-    def cancel(self):
-        Log.d("GUI: Toggle progress mode")
-        # Log.w("Process kill request")
-        self._cancel = True
-        # self.progressTaskHandle.terminate()
-        self.progressTaskHandle.kill()
-        # self._dbx_connection.close() # force abort of active file download
-
-    def run(self):
-        try:
-            TAG1 = "[UpdaterTask]"
-            save_to = self.local_file
-            path = self.remote_file
-            size = self.total_size
-            last_pct = -1
-
-            self.progressTaskHandle = UpdaterProcess_Dbx(
-                self._dbx_connection, save_to, path)
-            self.progressTaskHandle.start()
-
-            while True:
-                try:
-                    curr_size = os.path.getsize(save_to)
-                except FileNotFoundError as e:
-                    curr_size = 0
-                except Exception as e:
-                    curr_size = 0
-                    Log.e(TAG1, f"ERROR: {e}")
-                    self.exception.emit(str(e))
-                pct = int(100 * curr_size / size)
-                if pct != last_pct or curr_size == size:
-                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                    if curr_size == 0:
-                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
-                    Log.i(TAG1, status_str)
-                    self.progress.emit(
-                        status_str[:status_str.rfind(' (')], pct)
-                    need_repaint = True
-                    last_pct = pct
-                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
-                    break
-            if not self._cancel:
-                Log.d("GUI: Toggle progress mode")
-                Log.i(TAG1, "Finshed downloading!")
-            else:
-                self.progressTaskHandle.join()
-                if os.path.exists(save_to):
-                    Log.d(f"Removing partial file download: {save_to}")
-                    os.remove(save_to)
-        except Exception as e:
-            Log.e(TAG1, f"ERROR: {e}")
-            self.exception.emit(str(e))
-        self.finished.emit()
-
-
-class UpdaterTask_Git(QtCore.QThread):
+class UpdaterTask(QtCore.QThread):
+    TAG = "[UpdaterTask]"
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
     progress = QtCore.pyqtSignal(str, int)
@@ -5291,15 +5360,76 @@ class UpdaterTask_Git(QtCore.QThread):
         self._cancel = True
 
     def run(self):
+        raise NotImplementedError("Subclass must define a custom run() method")
+
+
+class UpdaterTask_Dbx(UpdaterTask):
+
+    def __init__(self, local_file, remote_file, total_size, dbx_conn):
+        super().__init__(local_file, remote_file, total_size)
+        self._dbx_connection = dbx_conn
+
+    def cancel(self):
+        super().cancel()
+        self.progressTaskHandle.kill()
+
+    def run(self):
         try:
-            TAG1 = "[UpdaterTask]"
+            save_to = self.local_file
+            path = self.remote_file
+            size = self.total_size
+            last_pct = -1
+
+            self.progressTaskHandle = UpdaterProcess_Dbx(
+                self._dbx_connection, save_to, path)
+            self.progressTaskHandle.start()
+
+            while True:
+                try:
+                    curr_size = os.path.getsize(save_to)
+                except FileNotFoundError as e:
+                    curr_size = 0
+                except Exception as e:
+                    curr_size = 0
+                    Log.e(self.TAG, f"ERROR: {e}")
+                    self.exception.emit(str(e))
+                pct = int(100 * curr_size / size)
+                if pct != last_pct or curr_size == size:
+                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
+                    if curr_size == 0:
+                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
+                    Log.i(self.TAG, status_str)
+                    self.progress.emit(
+                        status_str[:status_str.rfind(' (')], pct)
+                    need_repaint = True
+                    last_pct = pct
+                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
+                    break
+            if not self._cancel:
+                Log.d("GUI: Toggle progress mode")
+                Log.i(self.TAG, "Finshed downloading!")
+            else:
+                self.progressTaskHandle.join()
+                if os.path.exists(save_to):
+                    Log.d(f"Removing partial file download: {save_to}")
+                    os.remove(save_to)
+        except Exception as e:
+            Log.e(self.TAG, f"ERROR: {e}")
+            self.exception.emit(str(e))
+        self.finished.emit()
+
+
+class UpdaterTask_Git(UpdaterTask):
+
+    def run(self):
+        try:
             save_to = self.local_file
             path = self.remote_file
             size = self.total_size
             last_pct = -1
 
             status_str = f"Starting Download: {os.path.basename(path)} (0%)"
-            Log.i(TAG1, status_str)
+            Log.i(self.TAG, status_str)
             self.progress.emit(status_str[:status_str.rfind(' (')], 0)
 
             file_remote = path
@@ -5319,20 +5449,20 @@ class UpdaterTask_Git(QtCore.QThread):
                         pct = int(100 * curr_size / size)
                         if pct != last_pct or curr_size == size:
                             status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
-                            Log.i(TAG1, status_str)
+                            Log.i(self.TAG, status_str)
                             self.progress.emit(
                                 status_str[:status_str.rfind(' (')], pct)
                             last_pct = pct
 
             if not self._cancel:
                 Log.d("GUI: Toggle progress mode")
-                Log.i(TAG1, "Finshed downloading!")
+                Log.i(self.TAG, "Finshed downloading!")
             else:
                 if os.path.exists(save_to):
                     Log.d(f"Removing partial file download: {save_to}")
                     os.remove(save_to)
         except Exception as e:
-            Log.e(TAG1, f"ERROR: {e}")
+            Log.e(self.TAG, f"ERROR: {e}")
             self.exception.emit(str(e))
         self.finished.emit()
 
