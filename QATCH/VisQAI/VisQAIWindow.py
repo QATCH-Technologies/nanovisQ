@@ -6,7 +6,7 @@ import copy
 import os
 import numpy as np
 
-from fileStorage import secure_open
+from src.io.file_storage import SecureOpen
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 
@@ -320,7 +320,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.list_view.clearSelection()
             return
 
-        namelist = secure_open.get_namelist(self.run_file_run)
+        namelist = SecureOpen.get_namelist(self.run_file_run)
         for file in namelist:
             if file.endswith(".csv"):
                 self.run_file_run = os.path.join(
@@ -482,7 +482,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.run_file_analyze), f"{base_run_name}_analyze_out.csv")
             zip_filename = os.path.splitext(
                 os.path.basename(self.run_file_analyze))[0]
-            with secure_open(csv_file, "r", zip_filename, insecure=True) as f:
+            with SecureOpen(csv_file, "r", zip_filename, insecure=True) as f:
                 csv_headers = next(f)
                 csv_cols = (0, 2, 4)
                 data = np.loadtxt(

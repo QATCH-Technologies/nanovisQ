@@ -1,5 +1,75 @@
-from typing import Optional, Dict, Any
-from ingredient import Ingredient, Buffer, Protein, Stabilizer, Surfactant
+from typing import Optional, Dict, Any, List
+from QATCH.VisQAI.src.models.ingredient import Ingredient, Buffer, Protein, Stabilizer, Surfactant
+
+TAG = "[Formulation]"
+
+
+class ViscosityProfile:
+
+    def __init__(self, shear_rates: List[float], viscosities: List[float], units: str) -> None:
+        if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
+            raise TypeError(
+                "shear_rates and viscosities must be lists of numeric values")
+        if len(shear_rates) != len(viscosities):
+            raise ValueError(
+                "shear_rates and viscosities must have the same length")
+        if any(not isinstance(sr, (int, float)) for sr in shear_rates):
+            raise TypeError("all shear_rates must be numeric")
+        if any(not isinstance(v, (int, float)) for v in viscosities):
+            raise TypeError("all viscosities must be numeric")
+        if not isinstance(units, str) or not units.strip():
+            raise ValueError("units must be a non-empty string")
+        pairs = sorted(
+            ((float(sr), float(v)) for sr, v in zip(shear_rates, viscosities)),
+            key=lambda x: x[0]
+        )
+        self.shear_rates: List[float] = [sr for sr, _ in pairs]
+        self.viscosities: List[float] = [v for _, v in pairs]
+        self.units: str = units.strip()
+
+    def get_viscosity(self, shear_rate: float) -> float:
+        if not isinstance(shear_rate, (int, float)):
+            raise TypeError("shear_rate must be numeric")
+        sr = float(shear_rate)
+        srs = self.shear_rates
+        vs = self.viscosities
+
+        import bisect
+        idx = bisect.bisect_left(srs, sr)
+        if idx < len(srs) and srs[idx] == sr:
+            return vs[idx]
+        if idx == 0:
+            x0, x1 = srs[0], srs[1]
+            y0, y1 = vs[0], vs[1]
+        elif idx == len(srs):
+            x0, x1 = srs[-2], srs[-1]
+            y0, y1 = vs[-2], vs[-1]
+        else:
+            x0, x1 = srs[idx-1], srs[idx]
+            y0, y1 = vs[idx-1], vs[idx]
+        return y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "shear_rates": self.shear_rates,
+            "viscosities": self.viscosities,
+            "units": self.units,
+        }
+
+    def __repr__(self) -> str:
+        return (
+            f"ViscosityProfile(shear_rates={self.shear_rates}, "
+            f"viscosities={self.viscosities}, units={self.units!r})"
+        )
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, ViscosityProfile):
+            return NotImplemented
+        return (
+            self.shear_rates == other.shear_rates
+            and self.viscosities == other.viscosities
+            and self.units == other.units
+        )
 
 
 class Component:
@@ -45,6 +115,7 @@ class Formulation:
         }
         self._temperature: Optional[float] = None
         self._nacl_concentration: Optional[float] = None
+        self._viscosity_profile: Optional[ViscosityProfile] = None
 
     @property
     def id(self) -> int:
@@ -100,18 +171,33 @@ class Formulation:
             raise ValueError("nacl_concentration must be non-negative")
         self._nacl_concentration = float(conc)
 
+    def set_viscosity_profile(self, profile: ViscosityProfile) -> None:
+        if not isinstance(profile, ViscosityProfile):
+            raise TypeError("profile must be a ViscosityProfile")
+        self._viscosity_profile = profile
+
+    @property
+    def viscosity_profile(self) -> Optional[ViscosityProfile]:
+        return self._viscosity_profile
+
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {"id": self.id}
         for key, comp in self._components.items():
             data[key] = comp.to_dict() if comp is not None else None
         data["temperature"] = self.temperature
         data["nacl_concentration"] = self.nacl_concentration
+        data["viscosity_profile"] = (
+            self.viscosity_profile.to_dict()
+            if self.viscosity_profile is not None
+            else None
+        )
         return data
 
     def __repr__(self) -> str:
         parts = [f"{k}={v!r}" for k, v in self._components.items()]
         parts.append(f"temperature={self.temperature!r}")
         parts.append(f"nacl_concentration={self.nacl_concentration!r}")
+        parts.append(f"viscosity_profile={self.viscosity_profile!r}")
         return f"Formulation(id={self.id}, " + ", ".join(parts) + ")"
 
     def __eq__(self, other: Any) -> bool:
@@ -126,11 +212,13 @@ if __name__ == "__main__":
     buff = Buffer(1, "PBS", 7.4)
     stab = Stabilizer(1, 'None')
     surf = Surfactant(1, "None")
+    profile = ViscosityProfile(
+        [100, 1000, 10000, 100000, 15000000], [10, 9, 8, 7, 4], 'cp')
     form.set_temperature(25)
     form.set_nacl_concentration(100)
     form.set_protein(protein, 100, "mg/ml")
     form.set_buffer(buff, 10, 'M')
     form.set_stabilizer(stab, 0, "M")
     form.set_surfactant(surf, 0, "%w")
-    input(form.protein.ingredient.molecular_weight)
+    form.set_viscosity_profile(profile)
     print(form.to_dict())

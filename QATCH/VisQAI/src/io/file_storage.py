@@ -3,15 +3,14 @@ import os
 import hashlib
 import pyzipper
 
-TAG = ""  # "[FileStorage]"
+TAG = "[FileStorage]"
 
 
 ###########################################################################
 # Get an IO handle to read/write/append to a secured ZIP archive record
 ###########################################################################
 
-class secure_open:
-
+class SecureOpen:
     def __init__(self, file, mode='r', zipname=None, insecure=False):
         self.file = file
         self.mode = mode

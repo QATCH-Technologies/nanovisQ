@@ -1,7 +1,6 @@
 from abc import ABC
 from typing import Any, Dict, Type, TypeVar, Union
-
-Number = Union[int, float]
+TAG = "[Ingredient]"
 T = TypeVar("T", bound="Ingredient")
 
 
@@ -78,9 +77,9 @@ class Protein(Ingredient):
         self,
         enc_id: int,
         name: str,
-        molecular_weight: Number,
-        pI_mean: Number,
-        pI_range: Number
+        molecular_weight: Union[int, float],
+        pI_mean: Union[int, float],
+        pI_range: Union[int, float]
     ) -> None:
         super().__init__(enc_id, name)
         self._molecular_weight = molecular_weight
@@ -113,7 +112,7 @@ class Protein(Ingredient):
 
 
 class Buffer(Ingredient):
-    def __init__(self, enc_id: int, name: str, pH: Number) -> None:
+    def __init__(self, enc_id: int, name: str, pH: Union[int, float]) -> None:
         super().__init__(enc_id, name)
         self._pH = pH
 
