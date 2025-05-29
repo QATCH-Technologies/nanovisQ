@@ -475,6 +475,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.feature_table.setData(run_features)
 
         # Import most recent analysis
+        in_shear_rate = []
+        in_viscosity = []
+        in_temperature = []
         try:
             base_run_name: str = os.path.basename(self.run_file_run)
             base_run_name = base_run_name[:base_run_name.rfind("_")]
@@ -493,9 +496,8 @@ class FrameStep1(QtWidgets.QDialog):
             in_temperature = data[:, 2]
         except Exception as e:
             print(e)
-            in_shear_rate = []
-            in_viscosity = []
-            in_temperature = []
+        pass_to_models = {"shear_rate": in_shear_rate,
+                          "viscosity": in_viscosity}
 
         self.run_figure.clear()
         self.run_figure_valid = False
