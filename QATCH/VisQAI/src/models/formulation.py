@@ -218,24 +218,3 @@ class Formulation:
         if not isinstance(other, Formulation):
             return NotImplemented
         return self.to_dict() == other.to_dict()
-
-
-if __name__ == "__main__":
-    form = Formulation(1)
-    protein = Protein(1, "BSA", 100, 10, 1)
-    buff = Buffer(1, "PBS", 7.4)
-    stab = Stabilizer(1, 'None')
-    surf = Surfactant(1, "None")
-    salt = Salt(1, "nacl")
-    profile = ViscosityProfile(
-        [100, 1000, 10000, 100000, 15000000], [10, 9, 8, 7, 4], 'cp')
-    profile.is_measured = True
-    form.set_temperature(25)
-    form.set_protein(protein, 100, "mg/ml")
-    form.set_buffer(buff, 10, 'M')
-    form.set_stabilizer(stab, 0, "M")
-    form.set_surfactant(surf, 0, "%w")
-    form.set_salt(salt, 100, 'mg/ml')
-    form.set_viscosity_profile(profile)
-
-    print(form.to_dict())

@@ -1,10 +1,10 @@
 import os
 import xml.etree.ElementTree as ET
 from typing import Any, Optional, Type
-from QATCH.VisQAI.src.models.ingredient import (
-    Protein, Buffer, Stabilizer, Surfactant
+from src.models.ingredient import (
+    Protein, Buffer, Stabilizer, Surfactant, Salt
 )
-from QATCH.VisQAI.src.models.formulation import ViscosityProfile, Formulation
+from src.models.formulation import ViscosityProfile, Formulation
 TAG = "[Parser]"
 
 
@@ -118,8 +118,8 @@ class Parser:
                 "concentration": conc,
                 "units": units}
 
-    def get_formulation(self, vp: dict, temp: float, nacl_concentration: float) -> Formulation:
-        formulation = Formulation(formulation_id=-1)
+    def get_formulation(self, vp: dict, temp: float, salt: Salt, salt_concentration: float, salt_units) -> Formulation:
+        formulation = Formulation()
         buffer = self.get_buffer()
         protein = self.get_protein()
         surfactant = self.get_surfactant()
@@ -133,17 +133,9 @@ class Parser:
         formulation.set_stabilizer(
             stabilizer=stabilizer['stabilizer'], concentration=stabilizer['concentration'], units=stabilizer['units'])
         formulation.set_temperature(temp=temp)
-        formulation.set_nacl_concentration(conc=nacl_concentration)
+        formulation.set_salt(
+            salt=salt, concentration=salt_concentration, units=salt_units)
         viscosity_profile = ViscosityProfile(
             shear_rates=vp['shear_rate'], viscosities=vp['viscosity'], units='cp')
-        formulation.set_viscosity_profile(viscosity_profile=viscosity_profile)
+        formulation.set_viscosity_profile(profile=viscosity_profile)
         return formulation
-
-
-if __name__ == "__main__":
-    parser = Parser(
-        xml_path=r'C:\Users\QATCH\dev\nanovisQ\QATCH\VisQAI\src\io\D250224W3_4CP_B_2_3rd.xml')
-    vp = {'shear_rate': [100, 1000, 10000, 100000,
-                         15000000], 'viscosity': [10, 9, 9, 8, 6]}
-    form = parser.get_formulation(vp=vp, temp=25, nacl_concentration=100)
-    print(form.to_dict())

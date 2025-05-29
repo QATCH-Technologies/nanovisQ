@@ -15,120 +15,120 @@ class IngredientController:
         self.db.delete_all_ingredients()
 
     def get_by_id(self, id: int, ingredient: Ingredient) -> Ingredient:
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.get_protein_by_id(id)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.get_buffer_by_id(id)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.get_stabilizer_by_id(id)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.get_salt_by_id(id)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.get_surfactant_by_id(id)
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def get_by_name(self, name: str, ingredient: Ingredient) -> Ingredient:
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.get_protein_by_name(name)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.get_buffer_by_name(name)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.get_stabilizer_by_name(name)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.get_salt_by_name(name)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.get_surfactant_by_name(name)
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def get_by_type(self, ingredient: Ingredient) -> Ingredient:
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.get_all_proteins()
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.get_all_buffers()
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.get_all_stabilizers()
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.get_all_salts()
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.get_all_surfactants()
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def delete_by_id(self, id: int, ingredient: Ingredient):
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.delete_protein_by_id(id)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.delete_buffer_by_id(id)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.delete_stabilizer_by_id(id)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.delete_salt_by_id(id)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.delete_surfactant_by_id(id)
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def delete_by_name(self, name: str, ingredient: Ingredient):
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.delete_protein_by_name(name)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.delete_buffer_by_name(name)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.delete_stabilizer_by_name(name)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.delete_salt_by_name(name)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.delete_surfactant_by_name(name)
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def delete_by_type(self, ingredient: Ingredient):
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.delete_all_proteins()
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.delete_all_buffers()
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.delete_all_stabilizers()
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.delete_all_salts()
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.delete_all_surfactants()
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def add(self, ingredient: Ingredient) -> None:
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.add_protein(ingredient)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.add_buffer(ingredient)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.add_stabilizer(ingredient)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.add_salt(ingredient)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.add_surfactant(ingredient)
         else:
             raise ValueError(
                 f"Ingredient type of '{ingredient.type}' not supported.")
 
     def update(self, id: int, ingredient: Ingredient) -> None:
-        if ingredient.type == Protein.type:
+        if ingredient.type == "Protein":
             return self.update_protein(id, ingredient)
-        elif ingredient.type == Buffer.type:
+        elif ingredient.type == "Buffer":
             return self.update_buffer(id, ingredient)
-        elif ingredient.type == Stabilizer.type:
+        elif ingredient.type == "Stabilizer":
             return self.update_stabilizer(id, ingredient)
-        elif ingredient.type == Salt.type:
+        elif ingredient.type == "Salt":
             return self.update_salt(id, ingredient)
-        elif ingredient.type == Surfactant.type:
+        elif ingredient.type == "Surfactant":
             return self.update_surfactant(id, ingredient)
         else:
             raise ValueError(
@@ -139,46 +139,46 @@ class IngredientController:
         return self.db.get_ingredient(id)
 
     def get_protein_by_name(self, name: str) -> Protein:
-        return self._fetch_by_name(name, type=Protein.type)
+        return self._fetch_by_name(name, type="Protein")
 
     def get_all_proteins(self) -> List[Protein]:
-        return self._fetch_by_type(Protein.type)
+        return self._fetch_by_type("Protein")
 
     def get_buffer_by_id(self, id: int) -> Buffer:
         return self.db.get_ingredient(id)
 
     def get_buffer_by_name(self, name: str) -> Buffer:
-        return self._fetch_by_name(name, type=Buffer.type)
+        return self._fetch_by_name(name, type="Buffer")
 
     def get_all_buffers(self) -> List[Buffer]:
-        return self._fetch_by_type(Buffer.type)
+        return self._fetch_by_type("Buffer")
 
     def get_salt_by_id(self, id: int) -> Salt:
         return self.db.get_ingredient(id)
 
     def get_salt_by_name(self, name: str) -> Salt:
-        return self._fetch_by_name(name, type=Salt.type)
+        return self._fetch_by_name(name, type="Salt")
 
     def get_all_salts(self) -> List[Salt]:
-        return self._fetch_by_type(Salt.type)
+        return self._fetch_by_type("Salt")
 
     def get_surfactant_by_id(self, id: int) -> Surfactant:
         return self.db.get_ingredient(id)
 
     def get_surfactant_by_name(self, name: str) -> Surfactant:
-        return self._fetch_by_name(name, type=Surfactant.type)
+        return self._fetch_by_name(name, type="Surfactant")
 
     def get_all_surfactants(self) -> List[Surfactant]:
-        return self._fetch_by_type(Surfactant.type)
+        return self._fetch_by_type("Surfactant")
 
     def get_stabilizer_by_id(self, id: int) -> Stabilizer:
         return self.db.get_ingredient(id)
 
     def get_stabilizer_by_name(self, name: str) -> Stabilizer:
-        return self._fetch_by_name(name, type=Stabilizer.type)
+        return self._fetch_by_name(name, type="Stabilizer")
 
     def get_all_stabilizers(self) -> List[Stabilizer]:
-        return self._fetch_by_type(Stabilizer.type)
+        return self._fetch_by_type("Stabilizer")
 
     # ----- Creators ----- #
 

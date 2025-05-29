@@ -50,7 +50,7 @@ class Ingredient(ABC):
 
     @property
     def type(self) -> str:
-        return self.__class__.__name__
+        return str(self.__class__.__name__)
 
     @enc_id.setter
     def enc_id(self, value: int) -> None:
@@ -175,12 +175,15 @@ class Buffer(Ingredient):
 
 
 class Stabilizer(Ingredient):
+
     pass
 
 
 class Surfactant(Ingredient):
+
     pass
 
 
 class Salt(Ingredient):
+
     pass

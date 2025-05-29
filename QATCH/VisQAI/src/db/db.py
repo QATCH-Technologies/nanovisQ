@@ -274,33 +274,6 @@ class Database:
         ids = [r[0] for r in c.fetchall()]
         return [self.get_formulation(i) for i in ids]
 
-    def update_formulation(self, id: int, form: Formulation) -> bool:
-        c = self.conn.cursor()
-        if not self.get_formulation(id):
-            return False
-        c.execute("UPDATE formulation SET temperature = ? WHERE id = ?",
-                  (form.temperature, id))
-        c.execute(
-            "DELETE FROM formulation_component WHERE formulation_id = ?", (id,))
-        c.execute("DELETE FROM viscosity_profile WHERE formulation_id = ?", (id,))
-        # re-add
-        for comp_type, comp in form._components.items():
-            if not comp:
-                continue
-            iid = self.add_ingredient(comp.ingredient)
-            c.execute("INSERT INTO formulation_component VALUES (?,?,?,?,?)",
-                      (id, comp_type, iid, comp.concentration, comp.units))
-        if form.viscosity_profile:
-            vp = form.viscosity_profile
-            c.execute("INSERT INTO viscosity_profile VALUES (?,?,?,?,?)",
-                      (id,
-                       json.dumps(vp.shear_rates),
-                       json.dumps(vp.viscosities),
-                       vp.units,
-                       int(vp.is_measured)))
-        self.conn.commit()
-        return True
-
     def delete_formulation(self, id: int) -> bool:
         c = self.conn.cursor()
         c.execute("DELETE FROM formulation WHERE id = ?", (id,))
