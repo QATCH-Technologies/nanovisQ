@@ -1,12 +1,12 @@
 import math
 from typing import Optional, Dict, Any, List
-from QATCH.VisQAI.src.models.ingredient import Ingredient, Buffer, Protein, Stabilizer, Surfactant
+from src.models.ingredient import (
+    Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
 
 TAG = "[Formulation]"
 
 
 class ViscosityProfile:
-
     def __init__(self, shear_rates: List[float], viscosities: List[float], units: str) -> None:
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
             raise TypeError(
@@ -27,6 +27,15 @@ class ViscosityProfile:
         self.shear_rates: List[float] = [sr for sr, _ in pairs]
         self.viscosities: List[float] = [v for _, v in pairs]
         self.units: str = units.strip()
+        self._is_measured: bool = False
+
+    @property
+    def is_measured(self) -> bool:
+        return self._is_measured
+
+    @is_measured.setter
+    def is_measured(self, value: bool) -> None:
+        self._is_measured = value
 
     def get_viscosity(self, shear_rate: float) -> float:
         if not isinstance(shear_rate, (int, float)):
@@ -55,6 +64,7 @@ class ViscosityProfile:
             "shear_rates": self.shear_rates,
             "viscosities": self.viscosities,
             "units": self.units,
+            "is_measured": self._is_measured,
         }
 
     def __repr__(self) -> str:
@@ -102,25 +112,30 @@ class Component:
 
 
 class Formulation:
-    """A formulation made up of one protein, buffer, stabilizer, and surfactant."""
+    def __init__(self, id: Optional[int] = None) -> None:
+        if id is not None and not isinstance(id, int):
+            raise TypeError("`id` must be an integer or None")
+        self._id: Optional[int] = id
 
-    def __init__(self, formulation_id: int) -> None:
-        if not isinstance(formulation_id, int):
-            raise TypeError("formulation_id must be an integer")
-        self._id: int = formulation_id
         self._components: Dict[str, Optional[Component]] = {
-            "protein": None,
-            "buffer": None,
+            "protein":    None,
+            "buffer":     None,
             "stabilizer": None,
             "surfactant": None,
+            "salt":       None,
         }
-        self._temperature: Optional[float] = None
-        self._nacl_concentration: Optional[float] = None
+        self._temperature:       Optional[float] = None
         self._viscosity_profile: Optional[ViscosityProfile] = None
 
     @property
-    def id(self) -> int:
+    def id(self) -> Optional[int]:
         return self._id
+
+    @id.setter
+    def id(self, value: int) -> None:
+        if not isinstance(value, int):
+            raise TypeError("`id` must be an integer")
+        self._id = value
 
     def set_protein(self, protein: Protein, concentration: float, units: str) -> None:
         self._components["protein"] = Component(protein, concentration, units)
@@ -135,6 +150,9 @@ class Formulation:
     def set_surfactant(self, surfactant: Surfactant, concentration: float, units: str) -> None:
         self._components["surfactant"] = Component(
             surfactant, concentration, units)
+
+    def set_salt(self, salt: Salt, concentration: float, units: str) -> None:
+        self._components["salt"] = Component(salt, concentration, units)
 
     @property
     def protein(self) -> Optional[Component]:
@@ -153,6 +171,10 @@ class Formulation:
         return self._components["surfactant"]
 
     @property
+    def salt(self) -> Optional[Component]:
+        return self._components["salt"]
+
+    @property
     def temperature(self) -> Optional[float]:
         return self._temperature
 
@@ -164,17 +186,6 @@ class Formulation:
         if math.isnan(value):
             value = 25.0
         self._temperature = value
-
-    @property
-    def nacl_concentration(self) -> Optional[float]:
-        return self._nacl_concentration
-
-    def set_nacl_concentration(self, conc: float) -> None:
-        if not isinstance(conc, (int, float)):
-            raise TypeError("nacl_concentration must be numeric")
-        if conc < 0:
-            raise ValueError("nacl_concentration must be non-negative")
-        self._nacl_concentration = float(conc)
 
     def set_viscosity_profile(self, profile: ViscosityProfile) -> None:
         if not isinstance(profile, ViscosityProfile):
@@ -190,7 +201,6 @@ class Formulation:
         for key, comp in self._components.items():
             data[key] = comp.to_dict() if comp is not None else None
         data["temperature"] = self.temperature
-        data["nacl_concentration"] = self.nacl_concentration
         data["viscosity_profile"] = (
             self.viscosity_profile.to_dict()
             if self.viscosity_profile is not None
@@ -201,7 +211,6 @@ class Formulation:
     def __repr__(self) -> str:
         parts = [f"{k}={v!r}" for k, v in self._components.items()]
         parts.append(f"temperature={self.temperature!r}")
-        parts.append(f"nacl_concentration={self.nacl_concentration!r}")
         parts.append(f"viscosity_profile={self.viscosity_profile!r}")
         return f"Formulation(id={self.id}, " + ", ".join(parts) + ")"
 
@@ -217,13 +226,16 @@ if __name__ == "__main__":
     buff = Buffer(1, "PBS", 7.4)
     stab = Stabilizer(1, 'None')
     surf = Surfactant(1, "None")
+    salt = Salt(1, "nacl")
     profile = ViscosityProfile(
         [100, 1000, 10000, 100000, 15000000], [10, 9, 8, 7, 4], 'cp')
+    profile.is_measured = True
     form.set_temperature(25)
-    form.set_nacl_concentration(100)
     form.set_protein(protein, 100, "mg/ml")
     form.set_buffer(buff, 10, 'M')
     form.set_stabilizer(stab, 0, "M")
     form.set_surfactant(surf, 0, "%w")
+    form.set_salt(salt, 100, 'mg/ml')
     form.set_viscosity_profile(profile)
+
     print(form.to_dict())
