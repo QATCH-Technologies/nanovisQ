@@ -5251,6 +5251,7 @@ class AnalyzerWorker(QtCore.QObject):
                     # if name == "protein_type":
                     # if name == "protein_concentration":
                     # if name == "buffer_type":
+                    # if name == "buffer_concentration":
                     # if name == "surfactant_type":
                     # if name == "surfactant_concentration":
                     # if name == "stabilizer_type":
