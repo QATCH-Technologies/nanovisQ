@@ -1,3 +1,4 @@
+import math
 from typing import Optional, Dict, Any, List
 from QATCH.VisQAI.src.models.ingredient import Ingredient, Buffer, Protein, Stabilizer, Surfactant
 
@@ -155,10 +156,14 @@ class Formulation:
     def temperature(self) -> Optional[float]:
         return self._temperature
 
-    def set_temperature(self, temp: float) -> None:
-        if not isinstance(temp, (int, float)):
+    def set_temperature(self, temp) -> None:
+        try:
+            value = float(temp)
+        except (TypeError, ValueError):
             raise TypeError("temperature must be numeric")
-        self._temperature = float(temp)
+        if math.isnan(value):
+            value = 25.0
+        self._temperature = value
 
     @property
     def nacl_concentration(self) -> Optional[float]:
