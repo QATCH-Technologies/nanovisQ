@@ -871,7 +871,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         # layout_v.addWidget(self.groupBuffer)
         # layout_v.addWidget(self.groupSurfactant)
         # layout_v.addWidget(self.groupSalt)
-        self.l_channels = QtWidgets.QLabel("Number of Channels:")
+        # self.l_channels = QtWidgets.QLabel("Number of Channels:")
 
         self.l5 = QtWidgets.QLabel()
         self.l5.setText("<b><u>Estimated Parameters:</b></u>")
@@ -998,6 +998,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.btn = QtWidgets.QPushButton("Save")
         self.btn.pressed.connect(self.confirm)
         layout_v.addWidget(self.btn)
+        layout_v.addStretch()
 
         self.setLayout(layout_v)
         self.setWindowTitle("Enter Run Info")
@@ -1514,7 +1515,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         height = self.height()
         area = QtWidgets.QDesktopWidget().availableGeometry()
         left = int((area.width() - width) / 2)
-        top = int((area.height() - height) / 2)
+        top = int((area.height() - height) / 2) - 100
         self.setGeometry(left, top, width, height)
 
     def new_protein_type(self, text: str):

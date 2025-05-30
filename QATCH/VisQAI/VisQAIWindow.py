@@ -747,23 +747,20 @@ class TableView(QtWidgets.QTableWidget):
 class CollapsibleBox(QtWidgets.QWidget):
     def __init__(self, title="", parent=None):
         super(CollapsibleBox, self).__init__(parent)
+        self._collapsed = True
 
         self.toggle_button = QtWidgets.QToolButton(
             text=title, checkable=True, checked=False
         )
-
-        self.setCollapsed(True)
 
         self.toggle_button.setStyleSheet("QToolButton { border: none; }")
         self.toggle_button.setToolButtonStyle(
             QtCore.Qt.ToolButtonTextBesideIcon
         )
         self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
-        self.toggle_button.pressed.connect(self.on_pressed)
+        self.toggle_button.pressed.connect(self.toggle)
 
         self.toggle_animation = QtCore.QParallelAnimationGroup(self)
-        self.toggle_animation.finished.connect(
-            lambda: self.toggle_button.blockSignals(False))
 
         self.content_area = QtWidgets.QScrollArea(
             maximumHeight=0, minimumHeight=0
@@ -774,7 +771,7 @@ class CollapsibleBox(QtWidgets.QWidget):
         self.content_area.setFrameShape(QtWidgets.QFrame.NoFrame)
 
         lay = QtWidgets.QVBoxLayout(self)
-        lay.setSpacing(0)
+        # lay.setSpacing(0)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.toggle_button)
         lay.addWidget(self.content_area)
@@ -790,18 +787,19 @@ class CollapsibleBox(QtWidgets.QWidget):
         )
 
     def setCollapsed(self, checked):
-        self._collapsed = checked
-        self.toggle_button.setChecked(checked)
-        self.toggle_button.click()
+        if self._collapsed is not checked:
+            self._collapsed = checked
+            self.repaint()
 
     def isCollapsed(self):
-        return self.toggle_button.isChecked()
+        return self._collapsed
 
-    @QtCore.pyqtSlot()
-    def on_pressed(self):
-        checked = self.toggle_button.isChecked()
-        if self._collapsed == checked:
-            return
+    def toggle(self):
+        self.setCollapsed(not self.isCollapsed())
+        # calls self.repaint()
+
+    def repaint(self):
+        checked = self._collapsed
         self.toggle_button.setArrowType(
             QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow
         )
@@ -836,7 +834,7 @@ class CollapsibleBox(QtWidgets.QWidget):
 
 
 if __name__ == '__main__':
-    if True:
+    if False:
         _app = QtWidgets.QApplication([])
         _win = VisQAIWindow()
         _win.show()
@@ -880,9 +878,17 @@ if __name__ == '__main__':
                 lay.addWidget(label)
             box.setContentLayout(lay)
         vlay.addWidget(QtWidgets.QCheckBox("Remember for next time"))
-        vlay.addWidget(QtWidgets.QPushButton("Save"))
+        toggle = QtWidgets.QPushButton("Toggle")
+        toggle.clicked.connect(box.toggle)
+        open = QtWidgets.QPushButton("Open")
+        open.clicked.connect(lambda: box.setCollapsed(False))
+        close = QtWidgets.QPushButton("Close")
+        close.clicked.connect(lambda: box.setCollapsed(True))
+        vlay.addWidget(toggle)
+        vlay.addWidget(open)
+        vlay.addWidget(close)
         vlay.addStretch()
         w.resize(640, 480)
         w.show()
-        box.setCollapsed(False)
+        # box.setCollapsed(False)
         sys.exit(app.exec_())
