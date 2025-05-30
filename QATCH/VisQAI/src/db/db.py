@@ -24,11 +24,22 @@ DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
 class Database:
-    def __init__(self, path: Union[str, Path] = DB_PATH) -> None:
+    def __init__(self, path: Union[str, Path] = DB_PATH, encryption_key: Union[str, None] = None) -> None:
         self.db_path = Path(path)
+        self.file_handle = None  # used for locking db file when encrypted
+        self.encryption_key = encryption_key
+        self.use_encryption = False if self.encryption_key is None else True
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(str(self.db_path))
+
+        if self.use_encryption:
+            if not self.encryption_key:
+                raise ValueError(
+                    "Encryption key required for encrypted database")
+            self.conn = self._open_cdb(str(self.db_path), self.encryption_key)
+        else:
+            self.conn = sqlite3.connect(str(self.db_path))
         self.conn.execute('PRAGMA foreign_keys = ON')
+        self.init_changes = self.conn.total_changes
         self._create_tables()
 
     def _create_tables(self) -> None:
@@ -345,3 +356,57 @@ class Database:
         self.conn = sqlite3.connect(str(self.db_path))
         self.conn.execute('PRAGMA foreign_keys = ON')
         self._create_tables()
+
+    def set_encryption_key(self, key: Union[str, None]) -> None:
+        self.encryption_key = key
+
+    def _caesar_cipher(self, text: str, shift: int = 0) -> str:
+        result = []
+        if shift == 0:
+            shift = len(text)
+        for char in text:
+            if char.isdigit():
+                base = ord('0')
+                result.append(chr((ord(char) - base + shift) % 10 + base))
+            elif char.isupper():
+                base = ord('A')
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+            elif char.islower():
+                base = ord('a')
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+        return ''.join(result)
+
+    def _xor_cipher(self, data: bytes, key: str) -> bytes:
+        key_bytes = key.encode('utf-8')
+        key_length = len(key_bytes)
+        return bytes([b ^ key_bytes[i % key_length] for i, b in enumerate(data)])
+
+    def _open_cdb(self, filepath: str, password: str) -> sqlite3.Connection:
+        con = sqlite3.connect(':memory:')
+        if os.path.isfile(filepath):
+            self.file_handle = open(filepath, 'rb')
+            secure = self.file_handle.read()
+            # NOTE: Leave file_handle open, keeping it locked by process
+            # self.file_handle.close()
+            decrypted = self._xor_cipher(
+                secure, self._caesar_cipher(password)).decode('utf-8')
+            con.executescript(decrypted)
+            con.commit()
+        return con
+
+    def _save_cdb(self, filepath: str, password: str):
+        dump_bytes = b''.join((line + '\n').encode('utf-8')
+                              for line in self.conn.iterdump())
+        encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
+        with open(filepath, 'wb') as f:
+            f.write(encrypted)
+
+    def close(self) -> None:
+        if self.file_handle is not None:
+            self.file_handle.close()  # release file lock
+        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+            if self.use_encryption:
+                self._save_cdb(self.db_path, self.encryption_key)
+            else:
+                pass  # self.conn.commit() called inline on execute()
+        self.conn.close()

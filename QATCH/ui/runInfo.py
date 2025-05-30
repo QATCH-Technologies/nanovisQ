@@ -7,6 +7,7 @@ from QATCH.ui.popUp import PopUp
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Salt, Buffer, Stabilizer
+from QATCH.VisQAI.VisQAIWindow import CollapsibleBox
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np
@@ -435,9 +436,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_ca = 0
         self.auto_dn = 0
         self.auto_nc = 0
-        self.database = Database()
+        self.database = Database(
+            encryption_key="secretsecret")  # TODO use a real key
         # self.database.reset()
         self.ing_ctrl = IngredientController(db=self.database)
+        self.finished.connect(self.database.close)
 
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
@@ -729,6 +732,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             "<b>Hint:</b> If not listed, add a new entry to the list.")
         self.q11.addWidget(self.h11)
         self.c11.currentTextChanged.connect(self.new_stabilizer_type)
+        self.c11.currentTextChanged.connect(self.calc_params)
 
         # Stabilizer Concentration
         self.q8 = QtWidgets.QHBoxLayout()
@@ -835,6 +839,20 @@ class QueryRunInfo(QtWidgets.QWidget):
         h_channels.addWidget(self.l_channels_hint)
         # -------------- Number of Channels (End) --------------
 
+        # -------------- CollapsibleBox: Advanced --------------
+        self.collapsibleBox = CollapsibleBox("Advanced Information")
+        lay = QtWidgets.QVBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.addWidget(self.groupBuffer)
+        lay.addWidget(self.groupSurfactant)
+        label = QtWidgets.QGroupBox("Salt Information")
+        layout = QtWidgets.QFormLayout(label)
+        layout.addRow("Type:", QtWidgets.QLineEdit())
+        layout.addRow("Concentration:", QtWidgets.QLineEdit())
+        lay.addWidget(label)
+        self.collapsibleBox.setContentLayout(lay)
+        # -------------- CollapsibleBox: Advanced --------------
+
         layout_v = QtWidgets.QVBoxLayout()
         self.l0 = QtWidgets.QLabel()
         self.l0.setText(f"<b><u>Run Info for \"{self.run_name}\":</b></u>")
@@ -848,9 +866,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         # layout_v.addLayout(self.q4) # hide Concentration
         layout_v.addWidget(self.groupSolvent)
         layout_v.addWidget(self.groupProtein)
-        layout_v.addWidget(self.groupBuffer)
-        layout_v.addWidget(self.groupSurfactant)
         layout_v.addWidget(self.groupStabilizer)
+        layout_v.addWidget(self.collapsibleBox)
+        # layout_v.addWidget(self.groupBuffer)
+        # layout_v.addWidget(self.groupSurfactant)
+        # layout_v.addWidget(self.groupSalt)
         self.l_channels = QtWidgets.QLabel("Number of Channels:")
 
         self.l5 = QtWidgets.QLabel()

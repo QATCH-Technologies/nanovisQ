@@ -52,7 +52,7 @@ class Ui_Main(object):
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
-        modelayout.addWidget(self.mode_learn)  # hidden from R build
+        modelayout.addWidget(self.mode_learn)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
