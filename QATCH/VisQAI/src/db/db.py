@@ -50,7 +50,8 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 enc_id INTEGER NOT NULL,
                 name TEXT NOT NULL,
-                type TEXT NOT NULL
+                type TEXT NOT NULL,
+                is_user INTEGER NOT NULL DEFAULT 0
             )
         ''')
         # Subclass tables
@@ -123,8 +124,13 @@ class Database:
     def add_ingredient(self, ing: Ingredient) -> int:
         c = self.conn.cursor()
         c.execute(
-            "INSERT INTO ingredient (enc_id, name, type) VALUES (?, ?, ?)",
-            (ing.enc_id, ing.name, type(ing).__name__)
+            "INSERT INTO ingredient (enc_id, name, type, is_user) VALUES (?, ?, ?, ?)",
+            (
+                ing.enc_id,
+                ing.name,
+                type(ing).__name__,
+                int(ing.is_user)
+            )
         )
         db_id = c.lastrowid
         if isinstance(ing, Protein):
@@ -150,12 +156,14 @@ class Database:
 
     def get_ingredient(self, id: int) -> Optional[Ingredient]:
         c = self.conn.cursor()
-        c.execute("SELECT enc_id, name, type FROM ingredient WHERE id = ?", (id,))
+        c.execute(
+            "SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?",
+            (id,)
+        )
         row = c.fetchone()
         if not row:
             return None
-
-        enc_id, name, typ = row
+        enc_id, name, typ, is_user = row
 
         if typ == 'Protein':
             c.execute(
@@ -185,8 +193,8 @@ class Database:
         else:
             return None
 
-        # —— NEW: set the fetched id on the instance ——
         ing.id = id
+        ing.is_user = bool(is_user)
         return ing
 
     def get_all_ingredients(self) -> List[Ingredient]:
@@ -201,10 +209,15 @@ class Database:
         if not c.fetchone():
             return False
         c.execute(
-            "UPDATE ingredient SET enc_id = ?, name = ?, type = ? WHERE id = ?",
-            (ing.enc_id, ing.name, type(ing).__name__, id)
+            "UPDATE ingredient SET enc_id = ?, name = ?, type = ?, is_user = ? WHERE id = ?",
+            (
+                ing.enc_id,
+                ing.name,
+                type(ing).__name__,
+                int(ing.is_user),
+                id
+            )
         )
-        # clear subclass
         c.execute("DELETE FROM protein WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM buffer WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM stabilizer WHERE ingredient_id = ?", (id,))
