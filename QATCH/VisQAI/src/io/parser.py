@@ -1,10 +1,16 @@
 import os
 import xml.etree.ElementTree as ET
 from typing import Any, Optional, Type
-from src.models.ingredient import (
-    Protein, Buffer, Stabilizer, Surfactant, Salt
-)
-from src.models.formulation import ViscosityProfile, Formulation
+try:
+    from src.models.ingredient import (
+        Protein, Buffer, Stabilizer, Surfactant, Salt
+    )
+    from src.models.formulation import ViscosityProfile, Formulation
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import (
+        Protein, Buffer, Stabilizer, Surfactant, Salt
+    )
+    from QATCH.VisQAI.src.models.formulation import ViscosityProfile, Formulation
 TAG = "[Parser]"
 
 

@@ -1,6 +1,11 @@
-from src.db.db import Database
-from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient
+
 from typing import List, Union
+try:
+    from src.db.db import Database
+    from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient
 
 
 class IngredientController:

@@ -20,6 +20,7 @@ class Ingredient(ABC):
         if not name.strip():
             raise ValueError("`name` cannot be empty")
         self._name: str = name.strip()
+        self._is_user_ingredient: bool = True
 
     @staticmethod
     def _validate_int(value: Any, field: str) -> int:
@@ -29,11 +30,11 @@ class Ingredient(ABC):
 
     @staticmethod
     def _validate_number(value: Any, field: str, min_val: float = 0.0) -> float:
-        if not isinstance(value, (int, float)):
-            raise TypeError(f"{field!r} must be a number")
-        if value < min_val:
-            raise ValueError(f"{field!r} must be >= {min_val}")
-        return float(value)
+        if not value is None and not isinstance(value, (int, float)):
+            raise TypeError(f"{field!r} must be a number or None")
+        if not value is None and value < min_val:
+            raise ValueError(f"{field!r} must be >= {min_val} or None")
+        return value
 
     @property
     def id(self) -> Optional[int]:
@@ -68,12 +69,21 @@ class Ingredient(ABC):
             raise ValueError("`name` cannot be empty")
         self._name = name.strip()
 
+    @property
+    def is_user_ingredient(self) -> bool:
+        return self._is_user_ingredient
+
+    @is_user_ingredient.setter
+    def is_user_ingredient(self, flag: bool) -> None:
+        self._is_user_ingredient = flag
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "id": self._id,
             "enc_id": self._enc_id,
             "name": self._name,
             "type": self.type,
+            "user?": self.is_user_ingredient,
         }
 
     @classmethod
@@ -87,7 +97,7 @@ class Ingredient(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"(id={self._id!r}, enc_id={self._enc_id!r}, name={self._name!r})"
+            f"(id={self._id!r}, enc_id={self._enc_id!r}, name={self._name!r}, user?={self._is_user_ingredient})"
         )
 
     def __eq__(self, other: Any) -> bool:
@@ -114,9 +124,9 @@ class Protein(Ingredient):
         self,
         enc_id: int,
         name: str,
-        molecular_weight: Union[int, float],
-        pI_mean: Union[int, float],
-        pI_range: Union[int, float],
+        molecular_weight: Union[int, float] = None,
+        pI_mean: Union[int, float] = None,
+        pI_range: Union[int, float] = None,
         id: Optional[int] = None,
     ) -> None:
         super().__init__(enc_id=enc_id, name=name, id=id)
@@ -126,7 +136,7 @@ class Protein(Ingredient):
         self._pI_range = self._validate_number(pI_range, "pI_range")
 
     @property
-    def molecular_weight(self) -> float:
+    def molecular_weight(self) -> Union[float, None]:
         return self._molecular_weight
 
     @molecular_weight.setter
@@ -134,7 +144,7 @@ class Protein(Ingredient):
         self._molecular_weight = self._validate_number(mw, "molecular_weight")
 
     @property
-    def pI_mean(self) -> float:
+    def pI_mean(self) -> Union[float, None]:
         return self._pI_mean
 
     @pI_mean.setter
@@ -142,7 +152,7 @@ class Protein(Ingredient):
         self._pI_mean = self._validate_number(p, "pI_mean")
 
     @property
-    def pI_range(self) -> float:
+    def pI_range(self) -> Union[float, None]:
         return self._pI_range
 
     @pI_range.setter
@@ -155,23 +165,23 @@ class Buffer(Ingredient):
         self,
         enc_id: int,
         name: str,
-        pH: Union[int, float],
+        pH: Union[int, float] = None,
         id: Optional[int] = None,
     ) -> None:
         super().__init__(enc_id=enc_id, name=name, id=id)
         self.pH = pH
 
     @property
-    def pH(self) -> float:
+    def pH(self) -> Union[float, None]:
         return self._pH
 
     @pH.setter
     def pH(self, value: Any) -> None:
-        if not isinstance(value, (int, float)):
-            raise TypeError("pH must be a number")
-        if not (0.0 <= value <= 14.0):
-            raise ValueError("pH must be between 0 and 14")
-        self._pH = float(value)
+        if not value is None and not isinstance(value, (int, float)):
+            raise TypeError("pH must be a number or None")
+        if not value is None and not (0.0 <= value <= 14.0):
+            raise ValueError("pH must be between 0 and 14 or None")
+        self._pH = value
 
 
 class Stabilizer(Ingredient):
