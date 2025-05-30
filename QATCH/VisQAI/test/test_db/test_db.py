@@ -6,7 +6,9 @@ from src.models.formulation import Formulation, ViscosityProfile
 from src.db.db import Database
 
 
-class TestDatabase(unittest.TestCase):
+class BaseTestDatabase(unittest.TestCase):
+    encryption_key = None  # Default (no encryption)
+
     @classmethod
     def setUpClass(cls):
         cls.assets_dir = Path(__file__).parent / "test_assets"
@@ -16,10 +18,11 @@ class TestDatabase(unittest.TestCase):
     def setUp(self):
         if self.db_file.exists():
             self.db_file.unlink()
-        self.db = Database(self.db_file)
+        self.db = Database(self.db_file, self.encryption_key)
 
     def tearDown(self):
-        self.db.conn.close()
+        self.db.close()
+        self.assertTrue(self.db_file.exists())
         if self.db_file.exists():
             self.db_file.unlink()
 
@@ -167,6 +170,71 @@ class TestDatabase(unittest.TestCase):
                 orig_ing.name,
                 f"name mismatch for component '{comp_type}'"
             )
+
+    def test_database_file_reload(self):
+        form = self.make_sample_formulation()
+        fid = self.db.add_formulation(form)
+
+        # write database to file, load it back again from file
+        self.db.close()
+        self.assertTrue(self.db_file.exists())
+        self.db = Database(self.db_file, self.encryption_key)
+
+        # get the formulation, make sure it matches what was added
+        got = self.db.get_formulation(fid)
+        self.assertIsNotNone(got)
+        self.assertAlmostEqual(got.temperature, 37.0)
+
+        prot_comp = got._components['protein']
+        self.assertEqual(prot_comp.concentration, 1.5)
+        self.assertIsInstance(prot_comp.ingredient, Protein)
+
+        buf_comp = got._components['buffer']
+        self.assertEqual(buf_comp.concentration, 2.0)
+        self.assertIsInstance(buf_comp.ingredient, Buffer)
+
+        self.assertTrue(got.viscosity_profile.is_measured)
+        self.assertListEqual(got.viscosity_profile.shear_rates, [1, 10])
+
+    def test_database_file_write_on_close_if_missing(self):
+        self.test_database_file_reload()
+        self.db.close()  # release file lock
+        self.db_file.unlink()
+        self.assertFalse(self.db_file.exists())
+
+        # file was locked, so re-open new blank database
+        # without making changes, close the database
+        # it should still be written to file again, as the file is missing
+        self.db = Database(self.db_file, self.encryption_key)
+        self.assertEqual(self.db.conn.total_changes, self.db.init_changes)
+        self.db.close()
+        self.assertTrue(self.db_file.exists())
+
+        # re-create database, with changes, so file exists on tearDown()
+        self.db = Database(self.db_file, self.encryption_key)
+        self.db.add_ingredient(Salt(enc_id=1, name="NaCl"))
+        self.assertGreater(self.db.conn.total_changes, self.db.init_changes)
+
+    def test_database_file_cannot_unlink_while_open(self):
+        permission_error = False
+        try:
+            # try to delete the file while database open
+            self.test_database_file_reload()
+            self.db_file.unlink()
+        except PermissionError as e:
+            permission_error = True
+        self.assertTrue(self.db_file.exists())
+        self.assertTrue(permission_error)
+
+
+class TestDatabaseWithoutEncryption(BaseTestDatabase):
+    # Subclass for encyption OFF
+    encryption_key = None
+
+
+class TestDatabaseWithEncryption(BaseTestDatabase):
+    # Subclass for encyption ON
+    encryption_key = "supersecretkey"
 
 
 if __name__ == '__main__':
