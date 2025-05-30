@@ -3,10 +3,16 @@ import json
 from typing import List, Optional, Union
 from pathlib import Path
 import os
-from src.models.ingredient import (
-    Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
-)
-from src.models.formulation import Formulation, Component, ViscosityProfile
+try:
+    from src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
+    )
+    from src.models.formulation import Formulation, Component, ViscosityProfile
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
+    )
+    from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
 
 DB_PATH = Path(
     os.path.join(
@@ -39,17 +45,17 @@ class Database:
         # Subclass tables
         c.execute(r'''
             CREATE TABLE IF NOT EXISTS protein (
-                ingredient_id INTEGER PRIMARY KEY,
-                molecular_weight REAL NOT NULL,
-                pI_mean REAL NOT NULL,
-                pI_range REAL NOT NULL,
+                ingredient_id   INTEGER PRIMARY KEY,
+                molecular_weight REAL,
+                pI_mean          REAL,
+                pI_range         REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         ''')
         c.execute(r'''
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
-                pH REAL NOT NULL,
+                pH REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         ''')
@@ -327,3 +333,15 @@ class Database:
         c = self.conn.cursor()
         c.execute("DELETE FROM formulation")
         self.conn.commit()
+
+    def reset(self) -> None:
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+        if self.db_path.exists():
+            self.db_path.unlink()
+        self.conn = sqlite3.connect(str(self.db_path))
+        self.conn.execute('PRAGMA foreign_keys = ON')
+        self._create_tables()

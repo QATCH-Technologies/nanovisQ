@@ -1,7 +1,14 @@
-from src.db.db import Database
-from src.controller.ingredient_controller import IngredientController
-from src.models.formulation import Formulation
+
 from typing import List
+
+try:
+    from src.db.db import Database
+    from src.controller.ingredient_controller import IngredientController
+    from src.models.formulation import Formulation
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.models.formulation import Formulation
 
 
 class FormulationController():

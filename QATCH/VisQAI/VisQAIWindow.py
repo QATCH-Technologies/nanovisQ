@@ -5,11 +5,12 @@ from random import randint
 import copy
 import os
 import numpy as np
-
-from src.io.file_storage import SecureOpen
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-
+try:
+    from src.io.file_storage import SecureOpen
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.io.file_storage import SecureOpen
 TAG = "[VisQ.AI]"
 
 
@@ -31,9 +32,11 @@ class HorizontalTabBar(QtWidgets.QTabBar):
             painter.drawControl(QtWidgets.QStyle.CE_TabBarTabLabel, opt)
 
 
-class MainWindow(QtWidgets.QMainWindow):
-    def __init__(self):
-        super().__init__()
+class VisQAIWindow(QtWidgets.QMainWindow):
+    def __init__(self, parent=None):
+
+        super().__init__(parent=parent)
+        self.parent = parent
         self.setWindowTitle("VisQ.AI Mockup")
         self.setMinimumSize(900, 600)
         self.init_ui()
@@ -56,11 +59,23 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.setCentralWidget(self.tab_widget)
 
+    def clear(self) -> None:
+        pass
+
+    def hasUnsavedChanges(self) -> bool:
+        return False
+
+    def reset(self) -> None:
+        pass
+
+    def enable(self, enable=False) -> None:
+        pass
+
 
 class FrameStep1(QtWidgets.QDialog):
     def __init__(self, parent=None, step=1):
         super().__init__(parent)
-        self.parent: MainWindow = parent
+        self.parent: VisQAIWindow = parent
         self.step = step
 
         self.all_files = {}
@@ -715,7 +730,7 @@ class TableView(QtWidgets.QTableWidget):
 
 if __name__ == '__main__':
     _app = QtWidgets.QApplication([])
-    _win = MainWindow()
+    _win = VisQAIWindow()
     _win.show()
     _app.exec()
     _app.exit()

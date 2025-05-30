@@ -1,7 +1,11 @@
 import math
 from typing import Optional, Dict, Any, List
-from src.models.ingredient import (
-    Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
+try:
+    from src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
 
 TAG = "[Formulation]"
 
