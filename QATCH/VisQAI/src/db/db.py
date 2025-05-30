@@ -102,7 +102,7 @@ class Database:
         """)
         self.conn.commit()
 
-    # Ingredient CRUD
+     # Ingredient CRUD
     def add_ingredient(self, ing: Ingredient) -> int:
         c = self.conn.cursor()
         c.execute(
@@ -110,7 +110,6 @@ class Database:
             (ing.enc_id, ing.name, type(ing).__name__)
         )
         db_id = c.lastrowid
-        # subclass details
         if isinstance(ing, Protein):
             c.execute(
                 "INSERT INTO protein VALUES (?, ?, ?, ?)",
@@ -127,7 +126,9 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (db_id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (db_id,))
+
         self.conn.commit()
+        ing.id = db_id
         return db_id
 
     def get_ingredient(self, id: int) -> Optional[Ingredient]:
@@ -136,24 +137,40 @@ class Database:
         row = c.fetchone()
         if not row:
             return None
+
         enc_id, name, typ = row
-        # fetch subclass
+
         if typ == 'Protein':
             c.execute(
-                "SELECT molecular_weight, pI_mean, pI_range FROM protein WHERE ingredient_id = ?", (id,))
+                "SELECT molecular_weight, pI_mean, pI_range FROM protein WHERE ingredient_id = ?",
+                (id,)
+            )
             mw, mean, rng = c.fetchone()
-            return Protein(enc_id, name, mw, mean, rng)
-        if typ == 'Buffer':
-            c.execute("SELECT pH FROM buffer WHERE ingredient_id = ?", (id,))
+            ing = Protein(enc_id, name, mw, mean, rng)
+
+        elif typ == 'Buffer':
+            c.execute(
+                "SELECT pH FROM buffer WHERE ingredient_id = ?",
+                (id,)
+            )
             (pH,) = c.fetchone()
-            return Buffer(enc_id, name, pH)
-        if typ == 'Stabilizer':
-            return Stabilizer(enc_id, name)
-        if typ == 'Surfactant':
-            return Surfactant(enc_id, name)
-        if typ == 'Salt':
-            return Salt(enc_id, name)
-        return None
+            ing = Buffer(enc_id, name, pH)
+
+        elif typ == 'Stabilizer':
+            ing = Stabilizer(enc_id, name)
+
+        elif typ == 'Surfactant':
+            ing = Surfactant(enc_id, name)
+
+        elif typ == 'Salt':
+            ing = Salt(enc_id, name)
+
+        else:
+            return None
+
+        # —— NEW: set the fetched id on the instance ——
+        ing.id = id
+        return ing
 
     def get_all_ingredients(self) -> List[Ingredient]:
         c = self.conn.cursor()
@@ -210,26 +227,39 @@ class Database:
             (form.temperature,)
         )
         fid = c.lastrowid
+
         # components
         for comp_type, comp in form._components.items():
             if comp is None:
                 continue
-            # assume ingredient already in DB and comp.ingredient._db_id set
+            # ensure ingredient is in DB (and its .id is set)
             iid = self.add_ingredient(comp.ingredient)
             c.execute(
-                "INSERT INTO formulation_component VALUES (?,?,?,?,?)",
+                "INSERT INTO formulation_component "
+                "(formulation_id, component_type, ingredient_id, concentration, units) "
+                "VALUES (?,?,?,?,?)",
                 (fid, comp_type, iid, comp.concentration, comp.units)
             )
+
         # viscosity
         if form.viscosity_profile:
             vp = form.viscosity_profile
-            c.execute("INSERT INTO viscosity_profile VALUES (?,?,?,?,?)",
-                      (fid,
-                       json.dumps(vp.shear_rates),
-                       json.dumps(vp.viscosities),
-                       vp.units,
-                       int(vp.is_measured)))
+            c.execute(
+                "INSERT INTO viscosity_profile "
+                "(formulation_id, shear_rates, viscosities, units, is_measured) "
+                "VALUES (?,?,?,?,?)",
+                (
+                    fid,
+                    json.dumps(vp.shear_rates),
+                    json.dumps(vp.viscosities),
+                    vp.units,
+                    int(vp.is_measured)
+                )
+            )
+
         self.conn.commit()
+        form.id = fid
+
         return fid
 
     def get_formulation(self, id: int) -> Optional[Formulation]:
@@ -238,9 +268,13 @@ class Database:
         row = c.fetchone()
         if not row:
             return None
-        temp, = row
+
+        (temp,) = row
         form = Formulation(id)
+        form.id = id
+
         form.set_temperature(temp)
+
         # load components
         c.execute(
             "SELECT component_type, ingredient_id, concentration, units "
@@ -252,6 +286,7 @@ class Database:
             if ing:
                 setter = getattr(form, f"set_{comp_type}")
                 setter(ing, conc, units)
+
         # load viscosity
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
@@ -266,13 +301,21 @@ class Database:
             )
             vp.is_measured = bool(meas)
             form.set_viscosity_profile(vp)
+
         return form
 
     def get_all_formulations(self) -> List[Formulation]:
         c = self.conn.cursor()
         c.execute("SELECT id FROM formulation")
-        ids = [r[0] for r in c.fetchall()]
-        return [self.get_formulation(i) for i in ids]
+        rows = c.fetchall()
+
+        formulations: List[Formulation] = []
+        for (fid,) in rows:
+            form = self.get_formulation(fid)
+            if form is not None:
+                formulations.append(form)
+
+        return formulations
 
     def delete_formulation(self, id: int) -> bool:
         c = self.conn.cursor()

@@ -368,7 +368,7 @@ class IngredientController:
             if ingredient.type == type:
                 ingredients_of_type.append(ingredient)
         if len(ingredients) == 0:
-            return None
+            return []
         return ingredients_of_type
 
     def _fetch_by_name(self, name: str, type: str) -> Ingredient:

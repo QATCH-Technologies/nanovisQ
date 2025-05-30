@@ -30,15 +30,15 @@ class FormulationController():
             if f == formulation:
                 return f
         try:
-            buffer = formulation.buffer
+            buffer = formulation.buffer.ingredient
             self.ingredient_controller.add(buffer)
-            protein = formulation.protein
+            protein = formulation.protein.ingredient
             self.ingredient_controller.add(protein)
-            salt = formulation.salt
+            salt = formulation.salt.ingredient
             self.ingredient_controller.add(salt)
-            surfactant = formulation.surfactant
+            surfactant = formulation.surfactant.ingredient
             self.ingredient_controller.add(surfactant)
-            stabilizer = formulation.stabilizer
+            stabilizer = formulation.stabilizer.ingredient
             self.ingredient_controller.add(stabilizer)
         except ValueError:
             pass

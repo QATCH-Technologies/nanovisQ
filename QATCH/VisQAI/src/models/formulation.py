@@ -179,13 +179,9 @@ class Formulation:
         return self._temperature
 
     def set_temperature(self, temp) -> None:
-        try:
-            value = float(temp)
-        except (TypeError, ValueError):
-            raise TypeError("temperature must be numeric")
-        if math.isnan(value):
-            value = 25.0
-        self._temperature = value
+        if temp is None or math.isnan(temp):
+            temp = 25.0
+        self._temperature = temp
 
     def set_viscosity_profile(self, profile: ViscosityProfile) -> None:
         if not isinstance(profile, ViscosityProfile):
@@ -217,4 +213,6 @@ class Formulation:
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Formulation):
             return NotImplemented
+        print(self.to_dict())
+        print(other.to_dict())
         return self.to_dict() == other.to_dict()
