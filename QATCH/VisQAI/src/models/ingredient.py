@@ -20,7 +20,7 @@ class Ingredient(ABC):
         if not name.strip():
             raise ValueError("`name` cannot be empty")
         self._name: str = name.strip()
-        self._is_user_ingredient: bool = True
+        self._is_user: bool = True
 
     @staticmethod
     def _validate_int(value: Any, field: str) -> int:
@@ -70,20 +70,20 @@ class Ingredient(ABC):
         self._name = name.strip()
 
     @property
-    def is_user_ingredient(self) -> bool:
-        return self._is_user_ingredient
+    def is_user(self) -> bool:
+        return self._is_user
 
-    @is_user_ingredient.setter
-    def is_user_ingredient(self, flag: bool) -> None:
-        self._is_user_ingredient = flag
+    @is_user.setter
+    def is_user(self, flag: bool) -> None:
+        self._is_user = flag
 
     def to_dict(self) -> Dict[str, Any]:
         return {
-            "id": self._id,
+            # "id": self._id,
             "enc_id": self._enc_id,
             "name": self._name,
             "type": self.type,
-            "user?": self.is_user_ingredient,
+            "user?": self.is_user,
         }
 
     @classmethod
@@ -97,7 +97,7 @@ class Ingredient(ABC):
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}"
-            f"(id={self._id!r}, enc_id={self._enc_id!r}, name={self._name!r}, user?={self._is_user_ingredient})"
+            f"(id={self._id!r}, enc_id={self._enc_id!r}, name={self._name!r}, user?={self._is_user})"
         )
 
     def __eq__(self, other: Any) -> bool:

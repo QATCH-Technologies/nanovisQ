@@ -34,24 +34,37 @@ class FormulationController():
             f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
 
     def add_formulation(self, formulation: Formulation) -> Formulation:
-        formulations = self.get_all_formulations()
-        for f in formulations:
-            if f == formulation:
-                return f
+
         try:
             buffer = formulation.buffer.ingredient
             self.ingredient_controller.add(buffer)
+        except ValueError:
+            pass
+        try:
             protein = formulation.protein.ingredient
             self.ingredient_controller.add(protein)
+        except ValueError:
+            pass
+        try:
             salt = formulation.salt.ingredient
             self.ingredient_controller.add(salt)
+        except ValueError:
+            pass
+        try:
             surfactant = formulation.surfactant.ingredient
             self.ingredient_controller.add(surfactant)
+        except ValueError:
+            pass
+        try:
             stabilizer = formulation.stabilizer.ingredient
             self.ingredient_controller.add(stabilizer)
         except ValueError:
             pass
-
+        formulations = self.get_all_formulations()
+        for f in formulations:
+            print(f, formulation)
+            if f == formulation:
+                return f
         self.db.add_formulation(formulation)
         return formulation
 

@@ -19,9 +19,16 @@ from matplotlib.figure import Figure
 
 try:
     from src.io.file_storage import SecureOpen
+    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.controller.formulation_controller import FormulationController
+    from src.db.db import Database
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
-
+    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+    from QATCH.VisQAI.src.db.db import Database
 TAG = "[VisQ.AI]"
 
 
@@ -74,6 +81,9 @@ class VisQAIWindow(QtWidgets.QMainWindow):
                                "\u2464 Predict")  # unicode circled 5
 
         self.setCentralWidget(self.tab_widget)
+        self.database = Database(
+            encryption_key="secretsecret")  # TODO use a real key
+        self.form_ctrl = FormulationController(db=self.database)
 
     def clear(self) -> None:
         pass
@@ -237,17 +247,20 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Features table
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
-                                             "Buffer Type",
+                                             "Buffer Type", "Buffer Concentration",
                                              "Surfactant Type", "Surfactant Concentration",
-                                             "Stabilizer Type", "Stabilizer Concentration"],
+                                             "Stabilizer Type", "Stabilizer Concentration",
+                                             "Salt Type", "Salt Concentration"],
                                  "Value": [["Sample A", "Sample B", "Sample C"], "",
-                                           ["Acetate", "Histidine", "PBS"],
+                                           ["Acetate", "Histidine", "PBS"], "",
                                            ["TWEEN20", "TWEEN80"], "",
-                                           ["Sucrose", "Trehalose"], ""],
+                                           ["Sucrose", "Trehalose"], "",
+                                           ["Sodium"], ""],
                                  "Units": ["", "mg/mL",
-                                           "",
+                                           "", "mg/mL",
                                            "", "%w",
-                                           "", "M"]}
+                                           "", "M",
+                                           "", "mg/mL"]}
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
                                                 len(list(self.default_features.keys())))
 
@@ -261,9 +274,10 @@ class FrameStep1(QtWidgets.QDialog):
         for i in range(4):
             dummy_feature = copy.deepcopy(self.default_features)
             value_tags = [0, range(5, 95),
-                          range(3),
+                          range(3), range(5, 95),
                           range(2), range(5, 95),
-                          range(2), range(5, 95)]
+                          range(2), range(5, 95),
+                          0, range(5, 95)]
             for x in range(len(dummy_feature["Value"])):
                 try:
                     current_value = dummy_feature["Value"][x]
@@ -301,6 +315,44 @@ class FrameStep1(QtWidgets.QDialog):
         self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
 
+    def save_formulation(self):
+        protein_type = self.feature_table.cellWidget(0, 1).currentText()
+        protein_conc = self.feature_table.item(1, 1).text()
+        buffer_type = self.feature_table.cellWidget(2, 1).currentText()
+        buffer_conc = self.feature_table.item(3, 1).text()
+        surfactant_type = self.feature_table.cellWidget(4, 1).currentText()
+        surfactant_conc = self.feature_table.item(5, 1).text()
+        stabilizer_type = self.feature_table.cellWidget(6, 1).currentText()
+        stabilizer_conc = self.feature_table.item(7, 1).text()
+        salt_type = self.feature_table.cellWidget(8, 1).currentText()
+        salt_conc = self.feature_table.item(9, 1).text()
+
+        protein = Protein(enc_id=0, name=protein_type)
+        buffer = Buffer(enc_id=0, name=buffer_type)
+        surfactant = Surfactant(enc_id=0, name=surfactant_type)
+        stabilizer = Stabilizer(enc_id=0, name=stabilizer_type)
+        salt = Salt(enc_id=0, name=salt_type)
+        vp = ViscosityProfile(shear_rates=[
+                              100, 1000, 10000, 100000, 15000000], viscosities=[-1, -1, -1, -1, -1], units='cP')
+        temp = self.run_temperature.text()
+        if temp.endswith('C'):
+            temp = temp[:-1]
+
+        form = Formulation()
+        form.set_buffer(buffer, concentration=float(
+            buffer_conc), units='mg/mL')
+        form.set_surfactant(surfactant=surfactant,
+                            concentration=float(surfactant_conc), units='%w')
+        form.set_protein(
+            protein=protein, concentration=float(protein_conc), units='mg/mL')
+        form.set_salt(salt, concentration=float(salt_conc), units='mg/mL')
+        form.set_stabilizer(stabilizer=stabilizer,
+                            concentration=float(stabilizer_conc), units='mg/mL')
+        form.set_temperature(float(temp))
+        form.set_viscosity_profile(profile=vp)
+        self.parent.form_ctrl.add_formulation(formulation=form)
+        print(self.parent.form_ctrl.get_all_as_dataframe())
+
     def next_step(self):
         # Are we ready to proceed?
         # Yes, if and only if:
@@ -316,6 +368,7 @@ class FrameStep1(QtWidgets.QDialog):
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
+                self.save_formulation()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -491,9 +544,10 @@ class FrameStep1(QtWidgets.QDialog):
 
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
-                      "buffer_type",
+                      "buffer_type", "buffer_concentration",
                       "surfactant_type", "surfactant_concentration",
-                      "stabilizer_type", "stabilizer_concentration"]
+                      "stabilizer_type", "stabilizer_concentration",
+                      "salt_type", "salt_concentration"]
         for x, y in enumerate(value_tags):
             try:
                 if y in xml_params.keys():

@@ -199,7 +199,12 @@ class Formulation:
     def to_dict(self) -> Dict[str, Any]:
         data: Dict[str, Any] = {"id": self.id}
         for key, comp in self._components.items():
-            data[key] = comp.to_dict() if comp is not None else None
+            if comp is not None:
+                comp_dict = comp.to_dict()
+                comp_dict.pop('id', None)
+                data[key] = comp.to_dict()
+            else:
+                None
         data["temperature"] = self.temperature
         data["viscosity_profile"] = (
             self.viscosity_profile.to_dict()
@@ -217,6 +222,14 @@ class Formulation:
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Formulation):
             return NotImplemented
-        print(self.to_dict())
-        print(other.to_dict())
-        return self.to_dict() == other.to_dict()
+
+        d1 = self.to_dict()
+        d2 = other.to_dict()
+
+        d1.pop("id", None)
+        d2.pop("id", None)
+        print('--SELF--')
+        print(d1)
+        print('--OTHER--')
+        print(d2)
+        return d1 == d2

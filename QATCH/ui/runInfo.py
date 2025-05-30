@@ -438,7 +438,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_nc = 0
         self.database = Database(
             encryption_key="secretsecret")  # TODO use a real key
-        # self.database.reset()
         self.ing_ctrl = IngredientController(db=self.database)
         self.finished.connect(self.database.close)
 
