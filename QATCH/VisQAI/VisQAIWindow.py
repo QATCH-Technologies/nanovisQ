@@ -22,12 +22,14 @@ try:
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
     from src.controller.formulation_controller import FormulationController
+    from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
 TAG = "[VisQ.AI]"
 
@@ -69,6 +71,11 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
 
+        self.database = Database(
+            encryption_key="secretsecret")  # TODO use a real key
+        self.form_ctrl = FormulationController(db=self.database)
+        self.ing_ctrl = IngredientController(db=self.database)
+
         self.tab_widget.addTab(FrameStep1(self, 1),
                                "\u2460 Select Run")  # unicode circled 1
         self.tab_widget.addTab(FrameStep1(self, 2),
@@ -81,9 +88,6 @@ class VisQAIWindow(QtWidgets.QMainWindow):
                                "\u2464 Predict")  # unicode circled 5
 
         self.setCentralWidget(self.tab_widget)
-        self.database = Database(
-            encryption_key="secretsecret")  # TODO use a real key
-        self.form_ctrl = FormulationController(db=self.database)
 
     def clear(self) -> None:
         pass
@@ -246,18 +250,25 @@ class FrameStep1(QtWidgets.QDialog):
         v_splitter.addWidget(right_header)
 
         # Features table
+        self.load_all_excipient_types()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
+                                             "Protein Molecular Weight", "Protein pI Mean", "Protein pI Range",  # not in Run Info
                                              "Buffer Type", "Buffer Concentration",
+                                             "Buffer pH",  # not in Run Info
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration"],
-                                 "Value": [["Sample A", "Sample B", "Sample C"], "",
-                                           ["Acetate", "Histidine", "PBS"], "",
-                                           ["TWEEN20", "TWEEN80"], "",
-                                           ["Sucrose", "Trehalose"], "",
-                                           ["Sodium"], ""],
+                                 "Value": [self.proteins, "",
+                                           "", "", "",  # molecular weight, pI mean, pI range
+                                           self.buffers, "",
+                                           "",  # buffer pH
+                                           self.surfactants, "",
+                                           self.stabilizers, "",
+                                           self.salts, ""],
                                  "Units": ["", "mg/mL",
+                                           "kDa", "", "",  # pI
                                            "", "mg/mL",
+                                           "",  # pH
                                            "", "%w",
                                            "", "M",
                                            "", "mg/mL"]}
@@ -274,7 +285,9 @@ class FrameStep1(QtWidgets.QDialog):
         for i in range(4):
             dummy_feature = copy.deepcopy(self.default_features)
             value_tags = [0, range(5, 95),
+                          0, 0, 0,
                           range(3), range(5, 95),
+                          0,
                           range(2), range(5, 95),
                           range(2), range(5, 95),
                           0, range(5, 95)]
@@ -295,6 +308,12 @@ class FrameStep1(QtWidgets.QDialog):
                                 current_tag[0], current_tag[-1])
                 except Exception as e:
                     print(e)
+            # Hide protein and buffer characteristics
+            for values in dummy_feature.values():
+                del values[7]  # buffer PH
+                del values[4]  # protein pI range
+                del values[3]  # protein pI mean
+                del values[2]  # protein weight
             self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
@@ -315,41 +334,114 @@ class FrameStep1(QtWidgets.QDialog):
         self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
 
+    def load_all_excipient_types(self):
+        self.proteins: list[str] = []
+        self.buffers: list[str] = []
+        self.surfactants: list[str] = []
+        self.stabilizers: list[str] = []
+        self.salts: list[str] = []
+
+        ingredients = self.parent.ing_ctrl.get_all_ingredients()
+        for i in ingredients:
+            if i.name.casefold() == "none":
+                continue  # skip "none"
+            if i.type == "Protein":
+                self.proteins.append(i.name)
+            elif i.type == "Buffer":
+                self.buffers.append(i.name)
+            elif i.type == "Surfactant":
+                self.surfactants.append(i.name)
+            elif i.type == "Stabilizer":
+                self.stabilizers.append(i.name)
+            elif i.type == "Salt":
+                self.salts.append(i.name)
+
+        # this is case-sensitive, which is not what we want:
+        # self.excipient_proteins.sort()
+        # self.excipient_surfactants.sort()
+        # self.excipient_stabilizers.sort()
+        # this is using a case-insensitive sorting method:
+        self.proteins = sorted(
+            self.proteins, key=str.casefold)
+        self.buffers = sorted(
+            self.buffers, key=str.casefold)
+        self.surfactants = sorted(
+            self.surfactants, key=str.casefold)
+        self.stabilizers = sorted(
+            self.stabilizers, key=str.casefold)
+        self.salts = sorted(
+            self.salts, key=str.casefold)
+
+        Log.d("Proteins:", self.proteins)
+        Log.d("Buffers:", self.buffers)
+        Log.d("Surfactants:", self.surfactants)
+        Log.d("Stabilizers:", self.stabilizers)
+        Log.d("Salts", self.salts)
+
     def save_formulation(self):
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
-        buffer_type = self.feature_table.cellWidget(2, 1).currentText()
-        buffer_conc = self.feature_table.item(3, 1).text()
-        surfactant_type = self.feature_table.cellWidget(4, 1).currentText()
-        surfactant_conc = self.feature_table.item(5, 1).text()
-        stabilizer_type = self.feature_table.cellWidget(6, 1).currentText()
-        stabilizer_conc = self.feature_table.item(7, 1).text()
-        salt_type = self.feature_table.cellWidget(8, 1).currentText()
-        salt_conc = self.feature_table.item(9, 1).text()
+        protein_weight = self.feature_table.item(2, 1).text()
+        protein_pI_mean = self.feature_table.item(3, 1).text()
+        protein_pI_range = self.feature_table.item(4, 1).text()
+        buffer_type = self.feature_table.cellWidget(5, 1).currentText()
+        buffer_conc = self.feature_table.item(6, 1).text()
+        buffer_pH = self.feature_table.item(7, 1).text()
+        surfactant_type = self.feature_table.cellWidget(8, 1).currentText()
+        surfactant_conc = self.feature_table.item(9, 1).text()
+        stabilizer_type = self.feature_table.cellWidget(10, 1).currentText()
+        stabilizer_conc = self.feature_table.item(11, 1).text()
+        salt_type = self.feature_table.cellWidget(12, 1).currentText()
+        salt_conc = self.feature_table.item(13, 1).text()
 
-        protein = Protein(enc_id=0, name=protein_type)
-        buffer = Buffer(enc_id=0, name=buffer_type)
-        surfactant = Surfactant(enc_id=0, name=surfactant_type)
-        stabilizer = Stabilizer(enc_id=0, name=stabilizer_type)
-        salt = Salt(enc_id=0, name=salt_type)
+        protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
+        buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
+        surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
+            name=surfactant_type)
+        stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
+            name=stabilizer_type)
+        salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
+
+        # update protein and buffer characteristics
+        protein.molecular_weight = protein_weight
+        protein.pI_mean = protein_pI_mean
+        protein.pI_range = protein_pI_range
+        buffer.pH = buffer_pH
+        # TODO: mutators in ingredient_controller.py have issues:
+        # - do no always return a value, when changes occur
+        # - all ingredient types use "protein" method names
+        self.parent.ing_ctrl.update_protein(protein.id, protein)
+        self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
+
         vp = ViscosityProfile(shear_rates=[
                               100, 1000, 10000, 100000, 15000000], viscosities=[-1, -1, -1, -1, -1], units='cP')
+
+        def is_number(s: str):
+            try:
+                float(s)
+                return True
+            except ValueError:
+                return False
+
         temp = self.run_temperature.text()
         if temp.endswith('C'):
-            temp = temp[:-1]
+            temp = temp[:-1]  # strip Celsius unit character
+        if not is_number(temp):
+            temp = "nan"  # not a number, casts to float as nan
 
         form = Formulation()
+        form.set_protein(
+            protein=protein, concentration=float(protein_conc), units='mg/mL')
         form.set_buffer(buffer, concentration=float(
             buffer_conc), units='mg/mL')
         form.set_surfactant(surfactant=surfactant,
                             concentration=float(surfactant_conc), units='%w')
-        form.set_protein(
-            protein=protein, concentration=float(protein_conc), units='mg/mL')
-        form.set_salt(salt, concentration=float(salt_conc), units='mg/mL')
         form.set_stabilizer(stabilizer=stabilizer,
                             concentration=float(stabilizer_conc), units='mg/mL')
-        form.set_temperature(float(temp))
+        form.set_salt(salt, concentration=float(salt_conc), units='mg/mL')
         form.set_viscosity_profile(profile=vp)
+        form.set_temperature(float(temp))
+
         self.parent.form_ctrl.add_formulation(formulation=form)
         print(self.parent.form_ctrl.get_all_as_dataframe())
 
@@ -544,12 +636,16 @@ class FrameStep1(QtWidgets.QDialog):
 
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
+                      "", "", "",  # molecular weight, pI mean, pI range
                       "buffer_type", "buffer_concentration",
+                      "",  # pH
                       "surfactant_type", "surfactant_concentration",
                       "stabilizer_type", "stabilizer_concentration",
                       "salt_type", "salt_concentration"]
         for x, y in enumerate(value_tags):
             try:
+                if y == "":
+                    continue
                 if y in xml_params.keys():
                     if not is_number(xml_params[y]):
                         run_features["Value"][x] = [xml_params[y]]
@@ -557,6 +653,31 @@ class FrameStep1(QtWidgets.QDialog):
                         run_features["Value"][x] = xml_params[y]
             except Exception as e:
                 print(e)
+
+        if self.step == 3:
+            # Hide protein and buffer characteristics
+            for values in run_features.values():
+                del values[7]  # buffer PH
+                del values[4]  # protein pI range
+                del values[3]  # protein pI mean
+                del values[2]  # protein weight
+        else:
+            # Pull protein and buffer characteristics from database (if available)
+            protein = self.parent.ing_ctrl.get_protein_by_name(
+                name=xml_params["protein_type"])
+            if protein != None:
+                if protein.molecular_weight != None:
+                    run_features["Value"][2] = protein.molecular_weight
+                if protein.pI_mean != None:
+                    run_features["Value"][3] = protein.pI_mean
+                if protein.pI_range != None:
+                    run_features["Value"][4] = protein.pI_range
+            buffer = self.parent.ing_ctrl.get_buffer_by_name(
+                name=xml_params["buffer_type"])
+            if buffer != None:
+                if buffer.pH != None:
+                    run_features["Value"][7] = buffer.pH
+
         self.feature_table.setData(run_features)
 
         # Import most recent analysis
@@ -708,25 +829,26 @@ class TableView(QtWidgets.QTableWidget):
             for m, item in enumerate(self.data[key]):
                 if isinstance(item, list):
                     newitem = QtWidgets.QComboBox()
-                    newitem.addItem("none")
+                    newitem.addItem("None")
                     newitem.addItems(item)
-                    newitem.addItem("add new...")
+                    # newitem.addItem("add new...")
                     if len(item) > 1:
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
                     else:
+                        newitem.removeItem(0)  # remove "None"
                         self.data["Units"][m] = ""  # clear flag
                 else:
                     newitem = QtWidgets.QTableWidgetItem(str(item))
-                # disable 1st and last column items (non-editable)
+                # disable 1st and last column items (not selectable or editable)
                 if n == 0 or n == 2:
                     if n == 0:  # bold 1st column items (headers)
                         font = newitem.font()
                         font.setBold(True)
                         newitem.setFont(font)
                     newitem.setFlags(newitem.flags() &
-                                     ~QtCore.Qt.ItemFlag.ItemIsEditable)
+                                     ~(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEditable))
                 if isinstance(newitem, QtWidgets.QWidget):
                     self.setCellWidget(m, n, newitem)
                 else:
@@ -872,7 +994,7 @@ class CollapsibleBox(QtWidgets.QWidget):
         collapsed_height = (
             self.sizeHint().height() - self.content_area.maximumHeight()
         )
-        content_height = layout.sizeHint().height() * 3
+        content_height = layout.sizeHint().height()
         for i in range(self.toggle_animation.animationCount()):
             animation = self.toggle_animation.animationAt(i)
             animation.setDuration(500)

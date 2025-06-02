@@ -439,7 +439,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.database = Database(
             encryption_key="secretsecret")  # TODO use a real key
         self.ing_ctrl = IngredientController(db=self.database)
-        self.finished.connect(self.database.close)
+        # NOTE: Changes to Database are only saved if Database().close() is called
+        # However, to avoid un-audit-signed changes, only add signal after signing
 
         self.q_runname = QtWidgets.QHBoxLayout()  # runname #
         # self.q_runname.setContentsMargins(10, 0, 10, 0)
@@ -662,7 +663,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l14.setText("Concentration\t=")
         self.q14.addWidget(self.l14)
         self.t14 = QtWidgets.QLineEdit()
-        self.validBufferConcentration = QtGui.QDoubleValidator(0, 1000, 1)
+        self.validBufferConcentration = QtGui.QDoubleValidator(0, 1000, 3)
         self.validBufferConcentration.setNotation(
             QtGui.QDoubleValidator.StandardNotation)
         self.t14.setValidator(self.validBufferConcentration)
@@ -760,12 +761,51 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.vbox3.addLayout(self.q11)
         self.vbox3.addLayout(self.q8)
 
+        # Salt Type
+        self.l15 = QtWidgets.QLabel()
+        self.q15 = QtWidgets.QHBoxLayout()
+        self.l15.setText("Type\t\t=")
+        self.q15.addWidget(self.l15)
+        self.c15 = QtWidgets.QComboBox()
+        self.q15.addWidget(self.c15, 1)
+        self.h15 = QtWidgets.QLabel()
+        self.h15.setText("<u>?</u>")
+        self.h15.setToolTip(
+            "<b>Hint:</b> If not listed, add a new entry to the list.")
+        self.q15.addWidget(self.h15)
+        self.c15.currentTextChanged.connect(self.new_salt_type)
+
+        # Salt Concentration
+        self.q16 = QtWidgets.QHBoxLayout()
+        self.l16 = QtWidgets.QLabel()
+        self.l16.setText("Concentration\t=")
+        self.q16.addWidget(self.l16)
+        self.t16 = QtWidgets.QLineEdit()
+        self.validSaltConcentration = QtGui.QDoubleValidator(0, 1000, 3)
+        self.validSaltConcentration.setNotation(
+            QtGui.QDoubleValidator.StandardNotation)
+        self.t16.setValidator(self.validSaltConcentration)
+        self.q16.addWidget(self.t16)
+        self.h16 = QtWidgets.QLabel()
+        self.h16.setText("<u>mg/mL</u>")
+        self.h16.setToolTip("<b>Hint:</b> For 100mg/mL enter \"100\".")
+        self.q16.addWidget(self.h16)
+
+        # Salt Groupbox
+        self.groupSalt = QtWidgets.QGroupBox("Salt Information")
+        self.groupSalt.setCheckable(False)
+        self.vbox4 = QtWidgets.QVBoxLayout()
+        self.groupSalt.setLayout(self.vbox4)
+        self.vbox4.addLayout(self.q15)
+        self.vbox4.addLayout(self.q16)
+
         # read from excipient DB
         self.load_all_excipient_types()
         self.populate_proteins()
         self.populate_buffers()
         self.populate_surfactants()
         self.populate_stabilizers()
+        self.populate_salts()
 
         self.r1 = QtWidgets.QHBoxLayout()
         self.l6 = QtWidgets.QLabel()
@@ -844,12 +884,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         lay.setContentsMargins(0, 0, 0, 0)
         lay.addWidget(self.groupBuffer)
         lay.addWidget(self.groupSurfactant)
-        label = QtWidgets.QGroupBox("Salt Information")
-        layout = QtWidgets.QFormLayout(label)
-        layout.addRow("Type:", QtWidgets.QLineEdit())
-        layout.addRow("Concentration:", QtWidgets.QLineEdit())
-        lay.addWidget(label)
+        lay.addWidget(self.groupSalt)
         self.collapsibleBox.setContentLayout(lay)
+        self.collapsibleBox.toggle_button.pressed.connect(
+            self.resize_on_collapse_change)
         # -------------- CollapsibleBox: Advanced --------------
 
         layout_v = QtWidgets.QVBoxLayout()
@@ -1033,7 +1071,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         tb_elems = [self.t_runname, self.t_batch, self.t0,
                     self.t1, self.t2, self.t3, self.t4, self.t5,
-                    self.t6, self.t8, self.t12, self.t14]
+                    self.t6, self.t8, self.t12, self.t14, self.t16]
         self.reset_actions = []
         for tb in tb_elems:
             tb.textChanged.connect(self.detect_change)
@@ -1059,10 +1097,20 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.c10.currentTextChanged.connect(self.detect_change)
         self.c11.currentTextChanged.connect(self.detect_change)
         self.c13.currentTextChanged.connect(self.detect_change)
+        self.c15.currentTextChanged.connect(self.detect_change)
         self.t_channels.valueChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
+
+    def resize_on_collapse_change(self):
+        Log.d("Resizing Run Info on Advanced Information toggle...")
+        QtCore.QTimer.singleShot(500, self.resizeNormal)
+
+    def resizeNormal(self):
+        # fixed width (from show); with dynamic height
+        super(QueryRunInfo, self).resize(
+            self.width(), self.sizeHint().height())
 
     def showScanNow(self):
         self.l_scannow.resize(self.t_batch.size())
@@ -1264,7 +1312,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     # new parameters for revamped run info
                     if name == "protein_type":
-                        if value not in self.proteins and value.casefold() != "none":
+                        if value not in self.proteins and value.casefold() != "none" \
+                                and len(value) != 0:  # protein uses blank value default
                             Log.w(
                                 f"Adding new Protein Type: \"{value}\"")
                             self.proteins.append(value)
@@ -1311,6 +1360,18 @@ class QueryRunInfo(QtWidgets.QWidget):
                         self.c11.setCurrentText(value)
                     if name == "stabilizer_concentration":
                         self.t8.setText(value)
+                    if name == "salt_type":
+                        if value not in self.salts and value.casefold() != "none":
+                            Log.w(
+                                f"Unknown Salt Type: \"{value}\" not in list")
+                            self.salts.append(value)
+                            self.salts = sorted(
+                                self.salts, key=str.casefold)
+                            self.populate_salts()
+                            self.ing_ctrl.add(Salt(enc_id=1, name=value))
+                        self.c15.setCurrentText(value)
+                    if name == "salt_concentration":
+                        self.t16.setText(value)
 
                     # Set the fill type to the recalled number of channels from the XML
                     # file.
@@ -1519,6 +1580,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def new_protein_type(self, text: str):
         if text.casefold() == "add new...":
+            # set current text if window is closed, not saved
+            self.c10.setCurrentText(self.proteins[-1])
             self.add_protein_type = QtWidgets.QWidget()
             self.add_protein_type.setWindowTitle("Protein Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1546,6 +1609,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def new_buffer_type(self, text: str):
         if text.casefold() == "add new...":
+            # set current text if window is closed, not saved
+            self.c13.setCurrentText(self.buffers[-1])
             self.add_buffer_type = QtWidgets.QWidget()
             self.add_buffer_type.setWindowTitle("Buffer Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1572,6 +1637,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def new_surfactant_type(self, text: str):
         if text.casefold() == "add new...":
+            # set current text if window is closed, not saved
+            self.c9.setCurrentText(self.surfactants[-1])
             self.add_surfactant_type = QtWidgets.QWidget()
             self.add_surfactant_type.setWindowTitle("Surfactant Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1598,6 +1665,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def new_stabilizer_type(self, text: str):
         if text.casefold() == "add new...":
+            # set current text if window is closed, not saved
+            self.c11.setCurrentText(self.stabilizers[-1])
             self.add_stabilizer_type = QtWidgets.QWidget()
             self.add_stabilizer_type.setWindowTitle("Stabilizer Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1622,12 +1691,40 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t8.setEnabled(True)
             pass  # do nothing if any other value was selected
 
+    def new_salt_type(self, text: str):
+        if text.casefold() == "add new...":
+            # set current text if window is closed, not saved
+            self.c15.setCurrentText(self.salts[-1])
+            self.add_salt_type = QtWidgets.QWidget()
+            self.add_salt_type.setWindowTitle("Salt Types")
+            layout = QtWidgets.QVBoxLayout()
+            label = QtWidgets.QLabel("Available Salt Types:")
+            self.salt_types_multiline = QtWidgets.QPlainTextEdit()
+            self.salt_types_multiline.setPlainText(
+                "\n".join(self.salts))
+            save = QtWidgets.QPushButton("Save")
+            save.clicked.connect(self.save_salts)
+            layout.addWidget(label)
+            layout.addWidget(self.salt_types_multiline)
+            layout.addWidget(save)
+            self.add_salt_type.setLayout(layout)
+            self.add_salt_type.show()
+            self.salt_types_multiline.setFocus()
+            self.salt_types_multiline.moveCursor(
+                QtGui.QTextCursor.MoveOperation.End)
+        elif text.casefold() == "none":
+            self.t16.setText("0")  # clear Salt Concentration
+            self.t16.setEnabled(False)
+        else:
+            self.t16.setEnabled(True)
+            pass  # do nothing if any other value was selected
+
     def load_all_excipient_types(self):
-        self.proteins = []
-        self.buffers = []
-        self.surfactants = []
-        self.stabilizers = []
-        self.salts = []
+        self.proteins: list[str] = []
+        self.buffers: list[str] = []
+        self.surfactants: list[str] = []
+        self.stabilizers: list[str] = []
+        self.salts: list[str] = []
         ingredients = self.ing_ctrl.get_all_ingredients()
 
         # Create default excipients list (if none exist)
@@ -1653,6 +1750,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             ingredients = self.ing_ctrl.get_all_ingredients()  # reload
 
         for i in ingredients:
+            if i.name.casefold() == "none":
+                continue  # skip "none"
             if i.type == "Protein":
                 self.proteins.append(i.name)
             elif i.type == "Buffer":
@@ -1663,6 +1762,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.stabilizers.append(i.name)
             elif i.type == "Salt":
                 self.salts.append(i.name)
+
         # this is case-sensitive, which is not what we want:
         # self.excipient_proteins.sort()
         # self.excipient_surfactants.sort()
@@ -1676,6 +1776,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.surfactants, key=str.casefold)
         self.stabilizers = sorted(
             self.stabilizers, key=str.casefold)
+        self.salts = sorted(
+            self.salts, key=str.casefold)
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
@@ -1760,8 +1862,6 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_salts(self):
         old_salts = self.salts.copy()
-
-        # TODO: Make new box for salts VVV
         new_salts = self.stabilizer_types_multiline.toPlainText().splitlines()
         for name in new_salts:
             name = name.strip()
@@ -1783,15 +1883,15 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c10.count()
             self.c10.clear()
-            self.c10.addItem("none")
+            self.c10.addItem("")  # blank, default until user makes selection
             self.c10.addItems(self.proteins)
-            self.c10.addItem("add new...")
+            self.c10.addItem("Add new...")
             if num_items:
                 # select newly entered value (last in list)
                 # TODO: since we `sort()`, "newest" is not "last"
                 self.c10.setCurrentText(self.proteins[-1])
             else:
-                self.c10.setCurrentIndex(0)  # initial load value: none
+                self.c10.setCurrentIndex(0)  # initial load value: [blank]
         except:
             Log.e("Failed to update proteins list after saving.")
 
@@ -1799,9 +1899,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c13.count()
             self.c13.clear()
-            self.c13.addItem("none")
+            self.c13.addItem("None")
             self.c13.addItems(self.buffers)
-            self.c13.addItem("add new...")
+            self.c13.addItem("Add new...")
             if num_items:
                 # select newly entered value (last in list)
                 # TODO: since we `sort()`, "newest" is not "last"
@@ -1815,9 +1915,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c9.count()
             self.c9.clear()
-            self.c9.addItem("none")
+            self.c9.addItem("None")
             self.c9.addItems(self.surfactants)
-            self.c9.addItem("add new...")
+            self.c9.addItem("Add new...")
             if num_items:
                 # select newly entered value (last in list)
                 # TODO: since we `sort()`, "newest" is not "last"
@@ -1831,9 +1931,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c11.count()
             self.c11.clear()
-            self.c11.addItem("none")
+            self.c11.addItem("None")
             self.c11.addItems(self.stabilizers)
-            self.c11.addItem("add new...")
+            self.c11.addItem("Add new...")
             if num_items:
                 # select newly entered value (last in list)
                 # TODO: since we `sort()`, "newest" is not "last"
@@ -1844,21 +1944,20 @@ class QueryRunInfo(QtWidgets.QWidget):
             Log.e("Failed to update stabilizers list after saving.")
 
     def populate_salts(self):
-        pass
-        # try:
-        #     num_items = self.c11.count()
-        #     self.c11.clear()
-        #     self.c11.addItem("none")
-        #     self.c11.addItems(self.sa)
-        #     self.c11.addItem("add new...")
-        #     if num_items:
-        #         # select newly entered value (last in list)
-        #         # TODO: since we `sort()`, "newest" is not "last"
-        #         self.c11.setCurrentText(self.stabilizers[-1])
-        #     else:
-        #         self.c11.setCurrentIndex(0)  # initial load value: none
-        # except:
-        #     Log.e("Failed to update stabilizers list after saving.")
+        try:
+            num_items = self.c15.count()
+            self.c15.clear()
+            self.c15.addItem("None")
+            self.c15.addItems(self.salts)
+            self.c15.addItem("Add new...")
+            if num_items:
+                # select newly entered value (last in list)
+                # TODO: since we `sort()`, "newest" is not "last"
+                self.c15.setCurrentText(self.salts[-1])
+            else:
+                self.c15.setCurrentIndex(0)  # initial load value: none
+        except:
+            Log.e("Failed to update salts list after saving.")
 
     # def load_surfactant_types(self):
     #     try:
@@ -1974,6 +2073,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == True)  # surfactant group
             self.groupStabilizer.setVisible(
                 is_bioformulation == True)  # stabilizer group
+            self.groupSalt.setVisible(
+                is_bioformulation == True)  # salt group
 
             if curr_state is not None:
                 # resize vertically to fit fields (if visible)
@@ -2123,7 +2224,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 or other preventative measure.
 
         Returns:
-            bool : True if confirmation and writing of run_info was successful.  On errors, Flase is returned
+            bool : True if confirmation and writing of run_info was successful.  On errors, False is returned
                 indicating a failed writing attempt.
         """
         from QATCH.processors.Analyze import AnalyzeProcess
@@ -2203,11 +2304,17 @@ class QueryRunInfo(QtWidgets.QWidget):
                       self.validStabilizerConcentration.bottom(),
                       self.validStabilizerConcentration.top()))
             input_error = True
-        if self.c10.currentText().casefold() == "none" and self.c10.isEnabled() and self.c10.isVisible():
+        if not self.t16.hasAcceptableInput():
+            Log.e("Input Error: Salt Concentration must be between {} and {}."
+                  .format(
+                      self.validSaltConcentration.bottom(),
+                      self.validSaltConcentration.top()))
+            input_error = True
+        if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             Log.e(
                 "Input Error: You must provide a Protein Type if this is a bioformulation.")
             Log.e(
-                "Either select a Protein Type other than \"none\" or click \"no\" for \"Is this a bioformulation?\"")
+                "Either select a Protein Type or click \"no\" for \"Is this a bioformulation?\"")
             input_error = True
         if self.t12.text() == "0" and self.t12.isEnabled() and self.t12.isVisible():
             Log.e(
@@ -2224,6 +2331,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         if self.t8.text() == "0" and self.t8.isEnabled() and self.t8.isVisible():
             Log.e(
                 "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\".")
+            input_error = True
+        if self.t16.text() == "0" and self.t16.isEnabled() and self.t16.isVisible():
+            Log.e(
+                "Input Error: Salt Concentration should be non-zero when Salt Type is not \"none\".")
             input_error = True
 
         # If the force parameter is set to True, input errors are ignored.
@@ -2563,6 +2674,17 @@ class QueryRunInfo(QtWidgets.QWidget):
             param13.setAttribute('units', 'M')
             params.appendChild(param13)
 
+            param16 = run.createElement('param')
+            param16.setAttribute('name', 'salt_type')
+            param16.setAttribute('value', self.c15.currentText())
+            params.appendChild(param16)
+
+            param17 = run.createElement('param')
+            param17.setAttribute('name', 'salt_concentration')
+            param17.setAttribute('value', self.t16.text())
+            param17.setAttribute('units', 'mg/mL')
+            params.appendChild(param17)
+
         param5 = run.createElement('param')
         param5.setAttribute('name', 'surface_tension')
         param5.setAttribute('value', "{0:0.{1}f}".format(
@@ -2729,6 +2851,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.w(
                     "Fill channels count changed! Re-run \"Predict\" to update points.")
                 self.parent.num_channels = num_channels
+
+        # we have changes, and audit signature (if required)
+        # gracefully close the database, saving any changes
+        self.finished.connect(self.database.close)
 
         self.unsaved_changes = False
         self.close()
