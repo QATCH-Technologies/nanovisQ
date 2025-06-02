@@ -171,6 +171,8 @@ class BaseTestDatabase(unittest.TestCase):
                 f"name mismatch for component '{comp_type}'"
             )
 
+    # --- Database file tests ---
+
     def test_database_file_reload(self):
         form = self.make_sample_formulation()
         fid = self.db.add_formulation(form)
@@ -198,6 +200,7 @@ class BaseTestDatabase(unittest.TestCase):
 
     def test_database_file_write_on_close_if_missing(self):
         self.test_database_file_reload()
+
         self.db.close()  # release file lock
         self.db_file.unlink()
         self.assertFalse(self.db_file.exists())
@@ -216,13 +219,15 @@ class BaseTestDatabase(unittest.TestCase):
         self.assertGreater(self.db.conn.total_changes, self.db.init_changes)
 
     def test_database_file_cannot_unlink_while_open(self):
+        self.test_database_file_reload()
+
         permission_error = False
         try:
             # try to delete the file while database open
-            self.test_database_file_reload()
             self.db_file.unlink()
         except PermissionError as e:
             permission_error = True
+
         self.assertTrue(self.db_file.exists())
         self.assertTrue(permission_error)
 
