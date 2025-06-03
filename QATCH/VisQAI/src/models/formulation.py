@@ -1,7 +1,7 @@
 """
 formulation.py
 
-This module defines classes for constructing and representing bioformulation applications. 
+This module defines classes for constructing and representing bioformulation applications.
 It includes:
 
 - `ViscosityProfile`: Represents a dynamic `ViscosityProfile` with shear rates and measured
@@ -20,12 +20,13 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-06-03
 
 Version:
-    1.3
+    1.4
 """
 import math
+import pandas as pd
 from typing import Optional, Dict, Any, List
 try:
     from src.models.ingredient import (
@@ -475,6 +476,103 @@ class Formulation:
             else None
         )
         return data
+
+    def to_dataframe(self, encoded: bool = True) -> pd.DataFrame:
+        """Convert this Formulation into a one‐row pandas DataFrame.
+
+        Args:
+            encoded (bool): If endocded is set to true, the enc_id's are returned
+                for each categorical feature of the dataframe.  If encoded is false, the
+                name is returned instead of the enc_id.
+
+        Returns:
+            pd.DataFrame: A DataFrame with exactly one row, containing the following
+                columns in this order:
+                    - "ID"
+                    - "Protein_type"
+                    - "MW"
+                    - "PI_mean"
+                    - "PI_range"
+                    - "Protein_conc"
+                    - "Temperature"
+                    - "Buffer_type"
+                    - "Buffer_pH"
+                    - "Buffer_conc"
+                    - "Salt_type"
+                    - "Salt_conc"
+                    - "Stabilizer_type"
+                    - "Stabilizer_conc"
+                    - "Surfactant_type"
+                    - "Surfactant_conc"
+                    - "Viscosity_100"
+                    - "Viscosity_1000"
+                    - "Viscosity_10000"
+                    - "Viscosity_100000"
+                    - "Viscosity_15000000"
+        """
+        if encoded:
+            row = {
+                "ID":              self.id,
+                "Protein_type":    self.protein.ingredient.enc_id,
+                "MW":              self.protein.ingredient.molecular_weight,
+                "PI_mean":         self.protein.ingredient.pI_mean,
+                "PI_range":        self.protein.ingredient.pI_range,
+                "Protein_conc":    self.protein.concentration,
+                "Temperature":     getattr(self, "temperature", pd.NA),
+                "Buffer_type":     self.buffer.ingredient.enc_id,
+                "Buffer_pH":       self.buffer.ingredient.pH,
+                "Buffer_conc":     self.buffer.concentration,
+                "Salt_type":       self.salt.ingredient.enc_id,
+                "Salt_conc":       self.salt.concentration,
+                "Stabilizer_type": self.stabilizer.ingredient.enc_id,
+                "Stabilizer_conc": self.stabilizer.concentration,
+                "Surfactant_type": self.surfactant.ingredient.enc_id,
+                "Surfactant_conc": self.surfactant.concentration,
+            }
+        else:
+            row = {
+                "ID":              self.id,
+                "Protein_type":    self.protein.ingredient.name,
+                "MW":              self.protein.ingredient.molecular_weight,
+                "PI_mean":         self.protein.ingredient.pI_mean,
+                "PI_range":        self.protein.ingredient.pI_range,
+                "Protein_conc":    self.protein.concentration,
+                "Temperature":     getattr(self, "temperature", pd.NA),
+                "Buffer_type":     self.buffer.ingredient.name,
+                "Buffer_pH":       self.buffer.ingredient.pH,
+                "Buffer_conc":     self.buffer.concentration,
+                "Salt_type":       self.salt.ingredient.name,
+                "Salt_conc":       self.salt.concentration,
+                "Stabilizer_type": self.stabilizer.ingredient.name,
+                "Stabilizer_conc": self.stabilizer.concentration,
+                "Surfactant_type": self.surfactant.ingredient.name,
+                "Surfactant_conc": self.surfactant.concentration,
+            }
+
+        shear_rates = [100, 1000, 10000, 100000, 15000000]
+        if self.viscosity_profile is not None:
+            for r in shear_rates:
+                row[f"Viscosity_{int(r)}"] = self.viscosity_profile.get_viscosity(
+                    r)
+
+        df = pd.DataFrame([row])
+
+        expected = [
+            "ID",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+            "Temperature",
+            "Buffer_type", "Buffer_pH", "Buffer_conc",
+            "Salt_type", "Salt_conc",
+            "Stabilizer_type", "Stabilizer_conc",
+            "Surfactant_type", "Surfactant_conc",
+            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
+            "Viscosity_100000", "Viscosity_15000000"
+        ]
+        for col in expected:
+            if col not in df.columns:
+                df[col] = pd.NA
+
+        return df[expected]
 
     def __repr__(self) -> str:
         """Provide a string representation of the formulation for debugging.

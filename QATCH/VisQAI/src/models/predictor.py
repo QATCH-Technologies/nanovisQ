@@ -11,17 +11,17 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-06-03
 
 Version:
-    1.0
-
+    1.1
 """
 
 import pickle
 import tempfile
 import zipfile
 from pathlib import Path
+from datetime import datetime
 from typing import Any, Optional, Union
 
 try:
@@ -48,22 +48,22 @@ class Predictor:
     and prediction.
 
     The pipeline consists of four components that must be present in a specified directory or ZIP archive:
-        1. data_loader: Must implement either `load(data)` or `process(raw)`.
+        1. dataprocessor: Must implement either `load(data)` or `process(raw)`.
         2. transformer(optional): Must implement `transform(X)`, if present.
         3. model: Can be a pickled sklearn-like estimator(with `predict`) or a Keras model(.h5 or SavedModel directory).
-        4. executor: Must implement `predict(X)`. If it also provides `set_model(model)`, that method will be used to attach
+        4. predictor: Must implement `predict(X)`. If it also provides `set_model(model)`, that method will be used to attach
            the model; otherwise, the model is assigned to its `.model` attribute.
 
     During `predict(raw_input)`, the following steps are performed:
-        1. The data_loader loads or processes the raw input.
+        1. The dataprocessors loads or processes the raw input.
         2. If a transformer is provided, the output of step 1 is transformed.
-        3. The executor’s `predict` method is called on the final data.
+        3. The predictors's `predict` method is called on the final data.
 
     Attributes:
-        data_loader: The loaded data loading component.
+        dataprocessor: The loaded data loading component.
         transformer: The loaded transformer component, or None if not provided.
         model: The loaded machine learning model.
-        executor: The loaded executor component, wired to use `model`.
+        predictor: The loaded predictor component, wired to use `model`.
 
     Raises:
         ComponentLoadError: If any required component is missing, invalid, or fails during loading or execution.
@@ -73,7 +73,7 @@ class Predictor:
         self,
         source: Union[str, Path],
         *,
-        data_loader_name: str = "dataprocessor",
+        data_processor_name: str = "dataprocessor",
         transformer_name: str = "preprocessor",
         model_name: str = "model",
         executor_name: str = "predictor",
@@ -83,7 +83,7 @@ class Predictor:
 
         This method will:
             1. Extract `source` if it is a ZIP, or treat it as a directory.
-            2. Locate and load the data_loader component(pickle or joblib).
+            2. Locate and load the data_processor component(pickle or joblib).
             3. Locate and optionally load the transformer component(pickle or joblib).
             4. Locate and load the model artifact(pickle, joblib, .h5, or SavedModel directory).
             5. Locate and load the executor component(pickle or joblib).
@@ -91,7 +91,7 @@ class Predictor:
 
         Args:
             source: Path to a directory or ZIP archive containing serialized components.
-            data_loader_name: Basename(without extension) for the data loading component.
+            data_processor_name: Basename(without extension) for the data loading component.
             transformer_name: Basename(without extension) for the optional transformer component.
             model_name: Basename(without extension) for the model artifact.
             executor_name: Basename(without extension) for the executor component.
@@ -103,16 +103,16 @@ class Predictor:
         self._base_dir = self._extract_if_archive(Path(source))
 
         # Load data loader component
-        data_loader_path = self._locate_file(
-            self._base_dir, data_loader_name, [".pkl", ".joblib"]
+        data_processor_path = self._locate_file(
+            self._base_dir, data_processor_name, [".pkl", ".joblib"]
         )
-        if data_loader_path is None:
+        if data_processor_path is None:
             raise ComponentLoadError(
-                f"Missing data loader: expected '{data_loader_name}.pkl' or "
-                f"'{data_loader_name}.joblib' in '{self._base_dir}'."
+                f"Missing data processor: expected '{data_processor_name}.pkl' or "
+                f"'{data_processor_name}.joblib' in '{self._base_dir}'."
             )
-        self.data_loader = self._load_binary(
-            data_loader_path, required_methods=("process", "load")
+        self.data_processor = self._load_binary(
+            data_processor_path, required_methods=("process", "load")
         )
 
         # Load optional transformer component
@@ -121,7 +121,8 @@ class Predictor:
         )
         if transformer_path:
             self.transformer = self._load_binary(
-                transformer_path, required_methods=("transform",)
+                transformer_path, required_methods=(
+                    "transform", "fit_transform")
             )
         else:
             self.transformer = None
@@ -130,16 +131,16 @@ class Predictor:
         self.model = self._load_model(self._base_dir, model_name)
 
         # Load executor component
-        executor_path = self._locate_file(
+        predictor_path = self._locate_file(
             self._base_dir, executor_name, [".pkl", ".joblib"]
         )
-        if executor_path is None:
+        if predictor_path is None:
             raise ComponentLoadError(
                 f"Missing executor: expected '{executor_name}.pkl' or "
                 f"'{executor_name}.joblib' in '{self._base_dir}'."
             )
-        self.executor = self._load_binary(
-            executor_path, required_methods=("predict",)
+        self.predictor = self._load_binary(
+            predictor_path, required_methods=("predict",)
         )
 
         # Attach model to executor
@@ -315,15 +316,15 @@ class Predictor:
         Raises:
             ComponentLoadError: If attaching the model fails, or if neither approach is supported.
         """
-        if hasattr(self.executor, "set_model") and callable(self.executor.set_model):
+        if hasattr(self.predictor, "set_model") and callable(self.predictor.set_model):
             try:
-                self.executor.set_model(self.model)
+                self.predictor.set_model(self.model)
             except Exception as e:
                 raise ComponentLoadError(
                     f"Executor.set_model(...) failed: {e!s}")
         else:
             try:
-                setattr(self.executor, "model", self.model)
+                setattr(self.predictor, "model", self.model)
             except Exception:
                 raise ComponentLoadError(
                     "Executor does not support `set_model(...)` or setting `.model` attribute."
@@ -336,7 +337,7 @@ class Predictor:
         The steps are:
             1. Use `data_loader.process(raw_input)` if available; otherwise, call `data_loader.load(raw_input)`.
             2. If a transformer is present, call `transformer.transform(...)` on the data from step 1.
-            3. Call `executor.predict(...)` on the final data from step 2.
+            3. Call `predictor.predict(...)` on the final data from step 2.
 
         Args:
             raw_input: The raw input data to be loaded and transformed.
@@ -350,14 +351,14 @@ class Predictor:
         """
         # Data loading/processing
         try:
-            if hasattr(self.data_loader, "process"):
-                data = self.data_loader.process(raw_input)
+            if hasattr(self.data_processor, "process"):
+                data = self.data_processor.process(raw_input)
             else:
-                data = self.data_loader.load(raw_input)
+                data = self.data_processor.load(raw_input)
         except Exception as e:
             raise ComponentLoadError(f"Data loader failed: {e!s}")
 
-        # Optional transformation
+        # Transformation
         if self.transformer is not None:
             try:
                 data = self.transformer.transform(data)
@@ -366,6 +367,71 @@ class Predictor:
 
         # Executor prediction
         try:
-            return self.executor.predict(data)
+            return self.predictor.predict(data)
         except Exception as e:
             raise ComponentLoadError(f"Executor.predict(...) failed: {e!s}")
+
+    def update(
+        self,
+        raw_X_new: Any,
+        raw_y_new: Any,
+    ) -> dict:
+        """
+        Incorporates new data into the existing pipeline by processing, scaling, and updating the model.
+
+        This method takes raw input features and labels, runs them through the data processor
+        to obtain features and labels in the expected format, applies the transformer's
+        `fit_transform` to scale the features, and then calls the predictor's `update`
+        method to perform transfer learning on the underlying model.
+        Finally, it returns a dictionary of the updated components and a timestamp.
+
+        Args:
+            raw_X_new (Any): New, unprocessed feature data.
+            raw_y_new (Any): New, unprocessed label data.
+
+        Returns:
+            dict: A dictionary containing the following keys:
+                dataprocessor (Any): The data processor instance after processing.
+                transformer (Any): The transformer instance after fitting to new features.
+                model (Any): The underlying model object (updated in place by the predictor).
+                predictor (Any): The predictor instance after performing `update(...)`.
+                updated_at (str): ISO-formatted timestamp (YYYY-MM-DDThh:mm:ss.ssssss) 
+                    indicating when the update occurred.
+
+        Raises:
+            ComponentLoadError: If any of the following conditions occur:
+                - `self.data_processor.process(raw_X_new, raw_y_new)` does not return a tuple
+                of length 2 (features, labels).
+                - The transformer object does not implement a `fit_transform(...)` method.
+                - The predictor object does not implement an `update(...)` method.
+        """
+        processed = self.data_processor.process(raw_X_new, raw_y_new)
+        if not (
+            isinstance(processed, tuple)
+            and len(processed) == 2
+        ):
+            raise ComponentLoadError(
+                "dataprocessor.process(raw_X_new, raw_y_new) must return (features, labels)."
+            )
+        features, labels = processed
+
+        if not hasattr(self.transformer, "fit_transform"):
+            raise ComponentLoadError(
+                "The serialized transformer does not implement an fit_transform(...) method.")
+
+        scaled_features = self.transformer.fit_transform(features, raw_y_new)
+
+        if not hasattr(self.predictor, "update"):
+            raise ComponentLoadError(
+                "The serialized predictor does not implement an update(...) method.")
+
+        self.predictor.update(
+            scaled_features,
+            labels,
+            model=self.model,
+        )
+        return {"dataprocessor": self.data_processor,
+                "transformer":   self.transformer,
+                "model":         self.model,
+                "predictor":     self.predictor,
+                "updated_at":    datetime.now().isoformat()}

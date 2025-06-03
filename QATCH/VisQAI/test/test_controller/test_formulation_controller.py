@@ -21,10 +21,9 @@ import unittest
 from pathlib import Path
 import pandas as pd
 from src.db.db import Database
-from src.controller.ingredient_controller import IngredientController
 from src.controller.formulation_controller import FormulationController
 from src.models.ingredient import Protein, Buffer, Salt, Surfactant, Stabilizer
-from src.models.formulation import Formulation, Component, ViscosityProfile
+from src.models.formulation import Formulation, ViscosityProfile
 
 
 class TestFormulationControllerIntegration(unittest.TestCase):

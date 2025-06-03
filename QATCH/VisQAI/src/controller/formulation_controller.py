@@ -307,8 +307,13 @@ class FormulationController:
 
         return added_forms
 
-    def get_all_as_dataframe(self) -> pd.DataFrame:
+    def get_all_as_dataframe(self, encoded: bool = True) -> pd.DataFrame:
         """Export all stored formulations to a pandas DataFrame.
+
+        Args:
+            encoded (bool): If endocded is set to true, the enc_id's are returned
+                for each categorical feature of the dataframe.  If encoded is false, the
+                name is returned instead of the enc_id (Optional, Default=True).
 
         The resulting DataFrame contains one row per formulation, with columns:
             - ID
@@ -325,36 +330,6 @@ class FormulationController:
         Returns:
             pd.DataFrame: DataFrame containing all formulation data with the specified columns.
         """
-        rows = []
-        for f in self.get_all_formulations():
-            row = {
-                "ID":              f.id,
-                "Protein_type":    f.protein.ingredient.enc_id,
-                "MW":              f.protein.ingredient.molecular_weight,
-                "PI_mean":         f.protein.ingredient.pI_mean,
-                "PI_range":        f.protein.ingredient.pI_range,
-                "Protein_conc":    f.protein.concentration,
-                "Temperature":     getattr(f, "temperature", pd.NA),
-                "Buffer_type":     f.buffer.ingredient.enc_id,
-                "Buffer_pH":       f.buffer.ingredient.pH,
-                "Buffer_conc":     f.buffer.concentration,
-                "Salt_type":       f.salt.ingredient.enc_id,
-                "Salt_conc":       f.salt.concentration,
-                "Stabilizer_type": f.stabilizer.ingredient.enc_id,
-                "Stabilizer_conc": f.stabilizer.concentration,
-                "Surfactant_type": f.surfactant.ingredient.enc_id,
-                "Surfactant_conc": f.surfactant.concentration,
-            }
-
-            shear_rates = [100, 1000, 10000, 100000, 15000000]
-            if f.viscosity_profile is not None:
-                for r in shear_rates:
-                    row[f"Viscosity_{int(r)}"] = f.viscosity_profile.get_viscosity(
-                        r)
-
-            rows.append(row)
-
-        df = pd.DataFrame(rows)
         expected = [
             "ID",
             "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
@@ -366,8 +341,16 @@ class FormulationController:
             "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
             "Viscosity_100000", "Viscosity_15000000"
         ]
+
+        rows = []
+        for f in self.get_all_formulations():
+            single_df = f.to_dataframe(encoded=encoded)
+            rows.append(single_df)
+
+        if not rows:
+            return pd.DataFrame(columns=expected)
+        df = pd.concat(rows, ignore_index=True)
         for col in expected:
             if col not in df.columns:
                 df[col] = pd.NA
-
         return df[expected]

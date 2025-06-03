@@ -19,10 +19,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-06-03
 
 Version:
-    1.0
+    1.1
 """
 
 import zipfile
@@ -30,7 +30,7 @@ import pickle
 import tempfile
 import unittest
 from pathlib import Path
-
+import datetime
 try:
     import joblib
     _JOBLIB_AVAILABLE = True
@@ -40,7 +40,7 @@ except ImportError:
 from src.models.predictor import Predictor, ComponentLoadError, _KERAS_AVAILABLE
 
 
-class DummyDataLoaderProcessOnly:
+class DummyDataProcessorProcessOnly:
     """
     Dummy data loader that only implements `process` and `load` by adding 10 to the input.
 
@@ -52,17 +52,21 @@ class DummyDataLoaderProcessOnly:
         load(raw): Call `process(raw)` and return its result.
     """
 
-    def process(self, raw):
+    def process(self, raw_X, raw_y=None):
         """
         Process the raw input by adding 10.
 
         Args:
-            raw (numeric): The raw input data.
+            raw_X (numeric): The raw input data.
+            raw_y (numeric): The raw target data.
 
         Returns:
             numeric: The processed data (raw + 10).
         """
-        return raw + 10
+        if raw_y is None:
+            return raw_X + 10
+        else:
+            return raw_X, raw_y
 
     def load(self, raw):
         """
@@ -77,7 +81,7 @@ class DummyDataLoaderProcessOnly:
         return self.process(raw)
 
 
-class DummyDataLoaderLoadOnly:
+class DummyDataProcessorLoadOnly:
     """
     Dummy data loader that only implements `load` and `process` by doubling the input.
 
@@ -114,7 +118,7 @@ class DummyDataLoaderLoadOnly:
         return self.load(raw)
 
 
-class DummyDataLoaderBad:
+class DummyDataProcessorBad:
     """
     Dummy data loader with neither `process` nor `load` methods.
 
@@ -139,7 +143,7 @@ class DummyTransformer:
         transform(x): Subtract 1 from `x`.
     """
 
-    def transform(self, x):
+    def transform(self, X):
         """
         Transform the input data by subtracting 1.
 
@@ -149,7 +153,20 @@ class DummyTransformer:
         Returns:
             numeric: The transformed data (x - 1).
         """
-        return x - 1
+        return X - 1
+
+    def fit_transform(self, X, y):
+        """
+        Transform and fit the input data x, y.
+
+        Args:
+            x (numeric): The input data to transform.
+            y (numeric): The target data to transform.
+
+        Returns:
+            numeric: The transformed data (x, y).
+        """
+        return X, y
 
 
 class DummyTransformerBad:
@@ -159,12 +176,25 @@ class DummyTransformerBad:
     Used to simulate a failing transformer during Predictor prediction.
     """
 
-    def transform(self, x):
+    def transform(self, X):
         """
         Attempt to transform the input but always raise RuntimeError.
 
         Args:
             x (any): The input data.
+
+        Raises:
+            RuntimeError: Always raised to indicate transformer failure.
+        """
+        raise RuntimeError("transformer failure")
+
+    def fit_transform(self, X, y):
+        """
+        Attempt to transform the input but always raise RuntimeError.
+
+        Args:
+            x (any): The input data.
+            y (any): The target vector
 
         Raises:
             RuntimeError: Always raised to indicate transformer failure.
@@ -192,8 +222,21 @@ class DummyModel:
         """
         return X * 3
 
+    def fit(self, X, y):
+        """
+        Fit method that returns input data and the target data.
 
-class DummyExecutorWithSetModel:
+        Args:
+            X (numeric or array-like): The input features.
+            X (numeric or array-like): The target features.
+
+        Returns:
+            numeric or array-like: The prediction result X, y.
+        """
+        return X, y
+
+
+class DummyPredictor:
     """
     Dummy executor that has `set_model(...)` and `predict(...)`.
 
@@ -210,7 +253,7 @@ class DummyExecutorWithSetModel:
 
         Sets `self.model` to None initially.
         """
-        self.model = None
+        self.model: DummyModel = None
 
     def set_model(self, model):
         """
@@ -233,8 +276,21 @@ class DummyExecutorWithSetModel:
         """
         return self.model.predict(X)
 
+    def update(self, X, y, model: DummyModel):
+        """
+        Update using the internal model's `update` method.
 
-class DummyExecutorWithAttr:
+        Args:
+            X (numeric or array-like): Input data for fit.
+            y (numeric or array-like): Target data for fit.
+
+        Returns:
+            numeric or array-like: The output of `model.fit(X, y)`.
+        """
+        return model.fit(X, y)
+
+
+class DummyPredictorWithAttr:
     """
     Dummy executor without `set_model`; relies on attribute assignment.
 
@@ -256,6 +312,22 @@ class DummyExecutorWithAttr:
             AttributeError: If `self.model` has not been set by Predictor.
         """
         return self.model.predict(X)
+
+    def update(self, X, y):
+        """
+        Update by delegating to `self.model.update`.
+
+        Args:
+            X (numeric or array-like): Input data for fit.
+            y (numeric or array-like): Target data for fit.
+
+        Returns:
+            numeric or array-like: The output of `model.predict(X)`.
+
+        Raises:
+            AttributeError: If `self.model` has not been set by Predictor.
+        """
+        return self.model.update(X, y)
 
 
 class DummyExecutorBad:
@@ -286,7 +358,7 @@ class DummyExecutorFailPredict:
         """
         Initialize the DummyExecutorFailPredict with a placeholder DummyModel.
         """
-        self.model = DummyModel()  # placeholder
+        self.model = DummyModel()
 
     def predict(self, X):
         """
@@ -298,7 +370,19 @@ class DummyExecutorFailPredict:
         Raises:
             ValueError: Always raised to simulate executor failure.
         """
-        raise ValueError("executor failure")
+        raise ValueError("predictor failure")
+
+    def update(self, X, y):
+        """
+        Attempt to update but always raise ValueError.
+        Args:
+            X (numeric or array-like): Input data for fit.
+            y (numeric or array-like): Target data for fit.
+
+        Raises:
+            ValueError: Always raised to simulate executor failure.
+        """
+        raise ValueError("predictor failure")
 
 
 def _dump_pickle(obj, path: Path):
@@ -398,10 +482,10 @@ class TestPredictor(unittest.TestCase):
 
         ext = ".joblib" if use_joblib else ".pkl"
         name_map = {
-            "dataprocessor": DummyDataLoaderProcessOnly(),
+            "dataprocessor": DummyDataProcessorProcessOnly(),
             "preprocessor": DummyTransformer(),
             "model": DummyModel(),
-            "predictor": DummyExecutorWithSetModel() if executor_has_set_model else DummyExecutorWithAttr(),
+            "predictor": DummyPredictor() if executor_has_set_model else DummyPredictorWithAttr(),
         }
 
         for base, obj in name_map.items():
@@ -443,12 +527,12 @@ class TestPredictor(unittest.TestCase):
 
         p = Predictor(comp_dir)
 
-        self.assertIsInstance(p.data_loader, DummyDataLoaderProcessOnly)
+        self.assertIsInstance(p.data_processor, DummyDataProcessorProcessOnly)
         self.assertIsInstance(p.transformer, DummyTransformer)
         self.assertIsInstance(p.model, DummyModel)
-        self.assertIsInstance(p.executor, DummyExecutorWithSetModel)
+        self.assertIsInstance(p.predictor, DummyPredictor)
 
-        self.assertIs(p.executor.model, p.model)
+        self.assertIs(p.predictor.model, p.model)
 
         result = p.predict(5)
         self.assertEqual(result, 42)
@@ -476,8 +560,8 @@ class TestPredictor(unittest.TestCase):
 
         self.assertIsNone(p.transformer)
 
-        self.assertIsInstance(p.executor, DummyExecutorWithAttr)
-        self.assertIs(p.executor.model, p.model)
+        self.assertIsInstance(p.predictor, DummyPredictorWithAttr)
+        self.assertIs(p.predictor.model, p.model)
         self.assertEqual(p.predict(7), 51)
 
     def test_case_insensitive_filenames(self):
@@ -497,10 +581,10 @@ class TestPredictor(unittest.TestCase):
 
         p = Predictor(comp_dir)
 
-        self.assertIsInstance(p.data_loader, DummyDataLoaderProcessOnly)
+        self.assertIsInstance(p.data_processor, DummyDataProcessorProcessOnly)
         self.assertIsInstance(p.transformer, DummyTransformer)
         self.assertIsInstance(p.model, DummyModel)
-        self.assertIsInstance(p.executor, DummyExecutorWithSetModel)
+        self.assertIsInstance(p.predictor, DummyPredictor)
 
         self.assertEqual(p.predict(3), (3 + 10 - 1) * 3)
 
@@ -539,11 +623,11 @@ class TestPredictor(unittest.TestCase):
         # Only preprocessor, model, executor, but no dataprocessor
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         with self.assertRaises(ComponentLoadError) as cm:
             Predictor(folder)
-        self.assertIn("Missing data loader", str(cm.exception))
+        self.assertIn("Missing data processor", str(cm.exception))
 
     def test_missing_executor(self):
         """
@@ -555,7 +639,7 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "missing_executor"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
         # No predictor.pkl present
@@ -574,10 +658,10 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "bad_loader"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderBad(), folder / "dataprocessor.pkl")
+        _dump_pickle(DummyDataProcessorBad(), folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         with self.assertRaises(ComponentLoadError) as cm:
             Predictor(folder)
@@ -594,7 +678,7 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "bad_executor"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
@@ -615,11 +699,11 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "transformer_fails"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformerBad(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         p = Predictor(folder)
         with self.assertRaises(ComponentLoadError) as cm:
@@ -670,7 +754,7 @@ class TestPredictor(unittest.TestCase):
         _dump_pickle(self.FailDataLoader(), folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         p = Predictor(folder)
         with self.assertRaises(ComponentLoadError) as cm:
@@ -687,7 +771,7 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "executor_fails"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         _dump_pickle(DummyModel(), folder / "model.pkl")
@@ -711,11 +795,11 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "keras_dir"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         (folder / "model").mkdir()  # a directory named "model"
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         with self.assertRaises(ComponentLoadError) as cm:
             Predictor(folder)
@@ -732,12 +816,12 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "h5_test"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
         # Create an empty model.h5
         open(folder / "model.h5", "wb").close()
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
 
         with self.assertRaises(ComponentLoadError) as cm:
             Predictor(folder)
@@ -754,10 +838,10 @@ class TestPredictor(unittest.TestCase):
         """
         folder = self.tempdir / "no_model"
         folder.mkdir()
-        _dump_pickle(DummyDataLoaderProcessOnly(),
+        _dump_pickle(DummyDataProcessorProcessOnly(),
                      folder / "dataprocessor.pkl")
         _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
-        _dump_pickle(DummyExecutorWithSetModel(), folder / "predictor.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
         # No model.* files or directories
 
         with self.assertRaises(ComponentLoadError) as cm:
@@ -790,6 +874,42 @@ class TestPredictor(unittest.TestCase):
         with self.assertRaises(ComponentLoadError) as cm:
             Predictor(nonexistent)
         self.assertIn("neither a directory nor a valid ZIP", str(cm.exception))
+
+    def test_update_call(self):
+        """
+        Test that Predictor.update(...) returns a dict containing the correct components and a timestamp,
+        and that predictor.update() is called with the scaled features, labels, and model.
+        """
+
+        # Create component folder with the new dummy classes
+        folder = self.tempdir / "update_components"
+        folder.mkdir()
+
+        _dump_pickle(DummyDataProcessorProcessOnly(),
+                     folder / "dataprocessor.pkl")
+        _dump_pickle(DummyTransformer(), folder / "preprocessor.pkl")
+        _dump_pickle(DummyModel(), folder / "model.pkl")
+        _dump_pickle(DummyPredictor(), folder / "predictor.pkl")
+
+        # Initialize Predictor and call update(...)
+        p = Predictor(folder)
+        raw_X = [1, 2, 3]
+        raw_y = [4, 5, 6]
+        ret = p.update(raw_X, raw_y)
+
+        # Check returned dict has expected keys
+        self.assertIn("dataprocessor", ret)
+        self.assertIn("transformer", ret)
+        self.assertIn("model", ret)
+        self.assertIn("predictor", ret)
+        self.assertIn("updated_at", ret)
+
+        # Verify instances are correct
+        self.assertIsInstance(ret["dataprocessor"],
+                              DummyDataProcessorProcessOnly)
+        self.assertIsInstance(ret["transformer"], DummyTransformer)
+        self.assertIsInstance(ret["model"], DummyModel)
+        self.assertIsInstance(ret["predictor"], DummyPredictor)
 
 
 if __name__ == "__main__":

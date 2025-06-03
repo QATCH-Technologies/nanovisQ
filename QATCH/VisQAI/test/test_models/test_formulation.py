@@ -15,17 +15,17 @@ Verifies:
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2025-06-02
+    2025-06-03
 
 Version:
-    1.1
+    1.4
 """
 
 from src.models.formulation import (
     ViscosityProfile, Component, Formulation
 )
 from src.models.ingredient import Buffer, Protein, Stabilizer, Surfactant, Salt
-
+import pandas as pd
 import unittest
 
 
@@ -337,6 +337,53 @@ class TestFormulation(unittest.TestCase):
         self.assertNotEqual(self.form, f3)
         # comparing to non-Formulation returns False
         self.assertFalse(self.form == 123)
+
+    def test_to_dataframe(self):
+        """
+        Test that to_dataframe() returns a one-row DataFrame with all expected columns,
+        correctly populated from the Formulation’s components, temperature, and viscosity_profile.
+        """
+        self.form.set_protein(self.prot, concentration=5.0, units="mg/mL")
+        self.form.set_buffer(self.buf, concentration=1.0, units="M")
+        self.form.set_stabilizer(self.stab, concentration=0.1, units="w/v")
+        self.form.set_surfactant(self.surf, concentration=0.01, units="w/v")
+        self.form.set_salt(self.salt, concentration=0.05, units="M")
+        self.form.set_temperature(37.0)
+        self.form.set_viscosity_profile(self.vp)
+        df = self.form.to_dataframe()
+
+        expected_columns = [
+            "ID",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+            "Temperature",
+            "Buffer_type", "Buffer_pH", "Buffer_conc",
+            "Salt_type", "Salt_conc",
+            "Stabilizer_type", "Stabilizer_conc",
+            "Surfactant_type", "Surfactant_conc",
+            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
+            "Viscosity_100000", "Viscosity_15000000"
+        ]
+        self.assertListEqual(list(df.columns), expected_columns)
+        self.assertEqual(len(df), 1)
+        row = df.iloc[0]
+
+        self.assertEqual(row["Protein_type"], self.prot.enc_id)
+        self.assertEqual(row["MW"], self.prot.molecular_weight)
+        self.assertEqual(row["PI_mean"], self.prot.pI_mean)
+        self.assertEqual(row["PI_range"], self.prot.pI_range)
+        self.assertEqual(row["Protein_conc"], 5.0)
+        self.assertEqual(row["Buffer_type"], self.buf.enc_id)
+        self.assertEqual(row["Buffer_pH"], self.buf.pH)
+        self.assertEqual(row["Buffer_conc"], 1.0)
+        self.assertEqual(row["Salt_type"], self.salt.enc_id)
+        self.assertEqual(row["Salt_conc"], 0.05)
+        self.assertEqual(row["Stabilizer_type"], self.stab.enc_id)
+        self.assertEqual(row["Stabilizer_conc"], 0.1)
+        self.assertEqual(row["Surfactant_type"], self.surf.enc_id)
+        self.assertEqual(row["Surfactant_conc"], 0.01)
+        self.assertEqual(row["Temperature"], 37.0)
+        self.assertEqual(row["Viscosity_100"], 12)
+        self.assertEqual(row["Viscosity_1000"], 112)
 
 
 if __name__ == "__main__":
