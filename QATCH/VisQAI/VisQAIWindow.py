@@ -663,7 +663,7 @@ class FrameStep1(QtWidgets.QDialog):
         else:
             # Pull protein and buffer characteristics from database (if available)
             protein = self.parent.ing_ctrl.get_protein_by_name(
-                name=xml_params["protein_type"])
+                name=xml_params.get("protein_type", None))
             if protein != None:
                 if protein.molecular_weight != None:
                     run_features["Value"][2] = protein.molecular_weight
@@ -672,7 +672,7 @@ class FrameStep1(QtWidgets.QDialog):
                 if protein.pI_range != None:
                     run_features["Value"][4] = protein.pI_range
             buffer = self.parent.ing_ctrl.get_buffer_by_name(
-                name=xml_params["buffer_type"])
+                name=xml_params.get("buffer_type", None))
             if buffer != None:
                 if buffer.pH != None:
                     run_features["Value"][7] = buffer.pH
