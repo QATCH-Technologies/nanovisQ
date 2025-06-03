@@ -407,9 +407,8 @@ class FrameStep1(QtWidgets.QDialog):
         protein.pI_mean = protein_pI_mean
         protein.pI_range = protein_pI_range
         buffer.pH = buffer_pH
-        # TODO: mutators in ingredient_controller.py have issues:
-        # - do no always return a value, when changes occur
-        # - all ingredient types use "protein" method names
+
+        # if no changes, nothing is done on 'update' call
         self.parent.ing_ctrl.update_protein(protein.id, protein)
         self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
 
