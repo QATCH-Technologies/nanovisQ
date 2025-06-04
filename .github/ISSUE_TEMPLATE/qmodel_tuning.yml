@@ -42,7 +42,7 @@ body:
     attributes:
       label: "Issues with Data"
       description: "Describe specific issues identified with the data."
-      placeholder: "Examples: Missing values, incorrect labeling, unexpected anomalies."
+      placeholder: "Examples: Runtime anomalies"
     validations:
       required: true
 
