@@ -1552,7 +1552,7 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = False) -> Dict[str, Any]:
+                plotting: bool = True) -> Dict[str, Any]:
         """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
