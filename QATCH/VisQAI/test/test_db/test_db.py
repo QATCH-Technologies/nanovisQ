@@ -20,6 +20,9 @@ Version:
     1.1
 """
 
+import os
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -35,6 +38,7 @@ class BaseTestDatabase(unittest.TestCase):
     """
 
     encryption_key = None  # Default: no encryption
+    parse_file_key = False  # Default: no key parsed
 
     @classmethod
     def setUpClass(cls):
@@ -47,7 +51,21 @@ class BaseTestDatabase(unittest.TestCase):
         """Initialize a fresh Database instance before each test."""
         if self.db_file.exists():
             self.db_file.unlink()
-        self.db = Database(self.db_file, self.encryption_key)
+
+        if self.parse_file_key:
+            # use existing default baseline database, if available
+            if not os.path.isfile("assets/app.db"):
+                # create database file with metadata containing `app_key`
+                subprocess.run(["py", "../../make_data_db.py"])
+            if os.path.isfile("assets/app.db"):
+                shutil.copyfile("assets/app.db", self.db_file)
+            else:
+                raise FileNotFoundError("Unable to create database file!")
+
+        self.db = Database(
+            path=self.db_file,
+            encryption_key=self.encryption_key,
+            parse_file_key=self.parse_file_key)
 
     def tearDown(self):
         """Close the database, verify file exists, then remove it after each test."""
@@ -103,16 +121,21 @@ class BaseTestDatabase(unittest.TestCase):
         - Verify only one row remains
         - Delete all ingredients and verify empty list returned
         """
-        p = Protein(enc_id=1, name="X", molecular_weight=10,
-                    pI_mean=5, pI_range=0.1)
-        self.db.add_ingredient(p)
-        self.db.add_ingredient(p)
         all_ings = self.db.get_all_ingredients()
-        self.assertEqual(len(all_ings), 2, "Expected two ingredient entries")
+        start_count = len(all_ings)
+        x = Protein(enc_id=1, name="X", molecular_weight=10,
+                    pI_mean=5, pI_range=0.1)
+        id1 = self.db.add_ingredient(x)
+        y = Protein(enc_id=2, name="Y", molecular_weight=10,
+                    pI_mean=5, pI_range=0.1)
+        id2 = self.db.add_ingredient(y)
+        all_ings = self.db.get_all_ingredients()
+        self.assertEqual(len(all_ings)-start_count, 2,
+                         "Expected two ingredient entries")
         self.assertTrue(self.db.delete_ingredient(
-            1), "Deletion by ID should return True")
+            id1), "Deletion by ID should return True")
         remaining = self.db.get_all_ingredients()
-        self.assertEqual(len(remaining), 1,
+        self.assertEqual(len(remaining)-start_count, 1,
                          "One ingredient should remain after deletion")
         self.db.delete_all_ingredients()
         self.assertEqual(self.db.get_all_ingredients(), [],
@@ -269,7 +292,8 @@ class BaseTestDatabase(unittest.TestCase):
         self.db.close()
         self.assertTrue(self.db_file.exists(),
                         "Database file should exist after close")
-        self.db = Database(self.db_file, self.encryption_key)
+        self.db = Database(self.db_file, self.encryption_key,
+                           self.parse_file_key)
 
         got = self.db.get_formulation(fid)
         self.assertIsNotNone(
@@ -304,7 +328,8 @@ class BaseTestDatabase(unittest.TestCase):
                          "Database file should be removed")
 
         # Opening without making changes and then closing should recreate the file
-        self.db = Database(self.db_file, self.encryption_key)
+        self.db = Database(self.db_file, self.encryption_key,
+                           self.parse_file_key)
         self.assertEqual(self.db.conn.total_changes,
                          self.db.init_changes, "No changes yet")
         self.db.close()
@@ -312,7 +337,8 @@ class BaseTestDatabase(unittest.TestCase):
                         "Database file should be recreated on close")
 
         # Now reopen, make a change, and ensure total_changes > init_changes
-        self.db = Database(self.db_file, self.encryption_key)
+        self.db = Database(self.db_file, self.encryption_key,
+                           self.parse_file_key)
         self.db.add_ingredient(Salt(enc_id=1, name="NaCl"))
         self.assertGreater(self.db.conn.total_changes,
                            self.db.init_changes, "Changes should be recorded")
@@ -339,14 +365,14 @@ class BaseTestDatabase(unittest.TestCase):
                         "Expected PermissionError when deleting open DB file")
 
 
-class TestDatabaseWithoutEncryption(BaseTestDatabase):
-    """Runs BaseTestDatabase with encryption_key = None (no encryption)."""
-    encryption_key = None
-
-
 class TestDatabaseWithEncryption(BaseTestDatabase):
-    """Runs BaseTestDatabase with a non-empty encryption_key to test encrypted storage."""
+    """Runs BaseTestDatabase with encryption_key = None (no encryption)."""
     encryption_key = "supersecretkey"
+
+
+class TestDatabaseWithFileKey(BaseTestDatabase):
+    """Runs BaseTestDatabase with a non-empty encryption_key to test encrypted storage."""
+    parse_file_key = True
 
 
 if __name__ == '__main__':

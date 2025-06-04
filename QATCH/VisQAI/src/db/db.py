@@ -3,7 +3,9 @@ database.py
 
 This module provides the `Database` class for managing persistence of ingredients,
 formulations, components, and viscosity profiles using SQLite. It supports optional
-in-memory encryption via a simple XOR+Caesar cipher. The schema includes tables for
+in-memory encryption via a simple XOR+Caesar cipher. The database file can support
+an encoded metadata on the first line for storing relevant information including an
+ `app_key` which can be automatically parsed on load. The schema includes tables for
 generic ingredients, subclass-specific ingredient details, formulation records, and
 associated component and viscosity profile data. Utility methods handle CRUD operations,
 schema initialization, and optional encryption/decryption of the entire database.
@@ -13,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-06-04
 
 Version:
-    1.4
+    1.5
 """
 
 import sqlite3
@@ -24,22 +26,29 @@ import json
 from typing import List, Optional, Union
 from pathlib import Path
 import os
+import random
 
 try:
     from src.models.ingredient import (
         Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
     )
     from src.models.formulation import Formulation, Component, ViscosityProfile
+
+    class Log:
+        @staticmethod
+        def e(msg): print(msg)
+
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
         Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
     )
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
+    from QATCH.common.logger import Logger as Log
 
 DB_PATH = Path(
     os.path.join(
         os.path.expandvars(r"%LOCALAPPDATA%"),
-        "QATCH", "nanovisQ", "data", "app.db"
+        "QATCH", "nanovisQ", "database", "app.db"
     )
 )
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -66,7 +75,8 @@ class Database:
     def __init__(
         self,
         path: Union[str, Path] = DB_PATH,
-        encryption_key: Union[str, None] = None
+        encryption_key: Union[str, None] = None,
+        parse_file_key: bool = False
     ) -> None:
         """Initialize the Database, apply encryption if requested, and create tables.
 
@@ -76,6 +86,9 @@ class Database:
             encryption_key (Union[str, None], optional): If provided, uses
                 in-memory Caesar+XOR encryption/decryption. If None, plain SQLite
                 is used. Defaults to None.
+            parse_file_key (bool): If True, the `encryption_key` will be loaded
+                from the `app_key` that is embedded in the `path` database file.
+                Defaults to False. Flag ignored if `encryption_key` is provided.
 
         Raises:
             ValueError: If `encryption_key` is None but `use_encryption` is True
@@ -84,13 +97,15 @@ class Database:
         self.db_path = Path(path)
         self.file_handle = None  # used for locking when encrypted
         self.encryption_key = encryption_key
-        self.use_encryption = False if self.encryption_key is None else True
+        self.use_encryption = parse_file_key if self.encryption_key is None else True
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._load_metadata()
 
         if self.use_encryption:
+            if parse_file_key and not self.encryption_key:
+                self.set_encryption_key(self.metadata.get("app_key", None))
             if not self.encryption_key:
-                raise ValueError(
-                    "Encryption key required for encrypted database")
+                Log.e("Encryption key missing for encrypted database")
             self.conn = self._open_cdb(str(self.db_path), self.encryption_key)
         else:
             self.conn = sqlite3.connect(str(self.db_path))
@@ -529,6 +544,49 @@ class Database:
         """
         self.encryption_key = key
 
+    def _load_metadata(self) -> None:
+        """Reads the JSON metadata embedded in the database file.
+
+        Any metadata found will be parsed and stored to `self.metadata`.
+        """
+        try:
+            self._enc_metadata = b"\x45{}\n"  # default: nop seed with empty dict
+            self.metadata = {}
+            with open(self.db_path, "rb") as f:
+                self._enc_metadata = f.readline()
+                enc_metadata = self._enc_metadata.decode(
+                    self.metadata.get("app_encoding", "utf-8")
+                ).rsplit('\n', 1)[0]  # remove at most 1 trailing '\n'
+                seed = ord(enc_metadata[0])
+                shuffled = enc_metadata[1:]
+                enc_metadata = self._shuffle_text(shuffled, seed)
+                shift_by = -len(enc_metadata)
+                str_metadata = self._caesar_cipher(enc_metadata, shift_by)
+                self.metadata = json.loads(str_metadata)
+        except FileNotFoundError:
+            print("Database file does not exist. Creating empty metadata.")
+        except Exception as e:
+            print("No readable metadata found in database file.")
+
+    def _shuffle_text(self, text: str, seed: Union[int, None] = None) -> str:
+        """Shuffles the characters of a given `text` string in a pseudo-random order.
+
+        Args:
+            text (str): The string to be shuffled (or unshuffled, perhaps).
+            seed (Union[int, None]): The seed for `random` to use (for repeatability). 
+
+        Returns:
+            str: The character shuffled string.
+        """
+        if seed != None:
+            random.seed(seed)
+        indices = list(range(len(text)))
+        random.shuffle(indices)
+        original = [''] * len(text)
+        for i, orig_index in enumerate(indices):
+            original[orig_index] = text[i]
+        return ''.join(original)
+
     def _caesar_cipher(self, text: str, shift: int = 0) -> str:
         """Apply a Caesar cipher shift to a text string, rotating alphanumeric characters.
 
@@ -544,17 +602,31 @@ class Database:
             shift = len(text)
         for char in text:
             if char.isdigit():
-                base = ord("0")
+                base = ord('0')
                 result.append(chr((ord(char) - base + shift) % 10 + base))
             elif char.isupper():
-                base = ord("A")
+                base = ord('A')
                 result.append(chr((ord(char) - base + shift) % 26 + base))
             elif char.islower():
-                base = ord("a")
+                base = ord('a')
                 result.append(chr((ord(char) - base + shift) % 26 + base))
-            else:
-                result.append(char)
-        return "".join(result)
+            elif ord(char) in range(32, 48):
+                base = 32
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(32, 48)) + base))
+            elif ord(char) in range(58, 65):
+                base = 58
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(58, 65)) + base))
+            elif ord(char) in range(91, 97):
+                base = 91
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(91, 97)) + base))
+            elif ord(char) in range(123, 127):
+                base = 123
+                result.append(chr((ord(char) - base + shift) %
+                              len(range(123, 127)) + base))
+        return ''.join(result)
 
     def _xor_cipher(self, data: bytes, key: str) -> bytes:
         """Apply an XOR cipher to a byte sequence using a repeating key.
@@ -566,7 +638,7 @@ class Database:
         Returns:
             bytes: Resulting encrypted or decrypted bytes.
         """
-        key_bytes = key.encode("utf-8")
+        key_bytes = key.encode(self.metadata.get("app_encoding", "utf-8"))
         key_length = len(key_bytes)
         return bytes([b ^ key_bytes[i % key_length] for i, b in enumerate(data)])
 
@@ -589,11 +661,17 @@ class Database:
         con = sqlite3.connect(":memory:")
         if os.path.isfile(filepath):
             self.file_handle = open(filepath, "rb")
-            secure = self.file_handle.read()
-            # Decrypt the file content
-            decrypted_text = self._xor_cipher(
-                secure, self._caesar_cipher(password)
-            ).decode("utf-8")
+            self._enc_metadata = self.file_handle.readline()
+            secure_bytes = self.file_handle.read()
+            if password:
+                # Decrypt the file content
+                decrypted_text = self._xor_cipher(
+                    secure_bytes, self._caesar_cipher(password)
+                )
+            else:
+                decrypted_text = secure_bytes
+            decrypted_text = decrypted_text.decode(
+                self.metadata.get("app_encoding", "utf-8"))
             con.executescript(decrypted_text)
             con.commit()
         return con
@@ -608,10 +686,16 @@ class Database:
             filepath (str): Path to write the encrypted database.
             password (str): Encryption key used to encrypt.
         """
-        dump_bytes = b"".join((line + "\n").encode("utf-8")
-                              for line in self.conn.iterdump())
-        encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
+        dump_bytes = b"".join((line + "\n").encode(
+            self.metadata.get("app_encoding", "utf-8"))
+            for line in self.conn.iterdump())
+        if password:
+            encrypted = self._xor_cipher(
+                dump_bytes, self._caesar_cipher(password))
+        else:
+            encrypted = dump_bytes
         with open(filepath, "wb") as f:
+            f.write(self._enc_metadata)  # must end with "\n"
             f.write(encrypted)
 
     def close(self) -> None:

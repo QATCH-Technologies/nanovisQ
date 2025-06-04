@@ -71,8 +71,7 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
 
-        self.database = Database(
-            encryption_key="secretsecret")  # TODO use a real key
+        self.database = Database(parse_file_key=True)
         self.form_ctrl = FormulationController(db=self.database)
         self.ing_ctrl = IngredientController(db=self.database)
 

@@ -436,8 +436,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.auto_ca = 0
         self.auto_dn = 0
         self.auto_nc = 0
-        self.database = Database(
-            encryption_key="secretsecret")  # TODO use a real key
+        self.database = Database(parse_file_key=True)
         self.ing_ctrl = IngredientController(db=self.database)
         # NOTE: Changes to Database are only saved if Database().close() is called
         # However, to avoid un-audit-signed changes, only add signal after signing
@@ -1321,6 +1320,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 self.proteins, key=str.casefold)
                             self.populate_proteins()
                             self.ing_ctrl.add(Protein(enc_id=1, name=value))
+                            self.detect_change()
                         self.c10.setCurrentText(value)
                     if name == "protein_concentration":
                         self.t12.setText(value)
@@ -1333,42 +1333,46 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 self.buffers, key=str.casefold)
                             self.populate_buffers()
                             self.ing_ctrl.add(Buffer(enc_id=1, name=value))
+                            self.detect_change()
                         self.c13.setCurrentText(value)
                     if name == "buffer_concentration":
                         self.t14.setText(value)
                     if name == "surfactant_type":
                         if value not in self.surfactants and value.casefold() != "none":
                             Log.w(
-                                f"Unknown Surfactant Type: \"{value}\" not in list")
+                                f"Adding new Surfactant Type: \"{value}\"")
                             self.surfactants.append(value)
                             self.surfactants = sorted(
                                 self.surfactants, key=str.casefold)
                             self.populate_surfactants()
                             self.ing_ctrl.add(Surfactant(enc_id=1, name=value))
+                            self.detect_change()
                         self.c9.setCurrentText(value)
                     if name == "surfactant_concentration":
                         self.t6.setText(value)
                     if name == "stabilizer_type":
                         if value not in self.stabilizers and value.casefold() != "none":
                             Log.w(
-                                f"Unknown Stabilizer Type: \"{value}\" not in list")
+                                f"Adding new Stabilizer Type: \"{value}\"")
                             self.stabilizers.append(value)
                             self.stabilizers = sorted(
                                 self.stabilizers, key=str.casefold)
                             self.populate_stabilizers()
                             self.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
+                            self.detect_change()
                         self.c11.setCurrentText(value)
                     if name == "stabilizer_concentration":
                         self.t8.setText(value)
                     if name == "salt_type":
                         if value not in self.salts and value.casefold() != "none":
                             Log.w(
-                                f"Unknown Salt Type: \"{value}\" not in list")
+                                f"Adding new Salt Type: \"{value}\"")
                             self.salts.append(value)
                             self.salts = sorted(
                                 self.salts, key=str.casefold)
                             self.populate_salts()
                             self.ing_ctrl.add(Salt(enc_id=1, name=value))
+                            self.detect_change()
                         self.c15.setCurrentText(value)
                     if name == "salt_concentration":
                         self.t16.setText(value)
@@ -1581,7 +1585,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def new_protein_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
-            self.c10.setCurrentText(self.proteins[-1])
+            self.c10.setCurrentIndex(self.c10.count()-2)
             self.add_protein_type = QtWidgets.QWidget()
             self.add_protein_type.setWindowTitle("Protein Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1610,7 +1614,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def new_buffer_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
-            self.c13.setCurrentText(self.buffers[-1])
+            self.c13.setCurrentIndex(self.c13.count()-2)
             self.add_buffer_type = QtWidgets.QWidget()
             self.add_buffer_type.setWindowTitle("Buffer Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1638,7 +1642,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def new_surfactant_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
-            self.c9.setCurrentText(self.surfactants[-1])
+            self.c9.setCurrentIndex(self.c9.count()-2)
             self.add_surfactant_type = QtWidgets.QWidget()
             self.add_surfactant_type.setWindowTitle("Surfactant Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1666,7 +1670,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def new_stabilizer_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
-            self.c11.setCurrentText(self.stabilizers[-1])
+            self.c11.setCurrentIndex(self.c11.count()-2)
             self.add_stabilizer_type = QtWidgets.QWidget()
             self.add_stabilizer_type.setWindowTitle("Stabilizer Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1694,7 +1698,7 @@ class QueryRunInfo(QtWidgets.QWidget):
     def new_salt_type(self, text: str):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
-            self.c15.setCurrentText(self.salts[-1])
+            self.c15.setCurrentIndex(self.c15.count()-2)
             self.add_salt_type = QtWidgets.QWidget()
             self.add_salt_type.setWindowTitle("Salt Types")
             layout = QtWidgets.QVBoxLayout()
@@ -1726,28 +1730,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
         ingredients = self.ing_ctrl.get_all_ingredients()
-
-        # Create default excipients list (if none exist)
-        if len(ingredients) == 0 or ingredients is None:
-            self.ing_ctrl.add_buffer(Buffer(enc_id=0, name="None", pH=0.0))
-            self.ing_ctrl.add_buffer(Buffer(enc_id=1, name="Accetate", pH=5.0))
-            self.ing_ctrl.add_buffer(
-                Buffer(enc_id=2, name="Histidine", pH=6.0))
-            self.ing_ctrl.add_buffer(Buffer(enc_id=3, name="PBS", pH=7.4))
-
-            self.ing_ctrl.add_surfactant(Surfactant(enc_id=0, name="None"))
-            self.ing_ctrl.add_surfactant(Surfactant(enc_id=1, name="Tween-20"))
-            self.ing_ctrl.add_surfactant(Surfactant(enc_id=2, name="Tween-80"))
-
-            self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=0, name="None"))
-            self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=1, name="Sucrose"))
-            self.ing_ctrl.add_stabilizer(
-                Stabilizer(enc_id=2, name="Trehalose"))
-
-            self.ing_ctrl.add_salt(Salt(enc_id=0, name="None"))
-            self.ing_ctrl.add_salt(Salt(enc_id=1, name="NaCl"))
-
-            ingredients = self.ing_ctrl.get_all_ingredients()  # reload
 
         for i in ingredients:
             if i.name.casefold() == "none":
