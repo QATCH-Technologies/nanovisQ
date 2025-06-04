@@ -404,7 +404,7 @@ class QModelPredictor:
                 numpy ndarray.
             ValueError:
                 If `predicted_probabilities` is not 2D, if its second dimension
-                is less than 7 (to cover classes 0–6), or if `model_data_labels`
+                is less than 7 (to cover classes 0-6), or if `model_data_labels`
                 has fewer than 6 elements.
         """
         # --- input validation (unchanged + threshold/min_count checks) ---
@@ -415,7 +415,7 @@ class QModelPredictor:
             raise ValueError("`predicted_probabilities` must be 2D.")
         n_classes = predicted_probabilities.shape[1]
         if n_classes < 7:
-            raise ValueError("Need at least 7 columns for classes 0–6.")
+            raise ValueError("Need at least 7 columns for classes 0-6.")
 
         if not hasattr(model_data_labels, "__len__") or len(model_data_labels) < 6:
             raise ValueError(
@@ -636,7 +636,7 @@ class QModelPredictor:
         # Slip-check for POI4: ensure bias correction didn't drift toward POI3
         if poi == "POI4" and len(ground_truth) >= 4:
             poi3_gt, poi4_gt = ground_truth[2], ground_truth[3]
-            if abs(best_idx - poi3_gt) < abs(best_idx - poi4_gt):
+            if abs(best_idx - poi3_gt) * 2 < abs(best_idx - poi4_gt):
                 Log.d(TAG,
                       "Bias correction for POI4 slipped toward POI3; skipping adjustment.")
                 best_idx = poi4_gt
@@ -1552,7 +1552,7 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = False) -> Dict[str, Any]:
+                plotting: bool = True) -> Dict[str, Any]:
         """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
@@ -1618,33 +1618,86 @@ class QModelPredictor:
             feature_vector=feature_vector,
             raw_vector=df)
         if plotting:
-            plt.figure(figsize=(10, 6))
-
-            plt.plot(df["Relative_time"],
-                     feature_vector["Detrend_Difference"],
-                     linewidth=1.5,
-                     label="Detrend_Difference")
-
-            # Overlay each POI’s candidate points
+            # Common data we'll reuse
+            times_all = df["Relative_time"]
+            diff_all = feature_vector["Detrend_Difference"]
             cmap = plt.get_cmap("tab10")
-            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
+
+            # --- Figure 1: raw predictor output (extracted_predictions) ---
+            plt.figure(figsize=(10, 6))
+            plt.plot(times_all,
+                     diff_all,
+                     linewidth=1.5,
+                     label="Detrend_Difference",
+                     color="lightgray",
+                     zorder=0)
+
+            for i, (poi_name, poi_info) in enumerate(extracted_predictions.items()):
+                # list of candidate indices, best at idxs[0]
                 idxs = poi_info["indices"]
-                times = df["Relative_time"].iloc[idxs]
-                values = feature_vector["Detrend_Difference"].iloc[idxs]
+                times = times_all.iloc[idxs]
+                values = diff_all.iloc[idxs]
+
+                # Plot all candidates as 'x'
+                plt.scatter(times,
+                            values,
+                            marker="x",
+                            s=100,
+                            color=cmap(i),
+                            label=f"{poi_name} (raw candidates)",
+                            zorder=2)
+
+                # Highlight the best one (idxs[0]) with a vertical line
+                best_idx = idxs[0]
+                best_time = times_all.iloc[best_idx]
+                plt.axvline(best_time,
+                            color=cmap(i),
+                            linestyle="--",
+                            linewidth=1.0,
+                            zorder=1)
+
+            plt.xlabel("Relative time")
+            plt.ylabel("Detrend_Difference")
+            plt.title("Raw predictor output: candidate POIs")
+            plt.legend(loc="upper right", fontsize="small", ncol=2)
+            plt.tight_layout()
+            plt.show()
+
+            # --- Figure 2: final predictions (after selecting best) ---
+            plt.figure(figsize=(10, 6))
+            plt.plot(times_all,
+                     diff_all,
+                     linewidth=1.5,
+                     label="Detrend_Difference",
+                     color="lightgray",
+                     zorder=0)
+
+            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
+                # again, best at idxs[0]
+                idxs = poi_info["indices"]
+                times = times_all.iloc[idxs]
+                values = diff_all.iloc[idxs]
 
                 plt.scatter(times,
                             values,
                             marker="x",
                             s=100,
                             color=cmap(i),
-                            label=poi_name)
+                            label=f"{poi_name} (final candidates)",
+                            zorder=2)
 
-                plt.axvline(df["Relative_time"].iloc[idxs[0]], color=cmap(i))
+                best_idx = idxs[0]
+                best_time = times_all.iloc[best_idx]
+                plt.axvline(best_time,
+                            color=cmap(i),
+                            linestyle="--",
+                            linewidth=1.0,
+                            zorder=1)
 
             plt.xlabel("Relative time")
-            plt.ylabel("Difference")
-            plt.title("Difference curve with candidate POIs")
-            plt.legend()
+            plt.ylabel("Detrend_Difference")
+            plt.title("Final predictions: candidate POIs")
+            plt.legend(loc="upper right", fontsize="small", ncol=2)
             plt.tight_layout()
             plt.show()
         return final_predictions
