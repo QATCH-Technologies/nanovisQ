@@ -107,6 +107,7 @@
 #define L298NHB_E1 2                     // motor enable pin 1 (PWM)
 #define L298NHB_M2 3                     // motor signal pin 2 (0=forward,1=back)
 #define L298NHB_E2 4                     // motor enable pin 2 (PWM)
+#define L298NHB_SW 7                     // motor limit switch (HIGH on contact)
 #define L298NHB_HEAT 0                   // heat when signal is forward
 #define L298NHB_COOL 1                   // cool when signal is reverse
 #define L298NHB_INIT 1                   // initial PWM enable power
@@ -472,6 +473,16 @@ volatile byte busyTimerState;
 const unsigned long busyTimerInt_us = 15000;
 
 DualHBridgeStepper stepper(L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2);
+// Linear Screw Stepper settings:
+// const bool stepperHomingDir = true; // forwards
+// long stepperPositions[6] = {0, -1000, -2000, -3000, -4000, -5000};
+// long stepperOffset = -550; // position of Port 1 relative to L1 switch
+// Circular Rotary Stepper settings
+const bool stepperHomingDir = false; // bakcwards
+long stepperPositions[6] = {0, 69, 138, 207, 276, 345};
+long stepperOffset = 2; // position of Port 1 relative to L1 switch
+void stepper_home(); // prototype
+// void step(bool forward);
 
 void busyTimerTask(bool dp)
 {
@@ -948,10 +959,34 @@ void QATCH_setup()
 
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
+  
+  pinMode(L298NHB_SW, INPUT);
 
-  stepper.setMaxSpeed(1000);
-  stepper.setAcceleration(200);
-  stepper.moveTo(1000);
+  // analogWriteResolution()
+  // stepper.setPwmValue(255);
+  stepper.setMaxSpeed(100);
+  stepper.setSpeed(0.000001);
+  stepper.setMinPulseWidth(10000);
+  stepper.setAcceleration(100);
+  stepper_home();
+}
+
+void stepper_home()
+{
+  stepper.enableOutputs();
+  stepper.moveTo(stepperHomingDir ? 10000 : -10000);
+  while (!digitalRead(L298NHB_SW) && stepper.isRunning()) {
+    stepper.run();
+  }
+  if (stepper.isRunning()) {
+    stepper.stop();
+    client->println("Stepper: Found home position");
+    stepper.setCurrentPosition(-stepperOffset);
+  } else {
+    client->println("Stepper: Failed to find home!");
+  }
+  client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
+  stepper.moveTo(stepperPositions[0]);
 }
 
 // helper function since PJRC library doesn't handle mode switching
@@ -1997,6 +2032,23 @@ void QATCH_loop()
       return;
     }
 
+    if (message_str.toUpperCase().startsWith("STEP"))
+    {
+      long position = 0;
+      if (message_str.endsWith("0")) { stepper_home(); return; }
+      if (message_str.endsWith("1")) position = stepperPositions[0];
+      if (message_str.endsWith("2")) position = stepperPositions[1];
+      if (message_str.endsWith("3")) position = stepperPositions[2];
+      if (message_str.endsWith("4")) position = stepperPositions[3];
+      if (message_str.endsWith("5")) position = stepperPositions[4];
+      if (message_str.endsWith("6")) position = stepperPositions[5];
+      client->printf("Stepper: Moving to position %i\n", position);
+      stepper.enableOutputs();
+      stepper.moveTo(position);
+      return;
+      // main loop handles `stepper.run()` and `disableOutputs()`
+    }
+
     // decode message
     byte params = 0;
     while ((str = strtok_r(p, " ,;", &p)) != NULL) // delimiter is the semicolon
@@ -2956,7 +3008,46 @@ void QATCH_loop()
     }
   }
 #endif
-stepper.run();
+
+  // delay(100);
+  // if (millis() < 1000*60)
+  //   step(false);
+  stepper.run();
+  // digitalWrite(2, HIGH); // try this tomorrow
+  // digitalWrite(4, HIGH); // try this tomorrow
+  if (stepper.isRunning())
+  {
+  // client->print("Stepper: ");
+  // client->print(digitalRead(L298NHB_M1));
+  // client->print(digitalRead(L298NHB_E1));
+  // client->print(digitalRead(L298NHB_M2));
+  // client->println(digitalRead(L298NHB_E2));
+  } else {
+    if (digitalRead(L298NHB_M1) || digitalRead(L298NHB_E1) || 
+        digitalRead(L298NHB_M2) || digitalRead(L298NHB_E2))
+      client->println("Stepper: DONE!");
+    stepper.disableOutputs();
+  }
+}
+
+void step(bool forward) {
+  static int stepIndex = 0;
+
+  // 4-step full-step sequence
+  const bool stepTable[4][2] = {
+      {HIGH, HIGH}, // Step 1: A+, B+
+      {LOW, HIGH},  // Step 2: A-, B+
+      {LOW, LOW},   // Step 3: A-, B-
+      {HIGH, LOW}   // Step 4: A+, B-
+  };
+
+  stepIndex = (stepIndex + (forward ? 1 : 3)) % 4;
+
+  digitalWrite(L298NHB_M1, stepTable[stepIndex][0]);
+  digitalWrite(L298NHB_M2, stepTable[stepIndex][1]);
+
+  digitalWrite(L298NHB_E1, HIGH);
+  digitalWrite(L298NHB_E2, HIGH);
 }
 
 /************************** FUNCTION ***************************/
