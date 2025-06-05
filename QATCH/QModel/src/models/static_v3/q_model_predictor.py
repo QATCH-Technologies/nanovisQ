@@ -11,7 +11,7 @@ Author: Paul MacNichol (paul.macnichol@qatchtech.com)
 Date: 05-02-2025
 Version: QModel.Ver3.15
 """
-
+import math
 import xgboost as xgb
 from sklearn.pipeline import Pipeline
 import pickle
@@ -722,6 +722,214 @@ class QModelPredictor:
             Log.d(f"base2 >= first3; falling back to base3 {result}")
 
         return result
+
+    def _merge_candidate_sets(
+        self,
+        candidates_1: dict,
+        candidates_2: dict,
+        target_1: int,
+        target_2: int,
+        relative_time: np.ndarray
+    ):
+        """
+        New merge strategy: Only the closest 20% of all candidate points (from both sets)
+        get assigned to target_1; the remaining 80% go to target_2.  We visualize “Before”
+        (original sets) vs. “After” (new merged assignments).
+
+        Args:
+            candidates_1: {"indices": List[int], "confidences": List[float]}
+            candidates_2: {"indices": List[int], "confidences": List[float]}
+            target_1: index into relative_time for the first target
+            target_2: index into relative_time for the second target (unused in ratio logic,
+                    but still plotted)
+            relative_time: np.ndarray of time values
+
+        Returns:
+            merged_1, merged_2: two dicts, each with keys "indices" and "confidences",
+                sorted by descending confidence.  merged_1 contains the closest 20%
+                to target_1; merged_2 contains the rest.
+        """
+        # 1) Compute the two target times
+        target_time_1 = relative_time[target_1]
+        target_time_2 = relative_time[target_2]
+
+        # 2) Extract raw lists from each input
+        cand_1_idxs = candidates_1.get("indices", [])
+        cand_1_confs = candidates_1.get("confidences", [])
+        cand_2_idxs = candidates_2.get("indices", [])
+        cand_2_confs = candidates_2.get("confidences", [])
+
+        if len(cand_1_idxs) != len(cand_1_confs):
+            raise ValueError("Length mismatch in candidates_1.")
+        if len(cand_2_idxs) != len(cand_2_confs):
+            raise ValueError("Length mismatch in candidates_2.")
+
+        # 3) Gather “before” points for plotting (time, confidence)
+        before_1 = [(relative_time[idx], conf)
+                    for idx, conf in zip(cand_1_idxs, cand_1_confs)]
+        before_2 = [(relative_time[idx], conf)
+                    for idx, conf in zip(cand_2_idxs, cand_2_confs)]
+
+        # 4) Combine all candidates into a single list, tagging origin for plotting if desired
+        #    Each entry: (idx, conf, dist_to_target1)
+        combined = []
+        for idx, conf in zip(cand_1_idxs, cand_1_confs):
+            if not (0 <= idx < relative_time.shape[0]):
+                raise ValueError(
+                    f"Index {idx} out of bounds for relative_time (len={len(relative_time)})")
+            t = relative_time[idx]
+            dist = abs(t - target_time_1)
+            combined.append((idx, conf, dist))
+
+        for idx, conf in zip(cand_2_idxs, cand_2_confs):
+            if not (0 <= idx < relative_time.shape[0]):
+                raise ValueError(
+                    f"Index {idx} out of bounds for relative_time (len={len(relative_time)})")
+            t = relative_time[idx]
+            dist = abs(t - target_time_1)
+            combined.append((idx, conf, dist))
+
+        # 5) Sort combined by distance to target_1 (ascending)
+        combined.sort(key=lambda x: x[2])  # x = (idx, conf, dist)
+
+        # 6) Compute the 20% cutoff
+        total_pts = len(combined)
+        if total_pts == 0:
+            # If no points, return empty merges (and still plot blank axes)
+            merged_1 = {"indices": [], "confidences": []}
+            merged_2 = {"indices": [], "confidences": []}
+
+            # Plot “Before” and “After” as empty graphs for completeness
+            fig, (ax_before, ax_after) = plt.subplots(
+                1, 2, figsize=(14, 5), sharey=True)
+            ax_before.set_title("Before Merge")
+            ax_before.set_xlabel("Relative Time")
+            ax_before.set_ylabel("Confidence")
+            ax_after.set_title("After Merge")
+            ax_after.set_xlabel("Relative Time")
+            # Draw target lines on both
+            for ax in (ax_before, ax_after):
+                ax.axvline(target_time_1, color="C2", linestyle="--",
+                           linewidth=1.5, label="Target 1")
+                ax.axvline(target_time_2, color="C3", linestyle="--",
+                           linewidth=1.5, label="Target 2")
+                ax.legend(loc="upper right", fontsize="small")
+                ax.grid(alpha=0.3)
+            plt.tight_layout()
+            plt.show()
+
+            return merged_1, merged_2
+
+        cutoff_count = math.ceil(0.20 * total_pts)
+
+        # 7) Split into two groups: first cutoff_count → merged_1, rest → merged_2
+        merged_1_idxs = [combined[i][0] for i in range(cutoff_count)]
+        merged_1_confs = [combined[i][1] for i in range(cutoff_count)]
+        merged_2_idxs = [combined[i][0]
+                         for i in range(cutoff_count, total_pts)]
+        merged_2_confs = [combined[i][1]
+                          for i in range(cutoff_count, total_pts)]
+
+        # 8) Resort each merged group by descending confidence
+        def _resort(indices: list[int], confidences: list[float]):
+            if not indices:
+                return [], []
+            pairs = list(zip(indices, confidences))
+            pairs.sort(key=lambda x: x[1], reverse=True)
+            sorted_idxs, sorted_confs = zip(*pairs)
+            return list(sorted_idxs), list(sorted_confs)
+
+        merged_1_idxs, merged_1_confs = _resort(merged_1_idxs, merged_1_confs)
+        merged_2_idxs, merged_2_confs = _resort(merged_2_idxs, merged_2_confs)
+
+        # 9) Gather “after” points for plotting
+        after_1 = [(relative_time[idx], conf)
+                   for idx, conf in zip(merged_1_idxs, merged_1_confs)]
+        after_2 = [(relative_time[idx], conf)
+                   for idx, conf in zip(merged_2_idxs, merged_2_confs)]
+
+        # 10) Plotting: two panels side by side
+        fig, (ax_before, ax_after) = plt.subplots(
+            1, 2, figsize=(14, 5), sharey=True)
+
+        # -- Left panel: “Before” --
+        ax_before.set_title("Before Merge (Original Sets)")
+        ax_before.set_xlabel("Relative Time")
+        ax_before.set_ylabel("Confidence")
+        # Plot original set 1 (circles, color C0)
+        if before_1:
+            times_1_b, confs_1_b = zip(*before_1)
+            ax_before.scatter(
+                times_1_b,
+                confs_1_b,
+                marker="o",
+                s=50,
+                color="C0",
+                edgecolor="black",
+                label="Set 1"
+            )
+        # Plot original set 2 (squares, color C1)
+        if before_2:
+            times_2_b, confs_2_b = zip(*before_2)
+            ax_before.scatter(
+                times_2_b,
+                confs_2_b,
+                marker="s",
+                s=50,
+                color="C1",
+                edgecolor="black",
+                label="Set 2"
+            )
+        # Vertical target lines
+        ax_before.axvline(target_time_1, color="C2",
+                          linestyle="--", linewidth=1.5, label="Target 1")
+        ax_before.axvline(target_time_2, color="C3",
+                          linestyle="--", linewidth=1.5, label="Target 2")
+        ax_before.legend(loc="upper right", fontsize="small")
+        ax_before.grid(alpha=0.3)
+
+        # -- Right panel: “After” --
+        ax_after.set_title("After Merge (20% Closest → Target 1)")
+        ax_after.set_xlabel("Relative Time")
+        # Plot merged set 1 (circles, color C0)
+        if after_1:
+            times_1_a, confs_1_a = zip(*after_1)
+            ax_after.scatter(
+                times_1_a,
+                confs_1_a,
+                marker="o",
+                s=50,
+                color="C0",
+                edgecolor="black",
+                label="Merged → Target 1"
+            )
+        # Plot merged set 2 (squares, color C1)
+        if after_2:
+            times_2_a, confs_2_a = zip(*after_2)
+            ax_after.scatter(
+                times_2_a,
+                confs_2_a,
+                marker="s",
+                s=50,
+                color="C1",
+                edgecolor="black",
+                label="Merged → Target 2"
+            )
+        # Same vertical target lines
+        ax_after.axvline(target_time_1, color="C2",
+                         linestyle="--", linewidth=1.5, label="Target 1")
+        ax_after.axvline(target_time_2, color="C3",
+                         linestyle="--", linewidth=1.5, label="Target 2")
+        ax_after.legend(loc="upper right", fontsize="small")
+        ax_after.grid(alpha=0.3)
+
+        plt.tight_layout()
+        plt.show()
+
+        # 11) Return the two merged dicts
+        merged_1 = {"indices": merged_1_idxs, "confidences": merged_1_confs}
+        merged_2 = {"indices": merged_2_idxs, "confidences": merged_2_confs}
+        return merged_1, merged_2
 
     def _poi_6_knee_point(self,
                           start_of_segment: int,
@@ -1511,6 +1719,9 @@ class QModelPredictor:
 
         # apply bias correction and ranking
         for poi in ("POI4", "POI5", "POI6"):
+            if poi == "POI4":
+                merged_1, merged_2 = self._merge_candidate_sets(candidates_1=predictions.get("POI4"), candidates_2=predictions.get(
+                    "POI5"), target_1=best_positions.get("POI4").get("indices")[0], target_2=best_positions.get("POI5").get("indices")[0], relative_time=relative_time)
             windows[poi] = self._choose_and_insert(
                 windows[poi], dissipation, relative_time, feature_vector, poi=poi, ground_truth=ground_truth)
 
