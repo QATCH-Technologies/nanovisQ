@@ -729,206 +729,219 @@ class QModelPredictor:
         candidates_2: dict,
         target_1: int,
         target_2: int,
-        relative_time: np.ndarray
+        relative_time: np.ndarray,
+        feature_vector: pd.DataFrame = None
     ):
         """
-        New merge strategy: Only the closest 20% of all candidate points (from both sets)
-        get assigned to target_1; the remaining 80% go to target_2.  We visualize “Before”
-        (original sets) vs. “After” (new merged assignments).
+        For each candidate set, compute each candidate’s time‐distance to its target.
+        For candidates_1, keep all indices ≤ target_1’s time, and also those within
+        one standard deviation to the right of target_1. Any candidate in candidates_1
+        whose time > (target_1 + 1σ) is reassigned to candidates_2. The analogous logic
+        for candidates_2: keep indices ≥ target_2’s time, and those within one standard
+        deviation to the left of target_2. Any candidate in candidates_2 whose time < (target_2 - 1σ)
+        is reassigned to candidates_1. Finally, plot before/after assignments on the
+        Dissipation curve, using vertical lines for targets and distinct colors.
 
-        Args:
-            candidates_1: {"indices": List[int], "confidences": List[float]}
-            candidates_2: {"indices": List[int], "confidences": List[float]}
-            target_1: index into relative_time for the first target
-            target_2: index into relative_time for the second target (unused in ratio logic,
-                    but still plotted)
-            relative_time: np.ndarray of time values
-
-        Returns:
-            merged_1, merged_2: two dicts, each with keys "indices" and "confidences",
-                sorted by descending confidence.  merged_1 contains the closest 20%
-                to target_1; merged_2 contains the rest.
+        Returns two dicts (merged_1, merged_2), each with "indices" and "confidences" keys,
+        sorted by descending confidence.
         """
-        # 1) Compute the two target times
-        target_time_1 = relative_time[target_1]
-        target_time_2 = relative_time[target_2]
+        # --- Extract original indices & confidences ---
+        cand1 = np.array(candidates_1.get("indices", []), dtype=int)
+        conf1 = np.array(candidates_1.get("confidences", []), dtype=float)
+        cand2 = np.array(candidates_2.get("indices", []), dtype=int)
+        conf2 = np.array(candidates_2.get("confidences", []), dtype=float)
 
-        # 2) Extract raw lists from each input
-        cand_1_idxs = candidates_1.get("indices", [])
-        cand_1_confs = candidates_1.get("confidences", [])
-        cand_2_idxs = candidates_2.get("indices", [])
-        cand_2_confs = candidates_2.get("confidences", [])
+        # Compute target times
+        t1 = relative_time[target_1]
+        t2 = relative_time[target_2]
 
-        if len(cand_1_idxs) != len(cand_1_confs):
-            raise ValueError("Length mismatch in candidates_1.")
-        if len(cand_2_idxs) != len(cand_2_confs):
-            raise ValueError("Length mismatch in candidates_2.")
+        # === BEFORE ASSIGNMENT PLOT ===
+        # if feature_vector is not None:
+        #     fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+        #     ax_before, ax_after = axes
 
-        # 3) Gather “before” points for plotting (time, confidence)
-        before_1 = [(relative_time[idx], conf)
-                    for idx, conf in zip(cand_1_idxs, cand_1_confs)]
-        before_2 = [(relative_time[idx], conf)
-                    for idx, conf in zip(cand_2_idxs, cand_2_confs)]
+        #     # Plot Dissipation curve
+        #     ax_before.plot(
+        #         relative_time,
+        #         feature_vector["Dissipation"],
+        #         color="#555555",
+        #         linewidth=1.5,
+        #         label="Dissipation"
+        #     )
+        #     # Scatter original candidates_1
+        #     if cand1.size > 0:
+        #         ax_before.scatter(
+        #             relative_time[cand1],
+        #             feature_vector["Dissipation"].iloc[cand1],
+        #             c="#1f77b4",
+        #             s=50,
+        #             alpha=0.8,
+        #             edgecolors="black",
+        #             label="Cand Set 1 (orig)"
+        #         )
+        #     # Scatter original candidates_2
+        #     if cand2.size > 0:
+        #         ax_before.scatter(
+        #             relative_time[cand2],
+        #             feature_vector["Dissipation"].iloc[cand2],
+        #             c="#ff7f0e",
+        #             s=50,
+        #             alpha=0.8,
+        #             edgecolors="black",
+        #             label="Cand Set 2 (orig)"
+        #         )
+        #     # Vertical lines for targets
+        #     ax_before.axvline(
+        #         x=t1,
+        #         color="#1f77b4",
+        #         linestyle="--",
+        #         linewidth=2,
+        #         label="Target 1"
+        #     )
+        #     ax_before.axvline(
+        #         x=t2,
+        #         color="#ff7f0e",
+        #         linestyle="--",
+        #         linewidth=2,
+        #         label="Target 2"
+        #     )
+        #     ax_before.set_title("Before Reassignment", fontsize=14)
+        #     ax_before.set_xlabel("Relative Time", fontsize=12)
+        #     ax_before.set_ylabel("Dissipation", fontsize=12)
+        #     ax_before.legend(loc="upper right", fontsize=10)
+        #     ax_before.grid(alpha=0.3)
 
-        # 4) Combine all candidates into a single list, tagging origin for plotting if desired
-        #    Each entry: (idx, conf, dist_to_target1)
-        combined = []
-        for idx, conf in zip(cand_1_idxs, cand_1_confs):
-            if not (0 <= idx < relative_time.shape[0]):
-                raise ValueError(
-                    f"Index {idx} out of bounds for relative_time (len={len(relative_time)})")
-            t = relative_time[idx]
-            dist = abs(t - target_time_1)
-            combined.append((idx, conf, dist))
+        # === COMPUTE “KEEP” AND “REASSIGN” FOR SET 1 ===
+        if cand1.size > 0:
+            times1 = relative_time[cand1]
+            dt1 = times1 - t1  # signed distance
+            sigma1 = np.std(dt1)
 
-        for idx, conf in zip(cand_2_idxs, cand_2_confs):
-            if not (0 <= idx < relative_time.shape[0]):
-                raise ValueError(
-                    f"Index {idx} out of bounds for relative_time (len={len(relative_time)})")
-            t = relative_time[idx]
-            dist = abs(t - target_time_1)
-            combined.append((idx, conf, dist))
+            # Keep those ≤ t1 (left of or exactly at target), plus those within +1σ to the right
+            keep_mask1 = (times1 <= t1) | ((times1 > t1) & (dt1 <= sigma1))
+            keep1 = cand1[keep_mask1]
+            keep_conf1 = conf1[keep_mask1]
 
-        # 5) Sort combined by distance to target_1 (ascending)
-        combined.sort(key=lambda x: x[2])  # x = (idx, conf, dist)
+            # Outliers are those strictly to the right beyond +1σ
+            reassign_mask1 = (times1 > t1) & (dt1 > sigma1)
+            reassign1 = cand1[reassign_mask1]
+            reassign_conf1 = conf1[reassign_mask1]
+        else:
+            keep1 = np.array([], dtype=int)
+            keep_conf1 = np.array([], dtype=float)
+            reassign1 = np.array([], dtype=int)
+            reassign_conf1 = np.array([], dtype=float)
 
-        # 6) Compute the 20% cutoff
-        total_pts = len(combined)
-        if total_pts == 0:
-            # If no points, return empty merges (and still plot blank axes)
-            merged_1 = {"indices": [], "confidences": []}
-            merged_2 = {"indices": [], "confidences": []}
+        # === COMPUTE “KEEP” AND “REASSIGN” FOR SET 2 ===
+        if cand2.size > 0:
+            times2 = relative_time[cand2]
+            dt2 = times2 - t2  # signed distance
+            sigma2 = np.std(dt2)
 
-            # Plot “Before” and “After” as empty graphs for completeness
-            fig, (ax_before, ax_after) = plt.subplots(
-                1, 2, figsize=(14, 5), sharey=True)
-            ax_before.set_title("Before Merge")
-            ax_before.set_xlabel("Relative Time")
-            ax_before.set_ylabel("Confidence")
-            ax_after.set_title("After Merge")
-            ax_after.set_xlabel("Relative Time")
-            # Draw target lines on both
-            for ax in (ax_before, ax_after):
-                ax.axvline(target_time_1, color="C2", linestyle="--",
-                           linewidth=1.5, label="Target 1")
-                ax.axvline(target_time_2, color="C3", linestyle="--",
-                           linewidth=1.5, label="Target 2")
-                ax.legend(loc="upper right", fontsize="small")
-                ax.grid(alpha=0.3)
-            plt.tight_layout()
-            plt.show()
+            # Keep those ≥ t2 (right of or exactly at target), plus those within -1σ to the left
+            keep_mask2 = (times2 >= t2) | ((times2 < t2) & (-dt2 <= sigma2))
+            keep2 = cand2[keep_mask2]
+            keep_conf2 = conf2[keep_mask2]
 
-            return merged_1, merged_2
+            # Outliers are those strictly to the left beyond -1σ (i.e., dt2 < -σ₂)
+            reassign_mask2 = (times2 < t2) & (-dt2 > sigma2)
+            reassign2 = cand2[reassign_mask2]
+            reassign_conf2 = conf2[reassign_mask2]
+        else:
+            keep2 = np.array([], dtype=int)
+            keep_conf2 = np.array([], dtype=float)
+            reassign2 = np.array([], dtype=int)
+            reassign_conf2 = np.array([], dtype=float)
 
-        cutoff_count = math.ceil(0.20 * total_pts)
+        # === BUILD FINAL ASSIGNMENTS (UNSORTED) ===
+        final1 = np.concatenate(
+            [keep1, reassign2]) if reassign2.size > 0 else keep1.copy()
+        final_conf1 = np.concatenate(
+            [keep_conf1, reassign_conf2]) if reassign_conf2.size > 0 else keep_conf1.copy()
 
-        # 7) Split into two groups: first cutoff_count → merged_1, rest → merged_2
-        merged_1_idxs = [combined[i][0] for i in range(cutoff_count)]
-        merged_1_confs = [combined[i][1] for i in range(cutoff_count)]
-        merged_2_idxs = [combined[i][0]
-                         for i in range(cutoff_count, total_pts)]
-        merged_2_confs = [combined[i][1]
-                          for i in range(cutoff_count, total_pts)]
+        final2 = np.concatenate(
+            [keep2, reassign1]) if reassign1.size > 0 else keep2.copy()
+        final_conf2 = np.concatenate(
+            [keep_conf2, reassign_conf1]) if reassign_conf1.size > 0 else keep_conf2.copy()
 
-        # 8) Resort each merged group by descending confidence
-        def _resort(indices: list[int], confidences: list[float]):
-            if not indices:
-                return [], []
-            pairs = list(zip(indices, confidences))
-            pairs.sort(key=lambda x: x[1], reverse=True)
-            sorted_idxs, sorted_confs = zip(*pairs)
-            return list(sorted_idxs), list(sorted_confs)
+        # === SORT EACH MERGED LIST BY DESCENDING CONFIDENCE ===
+        if final_conf1.size > 0:
+            sort_idx1 = np.argsort(-final_conf1)
+            sorted_indices1 = final1[sort_idx1]
+            sorted_conf1 = final_conf1[sort_idx1]
+        else:
+            sorted_indices1 = np.array([], dtype=int)
+            sorted_conf1 = np.array([], dtype=float)
 
-        merged_1_idxs, merged_1_confs = _resort(merged_1_idxs, merged_1_confs)
-        merged_2_idxs, merged_2_confs = _resort(merged_2_idxs, merged_2_confs)
+        if final_conf2.size > 0:
+            sort_idx2 = np.argsort(-final_conf2)
+            sorted_indices2 = final2[sort_idx2]
+            sorted_conf2 = final_conf2[sort_idx2]
+        else:
+            sorted_indices2 = np.array([], dtype=int)
+            sorted_conf2 = np.array([], dtype=float)
 
-        # 9) Gather “after” points for plotting
-        after_1 = [(relative_time[idx], conf)
-                   for idx, conf in zip(merged_1_idxs, merged_1_confs)]
-        after_2 = [(relative_time[idx], conf)
-                   for idx, conf in zip(merged_2_idxs, merged_2_confs)]
+        # Prepare return dicts
+        merged_1 = {
+            "indices": sorted_indices1.tolist(),
+            "confidences": sorted_conf1.tolist()
+        }
+        merged_2 = {
+            "indices": sorted_indices2.tolist(),
+            "confidences": sorted_conf2.tolist()
+        }
 
-        # 10) Plotting: two panels side by side
-        fig, (ax_before, ax_after) = plt.subplots(
-            1, 2, figsize=(14, 5), sharey=True)
+        # === AFTER ASSIGNMENT PLOT ===
+        # if feature_vector is not None:
+        #     ax_after.plot(
+        #         relative_time,
+        #         feature_vector["Dissipation"],
+        #         color="#555555",
+        #         linewidth=1.5,
+        #         label="Dissipation"
+        #     )
+        #     if sorted_indices1.size > 0:
+        #         ax_after.scatter(
+        #             relative_time[sorted_indices1],
+        #             feature_vector["Dissipation"].iloc[sorted_indices1],
+        #             c="#1f77b4",
+        #             s=50,
+        #             alpha=0.8,
+        #             edgecolors="black",
+        #             label="Cand Set 1 (final)"
+        #         )
+        #     if sorted_indices2.size > 0:
+        #         ax_after.scatter(
+        #             relative_time[sorted_indices2],
+        #             feature_vector["Dissipation"].iloc[sorted_indices2],
+        #             c="#ff7f0e",
+        #             s=50,
+        #             alpha=0.8,
+        #             edgecolors="black",
+        #             label="Cand Set 2 (final)"
+        #         )
+        #     ax_after.axvline(
+        #         x=t1,
+        #         color="#1f77b4",
+        #         linestyle="--",
+        #         linewidth=2,
+        #         label="Target 1"
+        #     )
+        #     ax_after.axvline(
+        #         x=t2,
+        #         color="#ff7f0e",
+        #         linestyle="--",
+        #         linewidth=2,
+        #         label="Target 2"
+        #     )
+        #     ax_after.set_title("After Reassignment", fontsize=14)
+        #     ax_after.set_xlabel("Relative Time", fontsize=12)
+        #     ax_after.legend(loc="upper right", fontsize=10)
+        #     ax_after.grid(alpha=0.3)
 
-        # -- Left panel: “Before” --
-        ax_before.set_title("Before Merge (Original Sets)")
-        ax_before.set_xlabel("Relative Time")
-        ax_before.set_ylabel("Confidence")
-        # Plot original set 1 (circles, color C0)
-        if before_1:
-            times_1_b, confs_1_b = zip(*before_1)
-            ax_before.scatter(
-                times_1_b,
-                confs_1_b,
-                marker="o",
-                s=50,
-                color="C0",
-                edgecolor="black",
-                label="Set 1"
-            )
-        # Plot original set 2 (squares, color C1)
-        if before_2:
-            times_2_b, confs_2_b = zip(*before_2)
-            ax_before.scatter(
-                times_2_b,
-                confs_2_b,
-                marker="s",
-                s=50,
-                color="C1",
-                edgecolor="black",
-                label="Set 2"
-            )
-        # Vertical target lines
-        ax_before.axvline(target_time_1, color="C2",
-                          linestyle="--", linewidth=1.5, label="Target 1")
-        ax_before.axvline(target_time_2, color="C3",
-                          linestyle="--", linewidth=1.5, label="Target 2")
-        ax_before.legend(loc="upper right", fontsize="small")
-        ax_before.grid(alpha=0.3)
+        #     plt.tight_layout()
+        #     plt.show()
 
-        # -- Right panel: “After” --
-        ax_after.set_title("After Merge (20% Closest → Target 1)")
-        ax_after.set_xlabel("Relative Time")
-        # Plot merged set 1 (circles, color C0)
-        if after_1:
-            times_1_a, confs_1_a = zip(*after_1)
-            ax_after.scatter(
-                times_1_a,
-                confs_1_a,
-                marker="o",
-                s=50,
-                color="C0",
-                edgecolor="black",
-                label="Merged → Target 1"
-            )
-        # Plot merged set 2 (squares, color C1)
-        if after_2:
-            times_2_a, confs_2_a = zip(*after_2)
-            ax_after.scatter(
-                times_2_a,
-                confs_2_a,
-                marker="s",
-                s=50,
-                color="C1",
-                edgecolor="black",
-                label="Merged → Target 2"
-            )
-        # Same vertical target lines
-        ax_after.axvline(target_time_1, color="C2",
-                         linestyle="--", linewidth=1.5, label="Target 1")
-        ax_after.axvline(target_time_2, color="C3",
-                         linestyle="--", linewidth=1.5, label="Target 2")
-        ax_after.legend(loc="upper right", fontsize="small")
-        ax_after.grid(alpha=0.3)
-
-        plt.tight_layout()
-        plt.show()
-
-        # 11) Return the two merged dicts
-        merged_1 = {"indices": merged_1_idxs, "confidences": merged_1_confs}
-        merged_2 = {"indices": merged_2_idxs, "confidences": merged_2_confs}
         return merged_1, merged_2
 
     def _poi_6_knee_point(self,
@@ -937,32 +950,209 @@ class QModelPredictor:
                           feature_vector: pd.DataFrame,
                           relative_time: np.ndarray) -> int:
 
-        n = abs(start_of_segment - end_of_segment)
+        # 1) Extract raw “Detrend_Difference” over the segment
+        raw_diff = feature_vector['Detrend_Difference'].values
+        seg_raw = raw_diff[start_of_segment: end_of_segment + 1]
+        seg_t = relative_time[start_of_segment: end_of_segment + 1]
+        n = len(seg_raw)
+
+        # 2) Build a monotonic “component signal” (non‐increasing)
+        comp_sig = [seg_raw[0]]
+        for x in seg_raw[1:]:
+            comp_sig.append(x if x <= comp_sig[-1] else comp_sig[-1])
+        seg_comp = np.array(comp_sig)
+
+        # 3) Smooth the component signal via Savitzky‐Golay
         if n < 3:
-            diff = feature_vector['Detrend_Difference'].values
+            seg_sm = seg_comp.copy()
         else:
-            w = max(3, int(n * 0.05))
+            w = max(3, int(n * 0.08))
             if w % 2 == 0:
                 w += 1
             w = min(w, n if n % 2 == 1 else n - 1)
-            polyorder = 1
-            po = min(polyorder, w - 1)
-            diff = savgol_filter(
-                feature_vector['Detrend_Difference'].values, window_length=w, polyorder=po)
-        seg_d = diff[start_of_segment:end_of_segment+1]
-        seg_t = relative_time[start_of_segment:end_of_segment+1]
-        slope = np.gradient(seg_d, seg_t)
-        valley_rel = int(np.argmin(slope))
-        peaks, _ = find_peaks(seg_d)
-        pre_peaks = peaks[peaks < valley_rel]
+            po = min(1, w - 1)
+            seg_sm = savgol_filter(seg_comp, window_length=w, polyorder=po)
 
-        if pre_peaks.size > 0:
-            knee_rel = int(pre_peaks[-1])
-        else:
-            knee_rel = int(np.argmax(seg_d[:valley_rel+1]))
+        # 4) Compute first derivative (slope) of the smoothed component
+        slope = np.gradient(seg_sm, seg_t)
+
+        # 5) Estimate baseline noise from the first few slope values
+        baseline_window = min(n, max(3, int(n * 0.2)))
+        baseline_vals = slope[:baseline_window]
+        baseline_mean = baseline_vals.mean()
+        baseline_std = baseline_vals.std()
+
+        # 6) Define threshold: slope must drop below (mean - std)
+        threshold = baseline_mean - baseline_std
+        threshold = threshold * 1
+        # 7) Find the first index where slope < threshold
+        knee_rel = None
+        for i, s in enumerate(slope):
+            if s < threshold:
+                knee_rel = i
+                break
+        # If no such point is found, fall back to second‐derivative method
+        if knee_rel is None:
+            d1 = slope
+            d2 = np.gradient(d1, seg_t)
+            knee_rel = int(np.argmax(np.abs(d2)))
 
         knee_idx = start_of_segment + knee_rel
+
+        # # 8) Plot raw, component, smoothed, and slope with threshold/knee markers
+        # fig, ax1 = plt.subplots(figsize=(10, 6))
+
+        # # Plot raw Detrend_Difference (light gray)
+        # ax1.plot(seg_t, seg_raw,
+        #          color='lightgray', linewidth=1.5,
+        #          label='Raw Detrend_Difference')
+
+        # # Plot unsmoothed component (blue, dotted)
+        # ax1.plot(seg_t, seg_comp,
+        #          color='blue', linestyle=':', linewidth=1.5,
+        #          label='Component Signal (non‐increasing)')
+
+        # # Plot smoothed component (dark blue, solid)
+        # ax1.plot(seg_t, seg_sm,
+        #          color='darkblue', linewidth=1.5,
+        #          label='Smoothed Component')
+
+        # # Mark the knee point on the smoothed component
+        # ax1.scatter(
+        #     seg_t[knee_rel],
+        #     seg_sm[knee_rel],
+        #     color='green', s=80, marker='*',
+        #     label='Knee Point'
+        # )
+        # ax1.axvline(seg_t[knee_rel],
+        #             color='green', linestyle='--', linewidth=1)
+
+        # ax1.set_xlabel('Relative Time')
+        # ax1.set_ylabel('Detrend Difference')
+        # ax1.legend(loc='upper left')
+
+        # # Create a second y-axis for the slope
+        # ax2 = ax1.twinx()
+        # ax2.plot(seg_t, slope,
+        #          color='gray', linestyle='--', linewidth=1.5,
+        #          label='Slope (1st Derivative)')
+        # # Plot horizontal lines for baseline mean ± std
+        # ax2.axhline(baseline_mean, color='gray', linestyle=':', linewidth=1)
+        # ax2.axhline(threshold,   color='gray', linestyle='-.', linewidth=1,
+        #             label='Threshold (mean - std)')
+        # # Mark knee on slope plot
+        # ax2.scatter(
+        #     seg_t[knee_rel],
+        #     slope[knee_rel],
+        #     color='green', s=60, marker='x',
+        #     label='Knee on Slope'
+        # )
+
+        # ax2.set_ylabel('Slope')
+        # ax2.legend(loc='upper right')
+
+        # plt.title('Monotonic Component + Smoothed + Slope & Knee Detection')
+        # plt.tight_layout()
+        # plt.show()
+
         return knee_idx
+    # def _poi_6_knee_point(self,
+    #                       start_of_segment: int,
+    #                       end_of_segment: int,
+    #                       feature_vector: pd.DataFrame,
+    #                       relative_time: np.ndarray) -> int:
+
+    #     n = abs(start_of_segment - end_of_segment)
+    #     if n < 3:
+    #         diff = feature_vector['Detrend_Difference'].values
+    #     else:
+    #         w = max(3, int(n * 0.1))
+    #         if w % 2 == 0:
+    #             w += 1
+    #         w = min(w, n if n % 2 == 1 else n - 1)
+    #         polyorder = 1
+    #         po = min(polyorder, w - 1)
+    #         diff = savgol_filter(
+    #             feature_vector['Detrend_Difference'].values,
+    #             window_length=w,
+    #             polyorder=po
+    #         )
+
+    #     # Extract the segment of interest
+    #     seg_d = diff[start_of_segment:end_of_segment + 1]
+    #     seg_t = relative_time[start_of_segment:end_of_segment + 1]
+
+    #     # Compute slope (derivative) of the filtered signal
+    #     slope = np.gradient(seg_d, seg_t)
+
+    #     # Find the “valley” in slope (minimum slope)
+    #     valley_rel = int(np.argmin(slope))
+
+    #     # Find all peaks in the filtered signal within the segment
+    #     peaks, _ = find_peaks(seg_d)
+    #     # Restrict to peaks before the valley (i.e. pre-peaks)
+    #     pre_peaks = peaks[peaks < valley_rel]
+
+    #     # Determine knee location: either last pre-peak or max before valley if no pre-peak
+    #     if pre_peaks.size > 0:
+    #         knee_rel = int(pre_peaks[-1])
+    #     else:
+    #         knee_rel = int(np.argmax(seg_d[:valley_rel + 1]))
+
+    #     knee_idx = start_of_segment + knee_rel
+
+    #     # -------------------
+    #     # Plotting for debugging
+    #     # -------------------
+    #     plt.figure(figsize=(10, 6))
+
+    #     # Plot the filtered Detrend_Difference curve
+    #     plt.plot(seg_t, seg_d, linewidth=1.5,
+    #              label='Filtered Detrend_Difference')
+
+    #     # Mark all detected peaks
+    #     if peaks.size > 0:
+    #         plt.scatter(seg_t[peaks], seg_d[peaks],
+    #                     color='orange', s=50, marker='o', label='Peaks')
+
+    #     # Mark the valley (minimum slope point)
+    #     plt.scatter(seg_t[valley_rel], seg_d[valley_rel],
+    #                 color='red', s=60, marker='v', label='Valley (min slope)')
+
+    #     # Mark the knee point
+    #     plt.scatter(seg_t[knee_rel], seg_d[knee_rel],
+    #                 color='green', s=80, marker='*', label='Knee Point')
+
+    #     # Draw vertical lines for valley and knee
+    #     plt.axvline(seg_t[valley_rel], color='red',
+    #                 linestyle='--', linewidth=1)
+    #     plt.axvline(seg_t[knee_rel], color='green',
+    #                 linestyle='--', linewidth=1)
+
+    #     # Annotate points
+    #     plt.text(
+    #         seg_t[valley_rel],
+    #         seg_d[valley_rel],
+    #         '  Valley',
+    #         color='red',
+    #         verticalalignment='bottom',
+    #     )
+    #     plt.text(
+    #         seg_t[knee_rel],
+    #         seg_d[knee_rel],
+    #         '  Knee',
+    #         color='green',
+    #         verticalalignment='bottom',
+    #     )
+
+    #     plt.xlabel('Relative Time')
+    #     plt.ylabel('Filtered Detrend Difference')
+    #     plt.title('POI6 Knee Point Detection')
+    #     plt.legend(loc='upper left')
+    #     plt.tight_layout()
+    #     plt.show()
+
+    #     return knee_idx
 
     def _choose_and_insert(
         self,
@@ -1467,7 +1657,7 @@ class QModelPredictor:
             ],
             'POI5': [
                 i for i in positions['POI5']['indices']
-                if cut1 <= relative_time[i] <= cut2
+                if int(cut1 * 0.75) <= relative_time[i] <= cut2
             ],
             'POI6': [
                 i for i in positions['POI6']['indices']
@@ -1642,7 +1832,7 @@ class QModelPredictor:
         """Refine and select the best point-of-interest (POI) predictions.
 
         Applies a sequence of filters, windowing, and bias corrections to the
-        raw `predictions` mapping. Ensures each POI (1–6) ends up with an ordered
+        raw `predictions` mapping. Ensures each POI (1-6) ends up with an ordered
         list of candidate indices and matching confidences.
 
         Workflow:
@@ -1719,14 +1909,12 @@ class QModelPredictor:
 
         # apply bias correction and ranking
         for poi in ("POI4", "POI5", "POI6"):
-            if poi == "POI4":
-                merged_1, merged_2 = self._merge_candidate_sets(candidates_1=predictions.get("POI4"), candidates_2=predictions.get(
-                    "POI5"), target_1=best_positions.get("POI4").get("indices")[0], target_2=best_positions.get("POI5").get("indices")[0], relative_time=relative_time)
             windows[poi] = self._choose_and_insert(
                 windows[poi], dissipation, relative_time, feature_vector, poi=poi, ground_truth=ground_truth)
 
         # update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
+
         # handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
         if len(model_data_labels) >= 2:
@@ -1758,12 +1946,38 @@ class QModelPredictor:
 
         return best_positions
 
+    def regroup(self, raw_predictions: dict, updated_predictions: dict, relative_time: np.ndarray, feature_vector: np.ndarray) -> dict:
+        new_groupings = updated_predictions.copy()
+        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI4"),
+                                                        candidates_2=raw_predictions.get(
+                                                            "POI5"),
+                                                        target_1=updated_predictions.get(
+                                                        "POI4").get("indices")[0],
+                                                        target_2=updated_predictions.get(
+                                                        "POI5").get("indices")[0],
+                                                        relative_time=relative_time,
+                                                        feature_vector=feature_vector)
+        new_groupings["POI4"] = merged_1
+        new_groupings["POI5"] = merged_2
+        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI5"),
+                                                        candidates_2=raw_predictions.get(
+                                                            "POI6"),
+                                                        target_1=new_groupings.get(
+                                                        "POI5").get("indices")[0],
+                                                        target_2=new_groupings.get(
+                                                        "POI6").get("indices")[0],
+                                                        relative_time=relative_time,
+                                                        feature_vector=feature_vector)
+        new_groupings["POI5"] = merged_1
+        new_groupings["POI6"] = merged_2
+        return new_groupings
+
     def predict(self,
                 file_buffer: str,
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = True) -> Dict[str, Any]:
+                plotting: bool = False) -> Dict[str, Any]:
         """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
@@ -1821,8 +2035,18 @@ class QModelPredictor:
         predicted_probabilites = self._booster.predict(ddata)
         extracted_predictions = self._extract_predictions(
             predicted_probabilites, model_data_labels)
-        final_predictions = self._select_best_predictions(
+        init_correct = self._select_best_predictions(
             predictions=extracted_predictions,
+            ground_truth=qmodel_v2_labels,
+            model_data_labels=model_data_labels,
+            relative_time=df["Relative_time"].values,
+            feature_vector=feature_vector,
+            raw_vector=df)
+        new_grouping = self.regroup(raw_predictions=extracted_predictions, updated_predictions=init_correct,
+                                    relative_time=df["Relative_time"].values, feature_vector=feature_vector)
+
+        final_predictions = self._select_best_predictions(
+            predictions=new_grouping,
             ground_truth=qmodel_v2_labels,
             model_data_labels=model_data_labels,
             relative_time=df["Relative_time"].values,
