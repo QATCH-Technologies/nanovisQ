@@ -78,8 +78,6 @@
 #include "font_Poppins-Bold.h"
 #include "icons.h"
 
-#include "DualHBridgeStepper.h"
-
 /*********************** DEFINE I/O PINS ***********************/
 
 // #define NET_TCP_DEBUG
@@ -103,11 +101,10 @@
 #define LED_SEGMENT_DP 33   // currently only used by HW Rev0, but could be used on Rev1 too
 // NOTE: Both LED_RED_PIN and LED_BLUE_PIN must be high for Blue LED to illuminate on openQCM boards
 // L298NHB pins
-#define L298NHB_M1 1                     // motor signal pin 1 (0=forward,1=back)
-#define L298NHB_E1 2                     // motor enable pin 1 (PWM)
-#define L298NHB_M2 3                     // motor signal pin 2 (0=forward,1=back)
-#define L298NHB_E2 4                     // motor enable pin 2 (PWM)
-#define L298NHB_SW 7                     // motor limit switch (HIGH on contact)
+#define L298NHB_M1 255                     // motor signal pin 1 (0=forward,1=back)
+#define L298NHB_E1 255                     // motor enable pin 1 (PWM)
+#define L298NHB_M2 255                     // motor signal pin 2 (0=forward,1=back)
+#define L298NHB_E2 255                     // motor enable pin 2 (PWM)
 #define L298NHB_HEAT 0                   // heat when signal is forward
 #define L298NHB_COOL 1                   // cool when signal is reverse
 #define L298NHB_INIT 1                   // initial PWM enable power
@@ -179,6 +176,24 @@
 #define L298NHB_VOLTAGE_DEVIATION 1.0                   // volts
 #define L298NHB_VOLTAGE_CONVERT(adc) (9.9 * adc) / 1024 // adc -> volts
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
+
+// Define stepper types
+#define STEPPER_NONE -1
+#define STEPPER_SCREW 0
+#define STEPPER_ROTARY 1
+#define STEPPER_TYPE STEPPER_SCREW // active stepper motor
+#define STEPPER_MATCH(t) (STEPPER_TYPE == t)
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+#include "DualHBridgeStepper.h"
+
+// Stepper pins
+#define STEPPER_M1 1                     // motor signal pin 1 (0=forward,1=back)
+#define STEPPER_E1 2                     // motor enable pin 1 (PWM)
+#define STEPPER_M2 3                     // motor signal pin 2 (0=forward,1=back)
+#define STEPPER_E2 4                     // motor enable pin 2 (PWM)
+#define STEPPER_SW 7                     // motor limit switch (HIGH on contact)
+#endif
 
 double freq_factor = 1.0;
 
@@ -320,7 +335,7 @@ AD8302 ad8302 = AD8302();
 
 #if USE_L298NHB
 // Create the L298NHB PWM temperature setpoint object
-L298NHB l298nhb = L298NHB(255, 255, 255, 255, 0, 0); //L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2, L298NHB_COOL, L298NHB_INIT);
+L298NHB l298nhb = L298NHB(L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2, L298NHB_COOL, L298NHB_INIT);
 unsigned long l298nhb_task_timer = 0;  // time of most recent update
 unsigned long l298nhb_auto_off_at = 0; // time to auto-off (if no input)
 int8_t l298nhb_status = 0;
@@ -472,17 +487,23 @@ IntervalTimer busyTimer;
 volatile byte busyTimerState;
 const unsigned long busyTimerInt_us = 15000;
 
-DualHBridgeStepper stepper(L298NHB_M1, L298NHB_E1, L298NHB_M2, L298NHB_E2);
+#if (!STEPPER_MATCH(STEPPER_NONE))
+DualHBridgeStepper stepper(STEPPER_M1, STEPPER_E1, STEPPER_M2, STEPPER_E2);
+#if STEPPER_MATCH(STEPPER_SCREW)
 // Linear Screw Stepper settings:
-// const bool stepperHomingDir = true; // forwards
-// long stepperPositions[6] = {0, -1000, -2000, -3000, -4000, -5000};
-// long stepperOffset = -550; // position of Port 1 relative to L1 switch
+const bool stepperHomingDir = true; // forwards
+long stepSize = -980; // assumes equal step sizes
+long stepperOffset = -260; // position of Port 1 relative to L1 switch
+#endif
+#if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
-const bool stepperHomingDir = false; // bakcwards
-long stepperPositions[6] = {0, 69, 138, 207, 276, 345};
-long stepperOffset = 2; // position of Port 1 relative to L1 switch
+const bool stepperHomingDir = false; // backwards
+long stepSize = 69; // assumes equal step sizes
+long stepperOffset = 0; // position of Port 1 relative to L1 switch
+#endif
+long stepperPositions[6] = {0, stepSize, 2*stepSize, 3*stepSize, 4*stepSize, 5*stepSize};
 void stepper_home(); // prototype
-// void step(bool forward);
+#endif
 
 void busyTimerTask(bool dp)
 {
@@ -960,22 +981,22 @@ void QATCH_setup()
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
   
-  pinMode(L298NHB_SW, INPUT);
-
-  // analogWriteResolution()
-  // stepper.setPwmValue(255);
+#if (!STEPPER_MATCH(STEPPER_NONE))
+  pinMode(STEPPER_SW, INPUT);
   stepper.setMaxSpeed(100);
   stepper.setSpeed(0.000001);
   stepper.setMinPulseWidth(10000);
   stepper.setAcceleration(100);
   stepper_home();
+#endif
 }
 
+#if (!STEPPER_MATCH(STEPPER_NONE))
 void stepper_home()
 {
   stepper.enableOutputs();
   stepper.moveTo(stepperHomingDir ? 10000 : -10000);
-  while (!digitalRead(L298NHB_SW) && stepper.isRunning()) {
+  while (!digitalRead(STEPPER_SW) && stepper.isRunning()) {
     stepper.run();
   }
   if (stepper.isRunning()) {
@@ -988,6 +1009,7 @@ void stepper_home()
   client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
   stepper.moveTo(stepperPositions[0]);
 }
+#endif
 
 // helper function since PJRC library doesn't handle mode switching
 void ledWrite(int pin, int value)
@@ -2032,6 +2054,7 @@ void QATCH_loop()
       return;
     }
 
+#if (!STEPPER_MATCH(STEPPER_NONE))
     if (message_str.toUpperCase().startsWith("STEP"))
     {
       long position = 0;
@@ -2048,6 +2071,7 @@ void QATCH_loop()
       return;
       // main loop handles `stepper.run()` and `disableOutputs()`
     }
+#endif
 
     // decode message
     byte params = 0;
@@ -3009,45 +3033,22 @@ void QATCH_loop()
   }
 #endif
 
-  // delay(100);
-  // if (millis() < 1000*60)
-  //   step(false);
+#if (!STEPPER_MATCH(STEPPER_NONE))
   stepper.run();
-  // digitalWrite(2, HIGH); // try this tomorrow
-  // digitalWrite(4, HIGH); // try this tomorrow
   if (stepper.isRunning())
   {
   // client->print("Stepper: ");
-  // client->print(digitalRead(L298NHB_M1));
-  // client->print(digitalRead(L298NHB_E1));
-  // client->print(digitalRead(L298NHB_M2));
-  // client->println(digitalRead(L298NHB_E2));
+  // client->print(digitalRead(STEPPER_M1));
+  // client->print(digitalRead(STEPPER_E1));
+  // client->print(digitalRead(STEPPER_M2));
+  // client->println(digitalRead(STEPPER_E2));
   } else {
-    if (digitalRead(L298NHB_M1) || digitalRead(L298NHB_E1) || 
-        digitalRead(L298NHB_M2) || digitalRead(L298NHB_E2))
+    if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
+        digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
       client->println("Stepper: DONE!");
     stepper.disableOutputs();
   }
-}
-
-void step(bool forward) {
-  static int stepIndex = 0;
-
-  // 4-step full-step sequence
-  const bool stepTable[4][2] = {
-      {HIGH, HIGH}, // Step 1: A+, B+
-      {LOW, HIGH},  // Step 2: A-, B+
-      {LOW, LOW},   // Step 3: A-, B-
-      {HIGH, LOW}   // Step 4: A+, B-
-  };
-
-  stepIndex = (stepIndex + (forward ? 1 : 3)) % 4;
-
-  digitalWrite(L298NHB_M1, stepTable[stepIndex][0]);
-  digitalWrite(L298NHB_M2, stepTable[stepIndex][1]);
-
-  digitalWrite(L298NHB_E1, HIGH);
-  digitalWrite(L298NHB_E2, HIGH);
+#endif
 }
 
 /************************** FUNCTION ***************************/
