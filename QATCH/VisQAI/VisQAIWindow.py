@@ -149,7 +149,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.select_run = QtWidgets.QPushButton(
             "Add Run..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
-        self.select_label.setPlaceholderText("No file selected")
+        self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
         # run_select = QtWidgets.QHBoxLayout()
         # run_select.addWidget(self.select_run)
@@ -169,6 +169,7 @@ class FrameStep1(QtWidgets.QDialog):
                     string_list.append(f"{base_name} {i+1}")
             for string in string_list:
                 self.model.appendRow(QtGui.QStandardItem(string))
+            self.list_view_addPlaceholderText()
             self.list_view.setModel(self.model)
             if step == 1 or step == 3:
                 form_layout.addRow(self.select_run, self.list_view)
@@ -177,14 +178,12 @@ class FrameStep1(QtWidgets.QDialog):
             elif step == 5:
                 form_layout.addRow("Prediction:", self.list_view)
             if step == 3:
-                self.list_view.clicked.connect(
-                    lambda: self.file_selected(self.all_files[self.model.itemFromIndex(self.list_view.selectedIndexes()[0]).text()]))
+                self.list_view.clicked.connect(self.user_run_clicked)
             else:
                 self.list_view.clicked.connect(
                     lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
-            self.btn_remove.clicked.connect(
-                lambda: self.model.removeRow(self.list_view.selectedIndexes()[0].row()))
+            self.btn_remove.clicked.connect(self.user_run_removed)
             form_layout.addRow("", self.btn_remove)
 
         self.run_notes = QtWidgets.QTextEdit()
@@ -329,9 +328,24 @@ class FrameStep1(QtWidgets.QDialog):
         # Signals
         self.btn_cancel.clicked.connect(
             lambda: self.file_selected(None))
-        self.btn_next.clicked.connect(self.next_step)
+        self.btn_next.clicked.connect(
+            getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
+
+    def list_view_addPlaceholderText(self):
+        if self.model.rowCount() == 0:
+            no_item_text = "No items in list"
+            if self.step == 2:
+                no_item_text = "No suggestions available"
+            if self.step == 3:
+                no_item_text = "No experiments selected"
+            if self.step == 5:
+                no_item_text = "No predictions available"
+            no_item = QtGui.QStandardItem(no_item_text)
+            no_item.setEnabled(False)
+            no_item.setSelectable(False)
+            self.model.appendRow(no_item)
 
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
@@ -443,7 +457,10 @@ class FrameStep1(QtWidgets.QDialog):
         self.parent.form_ctrl.add_formulation(formulation=form)
         print(self.parent.form_ctrl.get_all_as_dataframe())
 
-    def next_step(self):
+    def load_suggestions(self):
+        raise NotImplementedError()
+
+    def proceed_to_step_2(self):
         # Are we ready to proceed?
         # Yes, if and only if:
         #   1. All audits contain valid values
@@ -455,10 +472,12 @@ class FrameStep1(QtWidgets.QDialog):
                 self.feature_table.allSet() and
                 self.run_figure_valid):
             # ready to proceed
+            self.save_formulation()
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
-                self.save_formulation()
+                next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
+                next_widget.load_suggestions()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -466,6 +485,79 @@ class FrameStep1(QtWidgets.QDialog):
         else:  # not ready
             QtWidgets.QMessageBox.information(
                 None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+
+    def proceed_to_step_3(self):
+        # ready to proceed
+        if self.parent is not None:
+            i = self.parent.tab_widget.currentIndex()
+            self.parent.tab_widget.setCurrentIndex(i+1)
+
+    def proceed_to_step_4(self):
+        # TODO: For each run in list, must pass the same criteria from Step 1
+        #   1. All audits contain valid values
+        #   2. All initial features are set
+        #   3. Analyze results are valid
+        all_is_good = True
+        for file_name, file_path in self.all_files.items():
+            self.file_selected(file_path)  # load each run
+            if (len(self.run_captured.text()) and
+                len(self.run_updated.text()) and
+                len(self.run_analyzed.text()) and
+                    self.feature_table.allSet() and
+                    self.run_figure_valid):
+                self.save_formulation()
+                continue
+            else:
+                all_is_good = False
+                # break # maybe not, if we want to highlight *all* errors on "Next"
+        if all_is_good:
+            # ready to proceed
+            if self.parent is not None:
+                i = self.parent.tab_widget.currentIndex()
+                self.parent.tab_widget.setCurrentIndex(i+1)
+                next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
+                next_widget.learn()
+            else:
+                self.run_notes.setText(
+                    "ERROR: self.parent is None.\n" +
+                    "Cannot proceed to next step!")
+        else:  # not ready
+            QtWidgets.QMessageBox.information(
+                None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+
+    # NOTE: step_5 would be handled in FrameStep2
+
+    def proceed_to_step_6(self):
+        # NOTE: This is the "Finish" button
+        self.btn_cancel.click()
+
+    def user_run_clicked(self):
+        try:
+            self.file_selected(self.all_files[self.model.itemFromIndex(
+                self.list_view.selectedIndexes()[0]).text()])
+        except IndexError as e:
+            if len(self.all_files):
+                raise e
+            else:  # no files in list, this error can occur when user cliks on the placeholder text
+                pass  # ignore the click
+        # raise any other exception type
+
+    def user_run_removed(self):
+        try:
+            selected = self.list_view.selectedIndexes()
+            if len(selected) == 0:
+                return  # nothing selected, nothing to do
+            file_name = self.model.itemFromIndex(selected[0]).text()
+            self.all_files.pop(file_name, None)  # remove key from dict
+            self.model.removeRow(selected[0].row())
+            self.list_view_addPlaceholderText()
+            self.file_selected(None)  # clear selection
+        except IndexError as e:
+            if len(self.all_files):
+                raise e
+            else:  # no files in list, this error can occur when user cliks on the placeholder text
+                pass  # ignore the click
+        # raise any other exception type
 
     def file_selected(self, path: str | None):
         self.run_file_run = path
@@ -508,6 +600,8 @@ class FrameStep1(QtWidgets.QDialog):
             item = QtGui.QStandardItem(self.select_label.text())
             found = self.model.findItems(item.text())
             if len(found) == 0:
+                if len(self.all_files) == 0:
+                    self.model.removeRow(0)  # no_item placeholder
                 self.model.appendRow(item)
                 new_index = self.model.indexFromItem(item)
                 self.list_view.setCurrentIndex(new_index)
@@ -800,6 +894,9 @@ class FrameStep2(QtWidgets.QDialog):
         figure.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         splitter.addWidget(figure)
         splitter.setSizes([1, 1000])
+
+    def learn(self):
+        raise NotImplementedError()
 
 
 class Color:
