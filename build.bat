@@ -1,15 +1,19 @@
 @ECHO OFF
 title Build QATCH nanovisQ software
 
-REM Check for updates to PyInstaller
-py -3.11 -m pip install --upgrade pyinstaller --no-warn-script-location
+REM Load and sync the virtual environment
+REM .venv\Scripts\activate
+set VIRTUAL_ENV=C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\commit-branch\.venv
+set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
+py -3.11 -m pip install --upgrade pip-tools & REM pyinstaller --no-warn-script-location
+pip-sync requirements.txt requirements-dev.txt
 
 REM get location to 'Scripts' folder for current Python installation
-py -3.11 -c "import sys; import os; print(os.path.join(os.path.split(sys.executable)[0], 'Scripts'))" > pypath.txt
-set /p PY_SCRIPTS=<pypath.txt
-del pypath.txt
+REM py -3.11 -c "import sys; import os; print(os.path.join(os.path.split(sys.executable)[0], 'Scripts'))" > pypath.txt
+REM set /p PY_SCRIPTS=<pypath.txt
+REM del pypath.txt
 
-set "PATH=%PATH%;%PY_SCRIPTS%"
+REM set "PATH=%PATH%;%PY_SCRIPTS%"
 REM echo %PATH%
 
 echo Clean
@@ -33,16 +37,16 @@ REM	--icon "QATCH\ui\favicon.ico" ^
 REM	--version-file "version.rc" --console app.py
 REM modify .spec SPLASH:   text_pos=(10,470), text_size=10
 
-cd dist
+cd dist\QATCH nanovisQ
 set checksum=
 certutil -hashfile "QATCH nanovisQ.exe" MD5 | find /i /v "md5" | find /i /v "certutil" > "app.checksum"
 set /p checksum= <"app.checksum"
 echo Calculated MD5: %checksum%
 
-mkdir "QATCH nanovisQ"
-move "QATCH nanovisQ.exe" "QATCH nanovisQ" >NUL & REM move to subdir
-move "app.checksum" "QATCH nanovisQ" >NUL & REM move to subdir
-cd .. & REM back to "dev" folder
+REM mkdir "QATCH nanovisQ"
+REM move "QATCH nanovisQ.exe" "QATCH nanovisQ" >NUL & REM move to subdir
+REM move "app.checksum" "QATCH nanovisQ" >NUL & REM move to subdir
+cd ..\.. & REM back to "dev" folder
 
 xcopy /y "docs" "dist\QATCH nanovisQ\"
 echo F|xcopy /y "launch_exe.bat" "dist\QATCH nanovisQ\launch.bat" >NUL
@@ -60,5 +64,8 @@ REM cd QATCH_Q-1_FW_*
 REM for %%I in (.) do set folder=%%~nxI
 REM xcopy /y "*.hex" "..\dist\QATCH nanovisQ\%folder%\"
 REM xcopy /y "*.pdf" "..\dist\QATCH nanovisQ\%folder%\"
+
+REM Close the virtual environment
+deactivate
 
 pause

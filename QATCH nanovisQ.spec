@@ -5,7 +5,6 @@ best_fw_version = exec_statement(f"import os; os.chdir(r'{SPECPATH}'); from QATC
 print(f"Embedded firmware version: '{best_fw_version}'")
 
 block_cipher = None
-
 data_files = [
     ( "docs", "docs" ),
     ( "QATCH\\.libs", "."),
@@ -18,13 +17,68 @@ data_files = [
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools", "tools" )
 ]
+upx_exclude = [
+# Python 3.x base library DLLs
+    'python3.dll', 
+    'vcruntime140.dll', 
+    'vcruntime140_1.dll',
+
+# PyQt5 Core DLLs and plugins (GUI libraries often fail when compressed)
+    'Qt5Core.dll',
+    'Qt5Gui.dll',
+    'Qt5Widgets.dll',
+    'Qt5Network.dll',
+    'Qt5PrintSupport.dll',
+    'Qt5Qml.dll',
+    'Qt5Quick.dll',
+    'Qt5Svg.dll',
+    'Qt5Multimedia.dll',
+    'PyQt5',
+
+# TensorFlow and dependencies (very sensitive to compression)
+    'tensorflow',
+    'tensorflow_intel',
+    'tensorflow_io_gcs_filesystem',
+    'libtensorflow_framework.dll',
+    'libtensorflow.dll',
+    'libtensorflow_cc.dll',
+
+# gRPC and protobuf often include native binaries
+    'grpcio',
+    'protobuf',
+
+# NumPy and SciPy contain compiled .pyd/.dll extensions
+    'numpy',
+    'scipy',
+
+# XGBoost includes C++ binaries
+    'xgboost',
+    'xgboost.dll',
+
+# Cryptography — may rely on native libcrypto
+    'pycryptodomex',
+    'libcrypto-*.dll',
+    'libssl-*.dll',
+
+# Matplotlib and Qt bindings
+    'matplotlib',
+    'pyqtgraph',
+
+# HDF5 library bindings
+    'h5py',
+
+# Anything compiled in C/C++ via PyPI wheels
+    'hid',  # USB HID wrapper
+    'simdkalman',
+]
+
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[ # these may be required if the PyInstaller hooks for these modules get removed or change unexpectedly
-        # ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python310\\lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd", "." ),
-        # ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\xgboost\\lib\\xgboost.dll", "xgboost\\lib" ),
-        # ( "C:\\Users\\Alexander J. Ross\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
+#        ( ".venv\\Lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd", "." ),
+        ( ".venv\\Lib\\site-packages\\xgboost\\lib\\xgboost.dll", "xgboost\\lib" ),
+        ( ".venv\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
     ],
     datas=data_files,
     hiddenimports=['charset_normalizer.md__mypyc', 'numpy.core.multiarray'],
@@ -38,31 +92,31 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-splash = Splash(
-    'QATCH\\icons\\qatch-splash.png',
-    binaries=a.binaries,
-    datas=a.datas,
-    text_pos=(10,470),
-    text_size=10,
-    minify_script=True,
-    always_on_top=False,
-)
+# splash = Splash(
+#     'QATCH\\icons\\qatch-splash.png',
+#     binaries=a.binaries,
+#     datas=[( "QATCH\\icons\\qatch-splash.png", "QATCH\\icons\\qatch-splash.png" )],
+#     text_pos=(10,470),
+#     text_size=10,
+#     minify_script=True,
+#     always_on_top=False,
+# )
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries, # onefile
-    a.zipfiles, # onefile
-    a.datas, # onefile
-    splash, # splash (onedir and/or onefile)
-    splash.binaries, # splash onefile
+#    a.binaries, # onefile
+#    a.zipfiles, # onefile
+#    a.datas, # onefile
+#    splash, # splash (onedir and/or onefile)
+#    splash.binaries, # splash onefile
     [],
-    exclude_binaries=False,
+    exclude_binaries=True, # False,
     name='QATCH nanovisQ',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=False,
-    upx_exclude=[],
+    upx=True,
+    upx_exclude=upx_exclude,
     runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
@@ -74,14 +128,14 @@ exe = EXE(
     icon=['QATCH\\ui\\favicon.ico'],
 )
 # uncomment for onedir:
-# coll = COLLECT(
-#     exe,
-#     a.binaries,
-#     a.zipfiles,
-#     a.datas,
-# #    splash.binaries, # splash onedir
-#     strip=False,
-#     upx=False,
-#     upx_exclude=[],
-#     name='QATCH nanovisQ',
-# )
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+#    splash.binaries, # splash onedir
+    strip=False,
+    upx=True,
+    upx_exclude=upx_exclude,
+    name='QATCH nanovisQ',
+)
