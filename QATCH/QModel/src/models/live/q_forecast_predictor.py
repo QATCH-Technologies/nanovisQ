@@ -219,8 +219,7 @@ class QForecastPredictor:
                 completion_status=FillStatus.FULL_FILL,
                 waiting_status=FillStatus.FILLING,
             )
-            # --- Removing debounce ---- #
-            return result
+
             if result == FillStatus.FULL_FILL and self._no_wait == False:
                 # If not already waiting, start a non-blocking timer.
                 if not self._is_waiting_for_full_fill:
