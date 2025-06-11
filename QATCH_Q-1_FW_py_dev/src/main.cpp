@@ -493,7 +493,7 @@ DualHBridgeStepper stepper(STEPPER_M1, STEPPER_E1, STEPPER_M2, STEPPER_E2);
 // Linear Screw Stepper settings:
 const bool stepperHomingDir = true; // forwards
 long stepSize = -980; // assumes equal step sizes
-long stepperOffset = -260; // position of Port 1 relative to L1 switch
+long stepperOffset = -110; // position of Port 1 relative to L1 switch
 #endif
 #if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
@@ -994,6 +994,7 @@ void QATCH_setup()
 #if (!STEPPER_MATCH(STEPPER_NONE))
 void stepper_home()
 {
+  client->println("Stepper: Homing...");
   stepper.enableOutputs();
   stepper.moveTo(stepperHomingDir ? 10000 : -10000);
   while (!digitalRead(STEPPER_SW) && stepper.isRunning()) {
@@ -2020,6 +2021,9 @@ void QATCH_loop()
 
     if (message_str.toUpperCase() == "STOP")
     {
+#if (!STEPPER_MATCH(STEPPER_NONE))
+      if (stepper.isRunning()) stepper.stop();
+#endif
       stopStreaming();
       client->println("STOP"); // SW listens for this reply
       return;
@@ -2058,13 +2062,20 @@ void QATCH_loop()
     if (message_str.toUpperCase().startsWith("STEP"))
     {
       long position = 0;
-      if (message_str.endsWith("0")) { stepper_home(); return; }
-      if (message_str.endsWith("1")) position = stepperPositions[0];
-      if (message_str.endsWith("2")) position = stepperPositions[1];
-      if (message_str.endsWith("3")) position = stepperPositions[2];
-      if (message_str.endsWith("4")) position = stepperPositions[3];
-      if (message_str.endsWith("5")) position = stepperPositions[4];
-      if (message_str.endsWith("6")) position = stepperPositions[5];
+      long relative = 0;
+      if (message_str.indexOf("-") == 5 || message_str.indexOf("+") == 5) {
+        // Command format for relative movement: "STEP [+/-][dist]"
+        relative = message_str.substring(5).toInt(); // include "+/-"
+        position = stepper.currentPosition() + relative;
+      } else {
+        if (message_str.endsWith("0")) { stepper_home(); return; }
+        if (message_str.endsWith("1")) position = stepperPositions[0];
+        if (message_str.endsWith("2")) position = stepperPositions[1];
+        if (message_str.endsWith("3")) position = stepperPositions[2];
+        if (message_str.endsWith("4")) position = stepperPositions[3];
+        if (message_str.endsWith("5")) position = stepperPositions[4];
+        if (message_str.endsWith("6")) position = stepperPositions[5];
+      }
       client->printf("Stepper: Moving to position %i\n", position);
       stepper.enableOutputs();
       stepper.moveTo(position);
