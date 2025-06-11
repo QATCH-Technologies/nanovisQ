@@ -1,9 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import exec_statement
+import logging
 
 best_fw_version = exec_statement(f"import os; os.chdir(r'{SPECPATH}'); from QATCH.core.constants import Constants; print(Constants.best_fw_version)")
-print(f"Embedded firmware version: '{best_fw_version}'")
+logging.info(f"Embedded firmware version: '{best_fw_version}'")
 
+# Warning: Using an AES block cipher can trigger false positives with AV software
 block_cipher = None
 data_files = [
     ( "docs", "docs" ),
@@ -17,6 +19,7 @@ data_files = [
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools", "tools" )
 ]
+# NOTE: Use of UPX requires `upx.exe` to be in the `.venv\Scripts` folder (not there by default)
 upx_exclude = [
 # Python 3.x base library DLLs
     'python3.dll', 
@@ -71,16 +74,18 @@ upx_exclude = [
     'hid',  # USB HID wrapper
     'simdkalman',
 ]
-
+# The Analysis block is required for both `--onefile` and `--onedir` modes
 a = Analysis(
     ['app.py'],
     pathex=[],
-    binaries=[ # these may be required if the PyInstaller hooks for these modules get removed or change unexpectedly
-#        ( ".venv\\Lib\\site-packages\\tensorflow\\python\\_pywrap_tensorflow_internal.pyd", "." ),
+# These binaries are required in-lieu of custom PyInstaller hooks (which are not portable or stable)
+    binaries=[
+        ( ".venv\\Lib\\site-packages\\py4j\\*.py", "py4j" ),
         ( ".venv\\Lib\\site-packages\\xgboost\\lib\\xgboost.dll", "xgboost\\lib" ),
         ( ".venv\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
     ],
     datas=data_files,
+# Hidden imports may be required for PyInstaller to identify deeply nested or runtime-loaded modules
     hiddenimports=['charset_normalizer.md__mypyc', 'numpy.core.multiarray'],
     hookspath=[],
     hooksconfig={},
@@ -92,6 +97,7 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+# The `splash` (experimental) feature only really makes sense when using `--onefile` mode
 # splash = Splash(
 #     'QATCH\\icons\\qatch-splash.png',
 #     binaries=a.binaries,
@@ -101,13 +107,14 @@ pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 #     minify_script=True,
 #     always_on_top=False,
 # )
+# The EXE block is required for both `--onefile` and `--onedir` modes
 exe = EXE(
     pyz,
     a.scripts,
 #    a.binaries, # onefile
 #    a.zipfiles, # onefile
 #    a.datas, # onefile
-#    splash, # splash (onedir and/or onefile)
+#    splash, # splash onefile
 #    splash.binaries, # splash onefile
     [],
     exclude_binaries=True, # False,
@@ -118,7 +125,7 @@ exe = EXE(
     upx=True,
     upx_exclude=upx_exclude,
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -127,13 +134,12 @@ exe = EXE(
     version='version.rc',
     icon=['QATCH\\ui\\favicon.ico'],
 )
-# uncomment for onedir:
+# Collect is only required for `--onedir` compile mode
 coll = COLLECT(
     exe,
     a.binaries,
     a.zipfiles,
     a.datas,
-#    splash.binaries, # splash onedir
     strip=False,
     upx=True,
     upx_exclude=upx_exclude,

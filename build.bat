@@ -1,10 +1,21 @@
 @ECHO OFF
 title Build QATCH nanovisQ software
 
+
+REM Sanity: check if venv exists (note: `%~dp0` will *always* end with a slash)
+if not exist "%~dp0.venv\Scripts\python.exe" (
+    echo Virtual environment not found!
+    exit /b 1
+)
+
 REM Load and sync the virtual environment
-REM .venv\Scripts\activate
-set VIRTUAL_ENV=C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\commit-branch\.venv
+REM call .venv\Scripts\activate & REM sadly this hangs, do not use
+set _OLD_VIRTUAL_PATH=%PATH%
+set VIRTUAL_ENV=%~dp0.venv
 set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
+REM echo %PATH% & pause & REM testing only
+REM NOTE: The above changes are "undone" by calling `deactivate.bat`
+
 py -3.11 -m pip install --upgrade pip-tools & REM pyinstaller --no-warn-script-location
 pip-sync requirements.txt requirements-dev.txt
 
@@ -30,12 +41,16 @@ echo SOURCE_DATE_EPOCH = %SOURCE_DATE_EPOCH%
 
 set "TF_CPP_MIN_LOG_LEVEL=3" & REM HIDE TENSORFLOW MSGS
 make_version.py & REM modify version.rc to reflect current version
-pyinstaller --log-level WARN "QATCH nanovisQ.spec"
+build_pyinstaller.py & REM pyinstaller --log-level WARN "QATCH nanovisQ.spec"
 REM PyInstaller --onedir --name "QATCH nanovisQ" --clean ^
 REM	--splash "QATCH\icons\qatch-splash.png" --noupx ^
 REM	--icon "QATCH\ui\favicon.ico" ^
 REM	--version-file "version.rc" --console app.py
 REM modify .spec SPLASH:   text_pos=(10,470), text_size=10
+
+REM capture escape character to replace prior echo line
+for /f %%A in ('echo prompt $E^| cmd') DO SET "ESC=%%A"
+<nul set /p "=Calculating MD5..." & <nul set /p "=%ESC%[G"
 
 cd dist\QATCH nanovisQ
 set checksum=

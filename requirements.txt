@@ -115,7 +115,7 @@ opt-einsum==3.4.0
     # via tensorflow-intel
 optree==0.13.0
     # via keras
-#packaging==24.1
+packaging>=24.2
     # via
     #   keras
     #   matplotlib
