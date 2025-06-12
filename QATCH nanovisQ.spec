@@ -97,16 +97,16 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-# The `splash` (experimental) feature only really makes sense when using `--onefile` mode
-# splash = Splash(
-#     'QATCH\\icons\\qatch-splash.png',
-#     binaries=a.binaries,
-#     datas=[( "QATCH\\icons\\qatch-splash.png", "QATCH\\icons\\qatch-splash.png" )],
-#     text_pos=(10,470),
-#     text_size=10,
-#     minify_script=True,
-#     always_on_top=False,
-# )
+# The `splash` (experimental) feature outperforms QSplashScreen as it does not hang during load
+splash = Splash(
+    'QATCH\\icons\\qatch-splash.png',
+    binaries=[], # a.binaries,
+    datas=[( "QATCH\\icons\\qatch-splash.png", "QATCH\\icons\\qatch-splash.png" )],
+    text_pos=(10,470),
+    text_size=10,
+    minify_script=True,
+    always_on_top=False,
+)
 # The EXE block is required for both `--onefile` and `--onedir` modes
 exe = EXE(
     pyz,
@@ -114,7 +114,7 @@ exe = EXE(
 #    a.binaries, # onefile
 #    a.zipfiles, # onefile
 #    a.datas, # onefile
-#    splash, # splash onefile
+   splash, # splash
 #    splash.binaries, # splash onefile
     [],
     exclude_binaries=True, # False,
@@ -140,6 +140,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
+    splash.binaries,
     strip=False,
     upx=True,
     upx_exclude=upx_exclude,
