@@ -101,10 +101,10 @@
 #define LED_SEGMENT_DP 33   // currently only used by HW Rev0, but could be used on Rev1 too
 // NOTE: Both LED_RED_PIN and LED_BLUE_PIN must be high for Blue LED to illuminate on openQCM boards
 // L298NHB pins
-#define L298NHB_M1 1                     // motor signal pin 1 (0=forward,1=back)
-#define L298NHB_E1 2                     // motor enable pin 1 (PWM)
-#define L298NHB_M2 3                     // motor signal pin 2 (0=forward,1=back)
-#define L298NHB_E2 4                     // motor enable pin 2 (PWM)
+#define L298NHB_M1 255                     // motor signal pin 1 (0=forward,1=back)
+#define L298NHB_E1 255                     // motor enable pin 1 (PWM)
+#define L298NHB_M2 255                     // motor signal pin 2 (0=forward,1=back)
+#define L298NHB_E2 255                     // motor enable pin 2 (PWM)
 #define L298NHB_HEAT 0                   // heat when signal is forward
 #define L298NHB_COOL 1                   // cool when signal is reverse
 #define L298NHB_INIT 1                   // initial PWM enable power
@@ -176,6 +176,24 @@
 #define L298NHB_VOLTAGE_DEVIATION 1.0                   // volts
 #define L298NHB_VOLTAGE_CONVERT(adc) (9.9 * adc) / 1024 // adc -> volts
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
+
+// Define stepper types
+#define STEPPER_NONE -1
+#define STEPPER_SCREW 0
+#define STEPPER_ROTARY 1
+#define STEPPER_TYPE STEPPER_SCREW // active stepper motor
+#define STEPPER_MATCH(t) (STEPPER_TYPE == t)
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+#include "DualHBridgeStepper.h"
+
+// Stepper pins
+#define STEPPER_M1 1                     // motor signal pin 1 (0=forward,1=back)
+#define STEPPER_E1 2                     // motor enable pin 1 (PWM)
+#define STEPPER_M2 3                     // motor signal pin 2 (0=forward,1=back)
+#define STEPPER_E2 4                     // motor enable pin 2 (PWM)
+#define STEPPER_SW 7                     // motor limit switch (HIGH on contact)
+#endif
 
 double freq_factor = 1.0;
 
@@ -468,6 +486,24 @@ byte EEPROM_pid = 0;
 IntervalTimer busyTimer;
 volatile byte busyTimerState;
 const unsigned long busyTimerInt_us = 15000;
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+DualHBridgeStepper stepper(STEPPER_M1, STEPPER_E1, STEPPER_M2, STEPPER_E2);
+#if STEPPER_MATCH(STEPPER_SCREW)
+// Linear Screw Stepper settings:
+const bool stepperHomingDir = true; // forwards
+long stepSize = -980; // assumes equal step sizes
+long stepperOffset = -110; // position of Port 1 relative to L1 switch
+#endif
+#if STEPPER_MATCH(STEPPER_ROTARY)
+// Circular Rotary Stepper settings
+const bool stepperHomingDir = false; // backwards
+long stepSize = 69; // assumes equal step sizes
+long stepperOffset = 0; // position of Port 1 relative to L1 switch
+#endif
+long stepperPositions[6] = {0, stepSize, 2*stepSize, 3*stepSize, 4*stepSize, 5*stepSize};
+void stepper_home(); // prototype
+#endif
 
 void busyTimerTask(bool dp)
 {
@@ -944,7 +980,37 @@ void QATCH_setup()
 
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
+  
+#if (!STEPPER_MATCH(STEPPER_NONE))
+  pinMode(STEPPER_SW, INPUT);
+  stepper.setMaxSpeed(100);
+  stepper.setSpeed(0.000001);
+  stepper.setMinPulseWidth(10000);
+  stepper.setAcceleration(100);
+  stepper_home();
+#endif
 }
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+void stepper_home()
+{
+  client->println("Stepper: Homing...");
+  stepper.enableOutputs();
+  stepper.moveTo(stepperHomingDir ? 10000 : -10000);
+  while (!digitalRead(STEPPER_SW) && stepper.isRunning()) {
+    stepper.run();
+  }
+  if (stepper.isRunning()) {
+    stepper.stop();
+    client->println("Stepper: Found home position");
+    stepper.setCurrentPosition(-stepperOffset);
+  } else {
+    client->println("Stepper: Failed to find home!");
+  }
+  client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
+  stepper.moveTo(stepperPositions[0]);
+}
+#endif
 
 // helper function since PJRC library doesn't handle mode switching
 void ledWrite(int pin, int value)
@@ -1955,6 +2021,9 @@ void QATCH_loop()
 
     if (message_str.toUpperCase() == "STOP")
     {
+#if (!STEPPER_MATCH(STEPPER_NONE))
+      if (stepper.isRunning()) stepper.stop();
+#endif
       stopStreaming();
       client->println("STOP"); // SW listens for this reply
       return;
@@ -1988,6 +2057,32 @@ void QATCH_loop()
       client->println(identifying); // SW listens for this reply
       return;
     }
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+    if (message_str.toUpperCase().startsWith("STEP"))
+    {
+      long position = 0;
+      long relative = 0;
+      if (message_str.indexOf("-") == 5 || message_str.indexOf("+") == 5) {
+        // Command format for relative movement: "STEP [+/-][dist]"
+        relative = message_str.substring(5).toInt(); // include "+/-"
+        position = stepper.currentPosition() + relative;
+      } else {
+        if (message_str.endsWith("0")) { stepper_home(); return; }
+        if (message_str.endsWith("1")) position = stepperPositions[0];
+        if (message_str.endsWith("2")) position = stepperPositions[1];
+        if (message_str.endsWith("3")) position = stepperPositions[2];
+        if (message_str.endsWith("4")) position = stepperPositions[3];
+        if (message_str.endsWith("5")) position = stepperPositions[4];
+        if (message_str.endsWith("6")) position = stepperPositions[5];
+      }
+      client->printf("Stepper: Moving to position %i\n", position);
+      stepper.enableOutputs();
+      stepper.moveTo(position);
+      return;
+      // main loop handles `stepper.run()` and `disableOutputs()`
+    }
+#endif
 
     // decode message
     byte params = 0;
@@ -2946,6 +3041,23 @@ void QATCH_loop()
         tft_idle();
       }
     }
+  }
+#endif
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+  stepper.run();
+  if (stepper.isRunning())
+  {
+  // client->print("Stepper: ");
+  // client->print(digitalRead(STEPPER_M1));
+  // client->print(digitalRead(STEPPER_E1));
+  // client->print(digitalRead(STEPPER_M2));
+  // client->println(digitalRead(STEPPER_E2));
+  } else {
+    if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
+        digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
+      client->println("Stepper: DONE!");
+    stepper.disableOutputs();
   }
 #endif
 }
