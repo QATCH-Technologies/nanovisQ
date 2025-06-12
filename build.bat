@@ -5,6 +5,7 @@ title Build QATCH nanovisQ software
 REM Sanity: check if venv exists (note: `%~dp0` will *always* end with a slash)
 if not exist "%~dp0.venv\Scripts\python.exe" (
     echo Virtual environment not found!
+    pause
     exit /b 1
 )
 
@@ -16,6 +17,28 @@ set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
 REM echo %PATH% & pause & REM testing only
 REM NOTE: The above changes are "undone" by calling `deactivate.bat`
 
+REM clean any existing build folders to force a clean build process
+echo Clean
+rmdir /s dist
+
+REM abort process if user says "no"
+if exist "dist\" (
+    echo Cleaning "dist" folder was canceled or failed. Cannot proceed.
+    pause
+    exit /b 1
+)
+
+REM if user said yes, delete "build" folder quietly (no prompt)
+rmdir /s /q build >nul
+if exist "build\" (
+    echo Cleaning "build" folder was canceled or failed. Cannot proceed.
+    pause
+    exit /b 1
+)
+
+echo Build folders cleaned successfully.
+echo.
+
 py -3.11 -m pip install --upgrade pip-tools & REM pyinstaller --no-warn-script-location
 pip-sync requirements.txt requirements-dev.txt
 
@@ -26,9 +49,6 @@ REM del pypath.txt
 
 REM set "PATH=%PATH%;%PY_SCRIPTS%"
 REM echo %PATH%
-
-echo Clean
-rmdir /s dist
 
 REM set seed to a known repeatable integer value for a reproducible build
 set "PYTHONHASHSEED=1"
@@ -80,7 +100,7 @@ REM for %%I in (.) do set folder=%%~nxI
 REM xcopy /y "*.hex" "..\dist\QATCH nanovisQ\%folder%\"
 REM xcopy /y "*.pdf" "..\dist\QATCH nanovisQ\%folder%\"
 
+pause
+
 REM Close the virtual environment
 deactivate
-
-pause
