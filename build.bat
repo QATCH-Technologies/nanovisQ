@@ -1,19 +1,54 @@
 @ECHO OFF
 title Build QATCH nanovisQ software
 
-REM Check for updates to PyInstaller
-py -3.11 -m pip install --upgrade pyinstaller --no-warn-script-location
 
-REM get location to 'Scripts' folder for current Python installation
-py -3.11 -c "import sys; import os; print(os.path.join(os.path.split(sys.executable)[0], 'Scripts'))" > pypath.txt
-set /p PY_SCRIPTS=<pypath.txt
-del pypath.txt
+REM Sanity: check if venv exists (note: `%~dp0` will *always* end with a slash)
+if not exist "%~dp0.venv\Scripts\python.exe" (
+    echo Virtual environment not found!
+    pause
+    exit /b 1
+)
 
-set "PATH=%PATH%;%PY_SCRIPTS%"
-REM echo %PATH%
+REM Load and sync the virtual environment
+REM call .venv\Scripts\activate & REM sadly this hangs, do not use
+set _OLD_VIRTUAL_PATH=%PATH%
+set VIRTUAL_ENV=%~dp0.venv
+set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
+REM echo %PATH% & pause & REM testing only
+REM NOTE: The above changes are "undone" by calling `deactivate.bat`
 
+REM clean any existing build folders to force a clean build process
 echo Clean
 rmdir /s dist
+
+REM abort process if user says "no"
+if exist "dist\" (
+    echo Cleaning "dist" folder was canceled or failed. Cannot proceed.
+    pause
+    exit /b 1
+)
+
+REM if user said yes, delete "build" folder quietly (no prompt)
+rmdir /s /q build >nul
+if exist "build\" (
+    echo Cleaning "build" folder was canceled or failed. Cannot proceed.
+    pause
+    exit /b 1
+)
+
+echo Build folders cleaned successfully.
+echo.
+
+py -3.11 -m pip install --upgrade pip-tools & REM pyinstaller --no-warn-script-location
+pip-sync requirements.txt requirements-dev.txt
+
+REM get location to 'Scripts' folder for current Python installation
+REM py -3.11 -c "import sys; import os; print(os.path.join(os.path.split(sys.executable)[0], 'Scripts'))" > pypath.txt
+REM set /p PY_SCRIPTS=<pypath.txt
+REM del pypath.txt
+
+REM set "PATH=%PATH%;%PY_SCRIPTS%"
+REM echo %PATH%
 
 REM set seed to a known repeatable integer value for a reproducible build
 set "PYTHONHASHSEED=1"
@@ -26,23 +61,27 @@ echo SOURCE_DATE_EPOCH = %SOURCE_DATE_EPOCH%
 
 set "TF_CPP_MIN_LOG_LEVEL=3" & REM HIDE TENSORFLOW MSGS
 make_version.py & REM modify version.rc to reflect current version
-pyinstaller --log-level WARN "QATCH nanovisQ.spec"
+build_pyinstaller.py & REM pyinstaller --log-level WARN "QATCH nanovisQ.spec"
 REM PyInstaller --onedir --name "QATCH nanovisQ" --clean ^
 REM	--splash "QATCH\icons\qatch-splash.png" --noupx ^
 REM	--icon "QATCH\ui\favicon.ico" ^
 REM	--version-file "version.rc" --console app.py
 REM modify .spec SPLASH:   text_pos=(10,470), text_size=10
 
-cd dist
+REM capture escape character to replace prior echo line
+for /f %%A in ('echo prompt $E^| cmd') DO SET "ESC=%%A"
+<nul set /p "=Calculating MD5..." & <nul set /p "=%ESC%[G"
+
+cd dist\QATCH nanovisQ
 set checksum=
 certutil -hashfile "QATCH nanovisQ.exe" MD5 | find /i /v "md5" | find /i /v "certutil" > "app.checksum"
 set /p checksum= <"app.checksum"
 echo Calculated MD5: %checksum%
 
-mkdir "QATCH nanovisQ"
-move "QATCH nanovisQ.exe" "QATCH nanovisQ" >NUL & REM move to subdir
-move "app.checksum" "QATCH nanovisQ" >NUL & REM move to subdir
-cd .. & REM back to "dev" folder
+REM mkdir "QATCH nanovisQ"
+REM move "QATCH nanovisQ.exe" "QATCH nanovisQ" >NUL & REM move to subdir
+REM move "app.checksum" "QATCH nanovisQ" >NUL & REM move to subdir
+cd ..\.. & REM back to "dev" folder
 
 xcopy /y "docs" "dist\QATCH nanovisQ\"
 echo F|xcopy /y "launch_exe.bat" "dist\QATCH nanovisQ\launch.bat" >NUL
@@ -62,3 +101,6 @@ REM xcopy /y "*.hex" "..\dist\QATCH nanovisQ\%folder%\"
 REM xcopy /y "*.pdf" "..\dist\QATCH nanovisQ\%folder%\"
 
 pause
+
+REM Close the virtual environment
+deactivate
