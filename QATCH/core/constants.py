@@ -367,6 +367,17 @@ class Constants:
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
 
+    ######################
+    # NIGHTLY adjustment #
+    ######################
+    if os.path.exists("QATCH/nightly/latest_build.json"):
+        with open("QATCH/nightly/latest_build.json", 'r') as f:
+            import json
+            data = json.load(f)
+            if "name" in data:
+                app_version = f"{app_version}_nightly"
+                app_date = data["name"].split()[-1][1:-1]
+
     @staticmethod
     def windll_is_caps_lock_on() -> bool:
         """
