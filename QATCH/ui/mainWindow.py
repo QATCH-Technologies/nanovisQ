@@ -4310,6 +4310,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     color = '#00ff00' if not update_available else '#ff0000'
                     if update_now:
                         (build, key) = latest_bundle
+                        self.latest_build = build
                         self.url_download = {"date": build['created_at'].split('T')[0],
                                              "name": f"{build['name'].split()[0]}.zip",
                                              "path": build['archive_download_url'],
@@ -5270,9 +5271,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.close_no_confirm = True
                 QtCore.QTimer.singleShot(1000, self.ControlsWin.close)
 
+                # Update latest build information for nightly
+                if Constants.UpdateEngine == UpdateEngines.Nightly:
+                    if hasattr(self, "latest_build"):
+                        from QATCH.nightly.artifacts import GH_Artifacts
+                        GH_Artifacts().write_latest_build_file(self.latest_build)
+
         elif hasattr(self, "updater") and self.updater._cancel:
             Log.w(
                 "User aborted software download by clicking cancel. Failed to update software.")
+
         else:
             PopUp.critical(self, "QATCH Software Update Failed!",
                            "Setup of new application encountered a fatal error.\nSee log for details.", ok_only=True)
