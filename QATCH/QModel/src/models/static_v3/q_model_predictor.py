@@ -753,17 +753,11 @@ class QModelPredictor:
         feature_vector: pd.DataFrame = None
     ):
         """
-        For each candidate set, compute each candidate’s time‐distance to its target.
-        For candidates_1, keep all indices ≤ target_1’s time, and also those within
-        one standard deviation to the right of target_1. Any candidate in candidates_1
-        whose time > (target_1 + 1σ) is reassigned to candidates_2. The analogous logic
-        for candidates_2: keep indices ≥ target_2’s time, and those within one standard
-        deviation to the left of target_2. Any candidate in candidates_2 whose time < (target_2 - 1σ)
-        is reassigned to candidates_1. Finally, plot before/after assignments on the
-        Dissipation curve, using vertical lines for targets and distinct colors.
+        Reassign any candidate to the target whose time is closest.
 
-        Returns two dicts (merged_1, merged_2), each with "indices" and "confidences" keys,
-        sorted by descending confidence.
+        - For each index in candidates_1: if |t_i - t2| < |t_i - t1|, move it to set2.
+        - For each index in candidates_2: if |t_i - t1| < |t_i - t2|, move it to set1.
+        Returns two dicts (merged_1, merged_2) sorted by descending confidence.
         """
         # --- Extract original indices & confidences ---
         cand1 = np.array(candidates_1.get("indices", []), dtype=int)
@@ -771,196 +765,108 @@ class QModelPredictor:
         cand2 = np.array(candidates_2.get("indices", []), dtype=int)
         conf2 = np.array(candidates_2.get("confidences", []), dtype=float)
 
-        # Compute target times
+        # Compute absolute target times
         t1 = relative_time[target_1]
         t2 = relative_time[target_2]
 
         # === BEFORE ASSIGNMENT PLOT ===
-        # if feature_vector is not None:
-        #     fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
-        #     ax_before, ax_after = axes
+        if feature_vector is not None:
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+            ax_before, ax_after = axes
 
-        #     # Plot Dissipation curve
-        #     ax_before.plot(
-        #         relative_time,
-        #         feature_vector["Dissipation"],
-        #         color="#555555",
-        #         linewidth=1.5,
-        #         label="Dissipation"
-        #     )
-        #     # Scatter original candidates_1
-        #     if cand1.size > 0:
-        #         ax_before.scatter(
-        #             relative_time[cand1],
-        #             feature_vector["Dissipation"].iloc[cand1],
-        #             c="#1f77b4",
-        #             s=50,
-        #             alpha=0.8,
-        #             edgecolors="black",
-        #             label="Cand Set 1 (orig)"
-        #         )
-        #     # Scatter original candidates_2
-        #     if cand2.size > 0:
-        #         ax_before.scatter(
-        #             relative_time[cand2],
-        #             feature_vector["Dissipation"].iloc[cand2],
-        #             c="#ff7f0e",
-        #             s=50,
-        #             alpha=0.8,
-        #             edgecolors="black",
-        #             label="Cand Set 2 (orig)"
-        #         )
-        #     # Vertical lines for targets
-        #     ax_before.axvline(
-        #         x=t1,
-        #         color="#1f77b4",
-        #         linestyle="--",
-        #         linewidth=2,
-        #         label="Target 1"
-        #     )
-        #     ax_before.axvline(
-        #         x=t2,
-        #         color="#ff7f0e",
-        #         linestyle="--",
-        #         linewidth=2,
-        #         label="Target 2"
-        #     )
-        #     ax_before.set_title("Before Reassignment", fontsize=14)
-        #     ax_before.set_xlabel("Relative Time", fontsize=12)
-        #     ax_before.set_ylabel("Dissipation", fontsize=12)
-        #     ax_before.legend(loc="upper right", fontsize=10)
-        #     ax_before.grid(alpha=0.3)
+            ax_before.plot(relative_time, feature_vector["Dissipation"],
+                           color="#555555", linewidth=1.5, label="Dissipation")
+            if cand1.size:
+                ax_before.scatter(relative_time[cand1],
+                                  feature_vector["Dissipation"].iloc[cand1],
+                                  c="#1f77b4", s=50, alpha=0.8, edgecolors="black",
+                                  label="Cand Set 1 (orig)")
+            if cand2.size:
+                ax_before.scatter(relative_time[cand2],
+                                  feature_vector["Dissipation"].iloc[cand2],
+                                  c="#ff7f0e", s=50, alpha=0.8, edgecolors="black",
+                                  label="Cand Set 2 (orig)")
+            ax_before.axvline(t1, color="#1f77b4",
+                              linestyle="--", linewidth=2, label="Target 1")
+            ax_before.axvline(t2, color="#ff7f0e",
+                              linestyle="--", linewidth=2, label="Target 2")
+            ax_before.set_title("Before Reassignment", fontsize=14)
+            ax_before.set_xlabel("Relative Time", fontsize=12)
+            ax_before.set_ylabel("Dissipation", fontsize=12)
+            ax_before.legend(loc="upper right", fontsize=10)
+            ax_before.grid(alpha=0.3)
 
-        # === COMPUTE “KEEP” AND “REASSIGN” FOR SET 1 ===
-        if cand1.size > 0:
-            times1 = relative_time[cand1]
-            dt1 = times1 - t1  # signed distance
-            sigma1 = np.std(dt1)
+        # === REASSIGN BASED ON ABSOLUTE TIME DISTANCE ===
+        # For cand1: those closer to t2 go to set2, the rest stay
+        keep_mask1 = np.abs(
+            relative_time[cand1] - t1) <= np.abs(relative_time[cand1] - t2)
+        keep1 = cand1[keep_mask1]
+        keep_conf1 = conf1[keep_mask1]
+        reassign1 = cand1[~keep_mask1]
+        reassign_conf1 = conf1[~keep_mask1]
 
-            # Keep those ≤ t1 (left of or exactly at target), plus those within +1σ to the right
-            keep_mask1 = (times1 <= t1) | ((times1 > t1) & (dt1 <= sigma1))
-            keep1 = cand1[keep_mask1]
-            keep_conf1 = conf1[keep_mask1]
+        # For cand2: those closer to t1 go to set1, the rest stay
+        keep_mask2 = np.abs(
+            relative_time[cand2] - t2) <= np.abs(relative_time[cand2] - t1)
+        keep2 = cand2[keep_mask2]
+        keep_conf2 = conf2[keep_mask2]
+        reassign2 = cand2[~keep_mask2]
+        reassign_conf2 = conf2[~keep_mask2]
 
-            # Outliers are those strictly to the right beyond +1σ
-            reassign_mask1 = (times1 > t1) & (dt1 > sigma1)
-            reassign1 = cand1[reassign_mask1]
-            reassign_conf1 = conf1[reassign_mask1]
-        else:
-            keep1 = np.array([], dtype=int)
-            keep_conf1 = np.array([], dtype=float)
-            reassign1 = np.array([], dtype=int)
-            reassign_conf1 = np.array([], dtype=float)
-
-        # === COMPUTE “KEEP” AND “REASSIGN” FOR SET 2 ===
-        if cand2.size > 0:
-            times2 = relative_time[cand2]
-            dt2 = times2 - t2  # signed distance
-            sigma2 = np.std(dt2)
-
-            # Keep those ≥ t2 (right of or exactly at target), plus those within -1σ to the left
-            keep_mask2 = (times2 >= t2) | ((times2 < t2) & (-dt2 <= sigma2))
-            keep2 = cand2[keep_mask2]
-            keep_conf2 = conf2[keep_mask2]
-
-            # Outliers are those strictly to the left beyond -1σ (i.e., dt2 < -σ₂)
-            reassign_mask2 = (times2 < t2) & (-dt2 > sigma2)
-            reassign2 = cand2[reassign_mask2]
-            reassign_conf2 = conf2[reassign_mask2]
-        else:
-            keep2 = np.array([], dtype=int)
-            keep_conf2 = np.array([], dtype=float)
-            reassign2 = np.array([], dtype=int)
-            reassign_conf2 = np.array([], dtype=float)
-
-        # === BUILD FINAL ASSIGNMENTS (UNSORTED) ===
+        # === BUILD FINAL ASSIGNMENTS ===
         final1 = np.concatenate(
-            [keep1, reassign2]) if reassign2.size > 0 else keep1.copy()
-        final_conf1 = np.concatenate(
-            [keep_conf1, reassign_conf2]) if reassign_conf2.size > 0 else keep_conf1.copy()
+            [keep1, reassign2]) if reassign2.size else keep1.copy()
+        conf_final1 = np.concatenate(
+            [keep_conf1, reassign_conf2]) if reassign_conf2.size else keep_conf1.copy()
 
         final2 = np.concatenate(
-            [keep2, reassign1]) if reassign1.size > 0 else keep2.copy()
-        final_conf2 = np.concatenate(
-            [keep_conf2, reassign_conf1]) if reassign_conf1.size > 0 else keep_conf2.copy()
+            [keep2, reassign1]) if reassign1.size else keep2.copy()
+        conf_final2 = np.concatenate(
+            [keep_conf2, reassign_conf1]) if reassign_conf1.size else keep_conf2.copy()
 
-        # === SORT EACH MERGED LIST BY DESCENDING CONFIDENCE ===
-        if final_conf1.size > 0:
-            sort_idx1 = np.argsort(-final_conf1)
-            sorted_indices1 = final1[sort_idx1]
-            sorted_conf1 = final_conf1[sort_idx1]
+        # === SORT BY CONFIDENCE DESC ===
+        if conf_final1.size:
+            order1 = np.argsort(-conf_final1)
+            sorted_idx1, sorted_conf1 = final1[order1], conf_final1[order1]
         else:
-            sorted_indices1 = np.array([], dtype=int)
-            sorted_conf1 = np.array([], dtype=float)
+            sorted_idx1, sorted_conf1 = np.array([], int), np.array([], float)
 
-        if final_conf2.size > 0:
-            sort_idx2 = np.argsort(-final_conf2)
-            sorted_indices2 = final2[sort_idx2]
-            sorted_conf2 = final_conf2[sort_idx2]
+        if conf_final2.size:
+            order2 = np.argsort(-conf_final2)
+            sorted_idx2, sorted_conf2 = final2[order2], conf_final2[order2]
         else:
-            sorted_indices2 = np.array([], dtype=int)
-            sorted_conf2 = np.array([], dtype=float)
+            sorted_idx2, sorted_conf2 = np.array([], int), np.array([], float)
 
-        # Prepare return dicts
-        merged_1 = {
-            "indices": sorted_indices1.tolist(),
-            "confidences": sorted_conf1.tolist()
-        }
-        merged_2 = {
-            "indices": sorted_indices2.tolist(),
-            "confidences": sorted_conf2.tolist()
-        }
+        merged_1 = {"indices": sorted_idx1.tolist(
+        ), "confidences": sorted_conf1.tolist()}
+        merged_2 = {"indices": sorted_idx2.tolist(
+        ), "confidences": sorted_conf2.tolist()}
 
         # === AFTER ASSIGNMENT PLOT ===
-        # if feature_vector is not None:
-        #     ax_after.plot(
-        #         relative_time,
-        #         feature_vector["Dissipation"],
-        #         color="#555555",
-        #         linewidth=1.5,
-        #         label="Dissipation"
-        #     )
-        #     if sorted_indices1.size > 0:
-        #         ax_after.scatter(
-        #             relative_time[sorted_indices1],
-        #             feature_vector["Dissipation"].iloc[sorted_indices1],
-        #             c="#1f77b4",
-        #             s=50,
-        #             alpha=0.8,
-        #             edgecolors="black",
-        #             label="Cand Set 1 (final)"
-        #         )
-        #     if sorted_indices2.size > 0:
-        #         ax_after.scatter(
-        #             relative_time[sorted_indices2],
-        #             feature_vector["Dissipation"].iloc[sorted_indices2],
-        #             c="#ff7f0e",
-        #             s=50,
-        #             alpha=0.8,
-        #             edgecolors="black",
-        #             label="Cand Set 2 (final)"
-        #         )
-        #     ax_after.axvline(
-        #         x=t1,
-        #         color="#1f77b4",
-        #         linestyle="--",
-        #         linewidth=2,
-        #         label="Target 1"
-        #     )
-        #     ax_after.axvline(
-        #         x=t2,
-        #         color="#ff7f0e",
-        #         linestyle="--",
-        #         linewidth=2,
-        #         label="Target 2"
-        #     )
-        #     ax_after.set_title("After Reassignment", fontsize=14)
-        #     ax_after.set_xlabel("Relative Time", fontsize=12)
-        #     ax_after.legend(loc="upper right", fontsize=10)
-        #     ax_after.grid(alpha=0.3)
+        if feature_vector is not None:
+            ax_after.plot(relative_time, feature_vector["Dissipation"],
+                          color="#555555", linewidth=1.5, label="Dissipation")
+            if sorted_idx1.size:
+                ax_after.scatter(relative_time[sorted_idx1],
+                                 feature_vector["Dissipation"].iloc[sorted_idx1],
+                                 c="#1f77b4", s=50, alpha=0.8, edgecolors="black",
+                                 label="Cand Set 1 (final)")
+            if sorted_idx2.size:
+                ax_after.scatter(relative_time[sorted_idx2],
+                                 feature_vector["Dissipation"].iloc[sorted_idx2],
+                                 c="#ff7f0e", s=50, alpha=0.8, edgecolors="black",
+                                 label="Cand Set 2 (final)")
+            ax_after.axvline(t1, color="#1f77b4", linestyle="--",
+                             linewidth=2, label="Target 1")
+            ax_after.axvline(t2, color="#ff7f0e", linestyle="--",
+                             linewidth=2, label="Target 2")
+            ax_after.set_title("After Reassignment", fontsize=14)
+            ax_after.set_xlabel("Relative Time", fontsize=12)
+            ax_after.legend(loc="upper right", fontsize=10)
+            ax_after.grid(alpha=0.3)
 
-        #     plt.tight_layout()
-        #     plt.show()
+            plt.tight_layout()
+            plt.show()
 
         return merged_1, merged_2
 
@@ -1884,7 +1790,7 @@ class QModelPredictor:
 
         for i, (poi, preds) in enumerate(extracted_predictions.items()):
             # --- POI1–3: pass through unchanged ---
-            if poi not in ("POI4", "POI6"):
+            if poi not in ("POI4", "POI5", "POI6"):
                 entry = {"indices": list(preds.get("indices", []))}
                 if "confidences" in preds:
                     entry["confidences"] = list(preds["confidences"])
