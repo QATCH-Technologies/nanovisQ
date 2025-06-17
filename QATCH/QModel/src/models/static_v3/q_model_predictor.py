@@ -27,6 +27,8 @@ from QATCH.models.ModelData import ModelData
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
+from sklearn.cluster import DBSCAN
+
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
@@ -598,26 +600,44 @@ class QModelPredictor:
         # Select best candidate by proximity to a base
         best_idx = min(valid_filtered, key=dist_if_left)
 
-        # Special handling for POI6: slide to max dissipation then base of nearest RF peak
         if poi == "POI6" and valid_filtered:
             start_idx, end_idx = cmin, cmax
-            knee_point = self._poi_6_knee_point(
-                start_of_segment=start_idx,
-                end_of_segment=end_idx,
-                feature_vector=feature_vector,
-                relative_time=relative_time
-            )
-            segment = diss[start_idx: end_idx + 1]
-            peak_rel = int(np.argmax(segment))
-            candidate_idx = start_idx + peak_rel
+            dog_score = feature_vector.get("Difference_DoG_SVM_Score")
+            if dog_score is None:
+                raise ValueError(
+                    "`feature_vector` missing 'Difference_DoG_SVM_Score' for POI6."
+                )
 
-            best_idx = max(knee_point, candidate_idx)
-            best_idx = knee_point
+            # Step 2: Find candidate with minimum DoG score
+            dog_values = dog_score.values
+            candidate_dog_scores = [dog_values[idx] for idx in candidates]
+            min_score_idx = candidates[int(np.argmin(candidate_dog_scores))]
 
+            # Step 3: Find where the point-to-point delta is most negative
+            window = 20
+            local_start = max(min_score_idx - window, start_idx)
+            local_end = min(min_score_idx + window, end_idx)
+
+            # Extract the window of DoG values and compute deltas
+            window_vals = dog_values[local_start: local_end + 1]
+            deltas = np.diff(window_vals)
+
+            if deltas.size > 0:
+                # argmin of deltas gives the largest drop between consecutive points
+                drop_idx = np.argmin(deltas)
+                # +1 because diff[i] = vals[i+1] - vals[i]
+                best_idx = local_start + drop_idx + 1
+            else:
+                # Fallback if window is too small
+                best_idx = min_score_idx
+
+            # Step 4: RF peak and trough adjustment (unchanged)
             rf = feature_vector.get("Resonance_Frequency_smooth")
             if rf is None:
                 raise ValueError(
-                    "`feature_vector` missing 'Resonance_Frequency_smooth' for POI6.")
+                    "`feature_vector` missing 'Resonance_Frequency_smooth' for POI6."
+                )
+
             rf_vals = rf.values
             peaks_rf, _ = find_peaks(rf_vals)
             proximity = 5
@@ -629,9 +649,9 @@ class QModelPredictor:
                 if left_troughs.size > 0:
                     best_idx = int(left_troughs[-1])
                 else:
-                    local_seg = rf_vals[start_idx: peak_idx + 1]
+                    local_seg = rf_vals[local_start: peak_idx + 1]
                     base_rel = int(np.argmin(local_seg))
-                    best_idx = start_idx + base_rel
+                    best_idx = local_start + base_rel
 
         # Slip-check for POI4: ensure bias correction didn't drift toward POI3
         if poi == "POI4" and len(ground_truth) >= 4:
@@ -1228,7 +1248,6 @@ class QModelPredictor:
             )
         else:
             best = indices[0]
-
         # Normalize to single integer
         if isinstance(best, (list, np.ndarray)):
             # Flatten and take first element
@@ -1657,7 +1676,7 @@ class QModelPredictor:
             ],
             'POI5': [
                 i for i in positions['POI5']['indices']
-                if int(cut1 * 0.75) <= relative_time[i] <= cut2
+                if int(cut1 * 0.75) <= relative_time[i] <= int(cut2 * 1)
             ],
             'POI6': [
                 i for i in positions['POI6']['indices']
@@ -1820,6 +1839,119 @@ class QModelPredictor:
         """
         return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
 
+    def _dbscan_cluster_indices(self, cand_indices: np.ndarray, eps_samples: int = 5, min_samples: int = 1):
+        """
+        Cluster candidate points by their sample index (uniform grid),
+        avoiding artifacts from nonuniform time sampling.
+        Returns:
+          - labels: cluster label per candidate
+          - densest: the label with the most members
+        """
+        X = cand_indices.reshape(-1, 1)
+        labels = DBSCAN(eps=eps_samples,
+                        min_samples=min_samples).fit_predict(X)
+        unique, counts = np.unique(labels, return_counts=True)
+        densest = unique[np.argmax(counts)]
+        return labels, densest
+
+    def cluster(self,
+                df,
+                r_time: np.ndarray,
+                extracted_predictions: dict[str, dict[str, list]],
+                eps_samples: int = 5,
+                min_samples: int = 1,
+                plotting: bool = True
+                ) -> dict[str, dict[str, list]]:
+        """
+        Post-process only POI4–6 via DBSCAN on sample indices:
+         • POI1–3 → copied unchanged
+         • POI4–6 → cluster on indices (uniform), keep densest cluster
+         • plotting shows dissipation + clusters
+         • returns trimmed {indices, confidences} dict
+        """
+        times = r_time
+        diss = df["Difference_DoG_SVM_Score"].values
+
+        if plotting:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(times, diss, 'k-', lw=1.5, label="Dissipation")
+            ax.set_xlabel("Relative Time (s)")
+            ax.set_ylabel("Dissipation")
+            ax.grid(alpha=0.3)
+            cmap = plt.get_cmap("tab10")
+
+        trimmed: dict[str, dict[str, list]] = {}
+
+        for i, (poi, preds) in enumerate(extracted_predictions.items()):
+            # --- POI1–3: pass through unchanged ---
+            if poi not in ("POI4", "POI6"):
+                entry = {"indices": list(preds.get("indices", []))}
+                if "confidences" in preds:
+                    entry["confidences"] = list(preds["confidences"])
+                trimmed[poi] = entry
+                continue
+
+            # --- POI4–6: cluster on sample index ---
+            inds = np.array(preds.get("indices", []), dtype=int)
+            confs = preds.get("confidences")  # may be None
+
+            if inds.size == 0:
+                entry = {"indices": []}
+                if confs is not None:
+                    entry["confidences"] = []
+                trimmed[poi] = entry
+                continue
+
+            labels, densest = self._dbscan_cluster_indices(
+                inds, eps_samples=eps_samples, min_samples=min_samples
+            )
+            keep_locs = np.where(labels == densest)[0]
+
+            # build trimmed lists in lock-step
+            keep_inds = [int(inds[j]) for j in keep_locs]
+            entry = {"indices": keep_inds}
+            if confs is not None:
+                entry["confidences"] = [confs[j]
+                                        for j in keep_locs if j < len(confs)]
+            trimmed[poi] = entry
+
+            # --- plotting for POI4–6 ---
+            if plotting:
+                cand_times = times[inds]
+                for lbl in np.unique(labels):
+                    mask = labels == lbl
+                    face = cmap(i) if lbl == densest else "none"
+                    size = 80 if lbl == densest else 50
+                    ax.scatter(
+                        cand_times[mask],
+                        diss[inds[mask]],
+                        edgecolor=cmap(i),
+                        facecolor=face,
+                        s=size,
+                        label=f"{poi} C{lbl}" if i == 3 and lbl == densest else None,
+                        zorder=4
+                    )
+                # star at cluster center (in time)
+                center_idx = int(np.mean(inds[labels == densest]))
+                center_time = times[center_idx]
+                ax.plot(center_time, diss[center_idx],
+                        marker="*", markersize=15,
+                        color=cmap(i),
+                        label=f"{poi} densest")
+                ax.text(center_time,
+                        diss.max()*0.9,
+                        f"{poi}→C{densest}",
+                        rotation=90, va="top", ha="right",
+                        fontsize=8, color=cmap(i))
+
+        if plotting:
+            ax.legend(loc="upper left", fontsize=8, ncol=2, framealpha=0.9)
+            plt.title(f"DBSCAN on Indices (eps={eps_samples} samples)")
+            plt.tight_layout()
+            plt.show()
+
+        return trimmed
+
     def _select_best_predictions(
         self,
         predictions: Dict[str, Dict[str, Any]],
@@ -1890,12 +2022,15 @@ class QModelPredictor:
         }
         # copy inputs to avoid side-effects
         best_positions = self._copy_predictions(predictions)
+
         #
         #  Boost POI6 confidences toward ground truth without overriding original confidences
         if len(ground_truth) >= 6 and len(model_data_labels) >= 6:
             ground_truth[5] = max(ground_truth[5], model_data_labels[5])
         self._filter_poi6_near_ground_truth(
             best_positions, ground_truth, relative_time)
+        best_positions = self.cluster(
+            df=feature_vector, extracted_predictions=best_positions, r_time=relative_time)
         self._sort_by_confidence(best_positions, 'POI6')
 
         # determine time anchors
@@ -1927,7 +2062,6 @@ class QModelPredictor:
         self._enforce_strict_ordering(best_positions, ground_truth)
         self._truncate_confidences(best_positions)
 
-        # make sure best_positions has entries for all POIs
         for i in range(1, 7):
             poi = f"POI{i}"
             # ensure the sub‐dict exists
@@ -1948,17 +2082,7 @@ class QModelPredictor:
 
     def regroup(self, raw_predictions: dict, updated_predictions: dict, relative_time: np.ndarray, feature_vector: np.ndarray) -> dict:
         new_groupings = updated_predictions.copy()
-        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI4"),
-                                                        candidates_2=raw_predictions.get(
-                                                            "POI5"),
-                                                        target_1=updated_predictions.get(
-                                                        "POI4").get("indices")[0],
-                                                        target_2=updated_predictions.get(
-                                                        "POI5").get("indices")[0],
-                                                        relative_time=relative_time,
-                                                        feature_vector=feature_vector)
-        new_groupings["POI4"] = merged_1
-        new_groupings["POI5"] = merged_2
+
         merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI5"),
                                                         candidates_2=raw_predictions.get(
                                                             "POI6"),
@@ -1968,8 +2092,20 @@ class QModelPredictor:
                                                         "POI6").get("indices")[0],
                                                         relative_time=relative_time,
                                                         feature_vector=feature_vector)
-        new_groupings["POI5"] = merged_1
+        new_groupings["POI5"] = raw_predictions["POI5"]
         new_groupings["POI6"] = merged_2
+
+        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI4"),
+                                                        candidates_2=raw_predictions.get(
+                                                        "POI5"),
+                                                        target_1=updated_predictions.get(
+                                                        "POI4").get("indices")[0],
+                                                        target_2=updated_predictions.get(
+                                                        "POI5").get("indices")[0],
+                                                        relative_time=relative_time,
+                                                        feature_vector=feature_vector)
+        new_groupings["POI4"] = merged_1
+        new_groupings["POI5"] = merged_2
         return new_groupings
 
     def predict(self,
@@ -1977,8 +2113,8 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = False) -> Dict[str, Any]:
-        """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
+                plotting: bool = True) -> Dict[str, Any]:
+        """Load data, run QModel v3 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
         labels, runs the XGBoost model to get probability predictions, and refines
@@ -2052,10 +2188,13 @@ class QModelPredictor:
             relative_time=df["Relative_time"].values,
             feature_vector=feature_vector,
             raw_vector=df)
+        print(extracted_predictions)
+        print("=======")
+        print(final_predictions)
         if plotting:
             # Common data we'll reuse
             times_all = df["Relative_time"]
-            diff_all = feature_vector["Detrend_Difference"]
+            diff_all = feature_vector["Difference"]
             cmap = plt.get_cmap("tab10")
 
             # --- Figure 1: raw predictor output (extracted_predictions) ---
@@ -2063,7 +2202,7 @@ class QModelPredictor:
             plt.plot(times_all,
                      diff_all,
                      linewidth=1.5,
-                     label="Detrend_Difference",
+                     label="Data",
                      color="lightgray",
                      zorder=0)
 
@@ -2083,7 +2222,11 @@ class QModelPredictor:
                             zorder=2)
 
                 # Highlight the best one (idxs[0]) with a vertical line
-                best_idx = idxs[0]
+                try:
+                    best_idx = idxs[0]
+                except:
+                    best_idx = final_predictions.get(
+                        poi_name).get("indices")[0]
                 best_time = times_all.iloc[best_idx]
                 plt.axvline(best_time,
                             color=cmap(i),
@@ -2103,7 +2246,7 @@ class QModelPredictor:
             plt.plot(times_all,
                      diff_all,
                      linewidth=1.5,
-                     label="Detrend_Difference",
+                     label="Data",
                      color="lightgray",
                      zorder=0)
 
@@ -2120,9 +2263,9 @@ class QModelPredictor:
                             color=cmap(i),
                             label=f"{poi_name} (final candidates)",
                             zorder=2)
-
                 best_idx = idxs[0]
                 best_time = times_all.iloc[best_idx]
+                print(best_time)
                 plt.axvline(best_time,
                             color=cmap(i),
                             linestyle="--",
