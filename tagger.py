@@ -97,8 +97,7 @@ class QatchTagger():
             keepers = ["docs", "QATCH", f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
                        "tools", "app.py", "launch.bat", "requirements.txt"]
             if not self.args.nightly:
-                path_to_nightly_dir = os.path.join(
-                    path_to_tag, "QATCH", "nightly")
+                path_to_nightly_dir = os.path.join(path_to_tag, "QATCH", "nightly")
                 if os.path.isdir(path_to_nightly_dir):
                     logging.debug(f"Removing: {path_to_nightly_dir}")
                     shutil.rmtree(path_to_nightly_dir)

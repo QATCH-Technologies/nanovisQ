@@ -27,6 +27,8 @@ from QATCH.models.ModelData import ModelData
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.common.architecture import Architecture
+
+PLOTTING = False
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
@@ -1552,8 +1554,8 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = True) -> Dict[str, Any]:
-        """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
+                plotting: bool = PLOTTING) -> Dict[str, Any]:
+        """Load data, run QModel v3 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
         labels, runs the XGBoost model to get probability predictions, and refines
