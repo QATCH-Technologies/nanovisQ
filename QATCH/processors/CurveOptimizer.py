@@ -15,23 +15,22 @@ Key Components:
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
+    Alexander Ross (alexander.ross@qatchtech.com)
 
 Date:
-    04-04-2025
+    06-18-2025
 
 Version:
-    V11
+    V12
 """
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import minimize
 from scipy.signal import savgol_filter
+from random import random
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
-from random import random
-
-TAG = ["CurveOptimizer"]
 
 """ The percentage of the run data to ignore from the head of a difference curve. """
 HEAD_TRIM_PERCENTAGE = 0.05
@@ -63,7 +62,10 @@ STARTING_THRESHOLD_FACTOR = 50
 
 
 class CurveOptimizer:
-    def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor, bounds: list = []) -> None:
+
+    TAG = "[CurveOptimizer]"
+
+    def __init__(self, file_path: str, file_buffer, initial_diff_factor: float = Constants.default_diff_factor, bounds: list = []) -> None:
         """
         Initializes the optimizer utilities such as the data buffer, dataframe object, left and right ROI
         bounds, and initial difference factor.
@@ -74,7 +76,8 @@ class CurveOptimizer:
         time/index bounds are initialized to -1.  Optimal difference factor is set to None.
 
         Args:
-            file_buffer: location to load data from.
+            file_path: string of loaded data path.
+            file_buffer: location to load data from or a byte buffer stream of the opened file buffer.
             initial_diff_factor (float): initial difference factor to begin optimization at (Optional)
             bounds (list): POI values given by QModel or user-input (Optional)
 
@@ -84,15 +87,21 @@ class CurveOptimizer:
         Raises:
             Exception if an error occurs during initailizing a file buffer.
         """
+        def strip_filename(full_path):
+            # Convert a full file path to just the file name part.
+            # Note: handles either separator, returns no extension
+            # example: "/a/b/c/test.csv" --> "test"
+            return full_path.split('\\')[-1].split('/')[-1].split('.')[0]
+
         self._file_buffer = file_buffer
         self._initial_diff_factor = initial_diff_factor
         try:
             self._data_buffer = self._initialize_file_buffer(file_buffer)
             self._dataframe = pd.read_csv(self._data_buffer)
             Log.d(
-                TAG, f"Run data loaded successfully from {self._data_buffer}.")
+                self.TAG, f"Run data loaded successfully from {strip_filename(file_path)}.")
         except Exception as e:
-            Log.e(TAG, f"Failed to load data file: {e}")
+            Log.e(self.TAG, f"Failed to load data file: {e}")
             raise
 
         self._difference_curve = None
@@ -120,12 +129,12 @@ class CurveOptimizer:
         Raises:
             ValueError: if the file buffer has not seek attribute or the object is not seekable.
         """
-        Log.d(TAG, 'Initializing file buffer.')
+        Log.d(self.TAG, 'Initializing file buffer.')
         if not isinstance(file_buffer, str):
             if hasattr(file_buffer, "seekable") and file_buffer.seekable():
                 file_buffer.seek(0)
             else:
-                Log.e(TAG, "Cannot 'seek' file buffer stream.")
+                Log.e(self.TAG, "Cannot 'seek' file buffer stream.")
                 raise ValueError("Cannot 'seek' file buffer stream.")
         return file_buffer
 
@@ -151,10 +160,10 @@ class CurveOptimizer:
             min_val = np.min(data)
             max_val = np.max(data)
             normalized = (data - min_val) / (max_val - min_val)
-            Log.d(TAG, "Data normalized successfully.")
+            Log.d(CurveOptimizer.TAG, "Data normalized successfully.")
             return normalized
         except Exception as e:
-            Log.e(TAG, f"Error normalizing data: {e}")
+            Log.e(CurveOptimizer.TAG, f"Error normalizing data: {e}")
             raise
 
     def _generate_curve(self, difference_factor: float) -> np.ndarray:
@@ -181,7 +190,7 @@ class CurveOptimizer:
                                 "Resonance_Frequency", "Relative_time"]
             if not all(column in self._dataframe.columns for column in required_columns):
                 Log.e(
-                    TAG, f"Input CSV must contain the following columns: {required_columns}")
+                    self.TAG, f"Input CSV must contain the following columns: {required_columns}")
                 raise ValueError(
                     f"Input CSV must contain the following columns: {required_columns}")
 
@@ -202,10 +211,10 @@ class CurveOptimizer:
 
             self._difference_curve = np.stack(
                 (self._dataframe["Relative_time"].values, self._dataframe["Difference"].values), axis=1)
-            Log.d(TAG, "Curve generated successfully.")
+            Log.d(self.TAG, "Curve generated successfully.")
             return self._difference_curve
         except Exception as e:
-            Log.e(TAG, f"Error generating curve: {e}")
+            Log.e(self.TAG, f"Error generating curve: {e}")
             raise
 
     def _find_region(self, difference: np.ndarray, relative_time: pd.Series, mode: str) -> float:
@@ -271,23 +280,23 @@ class CurveOptimizer:
                 import math
                 index = index + math.floor(INIT_DROP_SETBACK * index)
                 Log.d(
-                    TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
+                    self.TAG, f"Left bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             elif mode == 'right':
                 # Report global max from downtrended data.
                 index = int(np.argmax(adjusted_difference) +
                             0.1 * np.argmax(adjusted_difference))
                 Log.d(
-                    TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
+                    self.TAG, f"Right bound found at time: {relative_time.iloc[index]}.")
                 return relative_time.iloc[index], index + head_trim
             else:
                 raise ValueError(f"Invalid search bound requested {mode}.")
         except Exception as e:
-            Log.e(TAG, f"Error finding optimization region: {e}")
+            Log.e(self.TAG, f"Error finding optimization region: {e}")
             raise
 
     def _set_bounds(self, bounds: list = []) -> None:
-        Log.d(TAG, "Setting region bounds.")
+        Log.d(self.TAG, "Setting region bounds.")
 
         # Generate initial curve.
         self._generate_curve(Constants.default_diff_factor)
@@ -323,12 +332,13 @@ class CurveOptimizer:
         self._left_bound["index"] = lb_idx
 
 
-TAG = "DifferenceFactorOptimizer"
-
-
 class DifferenceFactorOptimizer(CurveOptimizer):
-    def __init__(self, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
-        super().__init__(file_buffer=file_buffer, initial_diff_factor=initial_diff_factor)
+
+    TAG = "[DifferenceFactorOptimizer]"
+
+    def __init__(self, file_path: str, file_buffer, initial_diff_factor: float = Constants.default_diff_factor):
+        super().__init__(file_path=file_path, file_buffer=file_buffer,
+                         initial_diff_factor=initial_diff_factor)
 
     def _objective(self, difference_factor: float, left_bound: float, right_bound: float) -> float:
         """
@@ -363,7 +373,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
 
             # Check that we have enough data.
             if len(values) < 2:
-                Log.w(TAG, "ROI is too short; returning a high penalty.")
+                Log.w(self.TAG, "ROI is too short; returning a high penalty.")
                 return np.inf
 
             # Use only the first 20% of the ROI.
@@ -375,7 +385,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             diffs = np.diff(sub_values)
             if len(diffs) == 0:
                 Log.w(
-                    TAG, "Not enough differences in the subset; returning a high penalty.")
+                    self.TAG, "Not enough differences in the subset; returning a high penalty.")
                 return np.inf
 
             # Calculate the typical delta using the median.
@@ -393,11 +403,11 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             excess = np.maximum(np.abs(diffs - typical_delta) - tolerance, 0)
             penalty = np.sum(excess ** 2)
             Log.d(
-                TAG, f"Penalty computed for difference factor {difference_factor}: {penalty}")
+                self.TAG, f"Penalty computed for difference factor {difference_factor}: {penalty}")
             return penalty
 
         except Exception as e:
-            Log.e(TAG, f"Error calculating penalty metric: {e}")
+            Log.e(self.TAG, f"Error calculating penalty metric: {e}")
             raise
 
     def _optimize_difference_factor(self) -> float:
@@ -427,12 +437,12 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             if 0.5 <= optimal_difference_factor <= 3.0:
                 self._optimal_difference_factor = optimal_difference_factor
                 Log.d(
-                    TAG, f"Optimal difference factor found: {self._optimal_difference_factor}")
+                    self.TAG, f"Optimal difference factor found: {self._optimal_difference_factor}")
             else:
                 self._optimal_difference_factor = max(
                     0.5, min(optimal_difference_factor, 3.0))
                 Log.w(
-                    TAG,
+                    self.TAG,
                     f"Optimal difference factor {optimal_difference_factor} out of bounds [0.5, 3.0], "
                     f"using {self._optimal_difference_factor}."
                 )
@@ -440,7 +450,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             return self._optimal_difference_factor
 
         except Exception as e:
-            Log.e(TAG, f"Error optimizing difference factor: {e}")
+            Log.e(self.TAG, f"Error optimizing difference factor: {e}")
             raise
 
     def optimize(self) -> tuple:
@@ -465,18 +475,15 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             # Repair later drop effects.
             if result:
                 Log.d(
-                    TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
+                    self.TAG, f"Run completed successfully. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
                 return result, self._left_bound['time'], self._right_bound['time']
             else:
                 Log.d(
-                    TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
+                    self.TAG, f"Run completed unsucessful. Results: {result}, left-bound: {self._left_bound['time']}, right-bound: {self._right_bound['time']}.")
                 return Constants.default_diff_factor, self._left_bound['time'], self._right_bound['time']
         except Exception as e:
-            Log.e(TAG, f"Run failed: {e}")
+            Log.e(self.TAG, f"Run failed: {e}")
             raise
-
-
-TAG = "DropEffectCorrection"
 
 
 class DropEffectCorrection(CurveOptimizer):
@@ -492,6 +499,8 @@ class DropEffectCorrection(CurveOptimizer):
         correct_drop_effects(): Detects and corrects drop effects in both curves independently.
     """
 
+    TAG = "[DropEffectCorrection]"
+
     def __init__(self, file_path: str, file_buffer, initial_diff_factor: float = Constants.default_diff_factor, bounds: list = []):
         """
         Initializes the DropEffectCorrection with the provided file buffer and difference factor.
@@ -505,29 +514,30 @@ class DropEffectCorrection(CurveOptimizer):
         Raises:
             ValueError: If required columns are missing or bounds are not properly defined.
         """
-        super().__init__(file_buffer=file_buffer,
+        super().__init__(file_path=file_path, file_buffer=file_buffer,
                          initial_diff_factor=initial_diff_factor, bounds=bounds)
 
         self.loaded_datapath = file_path
 
         if "Dissipation" not in self._dataframe.columns:
-            Log.e(TAG, "The dataframe does not contain a 'Dissipation' column.")
+            Log.e(self.TAG, "The dataframe does not contain a 'Dissipation' column.")
             raise ValueError(
                 "The dataframe does not contain a 'Dissipation' column.")
 
         if "Resonance_Frequency" not in self._dataframe.columns:
-            Log.e(TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
+            Log.e(
+                self.TAG, "The dataframe does not contain a 'Resonance_Frequency' column.")
             raise ValueError(
                 "The dataframe does not contain a 'Resonance_Frequency' column.")
 
         if not ("index" in self._left_bound and "index" in self._right_bound):
-            Log.e(TAG, "Bounds must be properly defined with 'index' keys.")
+            Log.e(self.TAG, "Bounds must be properly defined with 'index' keys.")
             raise ValueError(
                 "Bounds must be properly defined with 'index' keys.")
 
         if (self._left_bound['index'] < 0 or self._right_bound['index'] >= len(self._dataframe)):
             Log.e(
-                TAG, f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
+                self.TAG, f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
             )
             raise ValueError(
                 f"Bounds are out of range of the dataframe or not initialized: {self._left_bound['index']} to {self._right_bound['index']}."
@@ -535,7 +545,7 @@ class DropEffectCorrection(CurveOptimizer):
 
         if "Difference" not in self._dataframe.columns:
             Log.d(
-                TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.")
+                self.TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.")
             self._generate_curve(initial_diff_factor)
 
     def _detect_drop_effects_for_column(self, col_name: str, diff_offset: int = 2, starting_threshold_factor: float = 2) -> list:
@@ -557,7 +567,7 @@ class DropEffectCorrection(CurveOptimizer):
 
         if right_idx - left_idx < diff_offset + 1:
             Log.e(
-                TAG, f"Not enough points in the specified region to compute differences with offset {diff_offset}.")
+                self.TAG, f"Not enough points in the specified region to compute differences with offset {diff_offset}.")
             raise ValueError(
                 "Not enough points in the specified region to compute differences.")
 
@@ -606,7 +616,7 @@ class DropEffectCorrection(CurveOptimizer):
             last_region_size = len(current_streak)
             starting_threshold_factor -= 1
             if starting_threshold_factor <= 0:
-                Log.w(TAG, "No drop effects could be detected.")
+                Log.w(self.TAG, "No drop effects could be detected.")
                 break
 
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
@@ -623,7 +633,7 @@ class DropEffectCorrection(CurveOptimizer):
             # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
             if min_drop <= 0:
                 Log.w(
-                    TAG, "Drop effect using original bounds, scanning left never reached an acceptable edge.")
+                    self.TAG, "Drop effect using original bounds, scanning left never reached an acceptable edge.")
                 current_streak = current_streak[:min_count]
                 break
             # Check if this index's value contains an acceptable edge.
@@ -637,7 +647,7 @@ class DropEffectCorrection(CurveOptimizer):
             current_streak.append(min_drop)
 
         Log.d(
-            TAG, f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}")
+            self.TAG, f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}")
 
         # Map back to the full dataframe index.
         global_idx = [local_idx + left_idx for local_idx in current_streak]
@@ -737,9 +747,9 @@ class DropEffectCorrection(CurveOptimizer):
                 contiguous_regions.append([idx])
 
         Log.d(
-            TAG, f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.")
+            self.TAG, f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.")
         Log.d(
-            TAG, f"Raw drop effect regions: {[list(np.array(idx, dtype=int)) for idx in contiguous_regions]}")
+            self.TAG, f"Raw drop effect regions: {[list(np.array(idx, dtype=int)) for idx in contiguous_regions]}")
 
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
         for region in contiguous_regions:
@@ -801,9 +811,9 @@ class DropEffectCorrection(CurveOptimizer):
             corrected_rf[region[-1]+1:] += offset_rf
 
             Log.d(
-                TAG, f"Offset for dissipation data: {offset_diss}")
+                self.TAG, f"Offset for dissipation data: {offset_diss}")
             Log.d(
-                TAG, f"Offset for resonance data: {offset_rf} Hz")
+                self.TAG, f"Offset for resonance data: {offset_rf} Hz")
 
         if show_corrections or save_corrections:
             self._plot_corrections(show_corrections, save_corrections,

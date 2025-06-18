@@ -6,7 +6,8 @@ from PyQt5.QtWidgets import QMessageBox, QWidget, QVBoxLayout, QTabWidget, QComb
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 import os
-TAG = '[Preferences]'
+
+TAG = "[Preferences]"
 SELECT_TAG_PROMPT = Constants.select_tag_prompt
 SUBFOLDER_FIELD = Constants.subfolder_field
 

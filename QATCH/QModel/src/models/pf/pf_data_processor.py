@@ -8,9 +8,9 @@ import pandas as pd
 from scipy.stats import skew, kurtosis
 from scipy.signal import find_peaks, peak_prominences, peak_widths
 
-
 from QATCH.common.logger import Logger
-TAG = ["PartialFill"]
+
+TAG = "[PartialFill]"
 
 
 class PFDataProcessor:

@@ -5154,7 +5154,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     )  # require re-click to show popup tool incorrect position
         pass
 
-    def _optimize_curve(self, data_path):
+    def _optimize_curve(self, data_path: str) -> float:
         """
         Optimizes the difference factor for a given data file.
 
@@ -5181,7 +5181,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             optimal_factor = None
             with secure_open(data_path, "r", "capture") as f:
                 file_header = BytesIO(f.read())
-                optimizer = DifferenceFactorOptimizer(file_header)
+                optimizer = DifferenceFactorOptimizer(data_path, file_header)
                 optimal_factor, lb, rb = optimizer.optimize()
                 Log.i(
                     TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
