@@ -1,0 +1,65 @@
+name: "nightly"
+
+on:
+  workflow_dispatch: # allows manual triggering
+  schedule:
+    - cron: '5 5 * * 1-5' # runs daily at 05:05 UTC, Mon - Fri only
+
+jobs:
+  nightly_build:
+    needs: check_date
+    if: ${{ needs.check_date.outputs.should_run == 'true' }}
+    runs-on: windows-latest
+    name: Build nanovisQ nightly
+    outputs:
+      tag_name: ${{ steps.tagger.outputs.tag_name }}
+    steps:
+      - name: Checkout repo to 'trunk'
+        uses: actions/checkout@v4
+        with:
+          path: trunk
+        
+      - name: Setup Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          # cache: 'pip' # caching pip dependencies
+      # - run: python -m pip install --upgrade pip
+      # - run: python -m pip install -r trunk/requirements.txt
+          
+      - name: Run nightly build script (w/ outputs)
+        id: tagger
+        run: |
+          python trunk/tagger.py --nightly
+          echo "tag_name=$(cat tag_name.var)" >> "$env:GITHUB_OUTPUT"
+
+      - name: Print build output variable
+        run: |
+          echo "tag_name: ${{ steps.tagger.outputs.tag_name }}"
+
+      - name: Archive build artifacts
+        uses: actions/upload-artifact@v4
+        env:
+          tag_name: ${{ steps.tagger.outputs.tag_name }}
+        with:
+          name: ${{ env.tag_name }}
+          path: tags/nightly/${{ env.tag_name }}/dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  check_date:
+    runs-on: ubuntu-latest
+    name: Check latest commit
+    outputs:
+      should_run: ${{ steps.should_run.outputs.should_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print latest_commit
+        run: echo ${{ github.sha }}
+      - id: should_run
+        continue-on-error: true
+        name: Check latest commit is less than a day
+        run: |
+          test -n "$(git rev-list --after="24 hours" ${{ github.sha }})" \
+            && echo "should_run=true" >> "$GITHUB_OUTPUT" \
+            || echo "should_run=false" >> "$GITHUB_OUTPUT"

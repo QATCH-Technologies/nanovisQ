@@ -13,7 +13,8 @@ import json
 import re
 import serial.tools.list_ports
 import os
-TAG = '[Configure Data]'
+
+TAG = "[Configure Data]"
 
 
 class UIConfigureData(QtWidgets.QWidget):

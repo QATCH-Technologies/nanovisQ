@@ -8,6 +8,7 @@ from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
 import numpy as np
+import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
@@ -19,10 +20,14 @@ from QATCH.common.fileManager import FileManager
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants
-from QATCH.models.ModelData import ModelData
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
+from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
+from QATCH.QModel.src.models.pf.q_model_predictor_ch1 import QModelPredictorCh1
+from QATCH.QModel.src.models.pf.q_model_predictor_ch2 import QModelPredictorCh2
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
+from QATCH.models.ModelData import ModelData
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
@@ -89,8 +94,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return CA
 
     @staticmethod
-    def Lookup_DN(surfactant, concentration):
-        return 1 + 2.62e-4 * concentration
+    def Lookup_DN(surfactant, concentration, stabilizer_type="none", stabilizer_concentration=0):
+        stabilizer_offset = 0
+        if stabilizer_type == "sucrose":  # expect caller `casefold()` stabilizer type
+            stabilizer_offset = 0.13 * stabilizer_concentration
+        return 1 + 2.62e-4 * concentration + stabilizer_offset
 
     @staticmethod
     def Lookup_Table(table_path, surfactant, concentration):
@@ -384,6 +392,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # lazy load these modules on 'loadRun()' call (if selected)
         self.QModel_v3_modules_loaded = False
         self.QModel_v3_predictor = None
+
+        self.PF_modules_loaded = False
+        self.PF_predictor = None
 
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
@@ -856,8 +867,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
             "Drop effect correction")
-
-        self.drop_effect_cancelation_checkbox.setChecked(False)
+        self.drop_effect_cancelation_checkbox.setChecked(True)
         self.drop_effect_cancelation_checkbox.clicked.connect(
             self.use_drop_effect_cancelation)
         self.gridLayout.addWidget(
@@ -875,7 +885,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel3_predict:
+        if Constants.PF_predict:
+            self.cBox_Models.setCurrentIndex(3)
+        elif Constants.QModel3_predict:
             self.cBox_Models.setCurrentIndex(2)
         elif Constants.QModel2_predict:
             self.cBox_Models.setCurrentIndex(1)
@@ -1515,7 +1527,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """Enables or disables UI buttons based on the current state.
 
             This function adjusts the availability of various UI buttons based on, the presence of an XML path,
-            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the 
+            the selected run, the current step in the state machine, whether modifications are allowed, or Whether the
             system is busy.
 
             Args:
@@ -1579,12 +1591,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Adjusts the difference factor based on the state of the curve optimizer checkbox.
 
-        If the curve optimizer checkbox is not checked, this method resets the 
-        diff factor to the default value specified in `Constants.default_diff_factor`. 
+        If the curve optimizer checkbox is not checked, this method resets the
+        diff factor to the default value specified in `Constants.default_diff_factor`.
         It then updates the new diff factor value by calling `self.set_new_diff_factor()`.
 
         Args:
-            object (QWidget): The widget or object interacting with this method. Typically, 
+            object (QWidget): The widget or object interacting with this method. Typically,
                 this could represent the checkbox or related UI component triggering the event.
         """
         if not self.difference_factor_optimizer_checkbox.isChecked():
@@ -1632,10 +1644,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Validates and sets a new difference factor based on user input.
 
-        This method checks if the input in `tbox_diff_factor` is valid and within 
-        the acceptable range defined by `self.validFactor`. If valid, it confirms 
-        any unsaved changes before proceeding to update the `diff_factor` with the 
-        provided input. If the input is invalid, it logs an error message. After 
+        This method checks if the input in `tbox_diff_factor` is valid and within
+        the acceptable range defined by `self.validFactor`. If valid, it confirms
+        any unsaved changes before proceeding to update the `diff_factor` with the
+        provided input. If the input is invalid, it logs an error message. After
         updating the difference factor, it refreshes the plots by calling `self.loadRun()`.
 
         Raises an error if the process fails.
@@ -1697,11 +1709,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("Failed to set new channel thickness!")
 
     def set_new_prediction_model(self, text):
-        default = "QModel v2"
-        if default in Constants.list_predict_models:
-            index = Constants.list_predict_models.index(default)
-        else:
-            index = 3
+        index = len(Constants.list_predict_models) - 1
+        default = Constants.list_predict_models[index]
         if text in Constants.list_predict_models:
             index = Constants.list_predict_models.index(text)
         else:
@@ -1712,6 +1721,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel2_predict = True if index >= 1 else False
             Constants.QModel3_predict = True if index >= 2 else False
+            Constants.PF_predict = True if index >= 3 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -1724,7 +1734,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.parent.ControlsWin.q_version_v2.setChecked(
                 True if index == 1 else False)
             self.parent.ControlsWin.q_version_v3.setChecked(
-                True if index == 2 else False)
+                True if index >= 2 else False)
+            self.parent.ControlsWin.pf_version.setChecked(
+                True if index == 3 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2487,7 +2499,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v2' modules at load of run.")
-
         try:
             if Constants.QModel3_predict and not self.QModel_v3_modules_loaded:
                 booster_path = os.path.join(
@@ -2503,11 +2514,40 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.QModel_v3_predictor = QModelPredictor(
                     booster_path=booster_path,
                     scaler_path=scaler_path)
+
                 self.QModel_v3_modules_loaded = True
+
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v3' modules at load of run.")
-
+        try:
+            if Constants.PF_predict and not self.PF_modules_loaded:
+                f_type_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf")
+                poi_model_dir = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "pf", "ch_{}")  # must be formatted with channel
+                start_booster_path = os.path.join(Architecture.get_path(),
+                                                  r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+                end_booster_path = os.path.join(Architecture.get_path(),
+                                                r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+                scaler_path = os.path.join(Architecture.get_path(),
+                                           r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+                self.forecaster = QForecastPredictor(
+                    start_booster_path=start_booster_path,
+                    end_booster_path=end_booster_path,
+                    scaler_path=scaler_path)
+                self.PF_predictor = PFPredictor(
+                    model_dir=f_type_model_dir)
+                self.QModel_ch1_predictor = QModelPredictorCh1(
+                    poi_model_dir.format(1))
+                self.QModel_ch2_predictor = QModelPredictorCh2(
+                    poi_model_dir.format(2))
+                self.PF_modules_loaded = True
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'Partial Fill Model' modules at load of run.")
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -2622,6 +2662,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 None,
             )
             self.enable_buttons()
+
         except Exception as e:
             Log.e(
                 f"An error occurred while loading the selected run: {str(e)}")
@@ -2710,7 +2751,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        predict_result = self.QModel_v3_predictor.predict(fh)
+                        predictor = self.QModel_v3_predictor
+                        if Constants.PF_predict:
+                            if self.parent.num_channels == 2:
+                                predictor = self.QModel_ch2_predictor
+                            if self.parent.num_channels == 1:
+                                predictor = self.QModel_ch1_predictor
+                        predict_result = predictor.predict(fh)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -2734,10 +2781,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         else:
                             self.model_result = -1  # try fallback model
                 except Exception as e:
+                    limit = None
+                    t, v, tb = sys.exc_info()
+                    from traceback import format_tb
+
+                    a_list = ["Traceback (most recent call last):"]
+                    a_list = a_list + format_tb(tb, limit)
+                    a_list.append(f"{t.__name__}: {str(v)}")
+                    for line in a_list:
+                        Log.d(line)
                     Log.e(e)
-                    Log.e(
-                        "Error using 'QModel v3'... Using a fallback model for predictions."
-                    )
+                    Log.e(TAG,
+                          f"Error using 'QModel v3'... Using a fallback model for predictions."
+                          )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
             if self.model_result == -1 and Constants.QModel2_predict:
@@ -2970,8 +3026,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predict_result = self.QModel_v3_predictor.predict(
-                                fh)
+                            predictor = self.QModel_v3_predictor
+                            if Constants.PF_predict:
+                                if self.parent.num_channels == 2:
+                                    predictor = self.QModel_ch2_predictor
+                                if self.parent.num_channels == 1:
+                                    predictor = self.QModel_ch1_predictor
+                            predict_result = predictor.predict(fh)
                             predictions = []
                             candidates = []
                             for i in range(6):
@@ -2995,6 +3056,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             else:
                                 self.model_result = -1  # try fallback model
                     except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
                         Log.e(e)
                         Log.e(
                             "Error using 'QModel v3'... Using a fallback model for predictions."
@@ -4134,6 +4204,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
 
             poi_vals = []
+            fill_type = -1  # if exists, will be in range 0 - 3 (inclusive)
             if self.askForPOIs:
                 xml_path = (
                     data_path[0:-4] +
@@ -4157,6 +4228,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         poi_vals.sort()
                     else:
                         Log.d("No points found in XML file for this run.")
+                    params = doc.getElementsByTagName("params")
+                    if len(params) > 0:
+                        params = params[-1]  # most recent element
+                        for p in params.childNodes:
+                            if p.nodeType == p.TEXT_NODE:
+                                continue  # only process elements
+                            name = p.getAttribute("name")
+                            value = p.getAttribute("value")
+                            try:
+                                if name == "fill_type":
+                                    fill_type = int(value)
+                            except:
+                                Log.e(
+                                    f'Param "{name}" in XML is not an integer.'
+                                )
+                    else:
+                        Log.d("No params found in XML file for this run.")
                 else:
                     Log.w(TAG,
                           f'Missing XML file: Expected at "{xml_path}" for this run.')
@@ -4188,6 +4276,64 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.askForPOIs = (
                     False  # re-analyze Step 1, don't auto advance to Summary
                 )
+            if Constants.PF_predict and fill_type == -1:
+                Log.d("Running partial fill predictor...")
+                with secure_open(self.loaded_datapath, "r", "capture") as f:
+                    fh = BytesIO(f.read())
+                    raw = self.PF_predictor.predict(
+                        file_buffer=fh)
+                    try:
+
+                        if hasattr(fh, "seekable") and fh.seekable():
+                            fh.seek(0)
+                        else:
+                            raise Exception(
+                                "Cannot `seek` stream prior to passing to processing.")
+                        df = pd.read_csv(fh)
+                        df = df.iloc[::5]
+                        df.reset_index(drop=True)
+                    except pd.errors.EmptyDataError:
+                        raise ValueError("The provided data file is empty.")
+                    self.forecaster._active_booster = AvailableBoosters.START
+                    self.forecaster._fill_state = FillStatus.NO_FILL
+                    self.forecaster.no_wait()
+                    self.forecaster.update_predictions(df)
+                    start_f_type = self.forecaster.get_fill_status()
+                    self.parent.forecast_start_time = self.forecaster.get_start_time()
+                    self.forecaster._data = None
+                    self.forecaster._active_booster = AvailableBoosters.END
+                    self.forecaster._fill_state = FillStatus.FILLING
+                    self.forecaster.no_wait()
+                    self.forecaster.update_predictions(df)
+                    end_f_type = self.forecaster.get_fill_status()
+                    self.parent.forecast_end_time = self.forecaster.get_end_time()
+                    num_poi = int(raw)
+                    poi_to_channels = {
+                        0: 0,
+                        1: 0,
+                        2: 0,
+                        3: 0,
+                        4: 1,
+                        5: 2,
+                        6: 3,
+                    }
+                    num_channels = poi_to_channels.get(num_poi, 0)
+                    if end_f_type == FillStatus.FULL_FILL:
+                        num_channels = 3
+                        num_poi = 6
+                    self.parent.num_channels = num_channels
+                    if num_channels == 3:
+                        Log.i("Full Fill Detected!")
+                    else:
+                        Log.w(
+                            f"Partial Fill Detected: {num_channels} Channels")
+                    Log.d(
+                        TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
+            else:
+                Log.d(f"Number of channels (fill_type): {fill_type}")
+                self.parent.num_channels = fill_type  # pulled from XML
+            # --------------------------------------------------------------- #
+
             if self.model_result == -1:  # self.stateStep != 6:
                 self.model_result = -1
                 self.model_candidates = None
@@ -4207,8 +4353,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            predict_result = self.QModel_v3_predictor.predict(
-                                fh)
+                            predictor = self.QModel_v3_predictor
+                            if Constants.PF_predict:
+                                if self.parent.num_channels == 2:
+                                    predictor = self.QModel_ch2_predictor
+                                if self.parent.num_channels == 1:
+                                    predictor = self.QModel_ch1_predictor
+                            predict_result = predictor.predict(fh)
                             predictions = []
                             candidates = []
                             for i in range(6):
@@ -4233,6 +4384,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             else:
                                 self.model_result = -1  # try fallback model
                     except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
                         Log.e(e)
                         Log.e(
                             "Error using 'QModel v3'... Using a fallback model for predictions."
@@ -4359,9 +4519,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             canceled_diss, canceled_rf = None, None
             if self.drop_effect_cancelation_checkbox.isChecked():
                 canceled_diss, canceled_rf = self._correct_drop_effect(
-                    self.loaded_datapath)
+                    self.loaded_datapath, poi_vals, 'process')
                 if canceled_diss is not None:
                     dissipation = canceled_diss
+                if canceled_rf is not None:
+                    resonance_frequency = canceled_rf
 
             # raw data
             xs = relative_time
@@ -4499,10 +4661,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            # 'RF' Drop Effect Correction
-            if self.drop_effect_cancelation_checkbox.isChecked():
-                if canceled_rf is not None:
-                    ys_freq = avg - canceled_rf
 
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
@@ -4965,20 +5123,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 logger = Log.w  # from 33% to 66%
             return logger
 
-        point_names = ["start", "end_fill",
-                       "post", "ch1", "ch2", "ch3"]
-        for i, (candidates, confidences) in enumerate(self.model_candidates):
-            if i == 2:
-                # do not print confidence of "post" point, it doesn't matter
-                continue
-            point_name = point_names[i]
-            confidence = 100 * \
-                confidences[0] if len(confidences) > 0 else 0
-            num_spaces = len(point_names[1]) - len(point_name) + 1
-            get_logger_for_confidence(confidence)(
-                tag=f"[{self.model_engine}]",
-                msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
-            )
+        try:
+            point_names = ["start", "end_fill",
+                           "post", "ch1", "ch2", "ch3"]
+            for i, (candidates, confidences) in enumerate(self.model_candidates):
+                if i == 2:
+                    # do not print confidence of "post" point, it doesn't matter
+                    continue
+                point_name = point_names[i]
+                # issue: QModel is returning a single `float` instead of a `list`
+                if type(confidences) is float:
+                    confidences = [confidences]
+                confidence = 100 * \
+                    confidences[0] if len(confidences) > 0 else 0
+                num_spaces = len(point_names[1]) - len(point_name) + 1
+                get_logger_for_confidence(confidence)(
+                    tag=f"[{self.model_engine}]",
+                    msg=f"Confidence @ {point_name}:{' '*num_spaces}{confidence:2.0f}%"
+                )
+        except:
+            Log.e("Error printing confidences from QModel response.")
 
     def resizeEvent(self, event):
         # # Position relative to main window
@@ -4990,7 +5154,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     )  # require re-click to show popup tool incorrect position
         pass
 
-    def _optimize_curve(self, data_path):
+    def _optimize_curve(self, data_path: str) -> float:
         """
         Optimizes the difference factor for a given data file.
 
@@ -5017,7 +5181,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             optimal_factor = None
             with secure_open(data_path, "r", "capture") as f:
                 file_header = BytesIO(f.read())
-                optimizer = DifferenceFactorOptimizer(file_header)
+                optimizer = DifferenceFactorOptimizer(data_path, file_header)
                 optimal_factor, lb, rb = optimizer.optimize()
                 Log.i(
                     TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
@@ -5036,49 +5200,56 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e(TAG, f"Error Details: {str(e)}")
             return Constants.default_diff_factor
 
-    def _correct_drop_effect(self, file_header: str) -> tuple:
+    def _correct_drop_effect(self, file_path: str, poi_vals: list, context: str = 'process') -> tuple:
         """
-        Corrects the dissipation drop effect in the provided file.
+        Corrects the dissipation and resonance drop effect in the provided file.
 
-        This method reads the contents of the file specified by `file_header`, 
+        This method reads the contents of the file specified by `file_path`, 
         applies a drop effect correction algorithm using the specified 
         difference factor, and returns the corrected data if successful.
 
         Args:
-            file_header (str): Path to the file containing the data to be corrected.
+            file_path (str): Path to the file containing the data to be corrected.
+            poi_vals (list): List of points-of-interest passed from QModel or user-input.
+            context (str): Indicate the context of the call. Values: 'process', 'worker'.
 
         Returns:
             tuple or None: The corrected data if the correction is successful; 
             otherwise, returns None and logs that the original data will be used.
 
         Logs:
-            - Info: Indicates the start of the drop effect cancellation process with the difference factor.
-            - Debug: Indicates whether the drop effect cancellation was successful or not.
+            - Debug: Indicates the start of the drop effect cancellation process with the difference factor.
+            - Info: Indicates the drop effect result when successful.
+            - Warning: Indicates the drop effect result when not result was returned.
+            - Error: Indicates the drop effect result when an unhandled error occurred.
 
         Raises:
             IOError: If there is an issue opening or reading the file.
             Exception: For any unexpected errors during the correction process.
         """
         try:
-            with secure_open(file_header, "r", "capture") as f:
-                file_header = BytesIO(f.read())
+            with secure_open(file_path, "r", "capture") as f:
+                file_buffer = BytesIO(f.read())
                 if hasattr(self, 'diff_factor'):
                     diff_factor = self.diff_factor
                 else:
                     diff_factor = 2.0
-                dec = DropEffectCorrection(
-                    file_buffer=file_header, initial_diff_factor=diff_factor)
-                corrected_data = dec.correct_drop_effects()
 
-                Log.i(
-                    TAG, f'Performing drop effect cancelation with difference factor {self.diff_factor}.')
+                Log.d(
+                    TAG, f'Performing drop effect cancelation with difference factor {diff_factor}.')
+
+                dec = DropEffectCorrection(
+                    file_path=file_path, file_buffer=file_buffer, initial_diff_factor=diff_factor, bounds=poi_vals)
+                corrected_data = dec.correct_drop_effects(
+                    save_corrections=True if context == "worker" else False
+                )
 
             if corrected_data is not None:
-                Log.d(
+                Log.i(
                     TAG, f"Drop effect cancelation successful.")
                 return corrected_data
             else:
-                Log.d(
+                Log.w(
                     TAG, f"Drop effect cancelation failed. Using original data.")
                 return [None, None]
         except Exception as e:
@@ -5211,6 +5382,15 @@ class AnalyzerWorker(QtCore.QObject):
                     # if name == "surface_tension":
                     # if name == "contact_angle":
                     # if name == "density":
+
+                    # if name == "protein_type":
+                    # if name == "protein_concentration":
+                    # if name == "buffer_type":
+                    # if name == "buffer_concentration":
+                    # if name == "surfactant_type":
+                    # if name == "surfactant_concentration":
+                    # if name == "stabilizer_type":
+                    # if name == "stabilizer_concentration":
 
                 batch = str(
                     xml_params.get("batch_number", "N/A")
@@ -5426,9 +5606,11 @@ class AnalyzerWorker(QtCore.QObject):
             canceled_diss, canceled_rf = None, None
             if self.parent.drop_effect_cancelation_checkbox.isChecked():
                 canceled_diss, canceled_rf = self.parent._correct_drop_effect(
-                    self.loaded_datapath)
+                    self.loaded_datapath, poi_vals, 'worker')
                 if canceled_diss is not None:
                     dissipation = canceled_diss
+                if canceled_rf is not None:
+                    resonance_frequency = canceled_rf
 
             # raw data
             xs = relative_time
@@ -5567,10 +5749,6 @@ class AnalyzerWorker(QtCore.QObject):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            # 'RF' Drop Effect Correction
-            if self.parent.drop_effect_cancelation_checkbox.isChecked():
-                if canceled_rf is not None:
-                    ys_freq = avg - canceled_rf
 
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
@@ -6509,6 +6687,7 @@ class AnalyzerWorker(QtCore.QObject):
                 fig_dbg.show()
 
             idx_of_normal_pts_to_remove = []
+            idx_of_normal_pts_to_retain = []
             for p in normal_pts:
                 midpoint_p_i = next(
                     x for x, y in enumerate(ys_normal) if y >= p) + tp
@@ -6525,6 +6704,8 @@ class AnalyzerWorker(QtCore.QObject):
                 times.append(midpoint_p_i)
                 if p == 0.2 or p == 0.4:
                     idx_of_normal_pts_to_remove.append(midpoint_p_i)
+                else:
+                    idx_of_normal_pts_to_retain.append(midpoint_p_i)
             times.sort()  # sort again, so midpoints are in proper order
 
             self.update(status_label)
@@ -7222,29 +7403,38 @@ class AnalyzerWorker(QtCore.QObject):
 
             viscosity_at_1p15 = viscosity[-len(distances)]
 
+            # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 10% of POI2 and POI4
             try:
-                idx0 = -6
-                idx1 = -5
-                idx2 = -4
-                idx3 = -3
-                avg_viscosity = np.average(
-                    [in_viscosity[idx0], in_viscosity[idx3]])
-                std_viscosity = np.std(
-                    np.delete(in_viscosity, [idx1, idx2])
-                )  # all of in_viscosity, just not 2 points
-                min_visc = 0.9*min(viscosity[-len(distances)],
-                                   viscosity[-1])
-                max_visc = 1.1*max(viscosity[-len(distances)],
-                                   viscosity[-1])
-                Log.d(
-                    f"Expected viscosity = {avg_viscosity} +/- {std_viscosity}, min = {min_visc}, max = {max_visc}"
+                normal_idxs = []
+                for i in idx_of_normal_pts_to_retain:
+                    if i in times:
+                        normal_idxs.append(-len(distances)+times.index(i))
+                    else:
+                        Log.w(
+                            f"Index for {i} in `times` cannot be found in list. Skipping point")
+                if len(normal_idxs) == 0:
+                    raise Exception("Empty list cannot be reduced further")
+                idx0 = np.min(normal_idxs)-1  # POI2
+                idx1 = np.max(normal_idxs)+1  # POI4
+                # avg_viscosity = np.average(
+                #     [in_viscosity[idx0], in_viscosity[idx3]])
+                # std_viscosity = np.std(
+                #     np.delete(in_viscosity, [idx1, idx2])
+                # )  # all of in_viscosity, just not 2 points
+                min_visc = 0.9*min(viscosity[idx0],
+                                   viscosity[idx1])
+                max_visc = 1.1*max(viscosity[idx0],
+                                   viscosity[idx1])
+                Log.i(
+                    f"Expected normal viscosity range = (min = {min_visc}, max = {max_visc})"
                 )
-                Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
-                for i in range(-len(distances), 0):
+                # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
+                for x, i in enumerate(normal_idxs):
+                    pt = "60%" if x == 0 else "80%"
                     if min_visc <= viscosity[i] <= max_visc:
                         continue
-                    Log.d(
-                        f"Removed point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
+                    Log.w(
+                        f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
                     )
                     in_shear_rate = np.delete(in_shear_rate, i)
                     in_viscosity = np.delete(in_viscosity, i)
@@ -7328,6 +7518,23 @@ class AnalyzerWorker(QtCore.QObject):
                         f"Dropping initial fill region due to being outside of the accepted limits (see Debug for more info)"
                     )
                     hide_initial_fill = True
+            ##################
+
+            ### BANDAID #4 ###
+            # PURPOSE: Hide 60% and/or 80% points when trending in the wrong direction surrounding POI2 and POI4
+            # enable_bandaid_4 = True
+            # if enable_bandaid_4:
+            #     for i in idx_of_normal_pts_to_retain:
+            #         try:
+            #             idx = times.index(i)
+            #             Log.d(
+            #                 f"Removing index {idx} from distances with value {distances[idx]}."
+            #             )
+            #             distances = np.delete(distances, idx)
+            #             Log.d(f"Removing index {idx} from times with value {i}.")
+            #             times.remove(i)
+            #         except Exception as e:
+            #             Log.e("Error removing midpoint from dataset:", str(e))
             ##################
 
             if initial_fill[-1] >= 90 and not hide_initial_fill:
@@ -7695,6 +7902,11 @@ class AnalyzerWorker(QtCore.QObject):
                 copy_file = export_path
                 zf.write(copy_file, arcname=os.path.split(copy_file)[1])
                 os.remove(copy_file)
+
+                copy_file = export_path.replace(".csv", "_0.pdf")
+                if os.path.exists(copy_file):  # Drop effect figure (optional)
+                    zf.write(copy_file, arcname=os.path.split(copy_file)[1])
+                    os.remove(copy_file)
 
                 copy_file = export_path.replace(".csv", "_1.pdf")
                 zf.write(copy_file, arcname=os.path.split(copy_file)[1])

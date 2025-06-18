@@ -29,6 +29,7 @@ class MinimalPython:
 class UpdateEngines(Enum):
     DropboxAPI = 0
     GitHub = 1
+    Nightly = 2
 
 
 ###############################################################################
@@ -40,8 +41,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b57"
-    app_date = "2025-04-23"
+    app_version = "v2.6b61"
+    app_date = "2025-05-19"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -51,7 +52,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b53"
+    best_fw_version = "v2.6r60"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
@@ -310,7 +311,9 @@ class Constants:
     ######################
     list_predict_models = ["ModelData",
                            "QModel v2",
-                           "QModel v3"]
+                           "QModel v3",
+                           "QModel v3 + Partial Fills"]
+    PF_predict = True
     QModel3_predict = True
     QModel2_predict = True
     ModelData_predict = True
@@ -363,6 +366,17 @@ class Constants:
     UpdateEngine = UpdateEngines.GitHub
     UpdateGitRepo = "https://github.com/QATCH-Technologies/nanovisQ"
     UpdateGitBranch = "main"
+
+    ######################
+    # NIGHTLY adjustment #
+    ######################
+    if os.path.exists("QATCH/nightly/latest_build.json"):
+        with open("QATCH/nightly/latest_build.json", 'r') as f:
+            import json
+            data = json.load(f)
+            if "name" in data:
+                app_version = f"{app_version}_nightly"
+                app_date = data["name"].split()[-1][1:-1]
 
     @staticmethod
     def windll_is_caps_lock_on() -> bool:

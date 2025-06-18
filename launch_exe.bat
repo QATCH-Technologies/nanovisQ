@@ -37,6 +37,9 @@ echo PASS: Verified!
 del calc.checksum
 del app.checksum
 
+REM Hide the bundled companion directory
+attrib +h +s _internal
+
 echo.
 echo Launching verified application...
 
