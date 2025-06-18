@@ -579,6 +579,7 @@ class DropEffectCorrection(CurveOptimizer):
         local_indices = np.arange(diff_offset, len(values))
         diffs = values[local_indices] - values[local_indices - diff_offset]
 
+        first_region_found = []
         contiguous_region_found = False
         last_region_size = 0
 
@@ -606,25 +607,36 @@ class DropEffectCorrection(CurveOptimizer):
                 else:
                     current_streak = [idx]
 
-                # Check if we have reached at least 2 contiguous points.
-                if len(current_streak) > last_region_size:
+                # Check if we have reached at least 3 contiguous points.
+                if len(current_streak) > max(3, last_region_size):
+                    if not first_region_found:
+                        first_region_found = current_streak
                     contiguous_region_found = True
                     break
 
-            if contiguous_region_found and last_region_size == len(current_streak):
-                break
+            if contiguous_region_found:
+                if last_region_size == len(current_streak) or col_name == "Resonance_Frequency":
+                    break  # wait for stable result; but skip this delay for rf data
             last_region_size = len(current_streak)
             starting_threshold_factor -= 1
             if starting_threshold_factor <= 0:
-                Log.w(self.TAG, "No drop effects could be detected.")
+                Log.w(
+                    self.TAG, "Reverting to initial region. Reached min threshold factor.")
+                current_streak = first_region_found
                 break
+        if diff_offset in current_streak:
+            Log.w(self.TAG, "Reverting to initial region. Returned min diff offset.")
+            current_streak = first_region_found
 
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
         min_count = len(current_streak)
         min_drop = min(current_streak)
-        argmax = np.argmax(values[:min_drop])
-        base_slope = (values[argmax] - values[0]) / min_drop
         sign = 1 if col_name == "Dissipation" else -1
+        if sign == 1:
+            argidx = np.argmax(values[:min_drop])
+        else:
+            argidx = np.argmin(values[:min_drop])
+        base_slope = (values[argidx] - values[0]) / min_drop
         window_size = 3
         while True:
             min_drop = min_drop - 1
@@ -664,7 +676,7 @@ class DropEffectCorrection(CurveOptimizer):
     def correct_drop_effects(self,
                              baseline_diss: list = None,
                              baseline_rf: list = None,
-                             show_corrections: bool = False,
+                             show_corrections: bool = False,  # Default to True for debug ONLY
                              save_corrections: bool = False) -> tuple:
         """
         Corrects drop effects in dissipation and resonance frequency data.
@@ -746,10 +758,22 @@ class DropEffectCorrection(CurveOptimizer):
             else:
                 contiguous_regions.append([idx])
 
+        # Check if two zones got merged into one; where one would get skipped but not the other
+        if len(contiguous_regions) == 1:
+            region = contiguous_regions[0]
+            idx = region[0]
+            if idx - self._left_bound['index'] < len(region) // 2:
+                Log.w(
+                    self.TAG, "Taking the smaller region to prevent it from being skipped.")
+                if len(drop_effects_diss) < len(drop_effects_rf):
+                    contiguous_regions = [drop_effects_diss]
+                else:
+                    contiguous_regions = [drop_effects_rf]
+
         Log.d(
             self.TAG, f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.")
         Log.d(
-            self.TAG, f"Raw drop effect regions: {[list(np.array(idx, dtype=int)) for idx in contiguous_regions]}")
+            self.TAG, f"Raw drop effect regions: {[[int(i) for i in np.array(idx, dtype=int)] for idx in contiguous_regions]}")
 
         if len(contiguous_regions) > 1:
             Log.d(
