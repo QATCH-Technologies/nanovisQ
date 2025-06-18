@@ -7,7 +7,7 @@ import xgboost as xgb
 from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
 from QATCH.common.logger import Logger as Log
 
-TAG = '[QModel_Ch1]'
+TAG = "[QModel_Ch1]"
 
 
 class QModelPredictorCh1:

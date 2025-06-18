@@ -5350,6 +5350,7 @@ class UpdaterProcess_Dbx(multiprocessing.Process):
 
 
 class UpdaterTask(QtCore.QThread):
+
     TAG = "[UpdaterTask]"
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)

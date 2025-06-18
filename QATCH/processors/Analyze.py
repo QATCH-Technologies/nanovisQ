@@ -867,8 +867,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.drop_effect_cancelation_checkbox = QtWidgets.QCheckBox(
             "Drop effect correction")
-
-        self.drop_effect_cancelation_checkbox.setChecked(False)
+        self.drop_effect_cancelation_checkbox.setChecked(True)
         self.drop_effect_cancelation_checkbox.clicked.connect(
             self.use_drop_effect_cancelation)
         self.gridLayout.addWidget(
@@ -4520,9 +4519,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             canceled_diss, canceled_rf = None, None
             if self.drop_effect_cancelation_checkbox.isChecked():
                 canceled_diss, canceled_rf = self._correct_drop_effect(
-                    self.loaded_datapath)
+                    self.loaded_datapath, poi_vals, 'process')
                 if canceled_diss is not None:
                     dissipation = canceled_diss
+                if canceled_rf is not None:
+                    resonance_frequency = canceled_rf
 
             # raw data
             xs = relative_time
@@ -4660,10 +4661,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            # 'RF' Drop Effect Correction
-            if self.drop_effect_cancelation_checkbox.isChecked():
-                if canceled_rf is not None:
-                    ys_freq = avg - canceled_rf
 
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
@@ -5157,7 +5154,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     )  # require re-click to show popup tool incorrect position
         pass
 
-    def _optimize_curve(self, data_path):
+    def _optimize_curve(self, data_path: str) -> float:
         """
         Optimizes the difference factor for a given data file.
 
@@ -5184,7 +5181,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             optimal_factor = None
             with secure_open(data_path, "r", "capture") as f:
                 file_header = BytesIO(f.read())
-                optimizer = DifferenceFactorOptimizer(file_header)
+                optimizer = DifferenceFactorOptimizer(data_path, file_header)
                 optimal_factor, lb, rb = optimizer.optimize()
                 Log.i(
                     TAG, f'Using difference factor {optimal_factor} optimized between {lb}s and {rb}s.')
@@ -5203,49 +5200,56 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e(TAG, f"Error Details: {str(e)}")
             return Constants.default_diff_factor
 
-    def _correct_drop_effect(self, file_header: str) -> tuple:
+    def _correct_drop_effect(self, file_path: str, poi_vals: list, context: str = 'process') -> tuple:
         """
-        Corrects the dissipation drop effect in the provided file.
+        Corrects the dissipation and resonance drop effect in the provided file.
 
-        This method reads the contents of the file specified by `file_header`, 
+        This method reads the contents of the file specified by `file_path`, 
         applies a drop effect correction algorithm using the specified 
         difference factor, and returns the corrected data if successful.
 
         Args:
-            file_header (str): Path to the file containing the data to be corrected.
+            file_path (str): Path to the file containing the data to be corrected.
+            poi_vals (list): List of points-of-interest passed from QModel or user-input.
+            context (str): Indicate the context of the call. Values: 'process', 'worker'.
 
         Returns:
             tuple or None: The corrected data if the correction is successful; 
             otherwise, returns None and logs that the original data will be used.
 
         Logs:
-            - Info: Indicates the start of the drop effect cancellation process with the difference factor.
-            - Debug: Indicates whether the drop effect cancellation was successful or not.
+            - Debug: Indicates the start of the drop effect cancellation process with the difference factor.
+            - Info: Indicates the drop effect result when successful.
+            - Warning: Indicates the drop effect result when not result was returned.
+            - Error: Indicates the drop effect result when an unhandled error occurred.
 
         Raises:
             IOError: If there is an issue opening or reading the file.
             Exception: For any unexpected errors during the correction process.
         """
         try:
-            with secure_open(file_header, "r", "capture") as f:
-                file_header = BytesIO(f.read())
+            with secure_open(file_path, "r", "capture") as f:
+                file_buffer = BytesIO(f.read())
                 if hasattr(self, 'diff_factor'):
                     diff_factor = self.diff_factor
                 else:
                     diff_factor = 2.0
-                dec = DropEffectCorrection(
-                    file_buffer=file_header, initial_diff_factor=diff_factor)
-                corrected_data = dec.correct_drop_effects()
 
-                Log.i(
-                    TAG, f'Performing drop effect cancelation with difference factor {self.diff_factor}.')
+                Log.d(
+                    TAG, f'Performing drop effect cancelation with difference factor {diff_factor}.')
+
+                dec = DropEffectCorrection(
+                    file_path=file_path, file_buffer=file_buffer, initial_diff_factor=diff_factor, bounds=poi_vals)
+                corrected_data = dec.correct_drop_effects(
+                    save_corrections=True if context == "worker" else False
+                )
 
             if corrected_data is not None:
-                Log.d(
+                Log.i(
                     TAG, f"Drop effect cancelation successful.")
                 return corrected_data
             else:
-                Log.d(
+                Log.w(
                     TAG, f"Drop effect cancelation failed. Using original data.")
                 return [None, None]
         except Exception as e:
@@ -5602,9 +5606,11 @@ class AnalyzerWorker(QtCore.QObject):
             canceled_diss, canceled_rf = None, None
             if self.parent.drop_effect_cancelation_checkbox.isChecked():
                 canceled_diss, canceled_rf = self.parent._correct_drop_effect(
-                    self.loaded_datapath)
+                    self.loaded_datapath, poi_vals, 'worker')
                 if canceled_diss is not None:
                     dissipation = canceled_diss
+                if canceled_rf is not None:
+                    resonance_frequency = canceled_rf
 
             # raw data
             xs = relative_time
@@ -5743,10 +5749,6 @@ class AnalyzerWorker(QtCore.QObject):
             ys = ys - np.amin(ys_fit)
             ys_fit = ys_fit - np.amin(ys_fit)
             ys_freq = avg - resonance_frequency
-            # 'RF' Drop Effect Correction
-            if self.parent.drop_effect_cancelation_checkbox.isChecked():
-                if canceled_rf is not None:
-                    ys_freq = avg - canceled_rf
 
             ys_freq_fit = savgol_filter(
                 ys_freq[:t_first_90_split], smooth_factor, 1)
@@ -7900,6 +7902,11 @@ class AnalyzerWorker(QtCore.QObject):
                 copy_file = export_path
                 zf.write(copy_file, arcname=os.path.split(copy_file)[1])
                 os.remove(copy_file)
+
+                copy_file = export_path.replace(".csv", "_0.pdf")
+                if os.path.exists(copy_file):  # Drop effect figure (optional)
+                    zf.write(copy_file, arcname=os.path.split(copy_file)[1])
+                    os.remove(copy_file)
 
                 copy_file = export_path.replace(".csv", "_1.pdf")
                 zf.write(copy_file, arcname=os.path.split(copy_file)[1])
