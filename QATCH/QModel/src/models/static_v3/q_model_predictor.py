@@ -19,16 +19,79 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, List, Any, Union, Optional
+from typing import Dict, List, Any, Union, Optional, Tuple
 from scipy.signal import find_peaks, savgol_filter
-from QATCH.common.logger import Logger as Log
-from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
-from QATCH.models.ModelData import ModelData
-from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
-from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
-from QATCH.common.architecture import Architecture
 from sklearn.cluster import DBSCAN
+try:
+    from QATCH.common.logger import Logger as Log
+except ImportError:
+    class Log:
+        """
+        Minimal drop-in replacement for QATCH.common.logger.Logger
+        """
 
+        def __init__(self, *tags: str):
+            self.tags = tags
+
+        def _format(self, level: str, msg: str, *args):
+            tagstr = ".".join(self.tags) if self.tags else ""
+            text = msg % args if args else msg
+            if tagstr:
+                print(f"[{level}][{tagstr}] {text}")
+            else:
+                print(f"[{level}] {text}")
+
+        @staticmethod
+        def i(*args):
+            Log._dispatch("INFO", *args)
+
+        @staticmethod
+        def d(*args):
+            Log._dispatch("DEBUG", *args)
+
+        @staticmethod
+        def w(*args):
+            Log._dispatch("WARNING", *args)
+
+        @staticmethod
+        def e(*args):
+            Log._dispatch("ERROR", *args)
+
+        @staticmethod
+        def _dispatch(level: str, *args):
+            """
+            Dispatch a log call. Signature:
+              i(msg, *fmt_args)
+              i(tags, msg, *fmt_args)
+            """
+            if not args:
+                return  # nothing to log
+            # if first arg is a list/tuple of tags, consume it
+            first, *rest = args
+            if isinstance(first, (list, tuple)):
+                tags = first
+                if not rest:
+                    return  # no message
+                msg, *fmt = rest
+            else:
+                tags = []
+                msg, *fmt = args
+            inst = Log(*tags)
+            inst._format(level, msg, *fmt)
+try:
+    from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
+    from QATCH.models.ModelData import ModelData
+    from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
+    from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
+    from QATCH.common.architecture import Architecture
+except ImportError as e:
+    Log().w("Could not import QATCH core modules: %s", e)
+    from q_model_data_processor import QDataProcessor
+    from ModelData import ModelData
+    from q_image_clusterer import QClusterer
+    from q_predictor import QPredictor
+
+PLOTTING = False
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
@@ -246,8 +309,19 @@ class QModelPredictor:
         qmodel_v2_points: List[int] = []
 
         # Paths for clustering and prediction models
-        base_path = os.path.join(Architecture.get_path(
-        ), "QATCH", "QModel", "SavedModels", "qmodel_v2")
+        try:
+            base_path = os.path.join(
+                Architecture.get_path(),
+                "QATCH", "QModel", "SavedModels", "qmodel_v2"
+            )
+        except (NameError, AttributeError):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            repo_root = os.path.abspath(
+                os.path.join(script_dir, os.pardir, os.pardir))
+            base_path = os.path.join(
+                "QModel", "SavedModels", "qmodel_v2"
+            )
+
         cluster_model_path = os.path.join(base_path, "cluster.joblib")
         predict_model_template = os.path.join(base_path, "QMultiType_{}.json")
 
@@ -770,7 +844,7 @@ class QModelPredictor:
         t2 = relative_time[target_2]
 
         # === BEFORE ASSIGNMENT PLOT ===
-        if feature_vector is not None:
+        if feature_vector is not None and PLOTTING:
             fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
             ax_before, ax_after = axes
 
@@ -843,7 +917,7 @@ class QModelPredictor:
         ), "confidences": sorted_conf2.tolist()}
 
         # === AFTER ASSIGNMENT PLOT ===
-        if feature_vector is not None:
+        if feature_vector is not None and PLOTTING:
             ax_after.plot(relative_time, feature_vector["Dissipation"],
                           color="#555555", linewidth=1.5, label="Dissipation")
             if sorted_idx1.size:
@@ -1174,7 +1248,7 @@ class QModelPredictor:
     ) -> List[int]:
         """Filter POI1 candidates using an early-run baseline and IQR outlier removal.
 
-        Computes a baseline dissipation over the first 1–3% of the run. Any candidate
+        Computes a baseline dissipation over the first 1-3% of the run. Any candidate
         whose dissipation at its index does not exceed this baseline is discarded.
         Remaining candidates are then filtered by the interquartile range (IQR) of
         their dissipation values. Finally, the leftmost candidate is offset by
@@ -1732,6 +1806,89 @@ class QModelPredictor:
                         f"Invalid 'indices' or 'confidences' for '{key}'.")
                 data['confidences'] = confs[:len(inds)]
 
+    def _filter_poi1_three_phase(self,
+                                 indices: List[int],
+                                 confidences: List[float],
+                                 feature_vector: pd.DataFrame,
+                                 relative_time: np.ndarray
+                                 ) -> Tuple[List[int], List[float]]:
+        """
+        Three-phase POI1 filtering over a full feature_vector:
+        1. bias to first positive gradient shift in 'Dissipation'
+        2. bias to first negative shift in 'Resonance_Frequency'
+            and alignment with 'Difference_smooth'
+        3. fallback on any '*_DoG_SVM_Score' shifts
+        Returns filtered (indices, confidences) of equal length.
+        """
+        # pull out the series we need
+        dissipation = feature_vector['Dissipation'].values
+        resonance = feature_vector['Resonance_Frequency'].values
+        diff_smooth = feature_vector['Difference_smooth'].values
+
+        # collect all SVM‐score columns
+        svm_scores = {
+            col: feature_vector[col].values
+            for col in feature_vector.columns
+            if col.endswith('_DoG_SVM_Score')
+        }
+
+        # keep originals for fallback and re-mapping confidences
+        orig_inds = list(indices)
+        orig_confs = list(confidences)
+
+        # helper to pick candidates after a given timestamp
+        def pick_after(cands, times, t):
+            return [i for i in cands if times[i] > t]
+
+        # --- Phase 1: dissipation positive gradient shift ---
+        grad_d = np.gradient(dissipation, relative_time)
+        thr_d = grad_d.mean() + grad_d.std()
+        sh_d = np.where(grad_d > thr_d)[0]
+        if len(sh_d):
+            t1 = relative_time[sh_d[0]]
+            inds = pick_after(orig_inds, relative_time, t1)
+        else:
+            inds = orig_inds
+
+        # --- Phase 2: resonance negative shift + diff_smooth alignment ---
+        grad_r = np.gradient(resonance, relative_time)
+        thr_r = grad_r.mean() - grad_r.std()
+        sh_r = np.where(grad_r < thr_r)[0]
+        if len(sh_r):
+            t2 = relative_time[sh_r[0]]
+            inds = pick_after(inds, relative_time, t2)
+
+        # align to first diff_smooth shift near same time
+        grad_diff = np.gradient(diff_smooth, relative_time)
+        thr_diff = grad_diff.mean() + grad_diff.std()
+        sh_diff = np.where(grad_diff > thr_diff)[0]
+        if len(sh_diff):
+            t_diff = relative_time[sh_diff[0]]
+            avg_interval = np.mean(np.diff(sorted(relative_time[orig_inds])))
+            tol = avg_interval / 2
+            # keep if within ±tol of that shift
+            aligned = [i for i in inds if abs(
+                relative_time[i] - t_diff) <= tol]
+            inds = aligned or inds
+
+        # --- Phase 3: fallback on any *_DoG_SVM_Score shifts ---
+        if not inds:
+            for scores in svm_scores.values():
+                jumps = np.abs(np.diff(scores))
+                thr_j = jumps.mean() + jumps.std()
+                big = np.where(jumps > thr_j)[0]
+                if len(big):
+                    t3 = relative_time[big[0] + 1]
+                    inds = pick_after(orig_inds, relative_time, t3)
+                    if inds:
+                        break
+            inds = inds or orig_inds
+
+        # re-sync confidences in the filtered order
+        confs = [orig_confs[orig_inds.index(i)] for i in inds]
+
+        return inds, confs
+
     @staticmethod
     def _valid_index(idx: Any, arr: np.ndarray) -> bool:
         """Check whether idx is a valid array index into arr.
@@ -1745,35 +1902,66 @@ class QModelPredictor:
         """
         return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
 
-    def _dbscan_cluster_indices(self, cand_indices: np.ndarray, eps_samples: int = 5, min_samples: int = 1):
+    def _dbscan_cluster_indices(
+        self,
+        cand_indices: np.ndarray,
+        r_time: np.ndarray,
+        eps_fraction: float = 0.01,
+        min_eps: int = 3,
+        max_eps: int = 20,
+        min_samples: int = 1,
+    ) -> tuple[np.ndarray, int]:
         """
-        Cluster candidate points by their sample index (uniform grid),
-        avoiding artifacts from nonuniform time sampling.
+        Cluster candidate points by their sample index,
+        but choose eps_samples based on the total run length.
+
+        Args:
+          - cand_indices: array of integer sample‐indices for candidates
+          - r_time: array of same length as the original signal, giving time (s)
+          - eps_fraction: fraction of total run‐time to use as DBSCAN radius
+          - min_eps: lower bound on eps in samples
+          - max_eps: upper bound on eps in samples
+          - min_samples: DBSCAN min_samples
         Returns:
           - labels: cluster label per candidate
           - densest: the label with the most members
         """
+        # total duration (if r_time starts at 0, same as r_time.max())
+        total_time = float(r_time.max() - r_time.min()
+                           if r_time.max() > r_time.min() else r_time.max())
+
+        # estimate median time between samples
+        diffs = np.diff(r_time)
+        dt = float(np.median(diffs[diffs > 0])) if np.any(diffs > 0) else 1.0
+
+        # decide eps in seconds, then convert to # of samples
+        eps_time = total_time * eps_fraction
+        eps_samples = int(np.clip(eps_time / dt, min_eps, max_eps))
+
+        # do the clustering
         X = cand_indices.reshape(-1, 1)
         labels = DBSCAN(eps=eps_samples,
                         min_samples=min_samples).fit_predict(X)
+
         unique, counts = np.unique(labels, return_counts=True)
         densest = unique[np.argmax(counts)]
+
         return labels, densest
 
-    def cluster(self,
-                df,
-                r_time: np.ndarray,
-                extracted_predictions: dict[str, dict[str, list]],
-                eps_samples: int = 5,
-                min_samples: int = 1,
-                plotting: bool = True
-                ) -> dict[str, dict[str, list]]:
+    def cluster(
+        self,
+        df,
+        r_time: np.ndarray,
+        extracted_predictions: dict[str, dict[str, list]],
+        eps_fraction: float = 0.01,
+        min_eps: int = 3,
+        max_eps: int = 20,
+        min_samples: int = 1,
+        plotting: bool = PLOTTING
+    ) -> dict[str, dict[str, list]]:
         """
-        Post-process only POI4–6 via DBSCAN on sample indices:
-         • POI1–3 → copied unchanged
-         • POI4–6 → cluster on indices (uniform), keep densest cluster
-         • plotting shows dissipation + clusters
-         • returns trimmed {indices, confidences} dict
+        Post-process POI4–6 via DBSCAN on sample indices,
+        with eps scaled to run length.
         """
         times = r_time
         diss = df["Difference_DoG_SVM_Score"].values
@@ -1789,7 +1977,7 @@ class QModelPredictor:
         trimmed: dict[str, dict[str, list]] = {}
 
         for i, (poi, preds) in enumerate(extracted_predictions.items()):
-            # --- POI1–3: pass through unchanged ---
+            # POI1–3: unchanged
             if poi not in ("POI4", "POI5", "POI6"):
                 entry = {"indices": list(preds.get("indices", []))}
                 if "confidences" in preds:
@@ -1797,9 +1985,8 @@ class QModelPredictor:
                 trimmed[poi] = entry
                 continue
 
-            # --- POI4–6: cluster on sample index ---
             inds = np.array(preds.get("indices", []), dtype=int)
-            confs = preds.get("confidences")  # may be None
+            confs = preds.get("confidences")
 
             if inds.size == 0:
                 entry = {"indices": []}
@@ -1809,50 +1996,60 @@ class QModelPredictor:
                 continue
 
             labels, densest = self._dbscan_cluster_indices(
-                inds, eps_samples=eps_samples, min_samples=min_samples
+                inds,
+                r_time=times,
+                eps_fraction=eps_fraction,
+                min_eps=min_eps,
+                max_eps=max_eps,
+                min_samples=min_samples
             )
-            keep_locs = np.where(labels == densest)[0]
+            keep = labels == densest
 
-            # build trimmed lists in lock-step
-            keep_inds = [int(inds[j]) for j in keep_locs]
+            # build trimmed lists
+            keep_inds = [int(idx) for idx, flag in zip(inds, keep) if flag]
             entry = {"indices": keep_inds}
             if confs is not None:
-                entry["confidences"] = [confs[j]
-                                        for j in keep_locs if j < len(confs)]
+                entry["confidences"] = [
+                    c for c, flag in zip(confs, keep) if flag
+                ]
             trimmed[poi] = entry
 
-            # --- plotting for POI4–6 ---
             if plotting:
-                cand_times = times[inds]
+                # plot all clusters, highlight densest
                 for lbl in np.unique(labels):
                     mask = labels == lbl
                     face = cmap(i) if lbl == densest else "none"
                     size = 80 if lbl == densest else 50
                     ax.scatter(
-                        cand_times[mask],
+                        times[inds[mask]],
                         diss[inds[mask]],
                         edgecolor=cmap(i),
                         facecolor=face,
                         s=size,
-                        label=f"{poi} C{lbl}" if i == 3 and lbl == densest else None,
+                        label=f"{poi} C{lbl}" if (
+                            i == 3 and lbl == densest) else None,
                         zorder=4
                     )
-                # star at cluster center (in time)
+                # star at cluster center
                 center_idx = int(np.mean(inds[labels == densest]))
                 center_time = times[center_idx]
-                ax.plot(center_time, diss[center_idx],
-                        marker="*", markersize=15,
-                        color=cmap(i),
-                        label=f"{poi} densest")
-                ax.text(center_time,
-                        diss.max()*0.9,
-                        f"{poi}→C{densest}",
-                        rotation=90, va="top", ha="right",
-                        fontsize=8, color=cmap(i))
+                ax.plot(
+                    center_time, diss[center_idx],
+                    marker="*", markersize=15, color=cmap(i),
+                    label=f"{poi} densest"
+                )
+                ax.text(
+                    center_time,
+                    diss.max() * 0.9,
+                    f"{poi}→C{densest}",
+                    rotation=90, va="top", ha="right",
+                    fontsize=8, color=cmap(i)
+                )
 
         if plotting:
             ax.legend(loc="upper left", fontsize=8, ncol=2, framealpha=0.9)
-            plt.title(f"DBSCAN on Indices (eps={eps_samples} samples)")
+            plt.title(f"DBSCAN on Indices (eps_fraction={eps_fraction}, "
+                      f"min_eps={min_eps}→max_eps={max_eps})")
             plt.tight_layout()
             plt.show()
 
@@ -1916,15 +2113,16 @@ class QModelPredictor:
         """
         Refine POI predictions by applying baseline filtering, timing windows, and bias correction.
         """
-        filtered_poi1 = self._filter_poi1_baseline(
-            predictions.get('POI1', {}).get('indices', []),
-            dissipation_raw,
-            relative_time,
-            feature_vector['Difference_smooth'].values
+        poi1_inds, poi1_confs = self._filter_poi1_three_phase(
+            predictions['POI1']['indices'],
+            predictions['POI1']['confidences'],
+            feature_vector,
+            relative_time
         )
+
         predictions['POI1'] = {
-            'indices': filtered_poi1,
-            'confidences': predictions.get('POI1', {}).get('confidences')
+            'indices': poi1_inds,
+            'confidences': poi1_confs
         }
         # copy inputs to avoid side-effects
         best_positions = self._copy_predictions(predictions)
@@ -2019,7 +2217,7 @@ class QModelPredictor:
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = True) -> Dict[str, Any]:
+                plotting: bool = PLOTTING) -> Dict[str, Any]:
         """Load data, run QModel v3 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
@@ -2094,9 +2292,6 @@ class QModelPredictor:
             relative_time=df["Relative_time"].values,
             feature_vector=feature_vector,
             raw_vector=df)
-        print(extracted_predictions)
-        print("=======")
-        print(final_predictions)
         if plotting:
             # Common data we'll reuse
             times_all = df["Relative_time"]
