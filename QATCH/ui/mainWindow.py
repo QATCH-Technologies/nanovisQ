@@ -4356,6 +4356,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     color = '#00ff00' if not update_available else '#ff0000'
                     if update_now:
                         (build, key) = latest_bundle
+                        self.latest_build = build
                         self.url_download = {"date": build['created_at'].split('T')[0],
                                              "name": f"{build['name'].split()[0]}.zip",
                                              "path": build['archive_download_url'],
@@ -5316,9 +5317,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.close_no_confirm = True
                 QtCore.QTimer.singleShot(1000, self.ControlsWin.close)
 
+                # Update latest build information for nightly
+                if Constants.UpdateEngine == UpdateEngines.Nightly:
+                    if hasattr(self, "latest_build"):
+                        from QATCH.nightly.artifacts import GH_Artifacts
+                        GH_Artifacts().write_latest_build_file(self.latest_build)
+
         elif hasattr(self, "updater") and self.updater._cancel:
             Log.w(
                 "User aborted software download by clicking cancel. Failed to update software.")
+
         else:
             PopUp.critical(self, "QATCH Software Update Failed!",
                            "Setup of new application encountered a fatal error.\nSee log for details.", ok_only=True)
@@ -5388,6 +5396,7 @@ class UpdaterProcess_Dbx(multiprocessing.Process):
 
 
 class UpdaterTask(QtCore.QThread):
+
     TAG = "[UpdaterTask]"
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
@@ -5543,6 +5552,7 @@ class TECTask(QtCore.QThread):
     _tec_update_now = False
     _tec_stop_thread = False
     _tec_debug = False
+    _tec_out_of_sync = False
 
     _task_timer = None
     _task_rate = 5000
@@ -5587,8 +5597,26 @@ class TECTask(QtCore.QThread):
                 try:
                     sp = ""  # only update TEC if changed
                     if (self.slider_value != self._tec_setpoint and not self.slider_down):
-                        Log.d("Scheduling TEC for immediate update (out-of-sync)!")
-                        self._tec_update_now = True
+                        # Try to update now to re-sync; if that fails, then auto-off.
+                        if not self._tec_out_of_sync:
+                            Log.d(
+                                "Scheduling TEC for immediate update (out-of-sync)!")
+                            self._tec_out_of_sync = True
+                            self._tec_update_now = True
+                        else:
+                            Log.w(
+                                "Shutting down TEC to re-sync states (out-of-sync)!")
+                            self._tec_out_of_sync = False
+                            new_l1 = "[AUTO-OFF ERROR]"
+                            self._tec_update("OFF")
+                            self._task_stop()
+                            self.auto_off.emit()
+                            self.lTemp_setText.emit(new_l1)
+                            self.lTemp_setStyleSheet.emit(
+                                "background-color: {}".format('red'))
+                            return
+                    else:
+                        self._tec_out_of_sync = False
                     if self._tec_update_now and not self._tec_locked:
                         sp = self.slider_value
                     if self.slider_enable:

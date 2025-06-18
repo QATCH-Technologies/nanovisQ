@@ -113,10 +113,11 @@ class FillForecasterProcess(multiprocessing.Process):
                 if new_data is not None and not new_data.empty:
                     self._forecaster.update_predictions(
                         new_data=new_data)
-                self._queue_out.put(
+                self._queue_out.put([
                     self._forecaster.get_fill_status(),
                     self._forecaster.get_start_time(),
-                    self._forecaster.get_end_time())
+                    self._forecaster.get_end_time()
+                ])
         except Exception:
             # Capture and log the traceback in case of an exception.
             limit: Optional[int] = None

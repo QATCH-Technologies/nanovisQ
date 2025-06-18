@@ -16,7 +16,8 @@ from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from typing import Union
 import re
-TAG = '[UserProfiles]'
+
+TAG = "[UserProfiles]"
 
 
 class UserRoles(Enum):

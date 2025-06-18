@@ -152,7 +152,7 @@ class GH_Artifacts:
                         update_recommended = False
             else:
                 print(
-                    "[INFO]", "Writing latest build file. This is normal after an update.")
+                    "[INFO]", "Writing latest build file as none exists. Assuming no update.")
                 self.write_latest_build_file(latest_build)
                 update_recommended = False
 

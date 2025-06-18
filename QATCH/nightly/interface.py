@@ -89,7 +89,6 @@ class UpdaterTask_Nightly(UpdaterTask):
             if not self._cancel:
                 Log.d("GUI: Toggle progress mode")
                 Log.i(self.TAG, "Finshed downloading!")
-                artifacts.delete_latest_build_file()
             else:
                 self.progressTaskHandle.join()
                 if os.path.exists(save_to):
