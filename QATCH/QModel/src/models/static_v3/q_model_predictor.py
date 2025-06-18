@@ -8,10 +8,10 @@ file validation, feature extraction, probability formatting, and bias correction
 POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 05-02-2025
-Version: QModel.Ver3.15
+Date: 06-18-2025
+Version: QModel.Ver3.16
 """
-
+import math
 import xgboost as xgb
 from sklearn.pipeline import Pipeline
 import pickle
@@ -19,14 +19,73 @@ import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Dict, List, Any, Union, Optional
+from typing import Dict, List, Any, Union, Optional, Tuple
 from scipy.signal import find_peaks, savgol_filter
-from QATCH.common.logger import Logger as Log
-from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
-from QATCH.models.ModelData import ModelData
-from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
-from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
-from QATCH.common.architecture import Architecture
+from sklearn.cluster import DBSCAN
+try:
+    from QATCH.common.logger import Logger as Log
+except ImportError:
+    class Log:
+        """
+        Minimal drop-in replacement for QATCH.common.logger.Logger
+        """
+
+        def __init__(self, *tags: str):
+            self.tags = tags
+
+        def _format(self, level: str, msg: str, *args):
+            tagstr = ".".join(self.tags) if self.tags else ""
+            text = msg % args if args else msg
+            if tagstr:
+                print(f"[{level}][{tagstr}] {text}")
+            else:
+                print(f"[{level}] {text}")
+
+        @staticmethod
+        def i(*args):
+            Log._dispatch("INFO", *args)
+
+        @staticmethod
+        def d(*args):
+            Log._dispatch("DEBUG", *args)
+
+        @staticmethod
+        def w(*args):
+            Log._dispatch("WARNING", *args)
+
+        @staticmethod
+        def e(*args):
+            Log._dispatch("ERROR", *args)
+
+        @staticmethod
+        def _dispatch(level: str, *args):
+            if not args:
+                return
+            first, *rest = args
+            if isinstance(first, (list, tuple)):
+                tags = first
+                if not rest:
+                    return
+                msg, *fmt = rest
+            else:
+                tags = []
+                msg, *fmt = args
+            inst = Log(*tags)
+            inst._format(level, msg, *fmt)
+try:
+    from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
+    from QATCH.models.ModelData import ModelData
+    from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
+    from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
+    from QATCH.common.architecture import Architecture
+except ImportError as e:
+    Log().w("Could not import QATCH core modules: %s", e)
+    from q_model_data_processor import QDataProcessor
+    from ModelData import ModelData
+    from q_image_clusterer import QClusterer
+    from q_predictor import QPredictor
+
+PLOTTING = False
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
@@ -244,8 +303,19 @@ class QModelPredictor:
         qmodel_v2_points: List[int] = []
 
         # Paths for clustering and prediction models
-        base_path = os.path.join(Architecture.get_path(
-        ), "QATCH", "QModel", "SavedModels", "qmodel_v2")
+        try:
+            base_path = os.path.join(
+                Architecture.get_path(),
+                "QATCH", "QModel", "SavedModels", "qmodel_v2"
+            )
+        except (NameError, AttributeError):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            repo_root = os.path.abspath(
+                os.path.join(script_dir, os.pardir, os.pardir))
+            base_path = os.path.join(
+                "QModel", "SavedModels", "qmodel_v2"
+            )
+
         cluster_model_path = os.path.join(base_path, "cluster.joblib")
         predict_model_template = os.path.join(base_path, "QMultiType_{}.json")
 
@@ -404,7 +474,7 @@ class QModelPredictor:
                 numpy ndarray.
             ValueError:
                 If `predicted_probabilities` is not 2D, if its second dimension
-                is less than 7 (to cover classes 0–6), or if `model_data_labels`
+                is less than 7 (to cover classes 0-6), or if `model_data_labels`
                 has fewer than 6 elements.
         """
         # --- input validation (unchanged + threshold/min_count checks) ---
@@ -415,7 +485,7 @@ class QModelPredictor:
             raise ValueError("`predicted_probabilities` must be 2D.")
         n_classes = predicted_probabilities.shape[1]
         if n_classes < 7:
-            raise ValueError("Need at least 7 columns for classes 0–6.")
+            raise ValueError("Need at least 7 columns for classes 0-6.")
 
         if not hasattr(model_data_labels, "__len__") or len(model_data_labels) < 6:
             raise ValueError(
@@ -598,26 +668,44 @@ class QModelPredictor:
         # Select best candidate by proximity to a base
         best_idx = min(valid_filtered, key=dist_if_left)
 
-        # Special handling for POI6: slide to max dissipation then base of nearest RF peak
         if poi == "POI6" and valid_filtered:
             start_idx, end_idx = cmin, cmax
-            knee_point = self._poi_6_knee_point(
-                start_of_segment=start_idx,
-                end_of_segment=end_idx,
-                feature_vector=feature_vector,
-                relative_time=relative_time
-            )
-            segment = diss[start_idx: end_idx + 1]
-            peak_rel = int(np.argmax(segment))
-            candidate_idx = start_idx + peak_rel
+            dog_score = feature_vector.get("Difference_DoG_SVM_Score")
+            if dog_score is None:
+                raise ValueError(
+                    "`feature_vector` missing 'Difference_DoG_SVM_Score' for POI6."
+                )
 
-            best_idx = max(knee_point, candidate_idx)
-            best_idx = knee_point
+            # Step 2: Find candidate with minimum DoG score
+            dog_values = dog_score.values
+            candidate_dog_scores = [dog_values[idx] for idx in candidates]
+            min_score_idx = candidates[int(np.argmin(candidate_dog_scores))]
 
+            # Step 3: Find where the point-to-point delta is most negative
+            window = 20
+            local_start = max(min_score_idx - window, start_idx)
+            local_end = min(min_score_idx + window, end_idx)
+
+            # Extract the window of DoG values and compute deltas
+            window_vals = dog_values[local_start: local_end + 1]
+            deltas = np.diff(window_vals)
+
+            if deltas.size > 0:
+                # argmin of deltas gives the largest drop between consecutive points
+                drop_idx = np.argmin(deltas)
+                # +1 because diff[i] = vals[i+1] - vals[i]
+                best_idx = local_start + drop_idx + 1
+            else:
+                # Fallback if window is too small
+                best_idx = min_score_idx
+
+            # Step 4: RF peak and trough adjustment (unchanged)
             rf = feature_vector.get("Resonance_Frequency_smooth")
             if rf is None:
                 raise ValueError(
-                    "`feature_vector` missing 'Resonance_Frequency_smooth' for POI6.")
+                    "`feature_vector` missing 'Resonance_Frequency_smooth' for POI6."
+                )
+
             rf_vals = rf.values
             peaks_rf, _ = find_peaks(rf_vals)
             proximity = 5
@@ -629,14 +717,14 @@ class QModelPredictor:
                 if left_troughs.size > 0:
                     best_idx = int(left_troughs[-1])
                 else:
-                    local_seg = rf_vals[start_idx: peak_idx + 1]
+                    local_seg = rf_vals[local_start: peak_idx + 1]
                     base_rel = int(np.argmin(local_seg))
-                    best_idx = start_idx + base_rel
+                    best_idx = local_start + base_rel
 
         # Slip-check for POI4: ensure bias correction didn't drift toward POI3
         if poi == "POI4" and len(ground_truth) >= 4:
             poi3_gt, poi4_gt = ground_truth[2], ground_truth[3]
-            if abs(best_idx - poi3_gt) < abs(best_idx - poi4_gt):
+            if abs(best_idx - poi3_gt) * 2 < abs(best_idx - poi4_gt):
                 Log.d(TAG,
                       "Bias correction for POI4 slipped toward POI3; skipping adjustment.")
                 best_idx = poi4_gt
@@ -723,35 +811,185 @@ class QModelPredictor:
 
         return result
 
+    def _merge_candidate_sets(
+        self,
+        candidates_1: dict,
+        candidates_2: dict,
+        target_1: int,
+        target_2: int,
+        relative_time: np.ndarray,
+        feature_vector: pd.DataFrame = None
+    ):
+        """
+        Reassign any candidate to the target whose time is closest.
+
+        - For each index in candidates_1: if |t_i - t2| < |t_i - t1|, move it to set2.
+        - For each index in candidates_2: if |t_i - t1| < |t_i - t2|, move it to set1.
+        Returns two dicts (merged_1, merged_2) sorted by descending confidence.
+        """
+        # --- Extract original indices & confidences ---
+        cand1 = np.array(candidates_1.get("indices", []), dtype=int)
+        conf1 = np.array(candidates_1.get("confidences", []), dtype=float)
+        cand2 = np.array(candidates_2.get("indices", []), dtype=int)
+        conf2 = np.array(candidates_2.get("confidences", []), dtype=float)
+
+        # Compute absolute target times
+        t1 = relative_time[target_1]
+        t2 = relative_time[target_2]
+
+        # === BEFORE ASSIGNMENT PLOT ===
+        if feature_vector is not None and PLOTTING:
+            fig, axes = plt.subplots(1, 2, figsize=(16, 6), sharey=True)
+            ax_before, ax_after = axes
+
+            ax_before.plot(relative_time, feature_vector["Dissipation"],
+                           color="#555555", linewidth=1.5, label="Dissipation")
+            if cand1.size:
+                ax_before.scatter(relative_time[cand1],
+                                  feature_vector["Dissipation"].iloc[cand1],
+                                  c="#1f77b4", s=50, alpha=0.8, edgecolors="black",
+                                  label="Cand Set 1 (orig)")
+            if cand2.size:
+                ax_before.scatter(relative_time[cand2],
+                                  feature_vector["Dissipation"].iloc[cand2],
+                                  c="#ff7f0e", s=50, alpha=0.8, edgecolors="black",
+                                  label="Cand Set 2 (orig)")
+            ax_before.axvline(t1, color="#1f77b4",
+                              linestyle="--", linewidth=2, label="Target 1")
+            ax_before.axvline(t2, color="#ff7f0e",
+                              linestyle="--", linewidth=2, label="Target 2")
+            ax_before.set_title("Before Reassignment", fontsize=14)
+            ax_before.set_xlabel("Relative Time", fontsize=12)
+            ax_before.set_ylabel("Dissipation", fontsize=12)
+            ax_before.legend(loc="upper right", fontsize=10)
+            ax_before.grid(alpha=0.3)
+
+        # === REASSIGN BASED ON ABSOLUTE TIME DISTANCE ===
+        # For cand1: those closer to t2 go to set2, the rest stay
+        keep_mask1 = np.abs(
+            relative_time[cand1] - t1) <= np.abs(relative_time[cand1] - t2)
+        keep1 = cand1[keep_mask1]
+        keep_conf1 = conf1[keep_mask1]
+        reassign1 = cand1[~keep_mask1]
+        reassign_conf1 = conf1[~keep_mask1]
+
+        # For cand2: those closer to t1 go to set1, the rest stay
+        keep_mask2 = np.abs(
+            relative_time[cand2] - t2) <= np.abs(relative_time[cand2] - t1)
+        keep2 = cand2[keep_mask2]
+        keep_conf2 = conf2[keep_mask2]
+        reassign2 = cand2[~keep_mask2]
+        reassign_conf2 = conf2[~keep_mask2]
+
+        # === BUILD FINAL ASSIGNMENTS ===
+        final1 = np.concatenate(
+            [keep1, reassign2]) if reassign2.size else keep1.copy()
+        conf_final1 = np.concatenate(
+            [keep_conf1, reassign_conf2]) if reassign_conf2.size else keep_conf1.copy()
+
+        final2 = np.concatenate(
+            [keep2, reassign1]) if reassign1.size else keep2.copy()
+        conf_final2 = np.concatenate(
+            [keep_conf2, reassign_conf1]) if reassign_conf1.size else keep_conf2.copy()
+
+        # === SORT BY CONFIDENCE DESC ===
+        if conf_final1.size:
+            order1 = np.argsort(-conf_final1)
+            sorted_idx1, sorted_conf1 = final1[order1], conf_final1[order1]
+        else:
+            sorted_idx1, sorted_conf1 = np.array([], int), np.array([], float)
+
+        if conf_final2.size:
+            order2 = np.argsort(-conf_final2)
+            sorted_idx2, sorted_conf2 = final2[order2], conf_final2[order2]
+        else:
+            sorted_idx2, sorted_conf2 = np.array([], int), np.array([], float)
+
+        merged_1 = {"indices": sorted_idx1.tolist(
+        ), "confidences": sorted_conf1.tolist()}
+        merged_2 = {"indices": sorted_idx2.tolist(
+        ), "confidences": sorted_conf2.tolist()}
+
+        # === AFTER ASSIGNMENT PLOT ===
+        if feature_vector is not None and PLOTTING:
+            ax_after.plot(relative_time, feature_vector["Dissipation"],
+                          color="#555555", linewidth=1.5, label="Dissipation")
+            if sorted_idx1.size:
+                ax_after.scatter(relative_time[sorted_idx1],
+                                 feature_vector["Dissipation"].iloc[sorted_idx1],
+                                 c="#1f77b4", s=50, alpha=0.8, edgecolors="black",
+                                 label="Cand Set 1 (final)")
+            if sorted_idx2.size:
+                ax_after.scatter(relative_time[sorted_idx2],
+                                 feature_vector["Dissipation"].iloc[sorted_idx2],
+                                 c="#ff7f0e", s=50, alpha=0.8, edgecolors="black",
+                                 label="Cand Set 2 (final)")
+            ax_after.axvline(t1, color="#1f77b4", linestyle="--",
+                             linewidth=2, label="Target 1")
+            ax_after.axvline(t2, color="#ff7f0e", linestyle="--",
+                             linewidth=2, label="Target 2")
+            ax_after.set_title("After Reassignment", fontsize=14)
+            ax_after.set_xlabel("Relative Time", fontsize=12)
+            ax_after.legend(loc="upper right", fontsize=10)
+            ax_after.grid(alpha=0.3)
+
+            plt.tight_layout()
+            plt.show()
+
+        return merged_1, merged_2
+
     def _poi_6_knee_point(self,
                           start_of_segment: int,
                           end_of_segment: int,
                           feature_vector: pd.DataFrame,
                           relative_time: np.ndarray) -> int:
 
-        n = abs(start_of_segment - end_of_segment)
+        # 1) Extract raw “Detrend_Difference” over the segment
+        raw_diff = feature_vector['Detrend_Difference'].values
+        seg_raw = raw_diff[start_of_segment: end_of_segment + 1]
+        seg_t = relative_time[start_of_segment: end_of_segment + 1]
+        n = len(seg_raw)
+
+        # 2) Build a monotonic “component signal” (non‐increasing)
+        comp_sig = [seg_raw[0]]
+        for x in seg_raw[1:]:
+            comp_sig.append(x if x <= comp_sig[-1] else comp_sig[-1])
+        seg_comp = np.array(comp_sig)
+
+        # 3) Smooth the component signal via Savitzky‐Golay
         if n < 3:
-            diff = feature_vector['Detrend_Difference'].values
+            seg_sm = seg_comp.copy()
         else:
-            w = max(3, int(n * 0.05))
+            w = max(3, int(n * 0.08))
             if w % 2 == 0:
                 w += 1
             w = min(w, n if n % 2 == 1 else n - 1)
-            polyorder = 1
-            po = min(polyorder, w - 1)
-            diff = savgol_filter(
-                feature_vector['Detrend_Difference'].values, window_length=w, polyorder=po)
-        seg_d = diff[start_of_segment:end_of_segment+1]
-        seg_t = relative_time[start_of_segment:end_of_segment+1]
-        slope = np.gradient(seg_d, seg_t)
-        valley_rel = int(np.argmin(slope))
-        peaks, _ = find_peaks(seg_d)
-        pre_peaks = peaks[peaks < valley_rel]
+            po = min(1, w - 1)
+            seg_sm = savgol_filter(seg_comp, window_length=w, polyorder=po)
 
-        if pre_peaks.size > 0:
-            knee_rel = int(pre_peaks[-1])
-        else:
-            knee_rel = int(np.argmax(seg_d[:valley_rel+1]))
+        # 4) Compute first derivative (slope) of the smoothed component
+        slope = np.gradient(seg_sm, seg_t)
+
+        # 5) Estimate baseline noise from the first few slope values
+        baseline_window = min(n, max(3, int(n * 0.2)))
+        baseline_vals = slope[:baseline_window]
+        baseline_mean = baseline_vals.mean()
+        baseline_std = baseline_vals.std()
+
+        # 6) Define threshold: slope must drop below (mean - std)
+        threshold = baseline_mean - baseline_std
+        threshold = threshold * 1
+        # 7) Find the first index where slope < threshold
+        knee_rel = None
+        for i, s in enumerate(slope):
+            if s < threshold:
+                knee_rel = i
+                break
+        # If no such point is found, fall back to second‐derivative method
+        if knee_rel is None:
+            d1 = slope
+            d2 = np.gradient(d1, seg_t)
+            knee_rel = int(np.argmax(np.abs(d2)))
 
         knee_idx = start_of_segment + knee_rel
         return knee_idx
@@ -830,7 +1068,6 @@ class QModelPredictor:
             )
         else:
             best = indices[0]
-
         # Normalize to single integer
         if isinstance(best, (list, np.ndarray)):
             # Flatten and take first element
@@ -851,7 +1088,7 @@ class QModelPredictor:
     ) -> List[int]:
         """Filter POI1 candidates using an early-run baseline and IQR outlier removal.
 
-        Computes a baseline dissipation over the first 1–3% of the run. Any candidate
+        Computes a baseline dissipation over the first 1-3% of the run. Any candidate
         whose dissipation at its index does not exceed this baseline is discarded.
         Remaining candidates are then filtered by the interquartile range (IQR) of
         their dissipation values. Finally, the leftmost candidate is offset by
@@ -1259,7 +1496,7 @@ class QModelPredictor:
             ],
             'POI5': [
                 i for i in positions['POI5']['indices']
-                if cut1 <= relative_time[i] <= cut2
+                if int(cut1 * 0.75) <= relative_time[i] <= int(cut2 * 1)
             ],
             'POI6': [
                 i for i in positions['POI6']['indices']
@@ -1409,6 +1646,100 @@ class QModelPredictor:
                         f"Invalid 'indices' or 'confidences' for '{key}'.")
                 data['confidences'] = confs[:len(inds)]
 
+    def _filter_poi1_three_phase(self,
+                                 indices: List[int],
+                                 confidences: List[float],
+                                 feature_vector: pd.DataFrame,
+                                 relative_time: np.ndarray
+                                 ) -> Tuple[List[int], List[float]]:
+        """
+        Filters candidate POI1 indices through a three-phase gradient and SVM-score approach.
+
+        This method applies three successive filtering phases on the input candidate indices:
+
+        1. Dissipation Phase: Detects the first significant positive gradient shift in the
+        'Dissipation' curve and retains only candidates occurring after that time.
+        2. Resonance Phase: Detects the first significant negative gradient shift in the
+        'Resonance_Frequency' curve and further refines the candidates.
+        3. Difference Phase: Detects the first significant positive gradient shift in the
+        'Difference_smooth' curve, aligns candidates within half of the average interval
+        tolerance, and retains aligned candidates.
+
+        If no candidates remain after these phases, the method inspects the '*_DoG_SVM_Score'
+        columns for large score jumps and selects candidates occurring after the first large
+        jump as a fallback. The original indices are used if no filtering yields results.
+
+        Finally, the confidences are re-synchronized to match the filtered indices order.
+
+        Args:
+            indices (List[int]): Original list of POI1 candidate indices.
+            confidences (List[float]): Original confidence scores for each candidate index.
+            feature_vector (pd.DataFrame): DataFrame containing the following feature columns:
+                - 'Dissipation'
+                - 'Resonance_Frequency'
+                - 'Difference_smooth'
+                - any columns ending with '_DoG_SVM_Score' for SVM scores.
+            relative_time (np.ndarray): 1D array of time values corresponding to rows in feature_vector.
+
+        Returns:
+            Tuple[List[int], List[float]]:
+                filtered_indices (List[int]): List of indices that passed the three-phase filter.
+                filtered_confidences (List[float]): Confidence values aligned with filtered_indices.
+        """
+        dissipation = feature_vector['Dissipation'].values
+        resonance = feature_vector['Resonance_Frequency'].values
+        diff_smooth = feature_vector['Difference_smooth'].values
+        svm_scores = {
+            col: feature_vector[col].values
+            for col in feature_vector.columns
+            if col.endswith('_DoG_SVM_Score')
+        }
+        orig_inds = list(indices)
+        orig_confs = list(confidences)
+
+        def pick_after(cands, times, t):
+            return [i for i in cands if times[i] > t]
+        grad_d = np.gradient(dissipation, relative_time)
+        thr_d = grad_d.mean() + grad_d.std()
+        sh_d = np.where(grad_d > thr_d)[0]
+        if len(sh_d):
+            t1 = relative_time[sh_d[0]]
+            inds = pick_after(orig_inds, relative_time, t1)
+        else:
+            inds = orig_inds
+        grad_r = np.gradient(resonance, relative_time)
+        thr_r = grad_r.mean() - grad_r.std()
+        sh_r = np.where(grad_r < thr_r)[0]
+        if len(sh_r):
+            t2 = relative_time[sh_r[0]]
+            inds = pick_after(inds, relative_time, t2)
+        grad_diff = np.gradient(diff_smooth, relative_time)
+        thr_diff = grad_diff.mean() + grad_diff.std()
+        sh_diff = np.where(grad_diff > thr_diff)[0]
+        if len(sh_diff):
+            t_diff = relative_time[sh_diff[0]]
+            avg_interval = np.mean(np.diff(sorted(relative_time[orig_inds])))
+            tol = avg_interval / 2
+            aligned = [i for i in inds if abs(
+                relative_time[i] - t_diff) <= tol]
+            inds = aligned or inds
+        if not inds:
+            for scores in svm_scores.values():
+                jumps = np.abs(np.diff(scores))
+                thr_j = jumps.mean() + jumps.std()
+                big = np.where(jumps > thr_j)[0]
+                if len(big):
+                    t3 = relative_time[big[0] + 1]
+                    inds = pick_after(orig_inds, relative_time, t3)
+                    if inds:
+                        break
+            inds = inds or orig_inds
+
+        # re-sync confidences in the filtered order
+        confs = [orig_confs[orig_inds.index(i)] for i in inds]
+
+        return inds, confs
+
     @staticmethod
     def _valid_index(idx: Any, arr: np.ndarray) -> bool:
         """Check whether idx is a valid array index into arr.
@@ -1422,6 +1753,181 @@ class QModelPredictor:
         """
         return isinstance(idx, (int, np.integer)) and 0 <= idx < len(arr)
 
+    def _dbscan_cluster_indices(
+        self,
+        cand_indices: np.ndarray,
+        r_time: np.ndarray,
+        eps_fraction: float = 0.01,
+        min_eps: int = 3,
+        max_eps: int = 20,
+        min_samples: int = 1,
+    ) -> tuple[np.ndarray, int]:
+        """
+        Clusters candidate indices with DBSCAN using an adaptive epsilon based on run duration.
+
+        This method determines epsilon (in sample units) by:
+        1. Computing total_time = r_time.max() - r_time.min().
+        2. Calculating median positive delta (dt) from r_time differences.
+        3. Setting eps_time = total_time * eps_fraction.
+        4. Converting eps_time to samples: eps_time / dt, clipped to [min_eps, max_eps].
+
+        It then applies sklearn.cluster.DBSCAN on reshaped cand_indices and identifies:
+        - labels: cluster labels for each candidate.
+        - densest: label of the cluster with the most members.
+
+        Args:
+            cand_indices (np.ndarray): Array of candidate sample indices to cluster.
+            r_time (np.ndarray): Array of time values corresponding to dataset samples.
+            eps_fraction (float): Fraction of total run duration to derive epsilon. Defaults to 0.01.
+            min_eps (int): Minimum epsilon (in samples). Defaults to 3.
+            max_eps (int): Maximum epsilon (in samples). Defaults to 20.
+            min_samples (int): Minimum number of samples to form a cluster. Defaults to 1.
+
+        Returns:
+            tuple[np.ndarray, int]:
+                labels: Cluster label for each input index.
+                densest: Label for the cluster with highest count.
+        """
+        total_time = float(r_time.max() - r_time.min()
+                           if r_time.max() > r_time.min() else r_time.max())
+        diffs = np.diff(r_time)
+        dt = float(np.median(diffs[diffs > 0])) if np.any(diffs > 0) else 1.0
+        eps_time = total_time * eps_fraction
+        eps_samples = int(np.clip(eps_time / dt, min_eps, max_eps))
+
+        X = cand_indices.reshape(-1, 1)
+        labels = DBSCAN(eps=eps_samples,
+                        min_samples=min_samples).fit_predict(X)
+
+        unique, counts = np.unique(labels, return_counts=True)
+        densest = unique[np.argmax(counts)]
+
+        return labels, densest
+
+    def cluster(
+        self,
+        df,
+        r_time: np.ndarray,
+        extracted_predictions: dict[str, dict[str, list]],
+        eps_fraction: float = 0.01,
+        min_eps: int = 3,
+        max_eps: int = 20,
+        min_samples: int = 1,
+        plotting: bool = PLOTTING
+    ) -> dict[str, dict[str, list]]:
+        """
+        Post-processes POI4-POI6 predictions by clustering sample indices via DBSCAN.
+
+        This method:
+        1. Iterates over extracted_predictions for POI4, POI5, and POI6.
+        2. For each, it clusters candidate indices using `_dbscan_cluster_indices` with
+            an epsilon scaled to run duration.
+        3. Retains only the densest cluster's indices and corresponding confidences.
+        4. Optionally plots the dissipation scores and scatter of clusters, highlighting
+            the densest cluster and its center point.
+
+        Args:
+            df (pd.DataFrame): DataFrame containing at least 'Difference_DoG_SVM_Score'.
+            r_time (np.ndarray): Array of time values for dataset samples.
+            extracted_predictions (dict[str, dict[str, list]]):
+                Mapping POI names to dicts with keys 'indices' and optional 'confidences'.
+            eps_fraction (float): Fraction of run length to set DBSCAN epsilon (default 0.01).
+            min_eps (int): Minimum epsilon in samples (default 3).
+            max_eps (int): Maximum epsilon in samples (default 20).
+            min_samples (int): Minimum samples per cluster (default 1).
+            plotting (bool): Whether to produce a matplotlib plot (default PLOTTING).
+
+        Returns:
+            dict[str, dict[str, list]]: Filtered predictions mapping each POI to its
+            retained 'indices' and optional 'confidences'.
+        """
+        times = r_time
+        diss = df["Difference_DoG_SVM_Score"].values
+
+        if plotting:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(times, diss, 'k-', lw=1.5, label="Dissipation")
+            ax.set_xlabel("Relative Time (s)")
+            ax.set_ylabel("Dissipation")
+            ax.grid(alpha=0.3)
+            cmap = plt.get_cmap("tab10")
+
+        trimmed: dict[str, dict[str, list]] = {}
+
+        for i, (poi, preds) in enumerate(extracted_predictions.items()):
+            if poi not in ("POI4", "POI5", "POI6"):
+                entry = {"indices": list(preds.get("indices", []))}
+                if "confidences" in preds:
+                    entry["confidences"] = list(preds["confidences"])
+                trimmed[poi] = entry
+                continue
+
+            inds = np.array(preds.get("indices", []), dtype=int)
+            confs = preds.get("confidences")
+
+            if inds.size == 0:
+                entry = {"indices": []}
+                if confs is not None:
+                    entry["confidences"] = []
+                trimmed[poi] = entry
+                continue
+
+            labels, densest = self._dbscan_cluster_indices(
+                inds,
+                r_time=times,
+                eps_fraction=eps_fraction,
+                min_eps=min_eps,
+                max_eps=max_eps,
+                min_samples=min_samples
+            )
+            keep = labels == densest
+            keep_inds = [int(idx) for idx, flag in zip(inds, keep) if flag]
+            entry = {"indices": keep_inds}
+            if confs is not None:
+                entry["confidences"] = [
+                    c for c, flag in zip(confs, keep) if flag
+                ]
+            trimmed[poi] = entry
+
+            if plotting:
+                for lbl in np.unique(labels):
+                    mask = labels == lbl
+                    face = cmap(i) if lbl == densest else "none"
+                    size = 80 if lbl == densest else 50
+                    ax.scatter(
+                        times[inds[mask]],
+                        diss[inds[mask]],
+                        edgecolor=cmap(i),
+                        facecolor=face,
+                        s=size,
+                        label=f"{poi} C{lbl}" if (
+                            i == 3 and lbl == densest) else None,
+                        zorder=4
+                    )
+                center_idx = int(np.mean(inds[labels == densest]))
+                center_time = times[center_idx]
+                ax.plot(
+                    center_time, diss[center_idx],
+                    marker="*", markersize=15, color=cmap(i),
+                    label=f"{poi} densest"
+                )
+                ax.text(
+                    center_time,
+                    diss.max() * 0.9,
+                    f"{poi}→C{densest}",
+                    rotation=90, va="top", ha="right",
+                    fontsize=8, color=cmap(i)
+                )
+
+        if plotting:
+            ax.legend(loc="upper left", fontsize=8, ncol=2, framealpha=0.9)
+            plt.title(f"DBSCAN on Indices (eps_fraction={eps_fraction}, "
+                      f"min_eps={min_eps}→max_eps={max_eps})")
+            plt.tight_layout()
+            plt.show()
+
+        return trimmed
+
     def _select_best_predictions(
         self,
         predictions: Dict[str, Dict[str, Any]],
@@ -1434,7 +1940,7 @@ class QModelPredictor:
         """Refine and select the best point-of-interest (POI) predictions.
 
         Applies a sequence of filters, windowing, and bias corrections to the
-        raw `predictions` mapping. Ensures each POI (1–6) ends up with an ordered
+        raw `predictions` mapping. Ensures each POI (1-6) ends up with an ordered
         list of candidate indices and matching confidences.
 
         Workflow:
@@ -1480,24 +1986,28 @@ class QModelPredictor:
         """
         Refine POI predictions by applying baseline filtering, timing windows, and bias correction.
         """
-        filtered_poi1 = self._filter_poi1_baseline(
-            predictions.get('POI1', {}).get('indices', []),
-            dissipation_raw,
-            relative_time,
-            feature_vector['Difference_smooth'].values
+        poi1_inds, poi1_confs = self._filter_poi1_three_phase(
+            predictions['POI1']['indices'],
+            predictions['POI1']['confidences'],
+            feature_vector,
+            relative_time
         )
+
         predictions['POI1'] = {
-            'indices': filtered_poi1,
-            'confidences': predictions.get('POI1', {}).get('confidences')
+            'indices': poi1_inds,
+            'confidences': poi1_confs
         }
         # copy inputs to avoid side-effects
         best_positions = self._copy_predictions(predictions)
+
         #
         #  Boost POI6 confidences toward ground truth without overriding original confidences
         if len(ground_truth) >= 6 and len(model_data_labels) >= 6:
             ground_truth[5] = max(ground_truth[5], model_data_labels[5])
         self._filter_poi6_near_ground_truth(
             best_positions, ground_truth, relative_time)
+        best_positions = self.cluster(
+            df=feature_vector, extracted_predictions=best_positions, r_time=relative_time)
         self._sort_by_confidence(best_positions, 'POI6')
 
         # determine time anchors
@@ -1516,6 +2026,7 @@ class QModelPredictor:
 
         # update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
+
         # handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
         if len(model_data_labels) >= 2:
@@ -1528,7 +2039,6 @@ class QModelPredictor:
         self._enforce_strict_ordering(best_positions, ground_truth)
         self._truncate_confidences(best_positions)
 
-        # make sure best_positions has entries for all POIs
         for i in range(1, 7):
             poi = f"POI{i}"
             # ensure the sub‐dict exists
@@ -1547,13 +2057,41 @@ class QModelPredictor:
 
         return best_positions
 
+    def regroup(self, raw_predictions: dict, updated_predictions: dict, relative_time: np.ndarray, feature_vector: np.ndarray) -> dict:
+        new_groupings = updated_predictions.copy()
+
+        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI5"),
+                                                        candidates_2=raw_predictions.get(
+                                                            "POI6"),
+                                                        target_1=new_groupings.get(
+                                                        "POI5").get("indices")[0],
+                                                        target_2=new_groupings.get(
+                                                        "POI6").get("indices")[0],
+                                                        relative_time=relative_time,
+                                                        feature_vector=feature_vector)
+        new_groupings["POI5"] = raw_predictions["POI5"]
+        new_groupings["POI6"] = merged_2
+
+        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI4"),
+                                                        candidates_2=raw_predictions.get(
+                                                        "POI5"),
+                                                        target_1=updated_predictions.get(
+                                                        "POI4").get("indices")[0],
+                                                        target_2=updated_predictions.get(
+                                                        "POI5").get("indices")[0],
+                                                        relative_time=relative_time,
+                                                        feature_vector=feature_vector)
+        new_groupings["POI4"] = merged_1
+        new_groupings["POI5"] = merged_2
+        return new_groupings
+
     def predict(self,
                 file_buffer: str,
                 forecast_start: int = -1,
                 forecast_end: int = -1,
                 actual_poi_indices: Optional[np.ndarray] = None,
-                plotting: bool = False) -> Dict[str, Any]:
-        """Load data, run QModel v2 clustering + XGBoost prediction, and refine POIs.
+                plotting: bool = PLOTTING) -> Dict[str, Any]:
+        """Load data, run QModel v3 clustering + XGBoost prediction, and refine POIs.
 
         This method validates the input buffer or path, extracts raw and QModel v2
         labels, runs the XGBoost model to get probability predictions, and refines
@@ -1610,41 +2148,108 @@ class QModelPredictor:
         predicted_probabilites = self._booster.predict(ddata)
         extracted_predictions = self._extract_predictions(
             predicted_probabilites, model_data_labels)
-        final_predictions = self._select_best_predictions(
+        init_correct = self._select_best_predictions(
             predictions=extracted_predictions,
             ground_truth=qmodel_v2_labels,
             model_data_labels=model_data_labels,
             relative_time=df["Relative_time"].values,
             feature_vector=feature_vector,
             raw_vector=df)
+        new_grouping = self.regroup(raw_predictions=extracted_predictions, updated_predictions=init_correct,
+                                    relative_time=df["Relative_time"].values, feature_vector=feature_vector)
+
+        final_predictions = self._select_best_predictions(
+            predictions=new_grouping,
+            ground_truth=qmodel_v2_labels,
+            model_data_labels=model_data_labels,
+            relative_time=df["Relative_time"].values,
+            feature_vector=feature_vector,
+            raw_vector=df)
         if plotting:
-            plt.figure(figsize=(10, 6))
-
-            plt.plot(df["Relative_time"],
-                     feature_vector["Detrend_Difference"],
-                     linewidth=1.5,
-                     label="Detrend_Difference")
-
-            # Overlay each POI’s candidate points
+            # Common data we'll reuse
+            times_all = df["Relative_time"]
+            diff_all = feature_vector["Difference"]
             cmap = plt.get_cmap("tab10")
-            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
+
+            # --- Figure 1: raw predictor output (extracted_predictions) ---
+            plt.figure(figsize=(10, 6))
+            plt.plot(times_all,
+                     diff_all,
+                     linewidth=1.5,
+                     label="Data",
+                     color="lightgray",
+                     zorder=0)
+
+            for i, (poi_name, poi_info) in enumerate(extracted_predictions.items()):
+                # list of candidate indices, best at idxs[0]
                 idxs = poi_info["indices"]
-                times = df["Relative_time"].iloc[idxs]
-                values = feature_vector["Detrend_Difference"].iloc[idxs]
+                times = times_all.iloc[idxs]
+                values = diff_all.iloc[idxs]
+
+                # Plot all candidates as 'x'
+                plt.scatter(times,
+                            values,
+                            marker="x",
+                            s=100,
+                            color=cmap(i),
+                            label=f"{poi_name} (raw candidates)",
+                            zorder=2)
+
+                # Highlight the best one (idxs[0]) with a vertical line
+                try:
+                    best_idx = idxs[0]
+                except:
+                    best_idx = final_predictions.get(
+                        poi_name).get("indices")[0]
+                best_time = times_all.iloc[best_idx]
+                plt.axvline(best_time,
+                            color=cmap(i),
+                            linestyle="--",
+                            linewidth=1.0,
+                            zorder=1)
+
+            plt.xlabel("Relative time")
+            plt.ylabel("Detrend_Difference")
+            plt.title("Raw predictor output: candidate POIs")
+            plt.legend(loc="upper right", fontsize="small", ncol=2)
+            plt.tight_layout()
+            plt.show()
+
+            # --- Figure 2: final predictions (after selecting best) ---
+            plt.figure(figsize=(10, 6))
+            plt.plot(times_all,
+                     diff_all,
+                     linewidth=1.5,
+                     label="Data",
+                     color="lightgray",
+                     zorder=0)
+
+            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
+                # again, best at idxs[0]
+                idxs = poi_info["indices"]
+                times = times_all.iloc[idxs]
+                values = diff_all.iloc[idxs]
 
                 plt.scatter(times,
                             values,
                             marker="x",
                             s=100,
                             color=cmap(i),
-                            label=poi_name)
-
-                plt.axvline(df["Relative_time"].iloc[idxs[0]], color=cmap(i))
+                            label=f"{poi_name} (final candidates)",
+                            zorder=2)
+                best_idx = idxs[0]
+                best_time = times_all.iloc[best_idx]
+                print(best_time)
+                plt.axvline(best_time,
+                            color=cmap(i),
+                            linestyle="--",
+                            linewidth=1.0,
+                            zorder=1)
 
             plt.xlabel("Relative time")
-            plt.ylabel("Difference")
-            plt.title("Difference curve with candidate POIs")
-            plt.legend()
+            plt.ylabel("Detrend_Difference")
+            plt.title("Final predictions: candidate POIs")
+            plt.legend(loc="upper right", fontsize="small", ncol=2)
             plt.tight_layout()
             plt.show()
         return final_predictions
