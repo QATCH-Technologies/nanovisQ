@@ -21,6 +21,7 @@ from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProce
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.VisQAIWindow import VisQAIWindow
+from QATCH.VisQAI.src.db.db import Database
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -39,6 +40,7 @@ import stat
 import subprocess
 import logging
 from typing import List
+import shutil
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -1233,6 +1235,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # Configures the required permissions on the filesystem
         self._configure_filesystem()
 
+        # Configures the database file for VisQ.AI (if missing or out-of-date)
+        self._configure_database()
+
         # Configures the tutorials interface for user interaction
         self._configure_tutorials()
 
@@ -2368,6 +2373,47 @@ class MainWindow(QtWidgets.QMainWindow):
         except:
             Log.e(
                 "ERROR: Unable to set file permissions on local application data folders and files.")
+
+    ###########################################################################
+    # Configures the database file for VisQ.AI (if missing or out-of-date)
+    ###########################################################################
+
+    def _configure_database(self):
+        # check if local app data contains a database file already
+        try:
+            machine_database_path = os.path.join(
+                Constants.local_app_data_path, "database/app.db")
+            bundled_database_path = os.path.join(
+                Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+            localapp_exists = os.path.isfile(machine_database_path)
+            bundled_exists = os.path.isfile(bundled_database_path)
+            if bundled_exists and not localapp_exists:
+                # On first run, bundled will exist, but localapp won't: copy it to localapp
+                os.makedirs(os.path.basename(
+                    machine_database_path), exist_ok=True)
+                shutil.copy(bundled_database_path, machine_database_path)
+                Log.w(f"Copied the bundled core database to machine folder")
+            elif bundled_exists and localapp_exists:
+                # After update, both files will exist: add any missing core ingredients to localapp
+                # TODO: Add a quicker way to check if there are missing core ingredients in database
+                bundled_database = Database(
+                    path=bundled_database_path, parse_file_key=True)
+                machine_database = Database(
+                    path=machine_database_path, parse_file_key=True)
+                for ing in bundled_database.get_all_ingredients():
+                    if machine_database.get_ingredient(ing.id) is None:
+                        # We must use the same `enc_id`, do not use `ingctrl.add()`
+                        machine_database.add_ingredient(ing)
+                        Log.w(
+                            f"Added missing core ingredient to database: {ing.name}")
+                bundled_database.close()
+                machine_database.close()
+            else:
+                Log.w("Nothing to do. No local bundled database file found.")
+        except Exception as e:
+            Log.e(
+                "ERROR: Unable to configure database file in local application data folder.")
+            raise e  # TODO remove
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
