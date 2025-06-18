@@ -548,7 +548,7 @@ class DropEffectCorrection(CurveOptimizer):
                 self.TAG, f"'Difference' column not found. Computing difference curve with factor {initial_diff_factor}.")
             self._generate_curve(initial_diff_factor)
 
-    def _detect_drop_effects_for_column(self, col_name: str, diff_offset: int = 2, starting_threshold_factor: float = 2) -> list:
+    def _detect_drop_effects_for_column(self, col_name: str, diff_offset: int = 2, starting_threshold_factor: float = 2) -> tuple[list, list]:
         """
         Detects drop effects for a given column within the defined bounds by computing
         differences (with an offset) and flagging those points with a difference that
@@ -651,7 +651,7 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Map back to the full dataframe index.
         global_idx = [local_idx + left_idx for local_idx in current_streak]
-        return global_idx
+        return (global_idx, values)
 
     def _middle_slice_list(self, whole: list, fraction: float = 0.5) -> list:
         n = len(whole)
@@ -721,9 +721,9 @@ class DropEffectCorrection(CurveOptimizer):
         corrected_rf = original_rf.copy()
 
         # Detect drop effects independently for each curve.
-        drop_effects_diss = self._detect_drop_effects_for_column(
+        (drop_effects_diss, smooth_diss) = self._detect_drop_effects_for_column(
             'Dissipation', starting_threshold_factor=STARTING_THRESHOLD_FACTOR)
-        drop_effects_rf = self._detect_drop_effects_for_column(
+        (drop_effects_rf, smooth_rf) = self._detect_drop_effects_for_column(
             'Resonance_Frequency', starting_threshold_factor=STARTING_THRESHOLD_FACTOR)
         drop_effects = list(set(drop_effects_diss + drop_effects_rf))
 
@@ -751,12 +751,21 @@ class DropEffectCorrection(CurveOptimizer):
         Log.d(
             self.TAG, f"Raw drop effect regions: {[list(np.array(idx, dtype=int)) for idx in contiguous_regions]}")
 
+        if len(contiguous_regions) > 1:
+            Log.d(
+                self.TAG, "Processing regions in reverse order. Starting with the last region, working left.")
+
+            # Start with right-most, working left, to avoid baseline shift offsets.
+            contiguous_regions.reverse()
+
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
         for region in contiguous_regions:
 
             # Skip if the drop effect is at the very beginning.
             idx = region[0]
-            if idx <= 0:
+            if idx - self._left_bound['index'] < len(region) // 2:
+                Log.d(
+                    self.TAG, "Skipped correcting an early region that was too close to start-of-fill.")
                 continue
 
             # Record the indices where the correction is applied.
@@ -767,23 +776,29 @@ class DropEffectCorrection(CurveOptimizer):
             prior_left = prior_right - len(region)
             if prior_left < self._left_bound["index"]:
                 prior_left = self._left_bound["index"]
-            prior_diff_diss = original_diss[prior_right] - \
-                original_diss[prior_left]
-            prior_diff_rf = original_rf[prior_right] - original_rf[prior_left]
+            prior_right -= self._left_bound['index']
+            prior_left -= self._left_bound['index']
+            prior_diff_diss = (
+                smooth_diss[prior_right] - smooth_diss[prior_left]) / (prior_right - prior_left)
+            prior_diff_rf = (
+                smooth_rf[prior_right] - smooth_rf[prior_left]) / (prior_right - prior_left)
 
             # Calculate the difference trendline after the drop region.
             after_left = region[-1]
             after_right = after_left + len(region)
             if after_right > self._right_bound["index"]:
                 after_right = self._right_bound["index"]
-            after_diff_diss = original_diss[after_right] - \
-                original_diss[after_left]
-            after_diff_rf = original_rf[after_right] - original_rf[after_left]
+            after_left -= self._left_bound['index']
+            after_right -= self._left_bound['index']
+            after_diff_diss = (
+                smooth_diss[after_right] - smooth_diss[after_left]) / (after_right - after_left)
+            after_diff_rf = (
+                smooth_rf[after_right] - smooth_rf[after_left]) / (after_right - after_left)
 
             # Compute average differences before and after for dissipation and rf.
-            avg_diff_diss = np.average(
+            avg_diff_diss = len(region) * np.average(
                 [prior_diff_diss, after_diff_diss], weights=[2, 1])
-            avg_diff_rf = np.average(
+            avg_diff_rf = len(region) * np.average(
                 [prior_diff_rf, after_diff_rf], weights=[2, 1])
             insert_diss = original_diss[region[0]] + \
                 np.linspace(0, avg_diff_diss, len(region))
@@ -817,11 +832,16 @@ class DropEffectCorrection(CurveOptimizer):
 
         if show_corrections or save_corrections:
             self._plot_corrections(show_corrections, save_corrections,
-                                   relative_time, original_diss, original_rf, corrected_diss, corrected_rf, correction_indices)
+                                   correction_indices, relative_time,
+                                   original_diss, original_rf,
+                                   corrected_diss, corrected_rf,
+                                   smooth_diss, smooth_rf)
 
         return (corrected_diss, corrected_rf)
 
-    def _plot_corrections(self, show, save, relative_time, original_diss, original_rf, corrected_diss, corrected_rf, correction_indices):
+    def _plot_corrections(self, show, save, correction_indices, relative_time,
+                          original_diss, original_rf, corrected_diss, corrected_rf,
+                          smooth_diss, smooth_rf):
         """
         Plots the original and corrected data for Dissipation and Resonance Frequency,
         and marks the indices where corrections occurred.
@@ -842,6 +862,8 @@ class DropEffectCorrection(CurveOptimizer):
                     label='Original Dissipation', color='blue')
         axs[0].plot(relative_time[indices], corrected_diss,
                     label='Corrected Dissipation', color='red', linestyle='--')
+        axs[0].plot(relative_time[indices][zoom_xid:zoom_yid+1], smooth_diss,
+                    label='Smoothed Dissipation', color='yellow', linestyle='--')
         axs[0].axvline(relative_time[self._left_bound['index']],
                        color='gray', linestyle=':')
         axs[0].axvline(relative_time[self._right_bound['index']],
@@ -867,6 +889,8 @@ class DropEffectCorrection(CurveOptimizer):
                     label='Original Resonance Frequency', color='blue')
         axs[1].plot(relative_time[indices], corrected_rf,
                     label='Corrected Resonance Frequency', color='red', linestyle='--')
+        axs[1].plot(relative_time[indices][zoom_xid:zoom_yid+1], smooth_rf,
+                    label='Smoothed Resonance Frequency', color='yellow', linestyle='--')
         axs[1].axvline(relative_time[self._left_bound['index']],
                        color='gray', linestyle=':')
         axs[1].axvline(relative_time[self._right_bound['index']],
