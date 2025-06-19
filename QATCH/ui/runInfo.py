@@ -2058,6 +2058,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == True)  # stabilizer group
             self.groupSalt.setVisible(
                 is_bioformulation == True)  # salt group
+            self.collapsibleBox.setVisible(
+                is_bioformulation == True)  # advanced information
 
             if curr_state is not None:
                 # resize vertically to fit fields (if visible)
@@ -2230,8 +2232,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         manual_nc = (num_channels != self.auto_nc) and (self.auto_nc != 0)
 
         # Form input error checking for valid Surfactant, Concentration, Surface Tension,
-        # Contact Angle, and Density. Errors are logged to the user and the input_error flag
-        # is set to True.
+        # Contact Angle, Density, Protein Concentration, Buffer Concentration, Surfactant
+        # Concentration, Stabilizer Concentration, and Salt Concentration.
+        # Errors are logged to the user and the input_error flag is set to True.
         input_error = False
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
             Log.e(tags=TAG, msg="Input Error: Surfactant must be between {} and {}."
@@ -2263,31 +2266,31 @@ class QueryRunInfo(QtWidgets.QWidget):
                       self.validDensity.bottom(),
                       self.validDensity.top()))
             input_error = True
-        if not self.t12.hasAcceptableInput():
+        if self.t12.isVisible() and not self.t12.hasAcceptableInput():
             Log.e("Input Error: Protein Concentration must be between {} and {}."
                   .format(
                       self.validProteinConcentration.bottom(),
                       self.validProteinConcentration.top()))
             input_error = True
-        if not self.t14.hasAcceptableInput():
+        if self.t14.isVisible() and not self.t14.hasAcceptableInput():
             Log.e("Input Error: Buffer Concentration must be between {} and {}."
                   .format(
                       self.validBufferConcentration.bottom(),
                       self.validBufferConcentration.top()))
             input_error = True
-        if not self.t6.hasAcceptableInput():
+        if self.t6.isVisible() and not self.t6.hasAcceptableInput():
             Log.e("Input Error: Surfactant Concentration must be between {} and {}."
                   .format(
                       self.validSurfactantConcentration.bottom(),
                       self.validSurfactantConcentration.top()))
             input_error = True
-        if not self.t8.hasAcceptableInput():
+        if self.t8.isVisible() and not self.t8.hasAcceptableInput():
             Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
                   .format(
                       self.validStabilizerConcentration.bottom(),
                       self.validStabilizerConcentration.top()))
             input_error = True
-        if not self.t16.hasAcceptableInput():
+        if self.t16.isVisible() and not self.t16.hasAcceptableInput():
             Log.e("Input Error: Salt Concentration must be between {} and {}."
                   .format(
                       self.validSaltConcentration.bottom(),
