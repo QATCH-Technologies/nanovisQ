@@ -38,6 +38,8 @@ HEAD_TRIM_PERCENTAGE = 0.05
 TAIL_TRIM_PERCENTAGE = 0.5
 """ Restricts the difference factor. """
 DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
+""" The relative time (in seconds) for where to place the right bound of region. """
+REGION_RIGHT_BOUND_SEC = 2.0
 
 ##########################################
 # CHANGE THESE
@@ -301,22 +303,28 @@ class CurveOptimizer:
         # Generate initial curve.
         self._generate_curve(Constants.default_diff_factor)
 
-        # Use the POI selection to set left/right bounds (if given)
-        if len(bounds) == 6:
-            # All POIs given, limit to [0: start, 3: CH1 fill]
-            self._left_bound["time"] = self._dataframe["Relative_time"].iloc[bounds[0]]
-            self._left_bound["index"] = bounds[0]
-            self._right_bound["time"] = self._dataframe["Relative_time"].iloc[bounds[3]]
-            self._right_bound["index"] = bounds[3]
-            return
-        if len(bounds) == 2:
-            # Start and exit given, limit to [0: start, 1: exit]
-            self._left_bound["time"] = self._dataframe["Relative_time"].iloc[bounds[0]]
-            self._left_bound["index"] = bounds[0]
-            self._right_bound["time"] = self._dataframe["Relative_time"].iloc[bounds[1]]
-            self._right_bound["index"] = bounds[1]
-            return
-        # Else (unknown), use default left/right boundary detection
+        # Use the POI selection to set left/right bounds (if given).
+        if bounds:
+            left_index = bounds[0]
+            self._left_bound["time"] = self._dataframe["Relative_time"].iloc[left_index]
+            self._left_bound["index"] = left_index
+
+            # Get index of first timestamp value > seconds.
+            right_mask = self._dataframe["Relative_time"] > REGION_RIGHT_BOUND_SEC \
+                + self._left_bound["time"]
+
+            # Check if there is a time that meets the criteria.
+            if right_mask.any():
+                right_index = right_mask.idxmax()
+                self._right_bound["time"] = self._dataframe["Relative_time"].iloc[right_index]
+                self._right_bound["index"] = right_index
+                return
+
+            # Warn user that there were no times large enough to calculate the right boundary.
+            Log.w(self.TAG,
+                  f"Not using given `bounds`. No times greater than `START + {REGION_RIGHT_BOUND_SEC}s`. Attempting to detect region...")
+
+        # Else (no usable bounds), use default left/right boundary detection.
 
         # Establish right bound
         # IMPORTANT: this must be done before the left bound is established.
