@@ -79,9 +79,6 @@ class Sampler:
         self._current_uncertainty = np.array(
             preds.get("uncertainty", []), dtype=float)
 
-    def update_model(self, formulation: Formulation):
-        pass
-
     def get_next_sample(self) -> Formulation:
 
         df = self._all_data

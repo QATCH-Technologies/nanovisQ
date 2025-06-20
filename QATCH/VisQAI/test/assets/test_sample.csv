@@ -1,0 +1,2 @@
+ID,Protein_type,MW,PI_mean,PI_range,Protein_conc,Temperature,Buffer_type,Buffer_pH,Buffer_conc,Salt_type,Salt_conc,Sugar_type,Sugar_conc,Surfactant_type,Surfactant_conc,Viscosity_100,Viscosity_1000,Viscosity_10000,Viscosity_100000,Viscosity_15000000,,,,,,,,,,,,
+F1,poly-hIgG,150,7.6,1,145,25,PBS,7.4,10,NaCl,140,Sucrose,1,none,0,12.5,11.5,9.8,8.8,6.92,,,,,,,,,,,,
