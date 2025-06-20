@@ -380,6 +380,8 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(self.model_selected)
 
     def on_tab_selected(self):
+        if self.step == 2:  # Suggest
+            self.load_suggestions()
         if self.step == 5:  # Predict
             # Select a pre-selected model, if none selected here
             if not self.model_path:
@@ -537,8 +539,8 @@ class FrameStep1(QtWidgets.QDialog):
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
-                next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
-                next_widget.load_suggestions()
+                # next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
+                # next_widget.load_suggestions()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -576,8 +578,8 @@ class FrameStep1(QtWidgets.QDialog):
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
-                next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
-                next_widget.learn()
+                # next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
+                # next_widget.learn()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -661,6 +663,16 @@ class FrameStep1(QtWidgets.QDialog):
 
         if self.step == 3:
             item = QtGui.QStandardItem(self.select_label.text())
+
+            # Disallow user from selecting same run for Step 1 and Step 3.
+            if item.text() == self.parent.tab_widget.widget(0).select_label.text():
+                QtCore.QTimer.singleShot(100, lambda: QtWidgets.QMessageBox.information(
+                    None,
+                    "Not Allowed",
+                    "The selected run from Step 1 cannot also be an imported experiment run.",
+                    QtWidgets.QMessageBox.Ok))
+                return
+
             found = self.model.findItems(item.text())
             if len(found) == 0:
                 if len(self.all_files) == 0:
@@ -1023,6 +1035,9 @@ class FrameStep2(QtWidgets.QDialog):
         self.model_dialog.fileSelected.connect(self.model_selected)
         self.btn_resume.clicked.connect(
             lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
+        self.btn_resume.clicked.connect(
+            getattr(self, "learn" if step == 4 else "optimize")
+        )
         self.btn_cancel.clicked.connect(
             lambda: self.progress_bar.setValue(0))
         self.btn_cancel.clicked.connect(
