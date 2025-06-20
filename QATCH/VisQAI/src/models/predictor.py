@@ -28,10 +28,12 @@ Version:
 
 import tempfile
 import zipfile
+import pandas as pd
 import types
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Union
+from typing import Any, Union, Tuple
+import numpy as np
 import importlib.util
 from importlib.machinery import SourcelessFileLoader
 import cloudpickle
@@ -304,13 +306,14 @@ class Predictor:
         """
         # Data processing
         try:
-            if hasattr(self.data_processor, "process") and callable(self.data_processor.process):
-                data = self.data_processor.process(data)
+            if hasattr(self.data_processor, "process_predict") and callable(self.data_processor.process_predict):
+                data = self.data_processor.process_predict(data)
+
             elif hasattr(self.data_processor, "load") and callable(self.data_processor.load):
                 data = self.data_processor.load(data)
             else:
                 raise ComponentLoadError(
-                    "DataProcessor does not implement `process(...)` or `load(...)`.")
+                    "DataProcessor does not implement `process_predict(...)` or `load(...)`.")
         except ComponentLoadError:
             raise
         except Exception as e:
@@ -332,14 +335,69 @@ class Predictor:
         except Exception as e:
             raise ComponentLoadError(f"Executor.predict(...) failed: {e!s}")
 
-    def update(self, raw_X_new: Any, raw_y_new: Any) -> dict:
+    def predict_with_uncertainty(
+            self,
+            data: Any,
+            n_samples: int = 50,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Run the full inference pipeline on `data`.
+
+        Args:
+            data: Raw input data expected by the DataProcessor.
+
+        Returns:
+            The prediction(typically a NumPy array).
+
+        Raises:
+            ComponentLoadError: If any step in the pipeline fails or if required methods are missing.
+        """
+        # Data processing
+        try:
+            if hasattr(self.data_processor, "process_predict") and callable(self.data_processor.process_predict):
+                data = self.data_processor.process_predict(data, False)
+            elif hasattr(self.data_processor, "load") and callable(self.data_processor.load):
+                data = self.data_processor.load(data)
+            else:
+                raise ComponentLoadError(
+                    "DataProcessor does not implement `process_predict(...)` or `load(...)`.")
+        except ComponentLoadError:
+            raise
+        except Exception as e:
+            raise ComponentLoadError(f"DataProcessor failed: {e!s}")
+
+        # Transformation
+        try:
+            data = self.transformer.transform(data)
+        except Exception as e:
+            raise ComponentLoadError(f"Transformer failed: {e!s}")
+
+        # Predictor prediction
+        if not hasattr(self.predictor, "predict") or not callable(self.predictor.predict):
+            raise ComponentLoadError(
+                "Executor does not implement `predict(...)`.")
+
+        try:
+            mean_pred, std_pred = self.predictor.predict(
+                data,
+                return_uncertainty=True,
+                n_samples=n_samples
+            )
+        except Exception as e:
+            raise ComponentLoadError(f"Executor.predict failed: {e!s}")
+
+        std_min, std_max = std_pred.min(), std_pred.max()
+        denom = std_max - std_min if std_max > std_min else 1.0
+        confidence = 1.0 - (std_pred - std_min) / denom
+
+        return mean_pred, confidence
+
+    def update(self, new_data: pd.DataFrame) -> dict:
         """
         Incorporate new training data into the pipeline via transfer learning or incremental updates.
 
         Args:
-            raw_X_new: New raw input features.
-            raw_y_new: New raw target values.
-
+            new_data (pd.DataFrame): The new X and y components.
         Returns:
             A dict containing updated components and a timestamp:
               {
@@ -355,7 +413,7 @@ class Predictor:
         """
         # Data processing
         try:
-            processed = self.data_processor.process(raw_X_new, raw_y_new)
+            processed = self.data_processor.process_train(new_data)
         except ComponentLoadError:
             raise
         except Exception as e:
@@ -363,7 +421,7 @@ class Predictor:
 
         if not (isinstance(processed, tuple) and len(processed) == 2):
             raise ComponentLoadError(
-                "DataProcessor.process(...) must return (features, labels).")
+                "DataProcessor.process_train(...) must return (features, labels).")
 
         features, labels = processed
 
@@ -374,7 +432,7 @@ class Predictor:
 
         try:
             scaled_features = self.transformer.fit_transform(
-                features, raw_y_new)
+                features, labels)
         except Exception as e:
             raise ComponentLoadError(
                 f"Transformer.fit_transform(...) failed: {e!s}")
