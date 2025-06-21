@@ -1,3 +1,4 @@
+import pandas as pd
 from src.models.predictor import Predictor, ComponentLoadError
 import os
 import sys
@@ -8,11 +9,31 @@ import py_compile
 import unittest
 from pathlib import Path
 from unittest import mock
-
+import numpy as np
 import cloudpickle
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
+
+
+MOCK_DATA = {
+    'ID':                  [1],
+    'Protein_type':        [1],
+    'Buffer_type':         [1],
+    'Salt_type':           [1],
+    'Sugar_type':          [1],
+    'Surfactant_type':     [1],
+    'MW':                  [150],
+    'PI_mean':             [7.6],
+    'PI_range':            [1],
+    'Protein_conc':        [145],
+    'Temperature':         [25],
+    'Buffer_pH':           [7.4],
+    'Buffer_conc':         [10],
+    'Salt_conc':           [140],
+    'Sugar_conc':          [1],
+    'Surfactant_conc':     [0],
+}
 
 
 def _create_dummy_dataprocessor(pkg_dir: Path, module_name: str):
@@ -355,7 +376,7 @@ class Predictor:
                       str(ctx.exception))
 
     def test_load_real_bundle_methods_callable(self):
-        bundle_path = Path(__file__).parent / "assets" / "VisQAI-base.zip"
+        bundle_path = Path(__file__).parent / "assets" / "VisQAI-base_1.zip"
         self.assertTrue(bundle_path.is_file(),
                         f"Bundle not found: {bundle_path}")
 
@@ -380,6 +401,43 @@ class Predictor:
 
         self.assertTrue(callable(predictor.predict))
         self.assertTrue(callable(predictor.update))
+
+    def test_predict_and_uncertainty_returns_valid_arrays(self):
+        bundle_path = Path(__file__).parent / "assets" / "VisQAI-base_1.zip"
+        self.assertTrue(bundle_path.is_file(),
+                        f"Bundle not found: {bundle_path}")
+
+        predictor = Predictor(bundle_path)
+        data = pd.DataFrame(MOCK_DATA)
+
+        preds = predictor.predict(data)
+        self.assertIsInstance(preds, np.ndarray,
+                              "predict() should return a NumPy array")
+        self.assertEqual(preds.ndim, 2,
+                         "predict() should return a 2D array (n_samples x n_targets)")
+        self.assertGreater(preds.shape[0], 0,
+                           "predict() should return at least one sample")
+        self.assertGreater(preds.shape[1], 0,
+                           "predict() should return at least one target dimension")
+
+        # --- predict_with_uncertainty() ---
+        mean_preds, confidence = predictor.predict_with_uncertainty(
+            data,
+            n_samples=10
+        )
+        # check types
+        self.assertIsInstance(mean_preds, np.ndarray,
+                              "mean_preds must be a NumPy array")
+        self.assertIsInstance(confidence, np.ndarray,
+                              "confidence must be a NumPy array")
+        # check shapes
+        self.assertEqual(mean_preds.shape, confidence.shape,
+                         "mean_preds and confidence must have the same shape")
+        self.assertEqual(mean_preds.shape, preds.shape,
+                         "predict and predict_with_uncertainty must agree on output shape")
+        # confidence bounds
+        self.assertTrue(np.all(confidence >= 0.0) and np.all(confidence <= 1.0),
+                        "confidence scores must be in [0, 1]")
 
 
 if __name__ == "__main__":

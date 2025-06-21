@@ -85,8 +85,19 @@ class VisQAIWindow(QtWidgets.QMainWindow):
                                "\u2463 Learn")  # unicode circled 4
         self.tab_widget.addTab(FrameStep1(self, 5),
                                "\u2464 Predict")  # unicode circled 5
+        self.tab_widget.addTab(FrameStep2(self, 6),
+                               "\u2465 Optimize")  # unicode circled 6
 
         self.setCentralWidget(self.tab_widget)
+
+        # Signals
+        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+
+    def on_tab_changed(self, index):
+        # Get the current widget and call it's select handler (if exists)
+        current_widget = self.tab_widget.widget(index)
+        if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
+            current_widget.on_tab_selected()
 
     def clear(self) -> None:
         pass
@@ -108,6 +119,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.step = step
 
         self.all_files = {}
+        self.model_path = None
 
         if step == 1:
             self.setWindowTitle("Select Run")
@@ -137,15 +149,46 @@ class FrameStep1(QtWidgets.QDialog):
             left_group = QtWidgets.QGroupBox("Predictions")
         left_group_layout = QtWidgets.QVBoxLayout(left_group)
         left_group_layout.addLayout(form_layout)
+
+        # Select model (for step 5: Predict)
+        if step == 5:
+            # Browse model layout
+            self.model_dialog = QtWidgets.QFileDialog()
+            self.model_dialog.setOption(
+                QtWidgets.QFileDialog.DontUseNativeDialog, True)
+            model_path = os.path.join(
+                os.getcwd(), "QATCH/VisQAI/assets")
+            self.model_dialog.setDirectory(model_path)
+            self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+            self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+            self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+
+            self.select_model_group = QtWidgets.QGroupBox("Select Model")
+            select_model_layout = QtWidgets.QHBoxLayout(
+                self.select_model_group)
+            self.select_model_btn = QtWidgets.QPushButton("Browse...")
+            self.select_model_label = QtWidgets.QLineEdit()
+            self.select_model_label.setPlaceholderText("No model selected")
+            self.select_model_label.setReadOnly(True)
+            select_model_layout.addWidget(self.select_model_btn)
+            select_model_layout.addWidget(self.select_model_label)
+            select_model_layout.addStretch()
+
+            left_layout.addWidget(self.select_model_group)
+
         left_layout.addWidget(left_group)
 
         # Browse run
         self.file_dialog = QtWidgets.QFileDialog()
-        path = "logged_data_test/maria data/4_15549230/D250224W3_4CP_B_2_4"
-        self.file_dialog.setDirectory(path)  # TODO restore
+        self.file_dialog.setOption(
+            QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        run_path = os.path.join(
+            os.getcwd(), "logged_data_test/maria data/M250505W7_TEST")
+        self.file_dialog.setDirectory(run_path)  # TODO restore
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
         self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
+
         self.select_run = QtWidgets.QPushButton(
             "Add Run..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
@@ -332,6 +375,26 @@ class FrameStep1(QtWidgets.QDialog):
             getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
+        if step == 5:
+            self.select_model_btn.clicked.connect(self.model_dialog.show)
+            self.model_dialog.fileSelected.connect(self.model_selected)
+
+    def on_tab_selected(self):
+        if self.step == 2:  # Suggest
+            self.load_suggestions()
+        if self.step == 5:  # Predict
+            # Select a pre-selected model, if none selected here
+            if not self.model_path:
+                learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
+                # predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
+                optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+                all_model_paths = [learn_tab.model_path,
+                                   # predict_tab.model_path,
+                                   optimize_tab.model_path]
+                found_model_path = next(
+                    (x for x in all_model_paths if x is not None), None)
+                if found_model_path:
+                    self.model_selected(found_model_path)
 
     def list_view_addPlaceholderText(self):
         if self.model.rowCount() == 0:
@@ -425,8 +488,11 @@ class FrameStep1(QtWidgets.QDialog):
         self.parent.ing_ctrl.update_protein(protein.id, protein)
         self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
 
-        vp = ViscosityProfile(shear_rates=[
-                              100, 1000, 10000, 100000, 15000000], viscosities=[-1, -1, -1, -1, -1], units='cP')
+        # pull in viscosity profile from run load
+        vp = ViscosityProfile(shear_rates=self.profile_shears,
+                              viscosities=self.profile_viscos,
+                              units='cP')
+        vp.is_measured = self.run_figure_valid
 
         def is_number(s: str):
             try:
@@ -455,7 +521,7 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_temperature(float(temp))
 
         self.parent.form_ctrl.add_formulation(formulation=form)
-        print(self.parent.form_ctrl.get_all_as_dataframe())
+        # print(self.parent.form_ctrl.get_all_as_dataframe())
 
     def load_suggestions(self):
         raise NotImplementedError()
@@ -476,8 +542,8 @@ class FrameStep1(QtWidgets.QDialog):
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
-                next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
-                next_widget.load_suggestions()
+                # next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
+                # next_widget.load_suggestions()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -515,8 +581,8 @@ class FrameStep1(QtWidgets.QDialog):
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
-                next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
-                next_widget.learn()
+                # next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
+                # next_widget.learn()
             else:
                 self.run_notes.setText(
                     "ERROR: self.parent is None.\n" +
@@ -582,8 +648,10 @@ class FrameStep1(QtWidgets.QDialog):
         self.feature_table.clear()
 
         if path is None:
-            if self.step == 3:
+            if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
+            if self.step == 5:  # Predict
+                self.model_selected(None)
             return
 
         namelist = SecureOpen.get_namelist(self.run_file_run)
@@ -598,6 +666,16 @@ class FrameStep1(QtWidgets.QDialog):
 
         if self.step == 3:
             item = QtGui.QStandardItem(self.select_label.text())
+
+            # Disallow user from selecting same run for Step 1 and Step 3.
+            if item.text() == self.parent.tab_widget.widget(0).select_label.text():
+                QtCore.QTimer.singleShot(100, lambda: QtWidgets.QMessageBox.information(
+                    None,
+                    "Not Allowed",
+                    "The selected run from Step 1 cannot also be an imported experiment run.",
+                    QtWidgets.QMessageBox.Ok))
+                return
+
             found = self.model.findItems(item.text())
             if len(found) == 0:
                 if len(self.all_files) == 0:
@@ -797,6 +875,16 @@ class FrameStep1(QtWidgets.QDialog):
         pass_to_models = {"shear_rate": in_shear_rate,
                           "viscosity": in_viscosity}
 
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 1e6, 15000000]
+        self.profile_viscos = []
+        for shear_rate in self.profile_shears:
+            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity)
+            self.profile_viscos.append(viscosity)
+        minidx = np.argmin(self.profile_viscos)
+        maxidx = np.argmax(self.profile_viscos)
+        Log.i(
+            f"Interpolated viscosity ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+
         self.run_figure.clear()
         self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
@@ -833,7 +921,8 @@ class FrameStep1(QtWidgets.QDialog):
                     "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
                 )
                 ax.set_ylim([0, 1000])
-            ax.plot(data[:, 0], data[:, 1], "bd")
+            ax.plot(self.profile_shears, self.profile_viscos, "bd")
+            ax.plot(data[:, 0], data[:, 1], "b,")
             self.run_figure_valid = True
         else:
             ax.text(0.5, 0.5, "Invalid Results",
@@ -850,52 +939,173 @@ class FrameStep1(QtWidgets.QDialog):
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
 
+    def model_selected(self, path: str | None):
+        self.model_path = path
+
+        if path is None:
+            self.select_model_label.clear()
+            return
+
+        self.select_model_label.setText(
+            path.split('\\')[-1].split('/')[-1].split('.')[0])
+
 
 class FrameStep2(QtWidgets.QDialog):
     def __init__(self, parent=None, step=2):
         super().__init__(parent)
-        self.setWindowTitle("Learn")
+        self.parent: VisQAIWindow = parent
+        self.step = step
+
+        self.model_path = None
+
+        if step == 4:
+            self.setWindowTitle("Learn")
+        elif step == 6:
+            self.setWindowTitle("Optimize")
+        else:
+            self.setWindowTitle(f"FrameStep{step}")
 
         # Main layout
         main_layout = QtWidgets.QVBoxLayout(self)
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         main_layout.addWidget(splitter)
+        top_menu_widget = QtWidgets.QWidget()
+        top_menu_layout = QtWidgets.QVBoxLayout(top_menu_widget)
 
-        progress_widget = QtWidgets.QWidget()
-        progress_layout = QtWidgets.QVBoxLayout(progress_widget)
+        # Browse model layout
+        self.model_dialog = QtWidgets.QFileDialog()
+        self.model_dialog.setOption(
+            QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        model_path = os.path.join(
+            os.getcwd(), "QATCH/VisQAI/assets")
+        self.model_dialog.setDirectory(model_path)
+        self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
 
+        self.select_model_group = QtWidgets.QGroupBox("Select Model")
+        select_model_layout = QtWidgets.QHBoxLayout(self.select_model_group)
+        self.select_model_btn = QtWidgets.QPushButton("Browse...")
+        self.select_model_label = QtWidgets.QLineEdit()
+        self.select_model_label.setPlaceholderText("No model selected")
+        self.select_model_label.setReadOnly(True)
+        select_model_layout.addWidget(self.select_model_btn)
+        select_model_layout.addWidget(self.select_model_label)
+        select_model_layout.addStretch()
+
+        # Action summary layout
+        group_title = "Action Summary"
+        group_text = "The following changes will occur:"
+        if step == 4:  # Learn
+            group_title = "Learn Summary"
+            group_text = "The following experiments will be learned:"
+        if step == 6:  # Optimize
+            group_title = "Optimize Summary"
+            group_text = "The following features will be optimized:"
+        self.summary_group = QtWidgets.QGroupBox(group_title)
+        summary_layout = QtWidgets.QVBoxLayout(self.summary_group)
+        summary_label = QtWidgets.QLabel(group_text)
+        self.summary_text = QtWidgets.QPlainTextEdit()
+        self.summary_text.setPlaceholderText("No changes")
+        self.summary_text.setReadOnly(True)
+        summary_layout.addWidget(summary_label)
+        summary_layout.addWidget(self.summary_text)
+
+        # Progress layout
+        self.progress_group = QtWidgets.QGroupBox("Learning Progress")
+        progress_layout = QtWidgets.QVBoxLayout(self.progress_group)
         self.progress_bar = QtWidgets.QProgressBar()
         self.progress_buttons = QtWidgets.QWidget()
         self.progress_btn_layout = QtWidgets.QHBoxLayout(self.progress_buttons)
         self.progress_btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_pause = QtWidgets.QPushButton("Pause")
         self.btn_resume = QtWidgets.QPushButton("Resume")
-        self.btn_resume.clicked.connect(
-            lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
-        self.btn_cancel.clicked.connect(
-            lambda: self.progress_bar.setValue(0))
         self.progress_btn_layout.addWidget(self.btn_pause)
         self.progress_btn_layout.addWidget(self.btn_resume)
         self.progress_btn_layout.addWidget(self.btn_cancel)
         self.progress_label = QtWidgets.QLabel()
-        self.progress_bar.valueChanged.connect(
-            lambda v: self.progress_label.setText(f"{v}% - Learning"))
         self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(50)
         self.progress_bar.setTextVisible(False)
         self.progress_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        progress_layout.addWidget(self.progress_label)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.progress_buttons)
-        progress_layout.addWidget(self.progress_label)
-        splitter.addWidget(progress_widget)
 
+        # Top menu layout
+        top_menu_layout.addWidget(self.select_model_group)
+        top_menu_layout.addWidget(self.summary_group)
+        top_menu_layout.addWidget(self.progress_group)
+        splitter.addWidget(top_menu_widget)
+
+        # Bottom split view layout
         figure = QtWidgets.QLabel("[Figure here]")
         figure.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         splitter.addWidget(figure)
         splitter.setSizes([1, 1000])
 
+        # Signals
+        self.select_model_btn.clicked.connect(self.model_dialog.show)
+        self.model_dialog.fileSelected.connect(self.model_selected)
+        self.btn_resume.clicked.connect(
+            lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
+        self.btn_resume.clicked.connect(
+            getattr(self, "learn" if step == 4 else "optimize")
+        )
+        self.btn_cancel.clicked.connect(
+            lambda: self.progress_bar.setValue(0))
+        self.btn_cancel.clicked.connect(
+            lambda: self.model_selected(None))
+        self.progress_bar.valueChanged.connect(
+            lambda v: self.progress_label.setText(
+                f"{v}% - " + ("Learning" if self.step == 4 else "Optimizing")))
+
+        self.progress_bar.setValue(0)
+
+    def on_tab_selected(self):
+        # Select a pre-selected model, if none selected here
+        if not self.model_path:
+            learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
+            predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
+            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+            all_model_paths = [learn_tab.model_path,
+                               predict_tab.model_path,
+                               optimize_tab.model_path]
+            found_model_path = next(
+                (x for x in all_model_paths if x is not None), None)
+            if found_model_path:
+                self.model_selected(found_model_path)
+
+        self.load_changes()
+
+    def model_selected(self, path: str | None):
+        self.model_path = path
+
+        if path is None:
+            self.select_model_label.clear()
+            return
+
+        self.select_model_label.setText(
+            path.split('\\')[-1].split('/')[-1].split('.')[0])
+
+    def load_changes(self):
+        changes = []  # list of changes
+
+        if self.step == 4:  # learn
+            select_run_tab: FrameStep1 = self.parent.tab_widget.widget(0)
+            experiments_tab: FrameStep1 = self.parent.tab_widget.widget(2)
+            changes.append(select_run_tab.select_label.text())
+            changes.extend(experiments_tab.all_files.keys())
+
+        if self.step == 6:  # optimize
+            pass
+
+        self.summary_text.setPlainText("\n".join(changes).strip())
+
     def learn(self):
+        raise NotImplementedError()
+
+    def optimize(self):
         raise NotImplementedError()
 
 
