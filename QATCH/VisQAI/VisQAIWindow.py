@@ -488,8 +488,11 @@ class FrameStep1(QtWidgets.QDialog):
         self.parent.ing_ctrl.update_protein(protein.id, protein)
         self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
 
-        vp = ViscosityProfile(shear_rates=[
-                              100, 1000, 10000, 100000, 15000000], viscosities=[-1, -1, -1, -1, -1], units='cP')
+        # pull in viscosity profile from run load
+        vp = ViscosityProfile(shear_rates=self.profile_shears,
+                              viscosities=self.profile_viscos,
+                              units='cP')
+        vp.is_measured = self.run_figure_valid
 
         def is_number(s: str):
             try:
@@ -872,6 +875,16 @@ class FrameStep1(QtWidgets.QDialog):
         pass_to_models = {"shear_rate": in_shear_rate,
                           "viscosity": in_viscosity}
 
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 1e6, 15000000]
+        self.profile_viscos = []
+        for shear_rate in self.profile_shears:
+            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity)
+            self.profile_viscos.append(viscosity)
+        minidx = np.argmin(self.profile_viscos)
+        maxidx = np.argmax(self.profile_viscos)
+        Log.i(
+            f"Interpolated viscosity ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+
         self.run_figure.clear()
         self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
@@ -908,7 +921,8 @@ class FrameStep1(QtWidgets.QDialog):
                     "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
                 )
                 ax.set_ylim([0, 1000])
-            ax.plot(data[:, 0], data[:, 1], "bd")
+            ax.plot(self.profile_shears, self.profile_viscos, "bd")
+            ax.plot(data[:, 0], data[:, 1], "b,")
             self.run_figure_valid = True
         else:
             ax.text(0.5, 0.5, "Invalid Results",
