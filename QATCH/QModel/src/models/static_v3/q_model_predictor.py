@@ -8,8 +8,8 @@ file validation, feature extraction, probability formatting, and bias correction
 POI selection.
 
 Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 06-18-2025
-Version: QModel.Ver3.16
+Date: 06-23-2025
+Version: QModel.Ver3.2
 """
 import math
 import xgboost as xgb
@@ -1794,6 +1794,240 @@ class QModelPredictor:
         except (IndexError, KeyError, ValueError, Exception):
             return indices, confidences
 
+    def _filter_poi4(
+        self,
+        indices: List[int],
+        confidences: List[float],
+        feature_vector: pd.DataFrame,
+        relative_time: np.ndarray,
+        poi3_idx: int,
+    ) -> Tuple[List[int], List[float]]:
+        """
+        Filter POI4 candidates by:
+        - Dissipation: left base of a positive change in rate-of-increase (2nd derivative peak)
+        - RF: base of trough (minimum RF)
+        - Difference: left side of a sudden downslope (negative 1st derivative peak)
+
+        Uses the *_DoG_SVM_Score series to help locate shifts, and enforces POI4 > POI3.
+        Also plots the normalized signals, candidate points, and their computed scores.
+        """
+        def _min_max(x: np.ndarray) -> np.ndarray:
+            xmin, xmax = x.min(), x.max()
+            return (x - xmin) / (xmax - xmin) if xmax != xmin else x
+        # 1. Keep only candidates after POI3
+        cand = [(i, c) for i, c in zip(indices, confidences) if i > poi3_idx]
+        if not cand:
+            return indices, confidences  # fallback to original if no valid candidates
+
+        cand_idxs, cand_confs = zip(*cand)
+        cand_idxs = list(cand_idxs)
+        cand_confs = list(cand_confs)
+        diss = feature_vector["Dissipation"].values
+        rf = feature_vector["Resonance_Frequency"].values
+        diff = feature_vector["Difference"].values
+        # normalize each series
+        diss_norm = _min_max(diss)
+        rf_norm = _min_max(rf)
+        diff_norm = _min_max(diff)
+        # first‐ and second‐derivatives
+        diss_slope = np.gradient(diss_norm, relative_time)
+        diss_accel = np.gradient(rf_norm, relative_time)
+        diff_slope = np.gradient(diff_norm, relative_time)
+
+        # SVM‐DoG scores
+        diss_score = feature_vector["Dissipation_DoG_SVM_Score"].values
+        rf_score = feature_vector["Resonance_Frequency_DoG_SVM_Score"].values
+        diff_score = feature_vector["Difference_DoG_SVM_Score"].values
+
+        # compute composite scores at each candidate
+        scores = []
+        for idx in cand_idxs:
+            # second‐derivative positive crest
+            m1 = max(0.0, diss_accel[idx])
+            m2 = max(0.0, -rf[idx])                  # trough in RF
+            m3 = max(0.0, -diff_slope[idx])          # downslope in Difference
+            # m4 = abs(diss_score[idx]) + \
+            #     abs(rf_score[idx]) + abs(diff_score[idx])
+            m4 = abs(diss_score[idx]) + abs(diff_score[idx])
+            scores.append(m1 + m3 + m4)
+
+        # pick best
+        best_pos = int(np.argmax(scores))
+        best_idx = cand_idxs[best_pos]
+        best_conf = cand_confs[best_pos]
+        best_score = scores[best_pos]
+
+        # --- DEBUG PLOTTING ---
+        # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
+
+        # # Top: normalized signals + candidate markers
+        # ax1.plot(relative_time, diss_norm, label='Dissipation (norm)')
+        # ax1.plot(relative_time, rf_norm,   label='RF (norm)')
+        # ax1.plot(relative_time, diff_norm, label='Difference (norm)')
+        # ax1.scatter(relative_time[list(cand_idxs)],
+        #             diss_norm[list(cand_idxs)],
+        #             c='red', marker='x', s=80, label='candidates')
+        # ax1.set_ylabel('Normalized value')
+        # ax1.set_title('Signals with POI4 candidates')
+        # ax1.legend(loc='upper right')
+        # ax1.grid(True, alpha=0.3)
+
+        # # Bottom: candidiate scores over time
+        # times_cand = [relative_time[i] for i in cand_idxs]
+        # ax2.plot(times_cand, scores, marker='o',
+        #          linestyle='-', label='composite score')
+        # ax2.scatter(relative_time[best_idx], best_score,
+        #             c='green', s=100, label='selected POI4')
+        # ax2.set_xlabel('Relative time (s)')
+        # ax2.set_ylabel('Score')
+        # ax2.set_title('Candidate scores and chosen POI4')
+        # ax2.legend(loc='upper right')
+        # ax2.grid(True, alpha=0.3)
+
+        # plt.tight_layout()
+        # plt.show()
+        # --- end plotting ---
+
+        remaining_idxs = cand_idxs.copy()
+        remaining_confs = cand_confs.copy()
+        remaining_idxs.pop(best_pos)
+        remaining_confs.pop(best_pos)
+
+        out_indices = [best_idx] + remaining_idxs
+        out_confidences = [best_conf] + remaining_confs
+
+        return out_indices, out_confidences
+
+    def _filter_poi6(
+        self,
+        indices: List[int],
+        confidences: List[float],
+        feature_vector: pd.DataFrame,
+        relative_time: np.ndarray,
+        poi5_idx: int,
+    ) -> Tuple[List[int], List[float]]:
+        """
+        POI6: choose the best candidate after poi5_idx by equally weighting
+        rough envelopes of all three raw curves plus the three DoG_SVM scores,
+        with a debug plot of normalized envelopes and candidates.
+        """
+        # 1) filter out-of-bounds
+        filtered = [(i, c)
+                    for i, c in zip(indices, confidences) if i > poi5_idx]
+        if not filtered:
+            return indices, confidences
+        cand_idxs, cand_confs = zip(*filtered)
+        cand_idxs = list(cand_idxs)
+        cand_confs = list(cand_confs)
+        # 2) raw values & DoG_SVM scores
+        diss_vals = feature_vector['Dissipation'].values
+        rf_vals = feature_vector['Resonance_Frequency'].values
+        diff_vals = feature_vector['Difference'].values
+
+        diss_score = feature_vector['Dissipation_DoG_SVM_Score'].values
+        rf_score = feature_vector['Resonance_Frequency_DoG_SVM_Score'].values
+        diff_score = feature_vector['Difference_DoG_SVM_Score'].values
+
+        # 3) build rough "envelopes" by thresholding the gradients
+        d_diss = np.gradient(diss_vals,  relative_time)
+        d_rf = np.gradient(rf_vals,    relative_time)
+        d_diff = np.gradient(diff_vals,  relative_time)
+
+        def make_env(d):
+            thr = np.std(d)
+            return np.where(np.abs(d) >= thr, d, 0)
+
+        diss_env = make_env(d_diss)
+        rf_env = make_env(d_rf)
+        diff_env = make_env(d_diff)
+
+        # 4) min–max normalize
+        def _min_max(x: np.ndarray) -> np.ndarray:
+            xmin, xmax = x.min(), x.max()
+            return (x - xmin) / (xmax - xmin) if xmax != xmin else x
+
+        norm_diss = _min_max(diss_env)
+        norm_rf = _min_max(rf_env)
+        norm_diff = _min_max(diff_env)
+
+        # 5) score each candidate
+        scores = []
+        for idx in cand_idxs:
+            dog_score = abs(diss_score[idx]) + \
+                abs(rf_score[idx]) + abs(diff_score[idx])
+            score = (
+                norm_diss[idx]      # + for big diss slope
+                + (-norm_rf[idx])   # + for big negative RF slope
+                + (-norm_diff[idx])  # + for big downward diff slope
+                + dog_score
+            )
+            scores.append(score)
+
+        # pick best
+        best_pos = int(np.argmax(scores))
+        best_idx = cand_idxs[best_pos]
+        best_conf = cand_confs[best_pos]
+        best_score = scores[best_pos]
+
+        # 6) debug plot
+        idxs = list(cand_idxs)
+        times_cand = relative_time[idxs]
+
+        # normalize scores for marker sizing using np.ptp
+        score_arr = np.array(scores)
+        min_s, max_s = 30, 150
+        norm_sz = (score_arr - score_arr.min()) / (np.ptp(score_arr) + 1e-6)
+        sizes = norm_sz * (max_s - min_s) + min_s
+
+        # fig, ax = plt.subplots(figsize=(10, 5), dpi=100)
+
+        # # plot envelopes
+        # ax.plot(relative_time, norm_diss,  label='Norm Diss Env', linewidth=1)
+        # ax.plot(relative_time, norm_rf,    label='Norm RF Env',   linewidth=1)
+        # ax.plot(relative_time, norm_diff,  label='Norm Diff Env', linewidth=1)
+
+        # # scatter candidates sized by score
+        # ax.scatter(times_cand, norm_diss[idxs],
+        #            s=sizes, marker='o', label='Diss Candidates')
+        # ax.scatter(times_cand, norm_rf[idxs],
+        #            s=sizes, marker='s', label='RF Candidates')
+        # ax.scatter(times_cand, norm_diff[idxs],
+        #            s=sizes, marker='^', label='Diff Candidates')
+
+        # # annotate each with its numeric score
+        # for idx, score in zip(idxs, scores):
+        #     y_env = max(norm_diss[idx], norm_rf[idx], norm_diff[idx])
+        #     ax.text(
+        #         relative_time[idx],
+        #         y_env + 0.03,
+        #         f"{score:.1f}",
+        #         ha='center', va='bottom',
+        #         fontsize='x-small'
+        #     )
+
+        # # highlight the selected candidate
+        # best_time = relative_time[best_idx]
+        # ax.axvline(best_time, color='red', linestyle='--',
+        #            label='Selected Candidate')
+        # ax.scatter(best_time, norm_diss[best_idx],
+        #            s=200, marker='*', color='red')
+        # ax.scatter(best_time, norm_rf[best_idx],
+        #            s=200, marker='*', color='red')
+        # ax.scatter(best_time, norm_diff[best_idx],
+        #            s=200, marker='*', color='red')
+
+        # # labels & legend
+        # ax.set_xlabel("Relative Time (s)")
+        # ax.set_ylabel("Normalized Envelope Value")
+        # ax.set_title("POI6 Debug: Envelopes, Scores & Selection")
+        # ax.legend(loc='upper right', fontsize='small')
+        # plt.tight_layout()
+        # plt.show()
+        # 7) return with best score as 'confidence'
+        out_indices = [best_idx, cand_idxs]
+        out_confidences = [best_conf, confidences]
+        return out_indices, out_confidences
+
     @staticmethod
     def _valid_index(idx: Any, arr: np.ndarray) -> bool:
         """Check whether idx is a valid array index into arr.
@@ -2040,40 +2274,37 @@ class QModelPredictor:
         """
         Refine POI predictions by applying baseline filtering, timing windows, and bias correction.
         """
-
+        best_positions = self._copy_predictions(predictions)
         poi1_inds, poi1_confs = self._filter_poi1(
-            predictions['POI1']['indices'],
-            predictions['POI1']['confidences'],
+            best_positions['POI1']['indices'],
+            best_positions['POI1']['confidences'],
             feature_vector,
             relative_time
         )
 
-        predictions['POI1'] = {
+        best_positions['POI1'] = {
             'indices': poi1_inds,
             'confidences': poi1_confs
         }
 
         poi2_inds, poi2_confs = self._filter_poi2(
-            predictions['POI2']['indices'],
-            predictions['POI2']['confidences'],
+            best_positions['POI2']['indices'],
+            best_positions['POI2']['confidences'],
             feature_vector,
             relative_time,
-            predictions["POI1"]["indices"][0]
+            best_positions["POI1"]["indices"][0]
         )
 
-        predictions['POI2'] = {
+        best_positions['POI2'] = {
             'indices': poi2_inds,
             'confidences': poi2_confs
         }
-        # copy inputs to avoid side-effects
-        best_positions = self._copy_predictions(predictions)
 
-        #
         #  Boost POI6 confidences toward ground truth without overriding original confidences
         if len(ground_truth) >= 6 and len(model_data_labels) >= 6:
             ground_truth[5] = max(ground_truth[5], model_data_labels[5])
-        self._filter_poi6_near_ground_truth(
-            best_positions, ground_truth, relative_time)
+        # self._filter_poi6_near_ground_truth(
+        #     best_positions, ground_truth, relative_time)
         best_positions = self.cluster(
             df=feature_vector, extracted_predictions=best_positions, r_time=relative_time)
         self._sort_by_confidence(best_positions, 'POI6')
@@ -2088,13 +2319,35 @@ class QModelPredictor:
             best_positions, ground_truth, relative_time, cut1, cut2)
 
         # apply bias correction and ranking
-        for poi in ("POI4", "POI5", "POI6"):
+        for poi in ("POI4", "POI5"):
             windows[poi] = self._choose_and_insert(
                 windows[poi], dissipation, relative_time, feature_vector, poi=poi, ground_truth=ground_truth)
-
         # update positions with new windows
         best_positions = self._update_positions(best_positions, windows)
+        poi4_inds, poi4_confs = self._filter_poi4(
+            best_positions['POI4']['indices'],
+            best_positions['POI4']['confidences'],
+            feature_vector,
+            relative_time,
+            max(predictions["POI3"]["indices"])
+        )
 
+        best_positions['POI4'] = {
+            'indices': poi4_inds,
+            'confidences': poi4_confs
+        }
+        poi6_inds, poi6_confs = self._filter_poi6(
+            best_positions['POI6']['indices'],
+            best_positions['POI6']['confidences'],
+            feature_vector,
+            relative_time,
+            predictions["POI5"]["indices"][0]
+        )
+
+        best_positions['POI6'] = {
+            'indices': poi6_inds,
+            'confidences': poi6_confs
+        }
         # handle special -1 cases
         self._handle_negatives(best_positions, ground_truth, relative_time)
         if len(model_data_labels) >= 2:
@@ -2125,33 +2378,139 @@ class QModelPredictor:
 
         return best_positions
 
-    def regroup(self, raw_predictions: dict, updated_predictions: dict, relative_time: np.ndarray, feature_vector: np.ndarray) -> dict:
+    def regroup(
+        self,
+        raw_predictions: dict,
+        updated_predictions: dict,
+        relative_time: np.ndarray,
+        feature_vector: np.ndarray
+    ) -> dict:
         new_groupings = updated_predictions.copy()
+        max_idx = feature_vector.shape[0] if hasattr(
+            feature_vector, "shape") else len(feature_vector)
 
-        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI5"),
-                                                        candidates_2=raw_predictions.get(
-                                                            "POI6"),
-                                                        target_1=new_groupings.get(
-                                                        "POI5").get("indices")[0],
-                                                        target_2=new_groupings.get(
-                                                        "POI6").get("indices")[0],
-                                                        relative_time=relative_time,
-                                                        feature_vector=feature_vector)
-        new_groupings["POI5"] = raw_predictions["POI5"]
+        def _filter_bounds(cand: dict) -> dict:
+            inds = cand.get("indices", [])
+            confs = cand.get("confidences", [])
+            filtered = [(i, c)
+                        for i, c in zip(inds, confs) if 0 <= i < max_idx]
+            if not filtered:
+                return {"indices": [], "confidences": []}
+            unzipped = list(zip(*filtered))
+            return {"indices": list(unzipped[0]), "confidences": list(unzipped[1])}
+        poi5_raw = _filter_bounds(raw_predictions.get("POI5", {}))
+        poi6_raw = _filter_bounds(raw_predictions.get("POI6", {}))
+        poi5_target = new_groupings["POI5"]["indices"][0]
+        poi6_target = new_groupings["POI6"]["indices"][0]
+
+        merged_1, merged_2 = self._merge_candidate_sets(
+            candidates_1=poi5_raw,
+            candidates_2=poi6_raw,
+            target_1=poi5_target,
+            target_2=poi6_target,
+            relative_time=relative_time,
+            feature_vector=feature_vector
+        )
+        new_groupings["POI5"] = poi5_raw
         new_groupings["POI6"] = merged_2
 
-        merged_1, merged_2 = self._merge_candidate_sets(candidates_1=raw_predictions.get("POI4"),
-                                                        candidates_2=raw_predictions.get(
-                                                        "POI5"),
-                                                        target_1=updated_predictions.get(
-                                                        "POI4").get("indices")[0],
-                                                        target_2=updated_predictions.get(
-                                                        "POI5").get("indices")[0],
-                                                        relative_time=relative_time,
-                                                        feature_vector=feature_vector)
+        # 4. pull & filter POI4/5 for the next merge
+        poi4_raw = _filter_bounds(raw_predictions.get("POI4", {}))
+        poi5_prev = _filter_bounds(raw_predictions.get("POI5", {}))
+        poi4_target = new_groupings["POI4"]["indices"][0]
+        poi5_target2 = new_groupings["POI5"]["indices"][0]
+
+        merged_1, merged_2 = self._merge_candidate_sets(
+            candidates_1=poi4_raw,
+            candidates_2=poi5_prev,
+            target_1=poi4_target,
+            target_2=poi5_target2,
+            relative_time=relative_time,
+            feature_vector=feature_vector
+        )
         new_groupings["POI4"] = merged_1
         new_groupings["POI5"] = merged_2
+
         return new_groupings
+
+    def long_tail_detect(
+        self,
+        feature_vector: pd.DataFrame,
+        time: np.ndarray,
+        cols: list[str] = None,
+        slope_thresh: float = 0.025,
+        window: int = 10
+    ) -> pd.DataFrame:
+        """
+        Trims off the flat/repeated tail region of multiple normalized curves in a DataFrame,
+        and (optionally) plots the original Dissipation curve with the detected trim location.
+
+        Parameters
+        ----------
+        feature_vector : pd.DataFrame
+            Must contain each signal column named in `cols`.
+        time : np.ndarray
+            1D array of time values (same length as each column in feature_vector).
+        cols : list[str], optional
+            Signal columns to check for a long tail
+            (default ['Difference','Dissipation','Resonance_Frequency']).
+        slope_thresh : float
+            Threshold for the moving‐average absolute slope below which
+            we consider the curve “flat” (on the normalized scale).
+        window : int
+            Moving‐average window (in samples) for smoothing the instantaneous slope.
+
+        Returns
+        -------
+        pd.DataFrame
+            feature_vector trimmed to remove the long tail (if any).
+        """
+        if cols is None:
+            cols = ['Difference', 'Dissipation', 'Resonance_Frequency']
+
+        # for each curve, find the first i such that for all j>=i: ma[j] <= slope_thresh
+        tail_start_indices = []
+        for c in cols:
+            y = feature_vector[c].astype(float).values
+            # min–max normalize
+            if y.max() > y.min():
+                y_norm = (y - y.min()) / (y.max() - y.min())
+            else:
+                y_norm = y - y.min()
+
+            # instantaneous slope wrt time
+            dy = np.gradient(y_norm, time)
+
+            # moving‐average of abs(slope)
+            ma = np.convolve(np.abs(dy), np.ones(window)/window, mode='same')
+
+            # find true tail-start: first i where everything from i->end is flat
+            N = len(ma)
+            tail_idx = N  # default = no tail found
+            for i in range(N):
+                if np.all(ma[i:] <= slope_thresh):
+                    tail_idx = i
+                    break
+            tail_start_indices.append(tail_idx)
+
+        # cut at the _latest_ of those per-curve tails,
+        # so that _all_ curves are flat beyond the trim point
+        cut_idx = max(tail_start_indices)
+
+        # if no tail detected (cut_idx == len), return unchanged
+        if cut_idx >= len(feature_vector):
+            return feature_vector.reset_index(drop=True)
+        else:
+            # (optional) visualize where you're cutting
+            cut_time = time[cut_idx]
+            plt.plot(time, feature_vector['Dissipation'], label='Dissipation')
+            plt.axvline(cut_time, linestyle='--', label='Trim Point')
+            plt.axvspan(cut_time, time[-1], alpha=0.2, color='grey')
+            plt.legend()
+            plt.show()
+
+        # return trimmed
+        return feature_vector.iloc[:cut_idx].reset_index(drop=True)
 
     def predict(self,
                 file_buffer: str,
@@ -2210,32 +2569,38 @@ class QModelPredictor:
         file_buffer = self._reset_file_buffer(file_buffer=file_buffer)
         feature_vector = QDataProcessor.process_data(
             file_buffer=file_buffer, live=True)
+        # trimmed_vector = self.long_tail_detect(
+        #     feature_vector=feature_vector, time=df['Relative_time'].values)
+
+        # feature_vector = trimmed_vector.copy()
         transformed_feature_vector = self._scaler.transform(
             feature_vector.values)
         ddata = xgb.DMatrix(transformed_feature_vector)
         predicted_probabilites = self._booster.predict(ddata)
         extracted_predictions = self._extract_predictions(
             predicted_probabilites, model_data_labels)
+        relative_time = df["Relative_time"].values
+        relative_time = relative_time[:len(feature_vector)]
         init_correct = self._select_best_predictions(
             predictions=extracted_predictions,
             ground_truth=qmodel_v2_labels,
             model_data_labels=model_data_labels,
-            relative_time=df["Relative_time"].values,
+            relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
         new_grouping = self.regroup(raw_predictions=extracted_predictions, updated_predictions=init_correct,
-                                    relative_time=df["Relative_time"].values, feature_vector=feature_vector)
+                                    relative_time=relative_time, feature_vector=feature_vector)
 
         final_predictions = self._select_best_predictions(
             predictions=new_grouping,
             ground_truth=qmodel_v2_labels,
             model_data_labels=model_data_labels,
-            relative_time=df["Relative_time"].values,
+            relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
         if plotting:
             # Common data we'll reuse
-            times_all = df["Relative_time"]
+            times_all = relative_time
             diff_all = feature_vector["Difference"]
             cmap = plt.get_cmap("tab10")
 
