@@ -225,9 +225,24 @@ class FrameStep1(QtWidgets.QDialog):
             else:
                 self.list_view.clicked.connect(
                     lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
+
+            add_remove_export_widget = QtWidgets.QWidget()
+            add_remove_export_layout = QtWidgets.QHBoxLayout(
+                add_remove_export_widget)
+            add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
+            if step in [2, 5]:
+                self.btn_add = QtWidgets.QPushButton("Add Another")
+                self.btn_add.clicked.connect(self.add_another_item)
+                add_remove_export_layout.addWidget(self.btn_add)
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
             self.btn_remove.clicked.connect(self.user_run_removed)
-            form_layout.addRow("", self.btn_remove)
+            add_remove_export_layout.addWidget(self.btn_remove)
+            if step in [2, 5]:
+                self.btn_export = QtWidgets.QPushButton("Export {}".format(
+                    "Suggestions" if step == 2 else "Predictions"))
+                self.btn_export.clicked.connect(self.export_table_data)
+                add_remove_export_layout.addWidget(self.btn_export)
+            form_layout.addRow("", add_remove_export_widget)
 
         self.run_notes = QtWidgets.QTextEdit()
         self.run_notes.setPlaceholderText("None")
@@ -479,10 +494,10 @@ class FrameStep1(QtWidgets.QDialog):
         salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
 
         # update protein and buffer characteristics
-        protein.molecular_weight = protein_weight
-        protein.pI_mean = protein_pI_mean
-        protein.pI_range = protein_pI_range
-        buffer.pH = buffer_pH
+        protein.molecular_weight = float(protein_weight)
+        protein.pI_mean = float(protein_pI_mean)
+        protein.pI_range = float(protein_pI_range)
+        buffer.pH = float(buffer_pH)
 
         # if no changes, nothing is done on 'update' call
         self.parent.ing_ctrl.update_protein(protein.id, protein)
@@ -549,8 +564,11 @@ class FrameStep1(QtWidgets.QDialog):
                     "ERROR: self.parent is None.\n" +
                     "Cannot proceed to next step!")
         else:  # not ready
+            message = "Please select a run."
+            if self.select_label.text():
+                message = "Please correct the highlighted fields first."
             QtWidgets.QMessageBox.information(
-                None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+                None, "Missing Information", message, QtWidgets.QMessageBox.Ok)
 
     def proceed_to_step_3(self):
         # ready to proceed
@@ -608,6 +626,9 @@ class FrameStep1(QtWidgets.QDialog):
                 pass  # ignore the click
         # raise any other exception type
 
+    def add_another_item(self):
+        raise NotImplementedError()
+
     def user_run_removed(self):
         try:
             selected = self.list_view.selectedIndexes()
@@ -624,6 +645,9 @@ class FrameStep1(QtWidgets.QDialog):
             else:  # no files in list, this error can occur when user cliks on the placeholder text
                 pass  # ignore the click
         # raise any other exception type
+
+    def export_table_data(self):
+        raise NotImplementedError()
 
     def file_selected(self, path: str | None):
         self.run_file_run = path
