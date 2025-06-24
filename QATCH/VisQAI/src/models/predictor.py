@@ -10,20 +10,20 @@ for data processing, transformation, and prediction. The expected bundle structu
         ├── __pycache__/
         │   ├── dataprocessor.cpython-xx.pyc
         │   └── predictor.cpython-xx.pyc
-        ├── model/ 
+        ├── model/
         │   ├── assets/
         │   ├── variables/
         │   └── saved_model.pb
-        └── transformer.pkl 
+        └── transformer.pkl
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-04
+    2025-06-24
 
 Version:
-    2.0
+    2.1
 """
 
 import tempfile
@@ -36,8 +36,8 @@ from typing import Any, Union, Tuple
 import numpy as np
 import importlib.util
 from importlib.machinery import SourcelessFileLoader
-import cloudpickle
-
+from src.controller.formulation_controller import FormulationController
+from src.db.db import Database
 try:
     import tensorflow as tf
     _TF_AVAILABLE = True
@@ -51,6 +51,7 @@ class ComponentLoadError(Exception):
 
 
 class Predictor:
+
     """
     Dynamically load and execute a pipeline of components for data processing, transformation, and prediction.
 
@@ -112,18 +113,26 @@ class Predictor:
             raise ComponentLoadError(
                 f"Failed to instantiate DataProcessor: {e!s}")
 
-        # Load transformer.pkl via cloudpickle
+        # Instantiate TransformerPipeline with the saved scaler
         transformer_path = pkg_dir / transformer_filename
         if not transformer_path.is_file():
             raise ComponentLoadError(
                 f"Missing transformer file '{transformer_filename}' under '{pkg_dir}'."
             )
+
+        # Load the compiled transformer module so we can grab the class
+        tp_module = self._load_pyc_module(pkg_dir, "transformer")
+        if not hasattr(tp_module, "TransformerPipeline"):
+            raise ComponentLoadError(
+                "Module 'transformer' does not define TransformerPipeline."
+            )
         try:
-            with transformer_path.open("rb") as f:
-                self.transformer = cloudpickle.load(f)
+            TransformerPipeline = tp_module.TransformerPipeline
+            self.transformer = TransformerPipeline(
+                scaler_path=str(transformer_path))
         except Exception as e:
             raise ComponentLoadError(
-                f"Failed to load transformer via cloudpickle from '{transformer_path}': {e!s}"
+                f"Failed to instantiate TransformerPipeline with '{transformer_path}': {e!s}"
             )
         if not (
             hasattr(self.transformer, "transform") and callable(
@@ -131,7 +140,7 @@ class Predictor:
             and hasattr(self.transformer, "fit_transform") and callable(self.transformer.fit_transform)
         ):
             raise ComponentLoadError(
-                "Transformer must implement callable transform(...) and fit_transform(...)."
+                "TransformerPipeline must implement callable transform(...) and fit_transform(...)."
             )
 
         # Load TensorFlow SavedModel directory ("model/")
@@ -145,40 +154,16 @@ class Predictor:
                 "TensorFlow is not installed; cannot load model."
             )
         try:
-            loaded_module = tf.saved_model.load(str(saved_model_dir))
+            self.model_path = str(saved_model_dir)
+            self.model = tf.saved_model.load(str(self.model_path))
         except Exception as e:
             raise ComponentLoadError(
                 f"Failed to load SavedModel from '{saved_model_dir}': {e!s}"
             )
-        if "serving_default" not in loaded_module.signatures:
+        if "serving_default" not in self.model.signatures:
             raise ComponentLoadError(
                 f"SavedModel at '{saved_model_dir}' has no 'serving_default' signature."
             )
-        signature_fn = loaded_module.signatures["serving_default"]
-
-        def _predict_fn(input_array: Any) -> Any:
-            """
-            Perform inference using the SavedModel signature.
-
-            Args:
-                input_array: A NumPy array or array-like input for the model.
-
-            Returns:
-                A NumPy array of model predictions.
-
-            Raises:
-                ComponentLoadError: If inference fails or output cannot be converted to NumPy.
-            """
-            try:
-                input_tensor = tf.convert_to_tensor(input_array)
-                output_dict = signature_fn(input_tensor)
-                # Assume single output; retrieve first tensor value
-                result_tensor = next(iter(output_dict.values()))
-                return result_tensor.numpy()
-            except Exception as e:
-                raise ComponentLoadError(f"SavedModel inference failed: {e!s}")
-
-        self.model = types.SimpleNamespace(predict=_predict_fn)
 
         # Load executor (predictor) module from compiled .pyc in package/__pycache__/
         pred_module = self._load_pyc_module(pkg_dir, predictor_name)
@@ -192,9 +177,9 @@ class Predictor:
             raise ComponentLoadError(
                 f"Failed to instantiate executor Predictor: {e!s}"
             )
-
-        # Wire the wrapped SavedModel into the executor
         self._wire_model_to_executor()
+        self.database = Database(parse_file_key=True)
+        self.form_ctrl = FormulationController(db=self.database)
 
     def _extract_if_archive(self, path: Path) -> Path:
         """
@@ -271,128 +256,197 @@ class Predictor:
 
     def _wire_model_to_executor(self) -> None:
         """
-        Attach the wrapped SavedModel `.predict(...)` function to the executor instance.
-
-        If executor has a `set_model(model)` method, call it. Otherwise, assign the namespace to `.model`.
+        Wires a TensorFlow SavedModel signature to the executor’s predictor, ensuring
+        that `executor.predict(...)` can be called without attribute or dtype/signature mismatches.
 
         Raises:
-            ComponentLoadError: If setting the model fails.
+            ComponentLoadError: If the “serving_default” signature is not found,
+                if retrieving or wrapping the signature fails, or if the executor
+                does not support setting the model and the attribute assignment fails.
         """
+        try:
+            sig = self.model.signatures.get("serving_default", None)
+            if sig is None:
+                raise ComponentLoadError(
+                    "SavedModel signature 'serving_default' not found.")
+        except Exception as e:
+            raise ComponentLoadError(
+                f"Failed to get serving_default signature: {e!s}")
+
+        class _SignatureModelAdapter:
+            """
+            Adapter for TensorFlow SavedModel signature functions.
+
+            Wraps a TensorFlow signature function to provide a Keras-like interface for prediction.
+
+            Args:
+                signature_fn (Callable): A TensorFlow signature function obtained from a SavedModel, typically
+                    via `model.signatures['serving_default']`.
+            """
+
+            def __init__(self, signature_fn):
+                """
+                Initializes the SignatureModelAdapter.
+
+                Args:
+                    signature_fn (Callable): The signature function to wrap.
+                """
+                self._sig = signature_fn
+
+            def predict(self, x):
+                """
+                Runs inference on input data and returns a NumPy array.
+
+                This method converts the input to a TensorFlow tensor of type float32,
+                calls the wrapped signature function, extracts the first output tensor,
+                and returns its NumPy value.
+
+                Args:
+                    x (array-like or tf.Tensor): Input data to predict on. Can be any object
+                        convertible to a TensorFlow tensor of dtype float32.
+
+                Returns:
+                    numpy.ndarray: The output of the model as a NumPy array.
+                """
+                import tensorflow as tf
+                x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
+                result = self._sig(keras_tensor=x_tf)
+                out = next(iter(result.values()))
+                return out.numpy()
+
+            def __call__(self, x, training=False):
+                """
+                Calls the adapter like a Keras model, returning a TensorFlow tensor.
+
+                This method converts the input to a TensorFlow tensor of type float32,
+                calls the wrapped signature function, and returns the raw output tensor.
+
+                Args:
+                    x (array-like or tf.Tensor): Input data for the model. Must be convertible
+                        to a TensorFlow tensor of dtype float32.
+                    training (bool, optional): Whether to run in training mode. This adapter
+                        does not currently utilize the `training` flag; it is included for
+                        interface compatibility. Defaults to False.
+
+                Returns:
+                    tf.Tensor: The output tensor from the signature function.
+                """
+                import tensorflow as tf
+                x_tf = tf.convert_to_tensor(x, dtype=tf.float32)
+                result = self._sig(keras_tensor=x_tf)
+                out = next(iter(result.values()))
+                return out
+
+        adapter = _SignatureModelAdapter(sig)
         if hasattr(self.predictor, "set_model") and callable(self.predictor.set_model):
             try:
-                self.predictor.set_model(self.model)
+                self.predictor.set_model(adapter)
             except Exception as e:
                 raise ComponentLoadError(
                     f"Executor.set_model(...) failed: {e!s}")
         else:
             try:
-                setattr(self.predictor, "model", self.model)
+                setattr(self.predictor, "model", adapter)
             except Exception as e:
                 raise ComponentLoadError(
                     f"Executor does not support setting `.model`: {e!s}")
 
     def predict(self, data: Any) -> Any:
         """
-        Run the full inference pipeline on `data`.
+        Execute the full inference pipeline on raw input data and return a prediction.
 
         Args:
-            data: Raw input data expected by the DataProcessor.
+            data (Any): Raw input data as expected by the data_processor. This can be
+                a file path, array, or any format the processor supports.
 
         Returns:
-            The prediction(typically a NumPy array).
+            Any: The output of the model's `predict` method, typically a NumPy array or
+                tensor containing the prediction results.
 
         Raises:
-            ComponentLoadError: If any step in the pipeline fails or if required methods are missing.
+            ComponentLoadError: If the data_processor fails to process or load the data,
+                if the transformer fails to transform the data, or if the predictor
+                fails to produce a prediction.
         """
-        # Data processing
         try:
             if hasattr(self.data_processor, "process_predict") and callable(self.data_processor.process_predict):
                 data = self.data_processor.process_predict(data)
-
             elif hasattr(self.data_processor, "load") and callable(self.data_processor.load):
                 data = self.data_processor.load(data)
             else:
                 raise ComponentLoadError(
-                    "DataProcessor does not implement `process_predict(...)` or `load(...)`.")
+                    "DataProcessor does not implement `process_predict(...)` or `load(...)`."
+                )
         except ComponentLoadError:
             raise
         except Exception as e:
             raise ComponentLoadError(f"DataProcessor failed: {e!s}")
-
-        # Transformation
         try:
             data = self.transformer.transform(data)
         except Exception as e:
             raise ComponentLoadError(f"Transformer failed: {e!s}")
-
-        # Predictor prediction
-        if not hasattr(self.predictor, "predict") or not callable(self.predictor.predict):
-            raise ComponentLoadError(
-                "Executor does not implement `predict(...)`.")
-
         try:
             return self.predictor.predict(data)
         except Exception as e:
-            raise ComponentLoadError(f"Executor.predict(...) failed: {e!s}")
+            raise ComponentLoadError(
+                f"Executor.predict(...) failed: {e!s}")
 
     def predict_with_uncertainty(
-            self,
-            data: Any,
-            n_samples: int = 50,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        self,
+        data: Any,
+        n_samples: int = 50,
+    ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """
-        Run the full inference pipeline on `data`.
+        Run the full inference pipeline on input data, returning mean predictions, confidence scores, and raw uncertainty.
 
         Args:
-            data: Raw input data expected by the DataProcessor.
-
-        Returns:
-            The prediction(typically a NumPy array).
+            data (Any): Raw input to the inference pipeline. Must be accepted by the data_processor.
+            n_samples (int, optional): Number of stochastic samples for uncertainty estimation. Defaults to 50.
 
         Raises:
-            ComponentLoadError: If any step in the pipeline fails or if required methods are missing.
+            ComponentLoadError: If the data_processor or transformer fails, or if the predictor
+                does not support uncertainty estimation.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                mean_pred (np.ndarray): The mean prediction across `n_samples` runs.
+                confidence (np.ndarray): Normalized confidence scores in [0, 1],
+                    computed as 1 - (std_pred - std_min) / (std_max - std_min).
+                std_pred (np.ndarray): Raw standard deviation of predictions across samples.
         """
-        # Data processing
         try:
             if hasattr(self.data_processor, "process_predict") and callable(self.data_processor.process_predict):
-                data = self.data_processor.process_predict(data, False)
+                processed = self.data_processor.process_predict(data)
             elif hasattr(self.data_processor, "load") and callable(self.data_processor.load):
-                data = self.data_processor.load(data)
+                processed = self.data_processor.load(data)
             else:
                 raise ComponentLoadError(
-                    "DataProcessor does not implement `process_predict(...)` or `load(...)`.")
+                    "DataProcessor does not implement `process_predict(...)` or `load(...)`."
+                )
         except ComponentLoadError:
             raise
         except Exception as e:
             raise ComponentLoadError(f"DataProcessor failed: {e!s}")
 
-        # Transformation
         try:
-            data = self.transformer.transform(data)
+            transformed = self.transformer.transform(processed)
         except Exception as e:
             raise ComponentLoadError(f"Transformer failed: {e!s}")
 
-        # Predictor prediction
-        if not hasattr(self.predictor, "predict") or not callable(self.predictor.predict):
-            raise ComponentLoadError(
-                "Executor does not implement `predict(...)`.")
-
         try:
             mean_pred, std_pred = self.predictor.predict(
-                data,
-                return_uncertainty=True,
-                n_samples=n_samples
+                transformed, return_uncertainty=True, n_samples=n_samples
             )
-        except Exception as e:
-            raise ComponentLoadError(f"Executor.predict failed: {e!s}")
+        except AttributeError as e:
+            raise ComponentLoadError(f"Failed to compute uncertainty: {e!s}")
 
         std_min, std_max = std_pred.min(), std_pred.max()
         denom = std_max - std_min if std_max > std_min else 1.0
         confidence = 1.0 - (std_pred - std_min) / denom
 
-        return mean_pred, confidence
+        return mean_pred, confidence, std_pred
 
-    def update(self, new_data: pd.DataFrame) -> dict:
+    def update(self, new_data: pd.DataFrame, train_full: bool = False) -> dict:
         """
         Incorporate new training data into the pipeline via transfer learning or incremental updates.
 
@@ -412,8 +466,12 @@ class Predictor:
             ComponentLoadError: If any step fails, or if required methods are missing/invalid.
         """
         # Data processing
+        if train_full:
+            data = self.form_ctrl.get_all_as_dataframe(encoded=True)
+        else:
+            data = new_data
         try:
-            processed = self.data_processor.process_train(new_data)
+            processed = self.data_processor.process_train(data)
         except ComponentLoadError:
             raise
         except Exception as e:
@@ -437,20 +495,20 @@ class Predictor:
             raise ComponentLoadError(
                 f"Transformer.fit_transform(...) failed: {e!s}")
 
-        # Executor update
         if not hasattr(self.predictor, "update") or not callable(self.predictor.update):
             raise ComponentLoadError(
                 "Executor does not implement `update(...)`.")
-
+        updated_model = self.model
         try:
-            self.predictor.update(scaled_features, labels, model=self.model)
+            updated_model = self.predictor.update(
+                scaled_features, labels, self.model_path)
         except Exception as e:
             raise ComponentLoadError(f"Executor.update(...) failed: {e!s}")
 
         return {
             "dataprocessor": self.data_processor,
             "transformer":   self.transformer,
-            "model":         self.model,
+            "model":         updated_model,
             "predictor":     self.predictor,
             "updated_at":    datetime.now().isoformat(),
         }
