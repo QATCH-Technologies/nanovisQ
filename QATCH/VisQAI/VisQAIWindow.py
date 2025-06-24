@@ -960,7 +960,7 @@ class FrameStep1(QtWidgets.QDialog):
         form_df = self.parent.formulation.to_dataframe(
             encoded=True, training=False)
         self.parent.predictor.update(form_df, train_full=True)
-        guesses = self.parent.predictor.predict_with_confidences(form_df)
+        guesses = self.parent.predictor.predict_with_uncertainty(form_df)
         print(guesses)
 
     def proceed_to_step_2(self):
