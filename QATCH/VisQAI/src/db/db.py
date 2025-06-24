@@ -715,3 +715,16 @@ class Database:
                 # No additional action needed; changes have been committed inline.
                 pass
         self.conn.close()
+
+    def purge(self) -> None:
+        """Writes database from memory to disk"""
+        # Close file handle to allow file write
+        if self.file_handle is not None:
+            self.file_handle.close()
+        if self.use_encryption:
+            self._save_cdb(self.db_path, self.encryption_key)
+        else:
+            # No additional action needed; changes have been committed inline.
+            pass
+        # Re-open file handle to indicate DB is still open
+        self.file_handle = open(self.db_path, "rb")

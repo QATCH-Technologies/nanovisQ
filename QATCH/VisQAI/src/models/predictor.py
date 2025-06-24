@@ -36,8 +36,12 @@ from typing import Any, Union, Tuple
 import numpy as np
 import importlib.util
 from importlib.machinery import SourcelessFileLoader
-from src.controller.formulation_controller import FormulationController
-from src.db.db import Database
+try:
+    from src.controller.formulation_controller import FormulationController
+    from src.db.db import Database
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+    from QATCH.VisQAI.src.db.db import Database
 try:
     import tensorflow as tf
     _TF_AVAILABLE = True

@@ -30,6 +30,7 @@ try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.models.predictor import Predictor
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
@@ -37,6 +38,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
@@ -293,6 +295,9 @@ class VisQAIWindow(QtWidgets.QMainWindow):
             Log.d("User did not authenticate for role to switch users.")
 
     def on_tab_changed(self, index):
+        # Purge dataase to disk on tab change
+        self.database.purge()
+
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
         if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
@@ -943,13 +948,20 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
-        self.parent.form_ctrl.add_formulation(formulation=form)
+        self.parent.formulation = self.parent.form_ctrl.add_formulation(
+            formulation=form)
         # print(self.parent.form_ctrl.get_all_as_dataframe())
 
         return True
 
     def load_suggestions(self):
-        raise NotImplementedError()
+        predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
+        self.parent.predictor = Predictor(predictor_path)
+        form_df = self.parent.formulation.to_dataframe(
+            encoded=True, training=False)
+        self.parent.predictor.update(form_df, train_full=True)
+        guesses = self.parent.predictor.predict_with_confidences(form_df)
+        print(guesses)
 
     def proceed_to_step_2(self):
         # Are we ready to proceed?
@@ -1070,7 +1082,7 @@ class FrameStep1(QtWidgets.QDialog):
                     "You have missing feature values.\n\nAre you sure you want to reload the features table?")
                 if result != QtWidgets.QMessageBox.Yes:
                     return
-            else:
+            elif not self.feature_table.isEmpty():
                 Log.i("Saving formulation for fully populated feature table.")
                 if not self.save_formulation(cancel):
                     return
@@ -1628,6 +1640,10 @@ class TableView(QtWidgets.QTableWidget):
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
 
+    def clear(self):
+        super().clear()
+        self._is_empty = True
+
     def setData(self, data: dict[str, str]) -> None:
         self.data = data
         self.clear()
@@ -1670,6 +1686,7 @@ class TableView(QtWidgets.QTableWidget):
         header.setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
+        self._is_empty = False
 
     def allSet(self) -> bool:
         for n, key in enumerate(self.data.keys()):
@@ -1680,6 +1697,9 @@ class TableView(QtWidgets.QTableWidget):
                 if item.background().color().name() in [Color.light_yellow.name(), Color.light_red.name()]:
                     return False
         return True
+
+    def isEmpty(self) -> bool:
+        return self._is_empty
 
     def _row_combo_set(self, idx):
         item = self.item(idx, 2)

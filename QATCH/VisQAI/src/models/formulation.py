@@ -477,7 +477,7 @@ class Formulation:
         )
         return data
 
-    def to_dataframe(self, encoded: bool = True) -> pd.DataFrame:
+    def to_dataframe(self, encoded: bool = True, training: bool = True) -> pd.DataFrame:
         """Convert this Formulation into a one‐row pandas DataFrame.
 
         Args:
@@ -549,11 +549,12 @@ class Formulation:
                 "Surfactant_conc": self.surfactant.concentration,
             }
 
-        shear_rates = [100, 1000, 10000, 100000, 15000000]
-        if self.viscosity_profile is not None:
-            for r in shear_rates:
-                row[f"Viscosity_{int(r)}"] = self.viscosity_profile.get_viscosity(
-                    r)
+        if training:
+            shear_rates = [100, 1000, 10000, 100000, 15000000]
+            if self.viscosity_profile is not None:
+                for r in shear_rates:
+                    row[f"Viscosity_{int(r)}"] = self.viscosity_profile.get_viscosity(
+                        r)
 
         df = pd.DataFrame([row])
 
@@ -564,10 +565,12 @@ class Formulation:
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
             "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc",
-            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
-            "Viscosity_100000", "Viscosity_15000000"
-        ]
+            "Surfactant_type", "Surfactant_conc"]
+        if training:
+            expected.extend([
+                "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
+                "Viscosity_100000", "Viscosity_15000000"
+            ])
         for col in expected:
             if col not in df.columns:
                 df[col] = pd.NA
