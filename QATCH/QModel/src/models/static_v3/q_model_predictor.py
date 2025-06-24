@@ -7,9 +7,14 @@ data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Include
 file validation, feature extraction, probability formatting, and bias correction for refined
 POI selection.
 
-Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 06-23-2025
-Version: QModel.Ver3.2
+Author: 
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+    
+Date: 
+    06-24-2025
+
+Version: 
+    QModel.Ver3.2
 """
 import math
 import xgboost as xgb
@@ -1079,121 +1084,6 @@ class QModelPredictor:
         remaining = [i for i in indices if i != best_idx]
         return [best_idx] + remaining
 
-    def _filter_poi1_baseline(
-        self,
-        indices: List[Union[int, np.integer]],
-        dissipation: np.ndarray,
-        relative_time: np.ndarray,
-        difference: np.ndarray
-    ) -> List[int]:
-        """Filter POI1 candidates using an early-run baseline and IQR outlier removal.
-
-        Computes a baseline dissipation over the first 1-3% of the run. Any candidate
-        whose dissipation at its index does not exceed this baseline is discarded.
-        Remaining candidates are then filtered by the interquartile range (IQR) of
-        their dissipation values. Finally, the leftmost candidate is offset by
-        `POI_1_OFFSET` and placed first in the returned list.
-
-        Args:
-            indices (List[int or np.integer]):
-                Candidate sample indices for POI1.
-            dissipation (np.ndarray):
-                1D array of dissipation values.
-            relative_time (np.ndarray):
-                1D array of time values (same length as `dissipation`).
-
-        Returns:
-            List[int]: Filtered and reordered list of POI1 indices.
-
-        Raises:
-            TypeError: If input types are incorrect or not convertible to required types.
-            ValueError: If array lengths mismatch, indices are out of bounds, or
-                        `relative_time` is too short.
-        """
-        # Validate dissipation and relative_time arrays
-        if not isinstance(dissipation, np.ndarray) or dissipation.ndim != 1:
-            raise TypeError("`dissipation` must be a 1D numpy.ndarray.")
-        if not isinstance(relative_time, np.ndarray) or relative_time.ndim != 1:
-            raise TypeError("`relative_time` must be a 1D numpy.ndarray.")
-        if dissipation.shape[0] != relative_time.shape[0]:
-            raise ValueError(
-                "`dissipation` and `relative_time` must have the same length.")
-        if dissipation.size < 2:
-            raise ValueError(
-                "`dissipation` must contain at least two data points.")
-        if any(i < 0 or i >= dissipation.size for i in indices):
-            raise ValueError(
-                "All `indices` must be within the valid range of the data arrays.")
-
-        # Baseline computation (first 1–3% of run)
-        t0, tN = float(relative_time[0]), float(relative_time[-1])
-        duration = tN - t0
-        if duration <= 0:
-            raise ValueError("`relative_time` must be strictly increasing.")
-        low_t, high_t = t0 + 0.01 * duration, t0 + 0.03 * duration
-        mask = (relative_time >= low_t) & (relative_time <= high_t)
-        if mask.any():
-            baseline = float(np.mean(dissipation[mask]))
-        else:
-            n = max(1, int(0.03 * dissipation.size))
-            baseline = float(np.mean(dissipation[:n]))
-
-        # Filter by baseline
-        filtered = [i for i in indices if dissipation[i] > baseline]
-
-        # IQR outlier removal
-        if filtered:
-            vals = np.array([dissipation[i] for i in filtered], dtype=float)
-            q1, q3 = np.percentile(vals, [25, 75])
-            iqr = q3 - q1
-            lower, upper = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-            filtered = [
-                idx for idx, val in zip(filtered, vals)
-                if lower <= val <= upper
-            ]
-
-        def find_local_trough(
-            poi_idx: int,
-            difference: np.ndarray,
-            window: int = 20
-        ) -> int:
-
-            n = difference.shape[0]
-            start = max(0, poi_idx - window)
-            end = min(n - 1, poi_idx + window)
-            region = difference[start:end+1]
-            trough_rel = int(np.argmin(region))
-            trough_idx = start + trough_rel
-            return trough_idx
-        if filtered:
-            trough_idx = find_local_trough(
-                min(filtered) + POI_1_OFFSET, difference=difference)
-
-            t0, tN = float(relative_time[0]), float(relative_time[-1])
-            duration = tN - t0
-            low_t, high_t = t0 + 0.01 * duration, t0 + 0.03 * duration
-            mask = (relative_time >= low_t) & (relative_time <= high_t)
-            if mask.any():
-                baseline_diff = float(np.mean(difference[mask]))
-            else:
-                baseline_diff = float(difference[0])
-
-            # 4) search to the right of trough for return‐to‐baseline
-            return_idx = trough_idx
-            for j in range(trough_idx + 1, difference.shape[0]):
-                if difference[j] >= baseline_diff:
-                    return_idx = j
-                    break
-            leftmost = min(filtered) + POI_1_OFFSET
-            leftmost = int(leftmost)
-            if leftmost < return_idx:
-                Log.i(TAG, "Returing to baseline")
-                leftmost = return_idx
-            others = [idx for idx in filtered if idx != leftmost]
-            filtered = [leftmost] + others
-
-        return filtered
-
     def _sort_by_confidence(
         self,
         positions: Dict[str, Dict[str, List[Union[int, float]]]],
@@ -1543,7 +1433,7 @@ class QModelPredictor:
     ) -> None:
         """Replace invalid (-1) POI indices with fallbacks.
 
-        For POI4–POI6:
+        For POI4-POI6:
         - If all indices are -1, replace with the ground-truth index.
         - For POI6, if the first index is -1, replace it with 98% of the run length.
 
@@ -1652,40 +1542,6 @@ class QModelPredictor:
                      feature_vector: pd.DataFrame,
                      relative_time: np.ndarray
                      ) -> Tuple[List[int], List[float]]:
-        """
-        Filters candidate POI1 indices through a three-phase gradient and SVM-score approach.
-
-        This method applies three successive filtering phases on the input candidate indices:
-
-        1. Dissipation Phase: Detects the first significant positive gradient shift in the
-        'Dissipation' curve and retains only candidates occurring after that time.
-        2. Resonance Phase: Detects the first significant negative gradient shift in the
-        'Resonance_Frequency' curve and further refines the candidates.
-        3. Difference Phase: Detects the first significant positive gradient shift in the
-        'Difference_smooth' curve, aligns candidates within half of the average interval
-        tolerance, and retains aligned candidates.
-
-        If no candidates remain after these phases, the method inspects the '*_DoG_SVM_Score'
-        columns for large score jumps and selects candidates occurring after the first large
-        jump as a fallback. The original indices are used if no filtering yields results.
-
-        Finally, the confidences are re-synchronized to match the filtered indices order.
-
-        Args:
-            indices (List[int]): Original list of POI1 candidate indices.
-            confidences (List[float]): Original confidence scores for each candidate index.
-            feature_vector (pd.DataFrame): DataFrame containing the following feature columns:
-                - 'Dissipation'
-                - 'Resonance_Frequency'
-                - 'Difference_smooth'
-                - any columns ending with '_DoG_SVM_Score' for SVM scores.
-            relative_time (np.ndarray): 1D array of time values corresponding to rows in feature_vector.
-
-        Returns:
-            Tuple[List[int], List[float]]:
-                filtered_indices (List[int]): List of indices that passed the three-phase filter.
-                filtered_confidences (List[float]): Confidence values aligned with filtered_indices.
-        """
         dissipation = feature_vector['Dissipation'].values
         resonance = feature_vector['Resonance_Frequency'].values
         diff_smooth = feature_vector['Difference_smooth'].values
@@ -1734,8 +1590,6 @@ class QModelPredictor:
                     if inds:
                         break
             inds = inds or orig_inds
-
-        # re-sync confidences in the filtered order
         confs = [orig_confs[orig_inds.index(i)] for i in inds]
 
         return inds, confs
@@ -1814,7 +1668,6 @@ class QModelPredictor:
         def _min_max(x: np.ndarray) -> np.ndarray:
             xmin, xmax = x.min(), x.max()
             return (x - xmin) / (xmax - xmin) if xmax != xmin else x
-        # 1. Keep only candidates after POI3
         cand = [(i, c) for i, c in zip(indices, confidences) if i > poi3_idx]
         if not cand:
             return indices, confidences  # fallback to original if no valid candidates
@@ -1857,44 +1710,60 @@ class QModelPredictor:
         best_conf = cand_confs[best_pos]
         best_score = scores[best_pos]
 
-        # --- DEBUG PLOTTING ---
+        window_radius = 150
+        start = max(poi3_idx + 1, best_idx - window_radius)
+        end = min(len(diss_score) - 1, best_idx + window_radius)
+
+        local_scores = diss_score[start:end+1]
+        rel_trough = np.argmin(local_scores)
+        trough_idx = start + rel_trough
+
+        thresh = np.mean(diss_score) - np.std(diss_score)
+        if diss_score[trough_idx] < thresh:
+            left_base = max(start, trough_idx - 1)
+            best_idx = left_base
+
+        # --- DEBUG PLOTTING (enhanced) ---
         # fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 8), sharex=True)
 
-        # # Top: normalized signals + candidate markers
         # ax1.plot(relative_time, diss_norm, label='Dissipation (norm)')
         # ax1.plot(relative_time, rf_norm,   label='RF (norm)')
         # ax1.plot(relative_time, diff_norm, label='Difference (norm)')
-        # ax1.scatter(relative_time[list(cand_idxs)],
-        #             diss_norm[list(cand_idxs)],
+
+        # # original candidates
+        # ax1.scatter(relative_time[cand_idxs], diss_norm[cand_idxs],
         #             c='red', marker='x', s=80, label='candidates')
+
+        # # show the detected trough and its left‐base
+        # ax1.scatter(relative_time[trough_idx], diss_norm[trough_idx],
+        #             c='blue', s=100, label='neg spike (trough)')
+        # ax1.scatter(relative_time[best_idx], diss_norm[best_idx],
+        #             c='orange', s=100, label='snapped POI4')
+
         # ax1.set_ylabel('Normalized value')
-        # ax1.set_title('Signals with POI4 candidates')
         # ax1.legend(loc='upper right')
         # ax1.grid(True, alpha=0.3)
-
-        # # Bottom: candidiate scores over time
         # times_cand = [relative_time[i] for i in cand_idxs]
         # ax2.plot(times_cand, scores, marker='o',
         #          linestyle='-', label='composite score')
+        # # mark whichever best_idx survived
         # ax2.scatter(relative_time[best_idx], best_score,
-        #             c='green', s=100, label='selected POI4')
+        #             c='green', s=100, label='final POI4')
         # ax2.set_xlabel('Relative time (s)')
         # ax2.set_ylabel('Score')
-        # ax2.set_title('Candidate scores and chosen POI4')
         # ax2.legend(loc='upper right')
         # ax2.grid(True, alpha=0.3)
 
         # plt.tight_layout()
         # plt.show()
-        # --- end plotting ---
+        # — end plotting —
 
-        remaining_idxs = cand_idxs.copy()
-        remaining_confs = cand_confs.copy()
-        remaining_idxs.pop(best_pos)
-        remaining_confs.pop(best_pos)
-
-        out_indices = [best_idx] + remaining_idxs
-        out_confidences = [best_conf] + remaining_confs
+        # rebuild output lists, putting our (possibly snapped) best_idx first
+        # remove original occurrence of best_idx if it was in cand_idxs
+        remaining = [(i, c)
+                     for i, c in zip(cand_idxs, cand_confs) if i != best_idx]
+        out_indices = [best_idx] + [i for i, _ in remaining]
+        out_confidences = [best_conf] + [c for _, c in remaining]
 
         return out_indices, out_confidences
 
@@ -2099,7 +1968,7 @@ class QModelPredictor:
         extracted_predictions: dict[str, dict[str, list]],
         eps_fraction: float = 0.01,
         min_eps: int = 3,
-        max_eps: int = 20,
+        max_eps: int = 30,
         min_samples: int = 1,
         plotting: bool = PLOTTING
     ) -> dict[str, dict[str, list]]:
@@ -2598,7 +2467,7 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
-        if plotting:
+        if True:
             # Common data we'll reuse
             times_all = relative_time
             diff_all = feature_vector["Difference"]
@@ -2616,7 +2485,7 @@ class QModelPredictor:
             for i, (poi_name, poi_info) in enumerate(extracted_predictions.items()):
                 # list of candidate indices, best at idxs[0]
                 idxs = poi_info["indices"]
-                times = times_all.iloc[idxs]
+                times = times_all[idxs]
                 values = diff_all.iloc[idxs]
 
                 # Plot all candidates as 'x'
@@ -2634,7 +2503,7 @@ class QModelPredictor:
                 except:
                     best_idx = final_predictions.get(
                         poi_name).get("indices")[0]
-                best_time = times_all.iloc[best_idx]
+                best_time = times_all[best_idx]
                 plt.axvline(best_time,
                             color=cmap(i),
                             linestyle="--",
@@ -2660,7 +2529,7 @@ class QModelPredictor:
             for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
                 # again, best at idxs[0]
                 idxs = poi_info["indices"]
-                times = times_all.iloc[idxs]
+                times = times_all[idxs]
                 values = diff_all.iloc[idxs]
 
                 plt.scatter(times,
@@ -2671,7 +2540,7 @@ class QModelPredictor:
                             label=f"{poi_name} (final candidates)",
                             zorder=2)
                 best_idx = idxs[0]
-                best_time = times_all.iloc[best_idx]
+                best_time = times_all[best_idx]
                 print(best_time)
                 plt.axvline(best_time,
                             color=cmap(i),
