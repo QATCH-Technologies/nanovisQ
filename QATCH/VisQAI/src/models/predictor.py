@@ -25,7 +25,7 @@ Date:
 Version:
     2.1
 """
-
+import pickle
 import tempfile
 import zipfile
 import pandas as pd
@@ -118,30 +118,42 @@ class Predictor:
                 f"Failed to instantiate DataProcessor: {e!s}")
 
         # Instantiate TransformerPipeline with the saved scaler
-        transformer_path = pkg_dir / transformer_filename
+        transformer_path = pkg_dir / "transformer.pkl"
         if not transformer_path.is_file():
             raise ComponentLoadError(
-                f"Missing transformer file '{transformer_filename}' under '{pkg_dir}'."
+                f"Missing transformer file 'transformer.pkl' under '{pkg_dir}'."
             )
 
-        # Load the compiled transformer module so we can grab the class
+        # Load transformer class
         tp_module = self._load_pyc_module(pkg_dir, "transformer")
         if not hasattr(tp_module, "TransformerPipeline"):
             raise ComponentLoadError(
                 "Module 'transformer' does not define TransformerPipeline."
             )
+        TransformerPipeline = tp_module.TransformerPipeline
+
+        # Unpickle both scaler and encoder
         try:
-            TransformerPipeline = tp_module.TransformerPipeline
-            self.transformer = TransformerPipeline(
-                scaler_path=str(transformer_path))
+            with open(transformer_path, "rb") as f:
+                state = pickle.load(f)
         except Exception as e:
             raise ComponentLoadError(
-                f"Failed to instantiate TransformerPipeline with '{transformer_path}': {e!s}"
+                f"Failed to load transformer state: {e!s}")
+
+        # Instantiate and inject state
+        try:
+            self.transformer = TransformerPipeline()
+            self.transformer.scaler = state["scaler"]
+            self.transformer.encoder = state["encoder"]
+        except Exception as e:
+            raise ComponentLoadError(
+                f"Failed to instantiate TransformerPipeline with loaded state: {e!s}"
             )
+
+        # Validate interface
         if not (
-            hasattr(self.transformer, "transform") and callable(
-                self.transformer.transform)
-            and hasattr(self.transformer, "fit_transform") and callable(self.transformer.fit_transform)
+            callable(getattr(self.transformer, "transform", None)) and
+            callable(getattr(self.transformer, "fit_transform", None))
         ):
             raise ComponentLoadError(
                 "TransformerPipeline must implement callable transform(...) and fit_transform(...)."
