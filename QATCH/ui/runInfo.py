@@ -963,7 +963,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.parent.signature_received = False
 
         # START CAPTURE SIGNATURE CODE:
-        # This code also exists in popUp.py in class QueryRunInfo for "ANALYZE SIGNATURE CODE"
+        # This code also exists in Analyze.py in class QueryRunInfo for "ANALYZE SIGNATURE CODE"
+        # This code also exists in VisQAIWindow.py in class VisQAIWindow for to "SIGNATURE CODE"
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.confirm'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
@@ -2636,6 +2637,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             param15 = run.createElement('param')
             param15.setAttribute('name', 'buffer_concentration')
             param15.setAttribute('value', self.t14.text())
+            param15.setAttribute('units', 'mg/mL')
             params.appendChild(param15)
 
             param10 = run.createElement('param')

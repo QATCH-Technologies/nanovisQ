@@ -7,6 +7,12 @@ try:
 except:
     print("Running VisQAI as standalone app")
 
+    class Log:
+        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        def i(tag, msg=""): print("INFO:", tag, msg)
+        def w(tag, msg=""): print("WARNING:", tag, msg)
+        def e(tag, msg=""): print("ERROR:", tag, msg)
+
 from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -16,6 +22,9 @@ import os
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import hashlib
+from scipy.optimize import curve_fit
+import datetime as dt
 
 try:
     from src.io.file_storage import SecureOpen
@@ -61,10 +70,15 @@ class HorizontalTabBar(QtWidgets.QTabBar):
 class VisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.parent = parent
+
+        # import typing here to avoid circularity
+        from QATCH.ui.mainWindow import MainWindow
+        self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI Mockup")
         self.setMinimumSize(900, 600)
         self.init_ui()
+        self.init_sign()
+        self._unsaved_changes = False
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
@@ -93,6 +107,191 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         # Signals
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
+    def init_sign(self):
+        # START VISQAI SIGNATURE CODE:
+        # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
+        # This code also exists in Analyze.py in class VisQAIWindow for "ANALYZE SIGNATURE CODE"
+        # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
+        # There is duplicated logic code within the submit button handler: 'self.save_run_infos'
+        # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
+        self.signForm = QtWidgets.QDialog()
+        self.signForm.setWindowFlags(
+            QtCore.Qt.Dialog
+        )  # | QtCore.Qt.WindowStaysOnTopHint)
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/sign.png")
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        self.signForm.setWindowTitle("Signature")
+        self.signForm.setModal(True)
+        layout_sign = QtWidgets.QVBoxLayout()
+        layout_curr = QtWidgets.QHBoxLayout()
+        signedInAs = QtWidgets.QLabel("Signed in as: ")
+        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
+        layout_curr.addWidget(signedInAs)
+        self.signedInAs = QtWidgets.QLabel("[NONE]")
+        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
+        layout_curr.addWidget(self.signedInAs)
+        layout_sign.addLayout(layout_curr)
+        line_sep = QtWidgets.QFrame()
+        line_sep.setFrameShape(QtWidgets.QFrame.HLine)
+        line_sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+        layout_sign.addWidget(line_sep)
+        layout_switch = QtWidgets.QHBoxLayout()
+        self.signerInit = QtWidgets.QLabel(f"Initials: <b>N/A</b>")
+        layout_switch.addWidget(self.signerInit)
+        switch_user = QtWidgets.QPushButton("Switch User")
+        switch_user.clicked.connect(self.switch_user_at_sign_time)
+        layout_switch.addWidget(switch_user)
+        layout_sign.addLayout(layout_switch)
+        self.sign = QtWidgets.QLineEdit()
+        self.sign.installEventFilter(self)
+        layout_sign.addWidget(self.sign)
+        self.sign_do_not_ask = QtWidgets.QCheckBox(
+            "Do not ask again this session")
+        self.sign_do_not_ask.setEnabled(False)
+        if UserProfiles.checkDevMode()[0]:  # DevMode enabled
+            auto_sign_key = None
+            session_key = None
+            if os.path.exists(Constants.auto_sign_key_path):
+                with open(Constants.auto_sign_key_path, "r") as f:
+                    auto_sign_key = f.readline()
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, "r") as f:
+                    session_key = f.readline()
+            if auto_sign_key == session_key and session_key != None:
+                self.sign_do_not_ask.setChecked(True)
+            else:
+                self.sign_do_not_ask.setChecked(False)
+                if os.path.exists(Constants.auto_sign_key_path):
+                    os.remove(Constants.auto_sign_key_path)
+            layout_sign.addWidget(self.sign_do_not_ask)
+        self.sign_ok = QtWidgets.QPushButton("OK")
+        self.sign_ok.clicked.connect(self.signForm.hide)
+        # self.sign_ok.clicked.connect(self.save_run_info)
+        self.sign_ok.setDefault(True)
+        self.sign_ok.setAutoDefault(True)
+        self.sign_cancel = QtWidgets.QPushButton("Cancel")
+        self.sign_cancel.clicked.connect(self.signForm.hide)
+        layout_ok_cancel = QtWidgets.QHBoxLayout()
+        layout_ok_cancel.addWidget(self.sign_ok)
+        layout_ok_cancel.addWidget(self.sign_cancel)
+        layout_sign.addLayout(layout_ok_cancel)
+        self.signForm.setLayout(layout_sign)
+        # END ANALYZE SIGNATURE CODE
+
+        self.sign.textEdited.connect(self.sign_edit)
+        self.sign.textEdited.connect(self.text_transform)
+
+    def eventFilter(self, obj, event):
+        if (
+            event.type() == QtCore.QEvent.KeyPress
+            and obj is self.sign
+            and self.sign.hasFocus()
+        ):
+            if event.key() in [
+                QtCore.Qt.Key_Enter,
+                QtCore.Qt.Key_Return,
+                QtCore.Qt.Key_Space,
+            ]:
+                if self.parent.signature_received:
+                    self.sign_ok.clicked.emit()
+            if event.key() == QtCore.Qt.Key_Escape:
+                self.sign_cancel.clicked.emit()
+        return super().eventFilter(obj, event)
+
+    def sign_edit(self):
+        if self.sign.text().upper() == self.initials:
+            sign_text = f"{self.username} ({self.sign.text().upper()})"
+            self.sign.setMaxLength(len(sign_text))
+            self.sign.setText(sign_text)
+            self.sign.setReadOnly(True)
+            self.parent.signed_at = dt.datetime.now().isoformat()
+            self.parent.signature_received = True
+            self.sign_do_not_ask.setEnabled(True)
+
+    def text_transform(self):
+        text = self.sign.text()
+        if len(text) in [1, 2, 3, 4]:  # are these initials?
+            # will not fire 'textEdited' signal again
+            self.sign.setText(text.upper())
+
+    def check_user_info(self):
+        # get active session info, if available
+        active, info = UserProfiles.session_info()
+        if active:
+            self.parent.signature_required = True
+            self.parent.signature_received = False
+            self.username, self.initials = info[0], info[1]
+        else:
+            self.parent.signature_required = False
+
+    def switch_user_at_sign_time(self):
+        new_username, new_initials, new_userrole = UserProfiles.change(
+            UserRoles.ANALYZE
+        )
+        if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
+            if self.username != new_username:
+                self.username = new_username
+                self.initials = new_initials
+                self.signedInAs.setText(self.username)
+                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+                self.parent.signature_received = False
+                self.parent.signature_required = True
+                self.sign.setReadOnly(False)
+                self.sign.setMaxLength(4)
+                self.sign.clear()
+
+                Log.d("User name changed. Changing sign-in user info.")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
+                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
+                self.parent.ControlsWin.signinout.setText("&Sign Out")
+                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.AnalyzeProc.tool_User.setText(new_username)
+                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
+            else:
+                Log.d(
+                    "User switched users to the same user profile. Nothing to change."
+                )
+            # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
+        # elif new_username == None and new_initials == None and new_userrole == 0:
+        else:
+            if new_username == None and not UserProfiles.session_info()[0]:
+                Log.d("User session invalidated. Switch users credentials incorrect.")
+                self.parent.ControlsWin.username.setText("User: [NONE]")
+                self.parent.ControlsWin.userrole = UserRoles.NONE
+                self.parent.ControlsWin.signinout.setText("&Sign In")
+                self.parent.ControlsWin.manage.setText("&Manage Users...")
+                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
+                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "User has not been switched.\n\nReason: Not authenticated.",
+                )
+            if new_username != None and UserProfiles.session_info()[0]:
+                Log.d("User name changed. Changing sign-in user info.")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
+                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
+                self.parent.ControlsWin.signinout.setText("&Sign Out")
+                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.AnalyzeProc.tool_User.setText(new_username)
+                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "User has not been switched.\n\nReason: Not authorized.",
+                )
+
+            Log.d("User did not authenticate for role to switch users.")
+
     def on_tab_changed(self, index):
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
@@ -100,16 +299,178 @@ class VisQAIWindow(QtWidgets.QMainWindow):
             current_widget.on_tab_selected()
 
     def clear(self) -> None:
-        pass
+        self._unsaved_changes = False
 
     def hasUnsavedChanges(self) -> bool:
-        return False
+        return self._unsaved_changes
 
     def reset(self) -> None:
-        pass
+        self.check_user_info()
+        self.signedInAs.setText(self.username)
+        self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+        self.parent.signature_received = False
+        self.parent.signature_required = True
+        self.sign.setReadOnly(False)
+        self.sign.setMaxLength(4)
+        self.sign.clear()
 
     def enable(self, enable=False) -> None:
         pass
+
+    def save_run_info(self, xml_path: str, run_info: list, cancel: bool = False):
+        # This will update the run info XML only if there are changes.
+        # The user may be asked for an audit signature if required.
+
+        info_tags = ['protein_type', 'protein_concentration',
+                     'buffer_type', 'buffer_concentration',
+                     'surfactant_type', 'surfactant_concentration',
+                     'stabilizer_type', 'stabilizer_concentration',
+                     'salt_type', 'salt_concentration']
+        required_len = len(info_tags)
+        if len(run_info) != required_len:
+            Log.e(
+                f"There must be {required_len} run info parameters given. Received {len(run_info)}")
+            return
+        if not os.path.exists(xml_path):
+            Log.e(f"XML path not found: {xml_path}")
+            return
+
+        run = minidom.parse(xml_path)
+        xml = run.documentElement
+
+        existing_params = []
+        params = xml.getElementsByTagName(
+            "params")[-1]  # most recent element
+        params = params.cloneNode(deep=True)
+        for p in params.childNodes:
+            if p.nodeType == p.TEXT_NODE:
+                continue  # only process elements
+            name = p.getAttribute("name")
+            existing_params.append(name)
+            if name in info_tags:
+                i = info_tags.index(name)
+                value = run_info[i]
+                if p.getAttribute("value") != value:
+                    p.setAttribute("value", value)
+                    self._unsaved_changes = True
+        for i in range(required_len):
+            name = info_tags[i]
+            if name not in existing_params:
+                value = run_info[i]
+                p = run.createElement('param')
+                p.setAttribute('name', name)
+                p.setAttribute('value', value)
+                params.appendChild(p)
+                self._unsaved_changes = True
+
+        if not self._unsaved_changes:
+            Log.d("No changes detected, not appending new run info to XML.")
+            return
+        elif cancel:
+            Log.d("User canceling with unsaved changes in table.")
+            result = QtWidgets.QMessageBox.question(
+                None,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to cancel without saving?")
+            if result == QtWidgets.QMessageBox.Yes:
+                return
+
+        # Get audit signature from authorized user.
+        if self.parent.signature_required and self._unsaved_changes:
+            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
+                Log.w(
+                    f"Signing ANALYZE with initials {self.initials} (not asking again)"
+                )
+                self.parent.signed_at = dt.datetime.now().isoformat()
+                self.parent.signature_received = True  # Do not ask again this session
+            if not self.parent.signature_received:
+                if self.signForm.isVisible():
+                    self.signForm.hide()
+                self.signedInAs.setText(self.username)
+                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+                screen = QtWidgets.QDesktopWidget().availableGeometry()
+                left = int(
+                    (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
+                top = (
+                    int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
+                )
+                self.signForm.move(left, top)
+                self.signForm.setVisible(True)
+                self.sign.setFocus()
+                self.signForm.exec_()
+                if not self.parent.signature_received:
+                    Log.w("User did not sign when requested.")
+                    return
+
+        if self.sign_do_not_ask.isChecked():
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, "r") as f:
+                    session_key = f.readline()
+                if not os.path.exists(Constants.auto_sign_key_path):
+                    with open(Constants.auto_sign_key_path, "w") as f:
+                        f.write(session_key)
+
+        if self.parent.signature_required:
+            valid, infos = UserProfiles.session_info()
+            if valid:
+                Log.d(f"Found valid session: {infos}")
+                username = infos[0]
+                initials = infos[1]
+                salt = UserProfiles.find(username, initials)[1][:-4]
+                userrole = infos[2]
+            else:
+                Log.w(
+                    f"Found invalid session: searching for user ({self.username}, {self.initials})")
+                username = self.username
+                initials = self.initials
+                salt = UserProfiles.find(username, initials)[1][:-4]
+                userrole = UserProfiles.get_user_info(f"{salt}.xml")[2]
+
+            audit_action = "VISQAI"
+            timestamp = self.parent.signed_at
+            machine = Architecture.get_os_name()
+            hash = hashlib.sha256()
+            hash.update(salt.encode())  # aka 'profile'
+            hash.update(audit_action.encode())
+            hash.update(timestamp.encode())
+            hash.update(machine.encode())
+            hash.update(username.encode())
+            hash.update(initials.encode())
+            hash.update(userrole.encode())
+            signature = hash.hexdigest()
+
+            audit1 = run.createElement('audit')
+            audit1.setAttribute('profile', salt)
+            audit1.setAttribute('action', audit_action)
+            audit1.setAttribute('recorded', timestamp)
+            audit1.setAttribute('machine', machine)
+            audit1.setAttribute('username', username)
+            audit1.setAttribute('initials', initials)
+            audit1.setAttribute('role', userrole)
+            audit1.setAttribute('signature', signature)
+
+            audits = xml.getElementsByTagName('audits')[-1]
+            audits.appendChild(audit1)
+        else:
+            pass  # leave 'audits' block as empty
+
+        hash = hashlib.sha256()
+        params.setAttribute('recorded', timestamp)
+        for p in params.childNodes:
+            for name, value in p.attributes.items():
+                hash.update(name.encode())
+                hash.update(value.encode())
+        signature = hash.hexdigest()
+        params.setAttribute('signature', signature)
+
+        xml.appendChild(params)
+
+        with open(xml_path, 'w') as f:
+            f.write(run.toxml())
+
+        self._unsaved_changes = False
 
 
 class FrameStep1(QtWidgets.QDialog):
@@ -120,6 +481,9 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.all_files = {}
         self.model_path = None
+        self.run_file_run = None
+        self.run_file_xml = None
+        self.run_file_analyze = None
 
         if step == 1:
             self.setWindowTitle("Select Run")
@@ -183,7 +547,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.file_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
         run_path = os.path.join(
-            os.getcwd(), "logged_data_test/maria data/M250505W7_TEST")
+            os.getcwd(), "logged_data_test/maria data/devtest/M240625W6_PBS_B5")
         self.file_dialog.setDirectory(run_path)  # TODO restore
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
@@ -223,6 +587,7 @@ class FrameStep1(QtWidgets.QDialog):
             if step == 3:
                 self.list_view.clicked.connect(self.user_run_clicked)
             else:
+                # TODO: for steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
                     lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
 
@@ -353,11 +718,11 @@ class FrameStep1(QtWidgets.QDialog):
                     current_tag = value_tags[x]
                     if isinstance(current_value, list):
                         if isinstance(current_tag, int):
-                            dummy_feature["Value"][x] = [
-                                current_value[current_tag]]
+                            dummy_feature["Value"][x] = \
+                                current_value[current_tag]
                         else:
-                            dummy_feature["Value"][x] = [current_value[randint(
-                                current_tag[0], current_tag[-1])]]
+                            dummy_feature["Value"][x] = current_value[randint(
+                                current_tag[0], current_tag[-1])]
                     else:
                         if isinstance(current_tag, range):
                             dummy_feature["Value"][x] = randint(
@@ -385,7 +750,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Signals
         self.btn_cancel.clicked.connect(
-            lambda: self.file_selected(None))
+            lambda: self.file_selected(None, cancel=True))
         self.btn_next.clicked.connect(
             getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.file_dialog.show)
@@ -469,7 +834,7 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts", self.salts)
 
-    def save_formulation(self):
+    def save_formulation(self, cancel: bool = False) -> bool:
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
         protein_weight = self.feature_table.item(2, 1).text()
@@ -480,18 +845,61 @@ class FrameStep1(QtWidgets.QDialog):
         buffer_pH = self.feature_table.item(7, 1).text()
         surfactant_type = self.feature_table.cellWidget(8, 1).currentText()
         surfactant_conc = self.feature_table.item(9, 1).text()
-        stabilizer_type = self.feature_table.cellWidget(10, 1).currentText()
+        stabilizer_type = self.feature_table.cellWidget(
+            10, 1).currentText()
         stabilizer_conc = self.feature_table.item(11, 1).text()
         salt_type = self.feature_table.cellWidget(12, 1).currentText()
         salt_conc = self.feature_table.item(13, 1).text()
 
+        # save run info to XML (if changed, request audit sign)
+        self.parent.save_run_info(self.run_file_xml, [
+            protein_type, protein_conc,
+            buffer_type, buffer_conc,
+            surfactant_type, surfactant_conc,
+            stabilizer_type, stabilizer_conc,
+            salt_type, salt_conc], cancel)
+        if self.parent.hasUnsavedChanges():
+            if cancel:
+                Log.w("Unsaved changes lost, per user discretion.")
+                return True
+            Log.w("There are still unsaved changes. Cannot continue.")
+            QtWidgets.QMessageBox.information(
+                None,
+                Constants.app_title,
+                "There are still unsaved changes!\n\n" +
+                "To save: Try again and sign when prompted.\n" +
+                "Click \"Cancel\" to discard these changes.")
+            return False
+        elif cancel:
+            Log.d("User canceled with nothing to save.")
+            return True
+
         protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
+        if protein == None:
+            protein = self.parent.ing_ctrl.add_protein(
+                Protein(enc_id=-1, name=protein_type))
+
         buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
+        if buffer == None:
+            buffer = self.parent.ing_ctrl.add_buffer(
+                Buffer(enc_id=-1, name=buffer_type))
+
         surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
             name=surfactant_type)
+        if surfactant == None:
+            surfactant = self.parent.ing_ctrl.add_surfactant(
+                Surfactant(enc_id=-1, name=surfactant_type))
+
         stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
             name=stabilizer_type)
+        if stabilizer == None:
+            stabilizer = self.parent.ing_ctrl.add_stabilizer(
+                Stabilizer(enc_id=-1, name=stabilizer_type))
+
         salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
+        if salt == None:
+            salt = self.parent.ing_ctrl.add_salt(
+                Salt(enc_id=-1, name=salt_type))
 
         # update protein and buffer characteristics
         protein.molecular_weight = float(protein_weight)
@@ -538,6 +946,8 @@ class FrameStep1(QtWidgets.QDialog):
         self.parent.form_ctrl.add_formulation(formulation=form)
         # print(self.parent.form_ctrl.get_all_as_dataframe())
 
+        return True
+
     def load_suggestions(self):
         raise NotImplementedError()
 
@@ -553,7 +963,8 @@ class FrameStep1(QtWidgets.QDialog):
                 self.feature_table.allSet() and
                 self.run_figure_valid):
             # ready to proceed
-            self.save_formulation()
+            if not self.save_formulation():
+                return
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
@@ -568,7 +979,7 @@ class FrameStep1(QtWidgets.QDialog):
             if self.select_label.text():
                 message = "Please correct the highlighted fields first."
             QtWidgets.QMessageBox.information(
-                None, "Missing Information", message, QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
 
     def proceed_to_step_3(self):
         # ready to proceed
@@ -589,8 +1000,8 @@ class FrameStep1(QtWidgets.QDialog):
                 len(self.run_analyzed.text()) and
                     self.feature_table.allSet() and
                     self.run_figure_valid):
-                self.save_formulation()
-                continue
+                if not self.save_formulation():
+                    return
             else:
                 all_is_good = False
                 # break # maybe not, if we want to highlight *all* errors on "Next"
@@ -607,7 +1018,7 @@ class FrameStep1(QtWidgets.QDialog):
                     "Cannot proceed to next step!")
         else:  # not ready
             QtWidgets.QMessageBox.information(
-                None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
 
     # NOTE: step_5 would be handled in FrameStep2
 
@@ -649,7 +1060,21 @@ class FrameStep1(QtWidgets.QDialog):
     def export_table_data(self):
         raise NotImplementedError()
 
-    def file_selected(self, path: str | None):
+    def file_selected(self, path: str | None, cancel: bool = False):
+        # If run already loaded, try saving formulation to write any changed Run Info to XML
+        if self.run_file_xml and self.step in [1, 3]:
+            if not self.feature_table.allSet():
+                result = QtWidgets.QMessageBox.question(
+                    None,
+                    Constants.app_title,
+                    "You have missing feature values.\n\nAre you sure you want to reload the features table?")
+                if result != QtWidgets.QMessageBox.Yes:
+                    return
+            else:
+                Log.i("Saving formulation for fully populated feature table.")
+                if not self.save_formulation(cancel):
+                    return
+
         self.run_file_run = path
         self.run_file_xml = None
         self.run_file_analyze = None
@@ -695,7 +1120,7 @@ class FrameStep1(QtWidgets.QDialog):
             if item.text() == self.parent.tab_widget.widget(0).select_label.text():
                 QtCore.QTimer.singleShot(100, lambda: QtWidgets.QMessageBox.information(
                     None,
-                    "Not Allowed",
+                    Constants.app_title,
                     "The selected run from Step 1 cannot also be an imported experiment run.",
                     QtWidgets.QMessageBox.Ok))
                 return
@@ -769,6 +1194,11 @@ class FrameStep1(QtWidgets.QDialog):
                 value = f"{value} ({'Valid' if eval(p.getAttribute('found')) else 'Unknown'})"
             xml_params[name] = value
 
+        if xml_params.get("bioformulation", False) != 'True':
+            self.run_notes.setTextBackgroundColor(Color.light_red)
+            self.run_notes.setText("ERROR: This run is not a bioformulation!")
+            return
+
         try:
             self.run_notes.setTextBackgroundColor(Color.white)
             self.run_notes.setPlainText(
@@ -821,13 +1251,6 @@ class FrameStep1(QtWidgets.QDialog):
         except:
             self.run_analyzed.setText("(Not Performed)")
 
-        def is_number(s: str):
-            try:
-                float(s)
-                return True
-            except ValueError:
-                return False
-
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
                       "", "", "",  # molecular weight, pI mean, pI range
@@ -841,14 +1264,11 @@ class FrameStep1(QtWidgets.QDialog):
                 if y == "":
                     continue
                 if y in xml_params.keys():
-                    if not is_number(xml_params[y]):
-                        run_features["Value"][x] = [xml_params[y]]
-                    else:
-                        run_features["Value"][x] = xml_params[y]
+                    run_features["Value"][x] = xml_params[y]
             except Exception as e:
                 print(e)
 
-        if self.step == 3:
+        if False:  # self.step == 3:
             # Hide protein and buffer characteristics
             for values in run_features.values():
                 del values[7]  # buffer PH
@@ -899,15 +1319,66 @@ class FrameStep1(QtWidgets.QDialog):
         pass_to_models = {"shear_rate": in_shear_rate,
                           "viscosity": in_viscosity}
 
-        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 1e6, 15000000]
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
         self.profile_viscos = []
+        has_high_shear_pt = in_shear_rate[-1] > 1e6
+        has_curve_fit_est = False
+
         for shear_rate in self.profile_shears:
-            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity)
+            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity,
+                                  left=np.nan)
             self.profile_viscos.append(viscosity)
+
+        if np.any(np.isnan(self.profile_viscos)):
+            try:
+                # Define the logarithmic function to fit
+                def logarithmic_func(x, a, b, c):
+                    return a * np.log10(x - c) + b
+
+                # Define bounds for parameters [a, b, c]
+                lower_bounds = [-np.inf, -np.inf, -np.inf]
+                upper_bounds = [np.inf, np.inf, 99]
+                fit_bounds = (lower_bounds, upper_bounds)
+
+                # Perform the curve fit (not including high-shear point)
+                initial_guess = (2, 1, 0.5)
+                popt, pcov = curve_fit(
+                    logarithmic_func,
+                    in_shear_rate[:-1] if has_high_shear_pt else in_shear_rate,
+                    in_viscosity[:-1] if has_high_shear_pt else in_viscosity,
+                    p0=initial_guess,
+                    bounds=fit_bounds)
+                a_fit, b_fit, c_fit = popt
+                has_curve_fit_est = True
+
+                # Generate missing points for the profile using curve fitting
+                for i in range(len(self.profile_viscos)):
+                    if np.isnan(self.profile_viscos[i]):
+                        self.profile_viscos[i] = logarithmic_func(
+                            self.profile_shears[i], a_fit, b_fit, c_fit)
+                    else:
+                        break
+
+            except Exception as e:
+                Log.w(
+                    "Failed to fit logarithmic curve to viscosity profile. Using entirely interpolated data instead.")
+
+                # Generate missing points for the profile using interpolation
+                for i in range(len(self.profile_viscos)):
+                    if np.isnan(self.profile_viscos[i]):
+                        new_value = np.interp(
+                            self.profile_shears[i], in_shear_rate, in_viscosity)
+                        self.profile_viscos[i] = new_value
+                    else:
+                        break
+
+        if has_high_shear_pt:
+            self.profile_viscos[-1] = in_viscosity[-1]
+
         minidx = np.argmin(self.profile_viscos)
         maxidx = np.argmax(self.profile_viscos)
         Log.i(
-            f"Interpolated viscosity ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+            f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
 
         self.run_figure.clear()
         self.run_figure_valid = False
@@ -948,6 +1419,14 @@ class FrameStep1(QtWidgets.QDialog):
             ax.plot(self.profile_shears, self.profile_viscos, "bd")
             ax.plot(data[:, 0], data[:, 1], "b,")
             self.run_figure_valid = True
+
+            DEBUG = False
+            if has_curve_fit_est and DEBUG:
+                x_trend = np.logspace(2, 5)
+                y_trend = logarithmic_func(
+                    x_trend, a_fit, b_fit, c_fit)
+                y_trend = [1 if np.isnan(x) else x for x in y_trend]
+                ax.plot(x_trend, y_trend, color='blue', linewidth=0.5)
         else:
             ax.text(0.5, 0.5, "Invalid Results",
                     transform=ax.transAxes,
@@ -1156,20 +1635,24 @@ class TableView(QtWidgets.QTableWidget):
         for n, key in enumerate(self.data.keys()):
             horHeaders.append(key)
             for m, item in enumerate(self.data[key]):
-                if isinstance(item, list):
+                if n == 0 or n == 2:
+                    # always treat first and last cols as uneditable text, not a QComboBox
+                    newitem = QtWidgets.QTableWidgetItem(str(item))
+                elif self._is_number(item) or len(item) == 0:
+                    # item is either a number or blank (empty string)
+                    newitem = QtWidgets.QTableWidgetItem(str(item))
+                else:
                     newitem = QtWidgets.QComboBox()
-                    newitem.addItem("None")
-                    newitem.addItems(item)
                     # newitem.addItem("add new...")
-                    if len(item) > 1:
+                    if isinstance(item, list):
+                        newitem.addItem("None")
+                        newitem.addItems(item)
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
-                    else:
-                        newitem.removeItem(0)  # remove "None"
+                    else:  # str
+                        newitem.addItem(item)
                         self.data["Units"][m] = ""  # clear flag
-                else:
-                    newitem = QtWidgets.QTableWidgetItem(str(item))
                 # disable 1st and last column items (not selectable or editable)
                 if n == 0 or n == 2:
                     if n == 0:  # bold 1st column items (headers)
@@ -1206,6 +1689,13 @@ class TableView(QtWidgets.QTableWidget):
             self.item(idx, 2).setText("")
             self.blockSignals(False)
 
+    def _is_number(self, s: str):
+        try:
+            float(s)
+            return True
+        except (ValueError, TypeError):
+            return False
+
     def _on_item_changed(self, item: QtWidgets.QTableWidgetItem):
         row, col, text = item.row(), item.column(), item.text()
         print(f"Cell ({row}, {col}) changed to: {text}")
@@ -1217,13 +1707,6 @@ class TableView(QtWidgets.QTableWidget):
             # print("skip, disabled")
             return
 
-        def is_number(s: str):
-            try:
-                float(s)
-                return True
-            except ValueError:
-                return False
-
         now_bg = item.background()
         now_fg = item.foreground()
         new_bg = QtGui.QBrush(now_bg.color())
@@ -1232,7 +1715,7 @@ class TableView(QtWidgets.QTableWidget):
         if len(text) == 0:
             new_bg.setColor(Color.light_yellow)
             new_fg.setColor(Color.black)
-        elif not is_number(text):
+        elif not self._is_number(text):
             new_bg.setColor(Color.light_red)
             new_fg.setColor(Color.light_yellow)
         else:

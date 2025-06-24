@@ -408,6 +408,29 @@ class Protein(Ingredient):
         """
         self._pI_range = self._validate_number(r, "pI_range")
 
+    def __eq__(self, other: Any) -> bool:
+        """Check equality between two Protein instances.
+
+        Two Proteins are equal if they share the same concrete attributes:
+        base (see Ingredient), molecular_weight, pI_mean, and pI_range
+
+        Args:
+            other (Any): The object to compare.
+
+        Returns:
+            bool: True if `other` is a Protein of the same type with identical attributes; False otherwise.
+        """
+        super().__eq__(other)
+
+        if not isinstance(other, Protein):
+            return NotImplemented
+        return (
+            type(self) is type(other)
+            and self.molecular_weight == other.molecular_weight
+            and self.pI_mean == other.pI_mean
+            and self.pI_range == other.pI_range
+        )
+
 
 class Buffer(Ingredient):
     """Represents a buffer ingredient with an optional pH value.
@@ -465,6 +488,27 @@ class Buffer(Ingredient):
         if value is not None and not (0.0 <= value <= 14.0):
             raise ValueError("pH must be between 0 and 14 or None")
         self._pH = value
+
+    def __eq__(self, other: Any) -> bool:
+        """Check equality between two Buffer instances.
+
+        Two Buffers are equal if they share the same concrete attributes:
+        base (see Ingredient), pH
+
+        Args:
+            other (Any): The object to compare.
+
+        Returns:
+            bool: True if `other` is a Protein of the same type with identical attributes; False otherwise.
+        """
+        super().__eq__(other)
+
+        if not isinstance(other, Protein):
+            return NotImplemented
+        return (
+            type(self) is type(other)
+            and self.pH == other.pH
+        )
 
 
 class Stabilizer(Ingredient):

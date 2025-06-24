@@ -45,13 +45,14 @@ class IngredientController:
     # User IDs start at DEV_MAX_ID+1 for each TYPE
     USER_START_ID = DEV_MAX_ID + 1
 
-    def __init__(self, db: Database) -> None:
+    def __init__(self, db: Database, user_mode: bool = True) -> None:
         """Initialize the IngredientController with a database instance.
 
         Args:
             db (Database): An initialized `Database` instance for persisting ingredients.
         """
         self.db: Database = db
+        self._user_mode: bool = user_mode
 
     def get_all_ingredients(self) -> List[Ingredient]:
         """Retrieve all ingredients stored in the database.
@@ -435,6 +436,8 @@ class IngredientController:
         """
         existing = self.get_protein_by_name(protein.name)
         if existing is not None:
+            if existing != protein:
+                return self.update_protein(existing.id, protein)
             return existing
 
         protein.enc_id = self._get_next_enc_id(
@@ -457,6 +460,8 @@ class IngredientController:
         """
         existing = self.get_buffer_by_name(buffer.name)
         if existing is not None:
+            if existing != buffer:
+                return self.update_buffer(existing.id, buffer)
             return existing
 
         buffer.enc_id = self._get_next_enc_id(
@@ -479,6 +484,8 @@ class IngredientController:
         """
         existing = self.get_salt_by_name(salt.name)
         if existing is not None:
+            if existing != salt:
+                return self.update_salt(existing.id, salt)
             return existing
 
         salt.enc_id = self._get_next_enc_id(
@@ -501,6 +508,8 @@ class IngredientController:
         """
         existing = self.get_stabilizer_by_name(stabilizer.name)
         if existing is not None:
+            if existing != stabilizer:
+                return self.update_stabilizer(existing.id, stabilizer)
             return existing
 
         stabilizer.enc_id = self._get_next_enc_id(
@@ -523,6 +532,8 @@ class IngredientController:
         """
         existing = self.get_surfactant_by_name(surfactant.name)
         if existing is not None:
+            if existing != surfactant:
+                return self.update_surfactant(existing.id, surfactant)
             return existing
 
         surfactant.enc_id = self._get_next_enc_id(
@@ -756,8 +767,7 @@ class IngredientController:
         p_new.enc_id = p_fetch.enc_id
         p_new.is_user = p_fetch.is_user
 
-        self.delete_protein_by_id(p_fetch.id)
-        self.db.add_ingredient(p_new)
+        self.db.update_ingredient(p_fetch.id, p_new)
         return p_new
 
     def update_buffer(self, id: int, b_new: Buffer) -> Buffer:
@@ -784,8 +794,7 @@ class IngredientController:
         b_new.enc_id = b_fetch.enc_id
         b_new.is_user = b_fetch.is_user
 
-        self.delete_buffer_by_id(b_fetch.id)
-        self.db.add_ingredient(b_new)
+        self.db.update_ingredient(b_fetch.id, b_new)
         return b_new
 
     def update_salt(self, id: int, s_new: Salt) -> Salt:
@@ -812,8 +821,7 @@ class IngredientController:
         s_new.enc_id = s_fetch.enc_id
         s_new.is_user = s_fetch.is_user
 
-        self.delete_salt_by_id(s_fetch.id)
-        self.db.add_ingredient(s_new)
+        self.db.update_ingredient(s_fetch.id, s_new)
         return s_new
 
     def update_surfactant(self, id: int, s_new: Surfactant) -> Surfactant:
@@ -840,8 +848,7 @@ class IngredientController:
         s_new.enc_id = s_fetch.enc_id
         s_new.is_user = s_fetch.is_user
 
-        self.delete_surfactant_by_id(s_fetch.id)
-        self.db.add_ingredient(s_new)
+        self.db.update_ingredient(s_fetch.id, s_new)
         return s_new
 
     def update_stabilizer(self, id: int, s_new: Stabilizer) -> Stabilizer:
@@ -868,8 +875,7 @@ class IngredientController:
         s_new.enc_id = s_fetch.enc_id
         s_new.is_user = s_fetch.is_user
 
-        self.delete_stabilizer_by_id(s_fetch.id)
-        self.db.add_ingredient(s_new)
+        self.db.update_ingredient(s_fetch.id, s_new)
         return s_new
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
@@ -896,6 +902,10 @@ class IngredientController:
         """
         ingredients = self.db.get_all_ingredients()
         for ing in ingredients:
+            # Skip non-user ingredients while in user mode.
+            if self._user_mode and not ing.is_user:
+                continue
+            # Return first matching ingredient by type and name.
             if ing.type == type and ing.name == name:
                 return ing
         return None
