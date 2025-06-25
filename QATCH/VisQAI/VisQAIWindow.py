@@ -25,6 +25,8 @@ from matplotlib.figure import Figure
 import hashlib
 from scipy.optimize import curve_fit
 import datetime as dt
+from types import SimpleNamespace
+import webbrowser
 
 try:
     from src.io.file_storage import SecureOpen
@@ -33,7 +35,7 @@ try:
     from src.models.predictor import Predictor
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
-    from src.db.db import Database
+    from src.db.db import Database, DB_PATH
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
@@ -41,7 +43,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.db.db import Database, DB_PATH
 TAG = "[VisQ.AI]"
 
 
@@ -69,9 +71,148 @@ class HorizontalTabBar(QtWidgets.QTabBar):
             painter.drawControl(QtWidgets.QStyle.CE_TabBarTabLabel, opt)
 
 
-class VisQAIWindow(QtWidgets.QMainWindow):
+class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
+        """BASE CLASS DEFINITION"""
         super().__init__(parent)
+
+        self.setWindowTitle("VisQ.AI Base Class")
+        self.setMinimumSize(900, 600)
+
+        # Create dummy database object for base class.
+        self.database = SimpleNamespace(is_open=False)
+
+        # Create dummy UI for main tab widget
+        self.tab_widget = QtWidgets.QDialog()
+
+        # Create simple UI for base class when not subscribed.
+        self._expired_widget = QtWidgets.QDialog()
+        self.expired_layout = QtWidgets.QVBoxLayout(self._expired_widget)
+        self.expired_layout.setAlignment(QtCore.Qt.AlignCenter)
+        # self.setCentralWidget(self._expired_widget)
+
+        self.expired_label = QtWidgets.QLabel(
+            "<b>Your VisQ.AI preview period has ended.</b><br/><br/>" +
+            "Please subscribe to regain access on this system.<br/><br/>")
+        self.expired_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.expired_label.setStyleSheet("font-size: 24px;")
+
+        self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
+        self.expired_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.expired_learnmore = QtWidgets.QPushButton("Learn more...")
+        self.expired_learnmore.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.expired_buttons = QtWidgets.QHBoxLayout()
+        self.expired_buttons.addStretch(3)
+        self.expired_buttons.addWidget(self.expired_subscribe, 1)
+        self.expired_buttons.addWidget(self.expired_learnmore, 1)
+        self.expired_buttons.addStretch(3)
+
+        self.expired_layout.addWidget(self.expired_label)
+        self.expired_layout.addLayout(self.expired_buttons)
+
+        # Create simple UI for base class when not subscribed.
+        self._trial_widget = QtWidgets.QDialog()
+        self.trial_layout = QtWidgets.QVBoxLayout(self._trial_widget)
+        self.trial_layout.setAlignment(QtCore.Qt.AlignCenter)
+        # self.setCentralWidget(self._trial_widget)
+
+        self.trial_label = QtWidgets.QLabel(
+            "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>" +
+            "Please subscribe to retain access on this system.<br/><br/>")
+        self.trial_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.trial_label.setStyleSheet("font-size: 24px;")
+
+        self.trial_subscribe = QtWidgets.QPushButton("Subscribe")
+        self.trial_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.trial_dismiss = QtWidgets.QPushButton("Dismiss")
+        self.trial_dismiss.clicked.connect(
+            lambda: self.setCentralWidget(self.tab_widget))
+
+        self.trial_buttons = QtWidgets.QHBoxLayout()
+        self.trial_buttons.addStretch(3)
+        self.trial_buttons.addWidget(self.trial_subscribe, 1)
+        self.trial_buttons.addWidget(self.trial_dismiss, 1)
+        self.trial_buttons.addStretch(3)
+
+        self.trial_layout.addWidget(self.trial_label)
+        self.trial_layout.addLayout(self.trial_buttons)
+
+    def check_license(self) -> bool:
+        free_preview_period = 60  # days
+        # TODO: dummy check, always false for now
+        is_valid_license = False
+        if not is_valid_license:
+            # how long ago did the preview period start?
+            if not os.path.exists(DB_PATH):
+                Log.e("No VisQAI license or trial found.")
+                self.setCentralWidget(self._expired_widget)
+                return is_valid_license
+
+            file_stats = os.stat(DB_PATH)
+
+            # Get creation time (st_ctime on Unix is actually change time,
+            # but on Windows it's creation time)
+            # For true creation time on all platforms, use st_birthtime if available
+            if hasattr(file_stats, 'st_birthtime'):
+                creation_time = file_stats.st_birthtime  # macOS/BSD
+            else:
+                creation_time = file_stats.st_ctime  # Windows/Linux
+
+            # Current time
+            current_time = dt.datetime.now().timestamp()
+
+            # Calculate time difference in seconds
+            time_ago_seconds = current_time - creation_time
+
+            # Compare to allowable age
+            time_allowed_secs = dt.timedelta(
+                days=free_preview_period).total_seconds()
+
+            if time_ago_seconds >= time_allowed_secs:
+                # Trial preview expired
+                Log.w("No VisQAI license found; trial preview has expired.")
+                self.setCentralWidget(self._expired_widget)
+            else:
+                self.trial_left = free_preview_period - \
+                    dt.timedelta(seconds=time_ago_seconds).days
+                Log.i(
+                    f"No VisQAI license found; trial preview has {self.trial_left} days remaining.")
+                self.trial_label.setText(
+                    self.trial_label.text().format(self.trial_left))  # insert # of days remaining
+                self.setCentralWidget(self._trial_widget)
+        else:
+            # valid license found
+            Log.i("VisQAI license found and is valid.")
+            self.setCentralWidget(self.tab_widget)
+
+        return is_valid_license
+
+    def clear(self):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def reset(self):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def enable(self, bool=False):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def hasUnsavedChanges(self):
+        """BASE CLASS DEFINITION"""
+        return False
+
+
+class VisQAIWindow(BaseVisQAIWindow):
+    def __init__(self, parent=None):
+        super(VisQAIWindow, self).__init__(parent)
 
         # import typing here to avoid circularity
         from QATCH.ui.mainWindow import MainWindow
@@ -80,6 +221,7 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.setMinimumSize(900, 600)
         self.init_ui()
         self.init_sign()
+        self.check_license()  # see BASE CLASS
         self._unsaved_changes = False
 
     def init_ui(self):
@@ -87,9 +229,8 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
 
-        self.database = Database(parse_file_key=True)
-        self.form_ctrl = FormulationController(db=self.database)
-        self.ing_ctrl = IngredientController(db=self.database)
+        # Enable database objects for initial UI load.
+        self.enable(True)
 
         self.tab_widget.addTab(FrameStep1(self, 1),
                                "\u2460 Select Run")  # unicode circled 1
@@ -104,7 +245,10 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.tab_widget.addTab(FrameStep2(self, 6),
                                "\u2465 Optimize")  # unicode circled 6
 
-        self.setCentralWidget(self.tab_widget)
+        # Disable database objects after initial UI load.
+        self.enable(False)
+
+        # NOTE: central widget set by `check_license()`
 
         # Signals
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
@@ -296,7 +440,10 @@ class VisQAIWindow(QtWidgets.QMainWindow):
 
     def on_tab_changed(self, index):
         # Purge dataase to disk on tab change
-        self.database.purge()
+        if self.database.is_open:
+            self.database.backup()
+        else:
+            Log.w("Database closed: backup failed")
 
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
@@ -320,7 +467,40 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.sign.clear()
 
     def enable(self, enable=False) -> None:
-        pass
+        if not enable:
+            # VisQ.AI UI is not in foreground, Mode not selected
+            # Do things here to shutdown resources and disable:
+
+            # Close database.
+            if self.database.is_open:
+                self.database.close()
+            else:
+                Log.w("Database closed: write failed")
+
+            # Disable database objects.
+            self.database = SimpleNamespace(is_open=False, status="Disabled")
+            self.form_ctrl = SimpleNamespace(db=None, status="Disabled")
+            self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
+            Log.d("Database objects disabled on VisQ.AI not enabled.")
+
+        else:
+            # VisQ.AI UI is now in foreground, Mode is selected
+            # Do things here to initialize resources and enable:
+
+            # Create database objects, and open DB from file.
+            self.database = Database(parse_file_key=True)
+            self.form_ctrl = FormulationController(db=self.database)
+            self.ing_ctrl = IngredientController(db=self.database)
+            Log.d("Database objects created on VisQ.AI enable.")
+
+            # Emit tab selected code for the currently active tab frame.
+            self.tab_widget.currentChanged.emit(self.tab_widget.currentIndex())
+
+            # # Create default user preferences object
+            # UserProfiles.user_preferences = UserPreferences(
+            #     UserProfiles.get_session_file())
+            # prefs = UserProfiles.user_preferences.get_preferences()
+            # self.load_data_path = prefs['load_data_path']
 
     def save_run_info(self, xml_path: str, run_info: list, cancel: bool = False):
         # This will update the run info XML only if there are changes.
@@ -551,9 +731,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.file_dialog = QtWidgets.QFileDialog()
         self.file_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        run_path = os.path.join(
-            os.getcwd(), "logged_data_test/maria data/devtest/M240625W6_PBS_B5")
-        self.file_dialog.setDirectory(run_path)  # TODO restore
+        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
         self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
@@ -765,6 +943,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(self.model_selected)
 
     def on_tab_selected(self):
+
+        # Set run directory from User Preferences.
+        self.file_dialog.setDirectory(Constants.log_prefer_path)
+
         if self.step == 2:  # Suggest
             self.load_suggestions()
         if self.step == 5:  # Predict
@@ -955,6 +1137,10 @@ class FrameStep1(QtWidgets.QDialog):
         return True
 
     def load_suggestions(self):
+        if not hasattr(self.parent, "formulation"):
+            Log.e("No formulation saved from Step 1. Cannot load suggestions.")
+            return
+
         predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
         self.parent.predictor = Predictor(predictor_path)
         form_df = self.parent.formulation.to_dataframe(
@@ -969,6 +1155,7 @@ class FrameStep1(QtWidgets.QDialog):
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
+        #   4. All formulations saved, and XMLs up-to-date
         if (len(self.run_captured.text()) and
             len(self.run_updated.text()) and
             len(self.run_analyzed.text()) and
@@ -1000,10 +1187,11 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.tab_widget.setCurrentIndex(i+1)
 
     def proceed_to_step_4(self):
-        # TODO: For each run in list, must pass the same criteria from Step 1
+        # For each run in list, must pass the same criteria from Step 1
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
+        #   4. All formulations saved, and XMLs up-to-date
         all_is_good = True
         for file_name, file_path in self.all_files.items():
             self.file_selected(file_path)  # load each run
@@ -1013,6 +1201,7 @@ class FrameStep1(QtWidgets.QDialog):
                     self.feature_table.allSet() and
                     self.run_figure_valid):
                 if not self.save_formulation():
+                    all_is_good = False
                     return
             else:
                 all_is_good = False
