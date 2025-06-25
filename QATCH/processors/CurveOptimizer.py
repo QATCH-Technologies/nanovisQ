@@ -89,19 +89,14 @@ class CurveOptimizer:
         Raises:
             Exception if an error occurs during initailizing a file buffer.
         """
-        def strip_filename(full_path):
-            # Convert a full file path to just the file name part.
-            # Note: handles either separator, returns no extension
-            # example: "/a/b/c/test.csv" --> "test"
-            return full_path.split('\\')[-1].split('/')[-1].split('.')[0]
-
+        self._file_path = file_path
         self._file_buffer = file_buffer
         self._initial_diff_factor = initial_diff_factor
         try:
             self._data_buffer = self._initialize_file_buffer(file_buffer)
             self._dataframe = pd.read_csv(self._data_buffer)
             Log.d(
-                self.TAG, f"Run data loaded successfully from {strip_filename(file_path)}.")
+                self.TAG, f"Run data loaded successfully from {self._strip_filename(file_path)}.")
         except Exception as e:
             Log.e(self.TAG, f"Failed to load data file: {e}")
             raise
@@ -112,6 +107,12 @@ class CurveOptimizer:
         self._optimal_difference_factor = None
         self._head_trim = -1
         self._set_bounds(bounds=bounds)
+
+    def _strip_filename(self, full_path):
+        # Convert a full file path to just the file name part.
+        # Note: handles either separator, returns no extension
+        # example: "/a/b/c/test.csv" --> "test"
+        return full_path.split('\\')[-1].split('/')[-1].split('.')[0]
 
     def _initialize_file_buffer(self, file_buffer):
         """
@@ -666,6 +667,13 @@ class DropEffectCorrection(CurveOptimizer):
             # If unacceptable, add it to the list for correction.
             current_streak.append(min_drop)
 
+        # DEBUG: Force add extra padding to the right-side of drop effect region.
+        if False:  # TODO: Figure out a dynamic limit for this right bound margin.
+            NUM_PTS = 5
+            max_drop = max(current_streak)
+            for i in range(NUM_PTS):
+                current_streak.append(max_drop + i + 1)
+
         Log.d(
             self.TAG, f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}")
 
@@ -685,7 +693,8 @@ class DropEffectCorrection(CurveOptimizer):
                              baseline_diss: list = None,
                              baseline_rf: list = None,
                              show_corrections: bool = False,  # Default to True for debug ONLY
-                             save_corrections: bool = False) -> tuple:
+                             save_corrections: bool = False,
+                             export_corrections_csv: bool = False) -> tuple:
         """
         Corrects drop effects in dissipation and resonance frequency data.
 
@@ -710,6 +719,9 @@ class DropEffectCorrection(CurveOptimizer):
             save_corrections (bool, optional): If True, the method will generate a plot and save it
                  to visualize the corrections applied. Defaults to False. NOTE: If this argument and
                  `show_corrections` are True, the same plot generation will be used for both actions.
+            export_corrections_csv (bool, optional): If True, the method will export the corrected
+                 dataframes for dissipation and rf to a CSV file with a file name of the format:
+                 `{RUNNAME}_corrected.csv` to the working directory. Defaults to False.
 
         Returns:
             tuple: A tuple containing two numpy arrays:
@@ -868,6 +880,13 @@ class DropEffectCorrection(CurveOptimizer):
                                    original_diss, original_rf,
                                    corrected_diss, corrected_rf,
                                    smooth_diss, smooth_rf)
+
+        # DEBUG: Write out corrected datas to file for external review.
+        if export_corrections_csv:
+            with open(f"{self._strip_filename(self._file_path)}_corrected.csv", "w") as f:
+                f.write("corrected_diss,corrected_rf\n")
+                for i in range(corrected_diss.size):
+                    f.write(f"{corrected_diss[i]},{corrected_rf[i]}\n")
 
         return (corrected_diss, corrected_rf)
 
