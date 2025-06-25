@@ -7,14 +7,9 @@ data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Include
 file validation, feature extraction, probability formatting, and bias correction for refined
 POI selection.
 
-Author: 
-    Paul MacNichol (paul.macnichol@qatchtech.com)
-    
-Date: 
-    06-24-2025
-
-Version: 
-    QModel.Ver3.2
+Author: Paul MacNichol (paul.macnichol@qatchtech.com)
+Date: 06-23-2025
+Version: QModel.Ver3.2
 """
 import math
 import xgboost as xgb
@@ -2467,7 +2462,7 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
-        if True:
+        if plotting:
             # Common data we'll reuse
             times_all = relative_time
             diff_all = feature_vector["Difference"]
