@@ -224,10 +224,10 @@ class Sampler:
                     name), float(suggestions["Protein_conc"]), "mg/mL")
             if (name := suggestions.get("Buffer_type")) != "Unknown":
                 form.set_buffer(self.ing_ctrl.get_buffer_by_name(
-                    name), float(suggestions["Buffer_conc"]), "mg/mL")
+                    name), float(suggestions["Buffer_conc"]), "mM")
             if (name := suggestions.get("Salt_type")) != "Unknown":
                 form.set_salt(self.ing_ctrl.get_salt_by_name(name),
-                              float(suggestions["Salt_conc"]), "mg/mL")
+                              float(suggestions["Salt_conc"]), "mM")
             if (name := suggestions.get("Stabilizer_type")) != "Unknown":
                 form.set_stabilizer(self.ing_ctrl.get_stabilizer_by_name(
                     name), float(suggestions["Stabilizer_conc"]), "M")

@@ -669,8 +669,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t14.setValidator(self.validBufferConcentration)
         self.q14.addWidget(self.t14)
         self.h14 = QtWidgets.QLabel()
-        self.h14.setText("<u>mg/mL</u>")
-        self.h14.setToolTip("<b>Hint:</b> For 10mg/mL enter \"10\".")
+        self.h14.setText("<u>mM</u>")
+        self.h14.setToolTip("<b>Hint:</b> For 10mM enter \"10\".")
         self.q14.addWidget(self.h14)
 
         # Buffer Groupbox
@@ -787,8 +787,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.t16.setValidator(self.validSaltConcentration)
         self.q16.addWidget(self.t16)
         self.h16 = QtWidgets.QLabel()
-        self.h16.setText("<u>mg/mL</u>")
-        self.h16.setToolTip("<b>Hint:</b> For 100mg/mL enter \"100\".")
+        self.h16.setText("<u>mM</u>")
+        self.h16.setToolTip("<b>Hint:</b> For 100mM enter \"100\".")
         self.q16.addWidget(self.h16)
 
         # Salt Groupbox
@@ -2637,7 +2637,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             param15 = run.createElement('param')
             param15.setAttribute('name', 'buffer_concentration')
             param15.setAttribute('value', self.t14.text())
-            param15.setAttribute('units', 'mg/mL')
+            param15.setAttribute('units', 'mM')
             params.appendChild(param15)
 
             param10 = run.createElement('param')
@@ -2670,7 +2670,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             param17 = run.createElement('param')
             param17.setAttribute('name', 'salt_concentration')
             param17.setAttribute('value', self.t16.text())
-            param17.setAttribute('units', 'mg/mL')
+            param17.setAttribute('units', 'mM')
             params.appendChild(param17)
 
         param5 = run.createElement('param')

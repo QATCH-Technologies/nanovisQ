@@ -73,9 +73,9 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         vp = ViscosityProfile([1, 10], [0.5, 0.3], "cP")
 
         formulation = Formulation()
-        formulation.set_buffer(b, concentration=1.0, units="mg/mL")
+        formulation.set_buffer(b, concentration=1.0, units="mM")
         formulation.set_protein(p, concentration=2.0, units="mg/mL")
-        formulation.set_salt(s, concentration=0.5, units="M")
+        formulation.set_salt(s, concentration=0.5, units="mM")
         formulation.set_surfactant(sf, concentration=0.05, units="%w")
         formulation.set_stabilizer(st, concentration=0.1, units="M")
         formulation.set_temperature(25.0)

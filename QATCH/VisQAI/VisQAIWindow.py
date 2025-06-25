@@ -144,7 +144,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.trial_layout.addLayout(self.trial_buttons)
 
     def check_license(self) -> bool:
-        free_preview_period = 60  # days
+        free_preview_period = 90  # days
         # TODO: dummy check, always false for now
         is_valid_license = False
         if not is_valid_license:
@@ -785,11 +785,16 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
-            if step in [2, 5]:
+            if step == 2:  # Suggest
                 self.btn_export = QtWidgets.QPushButton("Export {}".format(
                     "Suggestions" if step == 2 else "Predictions"))
                 self.btn_export.clicked.connect(self.export_table_data)
                 add_remove_export_layout.addWidget(self.btn_export)
+            if step == 5:  # Predict
+                self.btn_update = QtWidgets.QPushButton("Update {}".format(
+                    "Suggestions" if step == 2 else "Predictions"))
+                self.btn_update.clicked.connect(self.make_predictions)
+                add_remove_export_layout.addWidget(self.btn_update)
             form_layout.addRow("", add_remove_export_widget)
 
         self.run_notes = QtWidgets.QTextEdit()
@@ -871,11 +876,11 @@ class FrameStep1(QtWidgets.QDialog):
                                            self.salts, ""],
                                  "Units": ["", "mg/mL",
                                            "kDa", "", "",  # pI
-                                           "", "mg/mL",
+                                           "", "mM",
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
-                                           "", "mg/mL"]}
+                                           "", "mM"]}
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
                                                 len(list(self.default_features.keys())))
 
@@ -1039,27 +1044,28 @@ class FrameStep1(QtWidgets.QDialog):
         salt_conc = self.feature_table.item(13, 1).text()
 
         # save run info to XML (if changed, request audit sign)
-        self.parent.save_run_info(self.run_file_xml, [
-            protein_type, protein_conc,
-            buffer_type, buffer_conc,
-            surfactant_type, surfactant_conc,
-            stabilizer_type, stabilizer_conc,
-            salt_type, salt_conc], cancel)
-        if self.parent.hasUnsavedChanges():
-            if cancel:
-                Log.w("Unsaved changes lost, per user discretion.")
+        if self.step in [1, 3]:  # Select, Import
+            self.parent.save_run_info(self.run_file_xml, [
+                protein_type, protein_conc,
+                buffer_type, buffer_conc,
+                surfactant_type, surfactant_conc,
+                stabilizer_type, stabilizer_conc,
+                salt_type, salt_conc], cancel)
+            if self.parent.hasUnsavedChanges():
+                if cancel:
+                    Log.w("Unsaved changes lost, per user discretion.")
+                    return True
+                Log.w("There are still unsaved changes. Cannot continue.")
+                QtWidgets.QMessageBox.information(
+                    None,
+                    Constants.app_title,
+                    "There are still unsaved changes!\n\n" +
+                    "To save: Try again and sign when prompted.\n" +
+                    "Click \"Cancel\" to discard these changes.")
+                return False
+            elif cancel:
+                Log.d("User canceled with nothing to save.")
                 return True
-            Log.w("There are still unsaved changes. Cannot continue.")
-            QtWidgets.QMessageBox.information(
-                None,
-                Constants.app_title,
-                "There are still unsaved changes!\n\n" +
-                "To save: Try again and sign when prompted.\n" +
-                "Click \"Cancel\" to discard these changes.")
-            return False
-        elif cancel:
-            Log.d("User canceled with nothing to save.")
-            return True
 
         protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
         if protein == None:
@@ -1121,12 +1127,12 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_protein(
             protein=protein, concentration=float(protein_conc), units='mg/mL')
         form.set_buffer(buffer, concentration=float(
-            buffer_conc), units='mg/mL')
+            buffer_conc), units='mM')
         form.set_surfactant(surfactant=surfactant,
                             concentration=float(surfactant_conc), units='%w')
         form.set_stabilizer(stabilizer=stabilizer,
-                            concentration=float(stabilizer_conc), units='mg/mL')
-        form.set_salt(salt, concentration=float(salt_conc), units='mg/mL')
+                            concentration=float(stabilizer_conc), units='M')
+        form.set_salt(salt, concentration=float(salt_conc), units='mM')
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
@@ -1137,10 +1143,16 @@ class FrameStep1(QtWidgets.QDialog):
         return True
 
     def load_suggestions(self):
+        pass
+
+    def make_predictions(self):
+        self.save_formulation()
+
         if not hasattr(self.parent, "formulation"):
-            Log.e("No formulation saved from Step 1. Cannot load suggestions.")
+            Log.e("No formulation cached. Cannot load suggestions.")
             return
 
+        # TODO: Not implemented, partially
         predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
         self.parent.predictor = Predictor(predictor_path)
         form_df = self.parent.formulation.to_dataframe(
@@ -1259,7 +1271,8 @@ class FrameStep1(QtWidgets.QDialog):
         # raise any other exception type
 
     def export_table_data(self):
-        raise NotImplementedError()
+        from PyQt5.QtPrintSupport import QPrinter
+        pass
 
     def file_selected(self, path: str | None, cancel: bool = False):
         # If run already loaded, try saving formulation to write any changed Run Info to XML

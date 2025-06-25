@@ -277,7 +277,7 @@ class FormulationController:
             form.set_buffer(
                 buffer=buffer,
                 concentration=row["Buffer_conc"],
-                units="mg/mL"
+                units="mM"
             )
             form.set_protein(
                 protein=protein,
@@ -292,7 +292,7 @@ class FormulationController:
             form.set_salt(
                 salt=salt,
                 concentration=row["Salt_conc"],
-                units="mg/mL"
+                units="mM"
             )
             form.set_surfactant(
                 surfactant=surfactant,
