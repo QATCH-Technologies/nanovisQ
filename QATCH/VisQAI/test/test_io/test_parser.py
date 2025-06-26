@@ -290,7 +290,7 @@ class TestParser(unittest.TestCase):
         vp = {"shear_rate": [100, 1000], "viscosity": [10, 9]}
         temp = 25.0
         form = self.parser.get_formulation(
-            vp=vp, temp=temp, salt=salt, salt_concentration=100, salt_units="mg/ml"
+            vp=vp, temp=temp, salt=salt, salt_concentration=100, salt_units="mM"
         )
         self.assertIsInstance(form, Formulation)
         data = form.to_dict()

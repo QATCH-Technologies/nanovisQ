@@ -287,6 +287,13 @@ class ControlsWindow(QtWidgets.QMainWindow):
             '&Manage Users...', self.manage_user_profiles)
         self.userrole = UserRoles.NONE
         self.menubar.append(target.menuBar().addMenu("&View"))
+        self.modebar = self.menubar[2].addMenu('&Mode')
+        self.modebar.addAction('&1: Run',
+                               lambda: self.parent.MainWin.ui0.setRunMode(None))
+        self.modebar.addAction('&2: Analyze',
+                               lambda: self.parent.MainWin.ui0.setAnalyzeMode(None))
+        self.modebar.addAction('&3: VisQ.AI',
+                               lambda: self.parent.MainWin.ui0.setLearnMode(None))
         self.chk1 = self.menubar[2].addAction('&Console', self.toggle_console)
         self.chk1.setCheckable(True)
         self.chk1.setChecked(self.parent.AppSettings.value(
@@ -1145,6 +1152,10 @@ class MainWindow(QtWidgets.QMainWindow):
         # self.InfoWin.show()
         self.AnalyzeProc = AnalyzeProcess(self)
 
+        # Configures the database file for VisQ.AI (if missing or out-of-date).
+        # NOTE: This must be done before instantiating the `VisQAIWindow` class
+        self._configure_database()
+
         self.VisQAIWin = VisQAIWindow(self)
 
         self.tecWorker = TECTask()
@@ -1234,9 +1245,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures the required permissions on the filesystem
         self._configure_filesystem()
-
-        # Configures the database file for VisQ.AI (if missing or out-of-date)
-        self._configure_database()
 
         # Configures the tutorials interface for user interaction
         self._configure_tutorials()
@@ -2038,6 +2046,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if self.tecThread.isRunning() or self.tecWorker._tec_locked:
                 Log.w("Stopping TEC before closing...")
                 self.tecWorker._tec_update("OFF")
+
+        # Close database file on app close.
+        if self.VisQAIWin.database.is_open:
+            self.VisQAIWin.database.close()
 
     ###########################################################################
     # Enables or disables the UI elements of the window.

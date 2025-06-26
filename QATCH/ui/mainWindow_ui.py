@@ -301,6 +301,7 @@ class Ui_Main(object):
                     self.parent.ControlsWin.userrole, action_role)  # check again
             if check_result:
                 self.parent._enable_ui(True)
+                self.parent.VisQAIWin.enable(False)
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;")
                 self.mode_analyze.setStyleSheet(
@@ -355,6 +356,7 @@ class Ui_Main(object):
             check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
             if check_result:
                 self.parent._enable_ui(False)
+                self.parent.VisQAIWin.enable(False)
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
@@ -406,6 +408,7 @@ class Ui_Main(object):
                 check_result = UserProfiles().check(
                     self.parent.ControlsWin.userrole, action_role)  # check again
             if check_result:
+                self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(True)
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")

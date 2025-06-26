@@ -424,7 +424,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.btn_Info = QtWidgets.QPushButton("Run Info")
 
         # START ANALYZE SIGNATURE CODE:
-        # This code also exists in popUp.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
+        # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
+        # This code also exists in VisQAIWindow.py in class VisQAIWindow for to "SIGNATURE CODE"
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.action_analyze'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'

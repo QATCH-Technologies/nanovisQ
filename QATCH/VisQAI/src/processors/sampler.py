@@ -1,3 +1,4 @@
+import sys
 import os
 import math
 from typing import Dict, Union
@@ -52,9 +53,12 @@ class Sampler:
         self.database = database
         self.form_ctrl = FormulationController(db=database)
         self.ing_ctrl = IngredientController(db=database)
-        self.asset_ctrl = AssetController(
-            assets_dir=os.path.join("VisQAI", "assets")
-        )
+        base_dir = os.path.dirname(os.path.abspath(
+            __file__))
+        project_root = os.path.abspath(
+            os.path.join(base_dir, os.pardir, os.pardir))
+        assets_dir = os.path.join(project_root, "assets")
+        self.asset_ctrl = AssetController(assets_dir=assets_dir)
         if not self.asset_ctrl.asset_exists(asset_name, [".zip"]):
             raise AssetError(f"Asset with name `{asset_name}` does not exist.")
         asset_zip_path = self.asset_ctrl.get_asset_path(asset_name, [".zip"])
@@ -67,149 +71,170 @@ class Sampler:
         self._current_viscosity: ViscosityProfile = None
 
     def add_sample(self, formulation: Formulation) -> None:
-        """
-        Given a Formulation, run predictor.predict(...) to get both viscosities
-        and uncertainty. Store them so get_next_sample() can refer to the latest.
-        """
         form_df = formulation.to_dataframe()
-        preds: Dict[str, Union[list, Dict[float, float]]
-                    ] = self.predictor.predict(form_df)
-        viscosity = preds.get("viscosities", {})
+        viscosity, uncertainty = self.predictor.predict_with_uncertainty(
+            form_df)
         self._current_viscosity = self._make_viscosity_profile(viscosity)
-        self._current_uncertainty = np.array(
-            preds.get("uncertainty", []), dtype=float)
+        self._current_uncertainty = uncertainty
+        self._last_formulation = formulation
 
-    def get_next_sample(self) -> Formulation:
+    def get_next_sample(self, use_ucb: bool = True, kappa: float = 2.0) -> Formulation:
+        candidates = []
 
-        df = self._all_data
-        if df is None or df.empty:
-            raise RuntimeError(
-                "No historical data available to base suggestions on.")
+       # 1. Global exploration
+        current_unc = np.nanmean(
+            self._current_uncertainty) if self._current_uncertainty.size > 0 else float("inf")
+        n_global = 20 if current_unc < 0.05 else 5
 
-        present = [col for col in self._VALID_FEATURES if col in df.columns]
-        if not present:
-            raise RuntimeError(
-                "None of the valid features are present in the DataFrame.")
+        global_samples = self._generate_random_samples(n=n_global)
+        for form in global_samples:
+            viscosity, unc = self.predictor.predict_with_uncertainty(
+                form.to_dataframe())
+            score = self._acquisition_ucb(
+                viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
+            candidates.append((form, score))
 
-        if self._current_uncertainty.size > 0:
-            mean_uncert = float(np.nanmean(self._current_uncertainty))
-        else:
-            # If we never called add_sample(), force "explore"
-            mean_uncert = math.inf
+        # 2. Local (if applicable)
+        if hasattr(self, "_last_formulation") and self._last_formulation is not None:
+            local_samples = self._perturb_formulation(
+                self._last_formulation, base_uncertainty=current_unc)
+            for form in local_samples:
+                viscosity, unc = self.predictor.predict_with_uncertainty(
+                    form.to_dataframe())
+                score = self._acquisition_ucb(
+                    viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
+                candidates.append((form, score))
 
-        # TODO: tune this to model's output scale
-        uncertainty_threshold = 0.1
-        high_uncertainty = (mean_uncert > uncertainty_threshold)
+        # 3. Select best
+        candidates.sort(key=lambda tup: -tup[1])  # descending by score
+        return candidates[0][0] if candidates else None
 
-        suggestions: Dict[str, Union[int, float, str]] = {}
+    def _generate_random_samples(self, n: int = 20) -> list[Formulation]:
+        samples = []
+        cat_choices = {
+            col: self._all_data[col].dropna().unique().tolist()
+            for col in self._CATEGORICAL
+            if col in self._all_data.columns
+        }
+        num_ranges = {
+            col: (
+                self._all_data[col].min(),
+                self._all_data[col].max()
+            )
+            for col in self._NUMERIC
+            if col in self._all_data.columns
+        }
 
-        # pick the least‐frequent category
-        for col in present:
-            if col in self._CATEGORICAL:
-                counts = df[col].value_counts(dropna=False)
-                least_freq = counts.idxmin()
-                suggestions[col] = least_freq
-
-        # find largest gap (if high_uncertainty) or smallest gap (if low)
-        for col in present:
-            if col in self._NUMERIC:
-                vals = df[col].dropna().astype(float).to_numpy()
-                if vals.size == 0:
-                    # No history default to 0.0
-                    suggestions[col] = 0.0
-                    continue
-
-                unique_vals = np.unique(vals)
-                sorted_vals = np.sort(unique_vals)
-
-                if sorted_vals.size == 1:
-                    base = sorted_vals[0]
-                    if high_uncertainty:
-                        # "Explore" by bumping +10%
-                        x = base * 1.10
-                    else:
-                        # "Exploit" by staying at the same number
-                        x = base
+        for _ in range(n):
+            suggestions = {}
+            for col in self._VALID_FEATURES:
+                if col in self._CATEGORICAL and cat_choices.get(col):
+                    suggestions[col] = np.random.choice(cat_choices[col])
+                elif col in self._NUMERIC and num_ranges.get(col):
+                    low, high = num_ranges[col]
+                    suggestions[col] = float(np.random.uniform(low, high))
                 else:
-                    diffs = np.diff(sorted_vals)
-                    max_gap_idx = int(np.argmax(diffs))
-                    gap_left = sorted_vals[max_gap_idx]
-                    gap_right = sorted_vals[max_gap_idx + 1]
-                    midpoint_max = float((gap_left + gap_right) / 2.0)
+                    suggestions[col] = 0.0 if col in self._NUMERIC else "Unknown"
 
-                    if high_uncertainty:
-                        # Explore pick largest gap’s midpoint
-                        x = midpoint_max
-                    else:
-                        # Exploit pick smallest gap’s midpoint
-                        min_gap_idx = int(np.argmin(diffs))
-                        small_left = sorted_vals[min_gap_idx]
-                        small_right = sorted_vals[min_gap_idx + 1]
-                        x = float((small_left + small_right) / 2.0)
+            samples.append(self._build_formulation(suggestions))
+        return samples
 
-                suggestions[col] = x
+    def _perturb_formulation(
+        self,
+        formulation: Formulation,
+        base_uncertainty: float,
+        max_uncertainty: float = 1.0,
+        n: int = 5,
+    ) -> list[Formulation]:
+        """
+        Perturbs numeric values based on how uncertain the last sample was.
+        More uncertain → larger noise scale.
 
-        # Handle any completely missing valid features
-        for col in self._VALID_FEATURES:
-            if col not in suggestions:
-                if col in self._CATEGORICAL:
-                    # If that "type" was never in the DataFrame, assign "Unknown"
-                    suggestions[col] = "Unknown"
+        Args:
+            formulation: The base formulation to perturb.
+            base_uncertainty: The mean uncertainty of the last prediction.
+            max_uncertainty: The assumed maximum model uncertainty.
+            n: Number of perturbed samples to generate.
+        """
+        noise_scale = min(1.0, base_uncertainty / max_uncertainty) * \
+            0.2  # scale between 0–20%
+        base_df = formulation.to_dataframe()
+        perturbed = []
+
+        for _ in range(n):
+            perturbed_features = {}
+            for col in self._VALID_FEATURES:
+                val = base_df[col].values[0]
+                if col in self._NUMERIC:
+                    perturbation = np.random.normal(loc=0.0, scale=noise_scale)
+                    perturbed_features[col] = float(val) * (1.0 + perturbation)
                 else:
-                    # If a numeric was never in the DataFrame, pick 0.0
-                    suggestions[col] = 0.0
-
-        new_form = Formulation()
-        protein_name = suggestions["Protein_type"]
-        if protein_name != "Unknown":
-            protein_obj: Protein = self.ing_ctrl.get_protein_by_name(
-                protein_name
-            )
-            prot_conc = float(suggestions["Protein_conc"])
-            new_form.set_protein(protein_obj, prot_conc, units="mg/mL")
-
-        buffer_name = suggestions["Buffer_type"]
-        if buffer_name != "Unknown":
-            buffer_obj: Buffer = self.ing_ctrl.get_buffer_by_name(
-                buffer_name
-            )
-            buf_conc = float(suggestions["Buffer_conc"])
-            new_form.set_buffer(buffer_obj, buf_conc, units="mg/mL")
-
-        salt_name = suggestions["Salt_type"]
-        if salt_name != "Unknown":
-            salt_obj: Salt = self.form_ctrl.ingredient_controller.get_salt_by_name(
-                salt_name
-            )
-            salt_conc = float(suggestions["Salt_conc"])
-            new_form.set_salt(salt_obj, salt_conc, units="mg/mL")
-
-        stab_name = suggestions["Stabilizer_type"]
-        if stab_name != "Unknown":
-            stab_obj: Stabilizer = self.form_ctrl.ingredient_controller.get_stabilizer_by_name(
-                stab_name
-            )
-            stab_conc = float(suggestions["Stabilizer_conc"])
-            new_form.set_stabilizer(stab_obj, stab_conc, units="M")
-
-        surf_name = suggestions["Surfactant_type"]
-        if surf_name != "Unknown":
-            surf_obj: Surfactant = self.form_ctrl.ingredient_controller.get_surfactant_by_name(
-                surf_name
-            )
-            surf_conc = float(suggestions["Surfactant_conc"])
-            new_form.set_surfactant(surf_obj, surf_conc, units="%w")
-
-        temp_val = float(suggestions["Temperature"])
-        new_form.set_temperature(temp_val)
-        return new_form
+                    perturbed_features[col] = val
+            perturbed.append(self._build_formulation(perturbed_features))
+        return perturbed
 
     def _make_viscosity_profile(self, viscosity: dict) -> ViscosityProfile:
         """
         Convert a dict { shear_rate → viscosity_value } into a ViscosityProfile.
         """
-        profile = ViscosityProfile()
+        shear_rates = []
+        viscosities = []
         for shear_rate, vis in viscosity.items():
-            profile.shear_rates.append(float(shear_rate))
-            profile.viscosities.append(float(vis))
+            shear_rates.append(float(shear_rate))
+            viscosities.append(float(vis))
+        profile = ViscosityProfile(
+            shear_rates=shear_rates, viscosities=viscosities)
         return profile
+
+    def _acquisition_ucb(
+        self,
+        viscosity: dict,
+        uncertainty: np.ndarray,
+        kappa: float = 2.0,
+        reference_shear_rate: float = 10.0
+    ) -> float:
+        """
+        Compute the UCB score for a formulation.
+
+        Args:
+            viscosity: Dict[shear_rate] → viscosity.
+            uncertainty: np.ndarray of uncertainties.
+            kappa: Exploration-exploitation trade-off.
+            reference_shear_rate: Target rate to evaluate viscosity at.
+
+        Returns:
+            UCB score (higher is better).
+        """
+        try:
+            shear_rates = np.array([float(sr) for sr in viscosity.keys()])
+            viscosities = np.array([float(v) for v in viscosity.values()])
+            idx = np.abs(shear_rates - reference_shear_rate).argmin()
+            mu = viscosities[idx]
+        except Exception:
+            mu = np.mean(list(viscosity.values()))
+
+        sigma = np.nanmean(uncertainty)
+        return mu + kappa * sigma
+
+    def _build_formulation(self, suggestions: Dict[str, Union[str, float]]) -> Formulation:
+        form = Formulation()
+        try:
+            if (name := suggestions.get("Protein_type")) != "Unknown":
+                form.set_protein(self.ing_ctrl.get_protein_by_name(
+                    name), float(suggestions["Protein_conc"]), "mg/mL")
+            if (name := suggestions.get("Buffer_type")) != "Unknown":
+                form.set_buffer(self.ing_ctrl.get_buffer_by_name(
+                    name), float(suggestions["Buffer_conc"]), "mM")
+            if (name := suggestions.get("Salt_type")) != "Unknown":
+                form.set_salt(self.ing_ctrl.get_salt_by_name(name),
+                              float(suggestions["Salt_conc"]), "mM")
+            if (name := suggestions.get("Stabilizer_type")) != "Unknown":
+                form.set_stabilizer(self.ing_ctrl.get_stabilizer_by_name(
+                    name), float(suggestions["Stabilizer_conc"]), "M")
+            if (name := suggestions.get("Surfactant_type")) != "Unknown":
+                form.set_surfactant(self.ing_ctrl.get_surfactant_by_name(
+                    name), float(suggestions["Surfactant_conc"]), "%w")
+            form.set_temperature(float(suggestions.get("Temperature", 25.0)))
+        except Exception as e:
+            raise RuntimeError(f"Failed to build formulation: {e}")
+        return form

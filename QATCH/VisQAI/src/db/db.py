@@ -114,6 +114,7 @@ class Database:
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.init_changes = self.conn.total_changes
         self._create_tables()
+        self.is_open = True
 
     def _create_tables(self) -> None:
         """Create all necessary tables if they do not already exist.
@@ -715,3 +716,24 @@ class Database:
                 # No additional action needed; changes have been committed inline.
                 pass
         self.conn.close()
+        self.is_open = False
+
+    def backup(self) -> None:
+        """Writes database from memory to disk
+
+        Critically, however, `backup()` keeps the `conn` open, unlike `close()`.
+        """
+        # Close file handle to allow file write
+        if self.file_handle is not None:
+            self.file_handle.close()
+        # If there are changes or the file does not exist, save or commit
+        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+            if self.use_encryption:
+                self._save_cdb(self.db_path, self.encryption_key)
+            else:
+                # Just to be thorough, commit any changes to disk
+                self.conn.commit()
+            # Update changes counter, only write DB in future if there are additional changes
+            self.init_changes = self.conn.total_changes
+        # Re-open file handle to indicate DB is still open
+        self.file_handle = open(self.db_path, "rb")

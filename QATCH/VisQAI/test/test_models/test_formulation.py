@@ -344,10 +344,10 @@ class TestFormulation(unittest.TestCase):
         correctly populated from the Formulation’s components, temperature, and viscosity_profile.
         """
         self.form.set_protein(self.prot, concentration=5.0, units="mg/mL")
-        self.form.set_buffer(self.buf, concentration=1.0, units="M")
+        self.form.set_buffer(self.buf, concentration=1.0, units="mM")
         self.form.set_stabilizer(self.stab, concentration=0.1, units="w/v")
         self.form.set_surfactant(self.surf, concentration=0.01, units="w/v")
-        self.form.set_salt(self.salt, concentration=0.05, units="M")
+        self.form.set_salt(self.salt, concentration=0.05, units="mM")
         self.form.set_temperature(37.0)
         self.form.set_viscosity_profile(self.vp)
         df = self.form.to_dataframe()

@@ -7,6 +7,12 @@ try:
 except:
     print("Running VisQAI as standalone app")
 
+    class Log:
+        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        def i(tag, msg=""): print("INFO:", tag, msg)
+        def w(tag, msg=""): print("WARNING:", tag, msg)
+        def e(tag, msg=""): print("ERROR:", tag, msg)
+
 from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -16,21 +22,29 @@ import os
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import hashlib
+from scipy.optimize import curve_fit
+import datetime as dt
+from types import SimpleNamespace
+import webbrowser
+from PyQt5.QtPrintSupport import QPrinter
 
 try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.models.predictor import Predictor
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
-    from src.db.db import Database
+    from src.db.db import Database, DB_PATH
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.db.db import Database, DB_PATH
 TAG = "[VisQ.AI]"
 
 
@@ -58,22 +72,167 @@ class HorizontalTabBar(QtWidgets.QTabBar):
             painter.drawControl(QtWidgets.QStyle.CE_TabBarTabLabel, opt)
 
 
-class VisQAIWindow(QtWidgets.QMainWindow):
+class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
+        """BASE CLASS DEFINITION"""
         super().__init__(parent)
-        self.parent = parent
+
+        self.setWindowTitle("VisQ.AI Base Class")
+        self.setMinimumSize(900, 600)
+
+        # Create dummy database object for base class.
+        self.database = SimpleNamespace(is_open=False)
+
+        # Create dummy UI for main tab widget
+        self.tab_widget = QtWidgets.QDialog()
+
+        # Create simple UI for base class when not subscribed.
+        self._expired_widget = QtWidgets.QDialog()
+        self.expired_layout = QtWidgets.QVBoxLayout(self._expired_widget)
+        self.expired_layout.setAlignment(QtCore.Qt.AlignCenter)
+        # self.setCentralWidget(self._expired_widget)
+
+        self.expired_label = QtWidgets.QLabel(
+            "<b>Your VisQ.AI preview period has ended.</b><br/><br/>" +
+            "Please subscribe to regain access on this system.<br/><br/>")
+        self.expired_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.expired_label.setStyleSheet("font-size: 24px;")
+
+        self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
+        self.expired_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.expired_learnmore = QtWidgets.QPushButton("Learn more...")
+        self.expired_learnmore.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.expired_buttons = QtWidgets.QHBoxLayout()
+        self.expired_buttons.addStretch(3)
+        self.expired_buttons.addWidget(self.expired_subscribe, 1)
+        self.expired_buttons.addWidget(self.expired_learnmore, 1)
+        self.expired_buttons.addStretch(3)
+
+        self.expired_layout.addWidget(self.expired_label)
+        self.expired_layout.addLayout(self.expired_buttons)
+
+        # Create simple UI for base class when not subscribed.
+        self._trial_widget = QtWidgets.QDialog()
+        self.trial_layout = QtWidgets.QVBoxLayout(self._trial_widget)
+        self.trial_layout.setAlignment(QtCore.Qt.AlignCenter)
+        # self.setCentralWidget(self._trial_widget)
+
+        self.trial_label = QtWidgets.QLabel(
+            "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>" +
+            "Please subscribe to retain access on this system.<br/><br/>")
+        self.trial_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.trial_label.setStyleSheet("font-size: 24px;")
+
+        self.trial_subscribe = QtWidgets.QPushButton("Subscribe")
+        self.trial_subscribe.clicked.connect(
+            lambda: webbrowser.open("https://qatchtech.com"))
+
+        self.trial_dismiss = QtWidgets.QPushButton("Dismiss")
+        self.trial_dismiss.clicked.connect(
+            lambda: self.setCentralWidget(self.tab_widget))
+
+        self.trial_buttons = QtWidgets.QHBoxLayout()
+        self.trial_buttons.addStretch(3)
+        self.trial_buttons.addWidget(self.trial_subscribe, 1)
+        self.trial_buttons.addWidget(self.trial_dismiss, 1)
+        self.trial_buttons.addStretch(3)
+
+        self.trial_layout.addWidget(self.trial_label)
+        self.trial_layout.addLayout(self.trial_buttons)
+
+    def check_license(self) -> bool:
+        free_preview_period = 90  # days
+        # TODO: dummy check, always false for now
+        is_valid_license = False
+        if not is_valid_license:
+            # how long ago did the preview period start?
+            if not os.path.exists(DB_PATH):
+                Log.e("No VisQAI license or trial found.")
+                self.setCentralWidget(self._expired_widget)
+                return is_valid_license
+
+            file_stats = os.stat(DB_PATH)
+
+            # Get creation time (st_ctime on Unix is actually change time,
+            # but on Windows it's creation time)
+            # For true creation time on all platforms, use st_birthtime if available
+            if hasattr(file_stats, 'st_birthtime'):
+                creation_time = file_stats.st_birthtime  # macOS/BSD
+            else:
+                creation_time = file_stats.st_ctime  # Windows/Linux
+
+            # Current time
+            current_time = dt.datetime.now().timestamp()
+
+            # Calculate time difference in seconds
+            time_ago_seconds = current_time - creation_time
+
+            # Compare to allowable age
+            time_allowed_secs = dt.timedelta(
+                days=free_preview_period).total_seconds()
+
+            if time_ago_seconds >= time_allowed_secs:
+                # Trial preview expired
+                Log.w("No VisQAI license found; trial preview has expired.")
+                self.setCentralWidget(self._expired_widget)
+            else:
+                self.trial_left = free_preview_period - \
+                    dt.timedelta(seconds=time_ago_seconds).days
+                Log.i(
+                    f"No VisQAI license found; trial preview has {self.trial_left} days remaining.")
+                self.trial_label.setText(
+                    self.trial_label.text().format(self.trial_left))  # insert # of days remaining
+                self.setCentralWidget(self._trial_widget)
+        else:
+            # valid license found
+            Log.i("VisQAI license found and is valid.")
+            self.setCentralWidget(self.tab_widget)
+
+        return is_valid_license
+
+    def clear(self):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def reset(self):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def enable(self, bool=False):
+        """BASE CLASS DEFINITION"""
+        pass
+
+    def hasUnsavedChanges(self):
+        """BASE CLASS DEFINITION"""
+        return False
+
+
+class VisQAIWindow(BaseVisQAIWindow):
+    def __init__(self, parent=None):
+        super(VisQAIWindow, self).__init__(parent)
+
+        # import typing here to avoid circularity
+        from QATCH.ui.mainWindow import MainWindow
+        self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI Mockup")
         self.setMinimumSize(900, 600)
         self.init_ui()
+        self.init_sign()
+        self.check_license()  # see BASE CLASS
+        self._unsaved_changes = False
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
+        self.tab_widget.tabBar().installEventFilter(self)
 
-        self.database = Database(parse_file_key=True)
-        self.form_ctrl = FormulationController(db=self.database)
-        self.ing_ctrl = IngredientController(db=self.database)
+        # Enable database objects for initial UI load.
+        self.enable(True)
 
         self.tab_widget.addTab(FrameStep1(self, 1),
                                "\u2460 Select Run")  # unicode circled 1
@@ -88,28 +247,454 @@ class VisQAIWindow(QtWidgets.QMainWindow):
         self.tab_widget.addTab(FrameStep2(self, 6),
                                "\u2465 Optimize")  # unicode circled 6
 
-        self.setCentralWidget(self.tab_widget)
+        # Disable database objects after initial UI load.
+        self.enable(False)
+
+        # NOTE: central widget set by `check_license()`
 
         # Signals
         self.tab_widget.currentChanged.connect(self.on_tab_changed)
 
+    def init_sign(self):
+        # START VISQAI SIGNATURE CODE:
+        # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
+        # This code also exists in Analyze.py in class VisQAIWindow for "ANALYZE SIGNATURE CODE"
+        # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
+        # There is duplicated logic code within the submit button handler: 'self.save_run_infos'
+        # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
+        self.signForm = QtWidgets.QDialog()
+        self.signForm.setWindowFlags(
+            QtCore.Qt.Dialog
+        )  # | QtCore.Qt.WindowStaysOnTopHint)
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/sign.png")
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        self.signForm.setWindowTitle("Signature")
+        self.signForm.setModal(True)
+        layout_sign = QtWidgets.QVBoxLayout()
+        layout_curr = QtWidgets.QHBoxLayout()
+        signedInAs = QtWidgets.QLabel("Signed in as: ")
+        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
+        layout_curr.addWidget(signedInAs)
+        self.signedInAs = QtWidgets.QLabel("[NONE]")
+        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
+        layout_curr.addWidget(self.signedInAs)
+        layout_sign.addLayout(layout_curr)
+        line_sep = QtWidgets.QFrame()
+        line_sep.setFrameShape(QtWidgets.QFrame.HLine)
+        line_sep.setFrameShadow(QtWidgets.QFrame.Sunken)
+        layout_sign.addWidget(line_sep)
+        layout_switch = QtWidgets.QHBoxLayout()
+        self.signerInit = QtWidgets.QLabel(f"Initials: <b>N/A</b>")
+        layout_switch.addWidget(self.signerInit)
+        switch_user = QtWidgets.QPushButton("Switch User")
+        switch_user.clicked.connect(self.switch_user_at_sign_time)
+        layout_switch.addWidget(switch_user)
+        layout_sign.addLayout(layout_switch)
+        self.sign = QtWidgets.QLineEdit()
+        self.sign.installEventFilter(self)
+        layout_sign.addWidget(self.sign)
+        self.sign_do_not_ask = QtWidgets.QCheckBox(
+            "Do not ask again this session")
+        self.sign_do_not_ask.setEnabled(False)
+        if UserProfiles.checkDevMode()[0]:  # DevMode enabled
+            auto_sign_key = None
+            session_key = None
+            if os.path.exists(Constants.auto_sign_key_path):
+                with open(Constants.auto_sign_key_path, "r") as f:
+                    auto_sign_key = f.readline()
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, "r") as f:
+                    session_key = f.readline()
+            if auto_sign_key == session_key and session_key != None:
+                self.sign_do_not_ask.setChecked(True)
+            else:
+                self.sign_do_not_ask.setChecked(False)
+                if os.path.exists(Constants.auto_sign_key_path):
+                    os.remove(Constants.auto_sign_key_path)
+            layout_sign.addWidget(self.sign_do_not_ask)
+        self.sign_ok = QtWidgets.QPushButton("OK")
+        self.sign_ok.clicked.connect(self.signForm.hide)
+        # self.sign_ok.clicked.connect(self.save_run_info)
+        self.sign_ok.setDefault(True)
+        self.sign_ok.setAutoDefault(True)
+        self.sign_cancel = QtWidgets.QPushButton("Cancel")
+        self.sign_cancel.clicked.connect(self.signForm.hide)
+        layout_ok_cancel = QtWidgets.QHBoxLayout()
+        layout_ok_cancel.addWidget(self.sign_ok)
+        layout_ok_cancel.addWidget(self.sign_cancel)
+        layout_sign.addLayout(layout_ok_cancel)
+        self.signForm.setLayout(layout_sign)
+        # END ANALYZE SIGNATURE CODE
+
+        self.sign.textEdited.connect(self.sign_edit)
+        self.sign.textEdited.connect(self.text_transform)
+
+    def eventFilter(self, obj, event):
+        # Key press on user audit sign form
+        if (
+            event.type() == QtCore.QEvent.KeyPress
+            and obj is self.sign
+            and self.sign.hasFocus()
+        ):
+            if event.key() in [
+                QtCore.Qt.Key_Enter,
+                QtCore.Qt.Key_Return,
+                QtCore.Qt.Key_Space,
+            ]:
+                if self.parent.signature_received:
+                    self.sign_ok.clicked.emit()
+            if event.key() == QtCore.Qt.Key_Escape:
+                self.sign_cancel.clicked.emit()
+        # Mouse click on tab widget tab bar
+        if (
+            event.type() == QtCore.QEvent.MouseButtonPress
+            and obj == self.tab_widget.tabBar()
+        ):
+            now_step = self.tab_widget.currentIndex() + 1
+            tab_step = obj.tabAt(event.pos()) + 1
+            if tab_step > 0:
+                if tab_step == now_step + 1:
+                    if hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                        self.tab_widget.currentWidget().btn_next.click()
+                        return True  # ignore click, let "Next" btn decide
+                # Block tab change based on some condition
+                if tab_step in [2, 4, 5]:
+                    if tab_step == 2 or tab_step == 5:
+                        widget: FrameStep1 = self.tab_widget.widget(
+                            0)  # Select
+                        if not widget.run_file_run:
+                            QtWidgets.QMessageBox.information(
+                                None, Constants.app_title,
+                                "Please select a run.",
+                                QtWidgets.QMessageBox.Ok)
+                            return True  # deny tab change
+                    if tab_step == 4:
+                        widget: FrameStep1 = self.tab_widget.widget(
+                            2)  # Import
+                        if len(widget.all_files) == 0:
+                            QtWidgets.QMessageBox.information(
+                                None, Constants.app_title,
+                                "Please import at least 1 experiment before proceeding.",
+                                QtWidgets.QMessageBox.Ok)
+                            return True  # deny tab change
+                if hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                    self.tab_widget.currentWidget().btn_next.click()
+                    # still perform click action
+        return super().eventFilter(obj, event)
+
+    def sign_edit(self):
+        if self.sign.text().upper() == self.initials:
+            sign_text = f"{self.username} ({self.sign.text().upper()})"
+            self.sign.setMaxLength(len(sign_text))
+            self.sign.setText(sign_text)
+            self.sign.setReadOnly(True)
+            self.parent.signed_at = dt.datetime.now().isoformat()
+            self.parent.signature_received = True
+            self.sign_do_not_ask.setEnabled(True)
+
+    def text_transform(self):
+        text = self.sign.text()
+        if len(text) in [1, 2, 3, 4]:  # are these initials?
+            # will not fire 'textEdited' signal again
+            self.sign.setText(text.upper())
+
+    def check_user_info(self):
+        # get active session info, if available
+        active, info = UserProfiles.session_info()
+        if active:
+            self.parent.signature_required = True
+            self.parent.signature_received = False
+            self.username, self.initials = info[0], info[1]
+        else:
+            self.parent.signature_required = False
+
+    def switch_user_at_sign_time(self):
+        new_username, new_initials, new_userrole = UserProfiles.change(
+            UserRoles.ANALYZE
+        )
+        if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
+            if self.username != new_username:
+                self.username = new_username
+                self.initials = new_initials
+                self.signedInAs.setText(self.username)
+                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+                self.parent.signature_received = False
+                self.parent.signature_required = True
+                self.sign.setReadOnly(False)
+                self.sign.setMaxLength(4)
+                self.sign.clear()
+
+                Log.d("User name changed. Changing sign-in user info.")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
+                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
+                self.parent.ControlsWin.signinout.setText("&Sign Out")
+                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.AnalyzeProc.tool_User.setText(new_username)
+                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
+            else:
+                Log.d(
+                    "User switched users to the same user profile. Nothing to change."
+                )
+            # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
+        # elif new_username == None and new_initials == None and new_userrole == 0:
+        else:
+            if new_username == None and not UserProfiles.session_info()[0]:
+                Log.d("User session invalidated. Switch users credentials incorrect.")
+                self.parent.ControlsWin.username.setText("User: [NONE]")
+                self.parent.ControlsWin.userrole = UserRoles.NONE
+                self.parent.ControlsWin.signinout.setText("&Sign In")
+                self.parent.ControlsWin.manage.setText("&Manage Users...")
+                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
+                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "User has not been switched.\n\nReason: Not authenticated.",
+                )
+            if new_username != None and UserProfiles.session_info()[0]:
+                Log.d("User name changed. Changing sign-in user info.")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
+                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
+                self.parent.ControlsWin.signinout.setText("&Sign Out")
+                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
+                self.parent.AnalyzeProc.tool_User.setText(new_username)
+                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "User has not been switched.\n\nReason: Not authorized.",
+                )
+
+            Log.d("User did not authenticate for role to switch users.")
+
     def on_tab_changed(self, index):
+        # Purge dataase to disk on tab change
+        if self.database.is_open:
+            self.database.backup()
+        elif not isinstance(self.database, SimpleNamespace):
+            Log.w("Database closed: backup failed")
+
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
         if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
             current_widget.on_tab_selected()
 
     def clear(self) -> None:
-        pass
+        self._unsaved_changes = False
 
     def hasUnsavedChanges(self) -> bool:
-        return False
+        return self._unsaved_changes
 
     def reset(self) -> None:
-        pass
+        self.check_user_info()
+        self.signedInAs.setText(self.username)
+        self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+        self.parent.signature_received = False
+        self.parent.signature_required = True
+        self.sign.setReadOnly(False)
+        self.sign.setMaxLength(4)
+        self.sign.clear()
 
     def enable(self, enable=False) -> None:
-        pass
+        if not enable:
+            # VisQ.AI UI is not in foreground, Mode not selected
+            # Do things here to shutdown resources and disable:
+
+            # Close database.
+            if self.database.is_open:
+                self.database.close()
+            elif not isinstance(self.database, SimpleNamespace):
+                Log.w("Database closed: write failed")
+
+            # Disable database objects.
+            self.database = SimpleNamespace(is_open=False, status="Disabled")
+            self.form_ctrl = SimpleNamespace(db=None, status="Disabled")
+            self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
+            Log.d("Database objects disabled on VisQ.AI not enabled.")
+
+        else:
+            # VisQ.AI UI is now in foreground, Mode is selected
+            # Do things here to initialize resources and enable:
+
+            # Create database objects, and open DB from file.
+            self.database = Database(parse_file_key=True)
+            self.form_ctrl = FormulationController(db=self.database)
+            self.ing_ctrl = IngredientController(db=self.database)
+            Log.d("Database objects created on VisQ.AI enable.")
+
+            # Emit tab selected code for the currently active tab frame.
+            self.tab_widget.currentChanged.emit(self.tab_widget.currentIndex())
+
+            # # Create default user preferences object
+            # UserProfiles.user_preferences = UserPreferences(
+            #     UserProfiles.get_session_file())
+            # prefs = UserProfiles.user_preferences.get_preferences()
+            # self.load_data_path = prefs['load_data_path']
+
+    def save_run_info(self, xml_path: str, run_info: list, cancel: bool = False):
+        # This will update the run info XML only if there are changes.
+        # The user may be asked for an audit signature if required.
+
+        info_tags = ['protein_type', 'protein_concentration',
+                     'buffer_type', 'buffer_concentration',
+                     'surfactant_type', 'surfactant_concentration',
+                     'stabilizer_type', 'stabilizer_concentration',
+                     'salt_type', 'salt_concentration']
+        required_len = len(info_tags)
+        if len(run_info) != required_len:
+            Log.e(
+                f"There must be {required_len} run info parameters given. Received {len(run_info)}")
+            return
+        if not os.path.exists(xml_path):
+            Log.e(f"XML path not found: {xml_path}")
+            return
+
+        run = minidom.parse(xml_path)
+        xml = run.documentElement
+
+        existing_params = []
+        params = xml.getElementsByTagName(
+            "params")[-1]  # most recent element
+        params = params.cloneNode(deep=True)
+        for p in params.childNodes:
+            if p.nodeType == p.TEXT_NODE:
+                continue  # only process elements
+            name = p.getAttribute("name")
+            existing_params.append(name)
+            if name in info_tags:
+                i = info_tags.index(name)
+                value = run_info[i]
+                if p.getAttribute("value") != value:
+                    p.setAttribute("value", value)
+                    self._unsaved_changes = True
+        for i in range(required_len):
+            name = info_tags[i]
+            if name not in existing_params:
+                value = run_info[i]
+                p = run.createElement('param')
+                p.setAttribute('name', name)
+                p.setAttribute('value', value)
+                params.appendChild(p)
+                self._unsaved_changes = True
+
+        if not self._unsaved_changes:
+            Log.d("No changes detected, not appending new run info to XML.")
+            return
+        elif cancel:
+            Log.d("User canceling with unsaved changes in table.")
+            result = QtWidgets.QMessageBox.question(
+                None,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to cancel without saving?")
+            if result == QtWidgets.QMessageBox.Yes:
+                self._unsaved_changes = False
+                return
+
+        # Get audit signature from authorized user.
+        if self.parent.signature_required and self._unsaved_changes:
+            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
+                Log.w(
+                    f"Signing ANALYZE with initials {self.initials} (not asking again)"
+                )
+                self.parent.signed_at = dt.datetime.now().isoformat()
+                self.parent.signature_received = True  # Do not ask again this session
+            if not self.parent.signature_received:
+                if self.signForm.isVisible():
+                    self.signForm.hide()
+                self.signedInAs.setText(self.username)
+                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
+                screen = QtWidgets.QDesktopWidget().availableGeometry()
+                left = int(
+                    (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
+                top = (
+                    int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
+                )
+                self.signForm.move(left, top)
+                self.signForm.setVisible(True)
+                self.sign.setFocus()
+                self.signForm.exec_()
+                if not self.parent.signature_received:
+                    Log.w("User did not sign when requested.")
+                    return
+
+        if self.sign_do_not_ask.isChecked():
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
+            if os.path.exists(session_key_path):
+                with open(session_key_path, "r") as f:
+                    session_key = f.readline()
+                if not os.path.exists(Constants.auto_sign_key_path):
+                    with open(Constants.auto_sign_key_path, "w") as f:
+                        f.write(session_key)
+
+        if self.parent.signature_required:
+            valid, infos = UserProfiles.session_info()
+            if valid:
+                Log.d(f"Found valid session: {infos}")
+                username = infos[0]
+                initials = infos[1]
+                salt = UserProfiles.find(username, initials)[1][:-4]
+                userrole = infos[2]
+            else:
+                Log.w(
+                    f"Found invalid session: searching for user ({self.username}, {self.initials})")
+                username = self.username
+                initials = self.initials
+                salt = UserProfiles.find(username, initials)[1][:-4]
+                userrole = UserProfiles.get_user_info(f"{salt}.xml")[2]
+
+            audit_action = "VISQAI"
+            timestamp = self.parent.signed_at
+            machine = Architecture.get_os_name()
+            hash = hashlib.sha256()
+            hash.update(salt.encode())  # aka 'profile'
+            hash.update(audit_action.encode())
+            hash.update(timestamp.encode())
+            hash.update(machine.encode())
+            hash.update(username.encode())
+            hash.update(initials.encode())
+            hash.update(userrole.encode())
+            signature = hash.hexdigest()
+
+            audit1 = run.createElement('audit')
+            audit1.setAttribute('profile', salt)
+            audit1.setAttribute('action', audit_action)
+            audit1.setAttribute('recorded', timestamp)
+            audit1.setAttribute('machine', machine)
+            audit1.setAttribute('username', username)
+            audit1.setAttribute('initials', initials)
+            audit1.setAttribute('role', userrole)
+            audit1.setAttribute('signature', signature)
+
+            audits = xml.getElementsByTagName('audits')[-1]
+            audits.appendChild(audit1)
+        else:
+            pass  # leave 'audits' block as empty
+
+        hash = hashlib.sha256()
+        params.setAttribute('recorded', timestamp)
+        for p in params.childNodes:
+            for name, value in p.attributes.items():
+                hash.update(name.encode())
+                hash.update(value.encode())
+        signature = hash.hexdigest()
+        params.setAttribute('signature', signature)
+
+        xml.appendChild(params)
+
+        with open(xml_path, 'w') as f:
+            f.write(run.toxml())
+
+        self._unsaved_changes = False
 
 
 class FrameStep1(QtWidgets.QDialog):
@@ -120,6 +705,12 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.all_files = {}
         self.model_path = None
+        self.run_file_run = None
+        self.run_file_xml = None
+        self.run_file_analyze = None
+
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
+        self.profile_viscos = []
 
         if step == 1:
             self.setWindowTitle("Select Run")
@@ -182,9 +773,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.file_dialog = QtWidgets.QFileDialog()
         self.file_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        run_path = os.path.join(
-            os.getcwd(), "logged_data_test/maria data/M250505W7_TEST")
-        self.file_dialog.setDirectory(run_path)  # TODO restore
+        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
         self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
@@ -223,11 +812,29 @@ class FrameStep1(QtWidgets.QDialog):
             if step == 3:
                 self.list_view.clicked.connect(self.user_run_clicked)
             else:
+                # TODO: for steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
                     lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
+                self.list_view.clicked.connect(self.hide_extended_features)
+            self.list_view.clicked.connect(
+                lambda: self.btn_update.setEnabled(True))
+
+            add_remove_export_widget = QtWidgets.QWidget()
+            add_remove_export_layout = QtWidgets.QHBoxLayout(
+                add_remove_export_widget)
+            add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
+            if step in [2, 5]:
+                self.btn_add = QtWidgets.QPushButton("Add Another")
+                self.btn_add.clicked.connect(self.add_another_item)
+                add_remove_export_layout.addWidget(self.btn_add)
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
             self.btn_remove.clicked.connect(self.user_run_removed)
-            form_layout.addRow("", self.btn_remove)
+            add_remove_export_layout.addWidget(self.btn_remove)
+            if step in [2, 5]:  # Suggest, Predict
+                self.btn_export = QtWidgets.QPushButton("Export as PDF")
+                self.btn_export.clicked.connect(self.export_table_data)
+                add_remove_export_layout.addWidget(self.btn_export)
+            form_layout.addRow("", add_remove_export_widget)
 
         self.run_notes = QtWidgets.QTextEdit()
         self.run_notes.setPlaceholderText("None")
@@ -274,9 +881,10 @@ class FrameStep1(QtWidgets.QDialog):
                 "Next Step: Import Experiments")
         elif step == 3:
             self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Learn + Predict")
+                "Next Step: Learn")
         elif step == 5:
-            self.btn_next = QtWidgets.QPushButton("Finish")
+            self.btn_next = QtWidgets.QPushButton(""
+                                                  "Next Step: Optimize")
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_next)
         left_layout.addLayout(btn_layout)
@@ -308,11 +916,11 @@ class FrameStep1(QtWidgets.QDialog):
                                            self.salts, ""],
                                  "Units": ["", "mg/mL",
                                            "kDa", "", "",  # pI
-                                           "", "mg/mL",
+                                           "", "mM",
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
-                                           "", "mg/mL"]}
+                                           "", "mM"]}
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
                                                 len(list(self.default_features.keys())))
 
@@ -320,6 +928,23 @@ class FrameStep1(QtWidgets.QDialog):
                                        self.default_rows, self.default_cols)
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
+
+        self.btn_update = QtWidgets.QPushButton()
+        self.btn_update.setEnabled(False)
+        if step == 1:  # Select
+            self.btn_update.setText("Save Formulation")
+            self.btn_update.clicked.connect(self.save_formulation)
+        if step == 2:  # Suggest
+            self.btn_update.setText("Decline Suggestion")
+            self.btn_update.clicked.connect(self.user_run_removed)
+        if step == 3:  # Import
+            self.btn_update.setText("Save Formulation")
+            self.btn_update.clicked.connect(self.save_formulation)
+        # step 4 is not in this class: Learn
+        if step == 5:  # Predict
+            self.btn_update.setText("Update Predictions")
+            self.btn_update.clicked.connect(self.make_predictions)
+        right_group.addWidget(self.btn_update)
 
         # TODO: Testing only, create dummy features
         self.dummy_features = []
@@ -338,11 +963,11 @@ class FrameStep1(QtWidgets.QDialog):
                     current_tag = value_tags[x]
                     if isinstance(current_value, list):
                         if isinstance(current_tag, int):
-                            dummy_feature["Value"][x] = [
-                                current_value[current_tag]]
+                            dummy_feature["Value"][x] = \
+                                current_value[current_tag]
                         else:
-                            dummy_feature["Value"][x] = [current_value[randint(
-                                current_tag[0], current_tag[-1])]]
+                            dummy_feature["Value"][x] = current_value[randint(
+                                current_tag[0], current_tag[-1])]
                     else:
                         if isinstance(current_tag, range):
                             dummy_feature["Value"][x] = randint(
@@ -350,11 +975,11 @@ class FrameStep1(QtWidgets.QDialog):
                 except Exception as e:
                     print(e)
             # Hide protein and buffer characteristics
-            for values in dummy_feature.values():
-                del values[7]  # buffer PH
-                del values[4]  # protein pI range
-                del values[3]  # protein pI mean
-                del values[2]  # protein weight
+            # for values in dummy_feature.values():
+            #     del values[7]  # buffer PH
+            #     del values[4]  # protein pI range
+            #     del values[3]  # protein pI mean
+            #     del values[2]  # protein weight
             self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
@@ -366,11 +991,11 @@ class FrameStep1(QtWidgets.QDialog):
         h_splitter.addWidget(left_widget)
         h_splitter.addWidget(right_widget)
         h_splitter.setSizes([100, 300])
-        v_splitter.setSizes([100, 100])
+        v_splitter.setSizes([180, 100])
 
         # Signals
         self.btn_cancel.clicked.connect(
-            lambda: self.file_selected(None))
+            lambda: self.file_selected(None, cancel=True))
         self.btn_next.clicked.connect(
             getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.file_dialog.show)
@@ -380,6 +1005,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(self.model_selected)
 
     def on_tab_selected(self):
+
+        # Set run directory from User Preferences.
+        self.file_dialog.setDirectory(Constants.log_prefer_path)
+
         if self.step == 2:  # Suggest
             self.load_suggestions()
         if self.step == 5:  # Predict
@@ -454,7 +1083,12 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts", self.salts)
 
-    def save_formulation(self):
+    def hide_extended_features(self):
+        hide_rows = [2, 3, 4, 7]
+        for row in hide_rows:
+            self.feature_table.hideRow(row)
+
+    def save_formulation(self, cancel: bool = False) -> bool:
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
         protein_weight = self.feature_table.item(2, 1).text()
@@ -465,34 +1099,62 @@ class FrameStep1(QtWidgets.QDialog):
         buffer_pH = self.feature_table.item(7, 1).text()
         surfactant_type = self.feature_table.cellWidget(8, 1).currentText()
         surfactant_conc = self.feature_table.item(9, 1).text()
-        stabilizer_type = self.feature_table.cellWidget(10, 1).currentText()
+        stabilizer_type = self.feature_table.cellWidget(
+            10, 1).currentText()
         stabilizer_conc = self.feature_table.item(11, 1).text()
         salt_type = self.feature_table.cellWidget(12, 1).currentText()
         salt_conc = self.feature_table.item(13, 1).text()
 
+        # save run info to XML (if changed, request audit sign)
+        if self.step in [1, 3]:  # Select, Import
+            self.parent.save_run_info(self.run_file_xml, [
+                protein_type, protein_conc,
+                buffer_type, buffer_conc,
+                surfactant_type, surfactant_conc,
+                stabilizer_type, stabilizer_conc,
+                salt_type, salt_conc], cancel)
+            if self.parent.hasUnsavedChanges():
+                if cancel:
+                    Log.w("Unsaved changes lost, per user discretion.")
+                    return True
+                Log.w("There are still unsaved changes. Cannot continue.")
+                QtWidgets.QMessageBox.information(
+                    None,
+                    Constants.app_title,
+                    "There are still unsaved changes!\n\n" +
+                    "To save: Try again and sign when prompted.\n" +
+                    "Click \"Cancel\" to discard these changes.")
+                return False
+            elif cancel:
+                Log.d("User canceled with nothing to save.")
+                return True
+
         protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
+        if protein == None:
+            protein = self.parent.ing_ctrl.add_protein(
+                Protein(enc_id=-1, name=protein_type))
+
         buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
+        if buffer == None:
+            buffer = self.parent.ing_ctrl.add_buffer(
+                Buffer(enc_id=-1, name=buffer_type))
+
         surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
             name=surfactant_type)
+        if surfactant == None:
+            surfactant = self.parent.ing_ctrl.add_surfactant(
+                Surfactant(enc_id=-1, name=surfactant_type))
+
         stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
             name=stabilizer_type)
+        if stabilizer == None:
+            stabilizer = self.parent.ing_ctrl.add_stabilizer(
+                Stabilizer(enc_id=-1, name=stabilizer_type))
+
         salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
-
-        # update protein and buffer characteristics
-        protein.molecular_weight = protein_weight
-        protein.pI_mean = protein_pI_mean
-        protein.pI_range = protein_pI_range
-        buffer.pH = buffer_pH
-
-        # if no changes, nothing is done on 'update' call
-        self.parent.ing_ctrl.update_protein(protein.id, protein)
-        self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
-
-        # pull in viscosity profile from run load
-        vp = ViscosityProfile(shear_rates=self.profile_shears,
-                              viscosities=self.profile_viscos,
-                              units='cP')
-        vp.is_measured = self.run_figure_valid
+        if salt == None:
+            salt = self.parent.ing_ctrl.add_salt(
+                Salt(enc_id=-1, name=salt_type))
 
         def is_number(s: str):
             try:
@@ -501,6 +1163,43 @@ class FrameStep1(QtWidgets.QDialog):
             except ValueError:
                 return False
 
+        # update protein and buffer characteristics
+        # bail if any extended features are missing
+        if is_number(protein_weight):
+            protein.molecular_weight = float(protein_weight)
+        elif not protein.molecular_weight:
+            Log.e("Missing protein molecular weight!")
+            return
+        if is_number(protein_pI_mean):
+            protein.pI_mean = float(protein_pI_mean)
+        elif not protein.pI_mean:
+            Log.e("Missing protein pI mean!")
+            return
+        if is_number(protein_pI_range):
+            protein.pI_range = float(protein_pI_range)
+        elif not protein.pI_range:
+            Log.e("Missing protein pI range!")
+            return
+        if is_number(buffer_pH):
+            buffer.pH = float(buffer_pH)
+        elif not buffer.pH:
+            Log.e("Missing buffer pH!")
+            return
+
+        # if no changes, nothing is done on 'update' call
+        self.parent.ing_ctrl.update_protein(protein.id, protein)
+        self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
+
+        while len(self.profile_viscos) < len(self.profile_shears):
+            self.profile_viscos.append(-1)
+
+        # pull in viscosity profile from run load
+        vp = ViscosityProfile(shear_rates=self.profile_shears,
+                              viscosities=self.profile_viscos,
+                              units='cP')
+        vp.is_measured = self.run_figure_valid
+
+        # pull temperaure
         temp = self.run_temperature.text()
         if temp.endswith('C'):
             temp = temp[:-1]  # strip Celsius unit character
@@ -511,20 +1210,39 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_protein(
             protein=protein, concentration=float(protein_conc), units='mg/mL')
         form.set_buffer(buffer, concentration=float(
-            buffer_conc), units='mg/mL')
+            buffer_conc), units='mM')
         form.set_surfactant(surfactant=surfactant,
                             concentration=float(surfactant_conc), units='%w')
         form.set_stabilizer(stabilizer=stabilizer,
-                            concentration=float(stabilizer_conc), units='mg/mL')
-        form.set_salt(salt, concentration=float(salt_conc), units='mg/mL')
+                            concentration=float(stabilizer_conc), units='M')
+        form.set_salt(salt, concentration=float(salt_conc), units='mM')
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
-        self.parent.form_ctrl.add_formulation(formulation=form)
+        self.parent.formulation = self.parent.form_ctrl.add_formulation(
+            formulation=form)
         # print(self.parent.form_ctrl.get_all_as_dataframe())
 
+        return True
+
     def load_suggestions(self):
-        raise NotImplementedError()
+        pass
+
+    def make_predictions(self):
+        self.save_formulation()
+
+        if not hasattr(self.parent, "formulation"):
+            Log.e("No formulation cached. Cannot load suggestions.")
+            return
+
+        # TODO: Not implemented, partially
+        predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
+        self.parent.predictor = Predictor(predictor_path)
+        form_df = self.parent.formulation.to_dataframe(
+            encoded=True, training=False)
+        self.parent.predictor.update(form_df, train_full=True)
+        guesses = self.parent.predictor.predict_with_uncertainty(form_df)
+        print(guesses)
 
     def proceed_to_step_2(self):
         # Are we ready to proceed?
@@ -532,13 +1250,15 @@ class FrameStep1(QtWidgets.QDialog):
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
+        #   4. All formulations saved, and XMLs up-to-date
         if (len(self.run_captured.text()) and
             len(self.run_updated.text()) and
             len(self.run_analyzed.text()) and
                 self.feature_table.allSet() and
                 self.run_figure_valid):
             # ready to proceed
-            self.save_formulation()
+            if not self.save_formulation():
+                return
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
                 self.parent.tab_widget.setCurrentIndex(i+1)
@@ -549,8 +1269,11 @@ class FrameStep1(QtWidgets.QDialog):
                     "ERROR: self.parent is None.\n" +
                     "Cannot proceed to next step!")
         else:  # not ready
+            message = "Please select a run."
+            if self.select_label.text():
+                message = "Please correct the highlighted fields first."
             QtWidgets.QMessageBox.information(
-                None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
 
     def proceed_to_step_3(self):
         # ready to proceed
@@ -559,10 +1282,18 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.tab_widget.setCurrentIndex(i+1)
 
     def proceed_to_step_4(self):
-        # TODO: For each run in list, must pass the same criteria from Step 1
+        # First of all, there must be at least 1 imported experiment
+        # For each run in list, must pass the same criteria from Step 1
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
+        #   4. All formulations saved, and XMLs up-to-date
+        if len(self.all_files) == 0:
+            QtWidgets.QMessageBox.information(
+                None, Constants.app_title,
+                "Please import at least 1 experiment before proceeding.",
+                QtWidgets.QMessageBox.Ok)
+            return
         all_is_good = True
         for file_name, file_path in self.all_files.items():
             self.file_selected(file_path)  # load each run
@@ -571,8 +1302,8 @@ class FrameStep1(QtWidgets.QDialog):
                 len(self.run_analyzed.text()) and
                     self.feature_table.allSet() and
                     self.run_figure_valid):
-                self.save_formulation()
-                continue
+                if not self.save_formulation():
+                    return
             else:
                 all_is_good = False
                 # break # maybe not, if we want to highlight *all* errors on "Next"
@@ -589,13 +1320,19 @@ class FrameStep1(QtWidgets.QDialog):
                     "Cannot proceed to next step!")
         else:  # not ready
             QtWidgets.QMessageBox.information(
-                None, "Missing Information", "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
 
     # NOTE: step_5 would be handled in FrameStep2
 
     def proceed_to_step_6(self):
-        # NOTE: This is the "Finish" button
-        self.btn_cancel.click()
+        # ready to proceed
+        if self.parent is not None:
+            i = self.parent.tab_widget.currentIndex()
+            self.parent.tab_widget.setCurrentIndex(i+1)
+        else:
+            self.run_notes.setText(
+                "ERROR: self.parent is None.\n" +
+                "Cannot proceed to next step!")
 
     def user_run_clicked(self):
         try:
@@ -607,6 +1344,9 @@ class FrameStep1(QtWidgets.QDialog):
             else:  # no files in list, this error can occur when user cliks on the placeholder text
                 pass  # ignore the click
         # raise any other exception type
+
+    def add_another_item(self):
+        raise NotImplementedError()
 
     def user_run_removed(self):
         try:
@@ -625,7 +1365,142 @@ class FrameStep1(QtWidgets.QDialog):
                 pass  # ignore the click
         # raise any other exception type
 
-    def file_selected(self, path: str | None):
+    def export_table_data(self):
+        info_on_success = False
+        open_on_success = True
+
+        default_export_folder = os.path.expanduser(os.path.join(
+            "~", "Documents", f"{Constants.app_publisher} {Constants.app_name}", "exported_pdfs"))
+        if os.path.exists(os.path.dirname(default_export_folder)):
+            os.makedirs(default_export_folder, exist_ok=True)
+        else:
+            default_export_folder = os.getcwd()
+
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            None, "Export as PDF", default_export_folder, "PDF files (*.pdf)"
+        )
+
+        if file_path:
+            try:
+                # Create printer to make PDFs
+                printer = QPrinter(QPrinter.PrinterResolution)
+                printer.setOutputFormat(QPrinter.PdfFormat)
+                printer.setOutputFileName(file_path)
+                printer.setPageSize(QPrinter.Letter)
+
+                # Set 1-inch margins on all sides
+                # left, top, right, bottom
+                margins = QtCore.QMarginsF(1.0, 1.0, 1.0, 1.0)
+                printer.setPageMargins(
+                    margins.left(), margins.top(), margins.right(), margins.bottom(),
+                    QPrinter.Inch)
+                painter = QtGui.QPainter(printer)
+
+                # Set font
+                font = QtGui.QFont("Times New Roman", 12)
+                # NOTE: Bold will be set/unset for header/data rows
+
+                for i in range(self.model.rowCount()):
+
+                    # Select the item
+                    index = self.model.index(i, 0)
+                    self.list_view.setCurrentIndex(index)
+                    self.list_view.selectionModel().select(
+                        index, QtCore.QItemSelectionModel.ClearAndSelect)
+                    self.list_view.clicked.emit(index)
+
+                    if i > 0:
+                        # Add new page to PDF for each table in list
+                        printer.newPage()
+
+                    # Start at top of page
+                    y = 0
+
+                    # Page spacing parameters
+                    cell_pad_top = 7
+                    cell_pad_left = 10
+                    row_height = 30
+
+                    # Calculate cell dimensions
+                    table_widget = self.feature_table
+                    page_rect = printer.pageRect()
+                    col_width = page_rect.width() // table_widget.columnCount()
+
+                    # Draw page header/title
+                    font.setBold(True)
+                    painter.setFont(font)
+                    painter.drawText(cell_pad_left, y,
+                                     f"Suggested Experiment {i+1}")
+                    y += row_height
+
+                    # Draw headers
+                    for col in range(table_widget.columnCount()):
+                        header = table_widget.horizontalHeaderItem(col)
+                        text = header.text() if header else f"Column {col}"
+                        border_rect = QtCore.QRect(
+                            col * col_width, y, col_width, row_height)
+                        text_rect = QtCore.QRect(border_rect)
+                        text_rect.adjust(cell_pad_left, cell_pad_top, 0, 0)
+                        painter.drawText(text_rect, 0, text)
+                        painter.drawRect(border_rect)
+                    y += row_height
+
+                    # Draw data rows
+                    font.setBold(False)
+                    painter.setFont(font)
+                    for row in range(table_widget.rowCount()):
+                        skip = True
+                        for col in range(table_widget.columnCount()):
+                            item = table_widget.item(row, col)
+                            if item:
+                                text = item.text()
+                            else:
+                                widget = table_widget.cellWidget(row, col)
+                                if widget:
+                                    text = widget.currentText()
+                                else:
+                                    continue  # skip blank rows
+                            if table_widget.isRowHidden(row):
+                                continue  # skip hidden rows
+                            skip = False
+                            border_rect = QtCore.QRect(
+                                col * col_width, y, col_width, row_height)
+                            text_rect = QtCore.QRect(border_rect)
+                            text_rect.adjust(
+                                cell_pad_left, cell_pad_top, 0, 0)
+                            painter.drawText(text_rect, 0, text)
+                            painter.drawRect(border_rect)
+                        if not skip:
+                            y += row_height
+
+                painter.end()
+
+                if info_on_success:
+                    QtWidgets.QMessageBox.information(
+                        None, "Success", "PDF exported successfully!")
+
+                if open_on_success:
+                    webbrowser.open(file_path)
+
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    None, "Error", f"Failed to export PDF: {str(e)}")
+
+    def file_selected(self, path: str | None, cancel: bool = False):
+        # If run already loaded, try saving formulation to write any changed Run Info to XML
+        if self.run_file_xml and self.step in [1, 3]:
+            if not self.feature_table.allSet():
+                result = QtWidgets.QMessageBox.question(
+                    None,
+                    Constants.app_title,
+                    "You have missing feature values.\n\nAre you sure you want to reload the features table?")
+                if result != QtWidgets.QMessageBox.Yes:
+                    return
+            elif not self.feature_table.isEmpty():
+                Log.i("Saving formulation for fully populated feature table.")
+                if not self.save_formulation(cancel):
+                    return
+
         self.run_file_run = path
         self.run_file_xml = None
         self.run_file_analyze = None
@@ -647,12 +1522,16 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_canvas.draw()
         self.feature_table.clear()
 
+        self.btn_update.setEnabled(False)
+
         if path is None:
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
             if self.step == 5:  # Predict
                 self.model_selected(None)
             return
+
+        self.btn_update.setEnabled(True)
 
         namelist = SecureOpen.get_namelist(self.run_file_run)
         for file in namelist:
@@ -671,7 +1550,7 @@ class FrameStep1(QtWidgets.QDialog):
             if item.text() == self.parent.tab_widget.widget(0).select_label.text():
                 QtCore.QTimer.singleShot(100, lambda: QtWidgets.QMessageBox.information(
                     None,
-                    "Not Allowed",
+                    Constants.app_title,
                     "The selected run from Step 1 cannot also be an imported experiment run.",
                     QtWidgets.QMessageBox.Ok))
                 return
@@ -745,6 +1624,11 @@ class FrameStep1(QtWidgets.QDialog):
                 value = f"{value} ({'Valid' if eval(p.getAttribute('found')) else 'Unknown'})"
             xml_params[name] = value
 
+        if xml_params.get("bioformulation", False) != 'True':
+            self.run_notes.setTextBackgroundColor(Color.light_red)
+            self.run_notes.setText("ERROR: This run is not a bioformulation!")
+            return
+
         try:
             self.run_notes.setTextBackgroundColor(Color.white)
             self.run_notes.setPlainText(
@@ -797,13 +1681,6 @@ class FrameStep1(QtWidgets.QDialog):
         except:
             self.run_analyzed.setText("(Not Performed)")
 
-        def is_number(s: str):
-            try:
-                float(s)
-                return True
-            except ValueError:
-                return False
-
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
                       "", "", "",  # molecular weight, pI mean, pI range
@@ -817,14 +1694,11 @@ class FrameStep1(QtWidgets.QDialog):
                 if y == "":
                     continue
                 if y in xml_params.keys():
-                    if not is_number(xml_params[y]):
-                        run_features["Value"][x] = [xml_params[y]]
-                    else:
-                        run_features["Value"][x] = xml_params[y]
+                    run_features["Value"][x] = xml_params[y]
             except Exception as e:
                 print(e)
 
-        if self.step == 3:
+        if False:  # self.step == 3:
             # Hide protein and buffer characteristics
             for values in run_features.values():
                 del values[7]  # buffer PH
@@ -875,15 +1749,66 @@ class FrameStep1(QtWidgets.QDialog):
         pass_to_models = {"shear_rate": in_shear_rate,
                           "viscosity": in_viscosity}
 
-        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 1e6, 15000000]
+        # self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000] # already set
         self.profile_viscos = []
+        has_high_shear_pt = in_shear_rate[-1] > 1e6
+        has_curve_fit_est = False
+
         for shear_rate in self.profile_shears:
-            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity)
+            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity,
+                                  left=np.nan)
             self.profile_viscos.append(viscosity)
+
+        if np.any(np.isnan(self.profile_viscos)):
+            try:
+                # Define the logarithmic function to fit
+                def logarithmic_func(x, a, b, c):
+                    return a * np.log10(x - c) + b
+
+                # Define bounds for parameters [a, b, c]
+                lower_bounds = [-np.inf, -np.inf, -np.inf]
+                upper_bounds = [np.inf, np.inf, 99]
+                fit_bounds = (lower_bounds, upper_bounds)
+
+                # Perform the curve fit (not including high-shear point)
+                initial_guess = (2, 1, 0.5)
+                popt, pcov = curve_fit(
+                    logarithmic_func,
+                    in_shear_rate[:-1] if has_high_shear_pt else in_shear_rate,
+                    in_viscosity[:-1] if has_high_shear_pt else in_viscosity,
+                    p0=initial_guess,
+                    bounds=fit_bounds)
+                a_fit, b_fit, c_fit = popt
+                has_curve_fit_est = True
+
+                # Generate missing points for the profile using curve fitting
+                for i in range(len(self.profile_viscos)):
+                    if np.isnan(self.profile_viscos[i]):
+                        self.profile_viscos[i] = logarithmic_func(
+                            self.profile_shears[i], a_fit, b_fit, c_fit)
+                    else:
+                        break
+
+            except Exception as e:
+                Log.w(
+                    "Failed to fit logarithmic curve to viscosity profile. Using entirely interpolated data instead.")
+
+                # Generate missing points for the profile using interpolation
+                for i in range(len(self.profile_viscos)):
+                    if np.isnan(self.profile_viscos[i]):
+                        new_value = np.interp(
+                            self.profile_shears[i], in_shear_rate, in_viscosity)
+                        self.profile_viscos[i] = new_value
+                    else:
+                        break
+
+        if has_high_shear_pt:
+            self.profile_viscos[-1] = in_viscosity[-1]
+
         minidx = np.argmin(self.profile_viscos)
         maxidx = np.argmax(self.profile_viscos)
         Log.i(
-            f"Interpolated viscosity ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+            f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
 
         self.run_figure.clear()
         self.run_figure_valid = False
@@ -924,6 +1849,14 @@ class FrameStep1(QtWidgets.QDialog):
             ax.plot(self.profile_shears, self.profile_viscos, "bd")
             ax.plot(data[:, 0], data[:, 1], "b,")
             self.run_figure_valid = True
+
+            DEBUG = False
+            if has_curve_fit_est and DEBUG:
+                x_trend = np.logspace(2, 5)
+                y_trend = logarithmic_func(
+                    x_trend, a_fit, b_fit, c_fit)
+                y_trend = [1 if np.isnan(x) else x for x in y_trend]
+                ax.plot(x_trend, y_trend, color='blue', linewidth=0.5)
         else:
             ax.text(0.5, 0.5, "Invalid Results",
                     transform=ax.transAxes,
@@ -1124,6 +2057,11 @@ class TableView(QtWidgets.QTableWidget):
         self.setData(data)
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
+        self.verticalHeader().setVisible(False)
+
+    def clear(self):
+        super().clear()
+        self._is_empty = True
 
     def setData(self, data: dict[str, str]) -> None:
         self.data = data
@@ -1132,20 +2070,24 @@ class TableView(QtWidgets.QTableWidget):
         for n, key in enumerate(self.data.keys()):
             horHeaders.append(key)
             for m, item in enumerate(self.data[key]):
-                if isinstance(item, list):
+                if n == 0 or n == 2:
+                    # always treat first and last cols as uneditable text, not a QComboBox
+                    newitem = QtWidgets.QTableWidgetItem(str(item))
+                elif self._is_number(item) or len(item) == 0:
+                    # item is either a number or blank (empty string)
+                    newitem = QtWidgets.QTableWidgetItem(str(item))
+                else:
                     newitem = QtWidgets.QComboBox()
-                    newitem.addItem("None")
-                    newitem.addItems(item)
                     # newitem.addItem("add new...")
-                    if len(item) > 1:
+                    if isinstance(item, list):
+                        newitem.addItem("None")
+                        newitem.addItems(item)
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
-                    else:
-                        newitem.removeItem(0)  # remove "None"
+                    else:  # str
+                        newitem.addItem(item)
                         self.data["Units"][m] = ""  # clear flag
-                else:
-                    newitem = QtWidgets.QTableWidgetItem(str(item))
                 # disable 1st and last column items (not selectable or editable)
                 if n == 0 or n == 2:
                     if n == 0:  # bold 1st column items (headers)
@@ -1158,11 +2100,15 @@ class TableView(QtWidgets.QTableWidget):
                     self.setCellWidget(m, n, newitem)
                 else:
                     self.setItem(m, n, newitem)
+                # Unhide a row if it was hidden
+                if self.isRowHidden(m):
+                    self.showRow(m)
         self.setHorizontalHeaderLabels(horHeaders)
         header = self.horizontalHeader()
         header.setSectionResizeMode(
             QtWidgets.QHeaderView.ResizeToContents)
         header.setStretchLastSection(False)
+        self._is_empty = False
 
     def allSet(self) -> bool:
         for n, key in enumerate(self.data.keys()):
@@ -1174,6 +2120,9 @@ class TableView(QtWidgets.QTableWidget):
                     return False
         return True
 
+    def isEmpty(self) -> bool:
+        return self._is_empty
+
     def _row_combo_set(self, idx):
         item = self.item(idx, 2)
         if item is not None:
@@ -1181,6 +2130,13 @@ class TableView(QtWidgets.QTableWidget):
             item.setBackground(QtGui.QBrush(Color.white))
             self.item(idx, 2).setText("")
             self.blockSignals(False)
+
+    def _is_number(self, s: str):
+        try:
+            float(s)
+            return True
+        except (ValueError, TypeError):
+            return False
 
     def _on_item_changed(self, item: QtWidgets.QTableWidgetItem):
         row, col, text = item.row(), item.column(), item.text()
@@ -1193,13 +2149,6 @@ class TableView(QtWidgets.QTableWidget):
             # print("skip, disabled")
             return
 
-        def is_number(s: str):
-            try:
-                float(s)
-                return True
-            except ValueError:
-                return False
-
         now_bg = item.background()
         now_fg = item.foreground()
         new_bg = QtGui.QBrush(now_bg.color())
@@ -1208,7 +2157,7 @@ class TableView(QtWidgets.QTableWidget):
         if len(text) == 0:
             new_bg.setColor(Color.light_yellow)
             new_fg.setColor(Color.black)
-        elif not is_number(text):
+        elif not self._is_number(text):
             new_bg.setColor(Color.light_red)
             new_fg.setColor(Color.light_yellow)
         else:

@@ -313,7 +313,7 @@ class Constants:
                            "QModel v2",
                            "QModel v3",
                            "QModel v3 + Partial Fills"]
-    PF_predict = True
+    PF_predict = False
     QModel3_predict = True
     QModel2_predict = True
     ModelData_predict = True

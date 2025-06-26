@@ -47,12 +47,10 @@ core_ingredients = [
     Buffer(enc_id=0, name="None", pH=0.0),
     Buffer(enc_id=1, name="Accetate", pH=5.0),
     Buffer(enc_id=2, name="Histidine", pH=6.0),
-    Buffer(enc_id=2, name="Histidine", pH=6.0),
     Buffer(enc_id=3, name="PBS", pH=7.4),
     # Surfactants:
     Surfactant(enc_id=0, name="None"),
     Surfactant(enc_id=1, name="Tween-20"),
-    Surfactant(enc_id=2, name="Tween-80"),
     Surfactant(enc_id=2, name="Tween-80"),
     # Stabilizers:
     Stabilizer(enc_id=0, name="None"),
