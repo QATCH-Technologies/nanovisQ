@@ -6122,20 +6122,20 @@ class AnalyzerWorker(QtCore.QObject):
             ###          WHEN FILLING TIME IS GREATER THAN 1 SECOND.  ###
             ### DATE ADDED: 2024-01-14                                ###
             #############################################################
-            enable_bandaid_code = False  # Use to disable modified behavior
+            enable_bandaid_code = True  # Use to disable modified behavior
             line1_x = normal_x
             t_filling = line1_x[-1]
             Log.i(f"t_filling = {t_filling} secs")
-            if enable_bandaid_code and t_filling > 1.0:  # t_filling > 1 sec
+            if enable_bandaid_code and t_filling > 1.5:  # t_filling > 1 sec
                 Log.w(
                     "Applying polynomial correction to initial fill region (for long runs)"
                 )
                 line1_y = (
-                    np.sqrt(np.polyval([0.183, 0.8234, 0],
+                    np.sqrt(np.polyval([0.3, 0.7, 0],
                             normal_y)) * distances[0]
                 )
                 line1_y_fit = (
-                    np.sqrt(np.polyval([0.183, 0.8234, 0],
+                    np.sqrt(np.polyval([0.3, 0.7, 0],
                             best_fit_pts)) * distances[0]
                 )
             else:
