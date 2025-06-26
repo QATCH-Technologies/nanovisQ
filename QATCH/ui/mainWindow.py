@@ -287,6 +287,13 @@ class ControlsWindow(QtWidgets.QMainWindow):
             '&Manage Users...', self.manage_user_profiles)
         self.userrole = UserRoles.NONE
         self.menubar.append(target.menuBar().addMenu("&View"))
+        self.modebar = self.menubar[2].addMenu('&Mode')
+        self.modebar.addAction('&1: Run',
+                               lambda: self.parent.MainWin.ui0.setRunMode(None))
+        self.modebar.addAction('&2: Analyze',
+                               lambda: self.parent.MainWin.ui0.setAnalyzeMode(None))
+        self.modebar.addAction('&3: VisQ.AI',
+                               lambda: self.parent.MainWin.ui0.setLearnMode(None))
         self.chk1 = self.menubar[2].addAction('&Console', self.toggle_console)
         self.chk1.setCheckable(True)
         self.chk1.setChecked(self.parent.AppSettings.value(

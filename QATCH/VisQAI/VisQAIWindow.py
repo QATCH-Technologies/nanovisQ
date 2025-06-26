@@ -27,6 +27,7 @@ from scipy.optimize import curve_fit
 import datetime as dt
 from types import SimpleNamespace
 import webbrowser
+from PyQt5.QtPrintSupport import QPrinter
 
 try:
     from src.io.file_storage import SecureOpen
@@ -228,6 +229,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget = QtWidgets.QTabWidget()
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
+        self.tab_widget.tabBar().installEventFilter(self)
 
         # Enable database objects for initial UI load.
         self.enable(True)
@@ -331,6 +333,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.sign.textEdited.connect(self.text_transform)
 
     def eventFilter(self, obj, event):
+        # Key press on user audit sign form
         if (
             event.type() == QtCore.QEvent.KeyPress
             and obj is self.sign
@@ -345,6 +348,41 @@ class VisQAIWindow(BaseVisQAIWindow):
                     self.sign_ok.clicked.emit()
             if event.key() == QtCore.Qt.Key_Escape:
                 self.sign_cancel.clicked.emit()
+        # Mouse click on tab widget tab bar
+        if (
+            event.type() == QtCore.QEvent.MouseButtonPress
+            and obj == self.tab_widget.tabBar()
+        ):
+            now_step = self.tab_widget.currentIndex() + 1
+            tab_step = obj.tabAt(event.pos()) + 1
+            if tab_step > 0:
+                if tab_step == now_step + 1:
+                    if hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                        self.tab_widget.currentWidget().btn_next.click()
+                        return True  # ignore click, let "Next" btn decide
+                # Block tab change based on some condition
+                if tab_step in [2, 4, 5]:
+                    if tab_step == 2 or tab_step == 5:
+                        widget: FrameStep1 = self.tab_widget.widget(
+                            0)  # Select
+                        if not widget.run_file_run:
+                            QtWidgets.QMessageBox.information(
+                                None, Constants.app_title,
+                                "Please select a run.",
+                                QtWidgets.QMessageBox.Ok)
+                            return True  # deny tab change
+                    if tab_step == 4:
+                        widget: FrameStep1 = self.tab_widget.widget(
+                            2)  # Import
+                        if len(widget.all_files) == 0:
+                            QtWidgets.QMessageBox.information(
+                                None, Constants.app_title,
+                                "Please import at least 1 experiment before proceeding.",
+                                QtWidgets.QMessageBox.Ok)
+                            return True  # deny tab change
+                if hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                    self.tab_widget.currentWidget().btn_next.click()
+                    # still perform click action
         return super().eventFilter(obj, event)
 
     def sign_edit(self):
@@ -442,7 +480,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         # Purge dataase to disk on tab change
         if self.database.is_open:
             self.database.backup()
-        else:
+        elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
         # Get the current widget and call it's select handler (if exists)
@@ -474,7 +512,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             # Close database.
             if self.database.is_open:
                 self.database.close()
-            else:
+            elif not isinstance(self.database, SimpleNamespace):
                 Log.w("Database closed: write failed")
 
             # Disable database objects.
@@ -558,6 +596,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                 Constants.app_title,
                 "You have unsaved changes!\n\nAre you sure you want to cancel without saving?")
             if result == QtWidgets.QMessageBox.Yes:
+                self._unsaved_changes = False
                 return
 
         # Get audit signature from authorized user.
@@ -670,6 +709,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_file_xml = None
         self.run_file_analyze = None
 
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
+        self.profile_viscos = []
+
         if step == 1:
             self.setWindowTitle("Select Run")
         elif step == 2:
@@ -773,6 +815,9 @@ class FrameStep1(QtWidgets.QDialog):
                 # TODO: for steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
                     lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
+                self.list_view.clicked.connect(self.hide_extended_features)
+            self.list_view.clicked.connect(
+                lambda: self.btn_update.setEnabled(True))
 
             add_remove_export_widget = QtWidgets.QWidget()
             add_remove_export_layout = QtWidgets.QHBoxLayout(
@@ -785,16 +830,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
-            if step == 2:  # Suggest
-                self.btn_export = QtWidgets.QPushButton("Export {}".format(
-                    "Suggestions" if step == 2 else "Predictions"))
+            if step in [2, 5]:  # Suggest, Predict
+                self.btn_export = QtWidgets.QPushButton("Export as PDF")
                 self.btn_export.clicked.connect(self.export_table_data)
                 add_remove_export_layout.addWidget(self.btn_export)
-            if step == 5:  # Predict
-                self.btn_update = QtWidgets.QPushButton("Update {}".format(
-                    "Suggestions" if step == 2 else "Predictions"))
-                self.btn_update.clicked.connect(self.make_predictions)
-                add_remove_export_layout.addWidget(self.btn_update)
             form_layout.addRow("", add_remove_export_widget)
 
         self.run_notes = QtWidgets.QTextEdit()
@@ -842,9 +881,10 @@ class FrameStep1(QtWidgets.QDialog):
                 "Next Step: Import Experiments")
         elif step == 3:
             self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Learn + Predict")
+                "Next Step: Learn")
         elif step == 5:
-            self.btn_next = QtWidgets.QPushButton("Finish")
+            self.btn_next = QtWidgets.QPushButton(""
+                                                  "Next Step: Optimize")
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_next)
         left_layout.addLayout(btn_layout)
@@ -889,6 +929,23 @@ class FrameStep1(QtWidgets.QDialog):
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
 
+        self.btn_update = QtWidgets.QPushButton()
+        self.btn_update.setEnabled(False)
+        if step == 1:  # Select
+            self.btn_update.setText("Save Formulation")
+            self.btn_update.clicked.connect(self.save_formulation)
+        if step == 2:  # Suggest
+            self.btn_update.setText("Decline Suggestion")
+            self.btn_update.clicked.connect(self.user_run_removed)
+        if step == 3:  # Import
+            self.btn_update.setText("Save Formulation")
+            self.btn_update.clicked.connect(self.save_formulation)
+        # step 4 is not in this class: Learn
+        if step == 5:  # Predict
+            self.btn_update.setText("Update Predictions")
+            self.btn_update.clicked.connect(self.make_predictions)
+        right_group.addWidget(self.btn_update)
+
         # TODO: Testing only, create dummy features
         self.dummy_features = []
         for i in range(4):
@@ -918,11 +975,11 @@ class FrameStep1(QtWidgets.QDialog):
                 except Exception as e:
                     print(e)
             # Hide protein and buffer characteristics
-            for values in dummy_feature.values():
-                del values[7]  # buffer PH
-                del values[4]  # protein pI range
-                del values[3]  # protein pI mean
-                del values[2]  # protein weight
+            # for values in dummy_feature.values():
+            #     del values[7]  # buffer PH
+            #     del values[4]  # protein pI range
+            #     del values[3]  # protein pI mean
+            #     del values[2]  # protein weight
             self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
@@ -934,7 +991,7 @@ class FrameStep1(QtWidgets.QDialog):
         h_splitter.addWidget(left_widget)
         h_splitter.addWidget(right_widget)
         h_splitter.setSizes([100, 300])
-        v_splitter.setSizes([100, 100])
+        v_splitter.setSizes([180, 100])
 
         # Signals
         self.btn_cancel.clicked.connect(
@@ -1026,6 +1083,11 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts", self.salts)
 
+    def hide_extended_features(self):
+        hide_rows = [2, 3, 4, 7]
+        for row in hide_rows:
+            self.feature_table.hideRow(row)
+
     def save_formulation(self, cancel: bool = False) -> bool:
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
@@ -1094,22 +1156,6 @@ class FrameStep1(QtWidgets.QDialog):
             salt = self.parent.ing_ctrl.add_salt(
                 Salt(enc_id=-1, name=salt_type))
 
-        # update protein and buffer characteristics
-        protein.molecular_weight = float(protein_weight)
-        protein.pI_mean = float(protein_pI_mean)
-        protein.pI_range = float(protein_pI_range)
-        buffer.pH = float(buffer_pH)
-
-        # if no changes, nothing is done on 'update' call
-        self.parent.ing_ctrl.update_protein(protein.id, protein)
-        self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
-
-        # pull in viscosity profile from run load
-        vp = ViscosityProfile(shear_rates=self.profile_shears,
-                              viscosities=self.profile_viscos,
-                              units='cP')
-        vp.is_measured = self.run_figure_valid
-
         def is_number(s: str):
             try:
                 float(s)
@@ -1117,6 +1163,43 @@ class FrameStep1(QtWidgets.QDialog):
             except ValueError:
                 return False
 
+        # update protein and buffer characteristics
+        # bail if any extended features are missing
+        if is_number(protein_weight):
+            protein.molecular_weight = float(protein_weight)
+        elif not protein.molecular_weight:
+            Log.e("Missing protein molecular weight!")
+            return
+        if is_number(protein_pI_mean):
+            protein.pI_mean = float(protein_pI_mean)
+        elif not protein.pI_mean:
+            Log.e("Missing protein pI mean!")
+            return
+        if is_number(protein_pI_range):
+            protein.pI_range = float(protein_pI_range)
+        elif not protein.pI_range:
+            Log.e("Missing protein pI range!")
+            return
+        if is_number(buffer_pH):
+            buffer.pH = float(buffer_pH)
+        elif not buffer.pH:
+            Log.e("Missing buffer pH!")
+            return
+
+        # if no changes, nothing is done on 'update' call
+        self.parent.ing_ctrl.update_protein(protein.id, protein)
+        self.parent.ing_ctrl.update_buffer(buffer.id, buffer)
+
+        while len(self.profile_viscos) < len(self.profile_shears):
+            self.profile_viscos.append(-1)
+
+        # pull in viscosity profile from run load
+        vp = ViscosityProfile(shear_rates=self.profile_shears,
+                              viscosities=self.profile_viscos,
+                              units='cP')
+        vp.is_measured = self.run_figure_valid
+
+        # pull temperaure
         temp = self.run_temperature.text()
         if temp.endswith('C'):
             temp = temp[:-1]  # strip Celsius unit character
@@ -1199,11 +1282,18 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.tab_widget.setCurrentIndex(i+1)
 
     def proceed_to_step_4(self):
+        # First of all, there must be at least 1 imported experiment
         # For each run in list, must pass the same criteria from Step 1
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
         #   4. All formulations saved, and XMLs up-to-date
+        if len(self.all_files) == 0:
+            QtWidgets.QMessageBox.information(
+                None, Constants.app_title,
+                "Please import at least 1 experiment before proceeding.",
+                QtWidgets.QMessageBox.Ok)
+            return
         all_is_good = True
         for file_name, file_path in self.all_files.items():
             self.file_selected(file_path)  # load each run
@@ -1213,7 +1303,6 @@ class FrameStep1(QtWidgets.QDialog):
                     self.feature_table.allSet() and
                     self.run_figure_valid):
                 if not self.save_formulation():
-                    all_is_good = False
                     return
             else:
                 all_is_good = False
@@ -1236,8 +1325,14 @@ class FrameStep1(QtWidgets.QDialog):
     # NOTE: step_5 would be handled in FrameStep2
 
     def proceed_to_step_6(self):
-        # NOTE: This is the "Finish" button
-        self.btn_cancel.click()
+        # ready to proceed
+        if self.parent is not None:
+            i = self.parent.tab_widget.currentIndex()
+            self.parent.tab_widget.setCurrentIndex(i+1)
+        else:
+            self.run_notes.setText(
+                "ERROR: self.parent is None.\n" +
+                "Cannot proceed to next step!")
 
     def user_run_clicked(self):
         try:
@@ -1271,8 +1366,125 @@ class FrameStep1(QtWidgets.QDialog):
         # raise any other exception type
 
     def export_table_data(self):
-        from PyQt5.QtPrintSupport import QPrinter
-        pass
+        info_on_success = False
+        open_on_success = True
+
+        default_export_folder = os.path.expanduser(os.path.join(
+            "~", "Documents", f"{Constants.app_publisher} {Constants.app_name}", "exported_pdfs"))
+        if os.path.exists(os.path.dirname(default_export_folder)):
+            os.makedirs(default_export_folder, exist_ok=True)
+        else:
+            default_export_folder = os.getcwd()
+
+        file_path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            None, "Export as PDF", default_export_folder, "PDF files (*.pdf)"
+        )
+
+        if file_path:
+            try:
+                # Create printer to make PDFs
+                printer = QPrinter(QPrinter.PrinterResolution)
+                printer.setOutputFormat(QPrinter.PdfFormat)
+                printer.setOutputFileName(file_path)
+                printer.setPageSize(QPrinter.Letter)
+
+                # Set 1-inch margins on all sides
+                # left, top, right, bottom
+                margins = QtCore.QMarginsF(1.0, 1.0, 1.0, 1.0)
+                printer.setPageMargins(
+                    margins.left(), margins.top(), margins.right(), margins.bottom(),
+                    QPrinter.Inch)
+                painter = QtGui.QPainter(printer)
+
+                # Set font
+                font = QtGui.QFont("Times New Roman", 12)
+                # NOTE: Bold will be set/unset for header/data rows
+
+                for i in range(self.model.rowCount()):
+
+                    # Select the item
+                    index = self.model.index(i, 0)
+                    self.list_view.setCurrentIndex(index)
+                    self.list_view.selectionModel().select(
+                        index, QtCore.QItemSelectionModel.ClearAndSelect)
+                    self.list_view.clicked.emit(index)
+
+                    if i > 0:
+                        # Add new page to PDF for each table in list
+                        printer.newPage()
+
+                    # Start at top of page
+                    y = 0
+
+                    # Page spacing parameters
+                    cell_pad_top = 7
+                    cell_pad_left = 10
+                    row_height = 30
+
+                    # Calculate cell dimensions
+                    table_widget = self.feature_table
+                    page_rect = printer.pageRect()
+                    col_width = page_rect.width() // table_widget.columnCount()
+
+                    # Draw page header/title
+                    font.setBold(True)
+                    painter.setFont(font)
+                    painter.drawText(cell_pad_left, y,
+                                     f"Suggested Experiment {i+1}")
+                    y += row_height
+
+                    # Draw headers
+                    for col in range(table_widget.columnCount()):
+                        header = table_widget.horizontalHeaderItem(col)
+                        text = header.text() if header else f"Column {col}"
+                        border_rect = QtCore.QRect(
+                            col * col_width, y, col_width, row_height)
+                        text_rect = QtCore.QRect(border_rect)
+                        text_rect.adjust(cell_pad_left, cell_pad_top, 0, 0)
+                        painter.drawText(text_rect, 0, text)
+                        painter.drawRect(border_rect)
+                    y += row_height
+
+                    # Draw data rows
+                    font.setBold(False)
+                    painter.setFont(font)
+                    for row in range(table_widget.rowCount()):
+                        skip = True
+                        for col in range(table_widget.columnCount()):
+                            item = table_widget.item(row, col)
+                            if item:
+                                text = item.text()
+                            else:
+                                widget = table_widget.cellWidget(row, col)
+                                if widget:
+                                    text = widget.currentText()
+                                else:
+                                    continue  # skip blank rows
+                            if table_widget.isRowHidden(row):
+                                continue  # skip hidden rows
+                            skip = False
+                            border_rect = QtCore.QRect(
+                                col * col_width, y, col_width, row_height)
+                            text_rect = QtCore.QRect(border_rect)
+                            text_rect.adjust(
+                                cell_pad_left, cell_pad_top, 0, 0)
+                            painter.drawText(text_rect, 0, text)
+                            painter.drawRect(border_rect)
+                        if not skip:
+                            y += row_height
+
+                painter.end()
+
+                if info_on_success:
+                    QtWidgets.QMessageBox.information(
+                        None, "Success", "PDF exported successfully!")
+
+                if open_on_success:
+                    webbrowser.open(file_path)
+
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    None, "Error", f"Failed to export PDF: {str(e)}")
 
     def file_selected(self, path: str | None, cancel: bool = False):
         # If run already loaded, try saving formulation to write any changed Run Info to XML
@@ -1310,12 +1522,16 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_canvas.draw()
         self.feature_table.clear()
 
+        self.btn_update.setEnabled(False)
+
         if path is None:
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
             if self.step == 5:  # Predict
                 self.model_selected(None)
             return
+
+        self.btn_update.setEnabled(True)
 
         namelist = SecureOpen.get_namelist(self.run_file_run)
         for file in namelist:
@@ -1533,7 +1749,7 @@ class FrameStep1(QtWidgets.QDialog):
         pass_to_models = {"shear_rate": in_shear_rate,
                           "viscosity": in_viscosity}
 
-        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
+        # self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000] # already set
         self.profile_viscos = []
         has_high_shear_pt = in_shear_rate[-1] > 1e6
         has_curve_fit_est = False
@@ -1841,6 +2057,7 @@ class TableView(QtWidgets.QTableWidget):
         self.setData(data)
         self.resizeColumnsToContents()
         self.resizeRowsToContents()
+        self.verticalHeader().setVisible(False)
 
     def clear(self):
         super().clear()
@@ -1883,6 +2100,9 @@ class TableView(QtWidgets.QTableWidget):
                     self.setCellWidget(m, n, newitem)
                 else:
                     self.setItem(m, n, newitem)
+                # Unhide a row if it was hidden
+                if self.isRowHidden(m):
+                    self.showRow(m)
         self.setHorizontalHeaderLabels(horHeaders)
         header = self.horizontalHeader()
         header.setSectionResizeMode(
