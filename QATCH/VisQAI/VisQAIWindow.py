@@ -165,6 +165,16 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             else:
                 creation_time = file_stats.st_ctime  # Windows/Linux
 
+            # Rollback to midnight UTC, day of file creation
+            creation_time -= creation_time % 86400
+
+            # Get local time with timezone info
+            local_time = dt.datetime.now().astimezone()
+            utc_offset = local_time.utcoffset()
+
+            # Adjust file creation time to midnight local time
+            creation_time -= utc_offset.total_seconds()
+
             # Current time
             current_time = dt.datetime.now().timestamp()
 
