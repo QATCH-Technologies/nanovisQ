@@ -3,15 +3,6 @@ Module: predictor
 
 Provides the Predictor class for loading a packaged viscosity model ensemble
 and performing inference, uncertainty estimation, and incremental updates.
-
-This module handles:
-- Extracting a ZIP archive containing the 'model/' directory.
-- Dynamically loading custom compiled modules (custom_layers, data_processor,
-  predictor).
-- Instantiating an EnsembleViscosityPredictor for Monte Carlo-based predictions
-  and uncertainty quantification.
-- Updating the ensemble with new training data.
-- Cleaning up temporary resources automatically via context manager or destructor.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
