@@ -1238,6 +1238,13 @@ class FrameStep1(QtWidgets.QDialog):
     def load_suggestions(self):
         pass
 
+    def _get_viscosity_list(self, formulation: Formulation) -> list:
+        rate_list = []
+        vp = formulation.viscosity_profile
+        for rate in [100, 1000, 10000, 100000, 15000000]:
+            rate_list.append(vp.get_viscosity(rate))
+        return rate_list
+
     def make_predictions(self):
         self.save_formulation()
 
@@ -1250,9 +1257,27 @@ class FrameStep1(QtWidgets.QDialog):
         self.parent.predictor = Predictor(predictor_path)
         form_df = self.parent.formulation.to_dataframe(
             encoded=True, training=False)
-        self.parent.predictor.update(form_df, train_full=True)
-        guesses = self.parent.predictor.predict_with_uncertainty(form_df)
-        print(guesses)
+
+        # Get the viscosity profile or y target to update with.
+        vp = self._get_viscosity_list(self.parent.formulation)
+
+        # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
+        # Also I have this set so updating does not overwrite the existing model until
+        # we figure out how model storage works
+        self.parent.predictor.update(
+            new_data=form_df,
+            new_targets=np.array([vp]),
+            epochs=10,
+            batch_size=32,
+            save=False)
+
+        # The returns from this are a predicted viscosity profile [val1,val2,...val5]
+        predicted_vp = self.parent.predictor.predict(data=form_df)
+
+        # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
+        # a series of standard deviations for each predicted value.
+        predicted_mean_vp, mean_std = self.parent.predictor.predict_uncertainty(
+            data=form_df)
 
     def proceed_to_step_2(self):
         # Are we ready to proceed?
