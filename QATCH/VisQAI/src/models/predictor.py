@@ -1,3 +1,26 @@
+"""
+Module: predictor
+
+Provides the Predictor class for loading a packaged viscosity model ensemble
+and performing inference, uncertainty estimation, and incremental updates.
+
+This module handles:
+- Extracting a ZIP archive containing the 'model/' directory.
+- Dynamically loading custom compiled modules (custom_layers, data_processor,
+  predictor).
+- Instantiating an EnsembleViscosityPredictor for Monte Carlo-based predictions
+  and uncertainty quantification.
+- Updating the ensemble with new training data.
+- Cleaning up temporary resources automatically via context manager or destructor.
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2025-06-27
+
+Version:
+    2.1
+"""
 import zipfile
 import tempfile
 import sys
@@ -9,26 +32,73 @@ import numpy as np
 import pandas as pd
 import importlib.util
 import importlib.machinery
+try:
+    from QATCH.common.logger import Logger as Log
+except (ImportError, ModuleNotFoundError):
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="[%(asctime)s] %(levelname)s: %(message)s"
+    )
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="[%(asctime)s] %(levelname)s: %(message)s"
-)
+    class Log:
+        """
+        Logging utility for standardized log messages.
 
+        Provides shorthand methods for different log levels tied to a "Predictor" logger.
+        """
+        _logger = logging.getLogger("Predictor")
 
-class Log:
-    _logger = logging.getLogger("Predictor")
-    @classmethod
-    def i(cls, msg: str): cls._logger.info(msg)
-    @classmethod
-    def w(cls, msg: str): cls._logger.warning(msg)
-    @classmethod
-    def e(cls, msg: str): cls._logger.error(msg)
-    @classmethod
-    def d(cls, msg: str): cls._logger.debug(msg)
+        @classmethod
+        def i(cls, msg: str) -> None:
+            """
+            Log an informational message.
+
+            Args:
+                msg: Message string to log at INFO level.
+            """
+            cls._logger.info(msg)
+
+        @classmethod
+        def w(cls, msg: str) -> None:
+            """
+            Log a warning message.
+
+            Args:
+                msg: Message string to log at WARNING level.
+            """
+            cls._logger.warning(msg)
+
+        @classmethod
+        def e(cls, msg: str) -> None:
+            """
+            Log an error message.
+
+            Args:
+                msg: Message string to log at ERROR level.
+            """
+            cls._logger.error(msg)
+
+        @classmethod
+        def d(cls, msg: str) -> None:
+            """
+            Log a debug message.
+
+            Args:
+                msg: Message string to log at DEBUG level.
+            """
+            cls._logger.debug(msg)
 
 
 class Predictor:
+    """
+    Predictor for loading a packaged viscosity model ensemble and performing
+    predictions and updates.
+
+    This class extracts a zip archive containing a model folder, loads required
+    modules, and instantiates an EnsembleViscosityPredictor for inference and
+    incremental updates.
+    """
+
     def __init__(
         self,
         zip_path: str,
@@ -36,6 +106,19 @@ class Predictor:
         model_filename: str = "model.h5",
         preprocessor_filename: str = "preprocessor.pkl",
     ):
+        """
+        Initialize the Predictor by unpacking the archive and loading the ensemble.
+
+        Args:
+            zip_path: Path to the zip archive containing the 'model/' directory.
+            mc_samples: Number of Monte Carlo samples for uncertainty estimation.
+            model_filename: Filename of the saved model inside each member folder.
+            preprocessor_filename: Filename of the preprocessor pickle inside each member folder.
+
+        Raises:
+            FileNotFoundError: If the archive does not exist.
+            RuntimeError: If expected folders or files are missing inside the archive.
+        """
         self.zip_path = Path(zip_path)
         self.mc_samples = mc_samples
         self.model_filename = model_filename
@@ -49,7 +132,17 @@ class Predictor:
               f"pre_fn={preprocessor_filename!r}")
         self._load_zip(self.zip_path)
 
-    def _load_zip(self, zip_path: Path):
+    def _load_zip(self, zip_path: Path) -> None:
+        """
+        Unpack the zip file, load custom modules, and instantiate the ensemble.
+
+        Args:
+            zip_path: Path object pointing to the zip archive.
+
+        Raises:
+            FileNotFoundError: If the zip_path is not a file.
+            RuntimeError: If required folders or compiled modules are missing.
+        """
         if self._tmpdir:
             self._tmpdir.cleanup()
         if not zip_path.is_file():
@@ -95,7 +188,17 @@ class Predictor:
         )
         Log.i(f"Ensemble loaded with {len(self.ensemble.members)} members")
 
-    def _load_module(self, base_dir: Path, name: str):
+    def _load_module(self, base_dir: Path, name: str) -> None:
+        """
+        Load a compiled .pyc module into sys.modules.
+
+        Args:
+            base_dir: Directory containing the .pyc file.
+            name: Base name of the module to load (without extension).
+
+        Raises:
+            RuntimeError: If the .pyc file is not found.
+        """
         pyc = base_dir / f"{name}.pyc"
         if not pyc.exists():
             Log.e(f"{name}.pyc not found in {base_dir}")
@@ -111,7 +214,18 @@ class Predictor:
         self,
         data: Union[pd.DataFrame, Dict[str, List], List[Dict[str, float]]]
     ) -> np.ndarray:
-        """Point-estimate only."""
+        """
+        Generate point-estimate predictions without uncertainty.
+
+        Args:
+            data: Input features in one of several supported formats.
+
+        Returns:
+            Array of model predictions.
+
+        Raises:
+            RuntimeError: If the ensemble is not loaded.
+        """
         if self.ensemble is None:
             Log.e("predict() called but ensemble is not loaded")
             raise RuntimeError("No ensemble loaded")
@@ -126,7 +240,18 @@ class Predictor:
         self,
         data: Union[pd.DataFrame, Dict[str, List], List[Dict[str, float]]]
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Mean and total uncertainty."""
+        """
+        Generate predictions along with uncertainty estimates.
+
+        Args:
+            data: Input features in one of several supported formats.
+
+        Returns:
+            Tuple of (mean predictions, total uncertainty).
+
+        Raises:
+            RuntimeError: If the ensemble is not loaded.
+        """
         if self.ensemble is None:
             Log.e("predict_uncertainty() called but ensemble is not loaded")
             raise RuntimeError("No ensemble loaded")
@@ -144,7 +269,20 @@ class Predictor:
         epochs: int = 1,
         batch_size: int = 32,
         save: bool = True,
-    ):
+    ) -> None:
+        """
+        Incrementally update the ensemble with new data.
+
+        Args:
+            new_data: DataFrame of new feature samples.
+            new_targets: NumPy array of new target values.
+            epochs: Number of training epochs for the update.
+            batch_size: Batch size for the training.
+            save: Whether to save updated models back to disk.
+
+        Raises:
+            RuntimeError: If the ensemble is not loaded.
+        """
         if self.ensemble is None:
             Log.e("update() called but ensemble is not loaded")
             raise RuntimeError("No ensemble loaded")
@@ -166,14 +304,21 @@ class Predictor:
             Log.e(f"Error during ensemble.update(): {ex}")
             raise
 
-    def reload_archive(self, new_zip: str):
-        """Swap in a new ZIP and rebuild the ensemble from scratch."""
+    def reload_archive(self, new_zip: str) -> None:
+        """
+        Reload a different archive, cleaning up the previous one.
+
+        Args:
+            new_zip: Path to the new zip archive.
+        """
         Log.i(f"reload_archive: {new_zip!r}")
         self.zip_path = Path(new_zip)
         self._load_zip(self.zip_path)
 
-    def cleanup(self):
-        """Remove temp files and drop ensemble."""
+    def cleanup(self) -> None:
+        """
+        Clean up temporary files and drop the loaded ensemble.
+        """
         if self._tmpdir:
             Log.i("Cleaning up temp directory and ensemble")
             try:
@@ -184,13 +329,27 @@ class Predictor:
                 self._tmpdir = None
                 self.ensemble = None
 
-    def __enter__(self):
+    def __enter__(self) -> 'Predictor':
+        """
+        Enter context manager, returning the Predictor instance.
+        """
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+        self,
+        exc_type,
+        exc,
+        tb,
+    ) -> None:
+        """
+        Exit context manager, performing cleanup.
+        """
         self.cleanup()
 
-    def __del__(self):
+    def __del__(self) -> None:
+        """
+        Ensure cleanup on garbage collection.
+        """
         try:
             self.cleanup()
         except Exception:
@@ -200,16 +359,15 @@ class Predictor:
 if __name__ == "__main__":
     import pandas as pd
     from io import StringIO
-    csv = """ID,Protein_type,MW,PI_mean,PI_range,Protein_conc,Temperature,Buffer_type,Buffer_pH,Buffer_conc,Salt_type,Salt_conc,Stabilizer_type,Stabilizer_conc,Surfactant_type,Surfactant_conc,Viscosity_100,Viscosity_1000,Viscosity_10000,Viscosity_100000,Viscosity_15000000,
+
+    csv = """ID,Protein_type,MW,PI_mean,PI_range,Protein_conc,Temperature,Buffer_type,Buffer_ph,Buffer_conc,Salt_type,Salt_conc,Stabilizer_type,Stabilizer_conc,Surfactant_type,Surfactant_conc,Viscosity_100,Viscosity_1000,Viscosity_10000,Viscosity_100000,Viscosity_15000000,
 F1,poly-hIgG,150,7.6,1,145,25,PBS,7.4,10,NaCl,140,Sucrose,1,none,0,12.5,11.5,9.8,8.8,6.92,
     """
     df_test = pd.read_csv(StringIO(csv))
     executor = Predictor("visQAI/packaged/VisQAI-base.zip")
-    preds = executor.update(
-        df_test, np.array([[12.5, 11.5, 9.8, 8.8, 6.92]]
-                          )
+    executor.update(
+        df_test, np.array([[12.5, 11.5, 9.8, 8.8, 6.92]])
     )
-    print("Predictions:", preds)
     mean, std = executor.predict_uncertainty(df_test)
     print("Mean predictions:", mean)
     print("Std. deviations:", std)
