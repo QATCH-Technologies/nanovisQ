@@ -668,11 +668,22 @@ class DropEffectCorrection(CurveOptimizer):
             current_streak.append(min_drop)
 
         # DEBUG: Force add extra padding to the right-side of drop effect region.
-        if False:  # TODO: Figure out a dynamic limit for this right bound margin.
-            NUM_PTS = 5
+        if col_name == "Dissipation":
+            NUM_PTS = diff_offset
             max_drop = max(current_streak)
-            for i in range(NUM_PTS):
-                current_streak.append(max_drop + i + 1)
+            beat_value = self._dataframe[col_name].values[region_slice][max_drop]
+            beat_count = 0
+            total_dist = 0
+            while True:
+                total_dist += 1
+                max_drop += 1
+                if beat_value < values[max_drop]:  # raw < average
+                    beat_count += 1
+                else:
+                    beat_count = 0
+                if beat_count > NUM_PTS or total_dist > 25 or max_drop >= len(values) - 1:
+                    break
+                current_streak.append(max_drop)
 
         Log.d(
             self.TAG, f"Detected drop effects in {col_name} at indices {[int(str(de)) for de in current_streak]}")
@@ -784,11 +795,15 @@ class DropEffectCorrection(CurveOptimizer):
             idx = region[0]
             if idx - self._left_bound['index'] < len(region) // 2:
                 Log.w(
-                    self.TAG, "Taking the smaller region to prevent it from being skipped.")
-                if len(drop_effects_diss) < len(drop_effects_rf):
-                    contiguous_regions = [drop_effects_diss]
-                else:
-                    contiguous_regions = [drop_effects_rf]
+                    self.TAG, "Trimming the left region to prevent it from being skipped.")
+                start_at = max(drop_effects_diss[0], drop_effects_rf[0])
+                end_at = max(drop_effects_diss[-1], drop_effects_rf[-1])
+                contiguous_regions = [
+                    np.arange(start_at, end_at+1, 1, dtype=int).tolist()]
+                # if len(drop_effects_diss) < len(drop_effects_rf):
+                #     contiguous_regions = [drop_effects_diss]
+                # else:
+                #     contiguous_regions = [drop_effects_rf]
 
         Log.d(
             self.TAG, f"Found {len(contiguous_regions)} contiguous drop effect region(s) to correct.")

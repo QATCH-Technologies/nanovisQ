@@ -7,9 +7,14 @@ data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Include
 file validation, feature extraction, probability formatting, and bias correction for refined
 POI selection.
 
-Author: Paul MacNichol (paul.macnichol@qatchtech.com)
-Date: 06-23-2025
-Version: QModel.Ver3.2
+Author: 
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date: 
+    2025-06-30
+
+Version: 
+    QModel.Ver3.2
 """
 import math
 import xgboost as xgb
@@ -1539,7 +1544,7 @@ class QModelPredictor:
                      ) -> Tuple[List[int], List[float]]:
         dissipation = feature_vector['Dissipation'].values
         resonance = feature_vector['Resonance_Frequency'].values
-        diff_smooth = feature_vector['Difference_smooth'].values
+        diff_smooth = feature_vector['Difference'].values
         svm_scores = {
             col: feature_vector[col].values
             for col in feature_vector.columns
@@ -1584,10 +1589,56 @@ class QModelPredictor:
                     inds = pick_after(orig_inds, relative_time, t3)
                     if inds:
                         break
-            inds = inds or orig_inds
-        confs = [orig_confs[orig_inds.index(i)] for i in inds]
+        inds = orig_inds.copy()
 
-        return inds, confs
+        # ——————————————————————————————————————————————
+        # 1) HEIGHT FILTER
+        baseline_window = 10
+        base_vals = dissipation[:baseline_window]
+        height_thresh = base_vals.mean() + 2 * base_vals.std()
+        height_filtered = [i for i in inds if dissipation[i] > height_thresh]
+        inds_after_height = height_filtered or inds.copy()
+
+        # PEAK-JUMP FILTER
+        delta_d = dissipation[1:] - dissipation[:-1]
+        injection_idx = np.argmax(delta_d) + 1
+        jump_filtered = [i for i in inds_after_height if i >= injection_idx]
+        inds_after_jump = jump_filtered or inds_after_height.copy()
+
+        # NO-INCLINE FILTER
+        flat_filtered = [i for i in inds_after_jump if grad_d[i] <= thr_d]
+        final_inds = flat_filtered or inds_after_jump.copy()
+
+        if PLOTTING:
+            plt.figure(figsize=(12, 6))
+            plt.plot(relative_time, dissipation, color='black',
+                     lw=1.2, label='Dissipation')
+            plt.axhline(height_thresh, color='gray',
+                        ls='--', label='height_thresh')
+            plt.axvline(relative_time[injection_idx], color='blue', ls='--',
+                        label=f'biggest jump @ {relative_time[injection_idx]:.2f}s')
+
+            # plot each stage
+            def scatter(idxs, marker, label, color):
+                plt.scatter(relative_time[idxs], dissipation[idxs],
+                            marker=marker, s=100, edgecolors=color,
+                            facecolors='none', label=label)
+
+            scatter(orig_inds,         'x', 'orig_inds',   'red')
+            scatter(inds_after_height, 'o', 'after height', 'orange')
+            scatter(inds_after_jump,   's', 'after jump',   'green')
+            scatter(final_inds,        'D', 'after slope',  'blue')
+
+            plt.xlabel("Time (s)")
+            plt.ylabel("Dissipation")
+            plt.title("Filter Debug – dissipation & candidates at each stage")
+            plt.legend(loc="upper left", fontsize="small", ncol=2)
+            plt.tight_layout()
+            plt.show()
+
+        final_confs = [orig_confs[orig_inds.index(i)] for i in final_inds]
+
+        return final_inds, final_confs
 
     def _filter_poi2(
         self,
@@ -2462,93 +2513,7 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
-        if plotting:
-            # Common data we'll reuse
-            times_all = relative_time
-            diff_all = feature_vector["Difference"]
-            cmap = plt.get_cmap("tab10")
 
-            # --- Figure 1: raw predictor output (extracted_predictions) ---
-            plt.figure(figsize=(10, 6))
-            plt.plot(times_all,
-                     diff_all,
-                     linewidth=1.5,
-                     label="Data",
-                     color="lightgray",
-                     zorder=0)
-
-            for i, (poi_name, poi_info) in enumerate(extracted_predictions.items()):
-                # list of candidate indices, best at idxs[0]
-                idxs = poi_info["indices"]
-                times = times_all[idxs]
-                values = diff_all.iloc[idxs]
-
-                # Plot all candidates as 'x'
-                plt.scatter(times,
-                            values,
-                            marker="x",
-                            s=100,
-                            color=cmap(i),
-                            label=f"{poi_name} (raw candidates)",
-                            zorder=2)
-
-                # Highlight the best one (idxs[0]) with a vertical line
-                try:
-                    best_idx = idxs[0]
-                except:
-                    best_idx = final_predictions.get(
-                        poi_name).get("indices")[0]
-                best_time = times_all[best_idx]
-                plt.axvline(best_time,
-                            color=cmap(i),
-                            linestyle="--",
-                            linewidth=1.0,
-                            zorder=1)
-
-            plt.xlabel("Relative time")
-            plt.ylabel("Detrend_Difference")
-            plt.title("Raw predictor output: candidate POIs")
-            plt.legend(loc="upper right", fontsize="small", ncol=2)
-            plt.tight_layout()
-            plt.show()
-
-            # --- Figure 2: final predictions (after selecting best) ---
-            plt.figure(figsize=(10, 6))
-            plt.plot(times_all,
-                     diff_all,
-                     linewidth=1.5,
-                     label="Data",
-                     color="lightgray",
-                     zorder=0)
-
-            for i, (poi_name, poi_info) in enumerate(final_predictions.items()):
-                # again, best at idxs[0]
-                idxs = poi_info["indices"]
-                times = times_all[idxs]
-                values = diff_all.iloc[idxs]
-
-                plt.scatter(times,
-                            values,
-                            marker="x",
-                            s=100,
-                            color=cmap(i),
-                            label=f"{poi_name} (final candidates)",
-                            zorder=2)
-                best_idx = idxs[0]
-                best_time = times_all[best_idx]
-                print(best_time)
-                plt.axvline(best_time,
-                            color=cmap(i),
-                            linestyle="--",
-                            linewidth=1.0,
-                            zorder=1)
-
-            plt.xlabel("Relative time")
-            plt.ylabel("Detrend_Difference")
-            plt.title("Final predictions: candidate POIs")
-            plt.legend(loc="upper right", fontsize="small", ncol=2)
-            plt.tight_layout()
-            plt.show()
         return final_predictions
 
 
