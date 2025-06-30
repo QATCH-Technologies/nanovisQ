@@ -39,6 +39,18 @@ except (ModuleNotFoundError, ImportError):
 
 
 class Sampler:
+    _SPECIAL_NUMERIC_RANGES = {
+        "Stabilizer_conc": (0.1, 1.0),
+        "Surfactant_conc": (0.0, 0.1),
+    }
+
+    _SPECIAL_NUMERIC_STEPS = {
+        "Stabilizer_conc": 0.1,
+        "Surfactant_conc": 0.05,
+    }
+
+    _DEFAULT_NUMERIC_STEP = 5.0
+    _DEFAULT_DECIMALS = 0
     _VALID_FEATURES = [
         "Protein_type",
         "MW",
@@ -146,12 +158,31 @@ class Sampler:
             for col in self._VALID_FEATURES:
                 if col in self._CATEGORICAL and cat_choices.get(col):
                     suggestions[col] = np.random.choice(cat_choices[col])
-                elif col in self._NUMERIC and num_ranges.get(col):
-                    low, high = num_ranges[col]
-                    suggestions[col] = float(np.random.uniform(low, high))
-                else:
-                    suggestions[col] = 0.0 if col in self._NUMERIC else "Unknown"
 
+                elif col in self._NUMERIC:
+                    if col in self._SPECIAL_NUMERIC_RANGES:
+                        low, high = self._SPECIAL_NUMERIC_RANGES[col]
+                    elif num_ranges.get(col):
+                        low, high = num_ranges[col]
+                    else:
+                        low, high = 0.0, 0.0
+
+                    raw = np.random.uniform(low, high)
+                    clamped = float(np.clip(raw, low, high))
+                    if col in self._SPECIAL_NUMERIC_STEPS:
+                        step = self._SPECIAL_NUMERIC_STEPS[col]
+                        decimals = 1
+                    else:
+                        step = self._DEFAULT_NUMERIC_STEP
+                        decimals = self._DEFAULT_DECIMALS
+
+                    stepped = round(clamped/step) * step
+                    value = round(stepped, decimals)
+
+                    suggestions[col] = float(
+                        f"{value:.{decimals}f}") if decimals else int(value)
+                else:
+                    suggestions[col] = "Unknown"
             samples.append(self._build_formulation(suggestions))
         return samples
 
@@ -182,8 +213,24 @@ class Sampler:
             for col in self._VALID_FEATURES:
                 val = base_df[col].values[0]
                 if col in self._NUMERIC:
-                    perturbation = np.random.normal(loc=0.0, scale=noise_scale)
-                    perturbed_features[col] = float(val) * (1.0 + perturbation)
+                    perturb = np.random.normal(loc=0.0, scale=noise_scale)
+                    new_val = val * (1.0 + perturb)
+
+                    if col in self._SPECIAL_NUMERIC_RANGES:
+                        low, high = self._SPECIAL_NUMERIC_RANGES[col]
+                        new_val = float(np.clip(new_val, low, high))
+
+                    if col in self._SPECIAL_NUMERIC_STEPS:
+                        step = self._SPECIAL_NUMERIC_STEPS[col]
+                        decimals = 1
+                    else:
+                        step = self._DEFAULT_NUMERIC_STEP
+                        decimals = self._DEFAULT_DECIMALS
+
+                    stepped = round(new_val/step) * step
+                    rounded = round(stepped, decimals)
+                    perturbed_features[col] = float(
+                        f"{rounded:.{decimals}f}") if decimals else int(rounded)
                 else:
                     perturbed_features[col] = val
             perturbed.append(self._build_formulation(perturbed_features))
