@@ -344,7 +344,7 @@ class TestSimpleSubclasses(unittest.TestCase):
         self.assertIsNone(s.id)
         other = Salt(7, "NaCl")
         self.assertTrue(s == other)
-        # equal → not less-than
+        # equal -> not less-than
         self.assertFalse(s < other)
 
 

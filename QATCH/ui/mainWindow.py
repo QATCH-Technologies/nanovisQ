@@ -22,6 +22,7 @@ from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.VisQAIWindow import VisQAIWindow
 from QATCH.VisQAI.src.db.db import Database
+from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -41,6 +42,7 @@ import subprocess
 import logging
 from typing import List
 import shutil
+import pandas as pd
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -2405,6 +2407,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
+                # Populate DB with core training samples
+                # TODO: This should be done when tagging, not here
+                machine_database = Database(
+                    path=machine_database_path, parse_file_key=True)
+                form_ctrl = FormulationController(db=machine_database)
+                csv_path = os.path.join(Architecture.get_path(), "QATCH",
+                                        "VisQAI", "assets", "formulation_data_05302025.csv")
+                if not os.path.isfile(csv_path):
+                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                df = pd.read_csv(csv_path)
+                added_forms = form_ctrl.add_all_from_dataframe(df)
+                machine_database.close()
             elif bundled_exists and localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
