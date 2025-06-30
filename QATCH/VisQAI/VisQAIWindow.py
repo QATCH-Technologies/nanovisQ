@@ -1037,7 +1037,7 @@ class FrameStep1(QtWidgets.QDialog):
             pass
         if self.step == 5:  # Predict
             if len(self.loaded_features) == 0:
-                self.add_formulation(Formulation())  # allow anything
+                self.model.removeRow(0)  # no_item placeholder
                 self.add_formulation(self.parent.formulation)
         if True:  # self.step == 5:  # Predict
             # Select a pre-selected model, if none selected here
@@ -1292,7 +1292,7 @@ class FrameStep1(QtWidgets.QDialog):
 
     def add_formulation(self, form: Formulation):
         feature = copy.deepcopy(self.default_features)
-        if form.protein.ingredient.name and form.protein.ingredient.name != "none":
+        if form.protein:  # NOT an empty Formulation() object
             feature["Value"][0] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
             feature["Value"][2] = form.protein.ingredient.molecular_weight
@@ -1307,8 +1307,11 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][11] = form.stabilizer.concentration
             feature["Value"][12] = form.salt.ingredient.name
             feature["Value"][13] = form.salt.concentration
+
+        if len(self.loaded_features) == 0:
+            self.model.removeRow(0)  # no_item placeholder
         self.loaded_features.append(feature)
-        num = self.model.rowCount() + 1
+        num = len(self.loaded_features)
         form_type = "Suggestion" if self.step == 2 else "Prediction"
         self.model.appendRow(QtGui.QStandardItem(f"{form_type} {num}"))
 
@@ -1510,11 +1513,11 @@ class FrameStep1(QtWidgets.QDialog):
                 return  # nothing selected, nothing to do
             file_name = self.model.itemFromIndex(selected[0]).text()
             self.all_files.pop(file_name, None)  # remove key from dict
+            if self.step in [2, 5]:
+                self.loaded_features.pop(selected[0].row())
             self.model.removeRow(selected[0].row())
             self.list_view_addPlaceholderText()
             self.file_selected(None)  # clear selection
-            if self.step in [2, 5]:
-                self.loaded_features.pop(selected[0])
         except IndexError as e:
             if len(self.all_files):
                 raise e
@@ -1557,7 +1560,7 @@ class FrameStep1(QtWidgets.QDialog):
                 font = QtGui.QFont("Times New Roman", 12)
                 # NOTE: Bold will be set/unset for header/data rows
 
-                for i in range(self.model.rowCount()):
+                for i in range(len(self.loaded_features)):
 
                     # Select the item
                     index = self.model.index(i, 0)
