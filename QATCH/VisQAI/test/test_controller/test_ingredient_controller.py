@@ -370,8 +370,8 @@ class TestIngredientController(unittest.TestCase):
         Test that developer-created ingredients receive sequential enc_id starting at 1.
 
         Verifies:
-            - First developer Protein → enc_id = 1
-            - Second developer Protein → enc_id = 2
+            - First developer Protein -> enc_id = 1
+            - Second developer Protein -> enc_id = 2
         """
         p1 = Protein(enc_id=-1, name="DevProt1",
                      molecular_weight=10.0, pI_mean=5.0, pI_range=0.1)
@@ -392,8 +392,8 @@ class TestIngredientController(unittest.TestCase):
         Test that user-created ingredients receive enc_id starting at USER_START_ID.
 
         Verifies:
-            - First user Buffer → enc_id = USER_START_ID
-            - Second user Buffer → enc_id = USER_START_ID + 1
+            - First user Buffer -> enc_id = USER_START_ID
+            - Second user Buffer -> enc_id = USER_START_ID + 1
         """
         b1 = Buffer(enc_id=-1, name="UserBuf1", pH=7.0)
         b1.is_user = True
@@ -413,10 +413,10 @@ class TestIngredientController(unittest.TestCase):
         Test that developer and user enc_id ranges do not overlap across subclasses.
 
         Verifies:
-            - Developer Salt → enc_id = 1
-            - User Surfactant → enc_id = USER_START_ID
-            - Developer Stabilizer → enc_id = 1
-            - User Stabilizer → enc_id = USER_START_ID
+            - Developer Salt -> enc_id = 1
+            - User Surfactant -> enc_id = USER_START_ID
+            - Developer Stabilizer -> enc_id = 1
+            - User Stabilizer -> enc_id = USER_START_ID
         """
         s_dev = Salt(enc_id=-1, name="DevSalt")
         s_dev.is_user = False

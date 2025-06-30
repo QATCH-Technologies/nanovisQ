@@ -232,6 +232,13 @@ class FormulationController:
         if missing:
             raise ValueError(f"DataFrame is missing columns: `{missing}`")
 
+        # df = (
+        #     df.replace({"none": 0, "NaN": 0})
+        #     .apply(pd.to_numeric, errors="coerce")
+        #     .replace([np.inf, -np.inf], np.nan)
+        #     .fillna(0)
+        # )
+
         for _, row in df.iterrows():
             protein = self.ingredient_controller.add_protein(
                 Protein(

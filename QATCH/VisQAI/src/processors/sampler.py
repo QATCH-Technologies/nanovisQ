@@ -6,23 +6,51 @@ from typing import Dict, Union
 import numpy as np
 import pandas as pd
 
-from src.db.db import Database
-from src.models.predictor import Predictor
-from src.models.formulation import (
-    Formulation,
-    ViscosityProfile,
-    Protein,
-    Buffer,
-    Salt,
-    Stabilizer,
-    Surfactant,
-)
-from src.controller.ingredient_controller import IngredientController
-from src.controller.formulation_controller import FormulationController
-from src.controller.asset_controller import AssetController, AssetError
+try:
+    from src.db.db import Database
+    from src.models.predictor import Predictor
+    from src.models.formulation import (
+        Formulation,
+        ViscosityProfile,
+        Protein,
+        Buffer,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from src.controller.ingredient_controller import IngredientController
+    from src.controller.formulation_controller import FormulationController
+    from src.controller.asset_controller import AssetController, AssetError
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.VisQAI.src.models.formulation import (
+        Formulation,
+        ViscosityProfile,
+        Protein,
+        Buffer,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+    from QATCH.VisQAI.src.controller.asset_controller import AssetController, AssetError
 
 
 class Sampler:
+    _SPECIAL_NUMERIC_RANGES = {
+        "Stabilizer_conc": (0.1, 1.0),
+        "Surfactant_conc": (0.0, 0.1),
+    }
+
+    _SPECIAL_NUMERIC_STEPS = {
+        "Stabilizer_conc": 0.1,
+        "Surfactant_conc": 0.05,
+    }
+
+    _DEFAULT_NUMERIC_STEP = 5.0
+    _DEFAULT_DECIMALS = 0
     _VALID_FEATURES = [
         "Protein_type",
         "MW",
@@ -62,7 +90,7 @@ class Sampler:
         if not self.asset_ctrl.asset_exists(asset_name, [".zip"]):
             raise AssetError(f"Asset with name `{asset_name}` does not exist.")
         asset_zip_path = self.asset_ctrl.get_asset_path(asset_name, [".zip"])
-        self.predictor = Predictor(source=asset_zip_path)
+        self.predictor = Predictor(zip_path=asset_zip_path)
 
         self._all_data: pd.DataFrame = self.form_ctrl.get_all_as_dataframe(
             encoded=False)
@@ -72,7 +100,7 @@ class Sampler:
 
     def add_sample(self, formulation: Formulation) -> None:
         form_df = formulation.to_dataframe()
-        viscosity, uncertainty = self.predictor.predict_with_uncertainty(
+        viscosity, uncertainty = self.predictor.predict_uncertainty(
             form_df)
         self._current_viscosity = self._make_viscosity_profile(viscosity)
         self._current_uncertainty = uncertainty
@@ -88,7 +116,7 @@ class Sampler:
 
         global_samples = self._generate_random_samples(n=n_global)
         for form in global_samples:
-            viscosity, unc = self.predictor.predict_with_uncertainty(
+            viscosity, unc = self.predictor.predict_uncertainty(
                 form.to_dataframe())
             score = self._acquisition_ucb(
                 viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
@@ -99,7 +127,7 @@ class Sampler:
             local_samples = self._perturb_formulation(
                 self._last_formulation, base_uncertainty=current_unc)
             for form in local_samples:
-                viscosity, unc = self.predictor.predict_with_uncertainty(
+                viscosity, unc = self.predictor.predict_uncertainty(
                     form.to_dataframe())
                 score = self._acquisition_ucb(
                     viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
@@ -130,12 +158,31 @@ class Sampler:
             for col in self._VALID_FEATURES:
                 if col in self._CATEGORICAL and cat_choices.get(col):
                     suggestions[col] = np.random.choice(cat_choices[col])
-                elif col in self._NUMERIC and num_ranges.get(col):
-                    low, high = num_ranges[col]
-                    suggestions[col] = float(np.random.uniform(low, high))
-                else:
-                    suggestions[col] = 0.0 if col in self._NUMERIC else "Unknown"
 
+                elif col in self._NUMERIC:
+                    if col in self._SPECIAL_NUMERIC_RANGES:
+                        low, high = self._SPECIAL_NUMERIC_RANGES[col]
+                    elif num_ranges.get(col):
+                        low, high = num_ranges[col]
+                    else:
+                        low, high = 0.0, 0.0
+
+                    raw = np.random.uniform(low, high)
+                    clamped = float(np.clip(raw, low, high))
+                    if col in self._SPECIAL_NUMERIC_STEPS:
+                        step = self._SPECIAL_NUMERIC_STEPS[col]
+                        decimals = 1
+                    else:
+                        step = self._DEFAULT_NUMERIC_STEP
+                        decimals = self._DEFAULT_DECIMALS
+
+                    stepped = round(clamped/step) * step
+                    value = round(stepped, decimals)
+
+                    suggestions[col] = float(
+                        f"{value:.{decimals}f}") if decimals else int(value)
+                else:
+                    suggestions[col] = "Unknown"
             samples.append(self._build_formulation(suggestions))
         return samples
 
@@ -148,7 +195,7 @@ class Sampler:
     ) -> list[Formulation]:
         """
         Perturbs numeric values based on how uncertain the last sample was.
-        More uncertain → larger noise scale.
+        More uncertain -> larger noise scale.
 
         Args:
             formulation: The base formulation to perturb.
@@ -166,8 +213,24 @@ class Sampler:
             for col in self._VALID_FEATURES:
                 val = base_df[col].values[0]
                 if col in self._NUMERIC:
-                    perturbation = np.random.normal(loc=0.0, scale=noise_scale)
-                    perturbed_features[col] = float(val) * (1.0 + perturbation)
+                    perturb = np.random.normal(loc=0.0, scale=noise_scale)
+                    new_val = val * (1.0 + perturb)
+
+                    if col in self._SPECIAL_NUMERIC_RANGES:
+                        low, high = self._SPECIAL_NUMERIC_RANGES[col]
+                        new_val = float(np.clip(new_val, low, high))
+
+                    if col in self._SPECIAL_NUMERIC_STEPS:
+                        step = self._SPECIAL_NUMERIC_STEPS[col]
+                        decimals = 1
+                    else:
+                        step = self._DEFAULT_NUMERIC_STEP
+                        decimals = self._DEFAULT_DECIMALS
+
+                    stepped = round(new_val/step) * step
+                    rounded = round(stepped, decimals)
+                    perturbed_features[col] = float(
+                        f"{rounded:.{decimals}f}") if decimals else int(rounded)
                 else:
                     perturbed_features[col] = val
             perturbed.append(self._build_formulation(perturbed_features))
@@ -175,7 +238,7 @@ class Sampler:
 
     def _make_viscosity_profile(self, viscosity: dict) -> ViscosityProfile:
         """
-        Convert a dict { shear_rate → viscosity_value } into a ViscosityProfile.
+        Convert a dict { shear_rate -> viscosity_value } into a ViscosityProfile.
         """
         shear_rates = []
         viscosities = []
@@ -197,7 +260,7 @@ class Sampler:
         Compute the UCB score for a formulation.
 
         Args:
-            viscosity: Dict[shear_rate] → viscosity.
+            viscosity: Dict[shear_rate] -> viscosity.
             uncertainty: np.ndarray of uncertainties.
             kappa: Exploration-exploitation trade-off.
             reference_shear_rate: Target rate to evaluate viscosity at.
@@ -207,11 +270,11 @@ class Sampler:
         """
         try:
             shear_rates = np.array([float(sr) for sr in viscosity.keys()])
-            viscosities = np.array([float(v) for v in viscosity.values()])
+            viscosities = np.array([float(v) for v in viscosity])
             idx = np.abs(shear_rates - reference_shear_rate).argmin()
             mu = viscosities[idx]
         except Exception:
-            mu = np.mean(list(viscosity.values()))
+            mu = np.mean(list(viscosity))
 
         sigma = np.nanmean(uncertainty)
         return mu + kappa * sigma

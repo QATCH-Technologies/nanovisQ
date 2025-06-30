@@ -22,12 +22,14 @@ import os
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.ticker import FormatStrFormatter
 import hashlib
 from scipy.optimize import curve_fit
 import datetime as dt
 from types import SimpleNamespace
 import webbrowser
 from PyQt5.QtPrintSupport import QPrinter
+from scipy.interpolate import interp1d
 
 try:
     from src.io.file_storage import SecureOpen
@@ -37,6 +39,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database, DB_PATH
+    from src.processors.sampler import Sampler
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
@@ -45,6 +48,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database, DB_PATH
+    from QATCH.VisQAI.src.processors.sampler import Sampler
 TAG = "[VisQ.AI]"
 
 
@@ -234,6 +238,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.init_sign()
         self.check_license()  # see BASE CLASS
         self._unsaved_changes = False
+
+        self.formulation = Formulation()
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
@@ -752,7 +758,7 @@ class FrameStep1(QtWidgets.QDialog):
         left_group_layout.addLayout(form_layout)
 
         # Select model (for step 5: Predict)
-        if step == 5:
+        if True:  # step == 5:
             # Browse model layout
             self.model_dialog = QtWidgets.QFileDialog()
             self.model_dialog.setOption(
@@ -771,6 +777,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label = QtWidgets.QLineEdit()
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
+            if step == 1:
+                predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
+                if os.path.exists(predictor_path):
+                    self.model_selected(path=predictor_path)
             select_model_layout.addWidget(self.select_model_btn)
             select_model_layout.addWidget(self.select_model_label)
             select_model_layout.addStretch()
@@ -805,7 +815,7 @@ class FrameStep1(QtWidgets.QDialog):
                 QtWidgets.QAbstractItemView.NoEditTriggers)
             self.model = QtGui.QStandardItemModel()
             string_list = []
-            if step == 2 or step == 5:
+            if False:  # step == 2 or step == 5:
                 for i in range(4):
                     base_name = "Suggestion" if step == 2 else "Prediction"
                     string_list.append(f"{base_name} {i+1}")
@@ -824,7 +834,7 @@ class FrameStep1(QtWidgets.QDialog):
             else:
                 # TODO: for steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
-                    lambda: self.feature_table.setData(self.dummy_features[self.list_view.selectedIndexes()[0].row()]))
+                    lambda: self.feature_table.setData(self.loaded_features[self.list_view.selectedIndexes()[0].row()]))
                 self.list_view.clicked.connect(self.hide_extended_features)
             self.list_view.clicked.connect(
                 lambda: self.btn_update.setEnabled(True))
@@ -834,7 +844,8 @@ class FrameStep1(QtWidgets.QDialog):
                 add_remove_export_widget)
             add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
             if step in [2, 5]:
-                self.btn_add = QtWidgets.QPushButton("Add Another")
+                btn_text = "Suggestion" if step == 2 else "Prediction"
+                self.btn_add = QtWidgets.QPushButton(f"Add {btn_text}")
                 self.btn_add.clicked.connect(self.add_another_item)
                 add_remove_export_layout.addWidget(self.btn_add)
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
@@ -956,41 +967,43 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_update.clicked.connect(self.make_predictions)
         right_group.addWidget(self.btn_update)
 
-        # TODO: Testing only, create dummy features
-        self.dummy_features = []
-        for i in range(4):
-            dummy_feature = copy.deepcopy(self.default_features)
-            value_tags = [0, range(5, 95),
-                          0, 0, 0,
-                          range(3), range(5, 95),
-                          0,
-                          range(2), range(5, 95),
-                          range(2), range(5, 95),
-                          0, range(5, 95)]
-            for x in range(len(dummy_feature["Value"])):
-                try:
-                    current_value = dummy_feature["Value"][x]
-                    current_tag = value_tags[x]
-                    if isinstance(current_value, list):
-                        if isinstance(current_tag, int):
-                            dummy_feature["Value"][x] = \
-                                current_value[current_tag]
-                        else:
-                            dummy_feature["Value"][x] = current_value[randint(
-                                current_tag[0], current_tag[-1])]
-                    else:
-                        if isinstance(current_tag, range):
-                            dummy_feature["Value"][x] = randint(
-                                current_tag[0], current_tag[-1])
-                except Exception as e:
-                    print(e)
-            # Hide protein and buffer characteristics
-            # for values in dummy_feature.values():
-            #     del values[7]  # buffer PH
-            #     del values[4]  # protein pI range
-            #     del values[3]  # protein pI mean
-            #     del values[2]  # protein weight
-            self.dummy_features.append(dummy_feature)
+        self.loaded_features = []
+
+        # # TODO: Testing only, create dummy features
+        # self.dummy_features = []
+        # for i in range(4):
+        #     dummy_feature = copy.deepcopy(self.default_features)
+        #     value_tags = [0, range(5, 95),
+        #                   0, 0, 0,
+        #                   range(3), range(5, 95),
+        #                   0,
+        #                   range(2), range(5, 95),
+        #                   range(2), range(5, 95),
+        #                   0, range(5, 95)]
+        #     for x in range(len(dummy_feature["Value"])):
+        #         try:
+        #             current_value = dummy_feature["Value"][x]
+        #             current_tag = value_tags[x]
+        #             if isinstance(current_value, list):
+        #                 if isinstance(current_tag, int):
+        #                     dummy_feature["Value"][x] = \
+        #                         current_value[current_tag]
+        #                 else:
+        #                     dummy_feature["Value"][x] = current_value[randint(
+        #                         current_tag[0], current_tag[-1])]
+        #             else:
+        #                 if isinstance(current_tag, range):
+        #                     dummy_feature["Value"][x] = randint(
+        #                         current_tag[0], current_tag[-1])
+        #         except Exception as e:
+        #             print(e)
+        #     # Hide protein and buffer characteristics
+        #     # for values in dummy_feature.values():
+        #     #     del values[7]  # buffer PH
+        #     #     del values[4]  # protein pI range
+        #     #     del values[3]  # protein pI mean
+        #     #     del values[2]  # protein weight
+        #     self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
         self.run_figure_valid = False
@@ -1010,7 +1023,7 @@ class FrameStep1(QtWidgets.QDialog):
             getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.file_selected)
-        if step == 5:
+        if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
             self.model_dialog.fileSelected.connect(self.model_selected)
 
@@ -1020,15 +1033,26 @@ class FrameStep1(QtWidgets.QDialog):
         self.file_dialog.setDirectory(Constants.log_prefer_path)
 
         if self.step == 2:  # Suggest
-            self.load_suggestions()
+            # self.load_suggestion()
+            pass
         if self.step == 5:  # Predict
+            if len(self.loaded_features) == 0:
+                self.add_formulation(Formulation())  # allow anything
+                self.add_formulation(self.parent.formulation)
+        if True:  # self.step == 5:  # Predict
             # Select a pre-selected model, if none selected here
             if not self.model_path:
+                select_tab: FrameStep1 = self.parent.tab_widget.widget(0)
+                suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
+                import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
                 learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-                # predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
+                predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
                 optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
-                all_model_paths = [learn_tab.model_path,
-                                   # predict_tab.model_path,
+                all_model_paths = [select_tab.model_path,
+                                   suggest_tab.model_path,
+                                   import_tab.model_path,
+                                   learn_tab.model_path,
+                                   predict_tab.model_path,
                                    optimize_tab.model_path]
                 found_model_path = next(
                     (x for x in all_model_paths if x is not None), None)
@@ -1048,6 +1072,19 @@ class FrameStep1(QtWidgets.QDialog):
             no_item.setEnabled(False)
             no_item.setSelectable(False)
             self.model.appendRow(no_item)
+
+    def unique_case_insensitive_sort(self, list):
+        seen = set()
+        result = []
+        for item in list:
+            lower_item = item.lower()
+            if lower_item not in seen:
+                seen.add(lower_item)
+                result.append(item)
+
+        # Sort case-insensitive
+        result.sort(key=str.lower)
+        return result
 
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
@@ -1076,16 +1113,22 @@ class FrameStep1(QtWidgets.QDialog):
         # self.excipient_surfactants.sort()
         # self.excipient_stabilizers.sort()
         # this is using a case-insensitive sorting method:
-        self.proteins = sorted(
-            self.proteins, key=str.casefold)
-        self.buffers = sorted(
-            self.buffers, key=str.casefold)
-        self.surfactants = sorted(
-            self.surfactants, key=str.casefold)
-        self.stabilizers = sorted(
-            self.stabilizers, key=str.casefold)
-        self.salts = sorted(
-            self.salts, key=str.casefold)
+        # self.proteins = sorted(
+        #     self.proteins, key=str.casefold)
+        # self.buffers = sorted(
+        #     self.buffers, key=str.casefold)
+        # self.surfactants = sorted(
+        #     self.surfactants, key=str.casefold)
+        # self.stabilizers = sorted(
+        #     self.stabilizers, key=str.casefold)
+        # self.salts = sorted(
+        #     self.salts, key=str.casefold)
+        # this is unique, case-insensitive sorting method:
+        self.proteins = self.unique_case_insensitive_sort(self.proteins)
+        self.buffers = self.unique_case_insensitive_sort(self.buffers)
+        self.surfactants = self.unique_case_insensitive_sort(self.surfactants)
+        self.stabilizers = self.unique_case_insensitive_sort(self.stabilizers)
+        self.salts = self.unique_case_insensitive_sort(self.salts)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
@@ -1229,14 +1272,45 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
-        self.parent.formulation = self.parent.form_ctrl.add_formulation(
+        form_saved = self.parent.form_ctrl.add_formulation(
             formulation=form)
-        # print(self.parent.form_ctrl.get_all_as_dataframe())
+
+        if self.step == 1:
+            Log.d("Saving formulation to parent for later")
+            self.parent.formulation = form_saved
+            # print(self.parent.form_ctrl.get_all_as_dataframe())
 
         return True
 
-    def load_suggestions(self):
-        pass
+    def load_suggestion(self):
+        model_name = self.select_model_label.text()
+        if not model_name:
+            model_name = "VisQAI-base"
+        sampler = Sampler(asset_name=model_name, database=self.parent.database)
+        form = sampler.get_next_sample()
+        self.add_formulation(form)
+
+    def add_formulation(self, form: Formulation):
+        feature = copy.deepcopy(self.default_features)
+        if form.protein.ingredient.name and form.protein.ingredient.name != "none":
+            feature["Value"][0] = form.protein.ingredient.name
+            feature["Value"][1] = form.protein.concentration
+            feature["Value"][2] = form.protein.ingredient.molecular_weight
+            feature["Value"][3] = form.protein.ingredient.pI_mean
+            feature["Value"][4] = form.protein.ingredient.pI_range
+            feature["Value"][5] = form.buffer.ingredient.name
+            feature["Value"][6] = form.buffer.concentration
+            feature["Value"][7] = form.buffer.ingredient.pH
+            feature["Value"][8] = form.surfactant.ingredient.name
+            feature["Value"][9] = form.surfactant.concentration
+            feature["Value"][10] = form.stabilizer.ingredient.name
+            feature["Value"][11] = form.stabilizer.concentration
+            feature["Value"][12] = form.salt.ingredient.name
+            feature["Value"][13] = form.salt.concentration
+        self.loaded_features.append(feature)
+        num = self.model.rowCount() + 1
+        form_type = "Suggestion" if self.step == 2 else "Prediction"
+        self.model.appendRow(QtGui.QStandardItem(f"{form_type} {num}"))
 
     def _get_viscosity_list(self, formulation: Formulation) -> list:
         rate_list = []
@@ -1252,24 +1326,24 @@ class FrameStep1(QtWidgets.QDialog):
             Log.e("No formulation cached. Cannot load suggestions.")
             return
 
-        # TODO: Not implemented, partially
-        predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
-        self.parent.predictor = Predictor(predictor_path)
+        self.parent.predictor = Predictor(self.model_path)
         form_df = self.parent.formulation.to_dataframe(
-            encoded=True, training=False)
+            encoded=False, training=False)
 
-        # Get the viscosity profile or y target to update with.
-        vp = self._get_viscosity_list(self.parent.formulation)
+        if self.parent.formulation.viscosity_profile.is_measured:
 
-        # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
-        # Also I have this set so updating does not overwrite the existing model until
-        # we figure out how model storage works
-        self.parent.predictor.update(
-            new_data=form_df,
-            new_targets=np.array([vp]),
-            epochs=10,
-            batch_size=32,
-            save=False)
+            # Get the viscosity profile or y target to update with.
+            vp = self._get_viscosity_list(self.parent.formulation)
+
+            # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
+            # Also I have this set so updating does not overwrite the existing model until
+            # we figure out how model storage works
+            self.parent.predictor.update(
+                new_data=form_df,
+                new_targets=np.array([vp]),
+                epochs=10,
+                batch_size=32,
+                save=False)
 
         # The returns from this are a predicted viscosity profile [val1,val2,...val5]
         predicted_vp = self.parent.predictor.predict(data=form_df)
@@ -1278,6 +1352,49 @@ class FrameStep1(QtWidgets.QDialog):
         # a series of standard deviations for each predicted value.
         predicted_mean_vp, mean_std = self.parent.predictor.predict_uncertainty(
             data=form_df)
+
+        # Helper functions for plotting
+        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+            xlog = np.log10(x)
+            ylog = np.log10(y)
+            f_interp = interp1d(xlog, ylog, kind='linear',
+                                fill_value='extrapolate')
+            xlog_min, xlog_max = xlog.min(), xlog.max()
+            margin = (xlog_max - xlog_min) * expand_factor
+            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+            xs = 10**xs_log
+            ys = 10**f_interp(xs_log)
+            return xs, ys
+
+        def make_plot(name, shear, mean_arr, std_arr, title, color):
+            # clear existing plot before making a new one
+            self.run_figure_valid = False
+            self.run_figure.clear()
+
+            ax = self.run_figure.add_subplot(111)
+            xs, ys = smooth_log_interpolate(shear, mean_arr)
+            xs_up, ys_up = smooth_log_interpolate(shear, mean_arr + std_arr)
+            xs_dn, ys_dn = smooth_log_interpolate(shear, mean_arr - std_arr)
+            ax.plot(xs, ys, '-', lw=2.5, color=color)
+            ax.fill_between(xs_dn, ys_dn, ys_up, alpha=0.25, color=color)
+            ax.scatter(shear, mean_arr, s=40, color=color, zorder=5)
+            ax.set_xlim(xs.min(), xs.max())
+            ann = "\n".join(f"{x:.0e}: {m:.1f}±{s:.1f}" for x, m,
+                            s in zip(shear, mean_arr, std_arr))
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
+            ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
+            ax.set_ylabel("Viscosity (cP)", fontsize=10)
+            ax.grid(True, which="both", ls=":")
+            ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+
+            self.run_figure_valid = True
+            self.run_canvas.draw()
+
+        # Plot
+        make_plot("name", self.profile_shears,
+                  predicted_mean_vp[0], mean_std[0], "title", "blue")
 
     def proceed_to_step_2(self):
         # Are we ready to proceed?
@@ -1381,7 +1498,10 @@ class FrameStep1(QtWidgets.QDialog):
         # raise any other exception type
 
     def add_another_item(self):
-        raise NotImplementedError()
+        if self.step == 2:
+            self.load_suggestion()
+        if self.step == 5:
+            self.add_formulation(Formulation())
 
     def user_run_removed(self):
         try:
@@ -1393,6 +1513,8 @@ class FrameStep1(QtWidgets.QDialog):
             self.model.removeRow(selected[0].row())
             self.list_view_addPlaceholderText()
             self.file_selected(None)  # clear selection
+            if self.step in [2, 5]:
+                self.loaded_features.pop(selected[0])
         except IndexError as e:
             if len(self.all_files):
                 raise e
@@ -1560,9 +1682,11 @@ class FrameStep1(QtWidgets.QDialog):
         self.btn_update.setEnabled(False)
 
         if path is None:
+            if self.step == 1:  # Select
+                self.parent.formulation = Formulation()
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
-            if self.step == 5:  # Predict
+            if True:  # self.step == 5:  # Predict
                 self.model_selected(None)
             return
 
@@ -1852,35 +1976,7 @@ class FrameStep1(QtWidgets.QDialog):
         ax.set_xlabel("Shear-rate (1/s)")
         ax.set_ylabel("Viscosity (cP)")
         if len(in_viscosity) > 0:
-            lower_limit = np.amin(in_viscosity) / 1.5
-            power = 1
-            while power > -5:
-                if lower_limit > 10**power:
-                    lower_limit = 10**power
-                    break
-                power -= 1
-            upper_limit = np.amax(in_viscosity) * 1.5
-            power = 0
-            while power < 5:
-                if upper_limit < 10**power:
-                    upper_limit = 10**power
-                    break
-                power += 1
-            if lower_limit >= upper_limit:
-                print(
-                    "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
-                )
-                ax.set_ylim([0, 1000])
-            elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
-                print(
-                    f"Auto-calculated y-range limits for Figure 4 are: [{lower_limit}, {upper_limit}]"
-                )
-                ax.set_ylim([lower_limit, upper_limit])
-            else:
-                print(
-                    "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
-                )
-                ax.set_ylim([0, 1000])
+            ax.set_ylim(self.calc_limits(yall=in_viscosity))
             ax.plot(self.profile_shears, self.profile_viscos, "bd")
             ax.plot(data[:, 0], data[:, 1], "b,")
             self.run_figure_valid = True
@@ -1906,6 +2002,38 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_temperature.setText("(Unknown)")
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
+
+    def calc_limits(self, yall):
+        ymin, ymax = 0, 1000
+        lower_limit = np.amin(yall) / 1.5
+        power = 1
+        while power > -5:
+            if lower_limit > 10**power:
+                lower_limit = 10**power
+                break
+            power -= 1
+        upper_limit = np.amax(yall) * 1.5
+        power = 0
+        while power < 5:
+            if upper_limit < 10**power:
+                upper_limit = 10**power
+                break
+            power += 1
+        if lower_limit >= upper_limit:
+            Log.d(
+                "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
+            )
+        elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
+            Log.d(
+                f"Auto-calculated y-range limits for figure are: [{lower_limit}, {upper_limit}]"
+            )
+            ymin = lower_limit
+            ymax = upper_limit
+        else:
+            Log.d(
+                "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
+            )
+        return ymin, ymax
 
     def model_selected(self, path: str | None):
         self.model_path = path
@@ -2033,10 +2161,16 @@ class FrameStep2(QtWidgets.QDialog):
     def on_tab_selected(self):
         # Select a pre-selected model, if none selected here
         if not self.model_path:
+            select_tab: FrameStep1 = self.parent.tab_widget.widget(0)
+            suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
+            import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
             predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
             optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
-            all_model_paths = [learn_tab.model_path,
+            all_model_paths = [select_tab.model_path,
+                               suggest_tab.model_path,
+                               import_tab.model_path,
+                               learn_tab.model_path,
                                predict_tab.model_path,
                                optimize_tab.model_path]
             found_model_path = next(

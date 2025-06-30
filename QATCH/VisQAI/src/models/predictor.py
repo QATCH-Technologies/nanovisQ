@@ -142,7 +142,7 @@ class Predictor:
         extract_dir = Path(self._tmpdir.name)
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(extract_dir)
-        Log.i(f"Extracted {zip_path.name} → {extract_dir}")
+        Log.i(f"Extracted {zip_path.name} -> {extract_dir}")
 
         # Locate model/
         model_dir = extract_dir / "model"
@@ -283,6 +283,8 @@ class Predictor:
             f"epochs={epochs}, batch_size={batch_size}, save={save}"
         )
         try:
+            # print("data:", new_data)
+            # print("targets:", new_targets)
             self.ensemble.update(
                 new_data,
                 new_targets,

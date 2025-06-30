@@ -618,7 +618,7 @@ class QModelPredictor:
         # Compute slope
         slope = np.gradient(diss, relative_time)
 
-        # Try lowering threshold percentiles from 100 → min_iter in 0.5 steps
+        # Try lowering threshold percentiles from 100 -> min_iter in 0.5 steps
         for perc in np.arange(100.0, min_iter, -0.5):
             thresh = np.percentile(slope, perc)
             peaks, _ = find_peaks(slope, height=thresh)
@@ -2117,7 +2117,7 @@ class QModelPredictor:
                 ax.text(
                     center_time,
                     diss.max() * 0.9,
-                    f"{poi}→C{densest}",
+                    f"{poi}->C{densest}",
                     rotation=90, va="top", ha="right",
                     fontsize=8, color=cmap(i)
                 )
@@ -2125,7 +2125,7 @@ class QModelPredictor:
         if plotting:
             ax.legend(loc="upper left", fontsize=8, ncol=2, framealpha=0.9)
             plt.title(f"DBSCAN on Indices (eps_fraction={eps_fraction}, "
-                      f"min_eps={min_eps}→max_eps={max_eps})")
+                      f"min_eps={min_eps}->max_eps={max_eps})")
             plt.tight_layout()
             plt.show()
 
