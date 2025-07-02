@@ -2409,6 +2409,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
                 # TODO: This should be done when tagging, not here
+                Log.w(
+                    f"Adding core training samples to database (happens once; may take a bit)...")
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
                 form_ctrl = FormulationController(db=machine_database)
@@ -2419,6 +2421,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 df = pd.read_csv(csv_path)
                 added_forms = form_ctrl.add_all_from_dataframe(df)
                 machine_database.close()
+                Log.w(f"Added {len(added_forms)} core training samples!")
             elif bundled_exists and localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
