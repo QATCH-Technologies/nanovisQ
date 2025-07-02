@@ -11,10 +11,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date: 
-    2025-06-30
+    2025-07-02
 
 Version: 
-    QModel.Ver3.2
+    QModel.Ver3.3
 """
 import math
 import xgboost as xgb
@@ -510,7 +510,7 @@ class QModelPredictor:
             order = np.argsort(-confs)
             sorted_confs = confs[order]
 
-            # 3) if*all confidences are zero, fallback to ground truth
+            # if confidences are zero, fallback to ground truth
             if sorted_confs[0] == 0.0:
                 poi_results[key] = {
                     "indices": [int(model_data_labels[poi - 1])],
@@ -949,19 +949,19 @@ class QModelPredictor:
                           feature_vector: pd.DataFrame,
                           relative_time: np.ndarray) -> int:
 
-        # 1) Extract raw “Detrend_Difference” over the segment
+        # Extract raw “Detrend_Difference” over the segment
         raw_diff = feature_vector['Detrend_Difference'].values
         seg_raw = raw_diff[start_of_segment: end_of_segment + 1]
         seg_t = relative_time[start_of_segment: end_of_segment + 1]
         n = len(seg_raw)
 
-        # 2) Build a monotonic “component signal” (non‐increasing)
+        # Build a monotonic “component signal” (non-increasing)
         comp_sig = [seg_raw[0]]
         for x in seg_raw[1:]:
             comp_sig.append(x if x <= comp_sig[-1] else comp_sig[-1])
         seg_comp = np.array(comp_sig)
 
-        # 3) Smooth the component signal via Savitzky‐Golay
+        # Smooth the component signal via Savitzky-Golay
         if n < 3:
             seg_sm = seg_comp.copy()
         else:
@@ -972,25 +972,25 @@ class QModelPredictor:
             po = min(1, w - 1)
             seg_sm = savgol_filter(seg_comp, window_length=w, polyorder=po)
 
-        # 4) Compute first derivative (slope) of the smoothed component
+        # Compute first derivative (slope) of the smoothed component
         slope = np.gradient(seg_sm, seg_t)
 
-        # 5) Estimate baseline noise from the first few slope values
+        # Estimate baseline noise from the first few slope values
         baseline_window = min(n, max(3, int(n * 0.2)))
         baseline_vals = slope[:baseline_window]
         baseline_mean = baseline_vals.mean()
         baseline_std = baseline_vals.std()
 
-        # 6) Define threshold: slope must drop below (mean - std)
+        # Define threshold: slope must drop below (mean - std)
         threshold = baseline_mean - baseline_std
         threshold = threshold * 1
-        # 7) Find the first index where slope < threshold
+        # Find the first index where slope < threshold
         knee_rel = None
         for i, s in enumerate(slope):
             if s < threshold:
                 knee_rel = i
                 break
-        # If no such point is found, fall back to second‐derivative method
+        # If no such point is found, fall back to second-derivative method
         if knee_rel is None:
             d1 = slope
             d2 = np.gradient(d1, seg_t)
@@ -1591,17 +1591,24 @@ class QModelPredictor:
                         break
         inds = orig_inds.copy()
 
-        # ——————————————————————————————————————————————
-        # 1) HEIGHT FILTER
-        baseline_window = 10
-        base_vals = dissipation[:baseline_window]
+        # HEIGHT FILTER
+        baseline_window = int(0.015*len(dissipation))
+        base_vals = dissipation[int(0.005*len(dissipation)):baseline_window]
         height_thresh = base_vals.mean() + 2 * base_vals.std()
         height_filtered = [i for i in inds if dissipation[i] > height_thresh]
         inds_after_height = height_filtered or inds.copy()
 
         # PEAK-JUMP FILTER
-        delta_d = dissipation[1:] - dissipation[:-1]
-        injection_idx = np.argmax(delta_d) + 1
+        delta_d = np.diff(dissipation)
+        thr_jump = delta_d.mean() + delta_d.std()
+        jump_idxs = np.where(delta_d > thr_jump)[0] + 1
+
+        if len(jump_idxs):
+            injection_idx = jump_idxs[0]
+        else:
+            # fallback to global max if nothing exceeds thr_jump
+            injection_idx = np.argmax(delta_d) + 1
+
         jump_filtered = [i for i in inds_after_height if i >= injection_idx]
         inds_after_jump = jump_filtered or inds_after_height.copy()
 
@@ -1728,12 +1735,12 @@ class QModelPredictor:
         diss_norm = _min_max(diss)
         rf_norm = _min_max(rf)
         diff_norm = _min_max(diff)
-        # first‐ and second‐derivatives
+        # first and second-derivatives
         diss_slope = np.gradient(diss_norm, relative_time)
         diss_accel = np.gradient(rf_norm, relative_time)
         diff_slope = np.gradient(diff_norm, relative_time)
 
-        # SVM‐DoG scores
+        # SVM-DoG scores
         diss_score = feature_vector["Dissipation_DoG_SVM_Score"].values
         rf_score = feature_vector["Resonance_Frequency_DoG_SVM_Score"].values
         diff_score = feature_vector["Difference_DoG_SVM_Score"].values
@@ -1741,7 +1748,7 @@ class QModelPredictor:
         # compute composite scores at each candidate
         scores = []
         for idx in cand_idxs:
-            # second‐derivative positive crest
+            # second-derivative positive crest
             m1 = max(0.0, diss_accel[idx])
             m2 = max(0.0, -rf[idx])                  # trough in RF
             m3 = max(0.0, -diff_slope[idx])          # downslope in Difference
@@ -1780,7 +1787,7 @@ class QModelPredictor:
         # ax1.scatter(relative_time[cand_idxs], diss_norm[cand_idxs],
         #             c='red', marker='x', s=80, label='candidates')
 
-        # # show the detected trough and its left‐base
+        # # show the detected trough and its left-base
         # ax1.scatter(relative_time[trough_idx], diss_norm[trough_idx],
         #             c='blue', s=100, label='neg spike (trough)')
         # ax1.scatter(relative_time[best_idx], diss_norm[best_idx],
@@ -1826,7 +1833,7 @@ class QModelPredictor:
         rough envelopes of all three raw curves plus the three DoG_SVM scores,
         with a debug plot of normalized envelopes and candidates.
         """
-        # 1) filter out-of-bounds
+        # filter out-of-bounds
         filtered = [(i, c)
                     for i, c in zip(indices, confidences) if i > poi5_idx]
         if not filtered:
@@ -1834,7 +1841,7 @@ class QModelPredictor:
         cand_idxs, cand_confs = zip(*filtered)
         cand_idxs = list(cand_idxs)
         cand_confs = list(cand_confs)
-        # 2) raw values & DoG_SVM scores
+        # raw values & DoG_SVM scores
         diss_vals = feature_vector['Dissipation'].values
         rf_vals = feature_vector['Resonance_Frequency'].values
         diff_vals = feature_vector['Difference'].values
@@ -1843,7 +1850,7 @@ class QModelPredictor:
         rf_score = feature_vector['Resonance_Frequency_DoG_SVM_Score'].values
         diff_score = feature_vector['Difference_DoG_SVM_Score'].values
 
-        # 3) build rough "envelopes" by thresholding the gradients
+        # build rough "envelopes" by thresholding the gradients
         d_diss = np.gradient(diss_vals,  relative_time)
         d_rf = np.gradient(rf_vals,    relative_time)
         d_diff = np.gradient(diff_vals,  relative_time)
@@ -1856,7 +1863,7 @@ class QModelPredictor:
         rf_env = make_env(d_rf)
         diff_env = make_env(d_diff)
 
-        # 4) min–max normalize
+        # min–max normalize
         def _min_max(x: np.ndarray) -> np.ndarray:
             xmin, xmax = x.min(), x.max()
             return (x - xmin) / (xmax - xmin) if xmax != xmin else x
@@ -1865,7 +1872,7 @@ class QModelPredictor:
         norm_rf = _min_max(rf_env)
         norm_diff = _min_max(diff_env)
 
-        # 5) score each candidate
+        # score each candidate
         scores = []
         for idx in cand_idxs:
             dog_score = abs(diss_score[idx]) + \
@@ -1884,7 +1891,6 @@ class QModelPredictor:
         best_conf = cand_confs[best_pos]
         best_score = scores[best_pos]
 
-        # 6) debug plot
         idxs = list(cand_idxs)
         times_cand = relative_time[idxs]
 
@@ -1938,7 +1944,6 @@ class QModelPredictor:
         # ax.legend(loc='upper right', fontsize='small')
         # plt.tight_layout()
         # plt.show()
-        # 7) return with best score as 'confidence'
         out_indices = [best_idx, cand_idxs]
         out_confidences = [best_conf, confidences]
         return out_indices, out_confidences
@@ -2058,7 +2063,7 @@ class QModelPredictor:
         trimmed: dict[str, dict[str, list]] = {}
 
         for i, (poi, preds) in enumerate(extracted_predictions.items()):
-            if poi not in ("POI4", "POI5", "POI6"):
+            if poi not in ("POI5", "POI6"):
                 entry = {"indices": list(preds.get("indices", []))}
                 if "confidences" in preds:
                     entry["confidences"] = list(preds["confidences"])
@@ -2277,7 +2282,7 @@ class QModelPredictor:
 
         for i in range(1, 7):
             poi = f"POI{i}"
-            # ensure the sub‐dict exists
+            # ensure the sub-dict exists
             entry = best_positions.setdefault(poi, {})
             # ensure both lists exist
             inds = entry.setdefault("indices", [])
@@ -2329,7 +2334,7 @@ class QModelPredictor:
         new_groupings["POI5"] = poi5_raw
         new_groupings["POI6"] = merged_2
 
-        # 4. pull & filter POI4/5 for the next merge
+        # pull & filter POI4/5 for the next merge
         poi4_raw = _filter_bounds(raw_predictions.get("POI4", {}))
         poi5_prev = _filter_bounds(raw_predictions.get("POI5", {}))
         poi4_target = new_groupings["POI4"]["indices"][0]
@@ -2370,10 +2375,10 @@ class QModelPredictor:
             Signal columns to check for a long tail
             (default ['Difference','Dissipation','Resonance_Frequency']).
         slope_thresh : float
-            Threshold for the moving‐average absolute slope below which
+            Threshold for the moving-average absolute slope below which
             we consider the curve “flat” (on the normalized scale).
         window : int
-            Moving‐average window (in samples) for smoothing the instantaneous slope.
+            Moving-average window (in samples) for smoothing the instantaneous slope.
 
         Returns
         -------
@@ -2396,7 +2401,7 @@ class QModelPredictor:
             # instantaneous slope wrt time
             dy = np.gradient(y_norm, time)
 
-            # moving‐average of abs(slope)
+            # moving-average of abs(slope)
             ma = np.convolve(np.abs(dy), np.ones(window)/window, mode='same')
 
             # find true tail-start: first i where everything from i->end is flat
