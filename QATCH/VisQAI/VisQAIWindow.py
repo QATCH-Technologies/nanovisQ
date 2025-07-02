@@ -1185,6 +1185,26 @@ class FrameStep1(QtWidgets.QDialog):
                 Log.d("User canceled with nothing to save.")
                 return True
 
+        if self.step == 5:  # Predict
+            # save table to loaded_features
+            feature = copy.deepcopy(self.default_features)
+            feature["Value"][0] = protein_type
+            feature["Value"][1] = protein_conc
+            feature["Value"][2] = protein_weight
+            feature["Value"][3] = protein_pI_mean
+            feature["Value"][4] = protein_pI_range
+            feature["Value"][5] = buffer_type
+            feature["Value"][6] = buffer_conc
+            feature["Value"][7] = buffer_pH
+            feature["Value"][8] = surfactant_type
+            feature["Value"][9] = surfactant_conc
+            feature["Value"][10] = stabilizer_type
+            feature["Value"][11] = stabilizer_conc
+            feature["Value"][12] = salt_type
+            feature["Value"][13] = salt_conc
+            self.loaded_features[self.list_view.selectedIndexes()[
+                0].row()] = feature
+
         protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
         if protein == None:
             protein = self.parent.ing_ctrl.add_protein(
@@ -2461,6 +2481,8 @@ class TableView(QtWidgets.QTableWidget):
     def allSet(self) -> bool:
         for n, key in enumerate(self.data.keys()):
             for m, _ in enumerate(self.data[key]):
+                if self.isRowHidden(m):
+                    continue  # do not check hidden rows
                 item = self.item(m, n)
                 if item is None:
                     continue  # QComboBox will return a None item

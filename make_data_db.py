@@ -45,7 +45,7 @@ ing_ctrl = IngredientController(db=database)
 core_ingredients = [
     # Buffers:
     Buffer(enc_id=0, name="None", pH=0.0),
-    Buffer(enc_id=1, name="Accetate", pH=5.0),
+    Buffer(enc_id=1, name="Acetate", pH=5.0),
     Buffer(enc_id=2, name="Histidine", pH=6.0),
     Buffer(enc_id=3, name="PBS", pH=7.4),
     # Surfactants:
