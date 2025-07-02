@@ -241,7 +241,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.check_license()  # see BASE CLASS
         self._unsaved_changes = False
 
-        self.formulation = Formulation()
+        self.select_formulation = Formulation()
+        self.predict_formulation = Formulation()
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
@@ -1040,7 +1041,7 @@ class FrameStep1(QtWidgets.QDialog):
         if self.step == 5:  # Predict
             if len(self.loaded_features) == 0:
                 self.model.removeRow(0)  # no_item placeholder
-                self.add_formulation(self.parent.formulation)
+                self.add_formulation(self.parent.select_formulation)
         if True:  # self.step == 5:  # Predict
             # Select a pre-selected model, if none selected here
             if not self.model_path:
@@ -1278,9 +1279,12 @@ class FrameStep1(QtWidgets.QDialog):
             formulation=form)
 
         if self.step == 1:
-            Log.d("Saving formulation to parent for later")
-            self.parent.formulation = form_saved
+            Log.d("Saving selected formulation to parent for later")
+            self.parent.select_formulation = form_saved
             # print(self.parent.form_ctrl.get_all_as_dataframe())
+        if self.step == 5:
+            Log.d("Saving prediction formulation to parent for later")
+            self.parent.predict_formulation = form_saved
 
         return True
 
@@ -1387,6 +1391,7 @@ class FrameStep1(QtWidgets.QDialog):
             return
         if len(self.select_model_label.text()) == 0 or self.model_path == None:
             Log.e("No model selected. Cannot make predictions.")
+            return
         if not self.parent.database.is_open:
             Log.e("No database connection. Cannot make predictions.")
             return
@@ -1400,7 +1405,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.save_formulation()
 
         self.predictor = Predictor(zip_path=self.model_path)
-        form_df = self.parent.formulation.to_dataframe(
+        select_df = self.parent.select_formulation.to_dataframe(
+            encoded=False, training=False)
+        predict_df = self.parent.predict_formulation.to_dataframe(
             encoded=False, training=False)
 
         self.progressBar = QtWidgets.QProgressDialog(
@@ -1432,7 +1439,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.executor.run(
                 self.predictor,
                 method_name="predict_uncertainty",
-                data=form_df,
+                data=predict_df,
                 callback=get_prediction_result)
 
         def get_prediction_result(record: ExecutionRecord):
@@ -1470,6 +1477,7 @@ class FrameStep1(QtWidgets.QDialog):
                 # clear existing plot before making a new one
                 self.run_figure_valid = False
                 self.run_figure.clear()
+                self.run_canvas.draw()
 
                 ax = self.run_figure.add_subplot(111)
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
@@ -1498,27 +1506,33 @@ class FrameStep1(QtWidgets.QDialog):
             make_plot("name", self.profile_shears,
                       predicted_mean_vp[0], mean_std[0], "title", "blue")
 
-        if self.parent.formulation.viscosity_profile.is_measured:
+        self.executor = Executor()
+
+        if self.parent.select_formulation.viscosity_profile.is_measured:
 
             # Get the viscosity profile or y target to update with.
-            vp = self._get_viscosity_list(self.parent.formulation)
+            vp = self._get_viscosity_list(self.parent.select_formulation)
 
             # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
             # Also I have this set so updating does not overwrite the existing model until
             # we figure out how model storage works
-            self.executor = Executor()
             self.executor.run(
                 self.predictor,
                 method_name="update",
-                new_data=form_df,
+                new_data=select_df,
                 new_targets=np.array([vp]),
                 epochs=10,
                 batch_size=32,
                 save=False,
                 callback=run_prediction_result)
 
+        else:
+            run_prediction_result()
+
     def check_finished(self):
-        record_count = 2 if self.step == 5 else 1
+        record_count = 1
+        if self.step == 5 and self.parent.select_formulation.viscosity_profile.is_measured:
+            record_count += 1
         if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == record_count:
             self.progressBar.close()  # finished
             self.timer.stop()
@@ -1812,10 +1826,12 @@ class FrameStep1(QtWidgets.QDialog):
 
         if path is None:
             if self.step == 1:  # Select
-                self.parent.formulation = Formulation()
+                self.parent.select_formulation = Formulation()
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
-            if True:  # self.step == 5:  # Predict
+            if self.step == 5:  # Predict
+                self.parent.predict_formulation = Formulation()
+            if True:  # Always, all tabs
                 self.model_selected(None)
             return
 
@@ -1982,7 +1998,13 @@ class FrameStep1(QtWidgets.QDialog):
                 if y == "":
                     continue
                 if y in xml_params.keys():
-                    run_features["Value"][x] = xml_params[y]
+                    # TODO: quick fix for demo
+                    value = xml_params[y]
+                    if value == "TWEEN80":
+                        value = "Tween-80"
+                    if value == "TWEEN20":
+                        value = "Tween-20"
+                    run_features["Value"][x] = value
             except Exception as e:
                 print(e)
 
@@ -2106,6 +2128,19 @@ class FrameStep1(QtWidgets.QDialog):
         Log.i(
             f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
 
+        # Helper functions for plotting
+        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+            xlog = np.log10(x)
+            ylog = np.log10(y)
+            f_interp = interp1d(xlog, ylog, kind='linear',
+                                fill_value='extrapolate')
+            xlog_min, xlog_max = xlog.min(), xlog.max()
+            margin = (xlog_max - xlog_min) * expand_factor
+            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+            xs = 10**xs_log
+            ys = 10**f_interp(xs_log)
+            return xs, ys
+
         self.run_figure.clear()
         self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
@@ -2114,7 +2149,9 @@ class FrameStep1(QtWidgets.QDialog):
         ax.grid(True, which="both", ls=":")
         ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
         if len(in_viscosity) > 0:
-            ax.set_xlim(min(self.profile_shears), max(self.profile_shears))
+            xs, ys = smooth_log_interpolate(
+                self.profile_shears, self.profile_viscos)
+            ax.set_xlim(xs.min(), xs.max())
             ax.set_ylim(self.calc_limits(yall=in_viscosity))
             ax.plot(self.profile_shears, self.profile_viscos,
                     lw=2.5, color="blue")
