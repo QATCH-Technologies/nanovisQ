@@ -2128,6 +2128,19 @@ class FrameStep1(QtWidgets.QDialog):
         Log.i(
             f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
 
+        # Helper functions for plotting
+        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+            xlog = np.log10(x)
+            ylog = np.log10(y)
+            f_interp = interp1d(xlog, ylog, kind='linear',
+                                fill_value='extrapolate')
+            xlog_min, xlog_max = xlog.min(), xlog.max()
+            margin = (xlog_max - xlog_min) * expand_factor
+            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+            xs = 10**xs_log
+            ys = 10**f_interp(xs_log)
+            return xs, ys
+
         self.run_figure.clear()
         self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
@@ -2136,7 +2149,9 @@ class FrameStep1(QtWidgets.QDialog):
         ax.grid(True, which="both", ls=":")
         ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
         if len(in_viscosity) > 0:
-            ax.set_xlim(min(self.profile_shears), max(self.profile_shears))
+            xs, ys = smooth_log_interpolate(
+                self.profile_shears, self.profile_viscos)
+            ax.set_xlim(xs.min(), xs.max())
             ax.set_ylim(self.calc_limits(yall=in_viscosity))
             ax.plot(self.profile_shears, self.profile_viscos,
                     lw=2.5, color="blue")
