@@ -24,6 +24,6 @@ TutorialPages = {
     7.5: ("Select Precise Fill Point 5", "The fifth point in the dataset corresponds to the 2nd channel fill point, which corresponds to the 2nd inflecion point of the three channnel fill regions. See Note below."),
     7.6: ("Select Precise Fill Point 6", "The sixth point in the dataset corresponds to the 3rd channel fill point, which corresponds to the 3rd inflecion point of the three channnel fill regions, or where the frequencies start to drift quickly away from the stable data region. See Note below."),
     7.7: ("Note: Precise Point Placement", "If a blip is present in the region of the point, select a point just before the blip; otherwise, select a point close to the inflection point when no obvious blip is present in the data."),
-    8: ("VisQ.AI<sup>TM</sup> is Coming Soon!", "This mode is under active development. You can look for it soon in an upcoming release. Learn more at <a href='https://qatchtech.com'>qatchtech.com</a>.")
+    8: ("VisQ.AI<sup>TM</sup> is in pre-release preview!", "You can use VisQ.AI for free while it is in pre-release preview, which lasts for 90 days. After which, to retain access, you will need to subscribe. Learn more at <a href='https://qatchtech.com'>qatchtech.com</a>.")
     #: ("Title", "Description Text"),
 }
