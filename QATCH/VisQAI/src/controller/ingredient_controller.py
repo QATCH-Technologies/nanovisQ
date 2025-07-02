@@ -61,6 +61,15 @@ class IngredientController:
             List[Ingredient]: A list of all `Ingredient` instances in the database.
         """
         return self.db.get_all_ingredients()
+        
+    def get_all_ingredient_names(self) -> List[str]:
+        """Retrieve the names of every ingredient in the database.
+
+        Returns:
+            List[str]: A list of all stored ingredient names.
+        """
+
+        return [ing.name for ing in self.get_all_ingredients()]
 
     def delete_all_ingredients(self) -> None:
         """Delete all ingredients from the database."""
