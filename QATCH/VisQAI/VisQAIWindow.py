@@ -40,6 +40,7 @@ try:
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database, DB_PATH
     from src.processors.sampler import Sampler
+    from src.threads.executor import Executor, ExecutionRecord
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
@@ -49,6 +50,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database, DB_PATH
     from QATCH.VisQAI.src.processors.sampler import Sampler
+    from QATCH.VisQAI.src.threads.executor import Executor, ExecutionRecord
 TAG = "[VisQ.AI]"
 
 
@@ -832,9 +834,9 @@ class FrameStep1(QtWidgets.QDialog):
             if step == 3:
                 self.list_view.clicked.connect(self.user_run_clicked)
             else:
-                # TODO: for steps 2 and 5, pull suggestions/predictions from model
+                # For steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
-                    lambda: self.feature_table.setData(self.loaded_features[self.list_view.selectedIndexes()[0].row()]))
+                    lambda: self.feature_table.setData(self.loaded_features[self.list_view.selectedIndexes()[0].row()]) if len(self.loaded_features) else None)
                 self.list_view.clicked.connect(self.hide_extended_features)
             self.list_view.clicked.connect(
                 lambda: self.btn_update.setEnabled(True))
@@ -963,13 +965,13 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_update.clicked.connect(self.save_formulation)
         # step 4 is not in this class: Learn
         if step == 5:  # Predict
-            self.btn_update.setText("Update Predictions")
+            self.btn_update.setText("Update Prediction")
             self.btn_update.clicked.connect(self.make_predictions)
         right_group.addWidget(self.btn_update)
 
         self.loaded_features = []
 
-        # # TODO: Testing only, create dummy features
+        # # Testing only, create dummy features
         # self.dummy_features = []
         # for i in range(4):
         #     dummy_feature = copy.deepcopy(self.default_features)
@@ -1284,11 +1286,68 @@ class FrameStep1(QtWidgets.QDialog):
 
     def load_suggestion(self):
         model_name = self.select_model_label.text()
-        if not model_name:
-            model_name = "VisQAI-base"
-        sampler = Sampler(asset_name=model_name, database=self.parent.database)
+        if hasattr(self, "timer") and self.timer.isActive():
+            Log.w("Busy canceling... Please wait...")
+            return
+        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+            Log.e("No model selected. Cannot load suggestions.")
+            return
+        if not self.parent.database.is_open:
+            Log.e("No database connection. Cannot load suggestions.")
+            return
+
+        self.progressBar = QtWidgets.QProgressDialog(
+            "Suggesting...", "Cancel", 0, 0, self)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/reset.png')
+        self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+        self.progressBar.setWindowTitle("Busy")
+        self.progressBar.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBar.setWindowFlag(
+            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBar.setFixedSize(
+            int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+        self.progressBar.setModal(True)
+        self.progressBar.show()
+
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(100)
+        self.timer.setSingleShot(False)
+        self.timer.timeout.connect(self.check_finished)
+        self.timer.start()
+
+        def add_new_suggestion(record: ExecutionRecord):
+            if self.progressBar.wasCanceled():
+                Log.d("User canceled suggestion. Ignoring results.")
+                return
+
+            Log.d("Processing suggestion results!")
+
+            form = record.result
+            exception = record.exception
+            if exception:
+                Log.e(f"ERROR: Failed to suggest: {str(exception)}")
+                return
+
+            self.add_formulation(form)
+
+        Log.d("Waiting for suggestion results...")
+        self.parent.enable(False)
+        self.executor = Executor()
+        self.executor.run(
+            self,
+            method_name="get_new_suggestion",
+            asset_name=model_name,
+            callback=add_new_suggestion)
+
+    def get_new_suggestion(self, asset_name):
+        database = Database(parse_file_key=True)
+        sampler = Sampler(asset_name=asset_name,
+                          database=database)
         form = sampler.get_next_sample()
-        self.add_formulation(form)
+        database.close()
+        return form
 
     def add_formulation(self, form: Formulation):
         feature = copy.deepcopy(self.default_features)
@@ -1323,15 +1382,121 @@ class FrameStep1(QtWidgets.QDialog):
         return rate_list
 
     def make_predictions(self):
-        self.save_formulation()
-
-        if not hasattr(self.parent, "formulation"):
-            Log.e("No formulation cached. Cannot load suggestions.")
+        if hasattr(self, "timer") and self.timer.isActive():
+            Log.w("Busy canceling... Please wait...")
+            return
+        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+            Log.e("No model selected. Cannot make predictions.")
+        if not self.parent.database.is_open:
+            Log.e("No database connection. Cannot make predictions.")
             return
 
-        self.parent.predictor = Predictor(self.model_path)
+        if not self.feature_table.allSet():
+            message = "Please correct the highlighted fields first."
+            QtWidgets.QMessageBox.information(
+                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
+            return
+
+        self.save_formulation()
+
+        self.predictor = Predictor(zip_path=self.model_path)
         form_df = self.parent.formulation.to_dataframe(
             encoded=False, training=False)
+
+        self.progressBar = QtWidgets.QProgressDialog(
+            "Updating...", "Cancel", 0, 0, self)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/reset.png')
+        self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+        self.progressBar.setWindowTitle("Busy")
+        self.progressBar.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBar.setWindowFlag(
+            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBar.setFixedSize(
+            int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+        self.progressBar.setModal(True)
+        self.progressBar.show()
+
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(100)
+        self.timer.setSingleShot(False)
+        self.timer.timeout.connect(self.check_finished)
+        self.timer.start()
+
+        def run_prediction_result(record: ExecutionRecord):
+
+            Log.d("Waiting for prediction results...")
+            self.progressBar.setLabelText("Predicting...")
+
+            self.executor.run(
+                self.predictor,
+                method_name="predict_uncertainty",
+                data=form_df,
+                callback=get_prediction_result)
+
+        def get_prediction_result(record: ExecutionRecord):
+
+            if self.progressBar.wasCanceled():
+                Log.d("User canceled prediction. Ignoring results.")
+                return
+
+            Log.d("Processing prediction results!")
+
+            # The returns from this are a predicted viscosity profile [val1,val2,...val5]
+            # predicted_vp = self.parent.predictor.predict(data=form_df)
+
+            # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
+            # a series of standard deviations for each predicted value.
+            predicted_mean_vp, mean_std = record.result
+            exception = record.exception
+            if exception:
+                Log.e(f"ERROR: Prediction exception: {str(exception)}")
+
+            # Helper functions for plotting
+            def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+                xlog = np.log10(x)
+                ylog = np.log10(y)
+                f_interp = interp1d(xlog, ylog, kind='linear',
+                                    fill_value='extrapolate')
+                xlog_min, xlog_max = xlog.min(), xlog.max()
+                margin = (xlog_max - xlog_min) * expand_factor
+                xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+                xs = 10**xs_log
+                ys = 10**f_interp(xs_log)
+                return xs, ys
+
+            def make_plot(name, shear, mean_arr, std_arr, title, color):
+                # clear existing plot before making a new one
+                self.run_figure_valid = False
+                self.run_figure.clear()
+
+                ax = self.run_figure.add_subplot(111)
+                xs, ys = smooth_log_interpolate(shear, mean_arr)
+                xs_up, ys_up = smooth_log_interpolate(
+                    shear, mean_arr + std_arr)
+                xs_dn, ys_dn = smooth_log_interpolate(
+                    shear, mean_arr - std_arr)
+                ax.plot(xs, ys, '-', lw=2.5, color=color)
+                ax.fill_between(xs_dn, ys_dn, ys_up, alpha=0.25, color=color)
+                ax.scatter(shear, mean_arr, s=40, color=color, zorder=5)
+                ax.set_xlim(xs.min(), xs.max())
+                ann = "\n".join(f"{x:.0e}: {m:.1f}±{s:.1f}" for x, m,
+                                s in zip(shear, mean_arr, std_arr))
+                ax.set_xscale("log")
+                ax.set_yscale("log")
+                ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
+                ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
+                ax.set_ylabel("Viscosity (cP)", fontsize=10)
+                ax.grid(True, which="both", ls=":")
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+
+                self.run_figure_valid = True
+                self.run_canvas.draw()
+
+            # Plot
+            make_plot("name", self.profile_shears,
+                      predicted_mean_vp[0], mean_std[0], "title", "blue")
 
         if self.parent.formulation.viscosity_profile.is_measured:
 
@@ -1341,63 +1506,24 @@ class FrameStep1(QtWidgets.QDialog):
             # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
             # Also I have this set so updating does not overwrite the existing model until
             # we figure out how model storage works
-            self.parent.predictor.update(
+            self.executor = Executor()
+            self.executor.run(
+                self.predictor,
+                method_name="update",
                 new_data=form_df,
                 new_targets=np.array([vp]),
                 epochs=10,
                 batch_size=32,
-                save=False)
+                save=False,
+                callback=run_prediction_result)
 
-        # The returns from this are a predicted viscosity profile [val1,val2,...val5]
-        predicted_vp = self.parent.predictor.predict(data=form_df)
-
-        # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
-        # a series of standard deviations for each predicted value.
-        predicted_mean_vp, mean_std = self.parent.predictor.predict_uncertainty(
-            data=form_df)
-
-        # Helper functions for plotting
-        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
-            xlog = np.log10(x)
-            ylog = np.log10(y)
-            f_interp = interp1d(xlog, ylog, kind='linear',
-                                fill_value='extrapolate')
-            xlog_min, xlog_max = xlog.min(), xlog.max()
-            margin = (xlog_max - xlog_min) * expand_factor
-            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
-            xs = 10**xs_log
-            ys = 10**f_interp(xs_log)
-            return xs, ys
-
-        def make_plot(name, shear, mean_arr, std_arr, title, color):
-            # clear existing plot before making a new one
-            self.run_figure_valid = False
-            self.run_figure.clear()
-
-            ax = self.run_figure.add_subplot(111)
-            xs, ys = smooth_log_interpolate(shear, mean_arr)
-            xs_up, ys_up = smooth_log_interpolate(shear, mean_arr + std_arr)
-            xs_dn, ys_dn = smooth_log_interpolate(shear, mean_arr - std_arr)
-            ax.plot(xs, ys, '-', lw=2.5, color=color)
-            ax.fill_between(xs_dn, ys_dn, ys_up, alpha=0.25, color=color)
-            ax.scatter(shear, mean_arr, s=40, color=color, zorder=5)
-            ax.set_xlim(xs.min(), xs.max())
-            ann = "\n".join(f"{x:.0e}: {m:.1f}±{s:.1f}" for x, m,
-                            s in zip(shear, mean_arr, std_arr))
-            ax.set_xscale("log")
-            ax.set_yscale("log")
-            ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
-            ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
-            ax.set_ylabel("Viscosity (cP)", fontsize=10)
-            ax.grid(True, which="both", ls=":")
-            ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
-
-            self.run_figure_valid = True
-            self.run_canvas.draw()
-
-        # Plot
-        make_plot("name", self.profile_shears,
-                  predicted_mean_vp[0], mean_std[0], "title", "blue")
+    def check_finished(self):
+        record_count = 2 if self.step == 5 else 1
+        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == record_count:
+            self.progressBar.close()  # finished
+            self.timer.stop()
+            if self.step == 2:
+                self.parent.enable(True)
 
     def proceed_to_step_2(self):
         # Are we ready to proceed?
@@ -1967,6 +2093,14 @@ class FrameStep1(QtWidgets.QDialog):
         if has_high_shear_pt:
             self.profile_viscos[-1] = in_viscosity[-1]
 
+        expected_point_count = 13
+        if len(in_viscosity) > expected_point_count:
+            indices_to_drop = list(range(4, len(in_shear_rate)-2))
+            in_shear_rate = [item for i, item in enumerate(
+                in_shear_rate) if i not in indices_to_drop]
+            in_viscosity = [item for i, item in enumerate(
+                in_viscosity) if i not in indices_to_drop]
+
         minidx = np.argmin(self.profile_viscos)
         maxidx = np.argmax(self.profile_viscos)
         Log.i(
@@ -1975,13 +2109,18 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_figure.clear()
         self.run_figure_valid = False
         ax = self.run_figure.add_subplot(111)
-        ax.set_title(f"Shear-rate vs. Viscosity: {self.run_name.text()}")
-        ax.set_xlabel("Shear-rate (1/s)")
-        ax.set_ylabel("Viscosity (cP)")
+        ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
+        ax.set_ylabel("Viscosity (cP)", fontsize=10)
+        ax.grid(True, which="both", ls=":")
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
         if len(in_viscosity) > 0:
+            ax.set_xlim(min(self.profile_shears), max(self.profile_shears))
             ax.set_ylim(self.calc_limits(yall=in_viscosity))
-            ax.plot(self.profile_shears, self.profile_viscos, "bd")
-            ax.plot(data[:, 0], data[:, 1], "b,")
+            ax.plot(self.profile_shears, self.profile_viscos,
+                    lw=2.5, color="blue")
+            ax.scatter(self.profile_shears, self.profile_viscos,
+                       s=40, color="blue", zorder=5)
+            ax.plot(in_shear_rate, in_viscosity, "b,")
             self.run_figure_valid = True
 
             DEBUG = False
