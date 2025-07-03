@@ -1322,6 +1322,9 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.progressBar = QtWidgets.QProgressDialog(
             "Suggesting...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBar.setAutoReset(False)
+        self.progressBar.setAutoClose(False)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/reset.png')
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
@@ -1432,6 +1435,9 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.progressBar = QtWidgets.QProgressDialog(
             "Updating...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBar.setAutoReset(False)
+        self.progressBar.setAutoClose(False)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/reset.png')
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
@@ -1554,7 +1560,8 @@ class FrameStep1(QtWidgets.QDialog):
         if self.step == 5 and self.parent.select_formulation.viscosity_profile.is_measured:
             record_count += 1
         if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == record_count:
-            self.progressBar.close()  # finished
+            # finished, but keep the dialog open to retain `wasCanceled()` state
+            self.progressBar.hide()
             self.timer.stop()
             if self.step == 2:
                 self.parent.enable(True)
@@ -1662,9 +1669,50 @@ class FrameStep1(QtWidgets.QDialog):
 
     def add_another_item(self):
         if self.step == 2:
-            self.load_suggestion()
+            self.add_suggestion_dialog()
         if self.step == 5:
             self.add_formulation(Formulation())
+
+    def add_suggestion_dialog(self):
+        self.suggest_dialog = QtWidgets.QDialog(self)
+        self.suggest_dialog.setWindowTitle("Add Suggestion(s)")
+        self.suggest_dialog.setModal(True)
+        self.suggest_dialog.setFixedSize(400, 300)
+
+        layout = QtWidgets.QVBoxLayout(self.suggest_dialog)
+
+        label = QtWidgets.QLabel("How many suggestions do you want to add?")
+        layout.addWidget(label)
+
+        self.suggestion_text = QtWidgets.QComboBox(self.suggest_dialog)
+        self.suggestion_text.addItems(
+            list(map(str, range(1, 11))))  # 1 to 10 suggestions
+        self.suggestion_text.setEditable(True)
+        layout.addWidget(self.suggestion_text)
+
+        layout.addStretch(1)  # add stretch to push buttons to the bottom
+
+        button_box = QtWidgets.QDialogButtonBox(self.suggest_dialog)
+        button_box.setStandardButtons(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+        layout.addWidget(button_box)
+
+        button_box.accepted.connect(self.suggest_dialog.accept)
+        button_box.rejected.connect(self.suggest_dialog.reject)
+
+        self.suggest_dialog.exec_()
+
+        if self.suggest_dialog.result() == QtWidgets.QDialog.Accepted:
+            num_suggestions = self.suggestion_text.currentText()
+            for _ in range(int(num_suggestions)):
+                self.load_suggestion()  # Add a new suggestion
+                while self.timer.isActive():
+                    QtWidgets.QApplication.processEvents()
+                if self.progressBar.wasCanceled():
+                    Log.d("User canceled adding suggestions. Stopping.")
+                    break
+        else:
+            Log.d("User canceled adding suggestions.")
 
     def user_run_removed(self):
         try:
@@ -2448,11 +2496,15 @@ class TableView(QtWidgets.QTableWidget):
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")
                     if isinstance(item, list):
-                        newitem.addItem("None")
+                        if m > 0:  # skip Protein Type row
+                            newitem.addItem("None")
                         newitem.addItems(item)
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
+                        newitem.currentIndexChanged.connect(
+                            lambda idx, row=m: self._on_combo_change(idx, row))
+                        newitem.setCurrentIndex(-1)  # no selection
                     else:  # str
                         newitem.addItem(item)
                         self.data["Units"][m] = ""  # clear flag
@@ -2542,6 +2594,28 @@ class TableView(QtWidgets.QTableWidget):
         self.blockSignals(False)
 
         self.clearSelection()  # unselect on item change
+
+    def _on_combo_change(self, idx: int, row: int):
+        # self.blockSignals(True)
+        conc_item = self.item(row+1, 1)  # concentration item
+        if conc_item is None:
+            return  # no concentration item to change
+        if idx == 0 and row > 0:
+            # If user selects "None" for any Type other than Protein
+            # then disable the concentration item and set it to zero
+            conc_item.setText("0")
+            conc_item.setFlags(conc_item.flags() &
+                               ~(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEditable))
+        else:
+            # If the user selects any other item, enable the concentration
+            # value and set it to the default value (blank, missing input)
+            conc_item.setFlags(conc_item.flags() |
+                               (QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEditable))
+            conc_item.setText("")
+        # NOTE: By not blocking signals here, we allow the `itemChanged` signal
+        #       to propagate and set/clear the background color based on text.
+        #       This is important to ensure the UI reflects the current state.
+        # self.blockSignals(False)
 
 
 class CollapsibleBox(QtWidgets.QWidget):
