@@ -1678,6 +1678,8 @@ class FrameStep1(QtWidgets.QDialog):
         self.suggest_dialog.setWindowTitle("Add Suggestion(s)")
         self.suggest_dialog.setModal(True)
         self.suggest_dialog.setFixedSize(400, 300)
+        self.suggest_dialog.setWindowIcon(QtGui.QIcon(
+            os.path.join(Architecture.get_path(), 'QATCH/icons/qmodel.png')))
 
         layout = QtWidgets.QVBoxLayout(self.suggest_dialog)
 
@@ -1689,6 +1691,33 @@ class FrameStep1(QtWidgets.QDialog):
             list(map(str, range(1, 11))))  # 1 to 10 suggestions
         self.suggestion_text.setEditable(True)
         layout.addWidget(self.suggestion_text)
+
+        self.restrictions_group = QtWidgets.QGroupBox(
+            "Restrictions", self.suggest_dialog)
+        self.restrict_layout = QtWidgets.QVBoxLayout(self.restrictions_group)
+
+        self.restrict_none = QtWidgets.QLabel("None", self.restrictions_group)
+        self.restrict_none.setToolTip("No restrictions on the suggestions")
+        self.restrict_layout.addWidget(self.restrict_none)
+
+        self.restrict_rows = []
+        self.restrict_ingredients = []
+        self.restrict_features = []
+        self.restrict_verbs = []
+        self.restrict_values = []
+        self.cancel_buttons = []
+
+        layout.addWidget(self.restrictions_group)
+
+        self.add_restriction_btn = QtWidgets.QPushButton(
+            icon=self.rotate_and_crop_icon(QtGui.QIcon(
+                os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')), 45, 50),
+            text="Add Restriction",
+            parent=self.suggest_dialog)
+        self.add_restriction_btn.setToolTip(
+            "Add a new restriction for the suggestions")
+        self.add_restriction_btn.clicked.connect(self.add_new_restriction)
+        layout.addWidget(self.add_restriction_btn)
 
         layout.addStretch(1)  # add stretch to push buttons to the bottom
 
@@ -1713,6 +1742,104 @@ class FrameStep1(QtWidgets.QDialog):
                     break
         else:
             Log.d("User canceled adding suggestions.")
+
+    def add_new_restriction(self):
+        self.restrict_none.setVisible(False)  # hide "None" label
+
+        # Create a new row for the restriction
+        self.restrict_rows.append(QtWidgets.QHBoxLayout())
+        # The restrict ingredient can be one of the following:
+        #   Protein, Buffer, Surfactant, Stabilizer, Salt
+        self.restrict_ingredients.append(
+            QtWidgets.QComboBox(self.restrictions_group))
+        self.restrict_ingredients[-1].addItems([
+            "Protein", "Buffer", "Surfactant", "Stabilizer", "Salt"])
+        # No selection by default
+        self.restrict_ingredients[-1].setCurrentIndex(-1)
+        self.restrict_rows[-1].addWidget(self.restrict_ingredients[-1])
+        # The restrict feature can be one of the following:
+        #   Type, Concentration
+        self.restrict_features.append(
+            QtWidgets.QComboBox(self.restrictions_group))
+        self.restrict_features[-1].addItems([
+            "Type", "Concentration"])
+        # No selection by default
+        self.restrict_features[-1].setCurrentIndex(-1)
+        self.restrict_rows[-1].addWidget(self.restrict_features[-1])
+        # The restrict verb can be one of the following:
+        #   is, is not
+        self.restrict_verbs.append(
+            QtWidgets.QComboBox(self.restrictions_group))
+        self.restrict_verbs[-1].addItems(["is", "is not"])
+        self.restrict_verbs[-1].setCurrentIndex(-1)  # No selection by default
+        self.restrict_rows[-1].addWidget(self.restrict_verbs[-1])
+        # The restrict value can be a single, multiple or range of values
+        # (i.e. "PBS", "tween-20,tween-80" or "0.01-0.2")
+        self.restrict_values.append(
+            QtWidgets.QComboBox(self.restrictions_group))
+        self.restrict_values[-1].setEditable(True)
+        self.restrict_values[-1].setCurrentIndex(-1)  # No selection by default
+        self.restrict_rows[-1].addWidget(self.restrict_values[-1])
+        # Cancel button to clear this restriction from the list
+        self.cancel_buttons.append(QtWidgets.QPushButton(
+            icon=QtGui.QIcon(
+                os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')),
+            text=None,
+            parent=self.restrictions_group))
+        self.cancel_buttons[-1].clicked.connect(
+            lambda: self.remove_restriction(len(self.cancel_buttons) - 1))
+        self.cancel_buttons[-1].setFixedWidth(50)
+        self.restrict_rows[-1].addWidget(self.cancel_buttons[-1])
+        self.restrict_layout.addLayout(self.restrict_rows[-1])
+
+    def remove_restriction(self, index: int):
+        if index < 0 or index >= len(self.cancel_buttons):
+            return
+
+        # Remove the restriction from the layout and delete the widgets
+        self.restrict_rows[index].setParent(None)
+        self.restrict_rows[index].deleteLater()
+        del self.restrict_rows[index]
+        self.restrict_ingredients[index].setParent(None)
+        self.restrict_ingredients[index].deleteLater()
+        del self.restrict_ingredients[index]
+        self.restrict_features[index].setParent(None)
+        self.restrict_features[index].deleteLater()
+        del self.restrict_features[index]
+        self.restrict_verbs[index].setParent(None)
+        self.restrict_verbs[index].deleteLater()
+        del self.restrict_verbs[index]
+        self.restrict_values[index].setParent(None)
+        self.restrict_values[index].deleteLater()
+        del self.restrict_values[index]
+        self.cancel_buttons[index].setParent(None)
+        self.cancel_buttons[index].deleteLater()
+        del self.cancel_buttons[index]
+
+        if len(self.restrict_rows) == 0:
+            # If no restrictions left, show the "None" label again
+            self.restrict_none.setVisible(True)
+
+    def rotate_and_crop_icon(self, icon: QtGui.QIcon, angle: float, size: int = 64) -> QtGui.QIcon:
+        # Get original pixmap
+        original_pixmap = icon.pixmap(size, size)
+
+        # Rotate the pixmap
+        transform = QtGui.QTransform()
+        transform.rotate(angle)
+        rotated_pixmap = original_pixmap.transformed(
+            transform, QtCore.Qt.SmoothTransformation)
+
+        # Calculate crop rectangle to center crop back to original size
+        rotated_size = rotated_pixmap.size()
+        x = (rotated_size.width() - size) // 2
+        y = (rotated_size.height() - size) // 2
+
+        # Crop from center
+        crop_rect = QtCore.QRect(x, y, size, size)
+        cropped_pixmap = rotated_pixmap.copy(crop_rect)
+
+        return QtGui.QIcon(cropped_pixmap)
 
     def user_run_removed(self):
         try:
