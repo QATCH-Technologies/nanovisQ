@@ -1677,7 +1677,10 @@ class FrameStep1(QtWidgets.QDialog):
         self.suggest_dialog = QtWidgets.QDialog(self)
         self.suggest_dialog.setWindowTitle("Add Suggestion(s)")
         self.suggest_dialog.setModal(True)
-        self.suggest_dialog.setFixedSize(400, 300)
+        # hide question mark from title bar of window
+        self.suggest_dialog.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.suggest_dialog.setMinimumSize(500, 300)
         self.suggest_dialog.setWindowIcon(QtGui.QIcon(
             os.path.join(Architecture.get_path(), 'QATCH/icons/qmodel.png')))
 
@@ -1712,7 +1715,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.add_restriction_btn = QtWidgets.QPushButton(
             icon=self.rotate_and_crop_icon(QtGui.QIcon(
                 os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')), 45, 50),
-            text="Add Restriction",
+            text="   Add Restriction",
             parent=self.suggest_dialog)
         self.add_restriction_btn.setToolTip(
             "Add a new restriction for the suggestions")
@@ -1776,8 +1779,13 @@ class FrameStep1(QtWidgets.QDialog):
         # The restrict value can be a single, multiple or range of values
         # (i.e. "PBS", "tween-20,tween-80" or "0.01-0.2")
         self.restrict_values.append(
-            QtWidgets.QComboBox(self.restrictions_group))
-        self.restrict_values[-1].setEditable(True)
+            CheckableComboBox(self.restrictions_group))
+        # self.restrict_values[-1].setEditable(True)
+        # TODO: Add items for now just for debugging the combination selection
+        self.restrict_values[-1].addItems([
+            "PBS", "tween-20", "tween-80", "0.01", "0.02", "0.03",
+            "0.04", "0.05", "0.06", "0.07", "0.08", "0.09", "0.1",
+            "0.2", "0.3", "0.4", "0.5"])
         self.restrict_values[-1].setCurrentIndex(-1)  # No selection by default
         self.restrict_rows[-1].addWidget(self.restrict_values[-1])
         # Cancel button to clear this restriction from the list
@@ -2832,6 +2840,105 @@ class CollapsibleBox(QtWidgets.QWidget):
         content_animation.setDuration(500)
         content_animation.setStartValue(0)
         content_animation.setEndValue(content_height)
+
+
+# creating checkable combo box class
+class CheckableComboBox(QtWidgets.QComboBox):
+    def __init__(self, parent=None):
+        super(CheckableComboBox, self).__init__(parent)
+        self.view().pressed.connect(self.handle_item_pressed)
+        self.currentTextChanged.connect(self.check_items)
+        self.setModel(QtGui.QStandardItemModel(self))
+
+    def addItems(self, texts):
+        super().addItems(texts)
+
+        # uncheck all items
+        for i in range(self.count()):
+            self.model().item(i, 0).setCheckState(QtCore.Qt.Unchecked)
+
+    # when any item get pressed
+    def handle_item_pressed(self, index):
+
+        # getting which item is pressed
+        item = self.model().itemFromIndex(index)
+
+        # make it check if unchecked and vice-versa
+        if item.checkState() == QtCore.Qt.Checked:
+            item.setCheckState(QtCore.Qt.Unchecked)
+        else:
+            item.setCheckState(QtCore.Qt.Checked)
+
+        # calling method
+        self.check_items()
+
+    # method called by check_items
+    def item_checked(self, index):
+
+        # getting item at index
+        item = self.model().item(index, 0)
+
+        # return true if checked else false
+        return item.checkState() == QtCore.Qt.Checked
+
+    # method to check which items are checked
+    def check_items(self):
+        # blank list
+        checkedItems = []
+
+        # traversing the items
+        for i in range(self.count()):
+
+            # if item is checked add it to the list
+            if self.item_checked(i):
+                checkedItems.append(i)
+
+        # call this method
+        self.update_label(checkedItems)
+
+    # method to update the label
+    def update_label(self, item_list):
+
+        n = ''
+        count = 0
+
+        # traversing the list
+        for i in item_list:
+
+            # getting label
+            text_label = self.model().item(i, 0).text()
+
+            # if count value is 0 don't add comma
+            if count == 0:
+                n += '% s' % text_label
+            # else value is greater than 0
+            # add comma
+            else:
+                n += ', % s' % text_label
+
+            # increment count
+            count += 1
+
+        # NOTE: To display text different from the items in the list
+        # when a model is set, the QComboBox must be made editable.
+        # If it is not editable, setCurrentText() will only succeed in
+        # changing the displayed text if the provided string is an
+        # exact match for an existing item's display text in the model.
+
+        # if items are checked, set checked text to combo box (see note above)
+        if count > 0 and self.currentText() != n:
+            self.setEditable(True)
+            self.setCurrentText(n)
+
+        # if no items are checked, set the combo box to be uneditable and blank
+        if count == 0 and self.currentText() != n:
+            self.setEditable(False)
+            self.setCurrentIndex(-1)
+
+        # Get the line edit and modify its properties to read-only
+        line_edit = self.lineEdit()
+        if line_edit and line_edit.isReadOnly() == False:
+            line_edit.setReadOnly(True)
 
 
 if __name__ == '__main__':
