@@ -1,9 +1,10 @@
 try:
-    from QATCH.ui.popUp import PopUp
-    from QATCH.core.constants import Constants
-    from QATCH.common.userProfiles import UserProfiles, UserRoles
-    from QATCH.common.logger import Logger as Log
-    from QATCH.common.architecture import Architecture
+from typing import List, Tuple, Dict, Type, Any
+from QATCH.ui.popUp import PopUp
+from QATCH.core.constants import Constants
+from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.common.logger import Logger as Log
+from QATCH.common.architecture import Architecture
 except:
     print("Running VisQAI as standalone app")
 
@@ -1308,7 +1309,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         return True
 
-    def load_suggestion(self):
+    def load_suggestion(self, constraints):
         model_name = self.select_model_label.text()
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
@@ -1366,6 +1367,7 @@ class FrameStep1(QtWidgets.QDialog):
             self,
             method_name="get_new_suggestion",
             asset_name=model_name,
+            # TODO: constraints=constraints,
             callback=add_new_suggestion)
 
     def get_new_suggestion(self, asset_name):
@@ -1695,32 +1697,33 @@ class FrameStep1(QtWidgets.QDialog):
         self.suggestion_text.setEditable(True)
         layout.addWidget(self.suggestion_text)
 
-        self.restrictions_group = QtWidgets.QGroupBox(
-            "Restrictions", self.suggest_dialog)
-        self.restrict_layout = QtWidgets.QVBoxLayout(self.restrictions_group)
+        self.constraints_group = QtWidgets.QGroupBox(
+            "Constraints", self.suggest_dialog)
+        self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_group)
 
-        self.restrict_none = QtWidgets.QLabel("None", self.restrictions_group)
-        self.restrict_none.setToolTip("No restrictions on the suggestions")
-        self.restrict_layout.addWidget(self.restrict_none)
+        self.constraints_none = QtWidgets.QLabel(
+            "None", self.constraints_group)
+        self.constraints_none.setToolTip("No constraints on the suggestions")
+        self.constraints_layout.addWidget(self.constraints_none)
 
-        self.restrict_rows = []
-        self.restrict_ingredients = []
-        self.restrict_features = []
-        self.restrict_verbs = []
-        self.restrict_values = []
-        self.cancel_buttons = []
+        self.constraints_rows = []
+        self.constraints_ingredients = []
+        self.constraints_features = []
+        self.constraints_verbs = []
+        self.constraints_values = []
+        self.constraints_delete_buttons = []
 
-        layout.addWidget(self.restrictions_group)
+        layout.addWidget(self.constraints_group)
 
-        self.add_restriction_btn = QtWidgets.QPushButton(
+        self.add_constraints_btn = QtWidgets.QPushButton(
             icon=self.rotate_and_crop_icon(QtGui.QIcon(
                 os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')), 45, 50),
-            text="   Add Restriction",
+            text="   Add Constraint",
             parent=self.suggest_dialog)
-        self.add_restriction_btn.setToolTip(
-            "Add a new restriction for the suggestions")
-        self.add_restriction_btn.clicked.connect(self.add_new_restriction)
-        layout.addWidget(self.add_restriction_btn)
+        self.add_constraints_btn.setToolTip(
+            "Add a new constraint for the suggestions")
+        self.add_constraints_btn.clicked.connect(self.add_new_constraint)
+        layout.addWidget(self.add_constraints_btn)
 
         layout.addStretch(1)  # add stretch to push buttons to the bottom
 
@@ -1736,8 +1739,18 @@ class FrameStep1(QtWidgets.QDialog):
 
         if self.suggest_dialog.result() == QtWidgets.QDialog.Accepted:
             num_suggestions = self.suggestion_text.currentText()
+            if not num_suggestions.isdigit() or int(num_suggestions) < 1:
+                Log.w("Invalid number of suggestions:", num_suggestions)
+                return
+            constraints = self.build_constraints()
+            if not constraints:
+                Log.w(
+                    "Missing/invalid fields in Constraints. Please fill out or remove them.")
+                return
+
+            Log.d("Adding suggestions with constraints:", constraints)
             for _ in range(int(num_suggestions)):
-                self.load_suggestion()  # Add a new suggestion
+                self.load_suggestion(constraints)  # Add a new suggestion
                 while self.timer.isActive():
                     QtWidgets.QApplication.processEvents()
                 if self.progressBar.wasCanceled():
@@ -1746,87 +1759,147 @@ class FrameStep1(QtWidgets.QDialog):
         else:
             Log.d("User canceled adding suggestions.")
 
-    def add_new_restriction(self):
-        self.restrict_none.setVisible(False)  # hide "None" label
+    def add_new_constraint(self):
+        self.constraints_none.setVisible(False)  # hide "None" label
 
-        # Create a new row for the restriction
-        self.restrict_rows.append(QtWidgets.QHBoxLayout())
-        # The restrict ingredient can be one of the following:
+        # Create a new row for the constraint
+        self.constraints_rows.append(QtWidgets.QHBoxLayout())
+        # The constraint ingredient can be one of the following:
         #   Protein, Buffer, Surfactant, Stabilizer, Salt
-        self.restrict_ingredients.append(
-            QtWidgets.QComboBox(self.restrictions_group))
-        self.restrict_ingredients[-1].addItems([
+        self.constraints_ingredients.append(
+            QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_ingredients[-1].addItems([
             "Protein", "Buffer", "Surfactant", "Stabilizer", "Salt"])
         # No selection by default
-        self.restrict_ingredients[-1].setCurrentIndex(-1)
-        self.restrict_rows[-1].addWidget(self.restrict_ingredients[-1])
-        # The restrict feature can be one of the following:
+        self.constraints_ingredients[-1].setCurrentIndex(-1)
+        self.constraints_ingredients[-1].currentIndexChanged.connect(
+            lambda index, idx=len(self.constraints_ingredients)-1: self.autofill_constraint_values(idx))
+        # When ingredient changes, autofill possible values
+        self.constraints_rows[-1].addWidget(self.constraints_ingredients[-1])
+        # The constraint feature can be one of the following:
         #   Type, Concentration
-        self.restrict_features.append(
-            QtWidgets.QComboBox(self.restrictions_group))
-        self.restrict_features[-1].addItems([
+        self.constraints_features.append(
+            QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_features[-1].addItems([
             "Type", "Concentration"])
         # No selection by default
-        self.restrict_features[-1].setCurrentIndex(-1)
-        self.restrict_rows[-1].addWidget(self.restrict_features[-1])
-        # The restrict verb can be one of the following:
+        self.constraints_features[-1].setCurrentIndex(-1)
+        self.constraints_features[-1].currentIndexChanged.connect(
+            lambda index, idx=len(self.constraints_features)-1: self.autofill_constraint_values(idx))
+        # When feature changes, autofill possible values
+        self.constraints_rows[-1].addWidget(self.constraints_features[-1])
+        # The constraint verb can be one of the following:
         #   is, is not
-        self.restrict_verbs.append(
-            QtWidgets.QComboBox(self.restrictions_group))
-        self.restrict_verbs[-1].addItems(["is", "is not"])
-        self.restrict_verbs[-1].setCurrentIndex(-1)  # No selection by default
-        self.restrict_rows[-1].addWidget(self.restrict_verbs[-1])
-        # The restrict value can be a single, multiple or range of values
+        self.constraints_verbs.append(
+            QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_verbs[-1].addItems(["is", "is not"])
+        # No selection by default
+        self.constraints_verbs[-1].setCurrentIndex(-1)
+        self.constraints_verbs[-1].currentIndexChanged.connect(
+            lambda index, idx=len(self.constraints_verbs)-1: self.autofill_constraint_values(idx))
+        self.constraints_rows[-1].addWidget(self.constraints_verbs[-1])
+        # The constraint value can be a single, multiple or range of values
         # (i.e. "PBS", "tween-20,tween-80" or "0.01-0.2")
-        self.restrict_values.append(
-            CheckableComboBox(self.restrictions_group))
-        # self.restrict_values[-1].setEditable(True)
+        self.constraints_values.append(
+            CheckableComboBox(self.constraints_group))
+        # self.constraints_values[-1].setEditable(True)
         # TODO: Add items for now just for debugging the combination selection
-        self.restrict_values[-1].addItems([
-            "PBS", "tween-20", "tween-80", "0.01", "0.02", "0.03",
-            "0.04", "0.05", "0.06", "0.07", "0.08", "0.09", "0.1",
-            "0.2", "0.3", "0.4", "0.5"])
-        self.restrict_values[-1].setCurrentIndex(-1)  # No selection by default
-        self.restrict_rows[-1].addWidget(self.restrict_values[-1])
-        # Cancel button to clear this restriction from the list
-        self.cancel_buttons.append(QtWidgets.QPushButton(
+        # self.constraints_values[-1].addItems([
+        #     "PBS", "tween-20", "tween-80", "0.01", "0.02", "0.03",
+        #     "0.04", "0.05", "0.06", "0.07", "0.08", "0.09", "0.1",
+        #     "0.2", "0.3", "0.4", "0.5"])
+        # No selection by default
+        self.constraints_values[-1].setCurrentIndex(-1)
+        # with stretch
+        self.constraints_rows[-1].addWidget(self.constraints_values[-1], 1)
+        # Delete button to clear this constraint from the list
+        self.constraints_delete_buttons.append(QtWidgets.QPushButton(
             icon=QtGui.QIcon(
                 os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')),
             text=None,
-            parent=self.restrictions_group))
-        self.cancel_buttons[-1].clicked.connect(
-            lambda: self.remove_restriction(len(self.cancel_buttons) - 1))
-        self.cancel_buttons[-1].setFixedWidth(50)
-        self.restrict_rows[-1].addWidget(self.cancel_buttons[-1])
-        self.restrict_layout.addLayout(self.restrict_rows[-1])
+            parent=self.constraints_group))
+        self.constraints_delete_buttons[-1].clicked.connect(
+            lambda: self.remove_constraint(len(self.constraints_delete_buttons) - 1))
+        self.constraints_delete_buttons[-1].setFixedWidth(50)
+        self.constraints_rows[-1].addWidget(
+            self.constraints_delete_buttons[-1])
+        self.constraints_layout.addLayout(self.constraints_rows[-1])
 
-    def remove_restriction(self, index: int):
-        if index < 0 or index >= len(self.cancel_buttons):
+    def autofill_constraint_values(self, index: int):
+        if index < 0 or index >= len(self.constraints_ingredients) or \
+                index >= len(self.constraints_features) or \
+                index >= len(self.constraints_verbs) or \
+                index >= len(self.constraints_values):
+            Log.e("Invalid constraint index:", index)
             return
 
-        # Remove the restriction from the layout and delete the widgets
-        self.restrict_rows[index].setParent(None)
-        self.restrict_rows[index].deleteLater()
-        del self.restrict_rows[index]
-        self.restrict_ingredients[index].setParent(None)
-        self.restrict_ingredients[index].deleteLater()
-        del self.restrict_ingredients[index]
-        self.restrict_features[index].setParent(None)
-        self.restrict_features[index].deleteLater()
-        del self.restrict_features[index]
-        self.restrict_verbs[index].setParent(None)
-        self.restrict_verbs[index].deleteLater()
-        del self.restrict_verbs[index]
-        self.restrict_values[index].setParent(None)
-        self.restrict_values[index].deleteLater()
-        del self.restrict_values[index]
-        self.cancel_buttons[index].setParent(None)
-        self.cancel_buttons[index].deleteLater()
-        del self.cancel_buttons[index]
+        ingredient = self.constraints_ingredients[index].currentText()
+        feature = self.constraints_features[index].currentText()
+        verb = self.constraints_verbs[index].currentText()
 
-        if len(self.restrict_rows) == 0:
-            # If no restrictions left, show the "None" label again
-            self.restrict_none.setVisible(True)
+        model = self.constraints_values[index].model()
+        current_items = [model.data(model.index(i, 0))
+                         for i in range(model.rowCount())]
+
+        if not ingredient or not feature or not verb:
+            return  # nothing selected yet
+
+        autofill_items = []
+        editable = False
+        if feature == "Type":
+            if ingredient == "Protein":
+                autofill_items = self.proteins
+            elif ingredient == "Buffer":
+                autofill_items = self.buffers
+            elif ingredient == "Surfactant":
+                autofill_items = self.surfactants
+            elif ingredient == "Stabilizer":
+                autofill_items = self.stabilizers
+            elif ingredient == "Salt":
+                autofill_items = self.salts
+            if ingredient != "Protein":
+                autofill_items.insert(0, "None")  # allow "none" selection
+        elif feature == "Concentration":
+            editable = True
+
+        # Clear and set new items or placeholder (if different)
+        if autofill_items != current_items or editable != self.constraints_values[index].isEditable():
+            self.constraints_values[index].clear()
+            self.constraints_values[index].setEditable(editable)
+            if editable:
+                self.constraints_values[index].update_label(autofill_items)
+            else:
+                self.constraints_values[index].addItems(autofill_items)
+                self.constraints_values[index].setCurrentIndex(-1)
+
+    def remove_constraint(self, index: int):
+        if index < 0 or index >= len(self.constraints_delete_buttons):
+            Log.e("Invalid constraint index:", index)
+            return
+
+        # Remove the constraint from the layout and delete the widgets
+        self.constraints_rows[index].setParent(None)
+        self.constraints_rows[index].deleteLater()
+        del self.constraints_rows[index]
+        self.constraints_ingredients[index].setParent(None)
+        self.constraints_ingredients[index].deleteLater()
+        del self.constraints_ingredients[index]
+        self.constraints_features[index].setParent(None)
+        self.constraints_features[index].deleteLater()
+        del self.constraints_features[index]
+        self.constraints_verbs[index].setParent(None)
+        self.constraints_verbs[index].deleteLater()
+        del self.constraints_verbs[index]
+        self.constraints_values[index].setParent(None)
+        self.constraints_values[index].deleteLater()
+        del self.constraints_values[index]
+        self.constraints_delete_buttons[index].setParent(None)
+        self.constraints_delete_buttons[index].deleteLater()
+        del self.constraints_delete_buttons[index]
+
+        if len(self.constraints_rows) == 0:
+            # If no constraints left, show the "None" label again
+            self.constraints_none.setVisible(True)
 
     def rotate_and_crop_icon(self, icon: QtGui.QIcon, angle: float, size: int = 64) -> QtGui.QIcon:
         # Get original pixmap
@@ -1848,6 +1921,55 @@ class FrameStep1(QtWidgets.QDialog):
         cropped_pixmap = rotated_pixmap.copy(crop_rect)
 
         return QtGui.QIcon(cropped_pixmap)
+
+    def build_constraints(self) -> list | None:
+        user_constraints = []
+        for i in range(len(self.constraints_ingredients)):
+            ingredient = self.constraints_ingredients[i].currentText()
+            feature = self.constraints_features[i].currentText()
+            verb = self.constraints_verbs[i].currentText()
+            values = self.constraints_values[i].currentText()
+            if not ingredient or not feature or not verb or not values:
+                return None  # missing fields
+
+            # Split values by semicolon and strip whitespace
+            values = [v.strip() for v in values.split(";") if v.strip()]
+            if not values:
+                return None  # no valid values
+
+            # Check if value contains a range (e.g. "0.01-0.1") and convert to tuple (0.01, 0.1)
+            # Otherwise, convert the value to float
+            # If conversion fails, return None
+            for j in range(len(values)):
+                if "-" in values[j]:
+                    try:
+                        # NOTE: This will not handle negative values correctly
+                        start, end = values[j].split("-")
+                        start = float(start.strip())
+                        end = float(end.strip())
+                        values[j] = (start, end)
+                    except ValueError:
+                        return None  # invalid range format
+                else:
+                    try:
+                        values[j] = float(values[j].strip())
+                    except ValueError:
+                        return None  # invalid float format
+
+            user_constraints.append((ingredient, feature, verb, values))
+
+        fixed_properties = []
+        # TODO: Populate fixed properties from user_constraints
+        for ingredient, feature, verb, values in user_constraints:
+            constraint = {
+                "ingredient": ingredient,
+                "feature": feature,
+                "verb": verb,
+                "values": values
+            }
+            fixed_properties.append(constraint)
+
+        return Constraints(self.ingredient_controller, fixed_properties)
 
     def user_run_removed(self):
         try:
@@ -2849,6 +2971,7 @@ class CheckableComboBox(QtWidgets.QComboBox):
         self.view().pressed.connect(self.handle_item_pressed)
         self.currentTextChanged.connect(self.check_items)
         self.setModel(QtGui.QStandardItemModel(self))
+        self._editable = False  # store editable state
 
     def addItems(self, texts):
         super().addItems(texts)
@@ -2856,6 +2979,12 @@ class CheckableComboBox(QtWidgets.QComboBox):
         # uncheck all items
         for i in range(self.count()):
             self.model().item(i, 0).setCheckState(QtCore.Qt.Unchecked)
+
+    def setEditable(self, editable: bool):
+
+        # override setEditable to prevent user from making it editable
+        # just store the value
+        self._editable = editable
 
     # when any item get pressed
     def handle_item_pressed(self, index):
@@ -2912,9 +3041,9 @@ class CheckableComboBox(QtWidgets.QComboBox):
             if count == 0:
                 n += '% s' % text_label
             # else value is greater than 0
-            # add comma
+            # add semicolon
             else:
-                n += ', % s' % text_label
+                n += '; % s' % text_label
 
             # increment count
             count += 1
@@ -2925,20 +3054,110 @@ class CheckableComboBox(QtWidgets.QComboBox):
         # changing the displayed text if the provided string is an
         # exact match for an existing item's display text in the model.
 
-        # if items are checked, set checked text to combo box (see note above)
-        if count > 0 and self.currentText() != n:
-            self.setEditable(True)
-            self.setCurrentText(n)
+        if not self._editable:
 
-        # if no items are checked, set the combo box to be uneditable and blank
-        if count == 0 and self.currentText() != n:
-            self.setEditable(False)
-            self.setCurrentIndex(-1)
+            # if items are checked, set checked text to combo box (see note above)
+            if count > 0 and self.currentText() != n:
+                super().setEditable(True)
+                self.setCurrentText(n)
+
+            # if no items are checked, set the combo box to be uneditable and blank
+            if count == 0 and self.currentText() != n:
+                super().setEditable(False)
+                self.setCurrentIndex(-1)
+
+        else:
+            super().setEditable(True)
 
         # Get the line edit and modify its properties to read-only
         line_edit = self.lineEdit()
-        if line_edit and line_edit.isReadOnly() == False:
-            line_edit.setReadOnly(True)
+        if line_edit:
+            if self._editable:  # set by CheckableComboBox.setEditable()
+                line_edit.setPlaceholderText("<val>; <min>-<max>")
+                if line_edit.isReadOnly() == True:
+                    line_edit.setReadOnly(False)
+            else:
+                if line_edit.isReadOnly() == False:
+                    line_edit.setReadOnly(True)
+
+
+FEATURES: List[str] = [
+    "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+    "Temperature", "Buffer_type", "Buffer_pH", "Buffer_conc",
+    "Salt_type", "Salt_conc", "Stabilizer_type", "Stabilizer_conc",
+    "Surfactant_type", "Surfactant_conc",
+]
+
+CATEGORICAL: Dict[str, Type] = {
+    "Protein_type": Protein,
+    "Buffer_type": Buffer,
+    "Salt_type": Salt,
+    "Stabilizer_type": Stabilizer,
+    "Surfactant_type": Surfactant,
+}
+
+IMMUTABLE_FEATURES = {"MW", "PI_mean", "PI_range", "Buffer_pH"}
+
+
+class Constraints:
+
+    def __init__(
+        self,
+        ingredient_ctrl: IngredientController,
+        fixed_properties: Dict[str, float]
+    ):
+        self._ingredient_ctrl = ingredient_ctrl
+        self._fixed_props = fixed_properties
+        self._ranges: Dict[str, Tuple[float, float]] = {}
+        self._choices: Dict[str, List[Any]] = {}
+
+    def add_range(self, feature: str, low: float, high: float) -> None:
+        if feature in CATEGORICAL:
+            raise ValueError(f"'{feature}' is categorical—use set_choices().")
+        if feature in IMMUTABLE_FEATURES:
+            raise ValueError(f"'{feature}' is immutable and cannot be ranged.")
+        if feature not in FEATURES:
+            raise KeyError(f"Unknown feature '{feature}'.")
+        self._ranges[feature] = (float(low), float(high))
+
+    def add_choices(self, feature: str, choices: List[Any]) -> None:
+        if feature not in CATEGORICAL:
+            raise ValueError(f"'{feature}' is numeric—use set_range().")
+        self._choices[feature] = list(choices)
+
+    def build(self) -> Tuple[List[Tuple[float, float]], List[Dict[str, Any]]]:
+        bounds: List[Tuple[float, float]] = []
+        encoding: List[Dict[str, Any]] = []
+
+        all_ings = self._ingredient_ctrl.get_all_ingredients()
+
+        for feat in FEATURES:
+            if feat in IMMUTABLE_FEATURES:
+                val = self._fixed_props.get(feat)
+                if val is None:
+                    raise ValueError(
+                        f"Property '{feat}' must be provided in fixed_properties.")
+                encoding.append({"type": "fixed", "value": val})
+                bounds.append((val, val))
+
+            elif feat in CATEGORICAL:
+                choices = self._choices.get(feat)
+                if choices is None:
+                    cls = CATEGORICAL[feat]
+                    choices = [
+                        ing.name for ing in all_ings if isinstance(ing, cls)]
+                if not choices:
+                    raise ValueError(f"No choices available for '{feat}'.")
+                encoding.append({"type": "cat", "choices": choices})
+                bounds.append((0.0, float(len(choices) - 1)))
+
+            else:
+                low, high = self._ranges.get(
+                    feat, (float("-inf"), float("inf")))
+                encoding.append({"type": "num"})
+                bounds.append((low, high))
+
+        return bounds, encoding
 
 
 if __name__ == '__main__':
