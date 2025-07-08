@@ -4,10 +4,10 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.ui.collapsible_box import CollapsibleBox
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Salt, Buffer, Stabilizer
-from QATCH.VisQAI.VisQAIWindow import CollapsibleBox
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np

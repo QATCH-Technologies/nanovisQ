@@ -61,7 +61,7 @@ class IngredientController:
             List[Ingredient]: A list of all `Ingredient` instances in the database.
         """
         return self.db.get_all_ingredients()
-        
+
     def get_all_ingredient_names(self) -> List[str]:
         """Retrieve the names of every ingredient in the database.
 
