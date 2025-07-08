@@ -5,10 +5,12 @@ try:
     from src.controller.ingredient_controller import IngredientController
     from src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant
     from src.db.db import Database
+    from src.utils.list_utils import ListUtils
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.utils.list_utils import ListUtils
 
 
 class Constraints:
@@ -78,19 +80,6 @@ class Constraints:
         List[Tuple[float, float]],
         List[Dict[str, Any]]
     ]:
-        def unique_case_insensitive_sort(list):
-            seen = set()
-            result = []
-            for item in list:
-                lower_item = item.lower()
-                if lower_item not in seen:
-                    seen.add(lower_item)
-                    result.append(item)
-
-            # Sort case-insensitive
-            result.sort(key=str.lower)
-            return result
-
         bounds: List[Tuple[float, float]] = []
         encoding: List[Dict[str, Any]] = []
 
@@ -109,7 +98,7 @@ class Constraints:
                 if not chosen:
                     raise ValueError(f"No choices available for '{feat}'.")
 
-                names = unique_case_insensitive_sort(
+                names = ListUtils.unique_case_insensitive_sort(
                     [ing.name for ing in chosen])
                 encoding.append({
                     "feature": feat,

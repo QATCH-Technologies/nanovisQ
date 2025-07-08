@@ -8,6 +8,7 @@ from QATCH.ui.collapsible_box import CollapsibleBox
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Salt, Buffer, Stabilizer
+from QATCH.VisQAI.src.utils.list_utils import ListUtils
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np
@@ -1725,19 +1726,6 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t16.setEnabled(True)
             pass  # do nothing if any other value was selected
 
-    def unique_case_insensitive_sort(self, list):
-        seen = set()
-        result = []
-        for item in list:
-            lower_item = item.lower()
-            if lower_item not in seen:
-                seen.add(lower_item)
-                result.append(item)
-
-        # Sort case-insensitive
-        result.sort(key=str.lower)
-        return result
-
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
@@ -1776,11 +1764,13 @@ class QueryRunInfo(QtWidgets.QWidget):
         # self.salts = sorted(
         #     self.salts, key=str.casefold)
         # this is unique, case-insensitive sorting method:
-        self.proteins = self.unique_case_insensitive_sort(self.proteins)
-        self.buffers = self.unique_case_insensitive_sort(self.buffers)
-        self.surfactants = self.unique_case_insensitive_sort(self.surfactants)
-        self.stabilizers = self.unique_case_insensitive_sort(self.stabilizers)
-        self.salts = self.unique_case_insensitive_sort(self.salts)
+        self.proteins = ListUtils.unique_case_insensitive_sort(self.proteins)
+        self.buffers = ListUtils.unique_case_insensitive_sort(self.buffers)
+        self.surfactants = ListUtils.unique_case_insensitive_sort(
+            self.surfactants)
+        self.stabilizers = ListUtils.unique_case_insensitive_sort(
+            self.stabilizers)
+        self.salts = ListUtils.unique_case_insensitive_sort(self.salts)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)

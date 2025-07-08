@@ -2,6 +2,7 @@ try:
     from QATCH.ui.popUp import PopUp
     from QATCH.core.constants import Constants
     from QATCH.common.logger import Logger as Log
+    from QATCH.common.architecture import Architecture
 except:
     print("Running VisQAI as standalone app")
 
@@ -11,19 +12,29 @@ except:
         def w(tag, msg=""): print("WARNING:", tag, msg)
         def e(tag, msg=""): print("ERROR:", tag, msg)
 
-from PyQt5 import QtCore, QtWidgets
+from PyQt5 import QtCore, QtGui, QtWidgets
 import os
 from typing import TYPE_CHECKING
 
 try:
+    from src.utils.constraints import Constraints
+    from src.utils.icon_utils import IconUtils
+    from src.utils.list_utils import ListUtils
+    from src.view.constraints_ui import ConstraintsUI
     if TYPE_CHECKING:
         from src.view.frame_step1 import FrameStep1
         from src.view.main_window import VisQAIWindow
 
 except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.VisQAI.src.utils.icon_utils import IconUtils
+    from QATCH.VisQAI.src.utils.list_utils import ListUtils
+    from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
+
+TAG = "[FrameStep2]"
 
 
 class FrameStep2(QtWidgets.QDialog):
@@ -40,6 +51,11 @@ class FrameStep2(QtWidgets.QDialog):
             self.setWindowTitle("Optimize")
         else:
             self.setWindowTitle(f"FrameStep{step}")
+
+        if step == 6:  # Optimize
+            # self.init_optimizer()
+            self.constraints_ui = ConstraintsUI(self, self.step)
+            self.constraints = None
 
         # Main layout
         main_layout = QtWidgets.QVBoxLayout(self)
@@ -138,6 +154,18 @@ class FrameStep2(QtWidgets.QDialog):
 
         self.progress_bar.setValue(0)
 
+    def init_optimizer(self):
+        """Initialize the optimizer for the current step."""
+        if self.step == 6:
+            # Initialize optimizer here
+            Log.d(TAG, "Initializing optimizer for step 6 (Optimize)...")
+
+            self.load_all_excipient_types()
+
+            Log.i(TAG, "Optimizer initialized.")
+        else:
+            Log.d(TAG, "Optimizer not initialized for this step.")
+
     def on_tab_selected(self):
         # Select a pre-selected model, if none selected here
         if not self.model_path:
@@ -160,6 +188,58 @@ class FrameStep2(QtWidgets.QDialog):
 
         self.load_changes()
 
+    def load_all_excipient_types(self):
+        self.proteins: list[str] = []
+        self.buffers: list[str] = []
+        self.surfactants: list[str] = []
+        self.stabilizers: list[str] = []
+        self.salts: list[str] = []
+
+        ingredients = self.parent.ing_ctrl.get_all_ingredients()
+        for i in ingredients:
+            if i.name.casefold() == "none":
+                continue  # skip "none"
+            if i.type == "Protein":
+                self.proteins.append(i.name)
+            elif i.type == "Buffer":
+                self.buffers.append(i.name)
+            elif i.type == "Surfactant":
+                self.surfactants.append(i.name)
+            elif i.type == "Stabilizer":
+                self.stabilizers.append(i.name)
+            elif i.type == "Salt":
+                self.salts.append(i.name)
+
+        # this is case-sensitive, which is not what we want:
+        # self.excipient_proteins.sort()
+        # self.excipient_surfactants.sort()
+        # self.excipient_stabilizers.sort()
+        # this is using a case-insensitive sorting method:
+        # self.proteins = sorted(
+        #     self.proteins, key=str.casefold)
+        # self.buffers = sorted(
+        #     self.buffers, key=str.casefold)
+        # self.surfactants = sorted(
+        #     self.surfactants, key=str.casefold)
+        # self.stabilizers = sorted(
+        #     self.stabilizers, key=str.casefold)
+        # self.salts = sorted(
+        #     self.salts, key=str.casefold)
+        # this is unique, case-insensitive sorting method:
+        self.proteins = ListUtils.unique_case_insensitive_sort(self.proteins)
+        self.buffers = ListUtils.unique_case_insensitive_sort(self.buffers)
+        self.surfactants = ListUtils.unique_case_insensitive_sort(
+            self.surfactants)
+        self.stabilizers = ListUtils.unique_case_insensitive_sort(
+            self.stabilizers)
+        self.salts = ListUtils.unique_case_insensitive_sort(self.salts)
+
+        Log.d("Proteins:", self.proteins)
+        Log.d("Buffers:", self.buffers)
+        Log.d("Surfactants:", self.surfactants)
+        Log.d("Stabilizers:", self.stabilizers)
+        Log.d("Salts", self.salts)
+
     def model_selected(self, path: str | None):
         self.model_path = path
 
@@ -180,9 +260,49 @@ class FrameStep2(QtWidgets.QDialog):
             changes.extend(experiments_tab.all_files.keys())
 
         if self.step == 6:  # optimize
-            pass
+            self.init_optimizer()
+            self.constraints_ui.add_suggestion_dialog()
+            self.constraints_ui.suggest_dialog.exec_()  # blocking
+
+            if not self.constraints:
+                Log.w(TAG, "No constraints set for optimization.")
+                return
+
+            bounds, encoding = self.constraints.build()
+            for feature in encoding:
+                if feature["type"] == "cat":
+                    if feature["feature"] not in self.constraints._choices:
+                        Log.d(
+                            TAG, f"No choices set for categorical feature '{feature['feature']}'.")
+                        continue
+                    choices = self.constraints._choices.get(feature["feature"])
+                    changes.append(
+                        f"{feature['feature']}: {', '.join([ing.name for ing in choices])}")
+                elif feature["type"] == "num":
+                    if feature["feature"] not in self.constraints._ranges:
+                        Log.d(
+                            TAG, f"No range set for numeric feature '{feature['feature']}'.")
+                        continue
+                    low, high = bounds[encoding.index(feature)]
+                    changes.append(f"{feature['feature']}: {low} - {high}")
+                else:
+                    Log.w(
+                        TAG, f"Unknown feature type '{feature['type']}' for feature '{feature['feature']}'.")
 
         self.summary_text.setPlainText("\n".join(changes).strip())
+
+    def set_constraints(self, constraints):
+        """Set the constraints for the optimizer."""
+        if self.step != 6:
+            Log.w(TAG, "set_constraints called, but step is not 6 (Optimize).")
+            return
+
+        if not isinstance(constraints, Constraints):
+            Log.e(TAG, "set_constraints expects a Constraints instance.")
+            return
+
+        self.constraints = constraints
+        Log.i(TAG, "Constraints set for optimization.")
 
     def learn(self):
         raise NotImplementedError()
