@@ -109,7 +109,6 @@ class Sampler:
     def get_next_sample(self, use_ucb: bool = True, kappa: float = 2.0) -> Formulation:
         candidates = []
 
-       # 1. Global exploration
         current_unc = np.nanmean(
             self._current_uncertainty) if self._current_uncertainty.size > 0 else float("inf")
         n_global = 20 if current_unc < 0.05 else 5
@@ -122,7 +121,6 @@ class Sampler:
                 viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
             candidates.append((form, score))
 
-        # 2. Local (if applicable)
         if hasattr(self, "_last_formulation") and self._last_formulation is not None:
             local_samples = self._perturb_formulation(
                 self._last_formulation, base_uncertainty=current_unc)
@@ -133,8 +131,7 @@ class Sampler:
                     viscosity, unc, kappa) if use_ucb else np.nanmean(unc)
                 candidates.append((form, score))
 
-        # 3. Select best
-        candidates.sort(key=lambda tup: -tup[1])  # descending by score
+        candidates.sort(key=lambda tup: -tup[1])
         return candidates[0][0] if candidates else None
 
     def _generate_random_samples(self, n: int = 20) -> list[Formulation]:
@@ -193,16 +190,6 @@ class Sampler:
         max_uncertainty: float = 1.0,
         n: int = 5,
     ) -> list[Formulation]:
-        """
-        Perturbs numeric values based on how uncertain the last sample was.
-        More uncertain -> larger noise scale.
-
-        Args:
-            formulation: The base formulation to perturb.
-            base_uncertainty: The mean uncertainty of the last prediction.
-            max_uncertainty: The assumed maximum model uncertainty.
-            n: Number of perturbed samples to generate.
-        """
         noise_scale = min(1.0, base_uncertainty / max_uncertainty) * \
             0.2  # scale between 0–20%
         base_df = formulation.to_dataframe()
