@@ -32,11 +32,7 @@ os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 
 class Logger:
     """
-    Central logger for the QATCH application.
-
-    Provides methods to create and configure logging handlers,
-    log messages at various levels with tags, and display system
-    information.
+    Central logger for the QATCH Nanovis application.
     """
 
     @staticmethod
