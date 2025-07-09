@@ -17,6 +17,7 @@ Version:
 """
 
 from typing import List, Optional
+from rapidfuzz import process, fuzz
 
 try:
     from src.db.db import Database
@@ -886,6 +887,38 @@ class IngredientController:
 
         self.db.update_ingredient(s_fetch.id, s_new)
         return s_new
+
+    def fuzzy_fetch(self,
+                    name: str,
+                    max_results: int = 5,
+                    score_cutoff: int = 75) -> list[Ingredient]:
+        """
+        Utility to perform fuzzy matching between ingredient names and persistent names
+        stored in the database.  This method operates by fetching all persistent ingredient names
+        and then fuzzily matching them against the parameterized name str.  The best match(es) above the
+        score_cutoff is returned to the caller as an ingredient object.
+
+        Args:
+            name (str): the name of the ingredient to fetch.
+            max_results (int): the number of fuzzily matched Ingredient objects to return.
+            score_cutoff (int): confidence measure for RapidFuzz to determine accuracy.
+
+        Returns:
+            list[Ingredient] a list of fuzzily matched ingredient objects or a list of None * [max_results]
+            if no matches are found.
+        """
+        all_names = self.get_all_ingredient_names()
+        matches = process.extract(
+            query=name,
+            choices=all_names,
+            scorer=fuzz.WRatio,
+            limit=max_results,
+            score_cutoff=score_cutoff
+        )
+        return [
+            self.get_by_name(match_name)
+            for match_name, score, idx in matches
+        ]
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.
