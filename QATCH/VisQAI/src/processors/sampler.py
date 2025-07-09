@@ -66,7 +66,7 @@ class Sampler:
         self._last_formulation = None
 
     def add_sample(self, formulation: Formulation) -> None:
-        df = formulation.to_dataframe()
+        df = formulation.to_dataframe(encoded=False)
         vis, unc = self.predictor.predict_uncertainty(df)
         self._current_viscosity = self._make_viscosity_profile(vis)
         self._current_uncertainty = unc
@@ -79,7 +79,8 @@ class Sampler:
         n_global = 20 if base_unc < 0.05 else 5
 
         for form in self._generate_random_samples(n_global):
-            vis, unc = self.predictor.predict_uncertainty(form.to_dataframe())
+            vis, unc = self.predictor.predict_uncertainty(
+                form.to_dataframe(encoded=False))
             score = self._acquisition_ucb(
                 vis, unc, kappa) if use_ucb else np.nanmean(unc)
             candidates.append((form, score))
@@ -87,7 +88,7 @@ class Sampler:
         if self._last_formulation is not None:
             for form in self._perturb_formulation(self._last_formulation, base_unc):
                 vis, unc = self.predictor.predict_uncertainty(
-                    form.to_dataframe())
+                    form.to_dataframe(encoded=False))
                 score = self._acquisition_ucb(
                     vis, unc, kappa) if use_ucb else np.nanmean(unc)
                 candidates.append((form, score))
@@ -95,17 +96,29 @@ class Sampler:
         candidates.sort(key=lambda x: -x[1])
         return candidates[0][0] if candidates else None
 
+    def _round_suggestion(self, feat: str, val: float) -> float:
+        if feat in ("Stabilizer_conc", "Surfactant_conc"):
+            return float(round(min(max(val, 0.0), 1.0) / 0.05) * 0.05)
+        else:
+            return float(round(val / 5.0) * 5.0)
+
     def _generate_random_samples(self, n: int) -> List[Formulation]:
         samples: List[Formulation] = []
+
         for _ in range(n):
             suggestions: Dict[str, Union[str, float]] = {}
             for (low, high), enc in zip(self._bounds, self._encoding):
                 feat = enc["feature"]
                 if enc["type"] == "cat":
-                    idx = np.random.randint(len(enc["choices"]))
-                    suggestions[feat] = enc["choices"][idx]
+                    choices = enc.get("choices", [])
+                    if not choices:
+                        raise RuntimeError(
+                            f"No choices for categorical feature {feat}")
+                    suggestions[feat] = np.random.choice(choices)
                 else:
-                    suggestions[feat] = float(np.random.uniform(low, high))
+                    raw = float(np.random.uniform(low, high))
+                    suggestions[feat] = self._round_suggestion(feat, raw)
+
             samples.append(self._build_formulation(suggestions))
         return samples
 
@@ -117,7 +130,7 @@ class Sampler:
         n: int = 5,
     ) -> List[Formulation]:
         noise_scale = min(1.0, base_uncertainty / max_uncertainty) * 0.2
-        base_df = formulation.to_dataframe()
+        base_df = formulation.to_dataframe(encoded=False)
         perturbed: List[Formulation] = []
 
         for _ in range(n):
@@ -128,21 +141,17 @@ class Sampler:
                 if enc["type"] == "num":
                     nv = val * (1 + np.random.normal(scale=noise_scale))
                     nv = float(np.clip(nv, low, high))
-                    sug[feat] = nv
+                    sug[feat] = self._round_suggestion(feat, nv)
                 else:
                     sug[feat] = val
             perturbed.append(self._build_formulation(sug))
         return perturbed
 
-    def _make_viscosity_profile(self, viscosity: dict) -> ViscosityProfile:
-        """
-        Convert a dict { shear_rate -> viscosity_value } into a ViscosityProfile.
-        """
-        shear_rates, viscosities = [], []
-        for sr, v in viscosity.items():
-            shear_rates.append(float(sr))
-            viscosities.append(float(v))
-        return ViscosityProfile(shear_rates=shear_rates, viscosities=viscosities)
+    def _make_viscosity_profile(self, viscosities: np.ndarray) -> ViscosityProfile:
+        return ViscosityProfile(
+            shear_rates=[100, 1000, 10000, 100000, 15000000],
+            viscosities=viscosities.flatten().tolist()
+        )
 
     def _acquisition_ucb(
         self,
@@ -151,83 +160,55 @@ class Sampler:
         kappa: float = 2.0,
         reference_shear_rate: float = 10.0
     ) -> float:
-        """
-        Compute the UCB score: mu + kappa * sigma at the reference shear rate.
-        """
         try:
             srs = np.array([float(sr) for sr in viscosity.keys()])
             vis = np.array([float(v) for v in viscosity.values()])
             idx = np.abs(srs - reference_shear_rate).argmin()
             mu = vis[idx]
         except Exception:
-            mu = np.mean(list(viscosity.values()))
+            mu = np.mean(viscosity)
         sigma = np.nanmean(uncertainty)
         return mu + kappa * sigma
 
     def _build_formulation(self, suggestions: Dict[str, Union[str, float]]) -> Formulation:
         form = Formulation()
 
-        # Protein
         if (val := suggestions.get("Protein_type")):
-            try:
-                prot = val if isinstance(
-                    val, Ingredient) else self.ing_ctrl.get_protein_by_name(val)
-                form.set_protein(prot,
-                                 float(suggestions.get("Protein_conc", 0.0)),
-                                 "mg/mL")
-            except Exception:
-                pass
+            prot = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_protein_by_name(val)
+            form.set_protein(prot,
+                             float(suggestions.get("Protein_conc", 0.0)),
+                             "mg/mL")
 
-        # Buffer
         if (val := suggestions.get("Buffer_type")):
-            try:
-                buff = val if isinstance(
-                    val, Ingredient) else self.ing_ctrl.get_buffer_by_name(val)
-                form.set_buffer(buff,
-                                float(suggestions.get("Buffer_conc", 0.0)),
-                                "mM")
-            except Exception:
-                pass
+            buff = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_buffer_by_name(val)
+            form.set_buffer(buff,
+                            float(suggestions.get("Buffer_conc", 0.0)),
+                            "mM")
 
-        # Salt
         if (val := suggestions.get("Salt_type")):
-            try:
-                salt = val if isinstance(
-                    val, Ingredient) else self.ing_ctrl.get_salt_by_name(val)
-                form.set_salt(salt,
-                              float(suggestions.get("Salt_conc", 0.0)),
-                              "mM")
-            except Exception:
-                pass
+            salt = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_salt_by_name(val)
+            form.set_salt(salt,
+                          float(suggestions.get("Salt_conc", 0.0)),
+                          "mM")
 
-        # Stabilizer
         if (val := suggestions.get("Stabilizer_type")):
-            try:
-                stab = val if isinstance(
-                    val, Ingredient) else self.ing_ctrl.get_stabilizer_by_name(val)
-                form.set_stabilizer(stab,
-                                    float(suggestions.get(
-                                        "Stabilizer_conc", 0.0)),
-                                    "M")
-            except Exception:
-                pass
+            stab = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_stabilizer_by_name(val)
+            form.set_stabilizer(stab,
+                                float(suggestions.get(
+                                    "Stabilizer_conc", 0.0)),
+                                "M")
 
-        # Surfactant
         if (val := suggestions.get("Surfactant_type")):
-            try:
-                surf = val if isinstance(
-                    val, Ingredient) else self.ing_ctrl.get_surfactant_by_name(val)
-                form.set_surfactant(surf,
-                                    float(suggestions.get(
-                                        "Surfactant_conc", 0.0)),
-                                    "%w")
-            except Exception:
-                pass
+            surf = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_surfactant_by_name(val)
+            form.set_surfactant(surf,
+                                float(suggestions.get(
+                                    "Surfactant_conc", 0.0)),
+                                "%w")
 
-        # Temperature (always set, default = 25.0)
-        try:
-            form.set_temperature(float(suggestions.get("Temperature", 25.0)))
-        except Exception:
-            pass
-
+        form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form
