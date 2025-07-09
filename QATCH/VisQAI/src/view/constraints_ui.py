@@ -242,7 +242,7 @@ class ConstraintsUI(QtWidgets.QWidget):
                 autofill_items = self.parent.stabilizers.copy()
             elif ingredient == "Salt":
                 autofill_items = self.parent.salts.copy()
-            if ingredient != "Protein" and "None" not in autofill_items:
+            if ingredient not in ["Protein", "Buffer"] and "None" not in autofill_items:
                 autofill_items.insert(0, "None")  # allow "none" selection
         elif feature == "Concentration":
             editable = True
