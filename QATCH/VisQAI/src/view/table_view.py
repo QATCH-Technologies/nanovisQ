@@ -10,6 +10,10 @@ class Color:
 
 class TableView(QtWidgets.QTableWidget):
 
+    # Define named constants for special row indices
+    PROTEIN_TYPE_ROW = 0
+    BUFFER_TYPE_ROW = 5
+
     def __init__(self, data, *args):
         QtWidgets.QTableWidget.__init__(self, *args)
         self.itemChanged.connect(self._on_item_changed)
@@ -39,7 +43,8 @@ class TableView(QtWidgets.QTableWidget):
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")
                     if isinstance(item, list):
-                        if m > 0:  # skip Protein Type row
+                        # skip Protein Type and Buffer Type rows
+                        if m not in [self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]:
                             newitem.addItem("None")
                         newitem.addItems(item)
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
@@ -143,8 +148,10 @@ class TableView(QtWidgets.QTableWidget):
         conc_item = self.item(row+1, 1)  # concentration item
         if conc_item is None:
             return  # no concentration item to change
-        if idx == 0 and row > 0:
-            # If user selects "None" for any Type other than Protein
+        # "None" selected for non-Protein/Buffer
+        if idx == 0 and row not in [self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]:
+            # If user selects "None" for any Type other than Protein or Buffer,
+            # we assume they do not want to set a concentration for that item,
             # then disable the concentration item and set it to zero
             conc_item.setText("0")
             conc_item.setFlags(conc_item.flags() &

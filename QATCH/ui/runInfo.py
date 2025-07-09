@@ -1877,7 +1877,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c10.count()
             self.c10.clear()
-            self.c10.addItem("")  # blank, default until user makes selection
+            # self.c10.addItem("")  # blank, default until user makes selection
             self.c10.addItems(self.proteins)
             self.c10.addItem("Add new...")
             if num_items:
@@ -1885,7 +1885,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # TODO: since we `sort()`, "newest" is not "last"
                 self.c10.setCurrentText(self.proteins[-1])
             else:
-                self.c10.setCurrentIndex(0)  # initial load value: [blank]
+                self.c10.setCurrentIndex(-1)  # initial load value: [blank]
         except:
             Log.e("Failed to update proteins list after saving.")
 
@@ -1893,7 +1893,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c13.count()
             self.c13.clear()
-            self.c13.addItem("None")
+            # self.c13.addItem("None") # hide "None" option
             self.c13.addItems(self.buffers)
             self.c13.addItem("Add new...")
             if num_items:
@@ -1901,7 +1901,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # TODO: since we `sort()`, "newest" is not "last"
                 self.c13.setCurrentText(self.buffers[-1])
             else:
-                self.c13.setCurrentIndex(0)  # initial load value: none
+                self.c13.setCurrentIndex(-1)  # initial load value: [blank]
         except:
             Log.e("Failed to update buffers list after saving.")
 
