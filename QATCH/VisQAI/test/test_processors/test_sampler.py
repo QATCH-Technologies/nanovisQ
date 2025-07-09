@@ -49,12 +49,16 @@ class TestSampler(unittest.TestCase):
         self.db = Database(path=os.path.join(
             "test", "assets", "app.db"), parse_file_key=True)
         self.ing_ctrl = IngredientController(self.db)
+        self.ing_ctrl.delete_all_ingredients()
+
+        self.constraints = Constraints(db=self.db)
         for ing in self.all_ings:
             self.ing_ctrl.add(ing)
         # Build the Sampler (seeded for reproducibility)
         self.sampler = Sampler(
             asset_name=self.asset_name,
             database=self.db,
+            constraints=self.constraints,
             seed=42
         )
 
@@ -67,14 +71,6 @@ class TestSampler(unittest.TestCase):
         self.assertEqual(len(samples), 10)
         for form in samples:
             self.assertIsInstance(form, Formulation)
-
-    def test_make_viscosity_profile(self):
-        viscosity = {"5": 1.5, "10": 2.5}
-        vp = self.sampler._make_viscosity_profile(viscosity)
-        self.assertIsInstance(vp, ViscosityProfile)
-        # Order of items follows insertion order
-        self.assertEqual(vp.shear_rates, [5.0, 10.0])
-        self.assertEqual(vp.viscosities, [1.5, 2.5])
 
     def test_acquisition_ucb_computation(self):
         viscosity = {"8": 1.0, "12": 3.0}
@@ -106,41 +102,47 @@ class TestSampler(unittest.TestCase):
 
     def test_get_next_sample_without_and_with_prior(self):
         # Without any prior sample
-        next_form = self.sampler.get_next_sample(use_ucb=False)
+        next_form = self.sampler.get_next_sample(use_ucb=True)
         self.assertIsInstance(next_form, Formulation)
 
         # After seeding with a sample, still returns a Formulation
         prior = self.sampler._generate_random_samples(1)[0]
         self.sampler.add_sample(prior)
-        next_form2 = self.sampler.get_next_sample(use_ucb=False)
+        next_form2 = self.sampler.get_next_sample(use_ucb=True)
+        print(next_form2)
         self.assertIsInstance(next_form2, Formulation)
 
-    def test_perturb_formulation_keeps_within_bounds(self):
-        # Build a minimal suggestion dict at the lower bounds
-        suggestions = {}
-        for (low, high), enc in zip(self.sampler._bounds, self.sampler._encoding):
-            if enc["type"] == "cat":
-                # pick the first choice
-                suggestions[enc["feature"]] = enc["choices"][0]
-            else:
-                suggestions[enc["feature"]] = float(low)
+    def test_generated_samples_respect_numeric_constraints(self):
+        # Narrow numeric bounds so we can reliably assert on them
+        constrained = Constraints(db=self.db)
+        constrained.add_range("Protein_conc", 50.0, 60.0)
+        constrained.add_range("Temperature", 25.0, 26.0)
 
-        base_form = self.sampler._build_formulation(suggestions)
-        perturbed = self.sampler._perturb_formulation(
-            base_form, base_uncertainty=0.5, n=5)
+        # Re-create a sampler that uses these constrained bounds
+        sampler_c = Sampler(
+            asset_name=self.asset_name,
+            database=self.db,
+            constraints=constrained,
+            seed=123
+        )
 
-        # Should produce exactly 5 variants, all within [low, high]
-        self.assertEqual(len(perturbed), 5)
-        for form in perturbed:
-            df = form.to_dataframe()
-            for (low, high), enc in zip(self.sampler._bounds, self.sampler._encoding):
-                feat = enc["feature"]
-                val = df[feat].iloc[0]
-                self.assertGreaterEqual(val, low, f"{feat} below lower bound")
-                self.assertLessEqual(val, high, f"{feat} above upper bound")
-                if enc["type"] == "cat":
-                    # categorical must remain unchanged
-                    self.assertEqual(val, suggestions[feat])
+        samples = sampler_c._generate_random_samples(30)
+        self.assertEqual(len(samples), 30)
+
+        for s in samples:
+            # Protein concentration should lie within [50, 60]
+            conc = s.protein.concentration
+            self.assertGreaterEqual(conc, 50.0,
+                                    f"Protein_conc {conc} < 50.0")
+            self.assertLessEqual(conc, 60.0,
+                                 f"Protein_conc {conc} > 60.0")
+
+            # Temperature should lie within [25, 26]
+            temp = s.temperature
+            self.assertGreaterEqual(temp, 25.0,
+                                    f"Temperature {temp} < 25.0")
+            self.assertLessEqual(temp, 26.0,
+                                 f"Temperature {temp} > 26.0")
 
 
 if __name__ == "__main__":
