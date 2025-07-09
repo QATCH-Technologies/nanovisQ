@@ -706,13 +706,14 @@ class FrameStep1(QtWidgets.QDialog):
             self,
             method_name="get_new_suggestion",
             asset_name=model_name,
-            # TODO: constraints=constraints,
+            constraints=constraints,
             callback=add_new_suggestion)
 
-    def get_new_suggestion(self, asset_name):
+    def get_new_suggestion(self, asset_name, constraints=None):
         database = Database(parse_file_key=True)
         sampler = Sampler(asset_name=asset_name,
-                          database=database)
+                          database=database,
+                          constraints=constraints)
         form = sampler.get_next_sample()
         database.close()
         return form
