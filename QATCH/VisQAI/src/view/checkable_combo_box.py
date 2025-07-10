@@ -17,6 +17,12 @@ class CheckableComboBox(QtWidgets.QComboBox):
         for i in range(self.count()):
             self.model().item(i, 0).setCheckState(QtCore.Qt.Unchecked)
 
+    def getItems(self):
+        items = []
+        for i in range(self.count()):
+            items.append(self.model().item(i, 0).text())
+        return items
+
     def setEditable(self, editable: bool):
 
         # override setEditable to prevent user from making it editable

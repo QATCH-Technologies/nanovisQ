@@ -233,6 +233,11 @@ class ConstraintsUI(QtWidgets.QWidget):
         if not verb:  # select "is" when left options picked
             self.constraints_verbs[index].setCurrentIndex(0)
 
+        # Only allow "is not" verb when the feature is "Type"
+        self.constraints_verbs[index].setEnabled(feature == "Type")
+        if feature == "Concentration" and verb == "is not":
+            self.constraints_verbs[index].setCurrentIndex(0)
+
         autofill_items = []
         editable = False
         if feature == "Type":
@@ -331,23 +336,27 @@ class ConstraintsUI(QtWidgets.QWidget):
         constraints = Constraints(self.main_window.database)
 
         # Populate constraints object from user added constraints
-        for ingredient, feature, verb, values in added_constraints:
+        for idx, (ingredient, feature, verb, values) in enumerate(added_constraints):
             feature = str(feature)  # type set
             constraint_name = f"{ingredient}_{feature[:4].lower()}"
+            negate = False if verb == "is" else True
             if constraint_name in Constraints._CATEGORICAL:
                 # Categorical constraint
                 choices: List[Ingredient] = []
-                for value in values:
-                    choice = self.main_window.ing_ctrl.get_by_name(
-                        name=value,
-                        ingredient=Constraints._FEATURE_CLASS[constraint_name]
-                        (enc_id=-1, name="Dummy Ingredient subclass instance"))
-                    choices.append(choice)
+                for value in self.constraints_values[idx].getItems():
+                    if (negate == False and value in values) or \
+                       (negate == True and value not in values):
+                        choice = self.main_window.ing_ctrl.get_by_name(
+                            name=value,
+                            ingredient=Constraints._FEATURE_CLASS[constraint_name]
+                            (enc_id=-1, name="Dummy Ingredient subclass instance"))
+                        choices.append(choice)
                 constraints.add_choices(
                     feature=constraint_name,
                     choices=choices)
             elif constraint_name in Constraints._NUMERIC:
                 # Numerical constraint
+                # NOTE: "is not" not supported for numeric values
                 for value in values:
                     constraints.add_range(
                         feature=constraint_name,
