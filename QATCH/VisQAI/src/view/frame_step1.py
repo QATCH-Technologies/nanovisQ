@@ -706,11 +706,12 @@ class FrameStep1(QtWidgets.QDialog):
             self,
             method_name="get_new_suggestion",
             asset_name=model_name,
-            constraints=constraints,
+            constraints=copy.deepcopy(constraints),
             callback=add_new_suggestion)
 
-    def get_new_suggestion(self, asset_name, constraints=None):
+    def get_new_suggestion(self, asset_name, constraints: Constraints | None = None):
         database = Database(parse_file_key=True)
+        constraints.set_db(database)  # Needed for cross-threading
         sampler = Sampler(asset_name=asset_name,
                           database=database,
                           constraints=constraints)
@@ -898,10 +899,9 @@ class FrameStep1(QtWidgets.QDialog):
             run_prediction_result()
 
     def check_finished(self):
-        record_count = 1
-        if self.step == 5 and self.parent.select_formulation.viscosity_profile.is_measured:
-            record_count += 1
-        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == record_count:
+        # at least 1 record expected, but may be more based on task count
+        expect_record_count = max(1, self.executor.task_count())
+        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == expect_record_count:
             # finished, but keep the dialog open to retain `wasCanceled()` state
             self.progressBar.hide()
             self.timer.stop()

@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Tuple, Type
 import math
+import copy
 
 try:
     from src.controller.ingredient_controller import IngredientController
@@ -50,6 +51,16 @@ class Constraints:
         self._ranges: Dict[str, Tuple[float, float]] = {}
         self._choices: Dict[str, List[Ingredient]] = {}
 
+    def __deepcopy__(self, memo):
+        """Custom deep copy to avoid copying the database and ingredient controller."""
+        new_obj = type(self)(self._db)
+        for key, value in self.__dict__.items():
+            if key in ('_db', '_ingredient_ctrl'):
+                new_obj.__dict__[key] = None
+            else:
+                new_obj.__dict__[key] = copy.deepcopy(value, memo)
+        return new_obj
+
     def add_range(self, feature: str, low: float, high: float) -> None:
         if feature not in self._NUMERIC:
             raise ValueError(
@@ -75,6 +86,17 @@ class Constraints:
                 raise ValueError(
                     f"`{c.name}` has not been added to persistent store yet.")
         self._choices[feature] = list(choices)
+
+    def set_db(self, db: Database) -> None:
+        """Set the database to use for ingredient retrieval."""
+        if not isinstance(db, Database):
+            raise TypeError("db must be an instance of Database")
+        self._db = db
+        self._ingredient_ctrl = IngredientController(db=self._db)
+
+    def get_db(self) -> Database:
+        """Get the current database instance."""
+        return self._db
 
     def build(self) -> Tuple[
         List[Tuple[float, float]],
