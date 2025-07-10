@@ -36,9 +36,16 @@ class TableView(QtWidgets.QTableWidget):
                 if n == 0 or n == 2:
                     # always treat first and last cols as uneditable text, not a QComboBox
                     newitem = QtWidgets.QTableWidgetItem(str(item))
-                elif self._is_number(item) or len(item) == 0:
-                    # item is either a number or blank (empty string)
+                elif len(str(item)) == 0:
+                    # if item is blank (empty string)
                     newitem = QtWidgets.QTableWidgetItem(str(item))
+                elif self._is_number(item):
+                    # if item is a number, we want to format it
+                    # as a string with at most 2 decimal places
+                    # but removing any trailing zeros
+                    # (ex: 1.234 -> "1.23", 1.200 -> "1.2", 1.000 -> "1")
+                    round_item = f"{float(item):.2f}".rstrip("0").rstrip(".")
+                    newitem = QtWidgets.QTableWidgetItem(round_item)
                 else:
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")

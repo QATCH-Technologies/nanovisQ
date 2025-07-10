@@ -181,9 +181,11 @@ class Sampler:
             float: Rounded value within valid bounds.
         """
         if feat in ('Stabilizer_conc', 'Surfactant_conc'):
-            return float(round(min(max(val, 0.0), 1.0) / 0.05) * 0.05)
+            rounded = float(round(min(max(val, 0.0), 1.0) / 0.05) * 0.05)
+            return rounded if rounded > 0 else 0.05
         else:
-            return float(round(val / 5.0) * 5.0)
+            rounded = float(round(val / 5.0) * 5.0)
+            return rounded if rounded > 0 else 5.0
 
     def _generate_random_samples(self, n: int) -> List[Formulation]:
         """
@@ -208,8 +210,14 @@ class Sampler:
                             f"No choices for categorical feature {feat}")
                     suggestions[feat] = np.random.choice(choices)
                 else:
-                    raw = float(np.random.uniform(low, high))
-                    suggestions[feat] = self._round_suggestion(feat, raw)
+                    ing_type = suggestions.get(
+                        feat.replace('_conc', '_type'), None)
+                    if str(ing_type).lower() == 'none':
+                        suggestions[feat] = 0.0
+                    else:
+                        # Generate a random float within the bounds
+                        raw = float(np.random.uniform(low, high))
+                        suggestions[feat] = self._round_suggestion(feat, raw)
 
             samples.append(self._build_formulation(suggestions))
         return samples
