@@ -53,7 +53,6 @@ class FrameStep2(QtWidgets.QDialog):
             self.setWindowTitle(f"FrameStep{step}")
 
         if step == 6:  # Optimize
-            # self.init_optimizer()
             self.constraints_ui = ConstraintsUI(self, self.step)
             self.constraints = None
 
@@ -100,6 +99,13 @@ class FrameStep2(QtWidgets.QDialog):
         self.summary_text = QtWidgets.QPlainTextEdit()
         self.summary_text.setPlaceholderText("No changes")
         self.summary_text.setReadOnly(True)
+        if step == 6:
+            optimize_btn_layout = QtWidgets.QHBoxLayout()
+            optimize_feat_btn = QtWidgets.QPushButton("Define...")
+            optimize_feat_btn.clicked.connect(self.load_changes)
+            optimize_btn_layout.addWidget(optimize_feat_btn)
+            optimize_btn_layout.addStretch()
+            summary_layout.addLayout(optimize_btn_layout)
         summary_layout.addWidget(summary_label)
         summary_layout.addWidget(self.summary_text)
 
@@ -154,19 +160,11 @@ class FrameStep2(QtWidgets.QDialog):
 
         self.progress_bar.setValue(0)
 
-    def init_optimizer(self):
-        """Initialize the optimizer for the current step."""
-        if self.step == 6:
-            # Initialize optimizer here
-            Log.d(TAG, "Initializing optimizer for step 6 (Optimize)...")
-
-            self.load_all_excipient_types()
-
-            Log.i(TAG, "Optimizer initialized.")
-        else:
-            Log.d(TAG, "Optimizer not initialized for this step.")
-
     def on_tab_selected(self):
+
+        # Reload all excipients from DB
+        self.load_all_excipient_types()
+
         # Select a pre-selected model, if none selected here
         if not self.model_path:
             select_tab: FrameStep1 = self.parent.tab_widget.widget(0)
@@ -186,7 +184,8 @@ class FrameStep2(QtWidgets.QDialog):
             if found_model_path:
                 self.model_selected(found_model_path)
 
-        self.load_changes()
+        if self.step == 4:  # learn
+            self.load_changes()
 
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
@@ -195,44 +194,9 @@ class FrameStep2(QtWidgets.QDialog):
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
 
-        ingredients = self.parent.ing_ctrl.get_all_ingredients()
-        for i in ingredients:
-            if i.name.casefold() == "none":
-                continue  # skip "none"
-            if i.type == "Protein":
-                self.proteins.append(i.name)
-            elif i.type == "Buffer":
-                self.buffers.append(i.name)
-            elif i.type == "Surfactant":
-                self.surfactants.append(i.name)
-            elif i.type == "Stabilizer":
-                self.stabilizers.append(i.name)
-            elif i.type == "Salt":
-                self.salts.append(i.name)
-
-        # this is case-sensitive, which is not what we want:
-        # self.excipient_proteins.sort()
-        # self.excipient_surfactants.sort()
-        # self.excipient_stabilizers.sort()
-        # this is using a case-insensitive sorting method:
-        # self.proteins = sorted(
-        #     self.proteins, key=str.casefold)
-        # self.buffers = sorted(
-        #     self.buffers, key=str.casefold)
-        # self.surfactants = sorted(
-        #     self.surfactants, key=str.casefold)
-        # self.stabilizers = sorted(
-        #     self.stabilizers, key=str.casefold)
-        # self.salts = sorted(
-        #     self.salts, key=str.casefold)
-        # this is unique, case-insensitive sorting method:
-        self.proteins = ListUtils.unique_case_insensitive_sort(self.proteins)
-        self.buffers = ListUtils.unique_case_insensitive_sort(self.buffers)
-        self.surfactants = ListUtils.unique_case_insensitive_sort(
-            self.surfactants)
-        self.stabilizers = ListUtils.unique_case_insensitive_sort(
-            self.stabilizers)
-        self.salts = ListUtils.unique_case_insensitive_sort(self.salts)
+        self.proteins, self.buffers, self.surfactants, \
+            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+                self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
@@ -260,7 +224,6 @@ class FrameStep2(QtWidgets.QDialog):
             changes.extend(experiments_tab.all_files.keys())
 
         if self.step == 6:  # optimize
-            self.init_optimizer()
             self.constraints_ui.add_suggestion_dialog()
             self.constraints_ui.suggest_dialog.exec_()  # blocking
 

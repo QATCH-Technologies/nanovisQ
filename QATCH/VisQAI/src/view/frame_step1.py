@@ -386,6 +386,9 @@ class FrameStep1(QtWidgets.QDialog):
         # Set run directory from User Preferences.
         self.file_dialog.setDirectory(Constants.log_prefer_path)
 
+        # Reload all excipients from DB
+        self.load_all_excipient_types()
+
         if self.step == 2:  # Suggest
             # self.load_suggestion()
             pass
@@ -434,44 +437,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
 
-        ingredients = self.parent.ing_ctrl.get_all_ingredients()
-        for i in ingredients:
-            if i.name.casefold() == "none":
-                continue  # skip "none"
-            if i.type == "Protein":
-                self.proteins.append(i.name)
-            elif i.type == "Buffer":
-                self.buffers.append(i.name)
-            elif i.type == "Surfactant":
-                self.surfactants.append(i.name)
-            elif i.type == "Stabilizer":
-                self.stabilizers.append(i.name)
-            elif i.type == "Salt":
-                self.salts.append(i.name)
-
-        # this is case-sensitive, which is not what we want:
-        # self.excipient_proteins.sort()
-        # self.excipient_surfactants.sort()
-        # self.excipient_stabilizers.sort()
-        # this is using a case-insensitive sorting method:
-        # self.proteins = sorted(
-        #     self.proteins, key=str.casefold)
-        # self.buffers = sorted(
-        #     self.buffers, key=str.casefold)
-        # self.surfactants = sorted(
-        #     self.surfactants, key=str.casefold)
-        # self.stabilizers = sorted(
-        #     self.stabilizers, key=str.casefold)
-        # self.salts = sorted(
-        #     self.salts, key=str.casefold)
-        # this is unique, case-insensitive sorting method:
-        self.proteins = ListUtils.unique_case_insensitive_sort(self.proteins)
-        self.buffers = ListUtils.unique_case_insensitive_sort(self.buffers)
-        self.surfactants = ListUtils.unique_case_insensitive_sort(
-            self.surfactants)
-        self.stabilizers = ListUtils.unique_case_insensitive_sort(
-            self.stabilizers)
-        self.salts = ListUtils.unique_case_insensitive_sort(self.salts)
+        self.proteins, self.buffers, self.surfactants, \
+            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+                self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)

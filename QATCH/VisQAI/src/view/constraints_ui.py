@@ -171,18 +171,19 @@ class ConstraintsUI(QtWidgets.QWidget):
         #   is, is not
         self.constraints_verbs.append(
             QtWidgets.QComboBox(self.constraints_group))
+        # TODO: "is not" support not implemented in Constraints
         self.constraints_verbs[-1].addItems(["is", "is not"])
         # No selection by default
         self.constraints_verbs[-1].setCurrentIndex(-1)
-        self.constraints_verbs[-1].currentIndexChanged.connect(
-            lambda index, idx=len(self.constraints_verbs)-1: self.autofill_constraint_values(idx))
+        # self.constraints_verbs[-1].currentIndexChanged.connect(
+        #     lambda index, idx=len(self.constraints_verbs)-1: self.autofill_constraint_values(idx))
         self.constraints_rows[-1].addWidget(self.constraints_verbs[-1])
         # The constraint value can be a single, multiple or range of values
         # (i.e. "PBS", "tween-20,tween-80" or "0.01-0.2")
         self.constraints_values.append(
             CheckableComboBox(self.constraints_group))
         # self.constraints_values[-1].setEditable(True)
-        # TODO: Add items for now just for debugging the combination selection
+        # Add items for now just for debugging the combination selection
         # self.constraints_values[-1].addItems([
         #     "PBS", "tween-20", "tween-80", "0.01", "0.02", "0.03",
         #     "0.04", "0.05", "0.06", "0.07", "0.08", "0.09", "0.1",
@@ -226,8 +227,11 @@ class ConstraintsUI(QtWidgets.QWidget):
         current_items = [model.data(model.index(i, 0))
                          for i in range(model.rowCount())]
 
-        if not ingredient or not feature or not verb:
+        if not ingredient or not feature:
             return  # nothing selected yet
+
+        if not verb:  # select "is" when left options picked
+            self.constraints_verbs[index].setCurrentIndex(0)
 
         autofill_items = []
         editable = False
