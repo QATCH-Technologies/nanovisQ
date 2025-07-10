@@ -56,6 +56,14 @@ class Logger:
         except ImportError:
             pass
 
+        try:
+            from absl import logging as absl_logging
+            absl_logging.set_verbosity(absl_logging.ERROR)
+            absl_logging.set_stderrthreshold('error')
+            logging.getLogger('absl').setLevel(logging.ERROR)
+        except ImportError:
+            pass
+
         log_format_file = logging.Formatter(
             fmt='%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s'
         )

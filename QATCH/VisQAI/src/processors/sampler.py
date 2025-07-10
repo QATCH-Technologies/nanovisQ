@@ -139,7 +139,7 @@ class Sampler:
 
         Args:
             use_ucb (bool): If True, use the UCB acquisition function; otherwise, rank by mean uncertainty.
-            kappa (float): Exploration–exploitation trade-off parameter for UCB.
+            kappa (float): Exploration-exploitation trade-off parameter for UCB.
 
         Returns:
             Formulation: The next selected formulation, or None if no candidates.
@@ -276,10 +276,10 @@ class Sampler:
 
     def _acquisition_ucb(
         self,
-        viscosity: dict,
+        viscosity: np.ndarray,
         uncertainty: np.ndarray,
         kappa: float = 2.0,
-        reference_shear_rate: float = 10.0
+        reference_shear_rate: float = 10_000
     ) -> float:
         """
         Computes Upper Confidence Bound (UCB) score for acquisition.
@@ -294,8 +294,8 @@ class Sampler:
             float: UCB score = mu + kappa * sigma.
         """
         try:
-            srs = np.array([float(sr) for sr in viscosity.keys()])
-            vis = np.array([float(v) for v in viscosity.values()])
+            srs = np.array([100, 1_000, 10_000, 100_000, 15_000_000])
+            vis = viscosity.flatten()
             idx = np.abs(srs - reference_shear_rate).argmin()
             mu = vis[idx]
         except Exception:
