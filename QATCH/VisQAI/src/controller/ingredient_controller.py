@@ -70,7 +70,8 @@ class IngredientController:
             List[str]: A list of all stored ingredient names.
         """
 
-        return [ing.name for ing in self.get_all_ingredients()]
+        return [ing.name for ing in self.get_all_ingredients()
+                if self._user_mode and ing.is_user or not self._user_mode]
 
     def delete_all_ingredients(self) -> None:
         """Delete all ingredients from the database."""
@@ -891,12 +892,12 @@ class IngredientController:
     def fuzzy_fetch(self,
                     name: str,
                     max_results: int = 5,
-                    score_cutoff: int = 75) -> list[Ingredient]:
+                    score_cutoff: int = 75) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names
         and then fuzzily matching them against the parameterized name str.  The best match(es) above the
-        score_cutoff is returned to the caller as an ingredient object.
+        score_cutoff is returned to the caller as a string list containing ingredient name(s).
 
         Args:
             name (str): the name of the ingredient to fetch.
@@ -904,7 +905,7 @@ class IngredientController:
             score_cutoff (int): confidence measure for RapidFuzz to determine accuracy.
 
         Returns:
-            list[Ingredient] a list of fuzzily matched ingredient objects or a list of None * [max_results]
+            list[str] a list of fuzzily matched ingredient names or a list of None * [max_results]
             if no matches are found.
         """
         all_names = self.get_all_ingredient_names()
@@ -915,10 +916,7 @@ class IngredientController:
             limit=max_results,
             score_cutoff=score_cutoff
         )
-        return [
-            self.get_by_name(match_name)
-            for match_name, score, idx in matches
-        ]
+        return [match_name for match_name, score, idx in matches]
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.
@@ -934,6 +932,8 @@ class IngredientController:
 
     def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
         """Helper method to retrieve a single ingredient by name and subclass type.
+        This method performs a fuzzy match on the ingredient name to allow for minor discrepancies
+        in user input. If a fuzzy match is found, it uses that name to search for the ingredient.
 
         Args:
             name (str): The ingredient name to match.
@@ -943,6 +943,10 @@ class IngredientController:
             Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
         """
         ingredients = self.db.get_all_ingredients()
+        # Perform a fuzzy matching search on the name.
+        fuzzy_name = self.fuzzy_fetch(name=name, max_results=1)
+        if fuzzy_name:
+            name = fuzzy_name[0]
         for ing in ingredients:
             # Skip non-user ingredients while in user mode.
             if self._user_mode and not ing.is_user:
