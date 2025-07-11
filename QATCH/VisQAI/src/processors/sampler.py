@@ -29,7 +29,7 @@ try:
     from src.models.formulation import Formulation, ViscosityProfile
     from src.controller.ingredient_controller import IngredientController
     from src.controller.formulation_controller import FormulationController
-    from src.controller.asset_controller import AssetController, AssetError
+    from src.managers.asset_manager import AssetManager, AssetError
     from src.utils.constraints import Constraints
     from src.models.ingredient import Ingredient
 except (ModuleNotFoundError, ImportError):
@@ -38,7 +38,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
-    from QATCH.VisQAI.src.controller.asset_controller import AssetController, AssetError
+    from QATCH.VisQAI.src.managers.asset_manager import AssetManager, AssetError
     from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.models.ingredient import Ingredient
 
@@ -51,7 +51,7 @@ class Sampler:
         database (Database): Database connection instance.
         form_ctrl (FormulationController): Controller for handling formulation records.
         ing_ctrl (IngredientController): Controller for ingredient lookups.
-        asset_ctrl (AssetController): Controller for loading model assets.
+        asset_ctrl (AssetManager): Controller for loading model assets.
         predictor (Predictor): Predictor instance for model inference.
         constraints (Constraints): Constraint definitions for features.
         _bounds (List[Tuple[float, float]]): Numeric bounds for sampling.
@@ -90,7 +90,7 @@ class Sampler:
         project_root = os.path.abspath(
             os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
-        self.asset_ctrl = AssetController(assets_dir=assets_dir)
+        self.asset_ctrl = AssetManager(assets_dir=assets_dir)
         if not self.asset_ctrl.asset_exists(asset_name, ['.zip']):
             raise AssetError(f"Asset `{asset_name}` not found.")
         asset_zip = self.asset_ctrl.get_asset_path(asset_name, ['.zip'])

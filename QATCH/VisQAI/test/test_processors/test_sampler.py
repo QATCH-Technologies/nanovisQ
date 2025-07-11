@@ -6,7 +6,7 @@ from src.processors.sampler import Sampler
 from src.db.db import Database
 from src.utils.constraints import Constraints
 from src.models.formulation import Formulation, ViscosityProfile
-from src.controller.asset_controller import AssetError
+from src.managers.asset_manager import AssetError
 from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant
 from src.controller.ingredient_controller import IngredientController
 

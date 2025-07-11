@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 from src.models.formulation import ViscosityProfile, Formulation
 from src.models.predictor import Predictor
 from src.controller.ingredient_controller import IngredientController
-from src.controller.asset_controller import AssetController
+from src.managers.asset_manager import AssetManager
 
 from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant
 from src.db.db import Database
