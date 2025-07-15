@@ -1,3 +1,4 @@
+from collections import deque
 from QATCH.ui.mainWindow_ui import Ui_Controls, Ui_Info, Ui_Plots, Ui_Logger, Ui_Main, Ui_Login
 from pyqtgraph import AxisItem
 import pyqtgraph as pg
@@ -1287,6 +1288,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.forecast_status = FillStatus.NO_FILL
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
+
+        self.dry_detect = DryingDetection(
+            window_size=30, sigma_stable_diss=0.15, sigma_stable_freq=0.15, flat_slope_eps=0.005)
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
@@ -3604,6 +3608,8 @@ class MainWindow(QtWidgets.QMainWindow):
                             if time_running == 0:
                                 labelbar = 'Waiting for start...'
                                 continue
+                            dissipation_vector = self.worker.get_d2_buffer(i)
+                            rf_vector = self.worker.get_d1_buffer(i)
                             if time_running < 3.0:
                                 self._text4[i].setText(
                                     'Calibrating...', color=(0, 0, 200))
@@ -3611,6 +3617,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                     [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
                                         self.worker.get_d1_buffer(i)[:numPoints])],
                                     [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
+                            elif not self.dry_detect.update(resonance_frequency=rf_vector, dissipation=dissipation_vector):
+                                self._text4[i].setText(
+                                    'Drying...', color=(0, 100, 100))
                             else:
                                 self._text4[i].setText(
                                     'Apply drop now!', color=(0, 200, 0))
@@ -6035,4 +6044,179 @@ class TECTask(QtCore.QThread):
         # if port == None:
         #     if len(dm.doDiscover()) > 0:
         #         return net_exists
+        return False
+
+
+class DryingDetection:
+    """State machine for detecting when a sensor has dried.
+
+    This class tracks rolling windows of resonance frequency and dissipation
+    measurements, normalizes them, and evaluates both stability and flatness
+    criteria to determine when drying is complete:
+
+    - Stability: the standard deviation of each normalized window must fall
+      below its configured threshold.
+    - Flatness: the slope of each normalized window must fall within the
+      configured flatness tolerance.
+
+    The `update()` method ingests new samples and returns True exactly once
+    when all criteria are simultaneously met, setting the internal `is_dry`
+    flag. Subsequent calls will return False until `reset()` is invoked to
+    clear history and restart detection.
+
+    Attributes:
+        win_n (int): Size of the rolling window (number of samples).
+        freq_w (collections.deque): Window of the most recent resonance frequency readings.
+        diss_w (collections.deque): Window of the most recent dissipation readings.
+        sigma_stable_freq (float): Threshold for frequency stability (stddev).
+        sigma_stable_diss (float): Threshold for dissipation stability (stddev).
+        flat_eps (float): Threshold for flatness (maximum absolute slope).
+        _dried (bool): Internal flag indicating whether drying has been detected.
+    """
+
+    def __init__(
+        self,
+        window_size: int = 30,
+        sigma_stable_freq: float = 0.15,
+        sigma_stable_diss: float = 0.15,
+        flat_slope_eps: float = 0.005,
+    ) -> None:
+        """Initialize a DryingDetection instance.
+
+        This detector maintains rolling windows of resonance frequency and dissipation
+        measurements, and determines when the sensor readings indicate that drying
+        has completed based on stability and flatness criteria.
+
+        Args:
+            window_size (int): Number of samples to keep in each rolling window.
+            sigma_stable_freq (float): Maximum allowed standard deviation of the
+                normalized resonance frequency window to consider it “stable.”
+            sigma_stable_diss (float): Maximum allowed standard deviation of the
+                normalized dissipation window to consider it “stable.”
+            flat_slope_eps (float): Maximum absolute slope of the normalized data
+                window to consider it “flat.”
+
+        Attributes:
+            win_n (int): Size of the rolling window.
+            freq_w (deque[float]): Rolling window of the last `win_n` resonance frequency readings.
+            diss_w (deque[float]): Rolling window of the last `win_n` dissipation readings.
+            sigma_stable_freq (float): Stability threshold for frequency.
+            sigma_stable_diss (float): Stability threshold for dissipation.
+            flat_eps (float): Flatness threshold for slope.
+            _dried (bool): Flag indicating whether drying has been detected.
+        """
+        self.win_n = int(window_size)
+        self.freq_w = deque(maxlen=self.win_n)
+        self.diss_w = deque(maxlen=self.win_n)
+        self.sigma_stable_freq = float(sigma_stable_freq)
+        self.sigma_stable_diss = float(sigma_stable_diss)
+        self.flat_eps = float(flat_slope_eps)
+        self._dried = False
+
+    def reset(self) -> None:
+        """Reset the drying detection state.
+
+        Clears the stored rolling window history for both resonance frequency and
+        dissipation readings, and resets the dried flag to allow a new detection cycle.
+
+        Returns:
+            None
+        """
+        self.freq_w.clear()
+        self.diss_w.clear()
+        self._dried = False
+
+    @property
+    def is_dry(self) -> bool:
+        """Indicates whether the dry condition has been met.
+
+        Returns:
+            bool: True if drying has been detected, False otherwise.
+        """
+        return self._dried
+
+    def _compute_slope(self, arr: np.ndarray) -> float:
+        """Compute the slope of a best-fit line through the data.
+
+        Fits a first-degree polynomial to the points defined by
+        x = 0, 1, …, N-1 and y = arr, and returns the slope.
+
+        Args:
+            arr (np.ndarray): 1D array of values for which to compute the slope.
+
+        Returns:
+            float: The slope of the fitted line. If `arr` has fewer than two elements,
+                returns 0.0.
+        """
+        if arr.size < 2:
+            return 0.0
+        x = np.arange(arr.size)
+        # polyfit returns (slope, intercept)
+        m, _ = np.polyfit(x, arr, 1)
+        return float(m)
+
+    def _normalize(self, arr: np.ndarray) -> np.ndarray:
+        """Min‑max normalize the array, returning zeros if constant or invalid.
+
+        Computes the minimum and maximum of `arr` (ignoring NaNs) and scales the
+        values to the [0, 1] range. If `arr` has no finite range (max ≤ min) or
+        contains no finite values, returns an array of zeros with the same shape.
+
+        Args:
+            arr (np.ndarray): 1D or multi-dimensional array of numeric values.
+
+        Returns:
+            np.ndarray: Array of the same shape as `arr`, with values scaled to
+                the [0, 1] range, or all zeros if the input is constant or invalid.
+        """
+        mn, mx = np.nanmin(arr), np.nanmax(arr)
+        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
+            return np.zeros_like(arr)
+        return (arr - mn) / (mx - mn)
+
+    def update(self, resonance_frequency: float, dissipation: float) -> bool:
+        """Process a new sensor reading and detect drying completion.
+
+        After returning True once, further calls will return False until `reset()`
+        is invoked.
+
+        Args:
+            resonance_frequency (float): Latest resonance frequency measurement.
+            dissipation (float): Latest dissipation measurement.Apply
+
+        Returns:
+            bool: True if drying has just been detected on this call;
+                False otherwise (including if already detected or invalid input).
+        """
+        if self._dried:
+            return False
+        if not np.isfinite(resonance_frequency) or not np.isfinite(dissipation):
+            return False
+        self.freq_w.append(resonance_frequency)
+        self.diss_w.append(dissipation)
+
+        # wait until window is full
+        if len(self.freq_w) < self.win_n:
+            return False
+        raw_f = np.array(self.freq_w, dtype=float)
+        raw_d = np.array(self.diss_w, dtype=float)
+        nf = self._normalize(raw_f)
+        nd = self._normalize(raw_d)
+
+        # compute stability and flatness metrics
+        sigma_f = float(np.nanstd(nf))
+        sigma_d = float(np.nanstd(nd))
+        slope_f = self._compute_slope(nf)
+        slope_d = self._compute_slope(nd)
+
+        # check drying criteria
+        if (
+            sigma_f < self.sigma_stable_freq and
+            sigma_d < self.sigma_stable_diss and
+            abs(slope_f) < self.flat_eps and
+            abs(slope_d) < self.flat_eps
+        ):
+            self._dried = True
+            return True
+
         return False
