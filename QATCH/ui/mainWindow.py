@@ -283,6 +283,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction('User: [NONE]')
         self.username.setEnabled(False)
+        self.menubar[1].addAction(
+            'Select &directory...', self.set_working_directory)
         self.signinout = self.menubar[1].addAction(
             '&Sign In', self.set_user_profile)
         self.manage = self.menubar[1].addAction(
@@ -405,6 +407,19 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def scan_subnets(self):
         Discovery().scanSubnets()
         self.parent._port_list_refresh()
+
+    def set_working_directory(self):
+        # loads global/user prefs
+        self.ui_preferences.toggle_global_preferences()
+        # force sync read/write
+        self.ui_preferences.sync_write_with_load.setChecked(True)
+        # ask user for working directory
+        result = self.ui_preferences.open_load_file_dialog()
+        # auto-save, assuming user gave us a new directory AND submit button is enabled
+        if result and self.ui_preferences.submit_button.isEnabled():
+            self.ui_preferences.submit_button.click()
+        else:
+            Log.w("Working directory not changed.")
 
     def set_user_profile(self):
         action = self.signinout.text().lower().replace('&', '')
