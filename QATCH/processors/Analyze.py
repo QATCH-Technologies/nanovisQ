@@ -536,7 +536,33 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Load.setIcon(icon_load)  # normal and disabled pixmaps
         self.tBtn_Load.setText("Load")
-        self.tBtn_Load.clicked.connect(self.loadRun)
+        self.tBtn_Load.clicked.connect(self.loadRun)  # main action
+
+        # Create dropdown menu
+        menu = QtWidgets.QMenu()
+        menu.addAction("Process multiple runs...", self.load_all_from_folder)
+
+        # Assign menu to button
+        self.tBtn_Load.setMenu(menu)
+
+        # Show arrow and make it a dropdown
+        self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
+
+        # Apply style sheet to preserve arrow, but remove its hover effect
+        self.tBtn_Load.setStyleSheet("""
+            /* Keep the arrow visible but remove any hover effect */
+            QToolButton::menu-indicator {
+                background: transparent;
+                border: none;
+            }
+
+            /* Explicitly cancel hover background/border on arrow */
+            QToolButton::menu-indicator:hover {
+                background: transparent;
+                border: none;
+            }
+            """)
+
         self.tool_Load.addWidget(self.tBtn_Load)
 
         icon_reset = QtGui.QIcon()
@@ -2460,6 +2486,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             w = 200
         self.cBox_Runs.setFixedWidth(w)
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
+
+    def load_all_from_folder(self):
+        # TODO: Request folder from user, must be within working read directory
+        raise NotImplementedError()
 
     def loadRun(self):
         self.action_cancel()  # ask them if they want to lose unsaved changes
