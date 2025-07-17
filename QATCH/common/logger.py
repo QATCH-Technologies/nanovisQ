@@ -1,48 +1,89 @@
+"""
+Logging module for the QATCH Nanovis system.
+
+This module provides the Logger class for configuring and managing
+logging handlers, including suppression of TensorFlow warnings,
+file rotation, and console output, as well as the LoggerLevel enum
+defining available log levels.
+
+Author:
+    Alexander Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2025-07-09
+
+Version:
+    ?
+"""
 import logging
 import logging.handlers
 import sys
 import os
+import warnings
 from enum import Enum
 
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.core.constants import Constants
 
-###############################################################################
-# Logging package - All packages can use this module
-###############################################################################
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 
 
 class Logger:
+    """
+    Central logger for the QATCH Nanovis application.
+    """
 
-    ###########################################################################
-    # Creates logging file (.txt)
-    ###########################################################################
     @staticmethod
-    def create():
+    def create() -> None:
         """
-        :param level: Level to show in log.
-        :type level: int.
+        Create and configure the QATCH root logger.
+
+        Returns:
+            None
         """
+        # Suppress TensorFlow and FutureWarnings
+        warnings.filterwarnings(
+            'ignore', category=FutureWarning, module='tensorflow')
+        try:
+            import tensorflow as tf
+            tf.get_logger().setLevel('ERROR')
+            try:
+                tf.autograph.set_verbosity(0)
+            except Exception:
+                pass
+        except ImportError:
+            pass
+
+        try:
+            from absl import logging as absl_logging
+            absl_logging.set_verbosity(absl_logging.ERROR)
+            absl_logging.set_stderrthreshold('error')
+            logging.getLogger('absl').setLevel(logging.ERROR)
+        except ImportError:
+            pass
+
         log_format_file = logging.Formatter(
-            fmt='%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s',
-            datefmt=None)
+            fmt='%(asctime)s %(levelname)s %(module)s %(funcName)s %(message)s'
+        )
         log_format_console = logging.Formatter(
             fmt='%(asctime)s\t%(levelname)s\t%(message)s',
-            datefmt='%Y-%m-%d %I:%M:%S %p')
+            datefmt='%Y-%m-%d %I:%M:%S %p'
+        )
 
         top_level_logger = logging.getLogger("QATCH")
         top_level_logger.setLevel(logging.DEBUG)
 
-        if (top_level_logger.hasHandlers()):
-            # Logger.d("Skipping addHandlers")
+        if top_level_logger.hasHandlers():
             return
 
         FileManager.create_dir(Constants.log_export_path)
-        file_handler = logging.handlers.RotatingFileHandler("{}/{}"
-                                                            .format(Constants.log_export_path, Constants.log_filename),
-                                                            maxBytes=Constants.log_max_bytes,
-                                                            backupCount=0)
+        file_handler = logging.handlers.RotatingFileHandler(
+            f"{Constants.log_export_path}/{Constants.log_filename}",
+            maxBytes=Constants.log_max_bytes,
+            backupCount=0
+        )
         file_handler.setFormatter(log_format_file)
         file_handler.setLevel(logging.DEBUG)
         top_level_logger.addHandler(file_handler)
@@ -56,10 +97,18 @@ class Logger:
         console_handler.setLevel(logging.INFO)
         top_level_logger.addHandler(console_handler)
 
-        # Logger.d("Added handlers successfully")
         top_level_logger.info("Added logging handlers")
 
-    def write(self, message):
+    def write(self, message) -> None:
+        """
+        Write a message to the logger, filtering out internal logger calls.
+
+        Args:
+            message(str): The message to write.
+
+        Returns:
+            None
+        """
         tag = "ERROR"
         msg = message.strip()
         if msg.find("QATCH.logger") >= 0:
@@ -67,94 +116,148 @@ class Logger:
         if len(msg) > 0:
             Logger.e(tag, msg)
 
-    def flush(self):
-        # this flush method is needed for python 3 compatibility.
-        # this handles the flush command by doing nothing.
-        # you might want to specify some extra behavior here.
+    def flush(self) -> None:
+        """
+        Flush method for compatibility with file-like interfaces.
+
+        Currently a no-op for Python 3 compatibility.
+
+        Returns:
+            None
+        """
         pass
 
-    def __repr__(self):
+    def __repr__(self) -> str:
+        """
+        Return the representation of the Logger instance.
+
+        Returns:
+            str: Representation string.
+        """
         return '<%s (%s)>' % (self.__class__.__name__, "QATCH.logger")
 
-    ###########################################################################
-    # Closes the enabled loggers.
-    ###########################################################################
     @staticmethod
-    def close():
+    def close() -> None:
+        """
+        Shutdown the logging system, closing all handlers.
+
+        Returns:
+            None
+        """
         logging.shutdown()
 
-    ###########################################################################
-    # Logs at debug level (debug,info,warning and error messages)
-    ###########################################################################
     @staticmethod
-    def d(tag, msg=""):
+    def d(tag, msg="") -> None:
         """
-        :param tag: TAG to identify the log :type tag: str.
-        :param msg: Message to log.         :type msg: str.
+        Log a debug-level message with a tag.
+
+        Args:
+            tag(str): Identifier tag for the log.
+            msg(str): Message content.
+
+        Returns:
+            None
         """
         logger = logging.getLogger("QATCH.logger")
-        logger.debug("{} {}".format(str(tag), str(msg)))
+        logger.debug(f"{tag} {msg}")
 
-    ####
     @staticmethod
-    def i(tag, msg=""):
+    def i(tag, msg="") -> None:
+        """
+        Log an info-level message with a tag.
+
+        Args:
+            tag(str): Identifier tag for the log.
+            msg(str): Message content.
+
+        Returns:
+            None
+        """
         logger = logging.getLogger("QATCH.logger")
-        logger.info("{} {}".format(str(tag), str(msg)))
+        logger.info(f"{tag} {msg}")
 
-    ####
     @staticmethod
-    def w(tag, msg=""):
+    def w(tag, msg="") -> None:
+        """
+        Log a warning-level message with a tag.
+
+        Args:
+            tag(str): Identifier tag for the log.
+            msg(str): Message content.
+
+        Returns:
+            None
+        """
         logger = logging.getLogger("QATCH.logger")
-        logger.warning("{} {}".format(str(tag), str(msg)))
+        logger.warning(f"{tag} {msg}")
 
-    ####
     @staticmethod
-    def e(tag, msg=""):
+    def e(tag, msg="") -> None:
+        """
+        Log an error-level message with a tag.
+
+        Args:
+            tag(str): Identifier tag for the log.
+            msg(str): Message content.
+
+        Returns:
+            None
+        """
         logger = logging.getLogger("QATCH.logger")
-        logger.error("{} {}".format(str(tag), str(msg)))
-
-    ###########################################################################
-    # logs and prints architecture-related informations
-    ###########################################################################
+        logger.error(f"{tag} {msg}")
 
     @staticmethod
-    def _show_user_info():
-        tag = ""  # "[User]"
-        str = " {} {} ".format(Constants.app_title, Constants.app_version)
-        Logger.i("-" * len(str))
-        Logger.i(str)
-        Logger.i("-" * len(str))
-        Logger.i(tag, "Build Date: {}".format(Constants.app_date))
-        Logger.i("{} SYSTEM INFORMATIONS:".format(tag))
-        Logger.i(tag, "PC Name: {}".format(Architecture.get_os_name()))
-        Logger.i(tag, "Platform: {}".format(Architecture.get_os_type()))
-        Logger.i(tag, "Python version: {}".format(
-            Architecture.get_python_version()))
-        Logger.i(tag, "Path: {}".format(os.getcwd()))
+    def _show_user_info() -> None:
+        """
+        Log user and system information at info and debug levels.
+
+        Displays application name, version, build date,
+        OS details, Python version, and working directory.
+
+        Returns:
+            None
+        """
+        tag = ""
+        header = f" {Constants.app_title} {Constants.app_version} "
+        Logger.i("-" * len(header))
+        Logger.i(header)
+        Logger.i("-" * len(header))
+        Logger.i(tag, f"Build Date: {Constants.app_date}")
+        Logger.i(f"{tag} SYSTEM INFORMATIONS:")
+        Logger.i(tag, f"PC Name: {Architecture.get_os_name()}")
+        Logger.i(tag, f"Platform: {Architecture.get_os_type()}")
+        Logger.i(tag, f"Python version: {Architecture.get_python_version()}")
+        Logger.i(tag, f"Path: {os.getcwd()}")
         if getattr(sys, 'frozen', False):
-            Logger.d(tag, "_MEIPASS: {}".format(sys._MEIPASS))
-        Logger.i("-" * len(str))
+            Logger.d(tag, f"_MEIPASS: {sys._MEIPASS}")
+        Logger.i("-" * len(header))
 
         frozen = 'not'
         if getattr(sys, 'frozen', False):
-            # we are running in a bundle
             frozen = 'ever so'
             bundle_dir = sys._MEIPASS
         else:
-            # we are running in a normal Python environment
             bundle_dir = os.path.dirname(os.path.abspath(__file__))
         Logger.d("=== DEBUG INFORMATIONS ===")
-        Logger.d(f'we are {frozen} frozen')
+        Logger.d(f"we are {frozen} frozen")
         Logger.d('bundle dir is', bundle_dir)
         Logger.d('sys.argv[0] is', sys.argv[0])
         Logger.d('sys.executable is', sys.executable)
         Logger.d('os.getcwd is', os.getcwd())
 
 
-###############################################################################
-# Enumeration for the Logger levels
-###############################################################################
 class LoggerLevel(Enum):
+    """
+    Enumeration for available logger levels.
+
+    Attributes:
+        CRITICAL(int): Critical level.
+        ERROR(int): Error level.
+        WARNING(int): Warning level.
+        INFO(int): Info level.
+        DEBUG(int): Debug level.
+        ANY(int): All messages.
+    """
     CRITICAL = logging.CRITICAL
     ERROR = logging.ERROR
     WARNING = logging.WARNING

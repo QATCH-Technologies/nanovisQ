@@ -1,7 +1,5 @@
 try:
-    from QATCH.ui.popUp import PopUp
     from QATCH.core.constants import Constants
-    from QATCH.common.userProfiles import UserProfiles, UserRoles
     from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
 except:
@@ -14,706 +12,56 @@ except:
         def e(tag, msg=""): print("ERROR:", tag, msg)
 
 from xml.dom import minidom
-from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
-from random import randint
+# from random import randint
 import copy
 import os
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import FormatStrFormatter
-import hashlib
 from scipy.optimize import curve_fit
-import datetime as dt
-from types import SimpleNamespace
 import webbrowser
 from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
+from typing import Dict, Any, List, Tuple, Type
+from typing import TYPE_CHECKING
 
 try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
     from src.models.predictor import Predictor
-    from src.controller.formulation_controller import FormulationController
-    from src.controller.ingredient_controller import IngredientController
-    from src.db.db import Database, DB_PATH
+    from src.db.db import Database
     from src.processors.sampler import Sampler
     from src.threads.executor import Executor, ExecutionRecord
+    from src.utils.constraints import Constraints
+    from src.utils.icon_utils import IconUtils
+    from src.utils.list_utils import ListUtils
+    from src.view.checkable_combo_box import CheckableComboBox
+    from src.view.table_view import TableView, Color
+    from src.view.constraints_ui import ConstraintsUI
+    if TYPE_CHECKING:
+        from src.view.frame_step2 import FrameStep2
+        from src.view.main_window import VisQAIWindow
+
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
     from QATCH.VisQAI.src.models.predictor import Predictor
-    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
-    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.db.db import Database, DB_PATH
+    from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
     from QATCH.VisQAI.src.threads.executor import Executor, ExecutionRecord
-TAG = "[VisQ.AI]"
-
-
-class HorizontalTabBar(QtWidgets.QTabBar):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        font = self.font()
-        font.setPointSize(10)  # Set desired font size
-        self.setFont(font)
-
-    def tabSizeHint(self, index):
-        sz = super().tabSizeHint(index)
-        return QtCore.QSize(sz.width() + 20, 90)  # fixed height
-
-    def paintEvent(self, event):
-        painter = QtWidgets.QStylePainter(self)
-        opt = QtWidgets.QStyleOptionTab()
-        for idx in range(self.count()):
-            self.initStyleOption(opt, idx)
-            opt.shape = QtWidgets.QTabBar.RoundedNorth    # draw as if tabs were on top
-            # draw the tab “shell”
-            painter.drawControl(QtWidgets.QStyle.CE_TabBarTab, opt)
-            # draw the label
-            painter.drawControl(QtWidgets.QStyle.CE_TabBarTabLabel, opt)
-
-
-class BaseVisQAIWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent=None):
-        """BASE CLASS DEFINITION"""
-        super().__init__(parent)
-
-        self.setWindowTitle("VisQ.AI Base Class")
-        self.setMinimumSize(900, 600)
-
-        # Create dummy database object for base class.
-        self.database = SimpleNamespace(is_open=False)
-
-        # Create dummy UI for main tab widget
-        self.tab_widget = QtWidgets.QDialog()
-
-        # Create simple UI for base class when not subscribed.
-        self._expired_widget = QtWidgets.QDialog()
-        self.expired_layout = QtWidgets.QVBoxLayout(self._expired_widget)
-        self.expired_layout.setAlignment(QtCore.Qt.AlignCenter)
-        # self.setCentralWidget(self._expired_widget)
-
-        self.expired_label = QtWidgets.QLabel(
-            "<b>Your VisQ.AI preview period has ended.</b><br/><br/>" +
-            "Please subscribe to regain access on this system.<br/><br/>")
-        self.expired_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.expired_label.setStyleSheet("font-size: 24px;")
-
-        self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
-        self.expired_subscribe.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
-
-        self.expired_learnmore = QtWidgets.QPushButton("Learn more...")
-        self.expired_learnmore.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
-
-        self.expired_buttons = QtWidgets.QHBoxLayout()
-        self.expired_buttons.addStretch(3)
-        self.expired_buttons.addWidget(self.expired_subscribe, 1)
-        self.expired_buttons.addWidget(self.expired_learnmore, 1)
-        self.expired_buttons.addStretch(3)
-
-        self.expired_layout.addWidget(self.expired_label)
-        self.expired_layout.addLayout(self.expired_buttons)
-
-        # Create simple UI for base class when not subscribed.
-        self._trial_widget = QtWidgets.QDialog()
-        self.trial_layout = QtWidgets.QVBoxLayout(self._trial_widget)
-        self.trial_layout.setAlignment(QtCore.Qt.AlignCenter)
-        # self.setCentralWidget(self._trial_widget)
-
-        self.trial_label = QtWidgets.QLabel(
-            "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>" +
-            "Please subscribe to retain access on this system.<br/><br/>")
-        self.trial_label.setAlignment(QtCore.Qt.AlignCenter)
-        self.trial_label.setStyleSheet("font-size: 24px;")
-
-        self.trial_subscribe = QtWidgets.QPushButton("Subscribe")
-        self.trial_subscribe.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
-
-        self.trial_dismiss = QtWidgets.QPushButton("Dismiss")
-        self.trial_dismiss.clicked.connect(
-            lambda: self.setCentralWidget(self.tab_widget))
-
-        self.trial_buttons = QtWidgets.QHBoxLayout()
-        self.trial_buttons.addStretch(3)
-        self.trial_buttons.addWidget(self.trial_subscribe, 1)
-        self.trial_buttons.addWidget(self.trial_dismiss, 1)
-        self.trial_buttons.addStretch(3)
-
-        self.trial_layout.addWidget(self.trial_label)
-        self.trial_layout.addLayout(self.trial_buttons)
-
-    def check_license(self) -> bool:
-        free_preview_period = 90  # days
-        # TODO: dummy check, always false for now
-        is_valid_license = False
-        if not is_valid_license:
-            # how long ago did the preview period start?
-            if not os.path.exists(DB_PATH):
-                Log.e("No VisQAI license or trial found.")
-                self.setCentralWidget(self._expired_widget)
-                return is_valid_license
-
-            file_stats = os.stat(DB_PATH)
-
-            # Get creation time (st_ctime on Unix is actually change time,
-            # but on Windows it's creation time)
-            # For true creation time on all platforms, use st_birthtime if available
-            if hasattr(file_stats, 'st_birthtime'):
-                creation_time = file_stats.st_birthtime  # macOS/BSD
-            else:
-                creation_time = file_stats.st_ctime  # Windows/Linux
-
-            # Rollback to midnight UTC, day of file creation
-            creation_time -= creation_time % 86400
-
-            # Get local time with timezone info
-            local_time = dt.datetime.now().astimezone()
-            utc_offset = local_time.utcoffset()
-
-            # Adjust file creation time to midnight local time
-            creation_time -= utc_offset.total_seconds()
-
-            # Current time
-            current_time = dt.datetime.now().timestamp()
-
-            # Calculate time difference in seconds
-            time_ago_seconds = current_time - creation_time
-
-            # Compare to allowable age
-            time_allowed_secs = dt.timedelta(
-                days=free_preview_period).total_seconds()
-
-            if time_ago_seconds >= time_allowed_secs:
-                # Trial preview expired
-                Log.w("No VisQAI license found; trial preview has expired.")
-                self.setCentralWidget(self._expired_widget)
-            else:
-                self.trial_left = free_preview_period - \
-                    dt.timedelta(seconds=time_ago_seconds).days
-                Log.i(
-                    f"No VisQAI license found; trial preview has {self.trial_left} days remaining.")
-                self.trial_label.setText(
-                    self.trial_label.text().format(self.trial_left))  # insert # of days remaining
-                self.setCentralWidget(self._trial_widget)
-        else:
-            # valid license found
-            Log.i("VisQAI license found and is valid.")
-            self.setCentralWidget(self.tab_widget)
-
-        return is_valid_license
-
-    def clear(self):
-        """BASE CLASS DEFINITION"""
-        pass
-
-    def reset(self):
-        """BASE CLASS DEFINITION"""
-        pass
-
-    def enable(self, bool=False):
-        """BASE CLASS DEFINITION"""
-        pass
-
-    def hasUnsavedChanges(self):
-        """BASE CLASS DEFINITION"""
-        return False
-
-
-class VisQAIWindow(BaseVisQAIWindow):
-    def __init__(self, parent=None):
-        super(VisQAIWindow, self).__init__(parent)
-
-        # import typing here to avoid circularity
-        from QATCH.ui.mainWindow import MainWindow
-        self.parent: MainWindow = parent
-        self.setWindowTitle("VisQ.AI Mockup")
-        self.setMinimumSize(900, 600)
-        self.init_ui()
-        self.init_sign()
-        self.check_license()  # see BASE CLASS
-        self._unsaved_changes = False
-
-        self.select_formulation = Formulation()
-        self.predict_formulation = Formulation()
-
-    def init_ui(self):
-        self.tab_widget = QtWidgets.QTabWidget()
-        self.tab_widget.setTabBar(HorizontalTabBar())
-        self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
-        self.tab_widget.tabBar().installEventFilter(self)
-
-        # Enable database objects for initial UI load.
-        self.enable(True)
-
-        self.tab_widget.addTab(FrameStep1(self, 1),
-                               "\u2460 Select Run")  # unicode circled 1
-        self.tab_widget.addTab(FrameStep1(self, 2),
-                               "\u2461 Suggest Experiments")  # unicode circled 2
-        self.tab_widget.addTab(FrameStep1(self, 3),
-                               "\u2462 Import Experiments")  # unicode circled 3
-        self.tab_widget.addTab(FrameStep2(self, 4),
-                               "\u2463 Learn")  # unicode circled 4
-        self.tab_widget.addTab(FrameStep1(self, 5),
-                               "\u2464 Predict")  # unicode circled 5
-        self.tab_widget.addTab(FrameStep2(self, 6),
-                               "\u2465 Optimize")  # unicode circled 6
-
-        # Disable database objects after initial UI load.
-        self.enable(False)
-
-        # NOTE: central widget set by `check_license()`
-
-        # Signals
-        self.tab_widget.currentChanged.connect(self.on_tab_changed)
-
-    def init_sign(self):
-        # START VISQAI SIGNATURE CODE:
-        # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
-        # This code also exists in Analyze.py in class VisQAIWindow for "ANALYZE SIGNATURE CODE"
-        # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
-        # There is duplicated logic code within the submit button handler: 'self.save_run_infos'
-        # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
-        self.signForm = QtWidgets.QDialog()
-        self.signForm.setWindowFlags(
-            QtCore.Qt.Dialog
-        )  # | QtCore.Qt.WindowStaysOnTopHint)
-        icon_path = os.path.join(
-            Architecture.get_path(), "QATCH/icons/sign.png")
-        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        self.signForm.setWindowTitle("Signature")
-        self.signForm.setModal(True)
-        layout_sign = QtWidgets.QVBoxLayout()
-        layout_curr = QtWidgets.QHBoxLayout()
-        signedInAs = QtWidgets.QLabel("Signed in as: ")
-        signedInAs.setAlignment(QtCore.Qt.AlignLeft)
-        layout_curr.addWidget(signedInAs)
-        self.signedInAs = QtWidgets.QLabel("[NONE]")
-        self.signedInAs.setAlignment(QtCore.Qt.AlignRight)
-        layout_curr.addWidget(self.signedInAs)
-        layout_sign.addLayout(layout_curr)
-        line_sep = QtWidgets.QFrame()
-        line_sep.setFrameShape(QtWidgets.QFrame.HLine)
-        line_sep.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout_sign.addWidget(line_sep)
-        layout_switch = QtWidgets.QHBoxLayout()
-        self.signerInit = QtWidgets.QLabel(f"Initials: <b>N/A</b>")
-        layout_switch.addWidget(self.signerInit)
-        switch_user = QtWidgets.QPushButton("Switch User")
-        switch_user.clicked.connect(self.switch_user_at_sign_time)
-        layout_switch.addWidget(switch_user)
-        layout_sign.addLayout(layout_switch)
-        self.sign = QtWidgets.QLineEdit()
-        self.sign.installEventFilter(self)
-        layout_sign.addWidget(self.sign)
-        self.sign_do_not_ask = QtWidgets.QCheckBox(
-            "Do not ask again this session")
-        self.sign_do_not_ask.setEnabled(False)
-        if UserProfiles.checkDevMode()[0]:  # DevMode enabled
-            auto_sign_key = None
-            session_key = None
-            if os.path.exists(Constants.auto_sign_key_path):
-                with open(Constants.auto_sign_key_path, "r") as f:
-                    auto_sign_key = f.readline()
-            session_key_path = os.path.join(
-                Constants.user_profiles_path, "session.key")
-            if os.path.exists(session_key_path):
-                with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-            if auto_sign_key == session_key and session_key != None:
-                self.sign_do_not_ask.setChecked(True)
-            else:
-                self.sign_do_not_ask.setChecked(False)
-                if os.path.exists(Constants.auto_sign_key_path):
-                    os.remove(Constants.auto_sign_key_path)
-            layout_sign.addWidget(self.sign_do_not_ask)
-        self.sign_ok = QtWidgets.QPushButton("OK")
-        self.sign_ok.clicked.connect(self.signForm.hide)
-        # self.sign_ok.clicked.connect(self.save_run_info)
-        self.sign_ok.setDefault(True)
-        self.sign_ok.setAutoDefault(True)
-        self.sign_cancel = QtWidgets.QPushButton("Cancel")
-        self.sign_cancel.clicked.connect(self.signForm.hide)
-        layout_ok_cancel = QtWidgets.QHBoxLayout()
-        layout_ok_cancel.addWidget(self.sign_ok)
-        layout_ok_cancel.addWidget(self.sign_cancel)
-        layout_sign.addLayout(layout_ok_cancel)
-        self.signForm.setLayout(layout_sign)
-        # END ANALYZE SIGNATURE CODE
-
-        self.sign.textEdited.connect(self.sign_edit)
-        self.sign.textEdited.connect(self.text_transform)
-
-    def eventFilter(self, obj, event):
-        # Key press on user audit sign form
-        if (
-            event.type() == QtCore.QEvent.KeyPress
-            and obj is self.sign
-            and self.sign.hasFocus()
-        ):
-            if event.key() in [
-                QtCore.Qt.Key_Enter,
-                QtCore.Qt.Key_Return,
-                QtCore.Qt.Key_Space,
-            ]:
-                if self.parent.signature_received:
-                    self.sign_ok.clicked.emit()
-            if event.key() == QtCore.Qt.Key_Escape:
-                self.sign_cancel.clicked.emit()
-        # Mouse click on tab widget tab bar
-        if (
-            event.type() == QtCore.QEvent.MouseButtonPress
-            and obj == self.tab_widget.tabBar()
-        ):
-            now_step = self.tab_widget.currentIndex() + 1
-            tab_step = obj.tabAt(event.pos()) + 1
-            if tab_step > 0:
-                if tab_step == now_step + 1:
-                    if hasattr(self.tab_widget.currentWidget(), "btn_next"):
-                        self.tab_widget.currentWidget().btn_next.click()
-                        return True  # ignore click, let "Next" btn decide
-                # Block tab change based on some condition
-                if tab_step in [2, 4, 5]:
-                    if tab_step == 2 or tab_step == 5:
-                        widget: FrameStep1 = self.tab_widget.widget(
-                            0)  # Select
-                        if not widget.run_file_run:
-                            QtWidgets.QMessageBox.information(
-                                None, Constants.app_title,
-                                "Please select a run.",
-                                QtWidgets.QMessageBox.Ok)
-                            return True  # deny tab change
-                    if tab_step == 4:
-                        widget: FrameStep1 = self.tab_widget.widget(
-                            2)  # Import
-                        if len(widget.all_files) == 0:
-                            QtWidgets.QMessageBox.information(
-                                None, Constants.app_title,
-                                "Please import at least 1 experiment before proceeding.",
-                                QtWidgets.QMessageBox.Ok)
-                            return True  # deny tab change
-                if hasattr(self.tab_widget.currentWidget(), "btn_next"):
-                    self.tab_widget.currentWidget().btn_next.click()
-                    # still perform click action
-        return super().eventFilter(obj, event)
-
-    def sign_edit(self):
-        if self.sign.text().upper() == self.initials:
-            sign_text = f"{self.username} ({self.sign.text().upper()})"
-            self.sign.setMaxLength(len(sign_text))
-            self.sign.setText(sign_text)
-            self.sign.setReadOnly(True)
-            self.parent.signed_at = dt.datetime.now().isoformat()
-            self.parent.signature_received = True
-            self.sign_do_not_ask.setEnabled(True)
-
-    def text_transform(self):
-        text = self.sign.text()
-        if len(text) in [1, 2, 3, 4]:  # are these initials?
-            # will not fire 'textEdited' signal again
-            self.sign.setText(text.upper())
-
-    def check_user_info(self):
-        # get active session info, if available
-        active, info = UserProfiles.session_info()
-        if active:
-            self.parent.signature_required = True
-            self.parent.signature_received = False
-            self.username, self.initials = info[0], info[1]
-        else:
-            self.parent.signature_required = False
-
-    def switch_user_at_sign_time(self):
-        new_username, new_initials, new_userrole = UserProfiles.change(
-            UserRoles.ANALYZE
-        )
-        if UserProfiles.check(UserRoles(new_userrole), UserRoles.ANALYZE):
-            if self.username != new_username:
-                self.username = new_username
-                self.initials = new_initials
-                self.signedInAs.setText(self.username)
-                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                self.parent.signature_received = False
-                self.parent.signature_required = True
-                self.sign.setReadOnly(False)
-                self.sign.setMaxLength(4)
-                self.sign.clear()
-
-                Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(
-                    f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText(
-                        "&Change Password...")
-            else:
-                Log.d(
-                    "User switched users to the same user profile. Nothing to change."
-                )
-            # PopUp.warning(self, Constants.app_title, "User has been switched.\n\nPlease sign now.")
-        # elif new_username == None and new_initials == None and new_userrole == 0:
-        else:
-            if new_username == None and not UserProfiles.session_info()[0]:
-                Log.d("User session invalidated. Switch users credentials incorrect.")
-                self.parent.ControlsWin.username.setText("User: [NONE]")
-                self.parent.ControlsWin.userrole = UserRoles.NONE
-                self.parent.ControlsWin.signinout.setText("&Sign In")
-                self.parent.ControlsWin.manage.setText("&Manage Users...")
-                self.parent.ControlsWin.ui1.tool_User.setText("Anonymous")
-                self.parent.AnalyzeProc.tool_User.setText("Anonymous")
-                PopUp.warning(
-                    self,
-                    Constants.app_title,
-                    "User has not been switched.\n\nReason: Not authenticated.",
-                )
-            if new_username != None and UserProfiles.session_info()[0]:
-                Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(
-                    f"User: {new_username}")
-                self.parent.ControlsWin.userrole = UserRoles(new_userrole)
-                self.parent.ControlsWin.signinout.setText("&Sign Out")
-                self.parent.ControlsWin.ui1.tool_User.setText(new_username)
-                self.parent.AnalyzeProc.tool_User.setText(new_username)
-                if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText(
-                        "&Change Password...")
-                PopUp.warning(
-                    self,
-                    Constants.app_title,
-                    "User has not been switched.\n\nReason: Not authorized.",
-                )
-
-            Log.d("User did not authenticate for role to switch users.")
-
-    def on_tab_changed(self, index):
-        # Purge dataase to disk on tab change
-        if self.database.is_open:
-            self.database.backup()
-        elif not isinstance(self.database, SimpleNamespace):
-            Log.w("Database closed: backup failed")
-
-        # Get the current widget and call it's select handler (if exists)
-        current_widget = self.tab_widget.widget(index)
-        if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
-            current_widget.on_tab_selected()
-
-    def clear(self) -> None:
-        self._unsaved_changes = False
-
-    def hasUnsavedChanges(self) -> bool:
-        return self._unsaved_changes
-
-    def reset(self) -> None:
-        self.check_user_info()
-        self.signedInAs.setText(self.username)
-        self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-        self.parent.signature_received = False
-        self.parent.signature_required = True
-        self.sign.setReadOnly(False)
-        self.sign.setMaxLength(4)
-        self.sign.clear()
-
-    def enable(self, enable=False) -> None:
-        if not enable:
-            # VisQ.AI UI is not in foreground, Mode not selected
-            # Do things here to shutdown resources and disable:
-
-            # Close database.
-            if self.database.is_open:
-                self.database.close()
-            elif not isinstance(self.database, SimpleNamespace):
-                Log.w("Database closed: write failed")
-
-            # Disable database objects.
-            self.database = SimpleNamespace(is_open=False, status="Disabled")
-            self.form_ctrl = SimpleNamespace(db=None, status="Disabled")
-            self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
-            Log.d("Database objects disabled on VisQ.AI not enabled.")
-
-        else:
-            # VisQ.AI UI is now in foreground, Mode is selected
-            # Do things here to initialize resources and enable:
-
-            # Create database objects, and open DB from file.
-            self.database = Database(parse_file_key=True)
-            self.form_ctrl = FormulationController(db=self.database)
-            self.ing_ctrl = IngredientController(db=self.database)
-            Log.d("Database objects created on VisQ.AI enable.")
-
-            # Emit tab selected code for the currently active tab frame.
-            self.tab_widget.currentChanged.emit(self.tab_widget.currentIndex())
-
-            # # Create default user preferences object
-            # UserProfiles.user_preferences = UserPreferences(
-            #     UserProfiles.get_session_file())
-            # prefs = UserProfiles.user_preferences.get_preferences()
-            # self.load_data_path = prefs['load_data_path']
-
-    def save_run_info(self, xml_path: str, run_info: list, cancel: bool = False):
-        # This will update the run info XML only if there are changes.
-        # The user may be asked for an audit signature if required.
-
-        info_tags = ['protein_type', 'protein_concentration',
-                     'buffer_type', 'buffer_concentration',
-                     'surfactant_type', 'surfactant_concentration',
-                     'stabilizer_type', 'stabilizer_concentration',
-                     'salt_type', 'salt_concentration']
-        required_len = len(info_tags)
-        if len(run_info) != required_len:
-            Log.e(
-                f"There must be {required_len} run info parameters given. Received {len(run_info)}")
-            return
-        if not os.path.exists(xml_path):
-            Log.e(f"XML path not found: {xml_path}")
-            return
-
-        run = minidom.parse(xml_path)
-        xml = run.documentElement
-
-        existing_params = []
-        params = xml.getElementsByTagName(
-            "params")[-1]  # most recent element
-        params = params.cloneNode(deep=True)
-        for p in params.childNodes:
-            if p.nodeType == p.TEXT_NODE:
-                continue  # only process elements
-            name = p.getAttribute("name")
-            existing_params.append(name)
-            if name in info_tags:
-                i = info_tags.index(name)
-                value = run_info[i]
-                if p.getAttribute("value") != value:
-                    p.setAttribute("value", value)
-                    self._unsaved_changes = True
-        for i in range(required_len):
-            name = info_tags[i]
-            if name not in existing_params:
-                value = run_info[i]
-                p = run.createElement('param')
-                p.setAttribute('name', name)
-                p.setAttribute('value', value)
-                params.appendChild(p)
-                self._unsaved_changes = True
-
-        if not self._unsaved_changes:
-            Log.d("No changes detected, not appending new run info to XML.")
-            return
-        elif cancel:
-            Log.d("User canceling with unsaved changes in table.")
-            result = QtWidgets.QMessageBox.question(
-                None,
-                Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to cancel without saving?")
-            if result == QtWidgets.QMessageBox.Yes:
-                self._unsaved_changes = False
-                return
-
-        # Get audit signature from authorized user.
-        if self.parent.signature_required and self._unsaved_changes:
-            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
-                Log.w(
-                    f"Signing ANALYZE with initials {self.initials} (not asking again)"
-                )
-                self.parent.signed_at = dt.datetime.now().isoformat()
-                self.parent.signature_received = True  # Do not ask again this session
-            if not self.parent.signature_received:
-                if self.signForm.isVisible():
-                    self.signForm.hide()
-                self.signedInAs.setText(self.username)
-                self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
-                screen = QtWidgets.QDesktopWidget().availableGeometry()
-                left = int(
-                    (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
-                top = (
-                    int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
-                )
-                self.signForm.move(left, top)
-                self.signForm.setVisible(True)
-                self.sign.setFocus()
-                self.signForm.exec_()
-                if not self.parent.signature_received:
-                    Log.w("User did not sign when requested.")
-                    return
-
-        if self.sign_do_not_ask.isChecked():
-            session_key_path = os.path.join(
-                Constants.user_profiles_path, "session.key")
-            if os.path.exists(session_key_path):
-                with open(session_key_path, "r") as f:
-                    session_key = f.readline()
-                if not os.path.exists(Constants.auto_sign_key_path):
-                    with open(Constants.auto_sign_key_path, "w") as f:
-                        f.write(session_key)
-
-        if self.parent.signature_required:
-            valid, infos = UserProfiles.session_info()
-            if valid:
-                Log.d(f"Found valid session: {infos}")
-                username = infos[0]
-                initials = infos[1]
-                salt = UserProfiles.find(username, initials)[1][:-4]
-                userrole = infos[2]
-            else:
-                Log.w(
-                    f"Found invalid session: searching for user ({self.username}, {self.initials})")
-                username = self.username
-                initials = self.initials
-                salt = UserProfiles.find(username, initials)[1][:-4]
-                userrole = UserProfiles.get_user_info(f"{salt}.xml")[2]
-
-            audit_action = "VISQAI"
-            timestamp = self.parent.signed_at
-            machine = Architecture.get_os_name()
-            hash = hashlib.sha256()
-            hash.update(salt.encode())  # aka 'profile'
-            hash.update(audit_action.encode())
-            hash.update(timestamp.encode())
-            hash.update(machine.encode())
-            hash.update(username.encode())
-            hash.update(initials.encode())
-            hash.update(userrole.encode())
-            signature = hash.hexdigest()
-
-            audit1 = run.createElement('audit')
-            audit1.setAttribute('profile', salt)
-            audit1.setAttribute('action', audit_action)
-            audit1.setAttribute('recorded', timestamp)
-            audit1.setAttribute('machine', machine)
-            audit1.setAttribute('username', username)
-            audit1.setAttribute('initials', initials)
-            audit1.setAttribute('role', userrole)
-            audit1.setAttribute('signature', signature)
-
-            audits = xml.getElementsByTagName('audits')[-1]
-            audits.appendChild(audit1)
-        else:
-            pass  # leave 'audits' block as empty
-
-        hash = hashlib.sha256()
-        params.setAttribute('recorded', timestamp)
-        for p in params.childNodes:
-            for name, value in p.attributes.items():
-                hash.update(name.encode())
-                hash.update(value.encode())
-        signature = hash.hexdigest()
-        params.setAttribute('signature', signature)
-
-        xml.appendChild(params)
-
-        with open(xml_path, 'w') as f:
-            f.write(run.toxml())
-
-        self._unsaved_changes = False
+    from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.VisQAI.src.utils.icon_utils import IconUtils
+    from QATCH.VisQAI.src.utils.list_utils import ListUtils
+    from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
+    from QATCH.VisQAI.src.view.table_view import TableView, Color
+    from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
+    if TYPE_CHECKING:
+        from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
+        from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
 
 class FrameStep1(QtWidgets.QDialog):
@@ -739,6 +87,9 @@ class FrameStep1(QtWidgets.QDialog):
             self.setWindowTitle("Select Experiments")
         else:
             self.setWindowTitle(f"FrameStep{step}")
+
+        if step == 2:  # Suggest
+            self.constraints_ui = ConstraintsUI(self, self.step)
 
         # Main layout
         main_layout = QtWidgets.QHBoxLayout(self)
@@ -1035,6 +386,9 @@ class FrameStep1(QtWidgets.QDialog):
         # Set run directory from User Preferences.
         self.file_dialog.setDirectory(Constants.log_prefer_path)
 
+        # Reload all excipients from DB
+        self.load_all_excipient_types()
+
         if self.step == 2:  # Suggest
             # self.load_suggestion()
             pass
@@ -1076,19 +430,6 @@ class FrameStep1(QtWidgets.QDialog):
             no_item.setSelectable(False)
             self.model.appendRow(no_item)
 
-    def unique_case_insensitive_sort(self, list):
-        seen = set()
-        result = []
-        for item in list:
-            lower_item = item.lower()
-            if lower_item not in seen:
-                seen.add(lower_item)
-                result.append(item)
-
-        # Sort case-insensitive
-        result.sort(key=str.lower)
-        return result
-
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
@@ -1096,42 +437,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
 
-        ingredients = self.parent.ing_ctrl.get_all_ingredients()
-        for i in ingredients:
-            if i.name.casefold() == "none":
-                continue  # skip "none"
-            if i.type == "Protein":
-                self.proteins.append(i.name)
-            elif i.type == "Buffer":
-                self.buffers.append(i.name)
-            elif i.type == "Surfactant":
-                self.surfactants.append(i.name)
-            elif i.type == "Stabilizer":
-                self.stabilizers.append(i.name)
-            elif i.type == "Salt":
-                self.salts.append(i.name)
-
-        # this is case-sensitive, which is not what we want:
-        # self.excipient_proteins.sort()
-        # self.excipient_surfactants.sort()
-        # self.excipient_stabilizers.sort()
-        # this is using a case-insensitive sorting method:
-        # self.proteins = sorted(
-        #     self.proteins, key=str.casefold)
-        # self.buffers = sorted(
-        #     self.buffers, key=str.casefold)
-        # self.surfactants = sorted(
-        #     self.surfactants, key=str.casefold)
-        # self.stabilizers = sorted(
-        #     self.stabilizers, key=str.casefold)
-        # self.salts = sorted(
-        #     self.salts, key=str.casefold)
-        # this is unique, case-insensitive sorting method:
-        self.proteins = self.unique_case_insensitive_sort(self.proteins)
-        self.buffers = self.unique_case_insensitive_sort(self.buffers)
-        self.surfactants = self.unique_case_insensitive_sort(self.surfactants)
-        self.stabilizers = self.unique_case_insensitive_sort(self.stabilizers)
-        self.salts = self.unique_case_insensitive_sort(self.salts)
+        self.proteins, self.buffers, self.surfactants, \
+            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+                self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
@@ -1308,7 +616,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         return True
 
-    def load_suggestion(self):
+    def load_suggestion(self, constraints):
         model_name = self.select_model_label.text()
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
@@ -1322,6 +630,9 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.progressBar = QtWidgets.QProgressDialog(
             "Suggesting...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBar.setAutoReset(False)
+        self.progressBar.setAutoClose(False)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/reset.png')
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
@@ -1363,12 +674,15 @@ class FrameStep1(QtWidgets.QDialog):
             self,
             method_name="get_new_suggestion",
             asset_name=model_name,
+            constraints=copy.deepcopy(constraints),
             callback=add_new_suggestion)
 
-    def get_new_suggestion(self, asset_name):
+    def get_new_suggestion(self, asset_name, constraints: Constraints | None = None):
         database = Database(parse_file_key=True)
+        constraints.set_db(database)  # Needed for cross-threading
         sampler = Sampler(asset_name=asset_name,
-                          database=database)
+                          database=database,
+                          constraints=constraints)
         form = sampler.get_next_sample()
         database.close()
         return form
@@ -1432,6 +746,9 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.progressBar = QtWidgets.QProgressDialog(
             "Updating...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBar.setAutoReset(False)
+        self.progressBar.setAutoClose(False)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/reset.png')
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
@@ -1550,11 +867,11 @@ class FrameStep1(QtWidgets.QDialog):
             run_prediction_result()
 
     def check_finished(self):
-        record_count = 1
-        if self.step == 5 and self.parent.select_formulation.viscosity_profile.is_measured:
-            record_count += 1
-        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == record_count:
-            self.progressBar.close()  # finished
+        # at least 1 record expected, but may be more based on task count
+        expect_record_count = max(1, self.executor.task_count())
+        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == expect_record_count:
+            # finished, but keep the dialog open to retain `wasCanceled()` state
+            self.progressBar.hide()
             self.timer.stop()
             if self.step == 2:
                 self.parent.enable(True)
@@ -1662,7 +979,7 @@ class FrameStep1(QtWidgets.QDialog):
 
     def add_another_item(self):
         if self.step == 2:
-            self.load_suggestion()
+            self.constraints_ui.add_suggestion_dialog()
         if self.step == 5:
             self.add_formulation(Formulation())
 
@@ -2243,452 +1560,3 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.select_model_label.setText(
             path.split('\\')[-1].split('/')[-1].split('.')[0])
-
-
-class FrameStep2(QtWidgets.QDialog):
-    def __init__(self, parent=None, step=2):
-        super().__init__(parent)
-        self.parent: VisQAIWindow = parent
-        self.step = step
-
-        self.model_path = None
-
-        if step == 4:
-            self.setWindowTitle("Learn")
-        elif step == 6:
-            self.setWindowTitle("Optimize")
-        else:
-            self.setWindowTitle(f"FrameStep{step}")
-
-        # Main layout
-        main_layout = QtWidgets.QVBoxLayout(self)
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        main_layout.addWidget(splitter)
-        top_menu_widget = QtWidgets.QWidget()
-        top_menu_layout = QtWidgets.QVBoxLayout(top_menu_widget)
-
-        # Browse model layout
-        self.model_dialog = QtWidgets.QFileDialog()
-        self.model_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(
-            os.getcwd(), "QATCH/VisQAI/assets")
-        self.model_dialog.setDirectory(model_path)
-        self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
-        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
-
-        self.select_model_group = QtWidgets.QGroupBox("Select Model")
-        select_model_layout = QtWidgets.QHBoxLayout(self.select_model_group)
-        self.select_model_btn = QtWidgets.QPushButton("Browse...")
-        self.select_model_label = QtWidgets.QLineEdit()
-        self.select_model_label.setPlaceholderText("No model selected")
-        self.select_model_label.setReadOnly(True)
-        select_model_layout.addWidget(self.select_model_btn)
-        select_model_layout.addWidget(self.select_model_label)
-        select_model_layout.addStretch()
-
-        # Action summary layout
-        group_title = "Action Summary"
-        group_text = "The following changes will occur:"
-        if step == 4:  # Learn
-            group_title = "Learn Summary"
-            group_text = "The following experiments will be learned:"
-        if step == 6:  # Optimize
-            group_title = "Optimize Summary"
-            group_text = "The following features will be optimized:"
-        self.summary_group = QtWidgets.QGroupBox(group_title)
-        summary_layout = QtWidgets.QVBoxLayout(self.summary_group)
-        summary_label = QtWidgets.QLabel(group_text)
-        self.summary_text = QtWidgets.QPlainTextEdit()
-        self.summary_text.setPlaceholderText("No changes")
-        self.summary_text.setReadOnly(True)
-        summary_layout.addWidget(summary_label)
-        summary_layout.addWidget(self.summary_text)
-
-        # Progress layout
-        self.progress_group = QtWidgets.QGroupBox("Learning Progress")
-        progress_layout = QtWidgets.QVBoxLayout(self.progress_group)
-        self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_buttons = QtWidgets.QWidget()
-        self.progress_btn_layout = QtWidgets.QHBoxLayout(self.progress_buttons)
-        self.progress_btn_layout.setContentsMargins(0, 0, 0, 0)
-        self.btn_pause = QtWidgets.QPushButton("Pause")
-        self.btn_resume = QtWidgets.QPushButton("Resume")
-        self.btn_cancel = QtWidgets.QPushButton("Cancel")
-        self.progress_btn_layout.addWidget(self.btn_pause)
-        self.progress_btn_layout.addWidget(self.btn_resume)
-        self.progress_btn_layout.addWidget(self.btn_cancel)
-        self.progress_label = QtWidgets.QLabel()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setTextVisible(False)
-        self.progress_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        progress_layout.addWidget(self.progress_label)
-        progress_layout.addWidget(self.progress_bar)
-        progress_layout.addWidget(self.progress_buttons)
-
-        # Top menu layout
-        top_menu_layout.addWidget(self.select_model_group)
-        top_menu_layout.addWidget(self.summary_group)
-        top_menu_layout.addWidget(self.progress_group)
-        splitter.addWidget(top_menu_widget)
-
-        # Bottom split view layout
-        figure = QtWidgets.QLabel("[Figure here]")
-        figure.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        splitter.addWidget(figure)
-        splitter.setSizes([1, 1000])
-
-        # Signals
-        self.select_model_btn.clicked.connect(self.model_dialog.show)
-        self.model_dialog.fileSelected.connect(self.model_selected)
-        self.btn_resume.clicked.connect(
-            lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
-        self.btn_resume.clicked.connect(
-            getattr(self, "learn" if step == 4 else "optimize")
-        )
-        self.btn_cancel.clicked.connect(
-            lambda: self.progress_bar.setValue(0))
-        self.btn_cancel.clicked.connect(
-            lambda: self.model_selected(None))
-        self.progress_bar.valueChanged.connect(
-            lambda v: self.progress_label.setText(
-                f"{v}% - " + ("Learning" if self.step == 4 else "Optimizing")))
-
-        self.progress_bar.setValue(0)
-
-    def on_tab_selected(self):
-        # Select a pre-selected model, if none selected here
-        if not self.model_path:
-            select_tab: FrameStep1 = self.parent.tab_widget.widget(0)
-            suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
-            import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
-            learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-            predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
-            all_model_paths = [select_tab.model_path,
-                               suggest_tab.model_path,
-                               import_tab.model_path,
-                               learn_tab.model_path,
-                               predict_tab.model_path,
-                               optimize_tab.model_path]
-            found_model_path = next(
-                (x for x in all_model_paths if x is not None), None)
-            if found_model_path:
-                self.model_selected(found_model_path)
-
-        self.load_changes()
-
-    def model_selected(self, path: str | None):
-        self.model_path = path
-
-        if path is None:
-            self.select_model_label.clear()
-            return
-
-        self.select_model_label.setText(
-            path.split('\\')[-1].split('/')[-1].split('.')[0])
-
-    def load_changes(self):
-        changes = []  # list of changes
-
-        if self.step == 4:  # learn
-            select_run_tab: FrameStep1 = self.parent.tab_widget.widget(0)
-            experiments_tab: FrameStep1 = self.parent.tab_widget.widget(2)
-            changes.append(select_run_tab.select_label.text())
-            changes.extend(experiments_tab.all_files.keys())
-
-        if self.step == 6:  # optimize
-            pass
-
-        self.summary_text.setPlainText("\n".join(changes).strip())
-
-    def learn(self):
-        raise NotImplementedError()
-
-    def optimize(self):
-        raise NotImplementedError()
-
-
-class Color:
-    black = QtGui.QColor(0, 0, 0)
-    light_red = QtGui.QColor(255, 127, 127)
-    light_yellow = QtGui.QColor(255, 255, 127)
-    white = QtGui.QColor(255, 255, 255)
-
-
-class TableView(QtWidgets.QTableWidget):
-
-    def __init__(self, data, *args):
-        QtWidgets.QTableWidget.__init__(self, *args)
-        self.itemChanged.connect(self._on_item_changed)
-        self.setData(data)
-        self.resizeColumnsToContents()
-        self.resizeRowsToContents()
-        self.verticalHeader().setVisible(False)
-
-    def clear(self):
-        super().clear()
-        self._is_empty = True
-
-    def setData(self, data: dict[str, str]) -> None:
-        self.data = data
-        self.clear()
-        horHeaders = []
-        for n, key in enumerate(self.data.keys()):
-            horHeaders.append(key)
-            for m, item in enumerate(self.data[key]):
-                if n == 0 or n == 2:
-                    # always treat first and last cols as uneditable text, not a QComboBox
-                    newitem = QtWidgets.QTableWidgetItem(str(item))
-                elif self._is_number(item) or len(item) == 0:
-                    # item is either a number or blank (empty string)
-                    newitem = QtWidgets.QTableWidgetItem(str(item))
-                else:
-                    newitem = QtWidgets.QComboBox()
-                    # newitem.addItem("add new...")
-                    if isinstance(item, list):
-                        newitem.addItem("None")
-                        newitem.addItems(item)
-                        self.data["Units"][m] = "\u2190"  # unicode left arrow
-                        newitem.currentIndexChanged.connect(
-                            lambda idx, row=m: self._row_combo_set(row))
-                    else:  # str
-                        newitem.addItem(item)
-                        self.data["Units"][m] = ""  # clear flag
-                # disable 1st and last column items (not selectable or editable)
-                if n == 0 or n == 2:
-                    if n == 0:  # bold 1st column items (headers)
-                        font = newitem.font()
-                        font.setBold(True)
-                        newitem.setFont(font)
-                    newitem.setFlags(newitem.flags() &
-                                     ~(QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEditable))
-                if isinstance(newitem, QtWidgets.QWidget):
-                    self.setCellWidget(m, n, newitem)
-                else:
-                    self.setItem(m, n, newitem)
-                # Unhide a row if it was hidden
-                if self.isRowHidden(m):
-                    self.showRow(m)
-        self.setHorizontalHeaderLabels(horHeaders)
-        header = self.horizontalHeader()
-        header.setSectionResizeMode(
-            QtWidgets.QHeaderView.ResizeToContents)
-        header.setStretchLastSection(False)
-        self._is_empty = False
-
-    def allSet(self) -> bool:
-        for n, key in enumerate(self.data.keys()):
-            for m, _ in enumerate(self.data[key]):
-                if self.isRowHidden(m):
-                    continue  # do not check hidden rows
-                item = self.item(m, n)
-                if item is None:
-                    continue  # QComboBox will return a None item
-                if item.background().color().name() in [Color.light_yellow.name(), Color.light_red.name()]:
-                    return False
-        return True
-
-    def isEmpty(self) -> bool:
-        return self._is_empty
-
-    def _row_combo_set(self, idx):
-        item = self.item(idx, 2)
-        if item is not None:
-            self.blockSignals(True)  # prevent recursion
-            item.setBackground(QtGui.QBrush(Color.white))
-            self.item(idx, 2).setText("")
-            self.blockSignals(False)
-
-    def _is_number(self, s: str):
-        try:
-            float(s)
-            return True
-        except (ValueError, TypeError):
-            return False
-
-    def _on_item_changed(self, item: QtWidgets.QTableWidgetItem):
-        row, col, text = item.row(), item.column(), item.text()
-        print(f"Cell ({row}, {col}) changed to: {text}")
-
-        if col == 2 and text == "\u2190":  # unicode left arrow
-            item.setBackground(QtGui.QBrush(Color.light_yellow))
-
-        if not (item.flags() & QtCore.Qt.ItemFlag.ItemIsEditable):
-            # print("skip, disabled")
-            return
-
-        now_bg = item.background()
-        now_fg = item.foreground()
-        new_bg = QtGui.QBrush(now_bg.color())
-        new_fg = QtGui.QBrush(now_fg.color())
-
-        if len(text) == 0:
-            new_bg.setColor(Color.light_yellow)
-            new_fg.setColor(Color.black)
-        elif not self._is_number(text):
-            new_bg.setColor(Color.light_red)
-            new_fg.setColor(Color.light_yellow)
-        else:
-            new_bg.setColor(Color.white)
-            new_fg.setColor(Color.black)
-
-        self.blockSignals(True)  # prevent recursion
-        if new_bg.color().name() != now_bg.color().name():
-            item.setBackground(new_bg)
-        if new_fg.color().name() != now_fg.color().name():
-            item.setForeground(new_fg)
-        self.blockSignals(False)
-
-        self.clearSelection()  # unselect on item change
-
-
-class CollapsibleBox(QtWidgets.QWidget):
-    def __init__(self, title="", parent=None):
-        super(CollapsibleBox, self).__init__(parent)
-        self._collapsed = True
-
-        self.toggle_button = QtWidgets.QToolButton(
-            text=title, checkable=True, checked=False
-        )
-
-        self.toggle_button.setStyleSheet("QToolButton { border: none; }")
-        self.toggle_button.setToolButtonStyle(
-            QtCore.Qt.ToolButtonTextBesideIcon
-        )
-        self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
-        self.toggle_button.pressed.connect(self.toggle)
-
-        self.toggle_animation = QtCore.QParallelAnimationGroup(self)
-
-        self.content_area = QtWidgets.QScrollArea(
-            maximumHeight=0, minimumHeight=0
-        )
-        self.content_area.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
-        )
-        self.content_area.setFrameShape(QtWidgets.QFrame.NoFrame)
-
-        lay = QtWidgets.QVBoxLayout(self)
-        # lay.setSpacing(0)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.toggle_button)
-        lay.addWidget(self.content_area)
-
-        self.toggle_animation.addAnimation(
-            QtCore.QPropertyAnimation(self, b"minimumHeight")
-        )
-        self.toggle_animation.addAnimation(
-            QtCore.QPropertyAnimation(self, b"maximumHeight")
-        )
-        self.toggle_animation.addAnimation(
-            QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
-        )
-
-    def setCollapsed(self, checked):
-        if self._collapsed is not checked:
-            self._collapsed = checked
-            self.repaint()
-
-    def isCollapsed(self):
-        return self._collapsed
-
-    def toggle(self):
-        self.setCollapsed(not self.isCollapsed())
-        # calls self.repaint()
-
-    def repaint(self):
-        checked = self._collapsed
-        self.toggle_button.setArrowType(
-            QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow
-        )
-        self.toggle_animation.setDirection(
-            QtCore.QAbstractAnimation.Forward
-            if not checked
-            else QtCore.QAbstractAnimation.Backward
-        )
-
-        self.toggle_animation.start()
-
-    def setContentLayout(self, layout):
-        lay = self.content_area.layout()
-        del lay
-        self.content_area.setLayout(layout)
-        collapsed_height = (
-            self.sizeHint().height() - self.content_area.maximumHeight()
-        )
-        content_height = layout.sizeHint().height()
-        for i in range(self.toggle_animation.animationCount()):
-            animation = self.toggle_animation.animationAt(i)
-            animation.setDuration(500)
-            animation.setStartValue(collapsed_height)
-            animation.setEndValue(collapsed_height + content_height)
-
-        content_animation = self.toggle_animation.animationAt(
-            self.toggle_animation.animationCount() - 1
-        )
-        content_animation.setDuration(500)
-        content_animation.setStartValue(0)
-        content_animation.setEndValue(content_height)
-
-
-if __name__ == '__main__':
-    if False:
-        _app = QtWidgets.QApplication([])
-        _win = VisQAIWindow()
-        _win.show()
-        _app.exec()
-        _app.exit()
-
-    else:
-        import sys
-        import random
-
-        app = QtWidgets.QApplication(sys.argv)
-
-        w = QtWidgets.QMainWindow()
-        w.setCentralWidget(QtWidgets.QWidget())
-        dock = QtWidgets.QDockWidget("Collapsible Demo")
-        w.addDockWidget(QtCore.Qt.LeftDockWidgetArea, dock)
-        scroll = QtWidgets.QScrollArea()
-        dock.setWidget(scroll)
-        content = QtWidgets.QWidget()
-        scroll.setWidget(content)
-        scroll.setWidgetResizable(True)
-        vlay = QtWidgets.QVBoxLayout(content)
-        vlay.addWidget(QtWidgets.QGroupBox("Buffer"))
-        for i in range(1):
-            box = CollapsibleBox("Advanced Information")
-            vlay.addWidget(box)
-            vlay.setContentsMargins(0, 0, 0, 0)
-            lay = QtWidgets.QVBoxLayout()
-            lay.setContentsMargins(0, 0, 0, 0)
-            labels = ["Protein", "Buffer", "Salt"]
-            for j in range(3):
-                label = QtWidgets.QGroupBox(f"{labels[j]} Information")
-                layout = QtWidgets.QFormLayout(label)
-                layout.addRow("Type:", QtWidgets.QLineEdit())
-                layout.addRow("Concentration:", QtWidgets.QLineEdit())
-                # color = QtGui.QColor(*[random.randint(0, 255) for _ in range(3)])
-                # label.setStyleSheet(
-                #     "background-color: {}; color : white;".format(color.name())
-                # )
-                # label.setAlignment(QtCore.Qt.AlignCenter)
-                lay.addWidget(label)
-            box.setContentLayout(lay)
-        vlay.addWidget(QtWidgets.QCheckBox("Remember for next time"))
-        toggle = QtWidgets.QPushButton("Toggle")
-        toggle.clicked.connect(box.toggle)
-        open = QtWidgets.QPushButton("Open")
-        open.clicked.connect(lambda: box.setCollapsed(False))
-        close = QtWidgets.QPushButton("Close")
-        close.clicked.connect(lambda: box.setCollapsed(True))
-        vlay.addWidget(toggle)
-        vlay.addWidget(open)
-        vlay.addWidget(close)
-        vlay.addStretch()
-        w.resize(640, 480)
-        w.show()
-        # box.setCollapsed(False)
-        sys.exit(app.exec_())

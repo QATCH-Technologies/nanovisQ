@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QCompleter
+from PyQt5.QtCore import Qt
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
@@ -415,13 +417,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
         self.text_Runs = QtWidgets.QLabel("Run:")
-        self.cBox_Runs = QtWidgets.QComboBox()
+
         self.btn_Load = QtWidgets.QPushButton("Load")
         self.btn_Back = QtWidgets.QPushButton("Back")
         self.btn_Next = QtWidgets.QPushButton("Next")
         self.text_Loaded = QtWidgets.QLabel("Loaded:")
         self.text_Created = QtWidgets.QLabel("[NONE]")
         self.btn_Info = QtWidgets.QPushButton("Run Info")
+        self.cBox_Runs = QtWidgets.QComboBox()
+        self.cBox_Runs.setEditable(True)
+        self.cBox_Runs.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        # Configure completer for existing/future items
+        # Configure completer for existing/future items
+        self._runs_completer = QCompleter(self.cBox_Runs.model(), self)
+        self._runs_completer.setCompletionMode(QCompleter.PopupCompletion)
+        self._runs_completer.setFilterMode(Qt.MatchContains)
+        self._runs_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.cBox_Runs.setCompleter(self._runs_completer)
+
+        # Enforce selection: clear invalid text on finish
+        self.cBox_Runs.lineEdit().editingFinished.connect(self._validate_run)
 
         # START ANALYZE SIGNATURE CODE:
         # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
@@ -1211,6 +1226,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
 
+    def _validate_run(self):
+        """
+        Validate current text against available items. Clear if not matching.
+        """
+        current = self.cBox_Runs.currentText()
+        # Only accept exact matches
+        if self.cBox_Runs.findText(current, Qt.MatchExactly) == -1:
+            # Invalid entry: reset
+            self.cBox_Runs.setCurrentIndex(-1)
+            self.cBox_Runs.clearEditText()
     # def hideSelectTool(self, event):
     #     self.AI_SelectTool_Frame.hide()
 

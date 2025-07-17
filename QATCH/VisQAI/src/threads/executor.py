@@ -106,6 +106,10 @@ class Executor:
         with self._lock:
             return sum(1 for rec in self._tasks if rec.is_alive())
 
+    def task_count(self) -> int:
+        with self._lock:
+            return len(self._tasks)
+
     def get_all_results(self) -> List[Any]:
         with self._lock:
             return [rec.result for rec in self._tasks]

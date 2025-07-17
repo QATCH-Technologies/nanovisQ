@@ -4,10 +4,11 @@ from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.ui.collapsible_box import CollapsibleBox
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Salt, Buffer, Stabilizer
-from QATCH.VisQAI.VisQAIWindow import CollapsibleBox
+from QATCH.VisQAI.src.utils.list_utils import ListUtils
 from PyQt5 import QtCore, QtGui, QtWidgets
 from xml.dom import minidom
 import numpy as np
@@ -1725,62 +1726,16 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t16.setEnabled(True)
             pass  # do nothing if any other value was selected
 
-    def unique_case_insensitive_sort(self, list):
-        seen = set()
-        result = []
-        for item in list:
-            lower_item = item.lower()
-            if lower_item not in seen:
-                seen.add(lower_item)
-                result.append(item)
-
-        # Sort case-insensitive
-        result.sort(key=str.lower)
-        return result
-
     def load_all_excipient_types(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
-        ingredients = self.ing_ctrl.get_all_ingredients()
 
-        for i in ingredients:
-            if i.name.casefold() == "none":
-                continue  # skip "none"
-            if i.type == "Protein":
-                self.proteins.append(i.name)
-            elif i.type == "Buffer":
-                self.buffers.append(i.name)
-            elif i.type == "Surfactant":
-                self.surfactants.append(i.name)
-            elif i.type == "Stabilizer":
-                self.stabilizers.append(i.name)
-            elif i.type == "Salt":
-                self.salts.append(i.name)
-
-        # this is case-sensitive, which is not what we want:
-        # self.excipient_proteins.sort()
-        # self.excipient_surfactants.sort()
-        # self.excipient_stabilizers.sort()
-        # this is using a case-insensitive sorting method:
-        # self.proteins = sorted(
-        #     self.proteins, key=str.casefold)
-        # self.buffers = sorted(
-        #     self.buffers, key=str.casefold)
-        # self.surfactants = sorted(
-        #     self.surfactants, key=str.casefold)
-        # self.stabilizers = sorted(
-        #     self.stabilizers, key=str.casefold)
-        # self.salts = sorted(
-        #     self.salts, key=str.casefold)
-        # this is unique, case-insensitive sorting method:
-        self.proteins = self.unique_case_insensitive_sort(self.proteins)
-        self.buffers = self.unique_case_insensitive_sort(self.buffers)
-        self.surfactants = self.unique_case_insensitive_sort(self.surfactants)
-        self.stabilizers = self.unique_case_insensitive_sort(self.stabilizers)
-        self.salts = self.unique_case_insensitive_sort(self.salts)
+        self.proteins, self.buffers, self.surfactants, \
+            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+                self.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
@@ -1887,7 +1842,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c10.count()
             self.c10.clear()
-            self.c10.addItem("")  # blank, default until user makes selection
+            # self.c10.addItem("")  # blank, default until user makes selection
             self.c10.addItems(self.proteins)
             self.c10.addItem("Add new...")
             if num_items:
@@ -1895,7 +1850,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # TODO: since we `sort()`, "newest" is not "last"
                 self.c10.setCurrentText(self.proteins[-1])
             else:
-                self.c10.setCurrentIndex(0)  # initial load value: [blank]
+                self.c10.setCurrentIndex(-1)  # initial load value: [blank]
         except:
             Log.e("Failed to update proteins list after saving.")
 
@@ -1903,7 +1858,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         try:
             num_items = self.c13.count()
             self.c13.clear()
-            self.c13.addItem("None")
+            # self.c13.addItem("None") # hide "None" option
             self.c13.addItems(self.buffers)
             self.c13.addItem("Add new...")
             if num_items:
@@ -1911,7 +1866,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # TODO: since we `sort()`, "newest" is not "last"
                 self.c13.setCurrentText(self.buffers[-1])
             else:
-                self.c13.setCurrentIndex(0)  # initial load value: none
+                self.c13.setCurrentIndex(-1)  # initial load value: [blank]
         except:
             Log.e("Failed to update buffers list after saving.")
 

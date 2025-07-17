@@ -20,7 +20,7 @@ from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManag
 from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
-from QATCH.VisQAI.VisQAIWindow import VisQAIWindow
+from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 from time import time, mktime, strftime, strptime, localtime

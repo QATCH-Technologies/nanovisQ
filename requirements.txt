@@ -166,6 +166,8 @@ pytz==2024.2
     # via pandas
 pyzipper==0.3.6
     # via -r requirements.in
+rapidfuzz==3.13.0
+	# via -r requirements.in
 requests==2.32.3
     # via
     #   -r requirements.in
