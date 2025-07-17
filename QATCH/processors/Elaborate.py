@@ -20,7 +20,7 @@ TAG = "[Elaborate]"
 
 class ElaborateProcess(multiprocessing.Process):
 
-    def __init__(self, queue_log, parser_process, queue_in, queue_out, export, overtone_name, reconstruct):
+    def __init__(self, queue_log, parser_process, queue_in, queue_out, export, overtone_name, reconstruct, driedValue, appliedValue):
         """
         :param parser_process: Reference to a ParserProcess instance.
         :type parser_process: ParserProcess.
@@ -36,7 +36,12 @@ class ElaborateProcess(multiprocessing.Process):
         self._export = export
         self._overtone_name = overtone_name
         self._reconstruct = reconstruct
+        self._driedValue = driedValue
+        self._appliedValue = appliedValue
+
         self._count = 0  # sweeps counter
+        self.sensorDriedTime = 0.0
+        self.dropAppliedTime = 0.0
 
         self._time_start = time()
         self._last_parser_add = time()
@@ -360,6 +365,18 @@ class ElaborateProcess(multiprocessing.Process):
                 FileStorage.TXT_sweeps_save(
                     0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False)
             self._count += 1
+
+        # Read the shared values
+        with self._driedValue.get_lock():
+            if self.sensorDriedTime != self._driedValue.value:
+                self.sensorDriedTime = self._driedValue.value
+                Log.d("[ElaborateProcess]",
+                      f"Sensor dried time = {self.sensorDriedTime}")
+        with self._appliedValue.get_lock():
+            if self.dropAppliedTime != self._appliedValue.value:
+                self.dropAppliedTime = self._appliedValue.value
+                Log.d("[ElaborateProcess]",
+                      f"Drop applied time = {self.dropAppliedTime}")
 
         if overtone in (0, 255):
             if not (self._err1 and self._err2):
