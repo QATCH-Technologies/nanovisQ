@@ -1218,8 +1218,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._vector_1 = None
         self._vector_2 = None
 
+        # Used for DryingDetection times
+        self._sensorDriedTimeValue = multiprocessing.Value('f', 0.0)
+        self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
+        self._dropAppliedTimeValue = multiprocessing.Value('f', 0.0)
+        self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
+
         # Instantiates a Worker class
-        self.worker = Worker()
+        self.worker = Worker(driedValue=self._sensorDriedTimeValue,
+                             appliedValue=self._dropAppliedTimeValue)
 
         # Initiates an Upgrader class
         self.fwUpdater = FW_Updater()
@@ -1289,8 +1296,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
 
-        self.dry_detect = DryingDetection(
-            window_size=2000, sigma_stable_diss=0.25, sigma_stable_freq=0.25, flat_slope_eps=0.000015)
+        self.dry_detect = []
+        for _ in range(4):
+            self.dry_detect.append(
+                DryingDetection(
+                    window_size=2000, sigma_stable_diss=0.25, sigma_stable_freq=0.25, flat_slope_eps=0.000015))
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
@@ -1805,6 +1815,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.w(
                         f"Removing invalid initialization file from 'config' root: {path}")
                     os.remove(path)
+
+        # Reset dry and drop times to zero
+        self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
+        self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
 
         # Instantiates process
         self.worker.config(QCS_on=self._QCS_installed,
@@ -3173,10 +3187,18 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
-                                            labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
-                                            # next(x for x,y in list(vector0) if y <= 1.0)
-                                            idx = int(len(list(vector0)) / 3)
+                                        if self.dry_detect[i].dry_time == 0:
+                                            labelbar = 'Waiting for drying...'
+                                            continue
+                                        if time_running - self.dry_detect[i].dry_time < 1:
+                                            labelbar = 'Capturing data... Calibrating baselines once dried... please wait...'
+                                            #
+                                            try:
+                                                idx = next(x for x, y in enumerate(
+                                                    vector0) if y <= self.dry_detect[i].dry_time - 3.0)
+                                            except:
+                                                idx = int(
+                                                    len(list(vector0)) / 3)
                                             if idx > 0:
                                                 self._baseline_freq_avg = np.average(
                                                     vector1[:-idx])
@@ -3611,9 +3633,18 @@ class MainWindow(QtWidgets.QMainWindow):
                             dissipation_vector = self.worker.get_d2_buffer(i)
                             rf_vector = self.worker.get_d1_buffer(i)
                             relative_time = self.worker.get_t1_buffer(i)
-                            dry_status, dry_msg = self.dry_detect.update(
+                            dry_status, dry_msg = self.dry_detect[i].update(
                                 resonance_frequency=rf_vector, dissipation=dissipation_vector, relative_time=relative_time)
                             if dry_status:
+
+                                # Set and signal all receivers that new time is available (if unset)
+                                with self._sensorDriedTimeValue.get_lock():
+                                    # For multiplex, take the most recent (latest) dry time
+                                    if self._sensorDriedTimes[i] == 0.0:
+                                        self._sensorDriedTimes[i] = time_running
+                                        # set on each and every trigger for multiplex:
+                                        self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+
                                 self._text4[i].setText(
                                     'Apply drop now!', color=(0, 200, 0))
                             else:
@@ -3624,6 +3655,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
                                 self._text4[i].setText(
                                     dry_msg, color=(0, 0, 200))
+                                QtCore.QCoreApplication.processEvents()
                         else:
                             time_running = _plt2.getViewBox().viewRange()[0][1]
                             current_y_range = [_plt2.getViewBox().viewRange()[
@@ -3651,6 +3683,16 @@ class MainWindow(QtWidgets.QMainWindow):
                                 # else:
                                 #     status_text = "Run Complete, waiting on other channels..."
                                 # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
+
+                            # Set and signal all receivers that new time is available (if unset)
+                            with self._dropAppliedTimeValue.get_lock():
+                                # For multiplex, take the first (earliest) drop time
+                                if self._dropAppliedTimes[i] == 0.0:
+                                    self._dropAppliedTimes[i] = time_running
+                                if self._dropAppliedTimeValue.value == 0.0:
+                                    # only set on first trigger for multiplex:
+                                    self._dropAppliedTimeValue.value = time_running
+
                     except Exception as e:
                         import traceback
 
@@ -6082,9 +6124,8 @@ class DryingDetection:
         self.sigma_stable_freq = float(sigma_stable_freq)
         self.sigma_stable_diss = float(sigma_stable_diss)
         self.flat_eps = float(flat_slope_eps)
-        self._dried = False
-        self._sample_count = 0
         self._detection_index = None
+        self.reset()
 
     def reset(self) -> None:
         """Reset the drying detection state.
@@ -6099,7 +6140,7 @@ class DryingDetection:
         self.time_w.clear()
         self._dried = False
         self._sample_count = 0
-        self._dry_time = None
+        self._dry_time = 0.0
 
     @property
     def is_dry(self) -> bool:
