@@ -1864,10 +1864,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def reset(self):
         self.cBox_Devices.clear()
+
+        # Rescan device folders from user preference path
+        for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
+            self.parent.data_devices = dirs  # show all available devices in logged data
+            break
+
         self.cBox_Devices.addItems(self.parent.data_devices)
         # self.cBox_Devices.setFixedWidth(self.cBox_Devices.sizeHint().width())
 
         self.analyzer_task = QtCore.QThread()
+
+        # Clear out any cached run info
+        self.run_timestamps = {}
+        self.run_devices = {}
+        self.run_names = {}
 
         # find most recent device run
         if self.scan_for_most_recent_run:

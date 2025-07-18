@@ -283,10 +283,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction('User: [NONE]')
         self.username.setEnabled(False)
-        self.menubar[1].addAction(
-            'Select &directory...', self.set_working_directory)
         self.signinout = self.menubar[1].addAction(
             '&Sign In', self.set_user_profile)
+        self.menubar[1].addAction(
+            'Select &directory...', self.set_working_directory)
         self.manage = self.menubar[1].addAction(
             '&Manage Users...', self.manage_user_profiles)
         self.userrole = UserRoles.NONE
