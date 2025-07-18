@@ -298,24 +298,28 @@ class PreferencesUI(QWidget):
         elif hasattr(UserProfiles.user_preferences, "_user_preferences_path"):
             self.load_user_preferences()
 
-    def open_load_file_dialog(self):
+    def open_load_file_dialog(self) -> bool:
         # Open file dialog for directory selection
         selected_directory = QFileDialog.getExistingDirectory(
-            self, "Select Directory")
+            self, "Select Directory", self.load_directory_input.text())
         if selected_directory:
             # Set the selected directory path to the input field
             self.load_directory_input.setText(selected_directory)
             # Sync with write folder (if sync is checked)
             if self.sync_write_with_load.isChecked():
                 self.write_directory_input.setText(selected_directory)
+            return True
+        return False
 
-    def open_write_file_dialog(self):
+    def open_write_file_dialog(self) -> bool:
         # Open file dialog for directory selection
         selected_directory = QFileDialog.getExistingDirectory(
-            self, "Select Directory")
+            self, "Select Directory", self.write_directory_input.text())
         if selected_directory:
             # Set the selected directory path to the input field
             self.write_directory_input.setText(selected_directory)
+            return True
+        return False
 
     def toggle_folder_sync(self, state):
         is_synced = True if (state == Qt.CheckState.Checked) else False
