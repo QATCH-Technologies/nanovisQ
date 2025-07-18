@@ -433,24 +433,34 @@ class InterpTempsProcess(multiprocessing.Process):
                     TAG, f"Propagating temperatures for run \"{filename}\"...")
 
                 # Process each line, replacing occurrences of "nan" with interpolated temperatures.
+                temp_idx = 4
                 for i, line in enumerate(lines):
                     if i == 0:
                         # Skip header row.
                         Log.d(TAG, "Skipping header row")
-                    elif "nan" in line:
+                        try:
+                            temp_idx = line.split(",").index("Temperature")
+                        except:
+                            Log.e(
+                                "Failed to find index of temperature data in secondary device capture.")
+                        continue
+                    current_row = line.split(",")
+                    if current_row[temp_idx] in ['0.0', 'nan']:
                         # Missing temperature row.
                         try:
+                            # NOTE: offset index by 1 due to skipped header row
                             replacement_temp = f"{interp_temps[i-1]:2.2f}"
-                            lines[i] = line.replace("nan", replacement_temp)
+                            current_row[temp_idx] = replacement_temp
+                            lines[i] = ",".join(current_row)
                             updated_rows += 1
                         except IndexError as ie:
                             Log.e(
                                 TAG, f"IndexError while processing line {i}: {ie}")
                             raise
                     else:
-                        # Empty row, or non-nan entry.
+                        # Empty row, or non-nan/zero entry.
                         Log.w(
-                            TAG, f"Skipping row {i}: it does not contain 'nan' temp!")
+                            TAG, f"Skipping row {i}: it already is a valid temp value!")
 
             # NOTE: uncomment the line below to compare in/out files
             # STANDALONE_MODE = True
