@@ -1867,6 +1867,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Rescan device folders from user preference path
         for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
+            if '_unnamed' in dirs:
+                dirs.remove('_unnamed')
             self.parent.data_devices = dirs  # show all available devices in logged data
             break
 
