@@ -540,7 +540,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Create dropdown menu
         menu = QtWidgets.QMenu()
-        menu.addAction("Process multiple runs...", self.load_all_from_folder)
+        menu.addAction("Load multiple runs...", self.load_all_from_folder)
 
         # Assign menu to button
         self.tBtn_Load.setMenu(menu)
@@ -2488,8 +2488,88 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
 
     def load_all_from_folder(self):
-        # TODO: Request folder from user, must be within working read directory
-        raise NotImplementedError()
+        self.action_cancel()  # ask them if they want to lose unsaved changes
+        if self.hasUnsavedChanges():
+            Log.d("User declined load action. There are unsaved changes.")
+            return
+
+        all_runs, new_runs, run_names = [], [], []
+
+        # Request folder from user, must be within working read directory
+        selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Select Directory", Constants.log_prefer_path)
+        if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
+            Log.i(f'Batch loading from "{selected_directory}"')
+
+            # Gather list of all runs contained in this directory
+            sub_dirs = selected_directory.replace(
+                Constants.log_prefer_path, "").strip("/\\")
+            dev_name, run_name = os.path.split(sub_dirs)
+            # Log.d(f"dev_name = {dev_name}, run_name = {run_name}")
+
+            if len(dev_name) == 0:
+                if len(run_name) == 0:
+                    # user selected root logged_data folder,
+                    # pull all device files
+                    all_devices = self.parent.data_devices
+                    for dev_name in all_devices:
+                        folder_name = dev_name
+                        dev_runs = FileStorage.DEV_get_logged_data_folders(
+                            folder_name)
+                        for run in dev_runs:
+                            all_runs.append((folder_name, run))
+                else:
+                    # if only given a device name,
+                    # switch the parameters as split() puts
+                    # it in the wrong place by default:
+                    folder_name = run_name
+                    dev_runs = FileStorage.DEV_get_logged_data_folders(
+                        folder_name)
+                    for run in dev_runs:
+                        all_runs.append((folder_name, run))
+            else:
+                Log.w("User selected a single run folder for batch loading")
+                Log.w("NOTE: Use the normal Load button for single run operation")
+                return
+
+            # Filter out runs that have already been analyzed
+            if all_runs:
+                for (dev, run) in all_runs:
+                    files = FileStorage.DEV_get_logged_data_files(
+                        dev, run)
+                    if "_unnamed" in [dev, run]:
+                        continue  # skip unnamed runs
+                    if files and not 'analyze-1.zip' in files:
+                        new_runs.append(run)
+                    elif not files:
+                        Log.w(f"No files found for run: {dev}/{run}")
+            else:
+                Log.w("No runs found in the selected folder")
+                return
+
+            # Load the first run, sorted alphabetically;
+            Log.i("New runs to be analyzed:", new_runs)
+            runs = [self.cBox_Runs.itemText(i)
+                    for i in range(self.cBox_Runs.count())]
+            for run in runs:
+                run_name, _ = run.rsplit(" ", 1)
+                run_names.append(run_name)
+
+            for new_run in new_runs:
+                if new_run in run_names:
+                    i = run_names.index(new_run)
+                    Log.i(f"Loading run: {new_run} (at idx={i})")
+                    self.cBox_Runs.setCurrentIndex(i)
+                    self.btn_Load.click()
+                    break
+                else:
+                    Log.e("Cannot load missing run:", new_run)
+
+            # TODO: queue other runs to load on Analyze next action
+            # TODO: Implement the serializable process state machine
+        else:
+            Log.w("User selected an inaccessible directory for batch loading")
+            Log.w("NOTE: The load directory must be within the working directory")
 
     def loadRun(self):
         self.action_cancel()  # ask them if they want to lose unsaved changes
