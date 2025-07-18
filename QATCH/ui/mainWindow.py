@@ -939,12 +939,17 @@ class Rename_Output_Files(QtCore.QObject):
                             input_text = input_text.strip().replace(' ', '_')  # word spaces -> underscores
                         else:
                             ask_for_info = False
-                            run_directory = "_unnamed"
+                            input_text = new_file_time  # uniquify
+                            if not is_good:
+                                input_text += "_BAD"
+                            run_parent_directory = "_unnamed"
+                            run_directory = UserProfiles.user_preferences.get_file_save_path(
+                                runname=input_text, device_id=_dev_name, port_id=_dev_pid)
+                            # trim off dev_id
+                            run_directory = run_directory[:run_directory.rfind(
+                                "_")]
                             os.makedirs(os.path.join(
                                 path_root, run_parent_directory, run_directory), exist_ok=True)
-                            input_text = new_file_time  # uniquify
-                            if not force_save:
-                                input_text += "_BAD"
                         break
 
                 # We *must* wait here until InterpTempsProcess has finished
@@ -988,8 +993,10 @@ class Rename_Output_Files(QtCore.QObject):
 
                 if copy_file != None:  # require access controls
                     file_parts = os.path.split(copy_file)
-                    if run_directory == "_unnamed":
+                    if run_parent_directory == "_unnamed":
                         zn = copy_file[:copy_file.rfind("_")] + ".zip"
+                        if _dev_pid > 0:  # multiplex systems, add dev_id
+                            zn = zn.replace(".zip", f"_{_dev_pid}.zip")
                     else:
                         zn = os.path.join(file_parts[0], f"capture.zip")
                     archive_file = file_parts[1]
