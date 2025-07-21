@@ -89,7 +89,7 @@ class SerialProcess(multiprocessing.Process):
     # Initializing values for process
     ###########################################################################
 
-    def __init__(self, queue_log, parser_process, time_start, freq_hopping, export_enabled=False, reconstruct=False):
+    def __init__(self, queue_log, parser_process, time_start, freq_hopping, export_enabled=False, reconstruct=False, driedValue=None, appliedValue=None):
         """
         :param parser_process: Reference to a ParserProcess instance.
         :type parser_process: ParserProcess.
@@ -114,6 +114,11 @@ class SerialProcess(multiprocessing.Process):
 
         self._export = export_enabled
         self._reconstruct = reconstruct
+        self._driedValue = driedValue
+        self._appliedValue = appliedValue
+
+        self.sensorDriedTime = 0.0
+        self.dropAppliedTime = 0.0
 
     ###########################################################################
     # Opens a specified serial port
@@ -320,7 +325,9 @@ class SerialProcess(multiprocessing.Process):
                                                                    self._elaborate_out_q,
                                                                    self._export,
                                                                    self._overtone_name,
-                                                                   self._reconstruct)
+                                                                   self._reconstruct,
+                                                                   self._driedValue,
+                                                                   self._appliedValue)
                         self._elaborate_process.start()
 
                     # Initializes the sweep counter
@@ -592,6 +599,19 @@ class SerialProcess(multiprocessing.Process):
                                             peak_freq = out[6]
                                             dissipation = out[7]
                                             t_amb = out[8]
+
+                                            # Read the shared values
+                                            with self._driedValue.get_lock():
+                                                if self.sensorDriedTime != self._driedValue.value:
+                                                    self.sensorDriedTime = self._driedValue.value
+                                                    Log.d("[SerialProcess]",
+                                                          f"Sensor dried time = {self.sensorDriedTime}")
+                                            with self._appliedValue.get_lock():
+                                                if self.dropAppliedTime != self._appliedValue.value:
+                                                    self.dropAppliedTime = self._appliedValue.value
+                                                    Log.d("[SerialProcess]",
+                                                          f"Drop applied time = {self.dropAppliedTime}")
+
                                             if overtone in (0, 255):
                                                 filenameCSV = "{}_{}".format(
                                                     Constants.csv_filename, self._overtone_name.split(' ')[0])
