@@ -540,7 +540,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Create dropdown menu
         menu = QtWidgets.QMenu()
-        menu.addAction("Load multiple runs...", self.load_all_from_folder)
+        menu.addAction("Load all new runs", lambda: self.load_all_from_folder(
+            Constants.log_prefer_path))
+        menu.addAction("Load runs from...", self.load_all_from_folder)
 
         # Assign menu to button
         self.tBtn_Load.setMenu(menu)
@@ -2487,7 +2489,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs.setFixedWidth(w)
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
 
-    def load_all_from_folder(self):
+    def load_all_from_folder(self, from_folder=None):
         self.action_cancel()  # ask them if they want to lose unsaved changes
         if self.hasUnsavedChanges():
             Log.d("User declined load action. There are unsaved changes.")
@@ -2495,9 +2497,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         all_runs, new_runs, run_names = [], [], []
 
-        # Request folder from user, must be within working read directory
-        selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
-            self, "Select Directory", Constants.log_prefer_path)
+        if from_folder:
+            selected_directory = from_folder  # use given folder
+        else:
+            # Request folder from user, must be within working read directory
+            selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select Directory", Constants.log_prefer_path)
+
         if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
             Log.i(f'Batch loading from "{selected_directory}"')
 
@@ -2567,6 +2573,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # TODO: queue other runs to load on Analyze next action
             # TODO: Implement the serializable process state machine
+            # Option: Change dropdown list of runs to a subset of runs that need to be loaded,
+            #         and restore to the full list of runs only if the user clicks "Close".
+            #         This method allows the user to then auto-sort by date or filename normally;
+            #         however, when entering this mode, we must default sort by filename, ascending.
         else:
             Log.w("User selected an inaccessible directory for batch loading")
             Log.w("NOTE: The load directory must be within the working directory")
