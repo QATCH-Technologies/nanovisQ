@@ -1451,6 +1451,8 @@ class MainWindow(QtWidgets.QMainWindow):
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
         self.AnalyzeProc.text_Created.setText(
             "Loaded: {} ({})".format(data_folder, captured))
+        if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
+            self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
 
         self.AnalyzeProc.Analyze_Data(data_path)
 
