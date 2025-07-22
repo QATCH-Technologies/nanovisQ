@@ -2767,6 +2767,37 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 # special exception case: indicates user declined action
                 raise ConnectionAbortedError()
 
+            # Flag used to check when finished (hides progress bar)
+            self.prediction_restored = False
+
+            self.progressBar = QtWidgets.QProgressDialog(
+                "Predicting...", "Cancel", 0, 0, self)
+            # Disable auto-reset and auto-close to retain `wasCanceled()` state
+            self.progressBar.setAutoReset(False)
+            self.progressBar.setAutoClose(False)
+            icon_path = os.path.join(
+                Architecture.get_path(), 'QATCH/icons/reset.png')
+            self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+            self.progressBar.setWindowTitle("Busy")
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowStaysOnTopHint, True)
+            self.progressBar.setFixedSize(
+                int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+            self.progressBar.setModal(True)
+            self.progressBar.show()
+
+            cancelButton = self.progressBar.findChild(
+                QtWidgets.QPushButton)
+            cancelButton.setEnabled(False)
+
+            self.timer = QtCore.QTimer()
+            self.timer.setInterval(100)
+            self.timer.setSingleShot(False)
+            self.timer.timeout.connect(self.check_finished)
+            self.timer.start()
+
             # restore QModel predictions
             poi_vals = []
             self.model_result = -1
@@ -2978,6 +3009,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+        finally:
+            self.prediction_restored = True
+
+    def check_finished(self):
+        if self.prediction_restored:
+            # finished, but keep the dialog open to retain `wasCanceled()` state
+            self.progressBar.hide()
+            self.timer.stop()
 
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
