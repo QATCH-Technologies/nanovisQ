@@ -12,7 +12,8 @@ class TableView(QtWidgets.QTableWidget):
 
     # Define named constants for special row indices
     PROTEIN_TYPE_ROW = 0
-    BUFFER_TYPE_ROW = 5
+    PROTEIN_CLASS_ROW = 2
+    BUFFER_TYPE_ROW = 6
 
     def __init__(self, data, *args):
         QtWidgets.QTableWidget.__init__(self, *args)
@@ -153,7 +154,7 @@ class TableView(QtWidgets.QTableWidget):
     def _on_combo_change(self, idx: int, row: int):
         # self.blockSignals(True)
         conc_item = self.item(row+1, 1)  # concentration item
-        if conc_item is None:
+        if conc_item is None or row == self.PROTEIN_CLASS_ROW:
             return  # no concentration item to change
         # "None" selected for non-Protein/Buffer
         if idx == 0 and row not in [self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]:

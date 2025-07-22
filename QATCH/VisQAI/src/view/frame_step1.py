@@ -275,22 +275,25 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Features table
         self.load_all_excipient_types()
+        self.class_types = ["mAb_IgG1", "mAb_IgG2", "mAb_IgG3", "mAb_IgG4",
+                            "Polyclonal", "Other"]
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
-                                             "Protein Molecular Weight", "Protein pI Mean", "Protein pI Range",  # not in Run Info
+                                             "Protein Class", "Protein Molecular Weight",  # not in Run Info
+                                             "Protein pI Mean", "Protein pI Range",  # not in Run Info
                                              "Buffer Type", "Buffer Concentration",
                                              "Buffer pH",  # not in Run Info
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration"],
                                  "Value": [self.proteins, "",
-                                           "", "", "",  # molecular weight, pI mean, pI range
+                                           self.class_types, "", "", "",  # class, molecular weight, pI mean, pI range
                                            self.buffers, "",
                                            "",  # buffer pH
                                            self.surfactants, "",
                                            self.stabilizers, "",
                                            self.salts, ""],
                                  "Units": ["", "mg/mL",
-                                           "kDa", "", "",  # pI
+                                           "", "kDa", "", "",  # pI
                                            "", "mM",
                                            "",  # pH
                                            "", "%w",
@@ -353,10 +356,11 @@ class FrameStep1(QtWidgets.QDialog):
         #             print(e)
         #     # Hide protein and buffer characteristics
         #     # for values in dummy_feature.values():
-        #     #     del values[7]  # buffer PH
-        #     #     del values[4]  # protein pI range
-        #     #     del values[3]  # protein pI mean
-        #     #     del values[2]  # protein weight
+        #     #     del values[8]  # buffer PH
+        #     #     del values[5]  # protein pI range
+        #     #     del values[4]  # protein pI mean
+        #     #     del values[3]  # protein weight
+        #     #     del values[2]  # protein class
         #     self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
@@ -448,26 +452,27 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Salts", self.salts)
 
     def hide_extended_features(self):
-        hide_rows = [2, 3, 4, 7]
+        hide_rows = [2, 3, 4, 5, 8]
         for row in hide_rows:
             self.feature_table.hideRow(row)
 
     def save_formulation(self, cancel: bool = False) -> bool:
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
-        protein_weight = self.feature_table.item(2, 1).text()
-        protein_pI_mean = self.feature_table.item(3, 1).text()
-        protein_pI_range = self.feature_table.item(4, 1).text()
-        buffer_type = self.feature_table.cellWidget(5, 1).currentText()
-        buffer_conc = self.feature_table.item(6, 1).text()
-        buffer_pH = self.feature_table.item(7, 1).text()
-        surfactant_type = self.feature_table.cellWidget(8, 1).currentText()
-        surfactant_conc = self.feature_table.item(9, 1).text()
+        protein_class = self.feature_table.cellWidget(2, 1).currentText()
+        protein_weight = self.feature_table.item(3, 1).text()
+        protein_pI_mean = self.feature_table.item(4, 1).text()
+        protein_pI_range = self.feature_table.item(5, 1).text()
+        buffer_type = self.feature_table.cellWidget(6, 1).currentText()
+        buffer_conc = self.feature_table.item(7, 1).text()
+        buffer_pH = self.feature_table.item(8, 1).text()
+        surfactant_type = self.feature_table.cellWidget(9, 1).currentText()
+        surfactant_conc = self.feature_table.item(10, 1).text()
         stabilizer_type = self.feature_table.cellWidget(
-            10, 1).currentText()
-        stabilizer_conc = self.feature_table.item(11, 1).text()
-        salt_type = self.feature_table.cellWidget(12, 1).currentText()
-        salt_conc = self.feature_table.item(13, 1).text()
+            11, 1).currentText()
+        stabilizer_conc = self.feature_table.item(12, 1).text()
+        salt_type = self.feature_table.cellWidget(13, 1).currentText()
+        salt_conc = self.feature_table.item(14, 1).text()
 
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
@@ -498,18 +503,19 @@ class FrameStep1(QtWidgets.QDialog):
             feature = copy.deepcopy(self.default_features)
             feature["Value"][0] = protein_type
             feature["Value"][1] = protein_conc
-            feature["Value"][2] = protein_weight
-            feature["Value"][3] = protein_pI_mean
-            feature["Value"][4] = protein_pI_range
-            feature["Value"][5] = buffer_type
-            feature["Value"][6] = buffer_conc
-            feature["Value"][7] = buffer_pH
-            feature["Value"][8] = surfactant_type
-            feature["Value"][9] = surfactant_conc
-            feature["Value"][10] = stabilizer_type
-            feature["Value"][11] = stabilizer_conc
-            feature["Value"][12] = salt_type
-            feature["Value"][13] = salt_conc
+            feature["Value"][2] = protein_class
+            feature["Value"][3] = protein_weight
+            feature["Value"][4] = protein_pI_mean
+            feature["Value"][5] = protein_pI_range
+            feature["Value"][6] = buffer_type
+            feature["Value"][7] = buffer_conc
+            feature["Value"][8] = buffer_pH
+            feature["Value"][9] = surfactant_type
+            feature["Value"][10] = surfactant_conc
+            feature["Value"][11] = stabilizer_type
+            feature["Value"][12] = stabilizer_conc
+            feature["Value"][13] = salt_type
+            feature["Value"][14] = salt_conc
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
@@ -549,6 +555,11 @@ class FrameStep1(QtWidgets.QDialog):
 
         # update protein and buffer characteristics
         # bail if any extended features are missing
+        # if is_number(protein_class): # TODO
+        #     protein.class_type = str(protein_class)
+        # elif not protein.class_type:
+        #     Log.e("Missing protein class!")
+        #     return
         if is_number(protein_weight):
             protein.molecular_weight = float(protein_weight)
         elif not protein.molecular_weight:
@@ -692,18 +703,19 @@ class FrameStep1(QtWidgets.QDialog):
         if form.protein:  # NOT an empty Formulation() object
             feature["Value"][0] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2] = form.protein.ingredient.molecular_weight
-            feature["Value"][3] = form.protein.ingredient.pI_mean
-            feature["Value"][4] = form.protein.ingredient.pI_range
-            feature["Value"][5] = form.buffer.ingredient.name
-            feature["Value"][6] = form.buffer.concentration
-            feature["Value"][7] = form.buffer.ingredient.pH
-            feature["Value"][8] = form.surfactant.ingredient.name
-            feature["Value"][9] = form.surfactant.concentration
-            feature["Value"][10] = form.stabilizer.ingredient.name
-            feature["Value"][11] = form.stabilizer.concentration
-            feature["Value"][12] = form.salt.ingredient.name
-            feature["Value"][13] = form.salt.concentration
+            # feature["Value"][2] = form.protein.ingredient.class_type # TODO
+            feature["Value"][3] = form.protein.ingredient.molecular_weight
+            feature["Value"][4] = form.protein.ingredient.pI_mean
+            feature["Value"][5] = form.protein.ingredient.pI_range
+            feature["Value"][6] = form.buffer.ingredient.name
+            feature["Value"][7] = form.buffer.concentration
+            feature["Value"][8] = form.buffer.ingredient.pH
+            feature["Value"][9] = form.surfactant.ingredient.name
+            feature["Value"][10] = form.surfactant.concentration
+            feature["Value"][11] = form.stabilizer.ingredient.name
+            feature["Value"][12] = form.stabilizer.concentration
+            feature["Value"][13] = form.salt.ingredient.name
+            feature["Value"][14] = form.salt.concentration
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -1324,7 +1336,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
-                      "", "", "",  # molecular weight, pI mean, pI range
+                      "", "", "", "",  # class, molecular weight, pI mean, pI range
                       "buffer_type", "buffer_concentration",
                       "",  # pH
                       "surfactant_type", "surfactant_concentration",
@@ -1348,26 +1360,29 @@ class FrameStep1(QtWidgets.QDialog):
         if False:  # self.step == 3:
             # Hide protein and buffer characteristics
             for values in run_features.values():
-                del values[7]  # buffer PH
-                del values[4]  # protein pI range
-                del values[3]  # protein pI mean
-                del values[2]  # protein weight
+                del values[8]  # buffer PH
+                del values[5]  # protein pI range
+                del values[4]  # protein pI mean
+                del values[3]  # protein weight
+                del values[2]  # protein class
         else:
             # Pull protein and buffer characteristics from database (if available)
             protein = self.parent.ing_ctrl.get_protein_by_name(
                 name=xml_params.get("protein_type", None))
             if protein != None:
+                # if protein.class_type != None: # TODO
+                #     run_features["Value"][2] = protein.class_type
                 if protein.molecular_weight != None:
-                    run_features["Value"][2] = protein.molecular_weight
+                    run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:
-                    run_features["Value"][3] = protein.pI_mean
+                    run_features["Value"][4] = protein.pI_mean
                 if protein.pI_range != None:
-                    run_features["Value"][4] = protein.pI_range
+                    run_features["Value"][5] = protein.pI_range
             buffer = self.parent.ing_ctrl.get_buffer_by_name(
                 name=xml_params.get("buffer_type", None))
             if buffer != None:
                 if buffer.pH != None:
-                    run_features["Value"][7] = buffer.pH
+                    run_features["Value"][8] = buffer.pH
 
         self.feature_table.setData(run_features)
 
