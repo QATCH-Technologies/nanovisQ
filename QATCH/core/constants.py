@@ -375,8 +375,15 @@ class Constants:
             import json
             data = json.load(f)
             if "name" in data:
-                app_version = f"{app_version}_nightly"
-                app_date = data["name"].split()[-1][1:-1]
+                dev_branch = False
+                if "dev_branch" in data and data["dev_branch"]:
+                    dev_branch = True
+                if dev_branch:
+                    app_version = f"{app_version}_dev"
+                    # leave `app_date` unchanged
+                else:
+                    app_version = f"{app_version}_nightly"
+                    app_date = data["name"].split()[-1][1:-1]
 
     @staticmethod
     def windll_is_caps_lock_on() -> bool:

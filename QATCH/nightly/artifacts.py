@@ -150,6 +150,9 @@ class GH_Artifacts:
                         print(
                             "[INFO]", "You are running the most recent nightly build available.")
                         update_recommended = False
+                    if "dev_branch" in running_build.keys() and running_build["dev_branch"]:
+                        # Never recommend a nightly build update for a development branch.
+                        update_recommended = False
             else:
                 print(
                     "[INFO]", "Writing latest build file as none exists. Assuming no update.")
@@ -219,6 +222,7 @@ class GH_Artifacts:
     def write_latest_build_file(self, latest: dict) -> None:
         # do not export the download url to json file
         latest.pop("archive_download_url", None)
+        latest["dev_branch"] = False
         with open(self.latest_build_file, 'w') as fp:
             j.dump(latest, fp, indent=2)
 
