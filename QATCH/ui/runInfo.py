@@ -969,13 +969,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.confirm'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
-        self.signForm = QtWidgets.QWidget()
+        self.signForm = QtWidgets.QDialog()
         # | QtCore.Qt.WindowStaysOnTopHint)
         self.signForm.setWindowFlags(QtCore.Qt.Dialog)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/sign.png')
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
+        self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
