@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QCompleter
+from PyQt5.QtCore import Qt
 from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
@@ -415,13 +417,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.text_Devices = QtWidgets.QLabel("Show Only:")
         self.cBox_Devices = QtWidgets.QComboBox()
         self.text_Runs = QtWidgets.QLabel("Run:")
-        self.cBox_Runs = QtWidgets.QComboBox()
+
         self.btn_Load = QtWidgets.QPushButton("Load")
         self.btn_Back = QtWidgets.QPushButton("Back")
         self.btn_Next = QtWidgets.QPushButton("Next")
         self.text_Loaded = QtWidgets.QLabel("Loaded:")
         self.text_Created = QtWidgets.QLabel("[NONE]")
         self.btn_Info = QtWidgets.QPushButton("Run Info")
+        self.cBox_Runs = QtWidgets.QComboBox()
+        self.cBox_Runs.setEditable(True)
+        self.cBox_Runs.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
+        # Configure completer for existing/future items
+        # Configure completer for existing/future items
+        self._runs_completer = QCompleter(self.cBox_Runs.model(), self)
+        self._runs_completer.setCompletionMode(QCompleter.PopupCompletion)
+        self._runs_completer.setFilterMode(Qt.MatchContains)
+        self._runs_completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.cBox_Runs.setCompleter(self._runs_completer)
+
+        # Enforce selection: clear invalid text on finish
+        self.cBox_Runs.lineEdit().editingFinished.connect(self._validate_run)
 
         # START ANALYZE SIGNATURE CODE:
         # This code also exists in runInfo.py in class QueryRunInfo for "CAPTURE SIGNATURE CODE"
@@ -536,7 +551,35 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Load.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Load.setIcon(icon_load)  # normal and disabled pixmaps
         self.tBtn_Load.setText("Load")
-        self.tBtn_Load.clicked.connect(self.loadRun)
+        self.tBtn_Load.clicked.connect(self.loadRun)  # main action
+
+        # Create dropdown menu
+        menu = QtWidgets.QMenu()
+        menu.addAction("Load all new runs", lambda: self.load_all_from_folder(
+            Constants.log_prefer_path))
+        menu.addAction("Load runs from...", self.load_all_from_folder)
+
+        # Assign menu to button
+        self.tBtn_Load.setMenu(menu)
+
+        # Show arrow and make it a dropdown
+        self.tBtn_Load.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
+
+        # Apply style sheet to preserve arrow, but remove its hover effect
+        self.tBtn_Load.setStyleSheet("""
+            /* Keep the arrow visible but remove any hover effect */
+            QToolButton::menu-indicator {
+                background: transparent;
+                border: none;
+            }
+
+            /* Explicitly cancel hover background/border on arrow */
+            QToolButton::menu-indicator:hover {
+                background: transparent;
+                border: none;
+            }
+            """)
+
         self.tool_Load.addWidget(self.tBtn_Load)
 
         icon_reset = QtGui.QIcon()
@@ -647,7 +690,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tool_Cancel.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Cancel.setIcon(icon_cancel)
         self.tool_Cancel.setText("Close")
-        self.tool_Cancel.clicked.connect(self.action_cancel)
+        self.tool_Cancel.clicked.connect(
+            lambda: self.action_cancel(exit_batched_processing_mode=True))
         self.tool_bar.addWidget(self.tool_Cancel)
 
         self.tool_bar.addSeparator()
@@ -1211,6 +1255,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
 
+    def _validate_run(self):
+        """
+        Validate current text against available items. Clear if not matching.
+        """
+        current = self.cBox_Runs.currentText()
+        # Only accept exact matches
+        if self.cBox_Runs.findText(current, Qt.MatchExactly) == -1:
+            # Invalid entry: reset
+            self.cBox_Runs.setCurrentIndex(-1)
+            self.cBox_Runs.clearEditText()
     # def hideSelectTool(self, event):
     #     self.AI_SelectTool_Frame.hide()
 
@@ -1341,7 +1395,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             "color: #0D4AAF; text-decoration: none; padding-left: 15px; font-weight: bold;"
         )
 
-    def action_cancel(self):
+    def action_cancel(self, exit_batched_processing_mode=False):
         if self.hasUnsavedChanges():
             if not PopUp.question(
                 self,
@@ -1382,6 +1436,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.results_split.replaceWidget(0, results_table)
         self.results_split.replaceWidget(1, results_figure)
         # self.graphStack.setCurrentIndex(0)
+
+        # Clear subset for batched processing
+        if exit_batched_processing_mode:
+            last_run_in_batch_loaded = False
+            if self.cBox_Runs.itemText(self.cBox_Runs.count() - 1) in self._current_run:
+                last_run_in_batch_loaded = True
+            self._batched_runs = None
+            self.showRunsFromAllDevices_clicked()
+
+            if last_run_in_batch_loaded:
+                end_reason = "All runs in the batch have been processed."
+            else:
+                end_reason = "User aborted the batch before it finished."
+
+            PopUp.information(
+                self,
+                "Batch Processing Mode Ended",
+                "You have exited batch processing mode.<br/><br/>" +
+                f"<b>REASON: {end_reason}</b>")
+            # details="This is either because you have finished processing all runs in the batch " +
+            # "or because you clicked \"Close\" while in the middle of processing the batch.")
 
         self.clear()  # calls self.enable_buttons()
 
@@ -1864,10 +1939,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def reset(self):
         self.cBox_Devices.clear()
+
+        # Rescan device folders from user preference path
+        for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
+            if '_unnamed' in dirs:
+                dirs.remove('_unnamed')
+            self.parent.data_devices = dirs  # show all available devices in logged data
+            break
+
         self.cBox_Devices.addItems(self.parent.data_devices)
         # self.cBox_Devices.setFixedWidth(self.cBox_Devices.sizeHint().width())
 
         self.analyzer_task = QtCore.QThread()
+
+        # Clear out any cached run info
+        self.run_timestamps = {}
+        self.run_devices = {}
+        self.run_names = {}
 
         # find most recent device run
         if self.scan_for_most_recent_run:
@@ -2446,6 +2534,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
             else:
                 captured_date = captured_datetime[0: captured_datetime.find(
                     "T")]
+            # If batch processing a subset of all runs, only show the subset in the dropdown menu
+            if hasattr(self, "_batched_runs") and self._batched_runs:
+                if f"{run_name} ({captured_date})" not in self._batched_runs:
+                    continue  # skip it, don't show
             if (
                 self.showRunsFromAllDevices.isChecked()
                 or self.cBox_Devices.currentText() == device_name
@@ -2460,6 +2552,112 @@ class AnalyzeProcess(QtWidgets.QWidget):
             w = 200
         self.cBox_Runs.setFixedWidth(w)
         self.sort_by_widget.setFixedWidth(self.cBox_Runs.width())
+
+    def load_all_from_folder(self, from_folder=None):
+        self.action_cancel()  # ask them if they want to lose unsaved changes
+        if self.hasUnsavedChanges():
+            Log.d("User declined load action. There are unsaved changes.")
+            return
+
+        all_runs, new_runs, run_names = [], [], []
+
+        if from_folder:
+            selected_directory = from_folder  # use given folder
+        else:
+            # Request folder from user, must be within working read directory
+            selected_directory = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select Directory", Constants.log_prefer_path)
+
+        if selected_directory and selected_directory.startswith(Constants.log_prefer_path):
+            Log.i(f'Batch loading from "{selected_directory}"')
+
+            # Gather list of all runs contained in this directory
+            sub_dirs = selected_directory.replace(
+                Constants.log_prefer_path, "").strip("/\\")
+            dev_name, run_name = os.path.split(sub_dirs)
+            # Log.d(f"dev_name = {dev_name}, run_name = {run_name}")
+
+            if len(dev_name) == 0:
+                if len(run_name) == 0:
+                    # user selected root logged_data folder,
+                    # pull all device files
+                    all_devices = self.parent.data_devices
+                    for dev_name in all_devices:
+                        folder_name = dev_name
+                        dev_runs = FileStorage.DEV_get_logged_data_folders(
+                            folder_name)
+                        for run in dev_runs:
+                            all_runs.append((folder_name, run))
+                else:
+                    # if only given a device name,
+                    # switch the parameters as split() puts
+                    # it in the wrong place by default:
+                    folder_name = run_name
+                    dev_runs = FileStorage.DEV_get_logged_data_folders(
+                        folder_name)
+                    for run in dev_runs:
+                        all_runs.append((folder_name, run))
+            else:
+                Log.w("User selected a single run folder for batch loading")
+                Log.w("NOTE: Use the normal Load button for single run operation")
+                return
+
+            # Filter out runs that have already been analyzed
+            if all_runs:
+                for (dev, run) in all_runs:
+                    files = FileStorage.DEV_get_logged_data_files(
+                        dev, run)
+                    if "_unnamed" in [dev, run]:
+                        continue  # skip unnamed runs
+                    if files and not 'analyze-1.zip' in files:
+                        new_runs.append(run)
+                    elif not files:
+                        Log.w(f"No files found for run: {dev}/{run}")
+            else:
+                Log.w("No runs found in the selected folder")
+                return
+
+            # Load the first run, sorted alphabetically;
+            Log.i("New runs to be analyzed:", new_runs)
+            runs = [self.cBox_Runs.itemText(i)
+                    for i in range(self.cBox_Runs.count())]
+            for run in runs:
+                run_name, _ = run.rsplit(" ", 1)
+                run_names.append(run_name)
+
+            sorted_new_runs = []
+            for new_run in new_runs:
+                if new_run in run_names:
+                    i = run_names.index(new_run)
+                    sorted_new_runs.append(runs[i])
+                else:
+                    Log.e("Cannot load missing run:", new_run)
+
+            # BATCH PROCESSING ENABLE:
+            # Method: Change dropdown list of runs to a subset of runs that need to be loaded,
+            #         and restore to the full list of runs only if the user clicks "Close".
+            #         This method allows the user to then auto-sort by date or filename normally.
+
+            # re-populate cBox_Runs with subset of run names (sorted accordingly)
+            self._batched_runs = sorted_new_runs
+            self.showRunsFromAllDevices_clicked()
+
+            Log.i(
+                f"Loading first batch run: {self.cBox_Runs.itemText(0)} (at idx={0})")
+            self.cBox_Runs.setCurrentIndex(0)
+            self.btn_Load.click()
+
+            PopUp.information(
+                self,
+                "Batch Processing Mode Started",
+                f"<b>SUCCESS: {len(sorted_new_runs)} runs found for batch processing.</b><br/><br/>" +
+                "When finished analyzing a run (or to skip a run), <br/>" +
+                "click \"Load\" again to move to the next queued run.<br/>" +
+                "You'll get another popup when the batch is finished.")
+
+        else:
+            Log.w("User selected an inaccessible directory for batch loading")
+            Log.w("NOTE: The load directory must be within the working directory")
 
     def loadRun(self):
         self.action_cancel()  # ask them if they want to lose unsaved changes
@@ -2656,6 +2854,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def action_load_run(self):
         try:
+            # if batch processing, auto-increment to next run if Load is clicked for the currently selected run
+            if hasattr(self, "_batched_runs") and self._batched_runs:
+                if (
+                    hasattr(self, "_current_run") and
+                    self.cBox_Runs.currentText() in self._current_run and
+                    self.cBox_Runs.currentText() != self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
+                ):
+                    Log.i(
+                        TAG, "Incrementing batch processing to next file in subset of list")
+                    self.cBox_Runs.setCurrentIndex(
+                        self.cBox_Runs.currentIndex() + 1)
+                elif (
+                    self.cBox_Runs.count() > 1 and
+                    self.cBox_Runs.currentText() == self.cBox_Runs.itemText(self.cBox_Runs.count() - 1)
+                ):
+                    Log.w(
+                        TAG, "No more runs to batch process. Finished batch processing!")
+                    # Close the currently open run when finished batch processing, with flag to exit mode.
+                    self.action_cancel(exit_batched_processing_mode=True)
+                    # Clicking "Close" button also ends the batch processing mode (clears '_batched_runs').
+                    return
+
             self.moved_markers = [False, False, False, False, False, False]
             self.parent.analyze_data(
                 self.cBox_Devices.currentText(),
@@ -4133,6 +4353,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.run_timestamps[f'{new_name}:{after_colon}'] = value
         self.run_names[f'{new_name}:{after_colon}'] = new_name
         self.text_Created.setText(f'Loaded: {new_name} ({date})')
+        if hasattr(self, "_batched_runs") and self._batched_runs:
+            self._current_run = self.text_Created.text()
         self.loaded_datapath = xml_path[:-4] + ".csv"
 
     def update_run_names(self):
