@@ -1736,14 +1736,15 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.salts: list[str] = []
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, \
+            _, _ = ListUtils.load_all_excipient_types(
                 self.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
-        Log.d("Salts", self.salts)
+        Log.d("Salts:", self.salts)
 
     def save_proteins(self):
         old_proteins = self.proteins.copy()

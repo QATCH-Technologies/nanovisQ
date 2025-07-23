@@ -275,8 +275,6 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Features table
         self.load_all_excipient_types()
-        self.class_types = ["mAb_IgG1", "mAb_IgG2", "mAb_IgG3", "mAb_IgG4",
-                            "Polyclonal", "Other"]
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
                                              "Protein Class", "Protein Molecular Weight",  # not in Run Info
                                              "Protein pI Mean", "Protein pI Range",  # not in Run Info
@@ -440,16 +438,21 @@ class FrameStep1(QtWidgets.QDialog):
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.class_types: list[str] = []
+        self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
-        Log.d("Salts", self.salts)
+        Log.d("Salts:", self.salts)
+        Log.d("Class Types:", self.class_types)
+        Log.d("Proteins By Class:", self.proteins_by_class)
 
     def hide_extended_features(self):
         hide_rows = [2, 3, 4, 5, 8]
@@ -555,11 +558,11 @@ class FrameStep1(QtWidgets.QDialog):
 
         # update protein and buffer characteristics
         # bail if any extended features are missing
-        # if is_number(protein_class): # TODO
-        #     protein.class_type = str(protein_class)
-        # elif not protein.class_type:
-        #     Log.e("Missing protein class!")
-        #     return
+        if protein_class in self.class_types:
+            protein.class_type = str(protein_class)
+        elif not protein.class_type:
+            Log.e("Missing protein class!")
+            return
         if is_number(protein_weight):
             protein.molecular_weight = float(protein_weight)
         elif not protein.molecular_weight:
@@ -703,7 +706,7 @@ class FrameStep1(QtWidgets.QDialog):
         if form.protein:  # NOT an empty Formulation() object
             feature["Value"][0] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            # feature["Value"][2] = form.protein.ingredient.class_type # TODO
+            feature["Value"][2] = form.protein.ingredient.class_type
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
@@ -1370,8 +1373,8 @@ class FrameStep1(QtWidgets.QDialog):
             protein = self.parent.ing_ctrl.get_protein_by_name(
                 name=xml_params.get("protein_type", None))
             if protein != None:
-                # if protein.class_type != None: # TODO
-                #     run_features["Value"][2] = protein.class_type
+                if protein.class_type != None:
+                    run_features["Value"][2] = protein.class_type
                 if protein.molecular_weight != None:
                     run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:

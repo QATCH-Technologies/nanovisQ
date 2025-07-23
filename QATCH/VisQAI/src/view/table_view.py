@@ -51,8 +51,8 @@ class TableView(QtWidgets.QTableWidget):
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")
                     if isinstance(item, list):
-                        # skip Protein Type and Buffer Type rows
-                        if m not in [self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]:
+                        # skip Protein Type/Class and Buffer Type rows
+                        if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
                             newitem.addItem("None")
                         newitem.addItems(item)
                         self.data["Units"][m] = "\u2190"  # unicode left arrow

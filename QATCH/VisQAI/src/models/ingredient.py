@@ -336,11 +336,33 @@ class Protein(Ingredient):
                 or if any numeric property is negative.
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
+        self._class_type = None  # TODO: implement functionality, just a stub for now
         self._molecular_weight = self._validate_number(
             molecular_weight, "molecular_weight"
         )
         self._pI_mean = self._validate_number(pI_mean, "pI_mean")
         self._pI_range = self._validate_number(pI_range, "pI_range")
+
+    @property
+    def class_type(self) -> Union[str, None]:
+        """Get the class type of the protein.
+
+        Returns:
+            Union[str, None]: The class type if set, otherwise None.
+        """
+        return self._class_type
+
+    @class_type.setter
+    def class_type(self, ct: Any) -> None:
+        """Set the class type of the protein.
+
+        Args:
+            ct (Any): New class type. Must be a member of Class Types.
+
+        Raises:
+            TypeError: If `ct` is not a member of Class Types.
+        """
+        self._class_type = ct  # TODO: check type is a member of supported class types list
 
     @property
     def molecular_weight(self) -> Union[float, None]:
