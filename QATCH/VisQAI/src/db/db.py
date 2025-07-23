@@ -30,7 +30,7 @@ import random
 
 try:
     from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
     )
     from src.models.formulation import Formulation, Component, ViscosityProfile
 
@@ -40,7 +40,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
     )
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
     from QATCH.common.logger import Logger as Log
@@ -142,7 +142,8 @@ class Database:
         # Subclass tables
         c.execute(r"""
             CREATE TABLE IF NOT EXISTS protein (
-                ingredient_id   INTEGER PRIMARY KEY,
+                ingredient_id    INTEGER PRIMARY KEY,
+                class_type       TEXT NOT NULL DEFAULT 'None' CHECK(class_type IN ({allowed})),
                 molecular_weight REAL,
                 pI_mean          REAL,
                 pI_range         REAL,
@@ -232,9 +233,18 @@ class Database:
 
         # Insert into the subclass table based on runtime type
         if isinstance(ing, Protein):
+            if isinstance(ing.class_type, ProteinClass):
+                class_val = ing.class_type.value
+            else:
+                class_val = (ing.class_type or ProteinClass.NONE.value)
+
             c.execute(
-                "INSERT INTO protein VALUES (?, ?, ?, ?)",
-                (db_id, ing.molecular_weight, ing.pI_mean, ing.pI_range)
+                """
+                INSERT INTO protein
+                    (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range)
             )
         elif isinstance(ing, Buffer):
             c.execute(
@@ -274,13 +284,26 @@ class Database:
 
         # Reconstruct subclass-specific object
         if typ == "Protein":
-            c.execute(
-                "SELECT molecular_weight, pI_mean, pI_range FROM protein WHERE ingredient_id = ?",
-                (id,)
-            )
-            mw, mean, rng = c.fetchone()
-            ing = Protein(enc_id, name, mw, mean, rng)
+            row = c.execute("""
+                SELECT class_type, molecular_weight, pI_mean, pI_range
+                FROM protein
+                WHERE ingredient_id = ?
+            """, (id,)).fetchone()
 
+            if row is None:
+                raise LookupError(f"No protein row for ingredient_id {id}")
+
+            class_str, mw, mean, rng = row
+            ing = Protein(
+                enc_id=enc_id,
+                name=name,
+                molecular_weight=mw,
+                pI_mean=mean,
+                pI_range=rng,
+                class_type=ProteinClass.from_value(
+                    class_str) if class_str is not None else None,
+                id=id,
+            )
         elif typ == "Buffer":
             c.execute(
                 "SELECT pH FROM buffer WHERE ingredient_id = ?",
@@ -346,10 +369,19 @@ class Database:
 
         # Re-insert appropriate subclass row
         if isinstance(ing, Protein):
-            c.execute(
-                "INSERT INTO protein VALUES (?, ?, ?, ?)",
-                (id, ing.molecular_weight, ing.pI_mean, ing.pI_range)
+            class_val = (
+                ing.class_type.value
+                if isinstance(ing.class_type, ProteinClass)
+                else (ing.class_type or ProteinClass.NONE).value
+                if isinstance(ing.class_type, ProteinClass) is False and ing.class_type is not None
+                else ProteinClass.NONE.value
             )
+
+            c.execute("""
+                INSERT INTO protein
+                    (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
+                VALUES (?, ?, ?, ?, ?)
+            """, (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range))
         elif isinstance(ing, Buffer):
             c.execute("INSERT INTO buffer VALUES (?, ?)", (id, ing.pH))
         elif isinstance(ing, Stabilizer):

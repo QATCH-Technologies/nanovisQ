@@ -26,7 +26,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt
+from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
 from src.models.formulation import Formulation, ViscosityProfile
 from src.db.db import Database
 
@@ -85,7 +85,7 @@ class BaseTestDatabase(unittest.TestCase):
         - Verify that get_ingredient returns correct subclass instance with matching fields
         """
         p = Protein(enc_id=10, name="ProtA", molecular_weight=50.0,
-                    pI_mean=6.5, pI_range=0.3)
+                    pI_mean=6.5, pI_range=0.3, class_type=ProteinClass.MAB_IGG1)
         b = Buffer(enc_id=20, name="BuffB", pH=7.4)
         s1 = Stabilizer(enc_id=30, name="StabC")
         s2 = Surfactant(enc_id=40, name="SurfD")
@@ -124,10 +124,10 @@ class BaseTestDatabase(unittest.TestCase):
         all_ings = self.db.get_all_ingredients()
         start_count = len(all_ings)
         x = Protein(enc_id=1, name="X", molecular_weight=10,
-                    pI_mean=5, pI_range=0.1)
+                    pI_mean=5, pI_range=0.1, class_type=ProteinClass.NONE)
         id1 = self.db.add_ingredient(x)
         y = Protein(enc_id=2, name="Y", molecular_weight=10,
-                    pI_mean=5, pI_range=0.1)
+                    pI_mean=5, pI_range=0.1, class_type=ProteinClass.OTHER)
         id2 = self.db.add_ingredient(y)
         all_ings = self.db.get_all_ingredients()
         self.assertEqual(len(all_ings)-start_count, 2,
@@ -135,6 +135,8 @@ class BaseTestDatabase(unittest.TestCase):
         self.assertTrue(self.db.delete_ingredient(
             id1), "Deletion by ID should return True")
         remaining = self.db.get_all_ingredients()
+        rem_p = [i for i in remaining if isinstance(i, Protein)][0]
+        self.assertIn(rem_p.class_type, ProteinClass.all())
         self.assertEqual(len(remaining)-start_count, 1,
                          "One ingredient should remain after deletion")
         self.db.delete_all_ingredients()
@@ -171,7 +173,7 @@ class BaseTestDatabase(unittest.TestCase):
         """
         f = Formulation()
         p = Protein(enc_id=1, name="ProtA", molecular_weight=20,
-                    pI_mean=6, pI_range=0.2)
+                    pI_mean=6, pI_range=0.2, class_type=ProteinClass.FC_FUSION)
         f.set_protein(p, concentration=1.5, units="mg/mL")
         b = Buffer(enc_id=2, name="BuffB", pH=7.0)
         f.set_buffer(b, concentration=2.0, units="mM")
@@ -223,6 +225,7 @@ class BaseTestDatabase(unittest.TestCase):
         all_forms = self.db.get_all_formulations()
         self.assertEqual(len(all_forms), 2, "Expected two formulations")
         fid = all_forms[0].id
+
         self.assertTrue(self.db.delete_formulation(
             fid), "Expected delete_formulation to return True")
         self.assertEqual(len(self.db.get_all_formulations()),
