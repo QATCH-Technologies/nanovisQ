@@ -19,10 +19,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-07-23
 
 Version:
-    1.5
+    1.6
 """
 
 from enum import StrEnum, unique

@@ -249,7 +249,7 @@ class TestProtein(unittest.TestCase):
         self.assertEqual(p.molecular_weight, 20.0)
         self.assertEqual(p.pI_mean, 8.1)
         self.assertEqual(p.pI_range, 0.5)
-        self.asserEqual(p.class_type, ProteinClass.NONE)
+        self.assertEqual(p.class_type, ProteinClass.NONE)
 
         with self.assertRaises(TypeError):
             p.molecular_weight = "big"

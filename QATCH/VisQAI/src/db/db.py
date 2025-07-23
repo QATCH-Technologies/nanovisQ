@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-04
+    2025-07-23
 
 Version:
-    1.5
+    1.6
 """
 
 import sqlite3
@@ -52,6 +52,8 @@ DB_PATH = Path(
     )
 )
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+allowed_vals = ",".join(f"'{v}'" for v in ProteinClass.all_strings())
 
 
 class Database:
@@ -130,7 +132,7 @@ class Database:
         """
         c = self.conn.cursor()
         # Ingredient core table
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS ingredient (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 enc_id INTEGER NOT NULL,
@@ -140,49 +142,50 @@ class Database:
             )
         """)
         # Subclass tables
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS protein (
                 ingredient_id    INTEGER PRIMARY KEY,
-                class_type       TEXT NOT NULL DEFAULT 'None' CHECK(class_type IN ({allowed})),
+                class_type       TEXT NOT NULL DEFAULT 'None'
+                                CHECK (class_type IN ({allowed_vals})),
                 molecular_weight REAL,
                 pI_mean          REAL,
                 pI_range         REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
                 pH REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS stabilizer (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS surfactant (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS salt (
                 ingredient_id INTEGER PRIMARY KEY,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
         # Formulation and components
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 temperature REAL
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
                 formulation_id INTEGER NOT NULL,
                 component_type TEXT NOT NULL,
@@ -194,7 +197,7 @@ class Database:
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
             )
         """)
-        c.execute(r"""
+        c.execute(rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (
                 formulation_id INTEGER PRIMARY KEY,
                 shear_rates TEXT NOT NULL,
