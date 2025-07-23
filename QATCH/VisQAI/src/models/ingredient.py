@@ -25,8 +25,9 @@ Version:
     1.5
 """
 
+from enum import StrEnum, unique
 from abc import ABC
-from typing import Any, Dict, Type, TypeVar, Union, Optional
+from typing import Any, Dict, Type, TypeVar, Union, Optional, Tuple
 TAG = "[Ingredient]"
 T = TypeVar("T", bound="Ingredient")
 
@@ -300,6 +301,31 @@ class Ingredient(ABC):
         return self._enc_id < other._enc_id
 
 
+@unique
+class ProteinClass(StrEnum):
+    FC_FUSION = "FC-Fusion"
+    ADC = "ADC"
+    POLYCLONAL = "Polyclonal"
+    MAB_IGG1 = "mAb_IgG1"
+    MAB_IGG2 = "mAb_IgG2"
+    MAB_IGG3 = "mAb_IgG3"
+    MAB_IGG4 = "mAb_IgG4"
+    NONE = "None"
+    OTHER = "Other"
+
+    @classmethod
+    def all(cls) -> Tuple["ProteinClass", ...]:
+        return tuple(cls)
+
+    @classmethod
+    def all_strings(cls) -> Tuple[str, ...]:
+        return tuple(m.value for m in cls)
+
+    @classmethod
+    def from_value(cls, value: str) -> "ProteinClass":
+        return cls(value)
+
+
 class Protein(Ingredient):
     """Represents a protein ingredient with optional molecular weight and isoelectric point information.
 
@@ -316,6 +342,7 @@ class Protein(Ingredient):
         molecular_weight: Union[int, float] = None,
         pI_mean: Union[int, float] = None,
         pI_range: Union[int, float] = None,
+        class_type: ProteinClass = None,
         id: Optional[int] = None,
     ) -> None:
         """Initialize a Protein instance with encoded ID, name, and optional properties.
@@ -336,33 +363,38 @@ class Protein(Ingredient):
                 or if any numeric property is negative.
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
-        self._class_type = None  # TODO: implement functionality, just a stub for now
-        self._molecular_weight = self._validate_number(
+        self._class_type: ProteinClass = class_type
+        self._molecular_weight: float = self._validate_number(
             molecular_weight, "molecular_weight"
         )
-        self._pI_mean = self._validate_number(pI_mean, "pI_mean")
-        self._pI_range = self._validate_number(pI_range, "pI_range")
+        self._pI_mean: float = self._validate_number(pI_mean, "pI_mean")
+        self._pI_range: float = self._validate_number(pI_range, "pI_range")
 
     @property
-    def class_type(self) -> Union[str, None]:
+    def class_type(self) -> Union[ProteinClass, None]:
         """Get the class type of the protein.
 
         Returns:
-            Union[str, None]: The class type if set, otherwise None.
+            Union[ProteinClass, None]: The ProteinClass type enum if set, otherwise None.
         """
         return self._class_type
 
     @class_type.setter
-    def class_type(self, ct: Any) -> None:
+    def class_type(self, class_type: str) -> None:
         """Set the class type of the protein.
 
         Args:
-            ct (Any): New class type. Must be a member of Class Types.
+            class_type (str): New class type. Must be a member of ProteinClass enum.
 
         Raises:
-            TypeError: If `ct` is not a member of Class Types.
+            ValueError: If `class_type` is not a member of ProteinClass enum.
         """
-        self._class_type = ct  # TODO: check type is a member of supported class types list
+        try:
+            ct = ProteinClass.from_value(class_type)
+            self._class_type = ct
+        except ValueError:
+            raise ValueError(
+                f"`{class_type}` is not a supported class of protein. Supported classes are: {ProteinClass.all_strings()}.")
 
     @property
     def molecular_weight(self) -> Union[float, None]:
