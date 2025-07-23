@@ -93,8 +93,8 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Main layout
         main_layout = QtWidgets.QHBoxLayout(self)
-        h_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        main_layout.addWidget(h_splitter)
+        self.h_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        main_layout.addWidget(self.h_splitter)
 
         # Left panel: Run selection
         left_widget = QtWidgets.QWidget()
@@ -267,11 +267,11 @@ class FrameStep1(QtWidgets.QDialog):
         # Right panel: Initialize features
         right_widget = QtWidgets.QWidget()
         right_layout = QtWidgets.QVBoxLayout(right_widget)
-        v_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        right_layout.addWidget(v_splitter)
+        self.v_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        right_layout.addWidget(self.v_splitter)
         right_header = QtWidgets.QGroupBox("Initialize Features")
         right_group = QtWidgets.QVBoxLayout(right_header)
-        v_splitter.addWidget(right_header)
+        self.v_splitter.addWidget(right_header)
 
         # Features table
         self.load_all_excipient_types()
@@ -364,13 +364,13 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_figure = Figure()
         self.run_figure_valid = False
         self.run_canvas = FigureCanvas(self.run_figure)
-        v_splitter.addWidget(self.run_canvas)
+        self.v_splitter.addWidget(self.run_canvas)
 
         # Build main layout
-        h_splitter.addWidget(left_widget)
-        h_splitter.addWidget(right_widget)
-        h_splitter.setSizes([100, 300])
-        v_splitter.setSizes([180, 100])
+        self.h_splitter.addWidget(left_widget)
+        self.h_splitter.addWidget(right_widget)
+        self.h_splitter.setSizes([10, 1000])
+        self.v_splitter.setSizes([180, 100])
 
         # Signals
         self.btn_cancel.clicked.connect(
@@ -460,6 +460,12 @@ class FrameStep1(QtWidgets.QDialog):
             self.feature_table.hideRow(row)
 
     def save_formulation(self, cancel: bool = False) -> bool:
+        if not self.feature_table.allSet():
+            Log.e("Not all features have been set. " +
+                  "Cannot save formulation info. " +
+                  "Enter missing values and try again.")
+            return
+
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
         protein_class = self.feature_table.cellWidget(2, 1).currentText()
@@ -627,6 +633,9 @@ class FrameStep1(QtWidgets.QDialog):
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
+
+        # Collapse feature table on save (all set)
+        self.v_splitter.setSizes([0, 100])
 
         return True
 
@@ -850,6 +859,18 @@ class FrameStep1(QtWidgets.QDialog):
                 ax.set_ylabel("Viscosity (cP)", fontsize=10)
                 ax.grid(True, which="both", ls=":")
                 ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+
+                # Calculate offset as percentage of y-range
+                ylim = ax.get_ylim()
+                y_range = max(ylim) - min(ylim)
+                offset = y_range * 0.05  # 5% of the y-range
+                # Add labels with offset above points
+                for i in range(len(mean_arr)):
+                    ax.text(shear[i], mean_arr[i] + offset,
+                            f'{mean_arr[i]:.02f}±{std_arr[i]:.02f}',
+                            ha='center', va='bottom',
+                            fontsize=10,
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
 
                 self.run_figure_valid = True
                 self.run_canvas.draw()
@@ -1512,7 +1533,20 @@ class FrameStep1(QtWidgets.QDialog):
                     lw=2.5, color="blue")
             ax.scatter(self.profile_shears, self.profile_viscos,
                        s=40, color="blue", zorder=5)
+
+            # Calculate offset as percentage of y-range
+            ylim = ax.get_ylim()
+            y_range = max(ylim) - min(ylim)
+            offset = y_range * 0.05  # 5% of the y-range
+            # Add labels with offset above points
+            for i in range(len(self.profile_viscos)):
+                ax.text(self.profile_shears[i], self.profile_viscos[i] + offset,
+                        f'{self.profile_viscos[i]:.02f}',
+                        ha='center', va='bottom',
+                        fontsize=10,
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
             ax.plot(in_shear_rate, in_viscosity, "b,")
+
             self.run_figure_valid = True
 
             DEBUG = False
@@ -1536,6 +1570,11 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_temperature.setText("(Unknown)")
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
+
+        if self.feature_table.allSet():
+            self.v_splitter.setSizes([0, 100])
+        else:
+            self.v_splitter.setSizes([180, 100])
 
     def calc_limits(self, yall):
         ymin, ymax = 0, 1000
