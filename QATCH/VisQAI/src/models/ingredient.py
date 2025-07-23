@@ -303,14 +303,14 @@ class Ingredient(ABC):
 
 @unique
 class ProteinClass(StrEnum):
-    FC_FUSION = "FC-Fusion"
+    NONE = "None"
     ADC = "ADC"
-    POLYCLONAL = "Polyclonal"
+    FC_FUSION = "FC-Fusion"
     MAB_IGG1 = "mAb_IgG1"
     MAB_IGG2 = "mAb_IgG2"
     MAB_IGG3 = "mAb_IgG3"
     MAB_IGG4 = "mAb_IgG4"
-    NONE = "None"
+    POLYCLONAL = "Polyclonal"
     OTHER = "Other"
 
     @classmethod

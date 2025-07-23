@@ -1,7 +1,9 @@
 try:
     from src.controller.ingredient_controller import IngredientController
+    from src.models.ingredient import ProteinClass
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.models.ingredient import ProteinClass
 
 
 class ListUtils:
@@ -17,8 +19,7 @@ class ListUtils:
         proteins_by_class: dict[str, str] = {}
 
         # fixed list of supported protein class types:
-        class_types = ["None", "mAb_IgG1", "mAb_IgG2", "mAb_IgG3", "mAb_IgG4",
-                       "Polyclonal", "Other"]
+        class_types = list(ProteinClass.all_strings())
 
         for type in class_types:
             proteins_by_class[type] = []
