@@ -369,6 +369,10 @@ class FrameStep1(QtWidgets.QDialog):
         # Build main layout
         self.h_splitter.addWidget(left_widget)
         self.h_splitter.addWidget(right_widget)
+
+        # Set fixed width for left widget
+        left_widget.setMinimumWidth(350)
+
         self.h_splitter.setSizes([10, 1000])
         self.v_splitter.setSizes([180, 100])
 
