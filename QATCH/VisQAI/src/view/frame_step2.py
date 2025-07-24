@@ -193,16 +193,21 @@ class FrameStep2(QtWidgets.QDialog):
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.class_types: list[str] = []
+        self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
-        Log.d("Salts", self.salts)
+        Log.d("Salts:", self.salts)
+        Log.d("Class Types:", self.class_types)
+        Log.d("Proteins By Class:", self.proteins_by_class)
 
     def model_selected(self, path: str | None):
         self.model_path = path

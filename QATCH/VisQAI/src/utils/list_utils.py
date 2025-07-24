@@ -1,7 +1,9 @@
 try:
     from src.controller.ingredient_controller import IngredientController
+    from src.models.ingredient import ProteinClass
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.models.ingredient import ProteinClass
 
 
 class ListUtils:
@@ -13,6 +15,15 @@ class ListUtils:
         surfactants: list[str] = []
         stabilizers: list[str] = []
         salts: list[str] = []
+        class_types: list[str] = []
+        proteins_by_class: dict[str, str] = {}
+
+        # fixed list of supported protein class types:
+        class_types = list(ProteinClass.all_strings())
+
+        for type in class_types:
+            proteins_by_class[type] = []
+
         ingredients = ing_ctrl.get_all_ingredients()
 
         for i in ingredients:
@@ -20,6 +31,20 @@ class ListUtils:
                 continue  # skip "none"
             if i.type == "Protein" and i.is_user:
                 proteins.append(i.name)  # only show user proteins, hide core
+                # NOTE: If multiple proteins of the same name have conflicting
+                # class types, this lookup table will contain the same protein
+                # name under the keys of all matching class types, not just 1.
+                # This could lead to unexpected behaviors if a protein ends up
+                # in both the allowed and the not allowed class type category.
+                # TODO: Add filter to restrict protein names to a single type!
+                if not isinstance(i.class_type, str):
+                    class_type = "None"  # must be None
+                elif i.class_type not in class_types:
+                    class_type = "Other"  # mark unknown as Other
+                else:
+                    class_type = i.class_type
+                if i.name not in proteins_by_class[class_type]:
+                    proteins_by_class[class_type].append(i.name)
             elif i.type == "Buffer":
                 buffers.append(i.name)
             elif i.type == "Surfactant":
@@ -38,7 +63,7 @@ class ListUtils:
             stabilizers)
         salts = ListUtils.unique_case_insensitive_sort(salts)
 
-        return proteins, buffers, surfactants, stabilizers, salts
+        return proteins, buffers, surfactants, stabilizers, salts, class_types, proteins_by_class
 
     @staticmethod
     def unique_case_insensitive_sort(list):

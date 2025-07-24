@@ -223,6 +223,11 @@ class ConstraintsUI(QtWidgets.QWidget):
         feature = self.constraints_features[index].currentText()
         verb = self.constraints_verbs[index].currentText()
 
+        if self.constraints_features[index].count() == 2 and ingredient == "Protein":
+            self.constraints_features[index].insertItem(0, "Class")
+        elif self.constraints_features[index].count() == 3 and ingredient != "Protein":
+            self.constraints_features[index].removeItem(0)  # bye, Class
+
         model = self.constraints_values[index].model()
         current_items = [model.data(model.index(i, 0))
                          for i in range(model.rowCount())]
@@ -233,8 +238,8 @@ class ConstraintsUI(QtWidgets.QWidget):
         if not verb:  # select "is" when left options picked
             self.constraints_verbs[index].setCurrentIndex(0)
 
-        # Only allow "is not" verb when the feature is "Type"
-        self.constraints_verbs[index].setEnabled(feature == "Type")
+        # Only allow "is not" verb when the feature is "Type" or "Class"
+        self.constraints_verbs[index].setDisabled(feature == "Concentration")
         if feature == "Concentration" and verb == "is not":
             self.constraints_verbs[index].setCurrentIndex(0)
 
@@ -253,6 +258,8 @@ class ConstraintsUI(QtWidgets.QWidget):
                 autofill_items = self.parent.salts.copy()
             if ingredient not in ["Protein", "Buffer"] and "None" not in autofill_items:
                 autofill_items.insert(0, "None")  # allow "none" selection
+        elif feature == "Class":
+            autofill_items = self.parent.class_types.copy()
         elif feature == "Concentration":
             editable = True
 
@@ -302,6 +309,8 @@ class ConstraintsUI(QtWidgets.QWidget):
             feature = self.constraints_features[i].currentText()
             verb = self.constraints_verbs[i].currentText()
             values = self.constraints_values[i].currentText()
+            whole = []
+
             if not ingredient or not feature or not verb or not values:
                 return None  # missing fields
 
@@ -309,6 +318,20 @@ class ConstraintsUI(QtWidgets.QWidget):
             values = [v.strip() for v in values.split(";") if v.strip()]
             if not values:
                 return None  # no valid values
+
+            if feature == "Type":
+                whole = self.constraints_values[i].getItems()
+
+            if feature == "Class":
+                # map class type to all matching protein types
+                class_types = values.copy()
+                ingredient = ingredient
+                feature = "Type"
+                verb = verb  # no need to negate values here since it's handled at lower layer
+                values = []  # all protein names matching given class type(s)
+                for ct in class_types:
+                    values.extend(self.parent.proteins_by_class[ct])
+                whole = self.parent.proteins.copy()
 
             if feature == "Concentration":
                 # If feature is "Concentration", values can be a single value or a range
@@ -331,19 +354,20 @@ class ConstraintsUI(QtWidgets.QWidget):
                         except ValueError:
                             return None  # invalid float format
 
-            added_constraints.append((ingredient, feature, verb, values))
+            added_constraints.append(
+                (ingredient, feature, verb, values, whole))
 
         constraints = Constraints(self.main_window.database)
 
         # Populate constraints object from user added constraints
-        for idx, (ingredient, feature, verb, values) in enumerate(added_constraints):
+        for idx, (ingredient, feature, verb, values, whole) in enumerate(added_constraints):
             feature = str(feature)  # type set
             constraint_name = f"{ingredient}_{feature[:4].lower()}"
             negate = False if verb == "is" else True
             if constraint_name in Constraints._CATEGORICAL:
                 # Categorical constraint
                 choices: List[Ingredient] = []
-                for value in self.constraints_values[idx].getItems():
+                for value in whole:
                     if (negate == False and value in values) or \
                        (negate == True and value not in values):
                         choice = self.main_window.ing_ctrl.get_by_name(
