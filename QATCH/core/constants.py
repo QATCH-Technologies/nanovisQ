@@ -327,7 +327,9 @@ class Constants:
     FILL_TYPE_LABEL_MAP = {
         0: "Run: %v/%m (No Fill)",
         1: "Run: %v/%m (Filling)",
-        2: "Run: %v/%m (Full Fill)",
+        2: "Run: %v/%m (Channel 1 Filling)",
+        3: "Run: %v/%m (Channel 2 Filling)",
+        4: "Run: %v/%m (Full Fill)",
     }
     ######################
     # ANALYZE parameters #

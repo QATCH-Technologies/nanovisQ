@@ -6,7 +6,7 @@ from QATCH.core.constants import Constants, OperationType
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
 from QATCH.processors.Calibration import CalibrationProcess
-from QATCH.processors.FillForecaster import StopNetForecasterProcess
+from QATCH.processors.FillForecaster import StopNetProcess
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.ringBuffer import RingBuffer
@@ -171,7 +171,7 @@ class Worker:
                      spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
 
                 # Create and start live forecaster
-                self._forecaster_process = StopNetForecasterProcess(
+                self._forecaster_process = StopNetProcess(
                     self._queueLog,
                     self._forecaster_in,
                     self._forecaster_out)

@@ -17,8 +17,9 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
+from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.processors.Analyze import AnalyzeProcess
+from QATCH.processors.FillForecaster import FillStatus
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.VisQAI.src.db.db import Database
@@ -3066,11 +3067,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
-                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
+                    self.forecast_status = self.worker._forecaster_out.get()
+                    self.forecast_start_time, self.forecast_end_time = -1, -1
             else:
                 self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)
-
             self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
                 self.forecast_status.value)
             self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(

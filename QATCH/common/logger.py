@@ -48,7 +48,7 @@ class Logger:
             'ignore', category=FutureWarning, module='tensorflow')
         try:
             import tensorflow as tf
-            tf.get_logger().setLevel('ERROR')
+            # tf.get_logger().setLevel('ERROR')
             try:
                 tf.autograph.set_verbosity(0)
             except Exception:

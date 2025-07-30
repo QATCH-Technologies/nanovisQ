@@ -6,21 +6,33 @@ from logging.handlers import QueueHandler
 from typing import Any, Optional, Dict
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
+from enum import Enum
 
 from QATCH.QModel.src.models.live.stopnet import StopNet
 
-TAG = "[StopNetForecaster]"
+TAG = "[StopNetProcess]"
+
+
+class FillStatus(Enum):
+    """Enum for fill statuses during prediction updates."""
+    NO_FILL = 0
+    INITIAL_FILL = 1
+    CHANNEL_1_FILL = 2
+    CHANNEL_2_FILL = 3
+    FULL_FILL = 4
+
 
 # Map your POI codes to state names
 POI_STATE_MAP = {
-    1: "initial_fill",
-    4: "channel1_fill",
-    5: "channel2_fill",
-    6: "full_fill",
+    0: FillStatus.NO_FILL,
+    1: FillStatus.INITIAL_FILL,
+    4: FillStatus.CHANNEL_1_FILL,
+    5: FillStatus.CHANNEL_2_FILL,
+    6: FillStatus.FULL_FILL,
 }
 
 
-class StopNetForecasterProcess(multiprocessing.Process):
+class StopNetProcess(multiprocessing.Process):
     """Process for handling real-time StopNet predictions as a state machine."""
 
     def __init__(
@@ -36,14 +48,13 @@ class StopNetForecasterProcess(multiprocessing.Process):
         self._exit = multiprocessing.Event()
         self._done = multiprocessing.Event()
         # track the last reported state to suppress duplicates
-        self._current_state: Optional[str] = None
+        self._current_state: FillStatus = FillStatus.NO_FILL
+        self._last_seen_max_time = -1
 
     def run(self) -> None:
         try:
             sys.stdout = open(os.devnull, 'w')
             sys.stderr = open(os.devnull, 'w')
-
-            # setup logging over the queue
             logger = logging.getLogger("QATCH.logger")
             logger.addHandler(QueueHandler(self._queueLog))
             logger.setLevel(logging.DEBUG)
@@ -55,14 +66,15 @@ class StopNetForecasterProcess(multiprocessing.Process):
 
             # ─── Load StopNet + scalers ─────────────────────────────────────────
             base = Architecture.get_path()
+            print(base)
             model_p = os.path.join(base, "QATCH", "QModel", "SavedModels",
-                                   "forecaster_v2", "stopnet_model.h5")
+                                   "stopnet_assets", "stopnet.h5")
             t_scale = os.path.join(base, "QATCH", "QModel", "SavedModels",
-                                   "forecaster_v2", "time_scaler.pkl")
+                                   "stopnet_assets", "stopnet_scalers", "Relative_time_scaler.pkl")
             rf_scale = os.path.join(base, "QATCH", "QModel", "SavedModels",
-                                    "forecaster_v2", "rf_scaler.pkl")
+                                    "stopnet_assets", "stopnet_scalers", "Resonance_Frequency_scaler.pkl")
             d_scale = os.path.join(base, "QATCH", "QModel", "SavedModels",
-                                   "forecaster_v2", "diss_scaler.pkl")
+                                   "stopnet_assets", "stopnet_scalers", "Dissipation_scaler.pkl")
 
             self._stopnet = StopNet(
                 model_path=model_p,
@@ -72,34 +84,28 @@ class StopNetForecasterProcess(multiprocessing.Process):
             )
             Log.d(TAG, "StopNet loaded; entering main loop.")
 
-            # ─── Main loop ────────────────────────────────────────────────────────
             while not self._exit.is_set():
-                # block until data arrives
                 new_data = self._queue_in.get()
-                # drop older frames
                 while not self._queue_in.empty():
                     new_data = self._queue_in.get()
-
-                # ensure it's a DataFrame with rows
                 if hasattr(new_data, "empty") and not new_data.empty:
                     for _, row in new_data.iterrows():
-                        result = self._stopnet.add_data_point(
-                            relative_time=row["Relative_time"],
-                            dissipation=row["Dissipation"],
-                            resonance_freq=row["Resonance_Frequency"],
-                        )
+                        r_time = row["Relative_time"].max()
+                        if r_time > self._last_seen_max_time:
+                            self._last_seen_max_time = r_time
+                            result = self._stopnet.add_data_point(
+                                relative_time=row["Relative_time"],
+                                dissipation=row["Dissipation"],
+                                resonance_freq=row["Resonance_Frequency"],
+                            )
                         if result is None:
                             continue
 
                         poi, _, _ = result
-                        # only care about non-zero POIs
-                        if poi in POI_STATE_MAP:
-                            state = POI_STATE_MAP[poi]
-                            # only emit if state changed
-                            if state != self._current_state:
-                                self._current_state = state
-                                self._queue_out.put({"fill_state": state})
-
+                        new_state = POI_STATE_MAP[poi]
+                        if new_state.value > self._current_state.value:
+                            self._current_state = new_state
+                            self._queue_out.put(new_state)
         except Exception:
             t, v, tb = sys.exc_info()
             from traceback import format_tb
@@ -110,10 +116,12 @@ class StopNetForecasterProcess(multiprocessing.Process):
 
         finally:
             Log.d(TAG, "StopNetForecasterProcess stopped.")
+            self._current_state = FillStatus.NO_FILL
             self._done.set()
 
     def stop(self) -> None:
         """Signal the process to exit gracefully."""
+        self._current_state = FillStatus.NO_FILL
         self._exit.set()
 
     def is_running(self) -> bool:

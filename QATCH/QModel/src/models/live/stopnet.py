@@ -3,8 +3,10 @@ import pandas as pd
 import tensorflow as tf
 from typing import List, Tuple, Optional
 from typing import Dict
+from collections import deque
+import matplotlib.pyplot as plt
 import joblib
-
+from QATCH.common.logger import Logger as Log
 WIN_SIZE = 128
 TARGET_POIS = {1, 4, 5, 6}
 LABEL_MAP = {0: 0, 1: 1, 4: 2, 5: 3, 6: 4}
@@ -57,28 +59,66 @@ class StopNetFeatureExtractor:
         diss_scaler = joblib.load(diss_scaler_path)
         return cls(time_scaler, rf_scaler, diss_scaler, window_size)
 
-    def transform_window(self, win: pd.DataFrame) -> np.ndarray:
+    def transform_window(
+        self,
+        win: pd.DataFrame,
+        relative_time_poi1: float | None = None
+    ) -> np.ndarray:
+        """
+        Transform a single window, adding a time_since_poi1 feature in seconds.
+
+        Args:
+            win: DataFrame for this window with a 'Relative_time' column.
+            window_index: 0-based index of this window in the run.
+            relative_time_poi1: timestamp (in same units as Relative_time) when POI1 occurred.
+                                If None, time_since_poi1 will be zero.
+        """
+        # Capture original times before scaling
+        raw_times = win["Relative_time"].values
+
+        # 1) Scale signals
         df = win.copy()
         for col in ["Relative_time", "Dissipation", "Resonance_Frequency"]:
             df[col] = self.scalers[col].transform(df[[col]]).ravel()
 
-        # More stable feature engineering...
-        df["dissipation_change"] = np.clip(
-            df["Dissipation"].diff().fillna(0), -5, 5)
-        df["rf_change"] = np.clip(
-            df["Resonance_Frequency"].diff().fillna(0), -5, 5)
+        # 2) Derived per-sample features
+        df["dissipation_change"] = df["Dissipation"].diff().fillna(0)
+        df["rf_change"] = df["Resonance_Frequency"].diff().fillna(0)
+        df["dissipation_change"] = np.clip(df["dissipation_change"], -5, 5)
+        df["rf_change"] = np.clip(df["rf_change"], -5, 5)
         df["diss_x_rf"] = df["Dissipation"] * df["Resonance_Frequency"]
         df["change_prod"] = df["dissipation_change"] * df["rf_change"]
-        df["temporal_position"] = np.linspace(0, 1, len(df))
-        df["diss_rolling_mean"] = df["Dissipation"].rolling(
-            window=3, center=True).mean().fillna(df["Dissipation"])
-        df["rf_rolling_mean"] = df["Resonance_Frequency"].rolling(
-            window=3, center=True).mean().fillna(df["Resonance_Frequency"])
 
+        # 3) Temporal position within window
+        df["temporal_position"] = np.linspace(0, 1, len(df))
+
+        # 4) Rolling statistics for stability
+        df["diss_rolling_mean"] = (
+            df["Dissipation"]
+            .rolling(window=3, center=True)
+            .mean()
+            .fillna(df["Dissipation"])
+        )
+        df["rf_rolling_mean"] = (
+            df["Resonance_Frequency"]
+            .rolling(window=3, center=True)
+            .mean()
+            .fillna(df["Resonance_Frequency"])
+        )
+
+        # 5) time_since_poi1 in seconds (relative time)
+        if relative_time_poi1 is None:
+            df["time_since_poi1"] = 0.0
+        else:
+            delta = raw_times - relative_time_poi1
+            df["time_since_poi1"] = np.clip(delta, 0.0, None)
+
+        # Final column order
         cols = [
             "Relative_time", "Dissipation", "Resonance_Frequency",
             "dissipation_change", "rf_change", "diss_x_rf", "change_prod",
-            "temporal_position", "diss_rolling_mean", "rf_rolling_mean"
+            "temporal_position", "diss_rolling_mean", "rf_rolling_mean",
+            "time_since_poi1"
         ]
         return df[cols].to_numpy()
 
@@ -275,7 +315,7 @@ class StopNetPredictor:
 
             if max_expected_prob > min_force_threshold:
                 print(
-                    f"  🔍 Sequential force: POI {expected_poi} (prob: {max_expected_prob:.3f})")
+                    f" Sequential force: POI {expected_poi} (prob: {max_expected_prob:.3f})")
                 return LABEL_MAP[expected_poi], max_expected_prob
 
             if window_position > 0.85 * total_windows:
@@ -302,7 +342,7 @@ class StopNet:
     def __init__(
         self,
         model_path: Optional[str] = None,
-        model: Optional[tf.keras.Model] = None,
+        model=None,
         feature_extractor: Optional[StopNetFeatureExtractor] = None,
         time_scaler_path: Optional[str] = None,
         rf_scaler_path: Optional[str] = None,
@@ -313,7 +353,7 @@ class StopNet:
         if model is None:
             if not model_path:
                 raise ValueError("Provide model_path or model instance.")
-            self.model = tf.keras.models.load_model(model_path)
+            self.model = tf.keras.models.load_model(model_path, compile=False)
         else:
             self.model = model
 
@@ -334,10 +374,10 @@ class StopNet:
             confidence_threshold=confidence_threshold,
             sequence_bonus=sequence_bonus
         )
-        self._buffer: List[dict] = []
-
+        self._buffer = deque(maxlen=WIN_SIZE)
         self._base_d: Optional[float] = None
         self._base_rf: Optional[float] = None
+        self._t_poi = None
 
     def reset(self) -> None:
         """Clear buffer, reset POI state, and clear baseline offsets."""
@@ -345,38 +385,48 @@ class StopNet:
         self.predictor.reset_for_new_run()
         self._base_d = None
         self._base_rf = None
+        self._t_poi = None
 
     def add_data_point(self, relative_time, dissipation, resonance_freq):
         self._buffer.append({
-            'Relative_time': relative_time,
-            'Dissipation': dissipation,
+            'Relative_time':       relative_time,
+            'Dissipation':         dissipation,
             'Resonance_Frequency': resonance_freq
         })
 
-        # wait until we have a full window
         if len(self._buffer) < WIN_SIZE:
             return None
 
-        # pull out the next window
-        window_df = pd.DataFrame(self._buffer[:WIN_SIZE])
-        self._buffer = self._buffer[WIN_SIZE:]
-
+        window_records = [self._buffer.popleft() for _ in range(WIN_SIZE)]
+        window_df = pd.DataFrame(window_records)
+        self._buffer.clear()
         if self._base_d is None:
             self._base_d = window_df['Dissipation'].mean()
             self._base_rf = window_df['Resonance_Frequency'].mean()
-
-        window_df['Dissipation'] = window_df['Dissipation'] - self._base_d
-        # flip & shift RF so that early values start at 0
+        window_df['Dissipation'] -= self._base_d
         window_df['Resonance_Frequency'] = -(
             window_df['Resonance_Frequency'] - self._base_rf
         )
 
-        features = self.feature_extractor.transform_window(window_df)
-        model_class, confidence, adjusted = \
+        win_min, win_max = window_df['Relative_time'].min(
+        ), window_df['Relative_time'].max()
+
+        features = self.feature_extractor.transform_window(
+            window_df, relative_time_poi1=self._t_poi
+        )
+        model_class, confidence, adjusted = (
             self.predictor.predict_with_sequential_constraint(features)
+        )
         poi = INV_LABEL_MAP[model_class]
 
+        if poi == 1 and self._t_poi is None:
+            self._t_poi = window_df['Relative_time'].iloc[0]
         if poi != 0:
             self.predictor.tracker.update_state(poi, confidence)
+
+        Log.i(
+            f"Window [{win_min:.3f}, {win_max:.3f} (size={len(window_df)})] -> "
+            f"class={model_class}, conf={confidence:.3f}, adjusted={adjusted}"
+        )
 
         return poi, confidence, adjusted

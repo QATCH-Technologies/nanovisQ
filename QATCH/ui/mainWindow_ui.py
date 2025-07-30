@@ -1258,7 +1258,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.fill_prediction_progress_bar = QtWidgets.QProgressBar()
         self.fill_prediction_progress_bar.setMinimum(0)
-        self.fill_prediction_progress_bar.setMaximum(2)
+        self.fill_prediction_progress_bar.setMaximum(
+            len(Constants.FILL_TYPE_LABEL_MAP) - 1)
         self.fill_prediction_progress_bar.setGeometry(
             QtCore.QRect(0, 0, 50, 10))
         self.fill_prediction_progress_bar.setObjectName("fillProgressBar")
