@@ -969,13 +969,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.confirm'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
-        self.signForm = QtWidgets.QWidget()
+        self.signForm = QtWidgets.QDialog()
         # | QtCore.Qt.WindowStaysOnTopHint)
         self.signForm.setWindowFlags(QtCore.Qt.Dialog)
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/sign.png')
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
+        self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
@@ -1606,10 +1607,11 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.protein_types_multiline.setFocus()
             self.protein_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text.casefold() == "none":
+        elif text.casefold() == "none" or len(text) == 0:
             self.t12.setText("0")  # clear Protein Concentration
             self.t12.setEnabled(False)
-            self.b2.click()  # check "no" to bioformulation question
+            if len(text):
+                self.b2.click()  # check "no" to bioformulation question
         else:
             self.t12.setEnabled(True)
             pass  # do nothing if any other value was selected
@@ -1635,7 +1637,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.buffer_types_multiline.setFocus()
             self.buffer_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text.casefold() == "none":
+        elif text.casefold() == "none" or len(text) == 0:
             self.t14.setText("0")  # clear Buffer Concentration
             self.t14.setEnabled(False)
         else:
@@ -1663,7 +1665,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.surfactant_types_multiline.setFocus()
             self.surfactant_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text.casefold() == "none":
+        elif text.casefold() == "none" or len(text) == 0:
             self.t6.setText("0")  # clear Surfactant Concentration
             self.t6.setEnabled(False)
         else:
@@ -1691,7 +1693,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.stabilizer_types_multiline.setFocus()
             self.stabilizer_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text.casefold() == "none":
+        elif text.casefold() == "none" or len(text) == 0:
             self.t8.setText("0")  # clear Stabilizer Concentration
             self.t8.setEnabled(False)
         else:
@@ -1719,7 +1721,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.salt_types_multiline.setFocus()
             self.salt_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
-        elif text.casefold() == "none":
+        elif text.casefold() == "none" or len(text) == 0:
             self.t16.setText("0")  # clear Salt Concentration
             self.t16.setEnabled(False)
         else:
@@ -1734,14 +1736,15 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.salts: list[str] = []
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, \
+            _, _ = ListUtils.load_all_excipient_types(
                 self.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
-        Log.d("Salts", self.salts)
+        Log.d("Salts:", self.salts)
 
     def save_proteins(self):
         old_proteins = self.proteins.copy()

@@ -38,7 +38,7 @@ class Constraints:
         "Surfactant_type": Surfactant,
     }
     _DEFAULT_RANGES = {
-        "Protein_conc": (0, 1000),
+        "Protein_conc": (0, 300),
         "Temperature": (24, 25),
         "Buffer_conc": (0, 100),
         "Salt_conc": (0, 200),
