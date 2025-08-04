@@ -258,20 +258,20 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_next = QtWidgets.QPushButton(
                 "Next Step: Learn")
         elif step == 5:
-            self.btn_next = QtWidgets.QPushButton(""
-                                                  "Next Step: Optimize")
+            self.btn_next = QtWidgets.QPushButton(
+                "Next Step: Optimize")
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_next)
         left_layout.addLayout(btn_layout)
 
         # Right panel: Initialize features
-        right_widget = QtWidgets.QWidget()
-        right_layout = QtWidgets.QVBoxLayout(right_widget)
-        self.v_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        right_layout.addWidget(self.v_splitter)
-        right_header = QtWidgets.QGroupBox("Initialize Features")
+        step_verb = "Initialize"
+        if step == 2:
+            step_verb = "Suggested"
+        if step == 5:
+            step_verb = "Predicted"
+        right_header = QtWidgets.QGroupBox(f"{step_verb} Features")
         right_group = QtWidgets.QVBoxLayout(right_header)
-        self.v_splitter.addWidget(right_header)
 
         # Features table
         self.load_all_excipient_types()
@@ -364,17 +364,37 @@ class FrameStep1(QtWidgets.QDialog):
         self.run_figure = Figure()
         self.run_figure_valid = False
         self.run_canvas = FigureCanvas(self.run_figure)
-        self.v_splitter.addWidget(self.run_canvas)
 
         # Build main layout
         self.h_splitter.addWidget(left_widget)
-        self.h_splitter.addWidget(right_widget)
+        self.h_splitter.addWidget(right_header)
+        self.h_splitter.addWidget(self.run_canvas)
 
         # Set fixed width for left widget
-        left_widget.setMinimumWidth(350)
+        left_widget.setMinimumWidth(420)
+        right_header.setMinimumWidth(420)
 
-        self.h_splitter.setSizes([10, 1000])
-        self.v_splitter.setSizes([180, 100])
+        # add collapse/expand icon arrows
+        self.h_splitter.setHandleWidth(10)
+        handle = self.h_splitter.handle(2)
+        layout_s = QtWidgets.QVBoxLayout()
+        layout_s.setContentsMargins(0, 0, 0, 0)
+        layout_s.addStretch()
+        self.btnCollapse = QtWidgets.QToolButton(handle)
+        self.btnCollapse.setArrowType(QtCore.Qt.LeftArrow)
+        self.btnCollapse.clicked.connect(
+            lambda: self.handleSplitterButton(True))
+        layout_s.addWidget(self.btnCollapse)
+        self.btnExpand = QtWidgets.QToolButton(handle)
+        self.btnExpand.setArrowType(QtCore.Qt.RightArrow)
+        self.btnExpand.clicked.connect(
+            lambda: self.handleSplitterButton(False))
+        layout_s.addWidget(self.btnExpand)
+        layout_s.addStretch()
+        handle.setLayout(layout_s)
+        self.btnExpand.setVisible(False)
+        self.handleSplitterButton(False)
+        self.h_splitter.splitterMoved.connect(self.handleSplitterMoved)
 
         # Signals
         self.btn_cancel.clicked.connect(
@@ -421,6 +441,21 @@ class FrameStep1(QtWidgets.QDialog):
                     (x for x in all_model_paths if x is not None), None)
                 if found_model_path:
                     self.model_selected(found_model_path)
+
+    def handleSplitterMoved(self, pos=0, index=0):
+        collapsed = self.h_splitter.sizes()[1] == 0
+        self.btnCollapse.setVisible(not collapsed)
+        self.btnExpand.setVisible(collapsed)
+
+    def handleSplitterButton(self, collapse=True):
+        if collapse:
+            self.h_splitter.setSizes([10, 0, 10000])
+        else:
+            if self.step == 2:  # Suggest
+                self.h_splitter.setSizes([10, 10000, 0])
+            else:
+                self.h_splitter.setSizes([10, 10, 10000])
+        self.handleSplitterMoved()
 
     def list_view_addPlaceholderText(self):
         if self.model.rowCount() == 0:
@@ -639,7 +674,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.predict_formulation = form_saved
 
         # Collapse feature table on save (all set)
-        self.v_splitter.setSizes([0, 100])
+        self.handleSplitterButton(collapse=True)
 
         return True
 
@@ -900,7 +935,7 @@ class FrameStep1(QtWidgets.QDialog):
                 new_targets=np.array([vp]),
                 epochs=10,
                 batch_size=32,
-                save=False,
+                save=True,
                 callback=run_prediction_result)
 
         else:
@@ -1576,9 +1611,9 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
 
         if self.feature_table.allSet():
-            self.v_splitter.setSizes([0, 100])
+            self.handleSplitterButton(collapse=True)
         else:
-            self.v_splitter.setSizes([180, 100])
+            self.handleSplitterButton(collapse=False)
 
     def calc_limits(self, yall):
         ymin, ymax = 0, 1000
