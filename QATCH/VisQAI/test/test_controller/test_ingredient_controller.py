@@ -22,7 +22,7 @@ Version:
 import unittest
 from pathlib import Path
 
-from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt
+from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
 from src.db.db import Database
 from src.controller.ingredient_controller import IngredientController
 
@@ -94,7 +94,7 @@ class TestIngredientController(unittest.TestCase):
             - Adding a duplicate name does not create a second entry.
         """
         p = Protein(enc_id=1, name="ProtA", molecular_weight=50.0,
-                    pI_mean=6.5, pI_range=0.2)
+                    pI_mean=6.5, pI_range=0.2, class_type=ProteinClass.MAB_IGG1)
         p.is_user = False
         self.ctrl.add_protein(p)
 
@@ -117,7 +117,7 @@ class TestIngredientController(unittest.TestCase):
         self.assertEqual(fetched_by_name.name, "ProtA")
 
         dup = Protein(enc_id=-1, name="ProtA",
-                      molecular_weight=60.0, pI_mean=7.0, pI_range=0.1)
+                      molecular_weight=60.0, pI_mean=7.0, pI_range=0.1, class_type=ProteinClass.MAB_IGG1)
         dup.is_user = False
         ret = self.ctrl.add_protein(dup)
         self.assertEqual(dup.name, ret.name)
@@ -311,7 +311,7 @@ class TestIngredientController(unittest.TestCase):
             - get_all_ingredients returns two entries with name "Common".
         """
         p = Protein(enc_id=1, name="Common", molecular_weight=10.0,
-                    pI_mean=5.0, pI_range=0.1)
+                    pI_mean=5.0, pI_range=0.1, class_type=ProteinClass.MAB_IGG1)
         p.is_user = False
         self.ctrl.add(p)
         b = Buffer(enc_id=2, name="Common", pH=7.0)
@@ -360,7 +360,7 @@ class TestIngredientController(unittest.TestCase):
         Test that updating a non-existent Protein raises ValueError.
         """
         updated = Protein(enc_id=6, name="NoExist",
-                          molecular_weight=20.0, pI_mean=6.0, pI_range=0.2)
+                          molecular_weight=20.0, pI_mean=6.0, pI_range=0.2, class_type=ProteinClass.MAB_IGG1)
         updated.is_user = False
         with self.assertRaises(ValueError):
             self.ctrl.update_protein(999, updated)
@@ -374,14 +374,14 @@ class TestIngredientController(unittest.TestCase):
             - Second developer Protein -> enc_id = 2
         """
         p1 = Protein(enc_id=-1, name="DevProt1",
-                     molecular_weight=10.0, pI_mean=5.0, pI_range=0.1)
+                     molecular_weight=10.0, pI_mean=5.0, pI_range=0.1, class_type=ProteinClass.MAB_IGG1)
         p1.is_user = False
         self.ctrl.add_protein(p1)
         fetched1 = self.ctrl.get_protein_by_name("DevProt1")
         self.assertEqual(fetched1.enc_id, 1)
 
         p2 = Protein(enc_id=-1, name="DevProt2",
-                     molecular_weight=12.0, pI_mean=5.5, pI_range=0.2)
+                     molecular_weight=12.0, pI_mean=5.5, pI_range=0.2, class_type=ProteinClass.MAB_IGG1)
         p2.is_user = False
         self.ctrl.add_protein(p2)
         fetched2 = self.ctrl.get_protein_by_name("DevProt2")
@@ -453,21 +453,21 @@ class TestIngredientController(unittest.TestCase):
 
         try:
             p1 = Protein(enc_id=-1, name="DExhaust1",
-                         molecular_weight=10.0, pI_mean=5.0, pI_range=0.1)
+                         molecular_weight=10.0, pI_mean=5.0, pI_range=0.1, class_type=ProteinClass.MAB_IGG1)
             p1.is_user = False
             self.ctrl.add_protein(p1)
             fetched1 = self.ctrl.get_protein_by_name("DExhaust1")
             self.assertEqual(fetched1.enc_id, 1)
 
             p2 = Protein(enc_id=-1, name="DExhaust2",
-                         molecular_weight=11.0, pI_mean=5.1, pI_range=0.2)
+                         molecular_weight=11.0, pI_mean=5.1, pI_range=0.2, class_type=ProteinClass.MAB_IGG1)
             p2.is_user = False
             self.ctrl.add_protein(p2)
             fetched2 = self.ctrl.get_protein_by_name("DExhaust2")
             self.assertEqual(fetched2.enc_id, 2)
 
             p3 = Protein(enc_id=-1, name="DExhaust3",
-                         molecular_weight=12.0, pI_mean=5.2, pI_range=0.3)
+                         molecular_weight=12.0, pI_mean=5.2, pI_range=0.3, class_type=ProteinClass.MAB_IGG1)
             p3.is_user = False
             with self.assertRaises(RuntimeError):
                 self.ctrl.add_protein(p3)
@@ -486,7 +486,7 @@ class TestIngredientController(unittest.TestCase):
             Protein: A new Protein instance with those attributes.
         """
         p = Protein(enc_id=-1, name=name, molecular_weight=50.0,
-                    pI_mean=6.5, pI_range=1.0)
+                    pI_mean=6.5, pI_range=1.0, class_type=ProteinClass.MAB_IGG1)
         p.is_user = is_user
         return p
 

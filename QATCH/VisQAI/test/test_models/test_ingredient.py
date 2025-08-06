@@ -19,7 +19,7 @@ Version:
 
 import unittest
 from src.models.ingredient import (
-    Ingredient, Protein, Buffer, Stabilizer, Surfactant, Salt
+    Ingredient, Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
 )
 
 
@@ -210,7 +210,7 @@ class TestProtein(unittest.TestCase):
         - Verify id, enc_id, name, and numeric properties match inputs.
         """
         p = Protein(enc_id=10, name="MyProt", molecular_weight=50.5,
-                    pI_mean=6.8, pI_range=1.2, id=99)
+                    pI_mean=6.8, pI_range=1.2, id=99, class_type=ProteinClass.MAB_IGG1)
         self.assertEqual(p.id, 99)
         self.assertEqual(p.enc_id, 10)
         self.assertEqual(p.name, "MyProt")
@@ -223,14 +223,16 @@ class TestProtein(unittest.TestCase):
         Test that passing a non-numeric molecular_weight raises TypeError.
         """
         with self.assertRaises(TypeError):
-            Protein(1, "P", molecular_weight="heavy", pI_mean=7, pI_range=1)
+            Protein(1, "P", molecular_weight="heavy", pI_mean=7,
+                    pI_range=1, class_type=ProteinClass.MAB_IGG1)
 
     def test_invalid_molecular_weight_negative(self):
         """
         Test that passing a negative molecular_weight raises ValueError.
         """
         with self.assertRaises(ValueError):
-            Protein(1, "P", molecular_weight=-1, pI_mean=7, pI_range=1)
+            Protein(1, "P", molecular_weight=-1, pI_mean=7,
+                    pI_range=1, class_type=ProteinClass.MAB_IGG1)
 
     def test_property_setters(self):
         """
@@ -239,13 +241,15 @@ class TestProtein(unittest.TestCase):
         - Setting valid numeric values updates attributes.
         - Setting non-numeric or out-of-range values raises appropriate exceptions.
         """
-        p = Protein(1, "P", 10, 7, 1)
+        p = Protein(1, "P", 10, 7, 1, class_type=ProteinClass.MAB_IGG1)
         p.molecular_weight = 20
         p.pI_mean = 8.1
         p.pI_range = 0.5
+        p.class_type = ProteinClass.NONE
         self.assertEqual(p.molecular_weight, 20.0)
         self.assertEqual(p.pI_mean, 8.1)
         self.assertEqual(p.pI_range, 0.5)
+        self.assertEqual(p.class_type, ProteinClass.NONE)
 
         with self.assertRaises(TypeError):
             p.molecular_weight = "big"

@@ -13,7 +13,10 @@ Version:
     2.1
 """
 import zipfile
+import pyzipper
+import hashlib
 import tempfile
+import os
 import sys
 import logging
 from pathlib import Path
@@ -23,6 +26,7 @@ import numpy as np
 import pandas as pd
 import importlib.util
 import importlib.machinery
+
 try:
     from QATCH.common.logger import Logger as Log
 except (ImportError, ModuleNotFoundError):
@@ -140,9 +144,28 @@ class Predictor:
             raise FileNotFoundError(f"Archive not found: {zip_path}")
         self._tmpdir = tempfile.TemporaryDirectory()
         extract_dir = Path(self._tmpdir.name)
-        with zipfile.ZipFile(zip_path, "r") as zf:
+        with pyzipper.AESZipFile(zip_path,  "r",
+                                 compression=pyzipper.ZIP_DEFLATED,
+                                 allowZip64=True,
+                                 encryption=pyzipper.WZ_AES) as zf:
+            try:
+                zf.testzip()
+            except RuntimeError as e:
+                # Encrypted ZIP if "encrypted" in exception message
+                if 'encrypted' in str(e):
+                    print("Accessing secured records...")
+                    # Derive password from the archive comment via SHA-256
+                    if len(zf.comment) == 0:
+                        Log.e("ZIP archive comment is empty, cannot derive password")
+                        raise RuntimeError("Empty ZIP archive comment")
+                    zf.setpassword(hashlib.sha256(
+                        zf.comment).hexdigest().encode())
+                else:
+                    Log.e("ZIP RuntimeError: " + str(e))
+            except Exception as e:
+                Log.e("ZIP Exception: " + str(e))
             zf.extractall(extract_dir)
-        Log.i(f"Extracted {zip_path.name} -> {extract_dir}")
+        Log.d(f"Extracted {zip_path.name} -> {extract_dir}")
 
         # Locate model/
         model_dir = extract_dir / "model"
@@ -296,6 +319,64 @@ class Predictor:
         except Exception as ex:
             Log.e(f"Error during ensemble.update(): {ex}")
             raise
+        try:
+            if save:
+                # Save the updated ensemble back to the zip archive (add encryption)
+                comment = self._calculate_sha256_safe(self.zip_path)
+                password = hashlib.sha256(comment.encode()).hexdigest()
+                # replace ZIP with encrypted version
+                self._add_password_and_comment(
+                    self.zip_path, self.zip_path, password, comment)
+                Log.i("Updated ensemble saved to archive")
+        except Exception as e:
+            Log.e(f"Error saving updated ensemble: {e}")
+            raise RuntimeError(f"Failed to save updated ensemble: {e}")
+
+    def _calculate_sha256_safe(self, file_path):
+        """Calculate SHA256 with error handling"""
+        try:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            sha256_hash = hashlib.sha256()
+
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(chunk)
+
+            return sha256_hash.hexdigest()
+
+        except Exception as e:
+            print(f"Error calculating hash: {e}")
+            return None
+
+    def _add_password_and_comment(self, input_zip, output_zip, password, comment):
+        """Create a new encrypted zip file with a password and comment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Extract input zip
+            with zipfile.ZipFile(input_zip, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+
+            # Create new encrypted zip with pyzipper
+            with pyzipper.AESZipFile(output_zip, 'w',
+                                     compression=pyzipper.ZIP_DEFLATED,
+                                     encryption=pyzipper.WZ_AES) as zf:
+                # Set password
+                zf.setpassword(password.encode('utf-8'))
+                zf.setencryption(pyzipper.WZ_AES, nbits=256)
+
+                # Add comment
+                zf.comment = comment.encode('utf-8')
+
+                # Add all files recursively
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        # Calculate archive path (relative to temp_dir)
+                        arc_path = os.path.relpath(file_path, temp_dir)
+                        # Normalize path separators for cross-platform compatibility
+                        arc_path = arc_path.replace('\\', '/')
+                        zf.write(file_path, arc_path)
 
     def reload_archive(self, new_zip: str) -> None:
         """

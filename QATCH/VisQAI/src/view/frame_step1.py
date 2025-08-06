@@ -93,8 +93,8 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Main layout
         main_layout = QtWidgets.QHBoxLayout(self)
-        h_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
-        main_layout.addWidget(h_splitter)
+        self.h_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        main_layout.addWidget(self.h_splitter)
 
         # Left panel: Run selection
         left_widget = QtWidgets.QWidget()
@@ -258,39 +258,40 @@ class FrameStep1(QtWidgets.QDialog):
             self.btn_next = QtWidgets.QPushButton(
                 "Next Step: Learn")
         elif step == 5:
-            self.btn_next = QtWidgets.QPushButton(""
-                                                  "Next Step: Optimize")
+            self.btn_next = QtWidgets.QPushButton(
+                "Next Step: Optimize")
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_next)
         left_layout.addLayout(btn_layout)
 
         # Right panel: Initialize features
-        right_widget = QtWidgets.QWidget()
-        right_layout = QtWidgets.QVBoxLayout(right_widget)
-        v_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        right_layout.addWidget(v_splitter)
-        right_header = QtWidgets.QGroupBox("Initialize Features")
+        step_verb = "Initialize"
+        if step == 2:
+            step_verb = "Suggested"
+        if step == 5:
+            step_verb = "Predicted"
+        right_header = QtWidgets.QGroupBox(f"{step_verb} Features")
         right_group = QtWidgets.QVBoxLayout(right_header)
-        v_splitter.addWidget(right_header)
 
         # Features table
         self.load_all_excipient_types()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
-                                             "Protein Molecular Weight", "Protein pI Mean", "Protein pI Range",  # not in Run Info
+                                             "Protein Class", "Protein Molecular Weight",  # not in Run Info
+                                             "Protein pI Mean", "Protein pI Range",  # not in Run Info
                                              "Buffer Type", "Buffer Concentration",
                                              "Buffer pH",  # not in Run Info
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration"],
                                  "Value": [self.proteins, "",
-                                           "", "", "",  # molecular weight, pI mean, pI range
+                                           self.class_types, "", "", "",  # class, molecular weight, pI mean, pI range
                                            self.buffers, "",
                                            "",  # buffer pH
                                            self.surfactants, "",
                                            self.stabilizers, "",
                                            self.salts, ""],
                                  "Units": ["", "mg/mL",
-                                           "kDa", "", "",  # pI
+                                           "", "kDa", "", "",  # pI
                                            "", "mM",
                                            "",  # pH
                                            "", "%w",
@@ -353,22 +354,47 @@ class FrameStep1(QtWidgets.QDialog):
         #             print(e)
         #     # Hide protein and buffer characteristics
         #     # for values in dummy_feature.values():
-        #     #     del values[7]  # buffer PH
-        #     #     del values[4]  # protein pI range
-        #     #     del values[3]  # protein pI mean
-        #     #     del values[2]  # protein weight
+        #     #     del values[8]  # buffer PH
+        #     #     del values[5]  # protein pI range
+        #     #     del values[4]  # protein pI mean
+        #     #     del values[3]  # protein weight
+        #     #     del values[2]  # protein class
         #     self.dummy_features.append(dummy_feature)
 
         self.run_figure = Figure()
         self.run_figure_valid = False
         self.run_canvas = FigureCanvas(self.run_figure)
-        v_splitter.addWidget(self.run_canvas)
 
         # Build main layout
-        h_splitter.addWidget(left_widget)
-        h_splitter.addWidget(right_widget)
-        h_splitter.setSizes([100, 300])
-        v_splitter.setSizes([180, 100])
+        self.h_splitter.addWidget(left_widget)
+        self.h_splitter.addWidget(right_header)
+        self.h_splitter.addWidget(self.run_canvas)
+
+        # Set fixed width for left widget
+        left_widget.setMinimumWidth(420)
+        right_header.setMinimumWidth(420)
+
+        # add collapse/expand icon arrows
+        self.h_splitter.setHandleWidth(10)
+        handle = self.h_splitter.handle(2)
+        layout_s = QtWidgets.QVBoxLayout()
+        layout_s.setContentsMargins(0, 0, 0, 0)
+        layout_s.addStretch()
+        self.btnCollapse = QtWidgets.QToolButton(handle)
+        self.btnCollapse.setArrowType(QtCore.Qt.LeftArrow)
+        self.btnCollapse.clicked.connect(
+            lambda: self.handleSplitterButton(True))
+        layout_s.addWidget(self.btnCollapse)
+        self.btnExpand = QtWidgets.QToolButton(handle)
+        self.btnExpand.setArrowType(QtCore.Qt.RightArrow)
+        self.btnExpand.clicked.connect(
+            lambda: self.handleSplitterButton(False))
+        layout_s.addWidget(self.btnExpand)
+        layout_s.addStretch()
+        handle.setLayout(layout_s)
+        self.btnExpand.setVisible(False)
+        self.handleSplitterButton(False)
+        self.h_splitter.splitterMoved.connect(self.handleSplitterMoved)
 
         # Signals
         self.btn_cancel.clicked.connect(
@@ -416,6 +442,21 @@ class FrameStep1(QtWidgets.QDialog):
                 if found_model_path:
                     self.model_selected(found_model_path)
 
+    def handleSplitterMoved(self, pos=0, index=0):
+        collapsed = self.h_splitter.sizes()[1] == 0
+        self.btnCollapse.setVisible(not collapsed)
+        self.btnExpand.setVisible(collapsed)
+
+    def handleSplitterButton(self, collapse=True):
+        if collapse:
+            self.h_splitter.setSizes([10, 0, 10000])
+        else:
+            if self.step == 2:  # Suggest
+                self.h_splitter.setSizes([10, 10000, 0])
+            else:
+                self.h_splitter.setSizes([10, 10, 10000])
+        self.handleSplitterMoved()
+
     def list_view_addPlaceholderText(self):
         if self.model.rowCount() == 0:
             no_item_text = "No items in list"
@@ -436,38 +477,50 @@ class FrameStep1(QtWidgets.QDialog):
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.class_types: list[str] = []
+        self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
-        Log.d("Salts", self.salts)
+        Log.d("Salts:", self.salts)
+        Log.d("Class Types:", self.class_types)
+        Log.d("Proteins By Class:", self.proteins_by_class)
 
     def hide_extended_features(self):
-        hide_rows = [2, 3, 4, 7]
+        hide_rows = [2, 3, 4, 5, 8]
         for row in hide_rows:
             self.feature_table.hideRow(row)
 
     def save_formulation(self, cancel: bool = False) -> bool:
+        if not self.feature_table.allSet():
+            Log.e("Not all features have been set. " +
+                  "Cannot save formulation info. " +
+                  "Enter missing values and try again.")
+            return
+
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
-        protein_weight = self.feature_table.item(2, 1).text()
-        protein_pI_mean = self.feature_table.item(3, 1).text()
-        protein_pI_range = self.feature_table.item(4, 1).text()
-        buffer_type = self.feature_table.cellWidget(5, 1).currentText()
-        buffer_conc = self.feature_table.item(6, 1).text()
-        buffer_pH = self.feature_table.item(7, 1).text()
-        surfactant_type = self.feature_table.cellWidget(8, 1).currentText()
-        surfactant_conc = self.feature_table.item(9, 1).text()
+        protein_class = self.feature_table.cellWidget(2, 1).currentText()
+        protein_weight = self.feature_table.item(3, 1).text()
+        protein_pI_mean = self.feature_table.item(4, 1).text()
+        protein_pI_range = self.feature_table.item(5, 1).text()
+        buffer_type = self.feature_table.cellWidget(6, 1).currentText()
+        buffer_conc = self.feature_table.item(7, 1).text()
+        buffer_pH = self.feature_table.item(8, 1).text()
+        surfactant_type = self.feature_table.cellWidget(9, 1).currentText()
+        surfactant_conc = self.feature_table.item(10, 1).text()
         stabilizer_type = self.feature_table.cellWidget(
-            10, 1).currentText()
-        stabilizer_conc = self.feature_table.item(11, 1).text()
-        salt_type = self.feature_table.cellWidget(12, 1).currentText()
-        salt_conc = self.feature_table.item(13, 1).text()
+            11, 1).currentText()
+        stabilizer_conc = self.feature_table.item(12, 1).text()
+        salt_type = self.feature_table.cellWidget(13, 1).currentText()
+        salt_conc = self.feature_table.item(14, 1).text()
 
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
@@ -498,18 +551,19 @@ class FrameStep1(QtWidgets.QDialog):
             feature = copy.deepcopy(self.default_features)
             feature["Value"][0] = protein_type
             feature["Value"][1] = protein_conc
-            feature["Value"][2] = protein_weight
-            feature["Value"][3] = protein_pI_mean
-            feature["Value"][4] = protein_pI_range
-            feature["Value"][5] = buffer_type
-            feature["Value"][6] = buffer_conc
-            feature["Value"][7] = buffer_pH
-            feature["Value"][8] = surfactant_type
-            feature["Value"][9] = surfactant_conc
-            feature["Value"][10] = stabilizer_type
-            feature["Value"][11] = stabilizer_conc
-            feature["Value"][12] = salt_type
-            feature["Value"][13] = salt_conc
+            feature["Value"][2] = protein_class
+            feature["Value"][3] = protein_weight
+            feature["Value"][4] = protein_pI_mean
+            feature["Value"][5] = protein_pI_range
+            feature["Value"][6] = buffer_type
+            feature["Value"][7] = buffer_conc
+            feature["Value"][8] = buffer_pH
+            feature["Value"][9] = surfactant_type
+            feature["Value"][10] = surfactant_conc
+            feature["Value"][11] = stabilizer_type
+            feature["Value"][12] = stabilizer_conc
+            feature["Value"][13] = salt_type
+            feature["Value"][14] = salt_conc
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
@@ -549,6 +603,11 @@ class FrameStep1(QtWidgets.QDialog):
 
         # update protein and buffer characteristics
         # bail if any extended features are missing
+        if protein_class in self.class_types:
+            protein.class_type = str(protein_class)
+        elif not protein.class_type:
+            Log.e("Missing protein class!")
+            return
         if is_number(protein_weight):
             protein.molecular_weight = float(protein_weight)
         elif not protein.molecular_weight:
@@ -613,6 +672,9 @@ class FrameStep1(QtWidgets.QDialog):
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
+
+        # Collapse feature table on save (all set)
+        self.handleSplitterButton(collapse=True)
 
         return True
 
@@ -692,18 +754,19 @@ class FrameStep1(QtWidgets.QDialog):
         if form.protein:  # NOT an empty Formulation() object
             feature["Value"][0] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2] = form.protein.ingredient.molecular_weight
-            feature["Value"][3] = form.protein.ingredient.pI_mean
-            feature["Value"][4] = form.protein.ingredient.pI_range
-            feature["Value"][5] = form.buffer.ingredient.name
-            feature["Value"][6] = form.buffer.concentration
-            feature["Value"][7] = form.buffer.ingredient.pH
-            feature["Value"][8] = form.surfactant.ingredient.name
-            feature["Value"][9] = form.surfactant.concentration
-            feature["Value"][10] = form.stabilizer.ingredient.name
-            feature["Value"][11] = form.stabilizer.concentration
-            feature["Value"][12] = form.salt.ingredient.name
-            feature["Value"][13] = form.salt.concentration
+            feature["Value"][2] = form.protein.ingredient.class_type
+            feature["Value"][3] = form.protein.ingredient.molecular_weight
+            feature["Value"][4] = form.protein.ingredient.pI_mean
+            feature["Value"][5] = form.protein.ingredient.pI_range
+            feature["Value"][6] = form.buffer.ingredient.name
+            feature["Value"][7] = form.buffer.concentration
+            feature["Value"][8] = form.buffer.ingredient.pH
+            feature["Value"][9] = form.surfactant.ingredient.name
+            feature["Value"][10] = form.surfactant.concentration
+            feature["Value"][11] = form.stabilizer.ingredient.name
+            feature["Value"][12] = form.stabilizer.concentration
+            feature["Value"][13] = form.salt.ingredient.name
+            feature["Value"][14] = form.salt.concentration
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -836,6 +899,18 @@ class FrameStep1(QtWidgets.QDialog):
                 ax.grid(True, which="both", ls=":")
                 ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
 
+                # Calculate offset as percentage of y-range
+                ylim = ax.get_ylim()
+                y_range = max(ylim) - min(ylim)
+                offset = y_range * 0.05  # 5% of the y-range
+                # Add labels with offset above points
+                for i in range(len(mean_arr)):
+                    ax.text(shear[i], mean_arr[i] + offset,
+                            f'{mean_arr[i]:.02f}±{std_arr[i]:.02f}',
+                            ha='center', va='bottom',
+                            fontsize=10,
+                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+
                 self.run_figure_valid = True
                 self.run_canvas.draw()
 
@@ -860,7 +935,7 @@ class FrameStep1(QtWidgets.QDialog):
                 new_targets=np.array([vp]),
                 epochs=10,
                 batch_size=32,
-                save=False,
+                save=True,
                 callback=run_prediction_result)
 
         else:
@@ -1324,7 +1399,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         run_features = copy.deepcopy(self.default_features)
         value_tags = ["protein_type", "protein_concentration",
-                      "", "", "",  # molecular weight, pI mean, pI range
+                      "", "", "", "",  # class, molecular weight, pI mean, pI range
                       "buffer_type", "buffer_concentration",
                       "",  # pH
                       "surfactant_type", "surfactant_concentration",
@@ -1348,26 +1423,29 @@ class FrameStep1(QtWidgets.QDialog):
         if False:  # self.step == 3:
             # Hide protein and buffer characteristics
             for values in run_features.values():
-                del values[7]  # buffer PH
-                del values[4]  # protein pI range
-                del values[3]  # protein pI mean
-                del values[2]  # protein weight
+                del values[8]  # buffer PH
+                del values[5]  # protein pI range
+                del values[4]  # protein pI mean
+                del values[3]  # protein weight
+                del values[2]  # protein class
         else:
             # Pull protein and buffer characteristics from database (if available)
             protein = self.parent.ing_ctrl.get_protein_by_name(
                 name=xml_params.get("protein_type", None))
             if protein != None:
+                if protein.class_type != None:
+                    run_features["Value"][2] = protein.class_type
                 if protein.molecular_weight != None:
-                    run_features["Value"][2] = protein.molecular_weight
+                    run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:
-                    run_features["Value"][3] = protein.pI_mean
+                    run_features["Value"][4] = protein.pI_mean
                 if protein.pI_range != None:
-                    run_features["Value"][4] = protein.pI_range
+                    run_features["Value"][5] = protein.pI_range
             buffer = self.parent.ing_ctrl.get_buffer_by_name(
                 name=xml_params.get("buffer_type", None))
             if buffer != None:
                 if buffer.pH != None:
-                    run_features["Value"][7] = buffer.pH
+                    run_features["Value"][8] = buffer.pH
 
         self.feature_table.setData(run_features)
 
@@ -1494,7 +1572,20 @@ class FrameStep1(QtWidgets.QDialog):
                     lw=2.5, color="blue")
             ax.scatter(self.profile_shears, self.profile_viscos,
                        s=40, color="blue", zorder=5)
+
+            # Calculate offset as percentage of y-range
+            ylim = ax.get_ylim()
+            y_range = max(ylim) - min(ylim)
+            offset = y_range * 0.05  # 5% of the y-range
+            # Add labels with offset above points
+            for i in range(len(self.profile_viscos)):
+                ax.text(self.profile_shears[i], self.profile_viscos[i] + offset,
+                        f'{self.profile_viscos[i]:.02f}',
+                        ha='center', va='bottom',
+                        fontsize=10,
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
             ax.plot(in_shear_rate, in_viscosity, "b,")
+
             self.run_figure_valid = True
 
             DEBUG = False
@@ -1518,6 +1609,11 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_temperature.setText("(Unknown)")
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
+
+        if self.feature_table.allSet():
+            self.handleSplitterButton(collapse=True)
+        else:
+            self.handleSplitterButton(collapse=False)
 
     def calc_limits(self, yall):
         ymin, ymax = 0, 1000

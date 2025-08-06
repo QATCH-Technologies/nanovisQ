@@ -444,7 +444,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # The following method also is duplicated in both files: 'self.switch_user_at_sign_time'
         # There is duplicated logic code within the submit button handler: 'self.action_analyze'
         # The method for handling keystroke shortcuts is also duplicated too: 'self.eventFilter'
-        self.signForm = QtWidgets.QWidget()
+        self.signForm = QtWidgets.QDialog()
         self.signForm.setWindowFlags(
             QtCore.Qt.Dialog
         )  # | QtCore.Qt.WindowStaysOnTopHint)
@@ -452,6 +452,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Architecture.get_path(), "QATCH/icons/sign.png")
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
+        self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
         layout_curr = QtWidgets.QHBoxLayout()
         signedInAs = QtWidgets.QLabel("Signed in as: ")
@@ -2961,6 +2962,37 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 # special exception case: indicates user declined action
                 raise ConnectionAbortedError()
 
+            # Flag used to check when finished (hides progress bar)
+            self.prediction_restored = False
+
+            self.progressBarDiag = QtWidgets.QProgressDialog(
+                "Predicting...", "Cancel", 0, 0, self)
+            # Disable auto-reset and auto-close to retain `wasCanceled()` state
+            self.progressBarDiag.setAutoReset(False)
+            self.progressBarDiag.setAutoClose(False)
+            icon_path = os.path.join(
+                Architecture.get_path(), 'QATCH/icons/reset.png')
+            self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
+            self.progressBarDiag.setWindowTitle("Busy")
+            self.progressBarDiag.setWindowFlag(
+                QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBarDiag.setWindowFlag(
+                QtCore.Qt.WindowStaysOnTopHint, True)
+            self.progressBarDiag.setFixedSize(
+                int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
+            self.progressBarDiag.setModal(True)
+            self.progressBarDiag.show()
+
+            cancelButton = self.progressBarDiag.findChild(
+                QtWidgets.QPushButton)
+            cancelButton.setEnabled(False)
+
+            self.timer = QtCore.QTimer()
+            self.timer.setInterval(100)
+            self.timer.setSingleShot(False)
+            self.timer.timeout.connect(self.check_finished)
+            self.timer.start()
+
             # restore QModel predictions
             poi_vals = []
             self.model_result = -1
@@ -3172,6 +3204,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
+
+        finally:
+            self.prediction_restored = True
+
+    def check_finished(self):
+        if self.prediction_restored:
+            # finished, but keep the dialog open to retain `wasCanceled()` state
+            self.progressBarDiag.hide()
+            self.timer.stop()
 
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
