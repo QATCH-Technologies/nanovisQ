@@ -1,0 +1,306 @@
+{
+    "ordering": [
+        [
+            "A1",
+            "B1",
+            "C1",
+            "D1"
+        ],
+        [
+            "A2",
+            "B2",
+            "C2",
+            "D2"
+        ],
+        [
+            "A3",
+            "B3",
+            "C3",
+            "D3"
+        ],
+        [
+            "A4",
+            "B4",
+            "C4",
+            "D4"
+        ],
+        [
+            "A5",
+            "B5",
+            "C5",
+            "D5"
+        ],
+        [
+            "A6",
+            "B6",
+            "C6",
+            "D6"
+        ]
+    ],
+    "brand": {
+        "brand": "QATCH",
+        "brandId": [
+            "v5"
+        ]
+    },
+    "metadata": {
+        "displayName": "NanovisQ 4x6",
+        "displayCategory": "wellPlate",
+        "displayVolumeUnits": "µL",
+        "tags": []
+    },
+    "dimensions": {
+        "xDimension": 127,
+        "yDimension": 85,
+        "zDimension": 78
+    },
+    "wells": {
+        "A1": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 22.5,
+            "y": 56,
+            "z": 55.7        },
+        "B1": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 22.5,
+            "y": 47,
+            "z": 55.7        },
+        "C1": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 22.5,
+            "y": 38,
+            "z": 56        },
+        "D1": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 22.5,
+            "y": 29,
+            "z": 55.7        },
+        "A2": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 35.75,
+            "y": 52.1,
+            "z": 55.7        },
+        "B2": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 35.75,
+            "y": 43.1,
+            "z": 55.7        },
+        "C2": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 35.75,
+            "y": 34.1,
+            "z": 55.7        },
+        "D2": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 35.75,
+            "y": 25.1,
+            "z": 55.7        },
+        "A3": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 60,
+            "y": 56,
+            "z": 55.7        },
+        "B3": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 60,
+            "y": 47,
+            "z": 55.7        },
+        "C3": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 60,
+            "y": 38,
+            "z": 55.7        },
+        "D3": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 60,
+            "y": 29,
+            "z": 55.7        },
+        "A4": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 74,
+            "y": 52.2,
+            "z": 55.7        },
+        "B4": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 74,
+            "y": 43.2,
+            "z": 55.7        },
+        "C4": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 74,
+            "y": 34.2,
+            "z": 55.7        },
+        "D4": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 74,
+            "y": 25.2,
+            "z": 55.7        },
+        "A5": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 99,
+            "y": 56,
+            "z": 55.7        },
+        "B5": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 99,
+            "y": 47,
+            "z": 55.7        },
+        "C5": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 99,
+            "y": 38,
+            "z": 55.7        },
+        "D5": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 99,
+            "y": 29,
+            "z": 55.7        },
+        "A6": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 112,
+            "y": 52.1,
+            "z": 55.7        },
+        "B6": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 112,
+            "y": 43.1,
+            "z": 55.7        },
+        "C6": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 112,
+            "y": 34.1,
+            "z": 55.7        },
+        "D6": {
+            "depth": 0,
+            "totalLiquidVolume": 4,
+            "shape": "circular",
+            "diameter": 7,
+            "x": 112,
+            "y": 25.1,
+            "z": 55.7        }
+    },
+    "groups": [
+        {
+            "metadata": {
+                "wellBottomShape": "flat"
+            },
+            "wells": [
+                "A1",
+                "B1",
+                "C1",
+                "D1",
+                "A2",
+                "B2",
+                "C2",
+                "D2",
+                "A3",
+                "B3",
+                "C3",
+                "D3",
+                "A4",
+                "B4",
+                "C4",
+                "D4",
+                "A5",
+                "B5",
+                "C5",
+                "D5",
+                "A6",
+                "B6",
+                "C6",
+                "D6"
+            ]
+        }
+    ],
+    "parameters": {
+        "format": "irregular",
+        "quirks": [],
+        "isTiprack": false,
+        "isMagneticModuleCompatible": false,
+        "loadName": "nanovis_q_4x6"
+    },
+    "namespace": "custom_beta",
+    "version": 1,
+    "schemaVersion": 2,
+    "cornerOffsetFromSlot": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+    },
+    "stackingOffsetWithLabware": {
+        "opentrons_aluminum_flat_bottom_plate": {
+            "x": 0,
+            "y": 0,
+            "z": -138.8
+        }
+    }
+}
