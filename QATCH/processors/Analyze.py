@@ -1031,7 +1031,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         layout_h4.addWidget(self.dot5)
         layout_h4.addWidget(self.dot6)
         layout_h4.addWidget(self.dot7)
-        layout_h4.addWidget(self.dot8)
+        # layout_h4.addWidget(self.dot8) # hidden for POI3 removal
         layout_h4.addWidget(self.dot9)
         layout_h4.addWidget(self.dot10)
         layout_h4.addStretch()
@@ -2290,6 +2290,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             mousePoint = ax3.getPlotItem().vb.mapSceneToView(event._scenePos)
         if mousePoint != None:
             px = self.stateStep - 1
+            if px >= 2:
+                px += 1  # skip POI3 (index 2)
             index = mousePoint.x()
             Log.d(f"Mouse click @ xs = {index}")
             self.poi_markers[px].setValue(index)
@@ -2334,6 +2336,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def moveCurrentMarker(self, offset):
         px = self.stateStep - 1
+        if px >= 2:
+            px += 1  # skip POI3 (index 2)
         # 100 steps per window
         offset *= max(1, int(self.getContextWidth()[0] / 50))
         if px in range(0, len(self.poi_markers)):
@@ -2353,6 +2357,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def zoomFinderPlots(self, offset):
         px = self.stateStep - 1
+        if px >= 2:
+            px += 1  # skip POI3 (index 2)
         if px in range(0, len(self.poi_markers)):
             was_clipped = self.getContextWidth()[1]
             self.zoomLevel = float(self.zoomLevel * offset)
@@ -2895,6 +2901,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if self.stateStep == 7:
             for marker in self.poi_markers:
                 marker.setMovable(True)
+            self.stateStep -= 1  # Skip over step 6 since POI3 is hidden
+            # Log.w("State step 7 triggered")
         self.stateStep -= 2
         if self.stateStep < -1:
             self.stateStep = 0
@@ -2908,7 +2916,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             #     self.cBox_Devices.currentText(),
             #     self.getFolderFromRun(self.cBox_Runs.currentText()),
             #     None,
-            # )  # force back to step 1 of 8
+            # )  # force back to step 1 of 6
             # else:
             # self.stateStep = 0
         else:
@@ -3219,13 +3227,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.btn_Back.setEnabled(True)
         if not self.stateStep == 7:
             self.btn_Next.setText("Next")
-        self.stateStep += 1
+        self.stateStep += 1  # Increment to next step
+        if self.stateStep == 6:  # Skip over hidden dot marker 8
+            # Log.w("State step 6 trigger")
+            self.stateStep = 7   # straight to Summary
+        # Hide POI3 from UI steps: skip step 4 (POI3)
+        # There are originally 6 points (POI1-POI6), POI3 is at index 2
+        # When stepping, skip index 2
         step_num = self.stateStep + 2
+        # Calculate the visible step index, skipping POI3
+        visible_step = self.stateStep
+        if visible_step >= 3:
+            visible_step += 1  # skip POI3 (index 2)
+        # Only show 5 points to the user
         if step_num < 3 and self.tool_Modify.isChecked():
             self.parent.viewTutorialPage(7)  # analyze (summary)
         elif step_num in range(3, 8 + 1) and self.tool_Modify.isChecked():
-            tutorial_ids = [round(7 + (step_num - 2) / 10, 2)]
-            if step_num > 5:
+            # Only steps 3,4,5,6,7 (skip 4)
+            tutorial_ids = [round(7 + (visible_step) / 10, 2)]
+            if visible_step in range(1, 7):
                 tutorial_ids.append(7.7)
             self.parent.viewTutorialPage(
                 tutorial_ids)  # analyze (precise point)
@@ -3235,6 +3255,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax1 = self.graphWidget1
         ax2 = self.graphWidget2
         ax3 = self.graphWidget3
+        # Only show 5 points (skip POI3)
         w123 = True if self.stateStep in range(1, 7) else False
         was_vis = ax1.isVisible()
         self.lowerGraphs.setVisible(w123)
@@ -3243,10 +3264,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # ax1.setVisible(w123)
         # ax2.setVisible(w123)
         # ax3.setVisible(w123)
+        # When stateStep == 0, normal behavior
         if self.stateStep == 0:
             self._update_progress_value(
-                11 * (step_num -
-                      1), f"Step {step_num} of 8: Select Rough Fill Points"
+                12 * (step_num -
+                      1), f"Step {step_num - 1} of 6: Select Rough Fill Points"
             )
             ax.setTitle(None)
             ax.setXRange(0, self.xs[-1], padding=0.05)
@@ -3483,13 +3505,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.markerMoveFinished
                     )
                     self.poi_markers.insert(-1, poi_marker)
-            for marker in self.poi_markers:
+            for idx, marker in enumerate(self.poi_markers):
                 marker.setMovable(True)
                 marker.setPen(color="blue")
                 marker.addMarker("<|>")
+                if idx == 2:
+                    marker.setVisible(False)
             # self.AI_SelectTool_Frame.setVisible(False)  # Hide AI Tool
+        # Only allow steps for POI1, POI2, POI4, POI5, POI6 (skip POI3)
         elif self.stateStep in range(1, 7):
-            if self.stateStep + 2 == 3:  # stateStep 1 = Step 3 of 8
+            if self.stateStep + 2 == 3:  # stateStep 1 = Step 3 of 6
                 # sort poi_markers by time, in case the user messed up the order moving things around manually in Step 2
                 out_of_order = False
                 for i in range(1, len(self.poi_markers)):
@@ -3618,16 +3643,29 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     # do nothing here if "QModel v2" or "None"
                     pass
 
-            # in stateStep 2 thru 6 (Steps 4 thru 8 of 8)
+            # in stateStep 2 thru 6 (Steps 4 thru 8 of 6, skipping POI3)
             elif self.stateStep != 7:
-                if (
-                    self.poi_markers[self.stateStep - 1].value()
-                    < self.poi_markers[self.stateStep - 2].value()
-                ):
+                if self.stateStep == 3:
                     cur_val = self.poi_markers[self.stateStep - 2].value()
                     cur_idx = next(x for x, y in enumerate(
                         self.xs) if y >= cur_val)
                     self.poi_markers[self.stateStep - 1].setValue(
+                        self.xs[int(cur_idx + 2)]
+                    )
+                px = self.stateStep - 1
+                if px >= 2:
+                    px += 1  # skip POI3
+                if px >= len(self.poi_markers):
+                    Log.d("Skipping plotting for hidden point index")
+                    return
+                if (
+                    self.poi_markers[px].value()
+                    < self.poi_markers[px - 1].value()
+                ):
+                    cur_val = self.poi_markers[px - 1].value()
+                    cur_idx = next(x for x, y in enumerate(
+                        self.xs) if y >= cur_val)
+                    self.poi_markers[px].setValue(
                         self.xs[int(cur_idx + 2)]
                     )
             self.zoomLevel = 1  # reset default zoom level for each point
@@ -3641,11 +3679,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.scat_2.setAlpha(show_scat, False)
             self.scat_3.setAlpha(show_scat, False)
             self._update_progress_value(
-                11 * (step_num - 1),
-                f"Step {step_num} of 8: Select Precise Fill Point {self.stateStep}",
+                12 * (step_num - 1),
+                f"Step {step_num - 1} of 6: Select Precise Fill Point {self.stateStep}",
             )
             ax.setTitle(None)
+            # px is the index in poi_markers, skip POI3 (index 2)
             px = self.stateStep - 1
+            if px >= 2:
+                px += 1  # skip POI3
+            if px >= len(self.poi_markers):
+                Log.d("Skipping plotting for hidden point index")
+                return
             tt0 = self.poi_markers[0].value()
             tx0 = next(x for x, y in enumerate(self.xs) if y >= tt0)
             tt1 = self.poi_markers[px].value()
@@ -3746,6 +3790,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.star3.setData(pos=pos3)
             gstar_idxs = []
             for idx, marker in enumerate(self.poi_markers):
+                # Skip POI3 (index 2) for UI
+                if idx == 2:
+                    continue
                 if (
                     idx == px - 1
                 ):  # check last point, move this marker if it's out of time sequence from last one
@@ -3994,7 +4041,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             #     self.cBox_Devices.currentText(),
             #     self.getFolderFromRun(self.cBox_Runs.currentText()),
             #     None,
-            # )  # force back to step 1 of 8
+            # )  # force back to step 1 of 6
             # self.enable_buttons()
         elif enable_analyze:
             self.stateStep = step_num - 3
@@ -5178,7 +5225,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax3.clear()
 
         self._update_progress_value(
-            1, f"Step 1 of 8: Select Begin and End Points")
+            1, f"Step 1 of 6: Select Begin and End Points")
         self.setDotStepMarkers(1)
         ax.setTitle(None)
         ax.addLegend()
@@ -5310,12 +5357,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
             start_stop = poi_vals
 
         self.poi_markers = []
-        for pt in start_stop:
+        for idx, pt in enumerate(start_stop):
             poi_marker = pg.InfiniteLine(
                 pos=xs[pt], angle=90, pen="b", bounds=[xs[0], xs[-1]], movable=True
             )
             poi_marker.setPen(color="blue")
             poi_marker.addMarker("<|>")
+            if idx == 2:
+                poi_marker.setVisible(False)
             ax.addItem(poi_marker)
             poi_marker.sigPositionChangeFinished.connect(
                 self.markerMoveFinished)
