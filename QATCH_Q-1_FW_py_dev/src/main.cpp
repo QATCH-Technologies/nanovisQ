@@ -358,7 +358,7 @@ Servo pogoServo;
 volatile bool pogo_isr_hit_flag = false;
 volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
 unsigned long lastInterruptTime = 0;
-const unsigned long debounceDelay = 1000; // debounce delay in ms
+const unsigned long debounceDelay = 50; // debounce delay in ms
 
 // Create variables for POGO lid servo, button and LED
 bool pogo_lid_opened = false; // true if POGO lid is opened
@@ -3421,7 +3421,7 @@ void stopStreaming(void)
 //   return EEPROM_pid;
 // }
 
-void pogo_button_ISR(void)
+FASTRUN void pogo_button_ISR(void)
 {
   pogo_isr_hit_flag = true;
 }
@@ -3431,6 +3431,11 @@ void pogo_button_ISR(void)
 // init=false: handle a real button press (should be called from loop, not ISR).
 void pogo_button_pressed(bool init)
 {
+  // Validate servo positions are within safe range
+  if (POS_OPENED < 0 || POS_OPENED > 180 || POS_CLOSED < 0 || POS_CLOSED > 180) {
+    client->println("ERROR: Invalid servo calibration values");
+    return;
+  }
   pogo_lid_opened = !pogo_lid_opened; // switch state: open <-> closed 
   if (init) { // initialize position on startup
     // client->println("Moving lid to INITIAL position");
@@ -3463,11 +3468,14 @@ void pogo_button_pressed(bool init)
 }
 
 // Function to set calibration values at runtime
-void setLidCalibration(int opened, int closed, int delay_ms)
+void setLidCalibration(byte opened, byte closed, byte delay_ms)
 {
-  if (opened >= closed)
+  if (opened >= closed || 
+      opened < 0  || opened > 180 || 
+      closed < 0 || closed > 180 || 
+      delay_ms < 0 || delay_ms > 254)
   {
-    client->println("Invalid lid calibration. Not saving.");
+    client->println("Invalid lid calibration parameters. Not saving.");
     return;
   }
   client->println("Saving lid calibration to EEPROM.");
