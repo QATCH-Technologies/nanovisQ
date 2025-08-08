@@ -333,6 +333,6 @@ class Commands:
                 command_url, headers=headers, data=payload)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
+        except Exception as e:
             Log.e("send_command", f"Error sending request: {e}")
             return None

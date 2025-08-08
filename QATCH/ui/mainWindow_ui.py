@@ -1005,7 +1005,15 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.pButton_ResetApp.setObjectName("pButton_ResetApp")
         if USE_FULLSCREEN:
             self.pButton_ResetApp.setFixedHeight(50)
-        self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 5, 1, 1)
+        self.Layout_controls.addWidget(self.pButton_ResetApp, 4, 6, 1, 1)
+
+        # Control Opentrons Flex
+        self.pButton_FlexControls = QtWidgets.QPushButton()
+        self.pButton_FlexControls.setMinimumSize(QtCore.QSize(0, 0))
+        self.pButton_FlexControls.setObjectName("pButton_FlexControls")
+        if USE_FULLSCREEN:
+            self.pButton_FlexControls.setFixedHeight(50)
+        self.Layout_controls.addWidget(self.pButton_FlexControls, 4, 5, 1, 1)
 
         # samples SpinBox -----------------------------------------------------
         self.sBox_Samples = QtWidgets.QSpinBox()
@@ -1534,6 +1542,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             _translate("MainWindow", "Set/Reset Reference"))
         self.pButton_ResetApp.setText(
             _translate("MainWindow", "Factory Defaults"))
+        self.pButton_FlexControls.setText(
+            _translate("MainWindow", "Flex Controls"))
         self.sBox_Samples.setSuffix(_translate("MainWindow", " / 5 min"))
         self.sBox_Samples.setPrefix(_translate("MainWindow", ""))
         self.chBox_export.setText(_translate(

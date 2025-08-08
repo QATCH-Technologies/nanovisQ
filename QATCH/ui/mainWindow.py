@@ -23,6 +23,8 @@ from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat,
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.FluxControls.src.opentrons_flex import OpentronsFlex
+from QATCH.FluxControls.src.control_pad import OpentronFlexControlPanel
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -2357,6 +2359,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_Reference.clicked.connect(self.reference)
         self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(
             self.factory_defaults)
+        self.ControlsWin.ui1.pButton_FlexControls.clicked.connect(
+            self.flex_controls)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
         self.ControlsWin.ui1.pButton_Refresh.clicked.connect(
             self._port_list_refresh)
@@ -4185,6 +4189,10 @@ class MainWindow(QtWidgets.QMainWindow):
                             0, ((self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0]), len(self._readFREQ)))
                         self._vector_reference_dissipation.append(
                             xs-self._reference_value_dissipation[i])
+
+    def flex_controls(self):
+        control_pad = OpentronFlexControlPanel()
+        control_pad.show()
 
     def factory_defaults(self):
 

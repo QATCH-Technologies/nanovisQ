@@ -161,7 +161,7 @@ class OpentronsFlex:
                 command_url=self._get_command_url(), command_dict=payload
             )
             pipette_id = response["data"]["result"]["pipetteId"]
-            new_pipette.set_pipette_id(pipette_id)
+            new_pipette.id = pipette_id
             Log.d("Left pipette loaded with ID: %s", pipette_id)
 
         if position is MountPositions.RIGHT_MOUNT:
@@ -171,7 +171,7 @@ class OpentronsFlex:
                 command_url=self._get_command_url(), command_dict=payload
             )
             pipette_id = response["data"]["result"]["pipetteId"]
-            new_pipette.set_pipette_id(pipette_id)
+            new_pipette.id = pipette_id
             Log.d("Right pipette loaded with ID: %s", pipette_id)
 
     def load_labware(
@@ -208,20 +208,19 @@ class OpentronsFlex:
             Log.e(
                 "Labware already loaded at location: %s", location.value)
             raise Exception(
-                f"Labware {labware.get_display_name()} not available in slot {labware.get_location().value}."
+                f"Labware {labware.display_name} not available in slot {labware.location.value}."
             )
         self.available_labware[location] = labware
         payload = Commands.load_labware(
             location=location,
-            load_name=labware.get_load_name(),
-            name_space=labware.get_name_space(),
-            version=labware.get_version(),
+            load_name=labware.load_name,
+            name_space=labware.name_space,
+            version=labware.version,
         )
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        print(response)
-        labware.set_id(response["data"]["result"]["labwareId"])
+        labware.id = response["data"]["result"]["labwareId"]
         Log.d("Labware loaded with ID: %s", labware.get_id())
 
     def pickup_tip(self, labware: Labware, pipette: Pipette) -> str:
@@ -246,17 +245,17 @@ class OpentronsFlex:
         """
         Log.i(
             "Picking up tip from labware: %s with pipette: %s",
-            labware.get_display_name(),
-            pipette.get_id(),
+            labware.display_name,
+            pipette.id,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
-        if not labware.get_is_tiprack():
+        if not labware.is_tiprack:
             Log.e(
                 "Attempt to pick up tip from non-tiprack labware: %s",
-                labware.get_display_name(),
+                labware.display_name,
             )
             raise Exception(
-                f"Cannot pickup tip from non-tiprack labware {labware.get_display_name()}"
+                f"Cannot pickup tip from non-tiprack labware {labware.display_name}"
             )
         payload = Commands.pickup_tip(labware=labware, pipette=pipette)
         response = Commands.send_command(
@@ -296,8 +295,8 @@ class OpentronsFlex:
             "Aspirating %s µL at flow rate: %s from labware: %s using pipette: %s",
             volume,
             flow_rate,
-            labware.get_display_name(),
-            pipette.get_id(),
+            labware.display_name,
+            pipette.id,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
 
@@ -321,8 +320,8 @@ class OpentronsFlex:
             "Aspirating %s µL at flow rate: %s from labware: %s using pipette: %s",
             volume,
             flow_rate,
-            labware.get_display_name(),
-            pipette.get_id(),
+            labware.display_name,
+            pipette.id,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.dispense(
@@ -360,8 +359,8 @@ class OpentronsFlex:
         Log.i(
             "Blowing out tips at flow rate: %s from labware: %s using pipette: %s",
             flow_rate,
-            labware.get_display_name(),
-            pipette.get_id(),
+            labware.display_name,
+            pipette.id,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.blowout(
@@ -395,8 +394,8 @@ class OpentronsFlex:
         """
         Log.i(
             "Dropting tip from pipette %s at location %s",
-            pipette.get_id(),
-            labware.get_display_name(),
+            pipette.id,
+            labware.display_name,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.drop_tip(labware=labware, pipette=pipette)
@@ -441,7 +440,7 @@ class OpentronsFlex:
         """
         Log.i(
             "Moving pipette %s to coordinates (X, Y, Z, Z-Lmit): %f, %f, %f, %f, force-direct=%s",
-            pipette.get_id(),
+            pipette.id,
             x,
             y,
             z,
@@ -449,7 +448,7 @@ class OpentronsFlex:
             force_direct,
         )
         self.validate_configuration(labware=None, pipette=pipette)
-        payload = Commands.move_to_coordiantes(
+        payload = Commands.move_to_coordinates(
             pipette=pipette,
             x=x,
             y=y,
@@ -483,9 +482,9 @@ class OpentronsFlex:
         """
         Log.i(
             "Moving pipette %s to labware %s at well location %s",
-            pipette.get_id(),
-            labware.get_display_name(),
-            labware.get_location().value,
+            pipette.id,
+            labware.display_name,
+            labware.location.value,
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.move_to_well(labware=labware, pipette=pipette)
@@ -516,7 +515,7 @@ class OpentronsFlex:
         """
         Log.i(
             "Relative move of pipette %s %fmm along %s axis",
-            pipette.get_id(),
+            pipette.id,
             distance,
             axis.value,
         )
@@ -566,7 +565,7 @@ class OpentronsFlex:
             return response["data"]["id"]
         except Exception as e:
             Log.e(
-                f"Failed to run protocol with ID {protocol_id}: {e}", exc_info=True
+                f"Failed to run protocol with ID {protocol_id}: {e}"
             )
             raise
 
@@ -605,7 +604,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to delete protocol with ID {protocol_id}: {e}", exc_info=True
+                f"Failed to delete protocol with ID {protocol_id}: {e}"
             )
             raise
 
@@ -730,7 +729,7 @@ class OpentronsFlex:
             Log.i(f"Retrieved protocol list successfully")
             return response
         except Exception as e:
-            Log.e(f"Failed to fetch protocol list: {e}", exc_info=True)
+            Log.e(f"Failed to fetch protocol list: {e}")
             raise
 
     def update_available_protocols(self) -> None:
@@ -805,7 +804,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to delete run with ID {run_id}: {e}", exc_info=True)
+                f"Failed to delete run with ID {run_id}: {e}")
             raise
 
     def get_run_status(self, run_id: str) -> str:
@@ -834,7 +833,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to fetch status for run ID {run_id}: {e}", exc_info=True
+                f"Failed to fetch status for run ID {run_id}: {e}"
             )
             raise
 
@@ -858,7 +857,7 @@ class OpentronsFlex:
             Log.i("Run list retrieved successfully. ")
             return response
         except Exception as e:
-            Log.e(f"Failed to fetch run list: {e}", exc_info=True)
+            Log.e(f"Failed to fetch run list: {e}")
             raise
 
     def pause_run(self, run_id: int) -> str:
@@ -886,7 +885,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to pause run with ID {run_id}: {e}", exc_info=True)
+                f"Failed to pause run with ID {run_id}: {e}")
             raise
 
     def play_run(self, run_id: int) -> str:
@@ -914,7 +913,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to play run with ID {run_id}: {e}", exc_info=True)
+                f"Failed to play run with ID {run_id}: {e}")
             raise
 
     def stop_run(self, run_id: str) -> str:
@@ -942,7 +941,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to stop run with ID {run_id}: {e}", exc_info=True)
+                f"Failed to stop run with ID {run_id}: {e}")
             raise
 
     def resume_run(self, run_id: str) -> str:
@@ -970,7 +969,7 @@ class OpentronsFlex:
             return response
         except Exception as e:
             Log.e(
-                f"Failed to stop run with ID {run_id}: {e}", exc_info=True)
+                f"Failed to stop run with ID {run_id}: {e}")
             raise
 
     def lights_on(self) -> str:
@@ -996,7 +995,7 @@ class OpentronsFlex:
             Log.i("Lights turned on successfully.")
             return response
         except Exception:
-            Log.e("Failed to turn lights on.", exc_info=True)
+            Log.e("Failed to turn lights on.")
             raise
 
     def lights_off(self) -> str:
@@ -1022,7 +1021,7 @@ class OpentronsFlex:
             Log.i("Lights turned off successfully.")
             return response
         except Exception:
-            Log.e("Failed to turn lights off.", exc_info=True)
+            Log.e("Failed to turn lights off.")
             raise
 
     def flash_lights(self, number_of_times: int) -> str:
@@ -1056,7 +1055,7 @@ class OpentronsFlex:
                 self.lights_off()
                 time.sleep(0.5)
         except Exception as e:
-            Log.e("Failed flashing lights", exc_info=True)
+            Log.e("Failed flashing lights")
             raise
 
     def lights_status(self) -> str:
@@ -1078,7 +1077,7 @@ class OpentronsFlex:
             Log.i("Lights status retrieved successfully. ")
             return response
         except Exception as e:
-            Log.e("Failed to fetch lights status.", exc_info=True)
+            Log.e("Failed to fetch lights status.")
             raise
 
     def create_run(self) -> str:
@@ -1102,7 +1101,7 @@ class OpentronsFlex:
             Log.i(f"New run created successfully with ID: {run_id}")
             return run_id
         except Exception:
-            Log.e("Failed to create a new run.", exc_info=True)
+            Log.e("Failed to create a new run.")
             raise
 
     def home(self) -> str:
@@ -1125,7 +1124,7 @@ class OpentronsFlex:
             Log.i("Home command executed successfully.")
             return response
         except Exception as e:
-            Log.e("Failed to execute home command.", exc_info=True)
+            Log.e("Failed to execute home command.")
             raise
 
     def validate_configuration(
@@ -1172,7 +1171,7 @@ class OpentronsFlex:
             Log.i("Configuration validated successfully.")
 
         except Exception as e:
-            Log.e("Validation failed.", exc_info=True)
+            Log.e("Validation failed.")
             raise
 
     def find_ip(self) -> str:
@@ -1204,8 +1203,6 @@ class OpentronsFlex:
         Log.e("MAC address not found in ARP table.")
         raise Exception("MAC address not found in ARP table.")
 
-    # --- ACCESSOR METHODS --- #
-
     def _set_runs_url(self, runs_url: str) -> None:
         self._runs_url = runs_url
 
@@ -1230,7 +1227,7 @@ class OpentronsFlex:
     def _set_robot_ipv4(self, ipv4: str) -> None:
         # ipv4_regex = r"^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\.){3}(25[0-5]|2[0-4][0-9]|[1-9]?[0-9])$"
         # if not re.match(ipv4_regex, ipv4):
-        #     Log.e(f"Invalid IPv4 address: {ipv4}", exc_info=True)
+        #     Log.e(f"Invalid IPv4 address: {ipv4}" )
         #     raise ValueError(f"Invalid IPv4 address: {ipv4}")
 
         # Attempt to ping the IP address to check if it is reachable
@@ -1264,7 +1261,7 @@ class OpentronsFlex:
             + "[0-9a-fA-F]{4})$"
         )
         if not re.match(mac_regex, mac_address):
-            Log.e(f"Invalid MAC address: {mac_address}", exc_info=True)
+            Log.e(f"Invalid MAC address: {mac_address}")
             raise ValueError(f"Invalid MAC address: {mac_address}")
 
         self._robot_mac_address = mac_address.replace(":", "-")
@@ -1288,8 +1285,6 @@ class OpentronsFlex:
             raise Exception(
                 f"Gantry mount position {MountPositions.RIGHT_MOUNT.value} is occupied by {current_pipette.get_pipette()}."
             )
-
-    # --- MUTATOR METHODS --- #
 
     def _get_robot_ipv4(self) -> str:
         return self._robot_ipv4

@@ -1,4 +1,5 @@
-# test_commands.py
+# test_commands.py]\
+import os
 import unittest
 from unittest.mock import patch, MagicMock
 
@@ -6,7 +7,7 @@ from src.commands import Commands, CommandType, Intents, Axis, DeckLocations, Sl
 from src.pipette import Pipette
 from src.labware import Labware
 from src.constants import Pipettes, MountPositions
-from src.standard_labware import StandardWellplates
+LABWARE_DEFINITION = os.path.join('labware', 'nanovis_flux.json')
 
 
 class TestCommands(unittest.TestCase):
@@ -52,7 +53,7 @@ class TestCommands(unittest.TestCase):
 
     def test_pickup_tip(self):
         lab = Labware(location=DeckLocations.A1,
-                      labware_definition=StandardWellplates.APPLIED_BIOSYSTEMS_MICROAMP_384_WELLPLATE_40UL)
+                      labware_definition=LABWARE_DEFINITION)
         pip = Pipette(pipette=Pipettes.P50_MULTI_FLEX,
                       mount_position=MountPositions.LEFT_MOUNT)
         payload = Commands.pickup_tip(lab, pip)
@@ -71,7 +72,7 @@ class TestCommands(unittest.TestCase):
 
     def test_aspirate_and_dispense(self):
         lab = Labware(location=DeckLocations.A1,
-                      labware_definition=StandardWellplates.APPLIED_BIOSYSTEMS_MICROAMP_384_WELLPLATE_40UL)
+                      labware_definition=LABWARE_DEFINITION)
         pip = Pipette(pipette=Pipettes.P50_MULTI_FLEX,
                       mount_position=MountPositions.LEFT_MOUNT)
         fr, vol = 10.5, 50.0
@@ -97,7 +98,7 @@ class TestCommands(unittest.TestCase):
 
     def test_blowout_and_drop_tip(self):
         lab = Labware(location=DeckLocations.A1,
-                      labware_definition=StandardWellplates.APPLIED_BIOSYSTEMS_MICROAMP_384_WELLPLATE_40UL)
+                      labware_definition=LABWARE_DEFINITION)
         pip = Pipette(pipette=Pipettes.P50_MULTI_FLEX,
                       mount_position=MountPositions.LEFT_MOUNT)
         fr = 20.0
@@ -132,7 +133,7 @@ class TestCommands(unittest.TestCase):
 
     def test_move_to_well(self):
         lab = Labware(location=DeckLocations.A1,
-                      labware_definition=StandardWellplates.APPLIED_BIOSYSTEMS_MICROAMP_384_WELLPLATE_40UL)
+                      labware_definition=LABWARE_DEFINITION)
         pip = Pipette(pipette=Pipettes.P50_MULTI_FLEX,
                       mount_position=MountPositions.LEFT_MOUNT)
         payload = Commands.move_to_well(lab, pip)
@@ -175,7 +176,7 @@ class TestCommands(unittest.TestCase):
             {"axis": Axis.Z.value, "distance": 7.5, "pipetteId": pip.id}
         )
 
-    @patch('commands.requests.post')
+    @patch('src.commands.requests.post')
     def test_send_command_success(self, mock_post):
         # simulate OK response
         mock_resp = MagicMock()
@@ -187,7 +188,7 @@ class TestCommands(unittest.TestCase):
         mock_post.assert_called_once()
         self.assertEqual(result, {"status": "success"})
 
-    @patch('commands.requests.post')
+    @patch('src.commands.requests.post')
     def test_send_command_failure(self, mock_post):
         # simulate network error
         mock_post.side_effect = Exception("boom")

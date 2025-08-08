@@ -484,6 +484,9 @@ class Labware:
             self.stacking_offset_with_labware = StackingOffsetWithLabware(
                 self.data["stackingOffsetWithLabware"]
             )
+            # TODO: (8/8) Figure out what the labware ID is.  I think Opentrons assigns this ID
+            # on the Flex once it's uploaded but I do not remeber.
+            self.id = None
 
             self.location = location
             self.display_name = self.metadata.display_name
@@ -495,6 +498,9 @@ class Labware:
         elif isinstance(labware_definition, StandardLabware):
             Log.i(
                 f"Loading standard labware definition {labware_definition.get_display_name()} @ {location.value}")
+            # TODO: (8/8) Figure out what the labware ID is.  I think Opentrons assigns this ID
+            # on the Flex once it's uploaded but I do not remeber.
+            self.id = None
             self.location = location
             self.display_name = labware_definition.get_display_name()
             self.load_name = labware_definition.get_load_name()

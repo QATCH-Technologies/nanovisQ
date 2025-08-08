@@ -13,7 +13,7 @@ try:
 
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.logger import Logger as Log
-    from QATCH.FluxControls.constants import Actions, Lights, HEADERS
+    from QATCH.FluxControls.src.constants import Actions, Lights, HEADERS
 
 
 class Runs:

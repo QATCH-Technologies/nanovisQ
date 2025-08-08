@@ -3,7 +3,7 @@ import re
 import os
 from typing import Union
 try:
-    from src.constants import CONFIG_FILE
+    from src.constants import DEFAULT_DEV_CONFIG_PATH
 
     class Log:
         def d(tag, msg=""): print("DEBUG:", tag, msg)
@@ -25,12 +25,13 @@ class DeviceRegistration:
         device (dict): A dictionary holding the device information (name and MAC address).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, config_path: str = DEFAULT_DEV_CONFIG_PATH) -> None:
         """
         Initializes the DeviceRegistration class and attempts to load an existing device configuration.
         If no configuration exists, prompts the user to register a device.
         """
         self.device = {}
+        self._config_path = config_path
         self.load_device()
 
     def load_device(self) -> Union[dict, None]:
@@ -41,8 +42,8 @@ class DeviceRegistration:
         If the device configuration file exists, it is loaded into the device attribute.
         If not, the user is prompted to enter device details.
         """
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, "r") as file:
+        if os.path.exists(DEFAULT_DEV_CONFIG_PATH):
+            with open(DEFAULT_DEV_CONFIG_PATH, "r") as file:
                 self.device = json.load(file)
                 return self.device
         else:
@@ -56,7 +57,7 @@ class DeviceRegistration:
         The device information (name and MAC address) is saved in a JSON format to the
         configuration file defined by CONFIG_FILE.
         """
-        with open(CONFIG_FILE, "w") as file:
+        with open(DEFAULT_DEV_CONFIG_PATH, "w") as file:
             json.dump(self.device, file, indent=4)
 
     @staticmethod
@@ -73,22 +74,20 @@ class DeviceRegistration:
         pattern = re.compile(r"^([0-9A-Fa-f]{2}[-:]){5}[0-9A-Fa-f]{2}$")
         return bool(pattern.match(mac))
 
-    def register_device(self) -> None:
+    def register_device(self, device_name: str, mac_address: str) -> None:
         """
-        Prompts the user for device name and MAC address, validates the MAC address, 
-        and saves the device information.
+        Registers a new device given its name and MAC address.
+        Validates the MAC address format before saving.
 
-        The user is repeatedly prompted to enter the MAC address until a valid format is provided.
-        Once valid, the device name and MAC address are saved in the device dictionary and the 
-        configuration is stored in a file.
+        Args:
+            device_name (str): The name of the device.
+            mac_address (str): The MAC address in format XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX.
+
+        Raises:
+            ValueError: If the provided MAC address is not valid.
         """
-        device_name = input("Enter the device name: ").strip()
-        while True:
-            mac_address = input(
-                "Enter the MAC address (format: XX:XX:XX:XX:XX:XX or XX-XX-XX-XX-XX-XX): ").strip()
-            if self.is_valid_mac(mac_address):
-                break
-            Log.e("Invalid MAC address format.")
+        if not self.is_valid_mac(mac_address):
+            raise ValueError(f"Invalid MAC address format: {mac_address}")
 
         self.device = {"name": device_name, "mac": mac_address}
         self.save_device()
@@ -110,3 +109,20 @@ class DeviceRegistration:
             str: The name of the registered device, or None if not registered.
         """
         return self.device.get("name")
+
+    @property
+    def config_path(self):
+        return self._config_path
+
+    @config_path.setter
+    def config_path(self, config_path: str):
+        if os.path.exists(config_path):
+            self._config_path = config_path
+            return
+
+        devices_dir = os.path.join('.', 'devices')
+        os.makedirs(devices_dir, exist_ok=True)
+        filename = os.path.basename(config_path)
+        new_path = os.path.join(devices_dir, filename)
+        open(new_path, 'a').close()
+        self._config_path = new_path

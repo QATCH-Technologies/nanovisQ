@@ -38,6 +38,14 @@ Version:
 """
 
 from enum import Enum
+import os
+
+try:
+    from QATCH.common.architecture import Architecture
+except (ModuleNotFoundError, ImportError):
+    class Architecture:
+        def get_path():
+            return os.path.join("FluxControls")
 """str: Default HTTP port for communication."""
 HTTP_PORT = "31950"
 
@@ -45,7 +53,8 @@ HTTP_PORT = "31950"
 HEADERS = {"opentrons-version": "3"}
 
 """str: Name of the device configuration file."""
-CONFIG_FILE = "device_config.json"
+DEFAULT_DEV_CONFIG_PATH = os.path.join(
+    Architecture.get_path(), "devices", "device_config.json")
 
 
 class Axis(Enum):
