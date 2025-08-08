@@ -28,6 +28,7 @@ void sendNTPpacket(const char *address);
 bool check_and_correct_micros_rollover(void);
 void pogo_button_ISR(void);
 void pogo_button_pressed(bool init);
+void setLidCalibration(int opened, int closed, int delay_ms);
 
 void tft_wakeup();
 void tft_screensaver();

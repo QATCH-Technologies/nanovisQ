@@ -189,13 +189,11 @@
 #define L298NHB_VOLTAGE_CONVERT(adc) (9.9 * adc) / 1024 // adc -> volts
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
 
-// Define POGO lid servo positions
-#define POS_OPENED 30
-#define POS_CLOSED 50
-#define POS_INIT (int)((POS_OPENED + POS_CLOSED) / 2)
-#define MOVE_DELAY 25
-// TODO: Add calibration offset to open/close POGO lid servo positions
-
+// Accessor macros for NVMEM values
+#define POS_OPENED   (NVMEM.POGO_PosOpened)
+#define POS_CLOSED   (NVMEM.POGO_PosClosed)
+#define POS_INIT     ((POS_OPENED + POS_CLOSED) / 2)
+#define MOVE_DELAY   (NVMEM.POGO_MoveDelay)
 
 double freq_factor = 1.0;
 
@@ -356,11 +354,14 @@ float ambient = NAN;
 #include <Servo.h>
 Servo pogoServo;
 
+// Debounce variables for POGO button
+volatile bool pogo_isr_hit_flag = false;
+volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
+unsigned long lastInterruptTime = 0;
+const unsigned long debounceDelay = 1000; // debounce delay in ms
+
 // Create variables for POGO lid servo, button and LED
 bool pogo_lid_opened = false; // true if POGO lid is opened
-volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
-volatile unsigned long lastInterruptTime = 0;
-volatile const unsigned long debounceDelay = 1000; // debounce delay in ms
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -1872,6 +1873,90 @@ void QATCH_loop()
       return;
     }
 
+    if (message_str.startsWith("LID"))
+    {
+      if (message_str.endsWith("STATE"))
+      {
+        // Report current state of lid
+        client->printf("LID is %s\n", pogo_lid_opened ? "OPENED" : "CLOSED");
+      }
+      else if (message_str.endsWith("OPEN"))
+      {
+        // Open lid
+        if (pogo_lid_opened)
+        {
+          client->println("LID is already OPENED");
+        }
+        else
+        {
+          client->println("LID OPENED");
+          pogo_pressed_flag = true; // queue movement
+        }
+      }
+      else if (message_str.endsWith("CLOSE"))
+      {
+        // Close lid
+        if (!pogo_lid_opened)
+        {
+          client->println("LID is already CLOSED");
+        }
+        else
+        {
+          client->println("LID CLOSED");
+          pogo_pressed_flag = true; // queue movement
+        }
+      }
+      else if (message_str.substring(4, 7) == "CAL")
+      {
+        if (message_str.endsWith("CAL")) {
+          // Report stored calibration values to user
+          client->printf("LID CAL %i,%i,%i\n",
+                         POS_OPENED,
+                         POS_CLOSED,
+                         MOVE_DELAY);
+        }
+        else if (message_str.endsWith("DEFAULT") || message_str.endsWith("RESET"))
+        {
+          // Reset lid calibration to default values
+          client->println("LID CAL DEFAULT");
+          setLidCalibration(DEFAULT_POS_OPENED, DEFAULT_POS_CLOSED, DEFAULT_MOVE_DELAY);
+        }
+        else
+        {
+          const char *pid[3]; // an array of pointers to the pieces of the above array after strtok()
+          char *ptr = NULL;
+          byte idx = 0;
+          byte num_items = 0;
+          ptr = strtok(&buf[8], ","); // delimiter
+          while (ptr != NULL)
+          {
+            pid[idx] = ptr;
+            idx++;
+            ptr = strtok(NULL, ",");
+            if (idx >= 3)
+              break;
+          }
+          num_items = idx;
+          while (idx <= 2) // fill any unprovided values with provided values
+          {
+            pid[idx] = pid[idx % num_items];
+            idx++;
+          }
+          if (DEBUG)
+          {
+            client->println("The Pieces separated by strtok():");
+            for (int n = 0; n < idx; n++)
+            {
+              client->print(n);
+              client->print("->");
+              client->println(pid[n]);
+            }
+          }
+          setLidCalibration(atoi(pid[0]), atoi(pid[1]), atoi(pid[2]));
+        }
+      }
+    }
+
     if (message_str.startsWith("EEPROM"))
     {
       /// @note To restore NVMEM to defaults, use command 'EEPROM -1 0xFF' to erase NVMEM.version byte and force a reset
@@ -2992,10 +3077,20 @@ void QATCH_loop()
 #endif
 
   /* HANDLE POGO BUTTON PRESS */
+  // Debounce logic handled here, not in ISR
+  if (pogo_isr_hit_flag) {
+    unsigned long now = millis();
+    if ((now - lastInterruptTime) > debounceDelay) {
+      pogo_pressed_flag = true;
+      lastInterruptTime = now;
+    }
+    pogo_isr_hit_flag = false;
+  }
   if (pogo_pressed_flag) {
-    pogo_pressed_flag = false; // Clear flag
     // client->println("POGO button pressed via interrupt!");
+    // Ignore button press if running an active sweep:
     if (!is_running) pogo_button_pressed(false);
+    pogo_pressed_flag = false; // Clear flag
   }
 }
 
@@ -3328,13 +3423,12 @@ void stopStreaming(void)
 
 void pogo_button_ISR(void)
 {
-  unsigned long interruptTime = millis();
-  if (interruptTime - lastInterruptTime > debounceDelay) {
-    pogo_pressed_flag = true;
-  }
-  lastInterruptTime = interruptTime;
+  pogo_isr_hit_flag = true;
 }
 
+// Handles a pogo button event and lid/LED/servo behavior.
+// init=true: perform one-time initialization toggling to open (e.g., on setup).
+// init=false: handle a real button press (should be called from loop, not ISR).
 void pogo_button_pressed(bool init)
 {
   pogo_lid_opened = !pogo_lid_opened; // switch state: open <-> closed 
@@ -3366,6 +3460,24 @@ void pogo_button_pressed(bool init)
     }
     pogoServo.detach();
   }
+}
+
+// Function to set calibration values at runtime
+void setLidCalibration(int opened, int closed, int delay_ms)
+{
+  if (opened >= closed)
+  {
+    client->println("Invalid lid calibration. Not saving.");
+    return;
+  }
+  client->println("Saving lid calibration to EEPROM.");
+  NVMEM.POGO_PosOpened = opened;
+  NVMEM.POGO_PosClosed = closed;
+  NVMEM.POGO_MoveDelay = delay_ms;
+  if (nv.isValid())
+    nv.save();
+  else
+    client->println("ERROR: Failed to save lid calibration in EEPROM. NVMEM struct is invalid.");
 }
 
 /************************** ILI9341 ****************************/

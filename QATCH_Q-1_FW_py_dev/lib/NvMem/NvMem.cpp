@@ -33,6 +33,9 @@ NvMem_RAM NvMem::defaults(void)
   defaults.HW_Revision = HW_REVISION_X;
   defaults.OffsetM = 0;
   defaults.Ethernet_EN = 0;
+  defaults.POGO_PosOpened = DEFAULT_POS_OPENED;
+  defaults.POGO_PosClosed = DEFAULT_POS_CLOSED;
+  defaults.POGO_MoveDelay = DEFAULT_MOVE_DELAY;
   // defaults.NewValue = 42;
 
   struct_is_valid = true; // required for saving defaults, which is required to come soon after this call
@@ -120,6 +123,21 @@ byte NvMem::update(void)
   if (mem.Ethernet_EN == 0xFF && DEFAULT.Ethernet_EN != 0xFF)
   {
     mem.Ethernet_EN = DEFAULT.Ethernet_EN;
+    modified_entries++;
+  }
+  if (mem.POGO_PosOpened == 0xFF && DEFAULT.POGO_PosOpened != 0xFF)
+  {
+    mem.POGO_PosOpened = DEFAULT.POGO_PosOpened;
+    modified_entries++;
+  }
+  if (mem.POGO_PosClosed == 0xFF && DEFAULT.POGO_PosClosed != 0xFF)
+  {
+    mem.POGO_PosClosed = DEFAULT.POGO_PosClosed;
+    modified_entries++;
+  }
+  if (mem.POGO_MoveDelay == 0xFF && DEFAULT.POGO_MoveDelay != 0xFF)
+  {
+    mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
     modified_entries++;
   }
   // if (mem.NewValue == 0xFF && DEFAULT.NewValue != 0xFF)
