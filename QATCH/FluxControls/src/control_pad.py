@@ -339,8 +339,7 @@ class OpentronFlexControlPanel(QMainWindow):
         # Deck position selector
         labware_layout.addWidget(QLabel("Deck Position:"), 0, 0)
         self.deck_position_combo = QComboBox()
-        positions = ["A1", "A2", "A3", "A4", "B1", "B2", "B3", "B4",
-                     "C1", "C2", "C3", "C4", "D1", "D2", "D3", "D4"]
+        positions = [pos.value for pos in DeckLocations]
         self.deck_position_combo.addItems(positions)
         labware_layout.addWidget(self.deck_position_combo, 0, 1)
 
@@ -1059,7 +1058,7 @@ class OpentronFlexControlPanel(QMainWindow):
                                 "Please connect to robot first")
             return
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message(
             "Pickup tip function - needs labware/pipette selection dialog")
 
@@ -1073,7 +1072,7 @@ class OpentronFlexControlPanel(QMainWindow):
         volume = self.volume_spin.value()
         flow_rate = self.flow_rate_spin.value()
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message(
             f"Aspirate {volume}µL at {flow_rate}µL/s - needs labware/pipette selection")
 
@@ -1087,7 +1086,7 @@ class OpentronFlexControlPanel(QMainWindow):
         volume = self.volume_spin.value()
         flow_rate = self.flow_rate_spin.value()
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message(
             f"Dispense {volume}µL at {flow_rate}µL/s - needs labware/pipette selection")
 
@@ -1100,7 +1099,7 @@ class OpentronFlexControlPanel(QMainWindow):
 
         flow_rate = self.flow_rate_spin.value()
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message(
             f"Blowout at {flow_rate}µL/s - needs labware/pipette selection")
 
@@ -1111,7 +1110,7 @@ class OpentronFlexControlPanel(QMainWindow):
                                 "Please connect to robot first")
             return
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message("Drop tip - needs labware/pipette selection")
 
     def move_to_well(self):
@@ -1121,7 +1120,7 @@ class OpentronFlexControlPanel(QMainWindow):
                                 "Please connect to robot first")
             return
 
-        # Implementation would need labware and pipette selection
+        # TODO: Implementation would need labware and pipette selection
         self.log_message("Move to well - needs labware/pipette selection")
 
     def move_to_coordinates(self):
@@ -1135,7 +1134,7 @@ class OpentronFlexControlPanel(QMainWindow):
         y = self.y_spin.value()
         z = self.z_spin.value()
 
-        # Implementation would need pipette selection
+        # TODO: Implementation would need pipette selection
         self.log_message(
             f"Move to coordinates X:{x}, Y:{y}, Z:{z} - needs pipette selection")
 
@@ -1150,7 +1149,7 @@ class OpentronFlexControlPanel(QMainWindow):
         axis_text = self.axis_combo.currentText()
         axis = getattr(Axis, axis_text)
 
-        # Implementation would need pipette selection
+        # TODO: Implementation would need pipette selection
         self.log_message(
             f"Move relative {distance}mm on {axis_text} axis - needs pipette selection")
 
