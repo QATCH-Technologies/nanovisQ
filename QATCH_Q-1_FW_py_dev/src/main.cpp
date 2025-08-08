@@ -86,12 +86,14 @@
 #define WCLK 22
 #define DATA 23
 #define FQ_UD 15
+
 // phase comparator AD8302 pinout
 #define AD8302_PHASE A6
 #define AD8302_MAG36 37  // AJR different on T4.1 (use A14, from pin 37 to 38)
 #define AD8302_MAG41 A14 // AJR different on T4.1 (use A14, from pin 37 to 38)
 // #define AD8302_REF      A3
 #define AD8302_REF A15 // AJR different on T4.1 but this is not used in this sketch
+
 // LED pin
 #define LED_RED_PIN 24             // Red LED on openQCM PCB (see note below)
 #define LED_BLUE_PIN 25            // Blue LED on openQCM PCB (see note below)
@@ -100,6 +102,7 @@
 #define LED_WHITE_PIN_1 255 // micro_led moved to pin 5, but this might conflict, so disable
 #define LED_SEGMENT_DP 33   // currently only used by HW Rev0, but could be used on Rev1 too
 // NOTE: Both LED_RED_PIN and LED_BLUE_PIN must be high for Blue LED to illuminate on openQCM boards
+
 // L298NHB pins
 #define L298NHB_M1 1                     // motor signal pin 1 (0=forward,1=back)
 #define L298NHB_E1 2                     // motor enable pin 1 (PWM)
@@ -110,6 +113,7 @@
 #define L298NHB_INIT 1                   // initial PWM enable power
 #define L298NHB_AUTOOFF (1000 * 60 * 10) // time to auto off (in millis): 1 min buffer between end of cooldown and start of screensaver
 #define L298NHB_COOLDOWN (1000 * 60 * 4) // time to cooldown (in millis)
+
 // MAX31855 pins
 #define MAX31855_SO_0 12  // serial out
 #define MAX31855_SO_1 16  // serial out
@@ -117,10 +121,12 @@
 #define MAX31855_CLK_0 13 // serial clock
 #define MAX31855_CLK_1 17 // serial clock
 #define MAX31855_WAIT 0   // signal settle delay (in us)
+
 // TEMP_CIRCUIT pin
 #define TEMP_CIRCUIT 5 // relay pin for reject fan (on/off)
 #define TEC_SENSE 41      // now: follow pin 5; future use: TEC_SENSE
 // #define FAN_HIGH_LOW 6 // relay pin for reject fan (speed) (unused)
+
 // Pins for ILI9341 TFT Touchscreen connections:
 #define TFT_DC 21
 #define TFT_CS 9
@@ -128,8 +134,14 @@
 #define TFT_MOSI 11
 #define TFT_SCLK 13
 #define TFT_MISO 12
+
 // Pin for reading external 5V voltage ADC
 #define PIN_EXT_5V_VOLTAGE A16
+
+// Pins for POGO lid servo, button and LED
+#define POGO_SERVO_PIN 7
+#define POGO_BTN_LED_PIN 35
+#define POGO_BUTTON_PIN_N 36  // active low
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -176,6 +188,12 @@
 #define L298NHB_VOLTAGE_DEVIATION 1.0                   // volts
 #define L298NHB_VOLTAGE_CONVERT(adc) (9.9 * adc) / 1024 // adc -> volts
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
+
+// Accessor macros for NVMEM values
+#define POS_OPENED   (NVMEM.POGO_PosOpened)
+#define POS_CLOSED   (NVMEM.POGO_PosClosed)
+#define POS_INIT     ((POS_OPENED + POS_CLOSED) / 2)
+#define MOVE_DELAY   (NVMEM.POGO_MoveDelay)
 
 double freq_factor = 1.0;
 
@@ -331,6 +349,19 @@ MAX31855 max31855 = MAX31855(MAX31855_CLK_1, MAX31855_CS, MAX31855_SO_1, MAX3185
 MCP9808 mcp9808 = MCP9808(); // always define (shutdown if unused)
 float temperature = NAN;
 float ambient = NAN;
+
+// Create servo object for POGO lid
+#include <Servo.h>
+Servo pogoServo;
+
+// Debounce variables for POGO button
+volatile bool pogo_isr_hit_flag = false;
+volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
+unsigned long lastInterruptTime = 0;
+const unsigned long debounceDelay = 50; // debounce delay in ms
+
+// Create variables for POGO lid servo, button and LED
+bool pogo_lid_opened = false; // true if POGO lid is opened
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -887,6 +918,16 @@ void QATCH_setup()
   ledWrite(LED_ORANGE_PIN, _led_pwr);
   ledWrite(LED_WHITE_PIN, _led_pwr);
 
+  // Initialize POGO button and LED status
+  pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
+  pinMode(POGO_BTN_LED_PIN, OUTPUT);
+  digitalWrite(POGO_BTN_LED_PIN, HIGH);
+
+  // Attach POGO button interrupt - triggers on FALLING edge (button press)
+  attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, FALLING);
+  // NOTE: Wait to initialize POGO state to open until ready to turn off other LEDs
+  // pogo_button_pressed(true); // initialize to open state
+
   // Set FAN on at boot
   pinMode(TEMP_CIRCUIT, OUTPUT);
   pinMode(TEC_SENSE, OUTPUT);
@@ -916,6 +957,8 @@ void QATCH_setup()
       ; // stop here, unrecognized hardware
   }
 #endif
+
+  pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
   if (hw_error)
@@ -1828,6 +1871,90 @@ void QATCH_loop()
 #endif
 
       return;
+    }
+
+    if (message_str.startsWith("LID"))
+    {
+      if (message_str.endsWith("STATE"))
+      {
+        // Report current state of lid
+        client->printf("LID is %s\n", pogo_lid_opened ? "OPENED" : "CLOSED");
+      }
+      else if (message_str.endsWith("OPEN"))
+      {
+        // Open lid
+        if (pogo_lid_opened)
+        {
+          client->println("LID is already OPENED");
+        }
+        else
+        {
+          client->println("LID OPENED");
+          pogo_pressed_flag = true; // queue movement
+        }
+      }
+      else if (message_str.endsWith("CLOSE"))
+      {
+        // Close lid
+        if (!pogo_lid_opened)
+        {
+          client->println("LID is already CLOSED");
+        }
+        else
+        {
+          client->println("LID CLOSED");
+          pogo_pressed_flag = true; // queue movement
+        }
+      }
+      else if (message_str.substring(4, 7) == "CAL")
+      {
+        if (message_str.endsWith("CAL")) {
+          // Report stored calibration values to user
+          client->printf("LID CAL %i,%i,%i\n",
+                         POS_OPENED,
+                         POS_CLOSED,
+                         MOVE_DELAY);
+        }
+        else if (message_str.endsWith("DEFAULT") || message_str.endsWith("RESET"))
+        {
+          // Reset lid calibration to default values
+          client->println("LID CAL DEFAULT");
+          setLidCalibration(DEFAULT_POS_OPENED, DEFAULT_POS_CLOSED, DEFAULT_MOVE_DELAY);
+        }
+        else
+        {
+          const char *pid[3]; // an array of pointers to the pieces of the above array after strtok()
+          char *ptr = NULL;
+          byte idx = 0;
+          byte num_items = 0;
+          ptr = strtok(&buf[8], ","); // delimiter
+          while (ptr != NULL)
+          {
+            pid[idx] = ptr;
+            idx++;
+            ptr = strtok(NULL, ",");
+            if (idx >= 3)
+              break;
+          }
+          num_items = idx;
+          while (idx <= 2) // fill any unprovided values with provided values
+          {
+            pid[idx] = pid[idx % num_items];
+            idx++;
+          }
+          if (DEBUG)
+          {
+            client->println("The Pieces separated by strtok():");
+            for (int n = 0; n < idx; n++)
+            {
+              client->print(n);
+              client->print("->");
+              client->println(pid[n]);
+            }
+          }
+          setLidCalibration(atoi(pid[0]), atoi(pid[1]), atoi(pid[2]));
+        }
+      }
     }
 
     if (message_str.startsWith("EEPROM"))
@@ -2948,6 +3075,23 @@ void QATCH_loop()
     }
   }
 #endif
+
+  /* HANDLE POGO BUTTON PRESS */
+  // Debounce logic handled here, not in ISR
+  if (pogo_isr_hit_flag) {
+    unsigned long now = millis();
+    if ((now - lastInterruptTime) > debounceDelay) {
+      pogo_pressed_flag = true;
+      lastInterruptTime = now;
+    }
+    pogo_isr_hit_flag = false;
+  }
+  if (pogo_pressed_flag) {
+    // client->println("POGO button pressed via interrupt!");
+    // Ignore button press if running an active sweep:
+    if (!is_running) pogo_button_pressed(false);
+    pogo_pressed_flag = false; // Clear flag
+  }
 }
 
 /************************** FUNCTION ***************************/
@@ -3276,6 +3420,73 @@ void stopStreaming(void)
 
 //   return EEPROM_pid;
 // }
+
+FASTRUN void pogo_button_ISR(void)
+{
+  pogo_isr_hit_flag = true;
+}
+
+// Handles a pogo button event and lid/LED/servo behavior.
+// init=true: perform one-time initialization toggling to open (e.g., on setup).
+// init=false: handle a real button press (should be called from loop, not ISR).
+void pogo_button_pressed(bool init)
+{
+  // Validate servo positions are within safe range
+  if (POS_OPENED < 0 || POS_OPENED > 180 || POS_CLOSED < 0 || POS_CLOSED > 180) {
+    client->println("ERROR: Invalid servo calibration values");
+    return;
+  }
+  pogo_lid_opened = !pogo_lid_opened; // switch state: open <-> closed 
+  if (init) { // initialize position on startup
+    // client->println("Moving lid to INITIAL position");
+    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_INIT; pos >= POS_OPENED; pos -= 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  } else if (pogo_lid_opened) {  // open
+    // client->println("Moving lid to OPENED position");
+    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_CLOSED; pos >= POS_OPENED; pos -= 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  } else {  // close
+    // client->println("Moving lid to CLOSED position");
+    digitalWrite(POGO_BTN_LED_PIN, HIGH);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_OPENED; pos <= POS_CLOSED; pos += 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  }
+}
+
+// Function to set calibration values at runtime
+void setLidCalibration(byte opened, byte closed, byte delay_ms)
+{
+  if (opened >= closed || 
+      opened < 0  || opened > 180 || 
+      closed < 0 || closed > 180 || 
+      delay_ms < 0 || delay_ms > 254)
+  {
+    client->println("Invalid lid calibration parameters. Not saving.");
+    return;
+  }
+  client->println("Saving lid calibration to EEPROM.");
+  NVMEM.POGO_PosOpened = opened;
+  NVMEM.POGO_PosClosed = closed;
+  NVMEM.POGO_MoveDelay = delay_ms;
+  if (nv.isValid())
+    nv.save();
+  else
+    client->println("ERROR: Failed to save lid calibration in EEPROM. NVMEM struct is invalid.");
+}
 
 /************************** ILI9341 ****************************/
 
