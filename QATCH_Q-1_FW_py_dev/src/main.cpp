@@ -86,12 +86,14 @@
 #define WCLK 22
 #define DATA 23
 #define FQ_UD 15
+
 // phase comparator AD8302 pinout
 #define AD8302_PHASE A6
 #define AD8302_MAG36 37  // AJR different on T4.1 (use A14, from pin 37 to 38)
 #define AD8302_MAG41 A14 // AJR different on T4.1 (use A14, from pin 37 to 38)
 // #define AD8302_REF      A3
 #define AD8302_REF A15 // AJR different on T4.1 but this is not used in this sketch
+
 // LED pin
 #define LED_RED_PIN 24             // Red LED on openQCM PCB (see note below)
 #define LED_BLUE_PIN 25            // Blue LED on openQCM PCB (see note below)
@@ -100,6 +102,7 @@
 #define LED_WHITE_PIN_1 255 // micro_led moved to pin 5, but this might conflict, so disable
 #define LED_SEGMENT_DP 33   // currently only used by HW Rev0, but could be used on Rev1 too
 // NOTE: Both LED_RED_PIN and LED_BLUE_PIN must be high for Blue LED to illuminate on openQCM boards
+
 // L298NHB pins
 #define L298NHB_M1 1                     // motor signal pin 1 (0=forward,1=back)
 #define L298NHB_E1 2                     // motor enable pin 1 (PWM)
@@ -110,6 +113,7 @@
 #define L298NHB_INIT 1                   // initial PWM enable power
 #define L298NHB_AUTOOFF (1000 * 60 * 10) // time to auto off (in millis): 1 min buffer between end of cooldown and start of screensaver
 #define L298NHB_COOLDOWN (1000 * 60 * 4) // time to cooldown (in millis)
+
 // MAX31855 pins
 #define MAX31855_SO_0 12  // serial out
 #define MAX31855_SO_1 16  // serial out
@@ -117,10 +121,12 @@
 #define MAX31855_CLK_0 13 // serial clock
 #define MAX31855_CLK_1 17 // serial clock
 #define MAX31855_WAIT 0   // signal settle delay (in us)
+
 // TEMP_CIRCUIT pin
 #define TEMP_CIRCUIT 5 // relay pin for reject fan (on/off)
 #define TEC_SENSE 41      // now: follow pin 5; future use: TEC_SENSE
 // #define FAN_HIGH_LOW 6 // relay pin for reject fan (speed) (unused)
+
 // Pins for ILI9341 TFT Touchscreen connections:
 #define TFT_DC 21
 #define TFT_CS 9
@@ -128,8 +134,14 @@
 #define TFT_MOSI 11
 #define TFT_SCLK 13
 #define TFT_MISO 12
+
 // Pin for reading external 5V voltage ADC
 #define PIN_EXT_5V_VOLTAGE A16
+
+// Pins for POGO lid servo, button and LED
+#define POGO_SERVO_PIN 7
+#define POGO_BTN_LED_PIN 35
+#define POGO_BUTTON_PIN_N 36  // active low
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -176,6 +188,14 @@
 #define L298NHB_VOLTAGE_DEVIATION 1.0                   // volts
 #define L298NHB_VOLTAGE_CONVERT(adc) (9.9 * adc) / 1024 // adc -> volts
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
+
+// Define POGO lid servo positions
+#define POS_OPENED 30
+#define POS_CLOSED 50
+#define POS_INIT (int)((POS_OPENED + POS_CLOSED) / 2)
+#define MOVE_DELAY 25
+// TODO: Add calibration offset to open/close POGO lid servo positions
+
 
 double freq_factor = 1.0;
 
@@ -331,6 +351,16 @@ MAX31855 max31855 = MAX31855(MAX31855_CLK_1, MAX31855_CS, MAX31855_SO_1, MAX3185
 MCP9808 mcp9808 = MCP9808(); // always define (shutdown if unused)
 float temperature = NAN;
 float ambient = NAN;
+
+// Create servo object for POGO lid
+#include <Servo.h>
+Servo pogoServo;
+
+// Create variables for POGO lid servo, button and LED
+bool pogo_lid_opened = false; // true if POGO lid is opened
+volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
+volatile unsigned long lastInterruptTime = 0;
+volatile const unsigned long debounceDelay = 1000; // debounce delay in ms
 
 // HW-agnostic interface pointer:
 // For TEENSY36: always the Serial port
@@ -887,6 +917,16 @@ void QATCH_setup()
   ledWrite(LED_ORANGE_PIN, _led_pwr);
   ledWrite(LED_WHITE_PIN, _led_pwr);
 
+  // Initialize POGO button and LED status
+  pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
+  pinMode(POGO_BTN_LED_PIN, OUTPUT);
+  digitalWrite(POGO_BTN_LED_PIN, HIGH);
+
+  // Attach POGO button interrupt - triggers on FALLING edge (button press)
+  attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, FALLING);
+  // NOTE: Wait to initialize POGO state to open until ready to turn off other LEDs
+  // pogo_button_pressed(true); // initialize to open state
+
   // Set FAN on at boot
   pinMode(TEMP_CIRCUIT, OUTPUT);
   pinMode(TEC_SENSE, OUTPUT);
@@ -916,6 +956,8 @@ void QATCH_setup()
       ; // stop here, unrecognized hardware
   }
 #endif
+
+  pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
   if (hw_error)
@@ -2948,6 +2990,13 @@ void QATCH_loop()
     }
   }
 #endif
+
+  /* HANDLE POGO BUTTON PRESS */
+  if (pogo_pressed_flag) {
+    pogo_pressed_flag = false; // Clear flag
+    // client->println("POGO button pressed via interrupt!");
+    if (!is_running) pogo_button_pressed(false);
+  }
 }
 
 /************************** FUNCTION ***************************/
@@ -3276,6 +3325,48 @@ void stopStreaming(void)
 
 //   return EEPROM_pid;
 // }
+
+void pogo_button_ISR(void)
+{
+  unsigned long interruptTime = millis();
+  if (interruptTime - lastInterruptTime > debounceDelay) {
+    pogo_pressed_flag = true;
+  }
+  lastInterruptTime = interruptTime;
+}
+
+void pogo_button_pressed(bool init)
+{
+  pogo_lid_opened = !pogo_lid_opened; // switch state: open <-> closed 
+  if (init) { // initialize position on startup
+    // client->println("Moving lid to INITIAL position");
+    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_INIT; pos >= POS_OPENED; pos -= 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  } else if (pogo_lid_opened) {  // open
+    // client->println("Moving lid to OPENED position");
+    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_CLOSED; pos >= POS_OPENED; pos -= 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  } else {  // close
+    // client->println("Moving lid to CLOSED position");
+    digitalWrite(POGO_BTN_LED_PIN, HIGH);
+    pogoServo.attach(POGO_SERVO_PIN);
+    for (int pos = POS_OPENED; pos <= POS_CLOSED; pos += 1) {
+      pogoServo.write(pos);
+      delay(MOVE_DELAY);
+    }
+    pogoServo.detach();
+  }
+}
 
 /************************** ILI9341 ****************************/
 
