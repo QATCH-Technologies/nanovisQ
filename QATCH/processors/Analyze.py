@@ -2289,9 +2289,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if ax3.sceneBoundingRect().contains(event._scenePos):
             mousePoint = ax3.getPlotItem().vb.mapSceneToView(event._scenePos)
         if mousePoint != None:
-            px = self.stateStep - 1
-            if px >= 2:
-                px += 1  # skip POI3 (index 2)
+            px = self._current_visible_poi_index()
+            if px < 0 or px >= len(self.poi_markers):
+                return
             index = mousePoint.x()
             Log.d(f"Mouse click @ xs = {index}")
             self.poi_markers[px].setValue(index)
@@ -2335,9 +2335,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.zoomFinderPlots(2.0)
 
     def moveCurrentMarker(self, offset):
-        px = self.stateStep - 1
-        if px >= 2:
-            px += 1  # skip POI3 (index 2)
+        px = self._current_visible_poi_index()
+        if px < 0 or px >= len(self.poi_markers):
+            return
         # 100 steps per window
         offset *= max(1, int(self.getContextWidth()[0] / 50))
         if px in range(0, len(self.poi_markers)):
@@ -2356,9 +2356,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             pass
 
     def zoomFinderPlots(self, offset):
-        px = self.stateStep - 1
-        if px >= 2:
-            px += 1  # skip POI3 (index 2)
+        px = self._current_visible_poi_index()
+        if px < 0 or px >= len(self.poi_markers):
+            return
         if px in range(0, len(self.poi_markers)):
             was_clipped = self.getContextWidth()[1]
             self.zoomLevel = float(self.zoomLevel * offset)
@@ -3216,6 +3216,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
         finally:
             self.prediction_restored = True
 
+    def _current_visible_poi_index(self):
+        px = self.stateStep - 1
+        return px if px < 2 else px + 1  # skip POI3 (index 2)
+
     def check_finished(self):
         if self.prediction_restored:
             # finished, but keep the dialog open to retain `wasCanceled()` state
@@ -3236,14 +3240,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # When stepping, skip index 2
         step_num = self.stateStep + 2
         # Calculate the visible step index, skipping POI3
-        visible_step = self.stateStep
-        if visible_step >= 3:
-            visible_step += 1  # skip POI3 (index 2)
+        visible_step = self._current_visible_poi_index() + 1
         # Only show 5 points to the user
         if step_num < 3 and self.tool_Modify.isChecked():
             self.parent.viewTutorialPage(7)  # analyze (summary)
         elif step_num in range(3, 8 + 1) and self.tool_Modify.isChecked():
-            # Only steps 3,4,5,6,7 (skip 4)
+            # Show 7.1, 7.2, 7.4, 7.5, 7.6 (skip 7.3)
             tutorial_ids = [round(7 + (visible_step) / 10, 2)]
             if visible_step in range(1, 7):
                 tutorial_ids.append(7.7)
@@ -3256,7 +3258,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax2 = self.graphWidget2
         ax3 = self.graphWidget3
         # Only show 5 points (skip POI3)
-        w123 = True if self.stateStep in range(1, 7) else False
+        w123 = True if self.stateStep in range(1, 6) else False
         was_vis = ax1.isVisible()
         self.lowerGraphs.setVisible(w123)
         # if w123 and not was_vis:
@@ -3652,11 +3654,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.poi_markers[self.stateStep - 1].setValue(
                         self.xs[int(cur_idx + 2)]
                     )
-                px = self.stateStep - 1
-                if px >= 2:
-                    px += 1  # skip POI3
-                if px >= len(self.poi_markers):
-                    Log.d("Skipping plotting for hidden point index")
+                px = self._current_visible_poi_index()
+                if px < 0 or px >= len(self.poi_markers):
                     return
                 if (
                     self.poi_markers[px].value()
@@ -3684,11 +3683,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )
             ax.setTitle(None)
             # px is the index in poi_markers, skip POI3 (index 2)
-            px = self.stateStep - 1
-            if px >= 2:
-                px += 1  # skip POI3
-            if px >= len(self.poi_markers):
-                Log.d("Skipping plotting for hidden point index")
+            px = self._current_visible_poi_index()
+            if px < 0 or px >= len(self.poi_markers):
                 return
             tt0 = self.poi_markers[0].value()
             tx0 = next(x for x, y in enumerate(self.xs) if y >= tt0)
@@ -5225,7 +5221,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax3.clear()
 
         self._update_progress_value(
-            1, f"Step 1 of 6: Select Begin and End Points")
+            1, "Step 1 of 6: Select Begin and End Points")
         self.setDotStepMarkers(1)
         ax.setTitle(None)
         ax.addLegend()
