@@ -16,6 +16,24 @@ NvMem::NvMem()
   struct_is_valid = false;
 }
 
+/**
+ * @brief Construct the default NvMem_RAM structure and mark the in-memory NVM as valid.
+ *
+ * Returns an NvMem_RAM populated with the canonical defaults (version, pid, offsets,
+ * hardware revision, Ethernet flag, and POGO position/move-delay defaults).
+ *
+ * The function also sets internal struct_is_valid to true so the defaults may be
+ * saved back to EEPROM. Callers must either call save() followed by load() after
+ * using these defaults, or avoid calling defaults() when they do not intend to
+ * persist/refresh the stored NVM state.
+ *
+ * Note: EEPROM entries filled with 0xFF are treated as "uninitialized"; update()
+ * relies on this convention to initialize new fields. Default values must be chosen
+ * so that 0xFF either represents an invalid enumeration value (forcing a version bump)
+ * or equals the desired default.
+ *
+ * @return NvMem_RAM The initialized defaults ready for serialization/persistence.
+ */
 NvMem_RAM NvMem::defaults(void)
 {
   /// The all b1's value for any entry in EEPROM
@@ -81,6 +99,20 @@ bool NvMem::erase(void)
   return true;
 }
 
+/**
+ * @brief Ensure stored NvMem_RAM fields are populated with sensible defaults.
+ *
+ * Compares the in-memory NvMem_RAM (mem) against the current defaults and updates
+ * any fields that are unset (0xFF) when a valid default exists. Always updates
+ * the version field if it differs from the default.
+ *
+ * Side effects:
+ * - Mutates members of `mem` for each updated field.
+ * - Increments an internal count for each modified field.
+ *
+ * @return byte Number of fields modified. If the NvMem structure is not valid,
+ *               the function returns (byte)-1 (0xFF) to indicate failure.
+ */
 byte NvMem::update(void)
 {
   if (!struct_is_valid)
