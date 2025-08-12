@@ -139,7 +139,8 @@
 #define PIN_EXT_5V_VOLTAGE A16
 
 // Pins for POGO lid servo, button and LED
-#define POGO_SERVO_PIN 7
+#define POGO_SERVO_1_PIN 7
+#define POGO_SERVO_2_PIN 8 // TODO: Not implemented
 #define POGO_BTN_LED_PIN 35
 #define POGO_BUTTON_PIN_N 36  // active low
 
@@ -190,9 +191,12 @@
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
 
 // Accessor macros for NVMEM values
-#define POS_OPENED   (NVMEM.POGO_PosOpened)
-#define POS_CLOSED   (NVMEM.POGO_PosClosed)
-#define POS_INIT     ((POS_OPENED + POS_CLOSED) / 2)
+#define POS_OPENED_1   (NVMEM.POGO_PosOpened1)
+#define POS_CLOSED_1   (NVMEM.POGO_PosClosed1)
+#define POS_INIT_1     ((POS_OPENED_1 + POS_CLOSED_1) / 2)
+#define POS_OPENED_2   (NVMEM.POGO_PosOpened2)
+#define POS_CLOSED_2   (NVMEM.POGO_PosClosed2)
+#define POS_INIT_2     ((POS_OPENED_2 + POS_CLOSED_2) / 2)
 #define MOVE_DELAY   (NVMEM.POGO_MoveDelay)
 
 double freq_factor = 1.0;
@@ -1910,20 +1914,25 @@ void QATCH_loop()
       {
         if (message_str.endsWith("CAL")) {
           // Report stored calibration values to user
-          client->printf("LID CAL %i,%i,%i\n",
-                         POS_OPENED,
-                         POS_CLOSED,
+          client->printf("LID CAL %i,%i,%i,%i,%i\n",
+                         POS_OPENED_1,
+                         POS_CLOSED_1,
+                         POS_OPENED_2,
+                         POS_CLOSED_2,
                          MOVE_DELAY);
         }
         else if (message_str.endsWith("DEFAULT") || message_str.endsWith("RESET"))
         {
           // Reset lid calibration to default values
           client->println("LID CAL DEFAULT");
-          setLidCalibration(DEFAULT_POS_OPENED, DEFAULT_POS_CLOSED, DEFAULT_MOVE_DELAY);
+          setLidCalibration(
+            DEFAULT_POS_OPENED_1, DEFAULT_POS_CLOSED_1, 
+            DEFAULT_POS_OPENED_2, DEFAULT_POS_CLOSED_2, 
+            DEFAULT_MOVE_DELAY);
         }
         else
         {
-          const char *pid[3]; // an array of pointers to the pieces of the above array after strtok()
+          const char *pid[5]; // an array of pointers to the pieces of the above array after strtok()
           char *ptr = NULL;
           byte idx = 0;
           byte num_items = 0;
@@ -1933,14 +1942,20 @@ void QATCH_loop()
             pid[idx] = ptr;
             idx++;
             ptr = strtok(NULL, ",");
-            if (idx >= 3)
+            if (idx >= 5)
               break;
           }
           num_items = idx;
-          while (idx <= 2) // fill any unprovided values with provided values
+          if (num_items == 3) // fill Servo 2 with Servo 1 positions
           {
-            pid[idx] = pid[idx % num_items];
-            idx++;
+            // Remap array so that if goes from this:
+            // [0: opened_1, 1: closed_1, 2: delay]
+            // to this:
+            // [0: opened_1, 1: closed_1, 2: opened_2, 3: closed_2, 4: delay]
+            pid[4] = pid[2]; // move delay first so you don't lose it
+            pid[2] = pid[0]; // copy opened_1 to opened_2
+            pid[3] = pid[1]; // copy closed_1 to closed_2
+            idx = 5;
           }
           if (DEBUG)
           {
@@ -1952,9 +1967,13 @@ void QATCH_loop()
               client->println(pid[n]);
             }
           }
-          setLidCalibration(atoi(pid[0]), atoi(pid[1]), atoi(pid[2]));
+          setLidCalibration(
+            atoi(pid[0]), atoi(pid[1]),
+            atoi(pid[2]), atoi(pid[3]),
+            atoi(pid[4]));
         }
       }
+      return;
     }
 
     if (message_str.startsWith("EEPROM"))
@@ -3421,9 +3440,11 @@ void stopStreaming(void)
 //   return EEPROM_pid;
 // }
 
+// Flag ISR as hit only if not handling a prior press
 FASTRUN void pogo_button_ISR(void)
 {
-  pogo_isr_hit_flag = true;
+  if (!pogo_pressed_flag)
+    pogo_isr_hit_flag = true;
 }
 
 // Handles a pogo button event and lid/LED/servo behavior.
@@ -3431,8 +3452,17 @@ FASTRUN void pogo_button_ISR(void)
 // init=false: handle a real button press (should be called from loop, not ISR).
 void pogo_button_pressed(bool init)
 {
+  // TODO: Handle POGO_SERVO_2_PIN and pogoServo2 write positions in this method
+
   // Validate servo positions are within safe range
-  if (POS_OPENED < 0 || POS_OPENED > 180 || POS_CLOSED < 0 || POS_CLOSED > 180) {
+  if (POS_OPENED_1 == POS_CLOSED_1 || 
+      POS_OPENED_1 < 0 || POS_OPENED_1 > 180 || 
+      POS_CLOSED_1 < 0 || POS_CLOSED_1 > 180 ||
+      POS_OPENED_2 == POS_CLOSED_2 || 
+      POS_OPENED_2 < 0 || POS_OPENED_2 > 180 || 
+      POS_CLOSED_2 < 0 || POS_CLOSED_2 > 180 ||
+      abs(POS_CLOSED_1-POS_OPENED_1) != abs(POS_CLOSED_2-POS_OPENED_2) ||
+      MOVE_DELAY < 0 || MOVE_DELAY > 254) {
     client->println("ERROR: Invalid servo calibration values");
     return;
   }
@@ -3440,47 +3470,73 @@ void pogo_button_pressed(bool init)
   if (init) { // initialize position on startup
     // client->println("Moving lid to INITIAL position");
     digitalWrite(POGO_BTN_LED_PIN, LOW);
-    pogoServo.attach(POGO_SERVO_PIN);
-    for (int pos = POS_INIT; pos >= POS_OPENED; pos -= 1) {
-      pogoServo.write(pos);
-      delay(MOVE_DELAY);
-    }
+    pogoServo.attach(POGO_SERVO_1_PIN);
+    if (POS_INIT_1 > POS_OPENED_1)
+      for (int pos = POS_INIT_1; pos >= POS_OPENED_1; pos -= 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
+    else
+      for (int pos = POS_INIT_1; pos <= POS_OPENED_1; pos += 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
     pogoServo.detach();
   } else if (pogo_lid_opened) {  // open
     // client->println("Moving lid to OPENED position");
     digitalWrite(POGO_BTN_LED_PIN, LOW);
-    pogoServo.attach(POGO_SERVO_PIN);
-    for (int pos = POS_CLOSED; pos >= POS_OPENED; pos -= 1) {
-      pogoServo.write(pos);
-      delay(MOVE_DELAY);
-    }
+    pogoServo.attach(POGO_SERVO_1_PIN);
+    if (POS_CLOSED_1 > POS_OPENED_1)
+      for (int pos = POS_CLOSED_1; pos >= POS_OPENED_1; pos -= 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
+    else
+      for (int pos = POS_CLOSED_1; pos <= POS_OPENED_1; pos += 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
     pogoServo.detach();
   } else {  // close
     // client->println("Moving lid to CLOSED position");
     digitalWrite(POGO_BTN_LED_PIN, HIGH);
-    pogoServo.attach(POGO_SERVO_PIN);
-    for (int pos = POS_OPENED; pos <= POS_CLOSED; pos += 1) {
-      pogoServo.write(pos);
-      delay(MOVE_DELAY);
-    }
+    pogoServo.attach(POGO_SERVO_1_PIN);
+    if (POS_OPENED_1 < POS_CLOSED_1)
+      for (int pos = POS_OPENED_1; pos <= POS_CLOSED_1; pos += 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
+    else
+      for (int pos = POS_OPENED_1; pos >= POS_CLOSED_1; pos -= 1) {
+        pogoServo.write(pos);
+        delay(MOVE_DELAY);
+      }
     pogoServo.detach();
   }
 }
 
 // Function to set calibration values at runtime
-void setLidCalibration(byte opened, byte closed, byte delay_ms)
+void setLidCalibration(byte opened_1, byte closed_1, 
+                       byte opened_2, byte closed_2, 
+                       byte delay_ms)
 {
-  if (opened >= closed || 
-      opened < 0  || opened > 180 || 
-      closed < 0 || closed > 180 || 
+  if (opened_1 == closed_1 || 
+      opened_1 < 0  || opened_1 > 180 || 
+      closed_1 < 0 || closed_1 > 180 || 
+      opened_2 == closed_2 ||
+      opened_2 < 0  || opened_2 > 180 || 
+      closed_2 < 0 || closed_2 > 180 ||
+      abs(closed_1-opened_1) != abs(closed_2-opened_2) ||
       delay_ms < 0 || delay_ms > 254)
   {
     client->println("Invalid lid calibration parameters. Not saving.");
     return;
   }
   client->println("Saving lid calibration to EEPROM.");
-  NVMEM.POGO_PosOpened = opened;
-  NVMEM.POGO_PosClosed = closed;
+  NVMEM.POGO_PosOpened1 = opened_1;
+  NVMEM.POGO_PosClosed1 = closed_1;
+  NVMEM.POGO_PosOpened2 = opened_2;
+  NVMEM.POGO_PosClosed2 = closed_2;
   NVMEM.POGO_MoveDelay = delay_ms;
   if (nv.isValid())
     nv.save();
