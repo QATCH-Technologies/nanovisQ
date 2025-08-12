@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor
+from PyQt5.QtWidgets import QDialog, QDialogButtonBox
 
 # Import the OpentronsFlex and related modules
 try:
@@ -1051,107 +1052,342 @@ class OpentronFlexControlPanel(QMainWindow):
                 self.handle_worker_error(
                     f"Failed to delete protocol: {str(e)}")
 
+    class _PipetteLabwareDialog(QDialog):
+        def __init__(self, parent, pipette_options, labware_options, default_pipette=None,
+                     require_well=False, title="Select Pipette & Location", well_placeholder="A1"):
+            super().__init__(parent)
+            self.setWindowTitle(title)
+            self._require_well = require_well
+            lay = QVBoxLayout(self)
+
+            form = QFormLayout()
+            self.pipette_combo = QComboBox()
+            self.pipette_combo.addItems(pipette_options)
+            if default_pipette in pipette_options:
+                self.pipette_combo.setCurrentText(default_pipette)
+            form.addRow("Pipette:", self.pipette_combo)
+
+            self.labware_combo = QComboBox()
+            self.labware_combo.addItems(labware_options)
+            form.addRow("Deck Position:", self.labware_combo)
+
+            self.well_edit = QLineEdit()
+            self.well_edit.setPlaceholderText(well_placeholder)
+            self.well_edit.setEnabled(require_well)
+            form.addRow("Well (e.g., A1):", self.well_edit)
+
+            lay.addLayout(form)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(self.accept)
+            buttons.rejected.connect(self.reject)
+            lay.addWidget(buttons)
+
+        def values(self):
+            pipette = self.pipette_combo.currentText()
+            deck = self.labware_combo.currentText()
+            well = self.well_edit.text().strip().upper() if self._require_well else None
+            return pipette, deck, well
+
+    def _get_selected_mount_from_manual(self) -> 'MountPositions':
+        side = self.manual_pipette_combo.currentText()
+        if "Left" in side:
+            return MountPositions.LEFT_MOUNT
+        return MountPositions.RIGHT_MOUNT
+
+    def _mount_to_key(self, mount: 'MountPositions') -> str:
+        return "left" if mount == MountPositions.LEFT_MOUNT else "right"
+
+    def _ensure_pipette_loaded(self, mount: 'MountPositions') -> bool:
+        key = self._mount_to_key(mount)
+        if key not in self.loaded_pipettes:
+            QMessageBox.warning(self, "No Pipette",
+                                f"No pipette loaded on the {key} mount.")
+            return False
+        return True
+
+    def _resolve_deck_enum(self, pos_text: str) -> 'DeckLocations':
+        # pos_text like "A1", "B2", etc.
+        try:
+            return getattr(DeckLocations, pos_text)
+        except AttributeError:
+            raise ValueError(
+                f"Deck location '{pos_text}' is not a valid DeckLocations member.")
+
+    def _filter_labware_positions(self, require_tiprack: bool = False) -> list:
+        """Return list of deck positions that currently have labware (optionally only tipracks)."""
+        if not self.loaded_labware:
+            return []
+        if not require_tiprack:
+            return list(self.loaded_labware.keys())
+        # crude filter by name
+        return [pos for pos, name in self.loaded_labware.items()
+                if "TIP" in name.upper() or "TIPRACK" in name.upper() or "TIP RACK" in name.upper()]
+
+    def _prompt_pipette_and_location(self, *, require_tiprack=False, require_well=False,
+                                     title="Select Pipette & Location") -> tuple | None:
+        """Open dialog to select a pipette (left/right) and a deck position (+ optional well)."""
+        if not self.loaded_pipettes:
+            QMessageBox.warning(self, "No Pipettes",
+                                "Load a pipette first (left or right).")
+            return None
+
+        lab_positions = self._filter_labware_positions(
+            require_tiprack=require_tiprack)
+        if not lab_positions:
+            msg = "Load a tip rack on the deck." if require_tiprack else "Load labware on the deck."
+            QMessageBox.warning(self, "No Labware", msg)
+            return None
+
+        pipette_opts = []
+        if "left" in self.loaded_pipettes:
+            pipette_opts.append("Left Mount")
+        if "right" in self.loaded_pipettes:
+            pipette_opts.append("Right Mount")
+
+        default_pipette = self.manual_pipette_combo.currentText(
+        ) if self.manual_pipette_combo.currentText() in pipette_opts else None
+        dlg = self._PipetteLabwareDialog(self, pipette_opts, lab_positions,
+                                         default_pipette=default_pipette,
+                                         require_well=require_well,
+                                         title=title)
+        if dlg.exec_() != QDialog.Accepted:
+            return None
+
+        pipette_txt, deck_txt, well_txt = dlg.values()
+        mount = MountPositions.LEFT_MOUNT if "Left" in pipette_txt else MountPositions.RIGHT_MOUNT
+
+        try:
+            deck_enum = self._resolve_deck_enum(deck_txt)
+        except Exception as e:
+            QMessageBox.critical(self, "Invalid Deck", str(e))
+            return None
+
+        return mount, deck_enum, well_txt
+
+    def _call_robot_with_optional_well(self, base_name: str, *, deck, mount, well=None, **kwargs):
+        """
+        Call robot method that may or may not have a well-specific variant.
+        Tries '<base>_from_well(deck, mount, well, ...)' then falls back to '<base>(deck, mount, ...)'.
+        """
+        try_names = []
+        if well is not None:
+            try_names.append(f"{base_name}_from_well")
+        try_names.append(base_name)
+
+        last_err = None
+        for name in try_names:
+            func = getattr(self.robot, name, None)
+            if callable(func):
+                try:
+                    if well is not None and name.endswith("_from_well"):
+                        return func(deck, mount, well, **kwargs)
+                    else:
+                        return func(deck, mount, **kwargs)
+                except Exception as e:
+                    last_err = e
+                    continue
+        if last_err:
+            raise last_err
+        raise AttributeError(
+            f"Robot does not implement '{base_name}' or '{base_name}_from_well'.")
+
     def pickup_tip(self):
-        """Pickup tip with selected pipette"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message(
-            "Pickup tip function - needs labware/pipette selection dialog")
+        selection = self._prompt_pipette_and_location(require_tiprack=True, require_well=False,
+                                                      title="Pick Up Tip")
+        if not selection:
+            return
+        mount, deck, _ = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+        try:
+            self.log_message(
+                f"Picking up tip with {self._mount_to_key(mount)} pipette at {deck.name}...")
+            self.robot.pickup_tip(deck, mount)
+            self.log_message("Tip picked up")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to pick up tip: {e}")
 
     def aspirate(self):
-        """Aspirate with selected pipette"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        volume = self.volume_spin.value()
-        flow_rate = self.flow_rate_spin.value()
+        volume = float(self.volume_spin.value())
+        flow_rate = float(self.flow_rate_spin.value())
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message(
-            f"Aspirate {volume}µL at {flow_rate}µL/s - needs labware/pipette selection")
+        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
+                                                      title="Aspirate From Well")
+        if not selection:
+            return
+        mount, deck, well = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+
+        try:
+            self.log_message(f"Aspirating {volume} µL @ {flow_rate} µL/s from {deck.name} {well} "
+                             f"with {self._mount_to_key(mount)} pipette...")
+            self._call_robot_with_optional_well("aspirate", deck=deck, mount=mount,
+                                                well=well, flow_rate=flow_rate, volume=volume)
+            self.log_message("Aspirate complete")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to aspirate: {e}")
 
     def dispense(self):
-        """Dispense with selected pipette"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        volume = self.volume_spin.value()
-        flow_rate = self.flow_rate_spin.value()
+        volume = float(self.volume_spin.value())
+        flow_rate = float(self.flow_rate_spin.value())
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message(
-            f"Dispense {volume}µL at {flow_rate}µL/s - needs labware/pipette selection")
+        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
+                                                      title="Dispense To Well")
+        if not selection:
+            return
+        mount, deck, well = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+
+        try:
+            self.log_message(f"Dispensing {volume} µL @ {flow_rate} µL/s to {deck.name} {well} "
+                             f"with {self._mount_to_key(mount)} pipette...")
+            self._call_robot_with_optional_well("dispense", deck=deck, mount=mount,
+                                                well=well, flow_rate=flow_rate, volume=volume)
+            self.log_message("Dispense complete")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to dispense: {e}")
 
     def blowout(self):
-        """Blowout with selected pipette"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        flow_rate = self.flow_rate_spin.value()
+        flow_rate = float(self.flow_rate_spin.value())
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message(
-            f"Blowout at {flow_rate}µL/s - needs labware/pipette selection")
+        # Blowout can be into a specific well or a general location; we’ll prompt for well to be safe.
+        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
+                                                      title="Blowout To Well")
+        if not selection:
+            return
+        mount, deck, well = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+
+        try:
+            self.log_message(f"Blowout @ {flow_rate} µL/s to {deck.name} {well} "
+                             f"with {self._mount_to_key(mount)} pipette...")
+            # Try well-specific method first; fall back if not available.
+            self._call_robot_with_optional_well("blowout", deck=deck, mount=mount,
+                                                well=well, flow_rate=flow_rate)
+            self.log_message("Blowout complete")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to blowout: {e}")
 
     def drop_tip(self):
-        """Drop tip with selected pipette"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message("Drop tip - needs labware/pipette selection")
+        selection = self._prompt_pipette_and_location(require_tiprack=True, require_well=False,
+                                                      title="Drop Tip")
+        if not selection:
+            return
+        mount, deck, _ = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+
+        try:
+            self.log_message(
+                f"Dropping tip with {self._mount_to_key(mount)} pipette at {deck.name}...")
+            self.robot.drop_tip(deck, mount)
+            self.log_message("Tip dropped")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to drop tip: {e}")
 
     def move_to_well(self):
-        """Move to well"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        # TODO: Implementation would need labware and pipette selection
-        self.log_message("Move to well - needs labware/pipette selection")
+        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
+                                                      title="Move To Well")
+        if not selection:
+            return
+        mount, deck, well = selection
+        if not self._ensure_pipette_loaded(mount):
+            return
+
+        try:
+            # Prefer well-aware signature if available
+            fn = getattr(self.robot, "move_to_well", None)
+            if fn:
+                try:
+                    fn(deck, mount, well)
+                except TypeError:
+                    # try legacy signature without well
+                    fn(deck, mount)
+            else:
+                raise AttributeError("Robot.move_to_well is not implemented.")
+            self.log_message(
+                f"Moved to {deck.name} {well} with {self._mount_to_key(mount)} pipette")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to move to well: {e}")
 
     def move_to_coordinates(self):
-        """Move to specified coordinates"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        x = self.x_spin.value()
-        y = self.y_spin.value()
-        z = self.z_spin.value()
+        x = float(self.x_spin.value())
+        y = float(self.y_spin.value())
+        z = float(self.z_spin.value())
+        mount = self._get_selected_mount_from_manual()
+        if not self._ensure_pipette_loaded(mount):
+            return
 
-        # TODO: Implementation would need pipette selection
-        self.log_message(
-            f"Move to coordinates X:{x}, Y:{y}, Z:{z} - needs pipette selection")
+        min_z_height = 20.0   # safe default to avoid collisions; expose via UI if desired
+        force_direct = False  # default to planner; set True to force straight-line
+
+        fn = getattr(self.robot, 'move_to_coordinate', None)
+        if callable(fn):
+            fn(mount, x, y, z, min_z_height, force_direct)
+            self.log_message(f"Moved to XYZ ({x}, {y}, {z}) with {mount} pipette "
+                             f"[min_z={min_z_height}, direct={force_direct}]")
 
     def move_relative(self):
-        """Move relative distance"""
         if not self.robot:
             QMessageBox.warning(self, "Not Connected",
                                 "Please connect to robot first")
             return
 
-        distance = self.relative_distance_spin.value()
+        distance = float(self.relative_distance_spin.value())
         axis_text = self.axis_combo.currentText()
         axis = getattr(Axis, axis_text)
+        mount = self._get_selected_mount_from_manual()
+        if not self._ensure_pipette_loaded(mount):
+            return
 
-        # TODO: Implementation would need pipette selection
-        self.log_message(
-            f"Move relative {distance}mm on {axis_text} axis - needs pipette selection")
+        try:
+            if hasattr(self.robot, "move_relative"):
+                self.robot.move_relative(mount, axis, distance)
+            else:
+                raise AttributeError("Robot.move_relative is not implemented.")
+            self.log_message(
+                f"Moved {distance} mm along {axis_text} with {self._mount_to_key(mount)} pipette")
+        except Exception as e:
+            self.handle_worker_error(f"Failed to move relatively: {e}")
 
     def play_run(self):
         """Play/start run"""
