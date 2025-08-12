@@ -356,6 +356,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return val  # true if good
 
     def __init__(self, parent=None):
+        """
+        Initialize the AnalyzeProcess GUI widget and internal state.
+        
+        Sets up internal state (workflow step, zoom, paths, model flags, POI markers, batch/run metadata, analyzer thread, and ModelData instance), lazily-initialized model placeholders, window sizing/positioning, the main layouts, toolbars and action buttons (Load, Rescan, Predict, Run Info, Back/Next/Modify/Analyze/Advanced), run/device selectors with completer, signature dialog used at analysis time, progress bar and related progress signals, plotting widgets and splitters (summary and result views), configuration controls (difference factor, channel thickness, custom POIs, prediction model selector, optimizer and drop-effect checkboxes), and connects UI signals to their handlers so the widget is ready for user interaction and background analysis tasks.
+        
+        Parameters:
+            parent (QtWidgets.QWidget | None): Optional parent widget; used as the owner for this AnalyzeProcess instance.
+        """
         super(AnalyzeProcess, self).__init__(None)
         self.parent = parent
         self.stateStep = -1
@@ -2278,6 +2286,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
     '''
 
     def onClick(self, event):
+        """
+        Handle a mouse click by mapping it to the appropriate plot view and moving the currently visible POI marker to the clicked x-coordinate.
+        
+        The handler checks which of the three plot widgets contains the click, converts the scene position to plot coordinates, and — if a valid visible POI index exists — sets that POI marker's value to the clicked x position and emits its sigPositionChangeFinished signal. Clicks outside the plots are ignored; if the computed visible POI index is out of range the call is a no-op.
+        
+        Parameters:
+            event: The mouse event from the plotting widget (provides _scenePos used to map into view coordinates).
+        
+        Side effects:
+            - Updates self.poi_markers at the current visible POI index.
+            - Emits the marker's sigPositionChangeFinished signal.
+        """
         ax1 = self.graphWidget1
         ax2 = self.graphWidget2
         ax3 = self.graphWidget3
@@ -2316,6 +2336,18 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return super().eventFilter(obj, event)
 
     def keyPressEvent(self, event):
+        """
+        Handle keyboard shortcuts for the analysis UI.
+        
+        Maps common keys to navigation and interaction actions:
+        - Enter / Return / Space: trigger the "Next" action if enabled; otherwise trigger "Analyze" if enabled.
+        - Escape: trigger the "Back" action if enabled.
+        - Left / Right arrows: move the currently selected POI marker one step left or right (via moveCurrentMarker).
+        - Up / Down arrows: zoom the finder plots in or out (via zoomFinderPlots) using factors 0.5 (zoom in) and 2.0 (zoom out).
+        
+        Parameters:
+            event (QtGui.QKeyEvent): The key event received by the widget.
+        """
         key = event.key()
         if key in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return, QtCore.Qt.Key_Space]:
             if self.tool_Next.isEnabled():
@@ -2335,6 +2367,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.zoomFinderPlots(2.0)
 
     def moveCurrentMarker(self, offset):
+        """
+        Move the currently visible POI marker by a number of discrete steps along the time/x axis.
+        
+        The method finds the active visible POI (skipping the hidden POI3), computes a step size scaled to the current view width, locates the marker's current index in self.xs, and shifts it by `offset` steps. The new index is clamped to the valid range, the marker value is updated to the corresponding self.xs value, and the marker's finished-move signal is emitted.
+        
+        Parameters:
+            offset (int): Number of steps to move the marker. Positive moves the marker forward (to larger x),
+                negative moves it backward. The raw offset is multiplied by a view-dependent scale factor
+                (max(1, int(getContextWidth()[0] / 50))).
+        
+        Returns:
+            None
+        """
         px = self._current_visible_poi_index()
         if px < 0 or px >= len(self.poi_markers):
             return
@@ -2356,6 +2401,25 @@ class AnalyzeProcess(QtWidgets.QWidget):
             pass
 
     def zoomFinderPlots(self, offset):
+        """
+        Adjust the finder-plot zoom level around the currently visible POI and emit its position-change-finished signal.
+        
+        This method:
+        - Locates the currently visible POI using _current_visible_poi_index(); no action if index is out of range.
+        - Multiplies the internal zoomLevel by `offset` and inspects clipping state before/after via getContextWidth()[1].
+        - If the view was already clipped before and after the change, sets an initial zoom based on the current stateStep and the context width (uses smooth_factor to scale).
+        - If the change caused clipping when previously unclipped, reverts the zoomLevel to its previous value.
+        - Clamps zoomLevel to the range [1/2**5, 2**5] (i.e., [1/32, 32]) and logs warnings when limits are hit.
+        - Emits sigPositionChangeFinished on the selected poi_marker so downstream handlers update.
+        
+        Parameters:
+            offset (float): Multiplicative zoom factor (>1 to zoom in, <1 to zoom out).
+        
+        Side effects:
+            - Modifies self.zoomLevel.
+            - Emits self.poi_markers[px].sigPositionChangeFinished.
+            - Writes log entries via Log.
+        """
         px = self._current_visible_poi_index()
         if px < 0 or px >= len(self.poi_markers):
             return
@@ -2897,6 +2961,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.action_cancel()
 
     def goBack(self):
+        """
+        Move the workflow one step backward in the UI flow, restoring UI state and point editing as needed.
+        
+        Decrements the internal step counter and updates related UI state:
+        - Re-enables the Next button.
+        - If stepping back from step 7, makes all POI markers movable and skips the hidden POI3 step.
+        - If the resulting step would fall before the start, resets to step 0 and restores saved model predictions.
+        - Otherwise, clears the moved-markers flags and refreshes POI positions by calling getPoints().
+        
+        Side effects:
+        - Mutates self.stateStep, self.moved_markers.
+        - Calls self._restore_qmodel_predictions() when resetting to step 0.
+        - Calls self.getPoints() to refresh marker positions.
+        - Updates marker movability via self.poi_markers.
+        """
         self.btn_Next.setEnabled(True)
         if self.stateStep == 7:
             for marker in self.poi_markers:
@@ -2952,6 +3031,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
         return [ws, clipped]
 
     def _restore_qmodel_predictions(self):
+        """
+        Restore or re-run automatic POI predictions using available model backends (QModel v3, QModel v2, ModelData) and update the UI markers.
+        
+        Attempts model-based prediction in this order:
+        1. QModel v3 (if enabled)
+        2. QModel v2 (if enabled)
+        3. ModelData (if enabled)
+        
+        Behavior and side effects:
+        - Prompts the user before overwriting any manual points; if no run is loaded or the user declines, the operation aborts (no changes).
+        - Shows a modal progress dialog and polls check_finished while predictions run.
+        - Updates instance fields based on results: prediction_restored (flag), model_result, model_candidates, model_engine, model_run_this_load, and model_select (when applicable).
+        - If predictions succeed and six POI markers exist, moves each marker to the predicted X positions, logs model confidences, and marks the UI as changed (detect_change()).
+        - If prediction fails, leaves existing points unchanged and logs warnings/errors.
+        - All exceptions are caught and logged; the method does not propagate exceptions to callers.
+        
+        No return value.
+        """
         try:
             if self.model_engine == "None":
                 # no run is loaded
@@ -3217,16 +3314,50 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.prediction_restored = True
 
     def _current_visible_poi_index(self):
+        """
+        Return the internal POI index corresponding to the currently visible POI step.
+        
+        Maps the widget's stateStep (1-based visible step counter) to the internal zero-based POI index while skipping the hidden POI at internal index 2. Uses self.stateStep to compute the mapping:
+        - For visible steps that map to internal indices 0 or 1, returns stateStep - 1.
+        - For visible steps at or beyond the hidden POI, returns (stateStep - 1) + 1 to skip internal index 2.
+        
+        Returns:
+            int: zero-based internal POI index corresponding to the current visible step.
+        """
         px = self.stateStep - 1
         return px if px < 2 else px + 1  # skip POI3 (index 2)
 
     def check_finished(self):
+        """
+        Hide the progress bar and stop the timer when a prediction has been restored.
+        
+        This method checks whether prediction restoration completed (self.prediction_restored). If true, it hides the progress bar dialog (so the UI no longer shows progress) and stops the associated timer. The surrounding dialog is intentionally left open so callers can still query its cancellation state (e.g., `wasCanceled()`).
+        """
         if self.prediction_restored:
             # finished, but keep the dialog open to retain `wasCanceled()` state
             self.progressBarDiag.hide()
             self.timer.stop()
 
     def getPoints(self):
+        """
+        Advance the UI to the next point-selection or summary step, update plot views and markers, and start analysis when appropriate.
+        
+        This method:
+        - Moves the internal workflow forward (increments self.stateStep), mapping the hidden POI3 into the visible-step flow so users interact with five visible POIs (POI1, POI2, POI4, POI5, POI6).
+        - Updates tutorial pages based on the current modify state and visible step.
+        - Adjusts which plot panes are visible, sets plot ranges and y-limits for the main and lower graphs, and updates marker visibility, movability, and highlight stars/gstars for the current step.
+        - Attempts to auto-populate POI markers from available predictors in this order: QModel v3, QModel v2, ModelData (when enabled by constants); falls back to sensible default positions if model predictions are missing or invalid.
+        - Ensures POI markers are sorted and inserts missing markers (creating six internal markers with index 2 kept hidden), and tracks moved_markers to control when model updates are applied.
+        - On the final summary/analysis transition, validates signatures if required, persists changed POIs to XML/audit when necessary, and spawns an AnalyzerWorker thread to run the background analysis and export results.
+        - Handles edge cases such as out-of-range slices, missing channels (skips to next step), and prevents duplicate analysis launches.
+        
+        Side effects:
+        - Mutates UI state (buttons, graphStack, progress), marker collection (self.poi_markers), model-related attributes (self.model_result, self.model_candidates, self.model_engine), and persistence (appends points/audit to XML when unsaved changes exist).
+        - May start background analysis (creates AnalyzerWorker and a QThread).
+        - Logs warnings/errors when model prediction or marker sorting fails.
+        
+        No return value.
+        """
         self.graphStack.setCurrentIndex(0)
         self.btn_Back.setEnabled(True)
         if not self.stateStep == 7:
@@ -3977,6 +4108,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
     def gotoStepNum(self, obj, step_num=1):
 
+        """
+        Navigate the analysis workflow to the target step indicated by a clicked step-dot or the optional step_num.
+        
+        This method:
+        - Detects which step-dot (visual progress dots) the user is hovering/clicking and overrides the supplied step_num when applicable.
+        - Enforces modification mode: if modifications are disallowed and the user attempts to jump before final steps, it opens the modify flow and aborts (that flow will re-call this method).
+        - Sets internal step_direction ("forwards" or "backwards") based on the requested step.
+        - Handles the special "Finished" dot (step_num == 10): marks progress as finished, updates UI visibility, and sets the internal step to the final analysis view.
+        - Validates prerequisites before jumping: an XML run must be loaded (xml_path) and, for most jumps, at least three POI markers must be present (poi_markers). If prerequisites are missing, a warning is logged.
+        - When valid and not the special finished case, updates stateStep and advances point selection via getPoints(), then refreshes available UI controls via enable_buttons().
+        - Has a special-case allowing advancing from step 2 by emitting the Next button click when POIs are missing but the user clicked the dot.
+        
+        Parameters:
+        - obj: the event/source object that invoked the action (unused except as the conventional slot signature).
+        - step_num (int, optional): fallback target step index (1-based). If a progress dot is under the mouse, that dot's index overrides this value.
+        
+        Side effects:
+        - Mutates self.stateStep and self.step_direction.
+        - Updates progressBar, UI widgets visibility and enabled state.
+        - May call self.action_modify(), self._restore_qmodel_predictions(), self.getPoints(), and self.enable_buttons().
+        """
         dots = [
             self.dot1,
             self.dot2,
@@ -4456,6 +4608,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def Analyze_Data(self, data_path):
 
         # lazy load scipy modules
+        """
+        Load a CSV run, compute smoothed frequency/dissipation/difference curves, run optional prediction models, and prepare the UI for point-of-interest selection and summary.
+        
+        This method parses the provided data file, removes timestamp jumps, computes baseline-corrected resonance, dissipation, and difference traces (with multiple Savitzky–Golay smoothing passes), estimates run start/stop and other heuristics, and—when configured—invokes partial-fill and/or prediction models (QModel v2/v3, ModelData) to populate candidate POIs. It then constructs interactive POI markers on the main plot, stores derived arrays (xs, ys, ys_freq, ys_diff, fits, derivatives, etc.) on the instance, updates analysis state (e.g., stateStep, model_result, model_candidates, parent.num_channels), and updates the UI plots and progress indicators so the user can confirm or edit points before running the full analysis.
+        
+        Parameters:
+            data_path (str): Path to the CSV data file for the run. The method also looks for a corresponding XML (same basename + .xml) when POIs or run parameters are required.
+        
+        Side effects:
+            - Mutates many instance attributes used by the UI and analysis pipeline (e.g., self.xs, self.ys, self.ys_freq, self.ys_diff, self.ys_fit, self.ys_freq_fit, self.ys_diff_fit, self.ys_diss_2ndd, self.poi_markers, self.stateStep, self.model_result, self.model_candidates, self.model_engine, self.parent.num_channels, etc.).
+            - Updates plots (graphWidget and subplots), progress bar, and other UI controls.
+            - May run prediction models which can be time-consuming; failures are logged and the method falls back to manual point selection.
+            - Does not raise on internal errors; exceptions are logged and the function attempts to create minimal fallback data for manual selection.
+        """
         from scipy.signal import argrelextrema
         from scipy.signal import savgol_filter
 
