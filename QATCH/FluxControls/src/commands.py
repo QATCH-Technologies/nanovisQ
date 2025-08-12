@@ -1,4 +1,3 @@
-
 """
 commands.py
 
@@ -20,11 +19,19 @@ Date:
 Version:
     1.0
 """
+
 import json
 import requests
 
 try:
-    from src.constants import CommandType, Intents, Axis, DeckLocations, SlotName, HEADERS
+    from src.constants import (
+        CommandType,
+        Intents,
+        Axis,
+        DeckLocations,
+        SlotName,
+        HEADERS,
+    )
     from src.pipette import Pipette
     from src.labware import Labware
 
@@ -38,14 +45,30 @@ try:
             w: Warning-level log.
             e: Error-level log.
         """
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
-        def i(tag, msg=""): print("INFO:", tag, msg)
-        def w(tag, msg=""): print("WARNING:", tag, msg)
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
     Log.i("Running FluxControls as standalone app")
 
 except (ImportError, ModuleNotFoundError):
-    from QATCH.FluxControls.src.constants import CommandType, Intents, Axis, DeckLocations, SlotName, HEADERS
+    from QATCH.FluxControls.src.constants import (
+        CommandType,
+        Intents,
+        Axis,
+        DeckLocations,
+        SlotName,
+        HEADERS,
+    )
     from QATCH.FluxControls.src.pipette import Pipette
     from QATCH.FluxControls.src.labware import Labware
     from QATCH.common.logger import Logger as Log
@@ -57,7 +80,9 @@ class Commands:
     """
 
     @staticmethod
-    def _create_base_command(command_type: CommandType, params: dict, intents: Intents) -> dict:
+    def _create_base_command(
+        command_type: CommandType, params: dict, intents: Intents
+    ) -> dict:
         """
         Build the base command dictionary with common data fields.
 
@@ -73,12 +98,14 @@ class Commands:
             "data": {
                 "commandType": command_type.value,
                 "params": params,
-                "intent": intents.value
+                "intent": intents.value,
             }
         }
 
     @staticmethod
-    def load_labware(location: DeckLocations, load_name: str, name_space: str, version: int) -> dict:
+    def load_labware(
+        location: DeckLocations, load_name: str, name_space: str, version: int
+    ) -> dict:
         """
         Construct a command to load labware into a specified deck slot.
 
@@ -95,7 +122,7 @@ class Commands:
             "location": SlotName.get_slot_name(location),
             "loadName": load_name,
             "namespace": name_space,
-            "version": version
+            "version": version,
         }
         return Commands._create_base_command(
             CommandType.LOAD_LABWARE, params, Intents.SETUP
@@ -136,14 +163,16 @@ class Commands:
             "labwareId": labware.id,
             "wellName": labware.location,
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.PICKUP_TIP, params, Intents.SETUP
         )
 
     @staticmethod
-    def aspirate(labware: Labware, pipette: Pipette, flow_rate: float, volume: float) -> dict:
+    def aspirate(
+        labware: Labware, pipette: Pipette, flow_rate: float, volume: float
+    ) -> dict:
         """
         Construct a command for the pipette to aspirate liquid from a well.
 
@@ -162,14 +191,16 @@ class Commands:
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
             "flowRate": flow_rate,
             "volume": volume,
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.ASPIRATE, params, Intents.SETUP
         )
 
     @staticmethod
-    def dispense(labware: Labware, pipette: Pipette, flow_rate: float, volume: float) -> dict:
+    def dispense(
+        labware: Labware, pipette: Pipette, flow_rate: float, volume: float
+    ) -> dict:
         """
         Construct a command for the pipette to dispense liquid into a well.
 
@@ -188,7 +219,7 @@ class Commands:
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
             "flowRate": flow_rate,
             "volume": volume,
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.DISPENSE, params, Intents.SETUP
@@ -212,11 +243,9 @@ class Commands:
             "wellName": labware.location,
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
             "flowRate": flow_rate,
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
-        return Commands._create_base_command(
-            CommandType.BLOWOUT, params, Intents.SETUP
-        )
+        return Commands._create_base_command(CommandType.BLOWOUT, params, Intents.SETUP)
 
     @staticmethod
     def drop_tip(labware: Labware, pipette: Pipette) -> dict:
@@ -234,7 +263,7 @@ class Commands:
             "labwareId": labware.id,
             "wellName": labware.location,
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.DROP_TIP, params, Intents.SETUP
@@ -256,15 +285,21 @@ class Commands:
             "labwareId": labware.id,
             "wellName": labware.location,
             "wellLocation": {"origin": "top", "offset": labware.get_offsets()},
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.MOVE_TO_WELL, params, Intents.SETUP
         )
 
     @staticmethod
-    def move_to_coordinates(pipette: Pipette, x: float, y: float, z: float,
-                            min_z_height: float, force_direct: bool) -> dict:
+    def move_to_coordinates(
+        pipette: Pipette,
+        x: float,
+        y: float,
+        z: float,
+        min_z_height: float,
+        force_direct: bool,
+    ) -> dict:
         """
         Construct a command to move the pipette to absolute X/Y/Z coordinates.
 
@@ -283,7 +318,7 @@ class Commands:
             "coordinates": {"x": x, "y": y, "z": z},
             "minimumZHeight": min_z_height,
             "forceDirect": force_direct,
-            "pipetteId": pipette.id
+            "pipetteId": pipette.id,
         }
         return Commands._create_base_command(
             CommandType.MOVE_TO_WELL, params, Intents.SETUP
@@ -302,11 +337,7 @@ class Commands:
         Returns:
             dict: Payload for the MOVE_TO_WELL command (relative move).
         """
-        params = {
-            "axis": axis.value,
-            "distance": distance,
-            "pipetteId": pipette.id
-        }
+        params = {"axis": axis.value, "distance": distance, "pipetteId": pipette.id}
         return Commands._create_base_command(
             CommandType.MOVE_TO_WELL, params, Intents.SETUP
         )
@@ -329,8 +360,7 @@ class Commands:
         headers.update(HEADERS)
 
         try:
-            response = requests.post(
-                command_url, headers=headers, data=payload)
+            response = requests.post(command_url, headers=headers, data=payload)
             response.raise_for_status()
             return response.json()
         except Exception as e:

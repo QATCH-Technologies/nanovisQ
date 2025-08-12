@@ -1,4 +1,3 @@
-
 import os
 import re
 from typing import Union
@@ -22,10 +21,18 @@ try:
     from src.standard_labware import StandardLabware
 
     class Log:
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
-        def i(tag, msg=""): print("INFO:", tag, msg)
-        def w(tag, msg=""): print("WARNING:", tag, msg)
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
     Log.i(print("Running FluxControls as standalone app"))
 except (ImportError, ModuleNotFoundError):
     from QATCH.FluxControls.src.pipette import Pipette
@@ -91,9 +98,7 @@ class OpentronsFlex:
         Returns:
             None
         """
-        Log.i(
-            "Initializing OpentronsFlex with MAC: %s", self._get_robot_mac_address()
-        )
+        Log.i(f"Initializing OpentronsFlex with MAC: {self._get_robot_mac_address()}")
         self.available_protocols = {}
         self.gantry = {
             MountPositions.LEFT_MOUNT: None,
@@ -104,14 +109,16 @@ class OpentronsFlex:
             ip = self.find_ip()
 
         self._set_robot_ipv4(ip)
-        Log.i(
-            f"Running flex at IPv4: {self._get_robot_ipv4()}:{HTTP_PORT}")
+        Log.i(f"Running flex at IPv4: {self._get_robot_ipv4()}:{HTTP_PORT}")
         self._set_base_url(f"http://{self._get_robot_ipv4()}:{HTTP_PORT}")
         self._set_runs_url(f"{self._get_base_url()}/runs")
         self._set_protocols_url(f"{self._get_base_url()}/protocols")
         self.update_available_protocols()
         self._set_lights_url(f"{self._get_base_url()}/robot/lights")
         self._set_home_url(f"{self._get_base_url()}/robot/home")
+        self._set_command_url(
+            f"{self._get_base_url()}/robot/{self.get_run_list()[0].get('id')}/commands"
+        )
         self.lights_on()
         self.available_labware = {
             DeckLocations.A1: None,
@@ -131,7 +138,7 @@ class OpentronsFlex:
             DeckLocations.D3: None,
             DeckLocations.D4: None,
         }
-        Log.d("Setup complete. Base URL: %s", self._get_base_url())
+        Log.d(f"Setup complete. Base URL: {self._get_base_url()}")
 
     def load_pipette(self, pipette: Pipettes, position: MountPositions) -> None:
         """
@@ -149,9 +156,7 @@ class OpentronsFlex:
         Returns:
             None
         """
-        Log.i(
-            "Loading pipette: %s at position: %s", pipette.value, position.value
-        )
+        Log.i(f"Loading pipette: {pipette.value} at position: {position.value}")
         new_pipette = Pipette(pipette=pipette, mount_position=position)
 
         if position is MountPositions.LEFT_MOUNT:
@@ -162,7 +167,7 @@ class OpentronsFlex:
             )
             pipette_id = response["data"]["result"]["pipetteId"]
             new_pipette.id = pipette_id
-            Log.d("Left pipette loaded with ID: %s", pipette_id)
+            Log.d(f"Left pipette loaded with ID: {pipette_id}")
 
         if position is MountPositions.RIGHT_MOUNT:
             self._set_right_pipette(new_pipette)
@@ -172,7 +177,7 @@ class OpentronsFlex:
             )
             pipette_id = response["data"]["result"]["pipetteId"]
             new_pipette.id = pipette_id
-            Log.d("Right pipette loaded with ID: %s", pipette_id)
+            Log.d(f"Right pipette loaded with ID: {pipette_id}")
 
     def load_labware(
         self,
@@ -198,15 +203,11 @@ class OpentronsFlex:
             None
         """
         Log.i(
-            "Loading labware at location: %s from definition: %s",
-            location.value,
-            labware_definition,
+            f"Loading labware at location: {location.value} from definition: {labware_definition}"
         )
-        labware = Labware(
-            location=location, labware_definition=labware_definition)
+        labware = Labware(location=location, labware_definition=labware_definition)
         if self.available_labware.get(location) is not None:
-            Log.e(
-                "Labware already loaded at location: %s", location.value)
+            Log.e(f"Labware already loaded at location: {location.value}")
             raise Exception(
                 f"Labware {labware.display_name} not available in slot {labware.location.value}."
             )
@@ -221,7 +222,7 @@ class OpentronsFlex:
             command_url=self._get_command_url(), command_dict=payload
         )
         labware.id = response["data"]["result"]["labwareId"]
-        Log.d("Labware loaded with ID: %s", labware.get_id())
+        Log.d(f"Labware loaded with ID: {labware.id}")
 
     def pickup_tip(self, labware: Labware, pipette: Pipette) -> str:
         """
@@ -244,15 +245,12 @@ class OpentronsFlex:
                 success message or status.
         """
         Log.i(
-            "Picking up tip from labware: %s with pipette: %s",
-            labware.display_name,
-            pipette.id,
+            f"Picking up tip from labware: {labware.display_name} with pipette: {pipette.id}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         if not labware.is_tiprack:
             Log.e(
-                "Attempt to pick up tip from non-tiprack labware: %s",
-                labware.display_name,
+                f"Attempt to pick up tip from non-tiprack labware: {labware.display_name}"
             )
             raise Exception(
                 f"Cannot pickup tip from non-tiprack labware {labware.display_name}"
@@ -261,7 +259,7 @@ class OpentronsFlex:
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Tip pickup successful. Response: %s", response)
+        Log.d(f"Tip pickup successful. Response: {response}")
         return response
 
     def aspirate(
@@ -292,11 +290,7 @@ class OpentronsFlex:
             Exception: If the configuration of the labware or pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Aspirating %s µL at flow rate: %s from labware: %s using pipette: %s",
-            volume,
-            flow_rate,
-            labware.display_name,
-            pipette.id,
+            f"Aspirating {volume} µL at flow rate: {flow_rate} from labware: {labware.display_name} using pipette: {pipette.id}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
 
@@ -306,7 +300,7 @@ class OpentronsFlex:
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Aspirate successful. Response: %s", response)
+        Log.d(f"Aspirate successful. Response: {response}")
         return response
 
     def dispense(
@@ -317,11 +311,7 @@ class OpentronsFlex:
         volume: float,
     ) -> str:
         Log.i(
-            "Aspirating %s µL at flow rate: %s from labware: %s using pipette: %s",
-            volume,
-            flow_rate,
-            labware.display_name,
-            pipette.id,
+            f"Aspirating {volume} µL at flow rate: {flow_rate} from labware: {labware.display_name} using pipette: {pipette.id}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.dispense(
@@ -330,12 +320,10 @@ class OpentronsFlex:
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Dispense successful. Response: %s", response)
+        Log.d(f"Dispense successful. Response: {response}")
         return response
 
-    def blowout(
-        self, labware: Labware, pipette: Pipette, flow_rate: float
-    ) -> str:
+    def blowout(self, labware: Labware, pipette: Pipette, flow_rate: float) -> str:
         """
         Dispenses a specified volume of liquid into labware using the provided pipette and flow rate.
 
@@ -357,10 +345,7 @@ class OpentronsFlex:
             Exception: If the configuration of the labware or pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Blowing out tips at flow rate: %s from labware: %s using pipette: %s",
-            flow_rate,
-            labware.display_name,
-            pipette.id,
+            f"Blowing out tips at flow rate: {flow_rate} from labware: {labware.display_name} using pipette: {pipette.id}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.blowout(
@@ -369,7 +354,7 @@ class OpentronsFlex:
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Blowout successful. Response: %s", response)
+        Log.d(f"Blowout successful. Response: {response}")
         return response
 
     def drop_tip(self, labware: Labware, pipette: Pipette):
@@ -393,16 +378,14 @@ class OpentronsFlex:
             Exception: If the configuration of the labware or pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Dropting tip from pipette %s at location %s",
-            pipette.id,
-            labware.display_name,
+            f"Dropting tip from pipette {pipette.id} at location {labware.display_name}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.drop_tip(labware=labware, pipette=pipette)
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Drop successful. Response: %s", response)
+        Log.d(f"Drop successful. Response: {response}")
         return response
 
     def move_to_coordiantes(
@@ -439,13 +422,7 @@ class OpentronsFlex:
             Exception: If the configuration of the pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Moving pipette %s to coordinates (X, Y, Z, Z-Lmit): %f, %f, %f, %f, force-direct=%s",
-            pipette.id,
-            x,
-            y,
-            z,
-            min_z_height,
-            force_direct,
+            f"Moving pipette {pipette.id} to coordinates (X, Y, Z, Z-Lmit): {x}, {y}, {z}, {min_z_height}, force-direct={force_direct}"
         )
         self.validate_configuration(labware=None, pipette=pipette)
         payload = Commands.move_to_coordinates(
@@ -459,7 +436,7 @@ class OpentronsFlex:
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Move to coordinates successful. Response: %s", response)
+        Log.d(f"Move to coordinates successful. Response: {response}")
         return response
 
     def move_to_well(self, labware: Labware, pipette: Pipette):
@@ -481,17 +458,14 @@ class OpentronsFlex:
             Exception: If the configuration of the labware or pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Moving pipette %s to labware %s at well location %s",
-            pipette.id,
-            labware.display_name,
-            labware.location.value,
+            f"Moving pipette {pipette.id} to labware {labware.display_name} at well location {labware.location.value}"
         )
         self.validate_configuration(labware=labware, pipette=pipette)
         payload = Commands.move_to_well(labware=labware, pipette=pipette)
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Move to well successful. Response: %s", response)
+        Log.d(f"Move to well successful. Response: {response}")
         return response
 
     def move_relative(self, pipette: Pipette, distance: float, axis: Axis):
@@ -514,19 +488,14 @@ class OpentronsFlex:
             Exception: If the configuration of the pipette is invalid (via `validate_configuration`).
         """
         Log.i(
-            "Relative move of pipette %s %fmm along %s axis",
-            pipette.id,
-            distance,
-            axis.value,
+            f"Relative move of pipette {pipette.id} {distance}mm along {axis.value} axis"
         )
         self.validate_configuration(pipette=pipette)
-        payload = Commands.move_relative(
-            pipette=pipette, distance=distance, axis=axis
-        )
+        payload = Commands.move_relative(pipette=pipette, distance=distance, axis=axis)
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
-        Log.d("Relative move successful. Response: %s", response)
+        Log.d(f"Relative move successful. Response: {response}")
         return response
 
     def run_protocol(self, protocol_name: str) -> str:
@@ -553,9 +522,7 @@ class OpentronsFlex:
             Log.e(f"Protocol '{protocol_name}' not available.")
             raise ValueError(f"Protocol '{protocol_name}' not available.")
         protocol_id = protocol.get("id")
-        Log.i(
-            f"Setting up '{protocol_name}' protocol for run with ID: {protocol_id}"
-        )
+        Log.i(f"Setting up '{protocol_name}' protocol for run with ID: {protocol_id}")
         try:
             run_id = Runs.run_protocol(
                 runs_url=self._get_runs_url(), protocol_id=protocol_id
@@ -564,9 +531,7 @@ class OpentronsFlex:
             Log.i(f"Protocol {protocol_id} running under {run_id}. ")
             return response["data"]["id"]
         except Exception as e:
-            Log.e(
-                f"Failed to run protocol with ID {protocol_id}: {e}"
-            )
+            Log.e(f"Failed to run protocol with ID {protocol_id}: {e}")
             raise
 
     def delete_protocol(self, protocol_name: str) -> str:
@@ -593,8 +558,7 @@ class OpentronsFlex:
             Log.e(f"Protocol '{protocol_name}' not available.")
             raise ValueError(f"Protocol '{protocol_name}' not available.")
         protocol_id = protocol.get("id")
-        Log.i(
-            f"Deleting '{protocol_name}' protocol with ID: {protocol_id}")
+        Log.i(f"Deleting '{protocol_name}' protocol with ID: {protocol_id}")
         try:
             response = Runs.delete_protocol(
                 protocols_url=self._get_protocols_url(), protocol_id=protocol_id
@@ -603,9 +567,7 @@ class OpentronsFlex:
             Log.i(f"Protocol {protocol_id} deleted successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to delete protocol with ID {protocol_id}: {e}"
-            )
+            Log.e(f"Failed to delete protocol with ID {protocol_id}: {e}")
             raise
 
     def upload_protocol(self, protocol_file_path: str) -> str:
@@ -629,10 +591,8 @@ class OpentronsFlex:
         """
         Log.i(f"Uploading protocol from file: {protocol_file_path}")
         if not os.path.exists(protocol_file_path):
-            Log.e(
-                f"Protocol file path does not exist: {protocol_file_path}")
-            raise Exception(
-                f"Protocol path {protocol_file_path} does not exist")
+            Log.e(f"Protocol file path does not exist: {protocol_file_path}")
+            raise Exception(f"Protocol path {protocol_file_path} does not exist")
 
         try:
             response = Runs.upload_protocol(
@@ -643,10 +603,7 @@ class OpentronsFlex:
             Log.i("Protocol uploaded successfully.")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to upload protocol from file {protocol_file_path}: {e}",
-                exc_info=True,
-            )
+            Log.e(f"Failed to upload protocol from file {protocol_file_path}: {e}")
             raise
 
     def upload_protocol_custom_labware(
@@ -676,16 +633,12 @@ class OpentronsFlex:
 
         # Check if protocol file and all custom labware files exist
         if not os.path.exists(protocol_file_path):
-            Log.e(
-                f"Protocol file path does not exist: {protocol_file_path}")
-            raise Exception(
-                f"Protocol file path does not exist: {protocol_file_path}")
+            Log.e(f"Protocol file path does not exist: {protocol_file_path}")
+            raise Exception(f"Protocol file path does not exist: {protocol_file_path}")
 
         for labware_file_path in custom_labware_file_paths:
             if not os.path.exists(labware_file_path):
-                Log.e(
-                    f"Custom labware file path does not exist: {labware_file_path}"
-                )
+                Log.e(f"Custom labware file path does not exist: {labware_file_path}")
                 raise Exception(
                     f"Custom labware file path does not exist: {labware_file_path}"
                 )
@@ -694,16 +647,14 @@ class OpentronsFlex:
             response = Runs.upload_protocol_custom_labware(
                 protocols_url=self._get_protocols_url(),
                 protocol_file_path=protocol_file_path,
-                labware_file_paths=list(
-                    custom_labware_file_paths),  # Updated parameter
+                labware_file_paths=list(custom_labware_file_paths),  # Updated parameter
             )
             self.update_available_protocols()
             Log.i("Protocol uploaded with custom labware successfully.")
             return response
         except Exception as e:
             Log.e(
-                f"Failed to upload protocol from file {protocol_file_path} with custom labware from files {', '.join(custom_labware_file_paths)}: {e}",
-                exc_info=True,
+                f"Failed to upload protocol from file {protocol_file_path} with custom labware from files {', '.join(custom_labware_file_paths)}: {e}"
             )
             raise
 
@@ -723,9 +674,7 @@ class OpentronsFlex:
         """
         Log.i("Fetching protocol list.")
         try:
-            response = Runs.get_protocols_list(
-                protocols_url=self._get_protocols_url()
-            )
+            response = Runs.get_protocols_list(protocols_url=self._get_protocols_url())
             Log.i(f"Retrieved protocol list successfully")
             return response
         except Exception as e:
@@ -774,8 +723,7 @@ class OpentronsFlex:
                     }
 
         # Extract only protocol names and their corresponding IDs
-        result = {name: data["id"]
-                  for name, data in self.available_protocols.items()}
+        result = {name: data["id"] for name, data in self.available_protocols.items()}
 
         return result
 
@@ -798,13 +746,11 @@ class OpentronsFlex:
         """
         Log.i(f"Deleting run with ID: {run_id}")
         try:
-            response = Runs.delete_run(
-                runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.delete_run(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} deleted successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to delete run with ID {run_id}: {e}")
+            Log.e(f"Failed to delete run with ID {run_id}: {e}")
             raise
 
     def get_run_status(self, run_id: str) -> str:
@@ -826,15 +772,11 @@ class OpentronsFlex:
         """
         Log.i(f"Fetching status for run ID: {run_id}")
         try:
-            response = Runs.get_run_status(
-                runs_url=self._get_runs_url(), run_id=run_id
-            )
+            response = Runs.get_run_status(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Status for run {run_id} retrieved successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to fetch status for run ID {run_id}: {e}"
-            )
+            Log.e(f"Failed to fetch status for run ID {run_id}: {e}")
             raise
 
     def get_run_list(self) -> str:
@@ -879,13 +821,11 @@ class OpentronsFlex:
         """
         Log.i(f"Pausing run with ID: {run_id}")
         try:
-            response = Runs.pause_run(
-                runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.pause_run(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} paused successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to pause run with ID {run_id}: {e}")
+            Log.e(f"Failed to pause run with ID {run_id}: {e}")
             raise
 
     def play_run(self, run_id: int) -> str:
@@ -907,13 +847,11 @@ class OpentronsFlex:
         """
         Log.i(f"Playing run with ID: {run_id}")
         try:
-            response = Runs.play_run(
-                runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.play_run(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} started successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to play run with ID {run_id}: {e}")
+            Log.e(f"Failed to play run with ID {run_id}: {e}")
             raise
 
     def stop_run(self, run_id: str) -> str:
@@ -935,13 +873,11 @@ class OpentronsFlex:
         """
         Log.i(f"Stopping run with ID: {run_id}")
         try:
-            response = Runs.stop_run(
-                runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.stop_run(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} stopped successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to stop run with ID {run_id}: {e}")
+            Log.e(f"Failed to stop run with ID {run_id}: {e}")
             raise
 
     def resume_run(self, run_id: str) -> str:
@@ -963,13 +899,11 @@ class OpentronsFlex:
         """
         Log.i(f"Resuming run with ID: {run_id}")
         try:
-            response = Runs.resume_run(
-                runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.resume_run(runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} stopped successfully. ")
             return response
         except Exception as e:
-            Log.e(
-                f"Failed to stop run with ID {run_id}: {e}")
+            Log.e(f"Failed to stop run with ID {run_id}: {e}")
             raise
 
     def lights_on(self) -> str:
@@ -1148,30 +1082,26 @@ class OpentronsFlex:
         Log.i("Validating configuration for labware and pipette.")
 
         try:
-            if (
-                labware is None
-                or self.available_labware.get(labware.get_location()) is None
-            ):
+            if labware is None or self.available_labware.get(labware.location) is None:
                 error_message = (
-                    f"Labware {labware.get_display_name()} not available in slot "
-                    f"{labware.get_location().value}."
+                    f"Labware {labware.display_name} not available in slot "
+                    f"{labware.location.value}."
                 )
                 Log.e(error_message)
                 raise Exception(error_message)
 
             if (
                 pipette is None
-                or self.gantry.get(pipette.get_mount_position()).get_id()
-                != pipette.get_id()
+                or self.gantry.get(pipette.mount_position).id != pipette.id
             ):
-                error_message = f"Pipette {pipette.get_pipette()} not mounted."
+                error_message = f"Pipette {pipette.pipette} not mounted."
                 Log.e(error_message)
                 raise Exception(error_message)
 
             Log.i("Configuration validated successfully.")
 
         except Exception as e:
-            Log.e("Validation failed.")
+            Log.e(f"Validation failed: {e}.")
             raise
 
     def find_ip(self) -> str:
@@ -1213,7 +1143,7 @@ class OpentronsFlex:
         self._home_url = home_url
 
     def _set_command_url(self, command_url: str) -> None:
-        self._comand_url = command_url
+        self._command_url = command_url
 
     def _set_protocols_url(self, protocols_url: str) -> None:
         self._protocols_url = protocols_url
@@ -1241,13 +1171,9 @@ class OpentronsFlex:
             )
             if result.returncode != 0:
                 Log.e(f"Cannot communicate with IP address: {ipv4}")
-                raise ConnectionError(
-                    f"Cannot communicate with IP address: {ipv4}")
+                raise ConnectionError(f"Cannot communicate with IP address: {ipv4}")
         except Exception as e:
-            Log.e(
-                f"Error during communication check for IP address {ipv4}: {e}",
-                exc_info=True,
-            )
+            Log.e(f"Error during communication check for IP address {ipv4}: {e}")
             raise
 
         self._robot_ipv4 = ipv4
@@ -1302,7 +1228,7 @@ class OpentronsFlex:
         return self._base_url
 
     def _get_command_url(self) -> str:
-        return self._comand_url
+        return self._command_url
 
     def _get_protocols_url(self) -> str:
         return self._protocols_url

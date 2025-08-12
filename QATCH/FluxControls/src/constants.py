@@ -24,7 +24,7 @@ Enumerations:
 
 Classes:
 --------
-    FlexSlotName: 
+    FlexSlotName:
         Contains utility methods for retrieving slot names based on deck location.
 
 Author:
@@ -43,9 +43,12 @@ import os
 try:
     from QATCH.common.architecture import Architecture
 except (ModuleNotFoundError, ImportError):
+
     class Architecture:
         def get_path():
             return os.path.join("FluxControls")
+
+
 """str: Default HTTP port for communication."""
 HTTP_PORT = "31950"
 
@@ -54,11 +57,13 @@ HEADERS = {"opentrons-version": "3"}
 
 """str: Name of the device configuration file."""
 DEFAULT_DEV_CONFIG_PATH = os.path.join(
-    Architecture.get_path(), "devices", "device_config.json")
+    Architecture.get_path(), "devices", "device_config.json"
+)
 
 
 class Axis(Enum):
     """Enumeration of axes for device movement."""
+
     X = "x"
     Y = "y"
     Z = "z"
@@ -66,6 +71,7 @@ class Axis(Enum):
 
 class Pipettes(Enum):
     """Enumeration of pipettes supported by the Opentrons Flex device."""
+
     EMPTY = "None"
     P50_SINGLE_FLEX = "p50_single_flex"
     P50_MULTI_FLEX = "p50_multi_flex"
@@ -76,6 +82,7 @@ class Pipettes(Enum):
 
 class FlexStandardTipRacks(Enum):
     """Enumeration of standard tip racks for the device."""
+
     TR_96_50 = "opentrons_flex_96_tiprack_50ul"
     TR_96_200 = "opentrons_flex_96_tiprack_200ul"
     TR_96_300 = "opentrons_96_tiprack_300ul"
@@ -88,6 +95,7 @@ class FlexStandardTipRacks(Enum):
 
 class CommandType(Enum):
     """Enumeration of commands supported by the device."""
+
     LOAD_PIPETTE = "loadPipette"
     LOAD_LABWARE = "loadLabware"
     PICKUP_TIP = "pickUpTip"
@@ -102,12 +110,14 @@ class CommandType(Enum):
 
 class MountPositions(Enum):
     """Enumeration of pipette mount positions."""
+
     LEFT_MOUNT = "left"
     RIGHT_MOUNT = "right"
 
 
 class DeckLocations(Enum):
     """Enumeration of deck locations on the device."""
+
     A1 = "A1"
     A2 = "A2"
     A3 = "A3"
@@ -169,11 +179,13 @@ class SlotName:
 
 class Intents(Enum):
     """Enumeration of high-level intents for device operation."""
+
     SETUP = "setup"
 
 
 class Actions(Enum):
     """Enumeration of operational actions."""
+
     PAUSE = "pause"
     PLAY = "play"
     STOP = "stop"
@@ -182,5 +194,6 @@ class Actions(Enum):
 
 class Lights(Enum):
     """Enumeration of light states."""
+
     ON = {"on": True}
     OFF = {"on": False}

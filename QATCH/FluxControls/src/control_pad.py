@@ -2,10 +2,28 @@ import sys
 from typing import Any
 from enum import Enum
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QGroupBox, QLabel, QLineEdit, QPushButton, QComboBox, QTextEdit,
-    QTabWidget, QTableWidget, QTableWidgetItem, QSpinBox, QDoubleSpinBox, QFileDialog, QMessageBox, QHeaderView,
-    QGridLayout, QListWidget, QFormLayout
+    QApplication,
+    QMainWindow,
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QGroupBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QComboBox,
+    QTextEdit,
+    QTabWidget,
+    QTableWidget,
+    QTableWidgetItem,
+    QSpinBox,
+    QDoubleSpinBox,
+    QFileDialog,
+    QMessageBox,
+    QHeaderView,
+    QGridLayout,
+    QListWidget,
+    QFormLayout,
 )
 from PyQt5.QtCore import QThread, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor
@@ -15,25 +33,43 @@ from PyQt5.QtWidgets import QDialog, QDialogButtonBox
 try:
     from QATCH.FluxControls.src.opentrons_flex import OpentronsFlex
     from QATCH.FluxControls.src.constants import (
-        MountPositions, Pipettes, DeckLocations, Axis
+        MountPositions,
+        Pipettes,
+        DeckLocations,
+        Axis,
     )
     from QATCH.FluxControls.src.standard_labware import (
-        StandardLabware, StandardAdapters, StandardAluminumBlocks, StandardReservoirs, StandardTipracks, StandardTubeRacks, StandardWellplates)
+        StandardLabware,
+        StandardAdapters,
+        StandardAluminumBlocks,
+        StandardReservoirs,
+        StandardTipracks,
+        StandardWellplates,
+    )
     from QATCH.common.logger import Logger as Log
 except ImportError:
+
     class Log:
         @staticmethod
-        def d(tag, msg=""): print(f"DEBUG: {tag} {msg}")
+        def d(tag, msg=""):
+            print(f"DEBUG: {tag} {msg}")
+
         @staticmethod
-        def i(tag, msg=""): print(f"INFO: {tag} {msg}")
+        def i(tag, msg=""):
+            print(f"INFO: {tag} {msg}")
+
         @staticmethod
-        def w(tag, msg=""): print(f"WARNING: {tag} {msg}")
+        def w(tag, msg=""):
+            print(f"WARNING: {tag} {msg}")
+
         @staticmethod
-        def e(tag, msg=""): print(f"ERROR: {tag} {msg}")
+        def e(tag, msg=""):
+            print(f"ERROR: {tag} {msg}")
 
 
 class RobotWorker(QThread):
     """Worker thread for robot operations to prevent GUI freezing"""
+
     result_ready = pyqtSignal(dict)
     error_occurred = pyqtSignal(str)
     progress_update = pyqtSignal(str)
@@ -58,35 +94,35 @@ class RobotWorker(QThread):
 
             # Execute different operations based on type
             if self.operation == "connect":
-                mac = self.params.get('mac')
-                ip = self.params.get('ip')
+                mac = self.params.get("mac")
+                ip = self.params.get("ip")
                 self.robot = OpentronsFlex(mac_address=mac, ip_address=ip)
-                result = {"status": "connected",
-                          "ip": self.robot._get_robot_ipv4()}
+                result = {"status": "connected", "ip": self.robot._get_robot_ipv4()}
 
             elif self.operation == "load_pipette":
-                pipette = self.params.get('pipette')
-                position = self.params.get('position')
+                pipette = self.params.get("pipette")
+                position = self.params.get("position")
                 self.robot.load_pipette(pipette, position)
                 result = {"status": "pipette_loaded"}
 
             elif self.operation == "load_labware":
-                location = self.params.get('location')
-                definition = self.params.get('definition')
+                location = self.params.get("location")
+                definition = self.params.get("definition")
                 self.robot.load_labware(location, definition)
                 result = {"status": "labware_loaded"}
 
             elif self.operation == "run_protocol":
-                protocol_name = self.params.get('protocol_name')
+                protocol_name = self.params.get("protocol_name")
                 run_id = self.robot.run_protocol(protocol_name)
                 result = {"status": "protocol_running", "run_id": run_id}
 
             elif self.operation == "upload_protocol":
-                filepath = self.params.get('filepath')
-                custom_labware = self.params.get('custom_labware', [])
+                filepath = self.params.get("filepath")
+                custom_labware = self.params.get("custom_labware", [])
                 if custom_labware:
                     response = self.robot.upload_protocol_custom_labware(
-                        filepath, *custom_labware)
+                        filepath, *custom_labware
+                    )
                 else:
                     response = self.robot.upload_protocol(filepath)
                 result = {"status": "protocol_uploaded", "response": response}
@@ -104,51 +140,51 @@ class RobotWorker(QThread):
                 result = {"status": "lights_off"}
 
             elif self.operation == "pickup_tip":
-                labware = self.params.get('labware')
-                pipette = self.params.get('pipette')
+                labware = self.params.get("labware")
+                pipette = self.params.get("pipette")
                 self.robot.pickup_tip(labware, pipette)
                 result = {"status": "tip_picked"}
 
             elif self.operation == "aspirate":
-                labware = self.params.get('labware')
-                pipette = self.params.get('pipette')
-                volume = self.params.get('volume')
-                flow_rate = self.params.get('flow_rate')
+                labware = self.params.get("labware")
+                pipette = self.params.get("pipette")
+                volume = self.params.get("volume")
+                flow_rate = self.params.get("flow_rate")
                 self.robot.aspirate(labware, pipette, flow_rate, volume)
                 result = {"status": "aspirated"}
 
             elif self.operation == "dispense":
-                labware = self.params.get('labware')
-                pipette = self.params.get('pipette')
-                volume = self.params.get('volume')
-                flow_rate = self.params.get('flow_rate')
+                labware = self.params.get("labware")
+                pipette = self.params.get("pipette")
+                volume = self.params.get("volume")
+                flow_rate = self.params.get("flow_rate")
                 self.robot.dispense(labware, pipette, flow_rate, volume)
                 result = {"status": "dispensed"}
 
             elif self.operation == "drop_tip":
-                labware = self.params.get('labware')
-                pipette = self.params.get('pipette')
+                labware = self.params.get("labware")
+                pipette = self.params.get("pipette")
                 self.robot.drop_tip(labware, pipette)
                 result = {"status": "tip_dropped"}
 
             elif self.operation == "move_to_well":
-                labware = self.params.get('labware')
-                pipette = self.params.get('pipette')
+                labware = self.params.get("labware")
+                pipette = self.params.get("pipette")
                 self.robot.move_to_well(labware, pipette)
                 result = {"status": "moved_to_well"}
 
             elif self.operation == "pause_run":
-                run_id = self.params.get('run_id')
+                run_id = self.params.get("run_id")
                 self.robot.pause_run(run_id)
                 result = {"status": "paused"}
 
             elif self.operation == "resume_run":
-                run_id = self.params.get('run_id')
+                run_id = self.params.get("run_id")
                 self.robot.resume_run(run_id)
                 result = {"status": "resumed"}
 
             elif self.operation == "stop_run":
-                run_id = self.params.get('run_id')
+                run_id = self.params.get("run_id")
                 self.robot.stop_run(run_id)
                 result = {"status": "stopped"}
 
@@ -231,8 +267,7 @@ class OpentronFlexControlPanel(QMainWindow):
         self.status_bar = QTextEdit()
         self.status_bar.setMaximumHeight(100)
         self.status_bar.setReadOnly(True)
-        self.status_bar.setPlaceholderText(
-            "System messages will appear here...")
+        self.status_bar.setPlaceholderText("System messages will appear here...")
         main_layout.addWidget(self.status_bar)
 
         # Main Tab Widget
@@ -301,14 +336,16 @@ class OpentronFlexControlPanel(QMainWindow):
         # Left Mount
         pipette_layout.addWidget(QLabel("Left Mount:"), 0, 0)
         self.left_pipette_combo = QComboBox()
-        self.left_pipette_combo.addItems([
-            "None",
-            "P1000 Single Gen3",
-            "P1000 Multi Gen3",
-            "P300 Single Gen2",
-            "P50 Single Gen3",
-            "P50 Multi Gen3"
-        ])
+        self.left_pipette_combo.addItems(
+            [
+                "None",
+                "P1000 Single Gen3",
+                "P1000 Multi Gen3",
+                "P300 Single Gen2",
+                "P50 Single Gen3",
+                "P50 Multi Gen3",
+            ]
+        )
         pipette_layout.addWidget(self.left_pipette_combo, 0, 1)
         self.load_left_btn = QPushButton("Load Left")
         self.load_left_btn.clicked.connect(lambda: self.load_pipette("left"))
@@ -317,14 +354,16 @@ class OpentronFlexControlPanel(QMainWindow):
         # Right Mount
         pipette_layout.addWidget(QLabel("Right Mount:"), 1, 0)
         self.right_pipette_combo = QComboBox()
-        self.right_pipette_combo.addItems([
-            "None",
-            "P1000 Single Gen3",
-            "P1000 Multi Gen3",
-            "P300 Single Gen2",
-            "P50 Single Gen3",
-            "P50 Multi Gen3"
-        ])
+        self.right_pipette_combo.addItems(
+            [
+                "None",
+                "P1000 Single Gen3",
+                "P1000 Multi Gen3",
+                "P300 Single Gen2",
+                "P50 Single Gen3",
+                "P50 Multi Gen3",
+            ]
+        )
         pipette_layout.addWidget(self.right_pipette_combo, 1, 1)
         self.load_right_btn = QPushButton("Load Right")
         self.load_right_btn.clicked.connect(lambda: self.load_pipette("right"))
@@ -347,13 +386,15 @@ class OpentronFlexControlPanel(QMainWindow):
         # Labware type selector
         labware_layout.addWidget(QLabel("Labware Type:"), 1, 0)
         self.labware_type_combo = QComboBox()
-        self.labware_type_combo.addItems([
-            "384 Wellplate 40µL (Applied Biosystems MicroAmp)",
-            "384 Well Plate 50µL (Biorad)",
-            "12 Well Reservoir 15µL (Nest)",
-            "Tip Rack 1000µL (GEB 96)",
-            "Tip Rack 10µL (GEB 96)",
-        ])
+        self.labware_type_combo.addItems(
+            [
+                "384 Wellplate 40µL (Applied Biosystems MicroAmp)",
+                "384 Well Plate 50µL (Biorad)",
+                "12 Well Reservoir 15µL (Nest)",
+                "Tip Rack 1000µL (GEB 96)",
+                "Tip Rack 10µL (GEB 96)",
+            ]
+        )
         labware_layout.addWidget(self.labware_type_combo, 1, 1)
 
         self.load_labware_btn = QPushButton("Load Labware")
@@ -421,9 +462,10 @@ class OpentronFlexControlPanel(QMainWindow):
 
         self.protocols_table = QTableWidget()
         self.protocols_table.setColumnCount(3)
-        self.protocols_table.setHorizontalHeaderLabels(
-            ["Name", "ID", "Created"])
-        self.protocols_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.protocols_table.setHorizontalHeaderLabels(["Name", "ID", "Created"])
+        self.protocols_table.horizontalHeader().setSectionResizeMode(
+            QHeaderView.Stretch
+        )
         protocols_layout.addWidget(self.protocols_table)
 
         protocol_btn_layout = QHBoxLayout()
@@ -593,8 +635,7 @@ class OpentronFlexControlPanel(QMainWindow):
 
         self.runs_table = QTableWidget()
         self.runs_table.setColumnCount(3)
-        self.runs_table.setHorizontalHeaderLabels(
-            ["Run ID", "Status", "Created"])
+        self.runs_table.setHorizontalHeaderLabels(["Run ID", "Status", "Created"])
         self.runs_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         history_layout.addWidget(self.runs_table)
 
@@ -676,6 +717,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def log_message(self, message: str, level: str = "INFO"):
         """Add message to status bar"""
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_msg = f"[{timestamp}] [{level}] {message}"
         self.status_bar.append(formatted_msg)
@@ -697,13 +739,13 @@ class OpentronFlexControlPanel(QMainWindow):
 
         if status == "connected":
             self.connection_status.setText("Connected")
-            self.connection_status.setStyleSheet(
-                "color: green; font-weight: bold;")
+            self.connection_status.setStyleSheet("color: green; font-weight: bold;")
             self.robot_ip_label.setText(result.get("ip", ""))
             self.robot_mac_label.setText(self.mac_input.text())
             self.enable_controls(True)
             self.log_message(
-                f"Successfully connected to robot at {result.get('ip', '')}")
+                f"Successfully connected to robot at {result.get('ip', '')}"
+            )
             self.refresh_protocols()
 
         elif status == "pipette_loaded":
@@ -718,8 +760,7 @@ class OpentronFlexControlPanel(QMainWindow):
             self.current_run_id = result.get("run_id")
             self.run_id_label.setText(f"Run ID: {self.current_run_id}")
             self.run_status_label.setText("Status: Running")
-            self.log_message(
-                f"Protocol started with run ID: {self.current_run_id}")
+            self.log_message(f"Protocol started with run ID: {self.current_run_id}")
 
         elif status == "protocol_uploaded":
             self.log_message("Protocol uploaded successfully")
@@ -801,8 +842,7 @@ class OpentronFlexControlPanel(QMainWindow):
         ip = self.ip_input.text().strip() if self.ip_input.text().strip() else None
 
         if not mac:
-            QMessageBox.warning(self, "Connection Error",
-                                "Please enter a MAC address")
+            QMessageBox.warning(self, "Connection Error", "Please enter a MAC address")
             return
 
         self.log_message("Attempting to connect to robot...")
@@ -813,13 +853,13 @@ class OpentronFlexControlPanel(QMainWindow):
 
             # Update UI
             self.connection_status.setText("Connected")
-            self.connection_status.setStyleSheet(
-                "color: green; font-weight: bold;")
+            self.connection_status.setStyleSheet("color: green; font-weight: bold;")
             self.robot_ip_label.setText(self.robot._get_robot_ipv4())
             self.robot_mac_label.setText(mac)
             self.enable_controls(True)
             self.log_message(
-                f"Successfully connected to robot at {self.robot._get_robot_ipv4()}")
+                f"Successfully connected to robot at {self.robot._get_robot_ipv4()}"
+            )
 
             # Initialize worker with robot
             self.worker.robot = self.robot
@@ -833,8 +873,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def load_pipette(self, mount: str):
         """Load pipette on specified mount"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         if mount == "left":
@@ -853,7 +892,7 @@ class OpentronFlexControlPanel(QMainWindow):
             "P1000 Multi Gen3": Pipettes.P1000_MULTI_FLEX,
             "P300 Single Gen2": Pipettes.P300_SINGLE_FLEX_GEN2,
             "P50 Single Gen3": Pipettes.P50_SINGLE_FLEX,
-            "P50 Multi Gen3": Pipettes.P50_MULTI_FLEX
+            "P50 Multi Gen3": Pipettes.P50_MULTI_FLEX,
         }
 
         pipette = pipette_map.get(pipette_text)
@@ -864,8 +903,7 @@ class OpentronFlexControlPanel(QMainWindow):
             self.log_message(f"Loading {pipette_text} on {mount} mount...")
             self.robot.load_pipette(pipette, position)
             self.loaded_pipettes[mount] = pipette
-            self.log_message(
-                f"Successfully loaded {pipette_text} on {mount} mount")
+            self.log_message(f"Successfully loaded {pipette_text} on {mount} mount")
             self.update_deck_view()
         except Exception as e:
             self.handle_worker_error(f"Failed to load pipette: {str(e)}")
@@ -873,8 +911,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def load_labware(self):
         """Load labware at specified position"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         position_text = self.deck_position_combo.currentText()
@@ -897,12 +934,12 @@ class OpentronFlexControlPanel(QMainWindow):
             return
 
         try:
-            self.log_message(
-                f"Loading {labware_text} at position {position_text}...")
+            self.log_message(f"Loading {labware_text} at position {position_text}...")
             self.robot.load_labware(position, labware)
             self.loaded_labware[position_text] = labware_text
             self.log_message(
-                f"Successfully loaded {labware_text} at position {position_text}")
+                f"Successfully loaded {labware_text} at position {position_text}"
+            )
             self.update_deck_view()
         except Exception as e:
             self.handle_worker_error(f"Failed to load labware: {str(e)}")
@@ -911,7 +948,7 @@ class OpentronFlexControlPanel(QMainWindow):
         """Update the deck visualization table"""
         for row in range(4):
             for col in range(4):
-                position = f"{chr(65+row)}{col+1}"  # A1, A2, etc.
+                position = f"{chr(65 + row)}{col + 1}"  # A1, A2, etc.
                 item = QTableWidgetItem()
 
                 if position in self.loaded_labware:
@@ -944,19 +981,18 @@ class OpentronFlexControlPanel(QMainWindow):
         current_item = self.custom_labware_list.currentItem()
         if current_item:
             self.custom_labware_list.takeItem(
-                self.custom_labware_list.row(current_item))
+                self.custom_labware_list.row(current_item)
+            )
 
     def upload_protocol(self):
         """Upload protocol with optional custom labware"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         protocol_file = self.protocol_file_label.text()
         if protocol_file == "No file selected":
-            QMessageBox.warning(
-                self, "No File", "Please select a protocol file")
+            QMessageBox.warning(self, "No File", "Please select a protocol file")
             return
 
         custom_labware = []
@@ -967,7 +1003,8 @@ class OpentronFlexControlPanel(QMainWindow):
             self.log_message("Uploading protocol...")
             if custom_labware:
                 self.robot.upload_protocol_custom_labware(
-                    protocol_file, *custom_labware)
+                    protocol_file, *custom_labware
+                )
             else:
                 self.robot.upload_protocol(protocol_file)
             self.log_message("Protocol uploaded successfully")
@@ -987,10 +1024,10 @@ class OpentronFlexControlPanel(QMainWindow):
             self.protocols_table.setRowCount(len(protocols))
             for i, (name, data) in enumerate(protocols.items()):
                 self.protocols_table.setItem(i, 0, QTableWidgetItem(name))
+                self.protocols_table.setItem(i, 1, QTableWidgetItem(data["id"]))
                 self.protocols_table.setItem(
-                    i, 1, QTableWidgetItem(data["id"]))
-                self.protocols_table.setItem(
-                    i, 2, QTableWidgetItem(str(data["createdAt"])))
+                    i, 2, QTableWidgetItem(str(data["createdAt"]))
+                )
 
             self.log_message(f"Found {len(protocols)} protocols")
         except Exception as e:
@@ -999,14 +1036,12 @@ class OpentronFlexControlPanel(QMainWindow):
     def run_selected_protocol(self):
         """Run the selected protocol"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         current_row = self.protocols_table.currentRow()
         if current_row < 0:
-            QMessageBox.warning(self, "No Selection",
-                                "Please select a protocol to run")
+            QMessageBox.warning(self, "No Selection", "Please select a protocol to run")
             return
 
         protocol_name = self.protocols_table.item(current_row, 0).text()
@@ -1024,22 +1059,23 @@ class OpentronFlexControlPanel(QMainWindow):
     def delete_selected_protocol(self):
         """Delete the selected protocol"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         current_row = self.protocols_table.currentRow()
         if current_row < 0:
-            QMessageBox.warning(self, "No Selection",
-                                "Please select a protocol to delete")
+            QMessageBox.warning(
+                self, "No Selection", "Please select a protocol to delete"
+            )
             return
 
         protocol_name = self.protocols_table.item(current_row, 0).text()
 
         reply = QMessageBox.question(
-            self, "Confirm Delete",
+            self,
+            "Confirm Delete",
             f"Are you sure you want to delete protocol '{protocol_name}'?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.Yes | QMessageBox.No,
         )
 
         if reply == QMessageBox.Yes:
@@ -1049,12 +1085,19 @@ class OpentronFlexControlPanel(QMainWindow):
                 self.log_message(f"Protocol deleted successfully")
                 self.refresh_protocols()
             except Exception as e:
-                self.handle_worker_error(
-                    f"Failed to delete protocol: {str(e)}")
+                self.handle_worker_error(f"Failed to delete protocol: {str(e)}")
 
     class _PipetteLabwareDialog(QDialog):
-        def __init__(self, parent, pipette_options, labware_options, default_pipette=None,
-                     require_well=False, title="Select Pipette & Location", well_placeholder="A1"):
+        def __init__(
+            self,
+            parent,
+            pipette_options,
+            labware_options,
+            default_pipette=None,
+            require_well=False,
+            title="Select Pipette & Location",
+            well_placeholder="A1",
+        ):
             super().__init__(parent)
             self.setWindowTitle(title)
             self._require_well = require_well
@@ -1077,8 +1120,7 @@ class OpentronFlexControlPanel(QMainWindow):
             form.addRow("Well (e.g., A1):", self.well_edit)
 
             lay.addLayout(form)
-            buttons = QDialogButtonBox(
-                QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             lay.addWidget(buttons)
@@ -1089,30 +1131,32 @@ class OpentronFlexControlPanel(QMainWindow):
             well = self.well_edit.text().strip().upper() if self._require_well else None
             return pipette, deck, well
 
-    def _get_selected_mount_from_manual(self) -> 'MountPositions':
+    def _get_selected_mount_from_manual(self) -> "MountPositions":
         side = self.manual_pipette_combo.currentText()
         if "Left" in side:
             return MountPositions.LEFT_MOUNT
         return MountPositions.RIGHT_MOUNT
 
-    def _mount_to_key(self, mount: 'MountPositions') -> str:
+    def _mount_to_key(self, mount: "MountPositions") -> str:
         return "left" if mount == MountPositions.LEFT_MOUNT else "right"
 
-    def _ensure_pipette_loaded(self, mount: 'MountPositions') -> bool:
+    def _ensure_pipette_loaded(self, mount: "MountPositions") -> bool:
         key = self._mount_to_key(mount)
         if key not in self.loaded_pipettes:
-            QMessageBox.warning(self, "No Pipette",
-                                f"No pipette loaded on the {key} mount.")
+            QMessageBox.warning(
+                self, "No Pipette", f"No pipette loaded on the {key} mount."
+            )
             return False
         return True
 
-    def _resolve_deck_enum(self, pos_text: str) -> 'DeckLocations':
+    def _resolve_deck_enum(self, pos_text: str) -> "DeckLocations":
         # pos_text like "A1", "B2", etc.
         try:
             return getattr(DeckLocations, pos_text)
         except AttributeError:
             raise ValueError(
-                f"Deck location '{pos_text}' is not a valid DeckLocations member.")
+                f"Deck location '{pos_text}' is not a valid DeckLocations member."
+            )
 
     def _filter_labware_positions(self, require_tiprack: bool = False) -> list:
         """Return list of deck positions that currently have labware (optionally only tipracks)."""
@@ -1121,21 +1165,35 @@ class OpentronFlexControlPanel(QMainWindow):
         if not require_tiprack:
             return list(self.loaded_labware.keys())
         # crude filter by name
-        return [pos for pos, name in self.loaded_labware.items()
-                if "TIP" in name.upper() or "TIPRACK" in name.upper() or "TIP RACK" in name.upper()]
+        return [
+            pos
+            for pos, name in self.loaded_labware.items()
+            if "TIP" in name.upper()
+            or "TIPRACK" in name.upper()
+            or "TIP RACK" in name.upper()
+        ]
 
-    def _prompt_pipette_and_location(self, *, require_tiprack=False, require_well=False,
-                                     title="Select Pipette & Location") -> tuple | None:
+    def _prompt_pipette_and_location(
+        self,
+        *,
+        require_tiprack=False,
+        require_well=False,
+        title="Select Pipette & Location",
+    ) -> tuple | None:
         """Open dialog to select a pipette (left/right) and a deck position (+ optional well)."""
         if not self.loaded_pipettes:
-            QMessageBox.warning(self, "No Pipettes",
-                                "Load a pipette first (left or right).")
+            QMessageBox.warning(
+                self, "No Pipettes", "Load a pipette first (left or right)."
+            )
             return None
 
-        lab_positions = self._filter_labware_positions(
-            require_tiprack=require_tiprack)
+        lab_positions = self._filter_labware_positions(require_tiprack=require_tiprack)
         if not lab_positions:
-            msg = "Load a tip rack on the deck." if require_tiprack else "Load labware on the deck."
+            msg = (
+                "Load a tip rack on the deck."
+                if require_tiprack
+                else "Load labware on the deck."
+            )
             QMessageBox.warning(self, "No Labware", msg)
             return None
 
@@ -1145,17 +1203,28 @@ class OpentronFlexControlPanel(QMainWindow):
         if "right" in self.loaded_pipettes:
             pipette_opts.append("Right Mount")
 
-        default_pipette = self.manual_pipette_combo.currentText(
-        ) if self.manual_pipette_combo.currentText() in pipette_opts else None
-        dlg = self._PipetteLabwareDialog(self, pipette_opts, lab_positions,
-                                         default_pipette=default_pipette,
-                                         require_well=require_well,
-                                         title=title)
+        default_pipette = (
+            self.manual_pipette_combo.currentText()
+            if self.manual_pipette_combo.currentText() in pipette_opts
+            else None
+        )
+        dlg = self._PipetteLabwareDialog(
+            self,
+            pipette_opts,
+            lab_positions,
+            default_pipette=default_pipette,
+            require_well=require_well,
+            title=title,
+        )
         if dlg.exec_() != QDialog.Accepted:
             return None
 
         pipette_txt, deck_txt, well_txt = dlg.values()
-        mount = MountPositions.LEFT_MOUNT if "Left" in pipette_txt else MountPositions.RIGHT_MOUNT
+        mount = (
+            MountPositions.LEFT_MOUNT
+            if "Left" in pipette_txt
+            else MountPositions.RIGHT_MOUNT
+        )
 
         try:
             deck_enum = self._resolve_deck_enum(deck_txt)
@@ -1165,7 +1234,9 @@ class OpentronFlexControlPanel(QMainWindow):
 
         return mount, deck_enum, well_txt
 
-    def _call_robot_with_optional_well(self, base_name: str, *, deck, mount, well=None, **kwargs):
+    def _call_robot_with_optional_well(
+        self, base_name: str, *, deck, mount, well=None, **kwargs
+    ):
         """
         Call robot method that may or may not have a well-specific variant.
         Tries '<base>_from_well(deck, mount, well, ...)' then falls back to '<base>(deck, mount, ...)'.
@@ -1190,16 +1261,17 @@ class OpentronFlexControlPanel(QMainWindow):
         if last_err:
             raise last_err
         raise AttributeError(
-            f"Robot does not implement '{base_name}' or '{base_name}_from_well'.")
+            f"Robot does not implement '{base_name}' or '{base_name}_from_well'."
+        )
 
     def pickup_tip(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
-        selection = self._prompt_pipette_and_location(require_tiprack=True, require_well=False,
-                                                      title="Pick Up Tip")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=True, require_well=False, title="Pick Up Tip"
+        )
         if not selection:
             return
         mount, deck, _ = selection
@@ -1207,7 +1279,8 @@ class OpentronFlexControlPanel(QMainWindow):
             return
         try:
             self.log_message(
-                f"Picking up tip with {self._mount_to_key(mount)} pipette at {deck.name}...")
+                f"Picking up tip with {self._mount_to_key(mount)} pipette at {deck.name}..."
+            )
             self.robot.pickup_tip(deck, mount)
             self.log_message("Tip picked up")
         except Exception as e:
@@ -1215,15 +1288,15 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def aspirate(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         volume = float(self.volume_spin.value())
         flow_rate = float(self.flow_rate_spin.value())
 
-        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
-                                                      title="Aspirate From Well")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=False, require_well=True, title="Aspirate From Well"
+        )
         if not selection:
             return
         mount, deck, well = selection
@@ -1231,25 +1304,33 @@ class OpentronFlexControlPanel(QMainWindow):
             return
 
         try:
-            self.log_message(f"Aspirating {volume} µL @ {flow_rate} µL/s from {deck.name} {well} "
-                             f"with {self._mount_to_key(mount)} pipette...")
-            self._call_robot_with_optional_well("aspirate", deck=deck, mount=mount,
-                                                well=well, flow_rate=flow_rate, volume=volume)
+            self.log_message(
+                f"Aspirating {volume} µL @ {flow_rate} µL/s from {deck.name} {well} "
+                f"with {self._mount_to_key(mount)} pipette..."
+            )
+            self._call_robot_with_optional_well(
+                "aspirate",
+                deck=deck,
+                mount=mount,
+                well=well,
+                flow_rate=flow_rate,
+                volume=volume,
+            )
             self.log_message("Aspirate complete")
         except Exception as e:
             self.handle_worker_error(f"Failed to aspirate: {e}")
 
     def dispense(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         volume = float(self.volume_spin.value())
         flow_rate = float(self.flow_rate_spin.value())
 
-        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
-                                                      title="Dispense To Well")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=False, require_well=True, title="Dispense To Well"
+        )
         if not selection:
             return
         mount, deck, well = selection
@@ -1257,25 +1338,33 @@ class OpentronFlexControlPanel(QMainWindow):
             return
 
         try:
-            self.log_message(f"Dispensing {volume} µL @ {flow_rate} µL/s to {deck.name} {well} "
-                             f"with {self._mount_to_key(mount)} pipette...")
-            self._call_robot_with_optional_well("dispense", deck=deck, mount=mount,
-                                                well=well, flow_rate=flow_rate, volume=volume)
+            self.log_message(
+                f"Dispensing {volume} µL @ {flow_rate} µL/s to {deck.name} {well} "
+                f"with {self._mount_to_key(mount)} pipette..."
+            )
+            self._call_robot_with_optional_well(
+                "dispense",
+                deck=deck,
+                mount=mount,
+                well=well,
+                flow_rate=flow_rate,
+                volume=volume,
+            )
             self.log_message("Dispense complete")
         except Exception as e:
             self.handle_worker_error(f"Failed to dispense: {e}")
 
     def blowout(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         flow_rate = float(self.flow_rate_spin.value())
 
         # Blowout can be into a specific well or a general location; we’ll prompt for well to be safe.
-        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
-                                                      title="Blowout To Well")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=False, require_well=True, title="Blowout To Well"
+        )
         if not selection:
             return
         mount, deck, well = selection
@@ -1283,23 +1372,26 @@ class OpentronFlexControlPanel(QMainWindow):
             return
 
         try:
-            self.log_message(f"Blowout @ {flow_rate} µL/s to {deck.name} {well} "
-                             f"with {self._mount_to_key(mount)} pipette...")
+            self.log_message(
+                f"Blowout @ {flow_rate} µL/s to {deck.name} {well} "
+                f"with {self._mount_to_key(mount)} pipette..."
+            )
             # Try well-specific method first; fall back if not available.
-            self._call_robot_with_optional_well("blowout", deck=deck, mount=mount,
-                                                well=well, flow_rate=flow_rate)
+            self._call_robot_with_optional_well(
+                "blowout", deck=deck, mount=mount, well=well, flow_rate=flow_rate
+            )
             self.log_message("Blowout complete")
         except Exception as e:
             self.handle_worker_error(f"Failed to blowout: {e}")
 
     def drop_tip(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
-        selection = self._prompt_pipette_and_location(require_tiprack=True, require_well=False,
-                                                      title="Drop Tip")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=True, require_well=False, title="Drop Tip"
+        )
         if not selection:
             return
         mount, deck, _ = selection
@@ -1308,7 +1400,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
         try:
             self.log_message(
-                f"Dropping tip with {self._mount_to_key(mount)} pipette at {deck.name}...")
+                f"Dropping tip with {self._mount_to_key(mount)} pipette at {deck.name}..."
+            )
             self.robot.drop_tip(deck, mount)
             self.log_message("Tip dropped")
         except Exception as e:
@@ -1316,12 +1409,12 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def move_to_well(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
-        selection = self._prompt_pipette_and_location(require_tiprack=False, require_well=True,
-                                                      title="Move To Well")
+        selection = self._prompt_pipette_and_location(
+            require_tiprack=False, require_well=True, title="Move To Well"
+        )
         if not selection:
             return
         mount, deck, well = selection
@@ -1340,14 +1433,14 @@ class OpentronFlexControlPanel(QMainWindow):
             else:
                 raise AttributeError("Robot.move_to_well is not implemented.")
             self.log_message(
-                f"Moved to {deck.name} {well} with {self._mount_to_key(mount)} pipette")
+                f"Moved to {deck.name} {well} with {self._mount_to_key(mount)} pipette"
+            )
         except Exception as e:
             self.handle_worker_error(f"Failed to move to well: {e}")
 
     def move_to_coordinates(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         x = float(self.x_spin.value())
@@ -1357,19 +1450,22 @@ class OpentronFlexControlPanel(QMainWindow):
         if not self._ensure_pipette_loaded(mount):
             return
 
-        min_z_height = 20.0   # safe default to avoid collisions; expose via UI if desired
+        min_z_height = (
+            20.0  # safe default to avoid collisions; expose via UI if desired
+        )
         force_direct = False  # default to planner; set True to force straight-line
 
-        fn = getattr(self.robot, 'move_to_coordinate', None)
+        fn = getattr(self.robot, "move_to_coordinate", None)
         if callable(fn):
             fn(mount, x, y, z, min_z_height, force_direct)
-            self.log_message(f"Moved to XYZ ({x}, {y}, {z}) with {mount} pipette "
-                             f"[min_z={min_z_height}, direct={force_direct}]")
+            self.log_message(
+                f"Moved to XYZ ({x}, {y}, {z}) with {mount} pipette "
+                f"[min_z={min_z_height}, direct={force_direct}]"
+            )
 
     def move_relative(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         distance = float(self.relative_distance_spin.value())
@@ -1385,7 +1481,8 @@ class OpentronFlexControlPanel(QMainWindow):
             else:
                 raise AttributeError("Robot.move_relative is not implemented.")
             self.log_message(
-                f"Moved {distance} mm along {axis_text} with {self._mount_to_key(mount)} pipette")
+                f"Moved {distance} mm along {axis_text} with {self._mount_to_key(mount)} pipette"
+            )
         except Exception as e:
             self.handle_worker_error(f"Failed to move relatively: {e}")
 
@@ -1451,12 +1548,11 @@ class OpentronFlexControlPanel(QMainWindow):
             self.runs_table.setRowCount(len(runs))
 
             for i, run in enumerate(runs):
+                self.runs_table.setItem(i, 0, QTableWidgetItem(run.get("id", "")))
+                self.runs_table.setItem(i, 1, QTableWidgetItem(run.get("status", "")))
                 self.runs_table.setItem(
-                    i, 0, QTableWidgetItem(run.get("id", "")))
-                self.runs_table.setItem(
-                    i, 1, QTableWidgetItem(run.get("status", "")))
-                self.runs_table.setItem(
-                    i, 2, QTableWidgetItem(run.get("createdAt", "")))
+                    i, 2, QTableWidgetItem(run.get("createdAt", ""))
+                )
 
             self.log_message(f"Found {len(runs)} runs")
         except Exception as e:
@@ -1465,22 +1561,21 @@ class OpentronFlexControlPanel(QMainWindow):
     def delete_selected_run(self):
         """Delete selected run"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         current_row = self.runs_table.currentRow()
         if current_row < 0:
-            QMessageBox.warning(self, "No Selection",
-                                "Please select a run to delete")
+            QMessageBox.warning(self, "No Selection", "Please select a run to delete")
             return
 
         run_id = self.runs_table.item(current_row, 0).text()
 
         reply = QMessageBox.question(
-            self, "Confirm Delete",
+            self,
+            "Confirm Delete",
             f"Are you sure you want to delete run '{run_id}'?",
-            QMessageBox.Yes | QMessageBox.No
+            QMessageBox.Yes | QMessageBox.No,
         )
 
         if reply == QMessageBox.Yes:
@@ -1494,8 +1589,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def home_robot(self):
         """Home all axes"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         try:
@@ -1508,8 +1602,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def lights_on(self):
         """Turn lights on"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         try:
@@ -1522,8 +1615,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def lights_off(self):
         """Turn lights off"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         try:
@@ -1536,8 +1628,7 @@ class OpentronFlexControlPanel(QMainWindow):
     def flash_lights(self):
         """Flash lights"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected",
-                                "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
             return
 
         count = self.flash_count_spin.value()
@@ -1552,7 +1643,7 @@ class OpentronFlexControlPanel(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    app.setStyle('Fusion')
+    app.setStyle("Fusion")
 
     # Set application icon if available
     # app.setWindowIcon(QIcon('icon.png'))
