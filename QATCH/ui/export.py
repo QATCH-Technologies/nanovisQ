@@ -9,6 +9,7 @@ from threading import Thread
 from xml.dom import minidom
 import time
 import datetime
+from datetime import timezone as tz
 import send2trash
 import shutil
 import subprocess
@@ -1122,7 +1123,8 @@ class Ui_Export(QtWidgets.QWidget):
         if self.btnGroup5.checkedId() == 0:  # all, filtering off
             self.filter_min = 0  # no filter
         elif self.btnGroup5.checkedId() == 1:  # today
-            self.filter_min = datetime.datetime.utcnow() - datetime.timedelta(hours=24)
+            self.filter_min = datetime.datetime.now(
+                tz.utc) - datetime.timedelta(hours=24)
         elif self.btnGroup5.checkedId() == 2:  # last x something
             if self.filterNumDays.hasAcceptableInput():
                 date_num = int(self.filterNumDays.text())
@@ -1136,7 +1138,7 @@ class Ui_Export(QtWidgets.QWidget):
                     Log.e(
                         f"Input Error: \"Export by date\" units \"{self.filterUnits.currentText()}\" are not recognized.")
                     return
-                self.filter_min = datetime.datetime.utcnow() - timedelta
+                self.filter_min = datetime.datetime.now(tz.utc) - timedelta
             else:
                 Log.e(
                     f"Input Error: \"Export by date\" range must be between 1 and 31. You entered \"{self.filterNumDays.text()}\".")
@@ -1379,10 +1381,10 @@ class Ui_Export(QtWidgets.QWidget):
                 elif not os.path.exists(d):
                     allow_copy = True
                 elif symlinks == 2:
-                    last_modified = datetime.datetime.utcfromtimestamp(
-                        os.stat(s).st_mtime)
-                    exist_modified = datetime.datetime.utcfromtimestamp(
-                        os.stat(d).st_mtime)
+                    last_modified = datetime.datetime.fromtimestamp(
+                        timestamp=os.stat(s).st_mtime, tz=tz.utc)
+                    exist_modified = datetime.datetime.fromtimestamp(
+                        timestamp=os.stat(d).st_mtime, tz=tz.utc)
                     # 2 sec resolution on zf.date_time
                     if last_modified - exist_modified > datetime.timedelta(seconds=2):
                         allow_copy = True
@@ -1390,17 +1392,18 @@ class Ui_Export(QtWidgets.QWidget):
                     # check all files in this folder for recency filtering
                     path = src
                     if "_unnamed" in path:  # check this file only, it's an orphan
-                        last_modified = datetime.datetime.utcfromtimestamp(
-                            os.stat(s).st_mtime)
+                        last_modified = datetime.datetime.fromtimestamp(
+                            timestamp=os.stat(s).st_mtime, tz=tz.utc)
                     else:
                         files = [file for file in os.listdir(
                             path) if not os.path.isdir(os.path.join(path, file))]
-                        epoch = datetime.datetime.utcfromtimestamp(0)
+                        epoch = datetime.datetime.fromtimestamp(
+                            timestamp=0, tz=tz.utc)
                         last_modified = epoch
                         for f in files:
                             f_path = os.path.join(path, f)
-                            st_mtime = datetime.datetime.utcfromtimestamp(
-                                os.stat(f_path).st_mtime)
+                            st_mtime = datetime.datetime.fromtimestamp(
+                                timestamp=os.stat(f_path).st_mtime, tz=tz.utc)
                             if st_mtime > last_modified:
                                 last_modified = st_mtime
                     if last_modified < date_filter:  # file older than filter

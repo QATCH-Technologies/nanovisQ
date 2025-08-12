@@ -8,11 +8,16 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 import re
 from datetime import datetime
+from datetime import timezone as tz
 
 _INDEX_FILENAME = "index.json"
 _OBJECTS_DIR = "objects"
 _DEFAULT_RETENTION = 50
 _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
+
+# NOTE: VisQAI-base.zip library will be pruned with this class after the retention period.
+#       Software should invoke front-end protections to automatically pin the base library
+#       and prevent it from being unpinned by the user.
 
 
 class VersionManager:
@@ -178,15 +183,15 @@ class VersionManager:
         if not _SHA256_HEX_RE.match(sha):
             raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
 
-        # Shard directory by first two hex characters
-        shard = sha[:2]
-        return self.objects_dir / shard / sha
+        # Shared directory by first two hex characters
+        shared = sha[:2]
+        return self.objects_dir / shared / sha
 
     def commit(self, model_file: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Add a new model snapshot to the repository, atomically storing the binary and metadata.
+        """Add a new model snapshot to the repository, automically storing the binary and metadata.
 
         This method computes the SHA-256 of the given model file, copies it into a
-        content-addressed shard directory, writes metadata (including timestamp) via
+        content-addressed shared directory, writes metadata (including timestamp) via
         an atomic write, updates the central index atomically, and prunes old snapshots
         if retention limits are exceeded.
 
@@ -210,7 +215,8 @@ class VersionManager:
         sha = self._hash_file(model_path)
         obj_dir = self._object_path(sha)
         metadata = metadata or {}
-        committed_at = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+        committed_at = datetime.now(tz.utc).replace(
+            microsecond=0).isoformat() + "Z"
         meta = {
             "sha": sha,
             "committed_at": committed_at,
@@ -225,7 +231,7 @@ class VersionManager:
                 return sha
 
             try:
-                # Create shard directory
+                # Create shared directory
                 obj_dir.mkdir(parents=True, exist_ok=False)
                 dest = obj_dir / model_path.name
                 shutil.copy2(model_path, dest)

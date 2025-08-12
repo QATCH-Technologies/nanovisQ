@@ -26,6 +26,7 @@ from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
 from typing import Dict, Any, List, Tuple, Type
 from typing import TYPE_CHECKING
+from shutil import make_archive
 
 try:
     from src.io.file_storage import SecureOpen
@@ -41,6 +42,7 @@ try:
     from src.view.checkable_combo_box import CheckableComboBox
     from src.view.table_view import TableView, Color
     from src.view.constraints_ui import ConstraintsUI
+    from src.managers.version_manager import VersionManager
     if TYPE_CHECKING:
         from src.view.frame_step2 import FrameStep2
         from src.view.main_window import VisQAIWindow
@@ -59,6 +61,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
     from QATCH.VisQAI.src.view.table_view import TableView, Color
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -833,6 +836,36 @@ class FrameStep1(QtWidgets.QDialog):
 
         def run_prediction_result(record: ExecutionRecord):
 
+            if isinstance(record.exception, Exception):
+                # NOTE: Progress bar and timer will end on next call to `check_finished()`
+                Log.e("Error occurred while updating the model")
+                return
+
+            if self.predictor.save_path():
+                try:
+                    saved_model = make_archive(
+                        base_name="VisQAI-model",
+                        format="zip",
+                        root_dir=self.predictor.save_path(),
+                        base_dir=self.predictor.save_path()
+                    )
+                    self.predictor.add_security_to_zip(saved_model)
+                    sha = self.mvc.commit(
+                        model_file=saved_model,
+                        metadata={"base_model": os.path.basename(self.model_path), "learned_runs": None})
+                    os.remove(saved_model)  # delete ZIP from working directory
+                    restored_path = self.mvc.get(
+                        sha, self.model_dialog.directory().path())
+                    renamed_path = str(restored_path).replace(
+                        "model.zip", f"{sha[0:7]}.zip")
+                    os.rename(restored_path, renamed_path)
+                    Log.i(f"Created new model: {renamed_path}")
+
+                except Exception as e:
+                    # NOTE: Progress bar and timer will end on next call to `check_finished()`
+                    Log.e("Error occurred while saving the model")
+                    return
+
             Log.d("Waiting for prediction results...")
             self.progressBar.setLabelText("Predicting...")
 
@@ -919,6 +952,8 @@ class FrameStep1(QtWidgets.QDialog):
                       predicted_mean_vp[0], mean_std[0], "title", "blue")
 
         self.executor = Executor()
+        self.mvc = VersionManager(
+            self.model_dialog.directory().path(), retention=255)
 
         if self.parent.select_formulation.viscosity_profile.is_measured:
 

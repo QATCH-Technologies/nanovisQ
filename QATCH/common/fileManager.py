@@ -7,6 +7,11 @@ from QATCH.common.architecture import Architecture, OSType
 
 
 class FileManager:
+    """
+    Utility class for file and directory operations, including directory creation,
+    file path construction, and file existence checks.
+    All methods are static and do not require instantiation.
+    """
 
     ###########################################################################
     # Creates a directory if the specified path doesn't exist.
@@ -14,8 +19,11 @@ class FileManager:
     @staticmethod
     def create_dir(path=None):
         """
-        :param path: Directory name or full path        :type path: str.
-        :return: True if the specified directory exists :rtype: bool.
+        Creates a directory if the specified path does not exist.
+        Args:
+            path (str, optional): Directory name or full path.
+        Returns:
+            bool: True if the specified directory exists after creation.
         """
         if path is not None:
             if not os.path.isdir(path):
@@ -29,12 +37,14 @@ class FileManager:
     @staticmethod
     def create_full_path(filename, extension="txt", path=None):
         """
-        :param filename: Name for the file        :type filename: str.
-        :param extension: Extension for the file  :type extension: str.
-        :param path: Path for the file, if needed :type path: str.
-        :return: Full path for the specified file :rtype: str.
+        Constructs a full file path from filename, extension, and optional directory path.
+        Args:
+            filename (str): Name for the file (without extension).
+            extension (str, optional): Extension for the file. Defaults to "txt".
+            path (str, optional): Directory path for the file.
+        Returns:
+            str: Full path for the specified file.
         """
-
         full_path = str("{}.{}".format(filename, extension))
         if not path == None:
             full_path = os.path.join(path, full_path)
@@ -47,8 +57,11 @@ class FileManager:
     @staticmethod
     def file_exists(filename):
         """
-        :param filename: Name of the file, including path :type filename: str.
-        :return: True if file exists :rtype: bool.
+        Checks if a file exists at the specified path.
+        Args:
+            filename (str): Name of the file, including path.
+        Returns:
+            bool: True if the file exists, False otherwise.
         """
         if filename is not None:
             return os.path.isfile(filename)
