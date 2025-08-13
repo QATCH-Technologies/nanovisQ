@@ -38,11 +38,10 @@
 // - Move delay (ms of step delay): 0–254; 0xFF reserved
 // NOTE: Servo 1 is used for Solo and Quad devices (Servo 2 not used here).
 //       Servo 1 & Servo 2 are used for Flux devices to move the 4x6 POGOs.
-// NOTE: The number of steps for Servo 1 and Servo 2 must be the same!
 #define DEFAULT_POS_OPENED_1 30
 #define DEFAULT_POS_CLOSED_1 50
-#define DEFAULT_POS_OPENED_2 30 // TBD
-#define DEFAULT_POS_CLOSED_2 50 // TBD
+#define DEFAULT_POS_OPENED_2 0
+#define DEFAULT_POS_CLOSED_2 0
 #define DEFAULT_MOVE_DELAY 25
 
 // Compile-time guards to preserve 0xFF sentinel semantics

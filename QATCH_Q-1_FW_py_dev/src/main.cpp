@@ -140,7 +140,7 @@
 
 // Pins for POGO lid servo, button and LED
 #define POGO_SERVO_1_PIN 7
-#define POGO_SERVO_2_PIN 8 // TODO: Not implemented
+#define POGO_SERVO_2_PIN 8
 #define POGO_BTN_LED_PIN 35
 #define POGO_BUTTON_PIN_N 36  // active low
 
@@ -356,7 +356,8 @@ float ambient = NAN;
 
 // Create servo object for POGO lid
 #include <Servo.h>
-Servo pogoServo;
+Servo pogoServo1;
+Servo pogoServo2;
 
 // Debounce variables for POGO button
 volatile bool pogo_isr_hit_flag = false;
@@ -3106,7 +3107,6 @@ void QATCH_loop()
     pogo_isr_hit_flag = false;
   }
   if (pogo_pressed_flag) {
-    // client->println("POGO button pressed via interrupt!");
     // Ignore button press if running an active sweep:
     if (!is_running) pogo_button_pressed(false);
     pogo_pressed_flag = false; // Clear flag
@@ -3447,72 +3447,67 @@ FASTRUN void pogo_button_ISR(void)
     pogo_isr_hit_flag = true;
 }
 
-// Handles a pogo button event and lid/LED/servo behavior.
+// Handles a pogo button event and lid/LED/servo1/servo2 behavior.
 // init=true: perform one-time initialization toggling to open (e.g., on setup).
 // init=false: handle a real button press (should be called from loop, not ISR).
 void pogo_button_pressed(bool init)
 {
-  // TODO: Handle POGO_SERVO_2_PIN and pogoServo2 write positions in this method
-
   // Validate servo positions are within safe range
-  if (POS_OPENED_1 == POS_CLOSED_1 || 
-      POS_OPENED_1 < 0 || POS_OPENED_1 > 180 || 
+  if (POS_OPENED_1 < 0 || POS_OPENED_1 > 180 || 
       POS_CLOSED_1 < 0 || POS_CLOSED_1 > 180 ||
-      POS_OPENED_2 == POS_CLOSED_2 || 
       POS_OPENED_2 < 0 || POS_OPENED_2 > 180 || 
       POS_CLOSED_2 < 0 || POS_CLOSED_2 > 180 ||
-      abs(POS_CLOSED_1-POS_OPENED_1) != abs(POS_CLOSED_2-POS_OPENED_2) ||
       MOVE_DELAY < 0 || MOVE_DELAY > 254) {
     client->println("ERROR: Invalid servo calibration values");
     return;
   }
-  pogo_lid_opened = !pogo_lid_opened; // switch state: open <-> closed 
-  if (init) { // initialize position on startup
-    // client->println("Moving lid to INITIAL position");
+
+  // switch state: open <-> closed 
+  pogo_lid_opened = !pogo_lid_opened;
+
+  // Attach pogo servos (prep for movement)
+  pogoServo1.attach(POGO_SERVO_1_PIN);
+  pogoServo2.attach(POGO_SERVO_2_PIN);
+
+  // Declare an in-line helper function to control servo motors by specifying
+  // their start and end positions and a delay (in milliseconds).
+  auto move_servos = [](byte start1, byte end1, byte start2, byte end2, byte delayMs) {
+    int dir1 = (end1 > start1) ? 1 : (end1 < start1) ? -1 : 0;
+    int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1 : 0;
+    int pos1 = start1;
+    int pos2 = start2;
+    bool done1 = false, done2 = false;
+    while (!done1 || !done2) {
+      if (DEBUG) client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
+      if (!done1) pogoServo1.write(pos1);
+      if (!done2) pogoServo2.write(pos2);
+      delay(delayMs);
+      if (!done1) {
+        if (pos1 == end1) done1 = true;
+        else pos1 += dir1;
+      }
+      if (!done2) {
+        if (pos2 == end2) done2 = true;
+        else pos2 += dir2;
+      }
+    }
+  };
+
+  // Move pogo servos to target(s)
+  if (init) { // init -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW);
-    pogoServo.attach(POGO_SERVO_1_PIN);
-    if (POS_INIT_1 > POS_OPENED_1)
-      for (int pos = POS_INIT_1; pos >= POS_OPENED_1; pos -= 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    else
-      for (int pos = POS_INIT_1; pos <= POS_OPENED_1; pos += 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    pogoServo.detach();
-  } else if (pogo_lid_opened) {  // open
-    // client->println("Moving lid to OPENED position");
+    move_servos(POS_INIT_1, POS_OPENED_1, POS_INIT_2, POS_OPENED_2, MOVE_DELAY);
+  } else if (pogo_lid_opened) {  // closed -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW);
-    pogoServo.attach(POGO_SERVO_1_PIN);
-    if (POS_CLOSED_1 > POS_OPENED_1)
-      for (int pos = POS_CLOSED_1; pos >= POS_OPENED_1; pos -= 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    else
-      for (int pos = POS_CLOSED_1; pos <= POS_OPENED_1; pos += 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    pogoServo.detach();
-  } else {  // close
-    // client->println("Moving lid to CLOSED position");
+    move_servos(POS_CLOSED_1, POS_OPENED_1, POS_CLOSED_2, POS_OPENED_2, MOVE_DELAY);
+  } else {  // opened -> closed
     digitalWrite(POGO_BTN_LED_PIN, HIGH);
-    pogoServo.attach(POGO_SERVO_1_PIN);
-    if (POS_OPENED_1 < POS_CLOSED_1)
-      for (int pos = POS_OPENED_1; pos <= POS_CLOSED_1; pos += 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    else
-      for (int pos = POS_OPENED_1; pos >= POS_CLOSED_1; pos -= 1) {
-        pogoServo.write(pos);
-        delay(MOVE_DELAY);
-      }
-    pogoServo.detach();
+    move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY);
   }
+
+  // Detach pogo servos (idle)
+  pogoServo1.detach();
+  pogoServo2.detach();
 }
 
 // Function to set calibration values at runtime
@@ -3520,13 +3515,10 @@ void setLidCalibration(byte opened_1, byte closed_1,
                        byte opened_2, byte closed_2, 
                        byte delay_ms)
 {
-  if (opened_1 == closed_1 || 
-      opened_1 < 0  || opened_1 > 180 || 
+  if (opened_1 < 0  || opened_1 > 180 || 
       closed_1 < 0 || closed_1 > 180 || 
-      opened_2 == closed_2 ||
       opened_2 < 0  || opened_2 > 180 || 
       closed_2 < 0 || closed_2 > 180 ||
-      abs(closed_1-opened_1) != abs(closed_2-opened_2) ||
       delay_ms < 0 || delay_ms > 254)
   {
     client->println("Invalid lid calibration parameters. Not saving.");
