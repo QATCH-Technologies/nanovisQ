@@ -1123,8 +1123,11 @@ class Ui_Export(QtWidgets.QWidget):
         if self.btnGroup5.checkedId() == 0:  # all, filtering off
             self.filter_min = 0  # no filter
         elif self.btnGroup5.checkedId() == 1:  # today
-            self.filter_min = datetime.datetime.now(
-                tz.utc) - datetime.timedelta(hours=24)
+            # local midnight today in UTC terms (convert local midnight to UTC)
+            now = datetime.datetime.now(tz.utc)
+            local_midnight = now.astimezone().replace(
+                hour=0, minute=0, second=0, microsecond=0)
+            self.filter_min = local_midnight.astimezone(tz.utc)
         elif self.btnGroup5.checkedId() == 2:  # last x something
             if self.filterNumDays.hasAcceptableInput():
                 date_num = int(self.filterNumDays.text())

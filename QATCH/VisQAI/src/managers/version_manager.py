@@ -188,7 +188,7 @@ class VersionManager:
         return self.objects_dir / shared / sha
 
     def commit(self, model_file: str, metadata: Optional[Dict[str, Any]] = None) -> str:
-        """Add a new model snapshot to the repository, automically storing the binary and metadata.
+        """Add a new model snapshot to the repository, atomically storing the binary and metadata.
 
         This method computes the SHA-256 of the given model file, copies it into a
         content-addressed shared directory, writes metadata (including timestamp) via
@@ -215,8 +215,8 @@ class VersionManager:
         sha = self._hash_file(model_path)
         obj_dir = self._object_path(sha)
         metadata = metadata or {}
-        committed_at = datetime.now(tz.utc).replace(
-            microsecond=0).isoformat() + "Z"
+        committed_at = datetime.now().astimezone().replace(
+            microsecond=0).isoformat()
         meta = {
             "sha": sha,
             "committed_at": committed_at,

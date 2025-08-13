@@ -154,7 +154,7 @@ class Predictor:
             except RuntimeError as e:
                 # Encrypted ZIP if "encrypted" in exception message
                 if 'encrypted' in str(e):
-                    print("Accessing secured records...")
+                    Log.d("Accessing secured records...")
                     # Derive password from the archive comment via SHA-256
                     if len(zf.comment) == 0:
                         Log.e("ZIP archive comment is empty, cannot derive password")
@@ -323,25 +323,26 @@ class Predictor:
         # store `save` for caller to query if a save was performed with `was_saved()`
         self._saved = save
 
-    def save_path(self) -> bool | None:
-        """Path to temporary directory where model was saved"""
+    def save_path(self) -> str | None:
+        """Path to the temporary directory associated with this Predictor session if a save occurred; otherwise None."""
         return self._tmpdir.name if self._saved else None
 
     def add_security_to_zip(self, zip_path) -> bool:
         """Replace an existing ZIP in-place with a secured ZIP"""
-        successful = False
         try:
             comment = self._calculate_sha256_safe(zip_path)
+            if not comment:
+                Log.e("Could not compute SHA-256 of zip; aborting encryption")
+                return False
             password = hashlib.sha256(comment.encode()).hexdigest()
             # replace ZIP with encrypted version
             self._add_password_and_comment(
                 zip_path, zip_path, password, comment)
-            successful = True
             Log.i("Updated ensemble saved to archive")
+            return True
         except Exception as e:
             Log.e(f"Error saving updated ensemble: {e}")
-        finally:
-            return successful
+            return False
 
     def _calculate_sha256_safe(self, file_path):
         """Calculate SHA256 with error handling"""
@@ -358,7 +359,7 @@ class Predictor:
             return sha256_hash.hexdigest()
 
         except Exception as e:
-            print(f"Error calculating hash: {e}")
+            Log.e(f"Error calculating hash: {e}")
             return None
 
     def _add_password_and_comment(self, input_zip, output_zip, password, comment):

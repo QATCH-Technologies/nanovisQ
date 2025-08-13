@@ -27,6 +27,7 @@ from scipy.interpolate import interp1d
 from typing import Dict, Any, List, Tuple, Type
 from typing import TYPE_CHECKING
 from shutil import make_archive
+from pathlib import Path
 
 try:
     from src.io.file_storage import SecureOpen
@@ -717,15 +718,20 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def add_new_suggestion(record: ExecutionRecord):
+        def add_new_suggestion(record: ExecutionRecord | None = None):
             if self.progressBar.wasCanceled():
                 Log.d("User canceled suggestion. Ignoring results.")
                 return
 
             Log.d("Processing suggestion results!")
 
+            if not record:
+                Log.e("ERROR: No `record` provided to `add_new_suggestion(record)`")
+                return
+
             form = record.result
             exception = record.exception
+
             if exception:
                 Log.e(f"ERROR: Failed to suggest: {str(exception)}")
                 return
@@ -834,36 +840,50 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def run_prediction_result(record: ExecutionRecord):
+        def run_prediction_result(record: ExecutionRecord | None = None):
 
-            if isinstance(record.exception, Exception):
+            if record and record.exception:
                 # NOTE: Progress bar and timer will end on next call to `check_finished()`
-                Log.e("Error occurred while updating the model")
+                Log.e(
+                    f"Error occurred while updating the model: {record.exception}")
                 return
 
             if self.predictor.save_path():
                 try:
+                    save_dir = self.predictor.save_path()
+                    # Create the archive next to the chosen directory (not CWD)
+                    zip_base = os.path.join(
+                        self.model_dialog.directory().path(), "VisQAI-model")
                     saved_model = make_archive(
-                        base_name="VisQAI-model",
+                        base_name=zip_base,
                         format="zip",
-                        root_dir=self.predictor.save_path(),
-                        base_dir=self.predictor.save_path()
+                        root_dir=os.path.dirname(save_dir),
+                        base_dir=os.path.basename(save_dir),
                     )
                     self.predictor.add_security_to_zip(saved_model)
                     sha = self.mvc.commit(
                         model_file=saved_model,
-                        metadata={"base_model": os.path.basename(self.model_path), "learned_runs": None})
-                    os.remove(saved_model)  # delete ZIP from working directory
+                        metadata={
+                            "base_model": os.path.basename(self.model_path),
+                            "learned_runs": None,
+                            "pinned_name": None
+                        }
+                    )
+                    os.remove(saved_model)  # delete temporary ZIP
                     restored_path = self.mvc.get(
                         sha, self.model_dialog.directory().path())
-                    renamed_path = str(restored_path).replace(
-                        "model.zip", f"{sha[0:7]}.zip")
-                    os.rename(restored_path, renamed_path)
-                    Log.i(f"Created new model: {renamed_path}")
+                    # Rename to VisQAI-<sha7>.zip
+                    restored_path = Path(restored_path)
+                    target_path = restored_path.with_name(
+                        f"VisQAI-{sha[:7]}.zip")
+                    if target_path.exists():
+                        target_path.unlink()
+                    restored_path.rename(target_path)
+                    Log.i(f"Created new model: {target_path}")
 
                 except Exception as e:
                     # NOTE: Progress bar and timer will end on next call to `check_finished()`
-                    Log.e("Error occurred while saving the model")
+                    Log.e(f"Error occurred while saving the model: {e}")
                     return
 
             Log.d("Waiting for prediction results...")
@@ -875,7 +895,7 @@ class FrameStep1(QtWidgets.QDialog):
                 data=predict_df,
                 callback=get_prediction_result)
 
-        def get_prediction_result(record: ExecutionRecord):
+        def get_prediction_result(record: ExecutionRecord | None = None):
 
             if self.progressBar.wasCanceled():
                 Log.d("User canceled prediction. Ignoring results.")
@@ -888,10 +908,17 @@ class FrameStep1(QtWidgets.QDialog):
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
             # a series of standard deviations for each predicted value.
+
+            if not record:
+                Log.e("ERROR: No `record` provided to `get_prediction_result(record)`")
+                return
+
             predicted_mean_vp, mean_std = record.result
             exception = record.exception
+
             if exception:
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
+                return
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
