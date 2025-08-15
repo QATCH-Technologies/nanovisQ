@@ -34,12 +34,18 @@ class Worker:
                  source=OperationType.measurement,
                  export_enabled=False,
                  freq_hopping=False,
-                 reconstruct=False):
+                 reconstruct=False,
+                 driedValue=None,
+                 appliedValue=None):
 
         # set up logger (only once)
         multiprocessing.log_to_stderr()
         logger = multiprocessing.get_logger()
         logger.setLevel(logging.INFO)
+
+        # Dummy, set in config()
+        self._driedValue = None
+        self._appliedValue = None
 
         # configure basic process
         self.config(QCS_on=QCS_on,
@@ -49,7 +55,9 @@ class Worker:
                     source=source,
                     export_enabled=export_enabled,
                     freq_hopping=freq_hopping,
-                    reconstruct=reconstruct)
+                    reconstruct=reconstruct,
+                    driedValue=driedValue,
+                    appliedValue=appliedValue)
 
     ###########################################################################
     # Reusable call to configure all processes for acquisition and processing
@@ -63,7 +71,9 @@ class Worker:
                source=OperationType.measurement,
                export_enabled=False,
                freq_hopping=False,
-               reconstruct=False):
+               reconstruct=False,
+               driedValue=None,
+               appliedValue=None):
         """
         :param port: Port to open on start :type port: str.
         :param speed: Speed for the specified port :type speed: float.
@@ -133,6 +143,18 @@ class Worker:
         self._freq_hopping = freq_hopping
         self._reconstruct = reconstruct
 
+        if driedValue:
+            self._driedValue = driedValue
+        elif self._driedValue:
+            with self._driedValue.get_lock():
+                self._driedValue.value = 0.0
+
+        if appliedValue:
+            self._appliedValue = appliedValue
+        elif self._appliedValue:
+            with self._appliedValue.get_lock():
+                self._appliedValue.value = 0.0
+
     ###########################################################################
     # Starts all processes, based on configuration given in constructor.
     ###########################################################################
@@ -152,7 +174,7 @@ class Worker:
         # Checks the type of source
         if self._source == OperationType.measurement:
             self._acquisition_process = SerialProcess(
-                self._queueLog, self._parser_process, self._timestart, self._freq_hopping, self._export, self._reconstruct)
+                self._queueLog, self._parser_process, self._timestart, self._freq_hopping, self._export, self._reconstruct, self._driedValue, self._appliedValue)
         elif self._source == OperationType.calibration:
             self._acquisition_process = CalibrationProcess(
                 self._queueLog, self._parser_process)

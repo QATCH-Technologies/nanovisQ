@@ -1,3 +1,4 @@
+from collections import deque
 from QATCH.ui.mainWindow_ui import Ui_Controls, Ui_Info, Ui_Plots, Ui_Logger, Ui_Main, Ui_Login
 from pyqtgraph import AxisItem
 import pyqtgraph as pg
@@ -40,7 +41,7 @@ import requests
 import stat
 import subprocess
 import logging
-from typing import List
+from typing import List, Union
 import shutil
 import pandas as pd
 
@@ -717,7 +718,7 @@ class Rename_Output_Files(QtCore.QObject):
         """
         The handler method for performing temperature interpolation on a list of files.
 
-        This method handles starting the `pInterpTemps` thread which interpolates temperature 
+        This method handles starting the `pInterpTemps` thread which interpolates temperature
         through a list of file paths.
 
         Args:
@@ -789,11 +790,11 @@ class Rename_Output_Files(QtCore.QObject):
     #######################################################################
     def run(self) -> None:
         """
-        Executes the run process to handle new files, analyze data quality, prompt user input, 
+        Executes the run process to handle new files, analyze data quality, prompt user input,
         and manage file storage and encryption.
 
-        This method checks for newly generated files, processes them by analyzing quality, 
-        renaming, and saving them into user-defined directories. It also handles user input 
+        This method checks for newly generated files, processes them by analyzing quality,
+        renaming, and saving them into user-defined directories. It also handles user input
         for naming runs, encrypts output files if required, and manages error conditions.
 
         Raises:
@@ -1138,7 +1139,7 @@ class MainWindow(QtWidgets.QMainWindow):
         """ Handles the main window layout.
 
         This method setups up the various child windows and layout of the main application
-        window.  This initializer also establishes the layout of the various plots for each 
+        window.  This initializer also establishes the layout of the various plots for each
         application mode.  Last, the initializer sets the various signals for each thread and
         enables the UI.
 
@@ -1239,8 +1240,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self._vector_1 = None
         self._vector_2 = None
 
+        # Used for DryingDetection times
+        self._sensorDriedTimeValue = multiprocessing.Value('f', 0.0)
+        self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
+        self._dropAppliedTimeValue = multiprocessing.Value('f', 0.0)
+        self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
+
         # Instantiates a Worker class
-        self.worker = Worker()
+        self.worker = Worker(driedValue=self._sensorDriedTimeValue,
+                             appliedValue=self._dropAppliedTimeValue)
 
         # Initiates an Upgrader class
         self.fwUpdater = FW_Updater()
@@ -1309,6 +1317,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.forecast_status = FillStatus.NO_FILL
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
+
+        self.dry_detect = []
+        for _ in range(4):
+            self.dry_detect.append(
+                DryingDetection(
+                    window_size=2000, sigma_stable_diss=0.25, sigma_stable_freq=0.25, flat_slope_eps=0.000015))
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
@@ -1619,7 +1633,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         The start() method initially validates signed in user permissions and requested CAPTURE action.  If a
         user does not have CAPTURE permissions, the method returns to caller.  Next, the method handles orphaned run
-        files from previous runs, uniqufiying run names.  Next, error checking for the correct number of ports is 
+        files from previous runs, uniqufiying run names.  Next, error checking for the correct number of ports is
         determined.  More than 2 ports or no ports results in a return to caller and error message.  Then, the user profile
         and calibration data is validated for developer mode and recency respecitvely. Last, the mode of capture is set to
         either multiplex or single mode.
@@ -1825,6 +1839,10 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.w(
                         f"Removing invalid initialization file from 'config' root: {path}")
                     os.remove(path)
+
+        # Reset dry and drop times to zero
+        self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
+        self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
 
         # Instantiates process
         self.worker.config(QCS_on=self._QCS_installed,
@@ -2706,7 +2724,7 @@ class MainWindow(QtWidgets.QMainWindow):
         Sets the application in multi-port mode for multiplex devices.
 
         Sets the number of multiplex plots and clears and redraws current plots
-        with the correct plot count.  Exceptions are logged as errors and returned to the 
+        with the correct plot count.  Exceptions are logged as errors and returned to the
         main ui window.
         """
         try:
@@ -3193,10 +3211,18 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
-                                            labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
-                                            # next(x for x,y in list(vector0) if y <= 1.0)
-                                            idx = int(len(list(vector0)) / 3)
+                                        if self.dry_detect[i].dry_time == 0:
+                                            labelbar = 'Waiting for drying...'
+                                            continue
+                                        if time_running - self.dry_detect[i].dry_time < 1:
+                                            labelbar = 'Capturing data... Calibrating baselines once dried... please wait...'
+                                            #
+                                            try:
+                                                idx = next(x for x, y in enumerate(
+                                                    vector0) if y <= self.dry_detect[i].dry_time - 3.0)
+                                            except:
+                                                idx = int(
+                                                    len(list(vector0)) / 3)
                                             if idx > 0:
                                                 self._baseline_freq_avg = np.average(
                                                     vector1[:-idx])
@@ -3628,16 +3654,32 @@ class MainWindow(QtWidgets.QMainWindow):
                             if time_running == 0:
                                 labelbar = 'Waiting for start...'
                                 continue
-                            if time_running < 3.0:
-                                self._text4[i].setText(
-                                    'Calibrating...', color=(0, 0, 200))
-                                self._baselinedata[i] = [
-                                    [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
-                                        self.worker.get_d1_buffer(i)[:numPoints])],
-                                    [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
-                            else:
+                            dissipation_vector = self.worker.get_d2_buffer(i)
+                            rf_vector = self.worker.get_d1_buffer(i)
+                            relative_time = self.worker.get_t1_buffer(i)
+                            dry_status, dry_msg = self.dry_detect[i].update(
+                                resonance_frequency=rf_vector, dissipation=dissipation_vector, relative_time=relative_time)
+                            if dry_status:
+
+                                # Set and signal all receivers that new time is available (if unset)
+                                with self._sensorDriedTimeValue.get_lock():
+                                    # For multiplex, take the most recent (latest) dry time
+                                    if self._sensorDriedTimes[i] == 0.0:
+                                        self._sensorDriedTimes[i] = time_running
+                                        # set on each and every trigger for multiplex:
+                                        self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+
                                 self._text4[i].setText(
                                     'Apply drop now!', color=(0, 200, 0))
+                            else:
+                                if "calibrating" in dry_msg.lower():
+                                    self._baselinedata[i] = [
+                                        [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
+                                            self.worker.get_d1_buffer(i)[:numPoints])],
+                                        [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
+                                self._text4[i].setText(
+                                    dry_msg, color=(0, 0, 200))
+                                QtCore.QCoreApplication.processEvents()
                         else:
                             time_running = _plt2.getViewBox().viewRange()[0][1]
                             current_y_range = [_plt2.getViewBox().viewRange()[
@@ -3665,9 +3707,22 @@ class MainWindow(QtWidgets.QMainWindow):
                                 # else:
                                 #     status_text = "Run Complete, waiting on other channels..."
                                 # self._text4[i].setText(status_text, color=(200, 0, 0)) # range unchanging / probably finished
+
+                            # Set and signal all receivers that new time is available (if unset)
+                            with self._dropAppliedTimeValue.get_lock():
+                                # For multiplex, take the first (earliest) drop time
+                                if self._dropAppliedTimes[i] == 0.0:
+                                    self._dropAppliedTimes[i] = time_running
+                                if self._dropAppliedTimeValue.value == 0.0:
+                                    # only set on first trigger for multiplex:
+                                    self._dropAppliedTimeValue.value = time_running
+
                     except Exception as e:
+                        import traceback
+
                         Log.e("Error handling plot status label text!")
-                        # Log.e(e)
+                        Log.e(e)
+                        Log.e("PlotStatus", traceback.format_exc())
 
                     # Prevent the user from zooming/panning out of this specified region
                     if self._get_source() == OperationType.measurement:
@@ -6060,3 +6115,181 @@ class TECTask(QtCore.QThread):
         #     if len(dm.doDiscover()) > 0:
         #         return net_exists
         return False
+
+
+class DryingDetection:
+    """State machine for detecting when a sensor has dried.
+
+    Criteria for drying:
+      - Stability: stddev of each normalized window < threshold.
+      - Flatness: absolute slope of each normalized window < threshold.
+
+    The first call that meets both criteria returns True; thereafter,
+    update() will always return False until you call reset().
+
+    Args:
+        window_size: number of samples in each rolling window.
+        sigma_stable_freq: max allowed stddev of normalized frequency.
+        sigma_stable_diss: max allowed stddev of normalized dissipation.
+        flat_slope_eps: max allowed abs(slope) of normalized windows.
+    """
+
+    def __init__(
+        self,
+        window_size: int,
+        sigma_stable_freq: float,
+        sigma_stable_diss: float,
+        flat_slope_eps: float,
+    ) -> None:
+        self.win_n = int(window_size)
+        self.freq_w = deque(maxlen=self.win_n)
+        self.diss_w = deque(maxlen=self.win_n)
+        self.time_w = deque(maxlen=self.win_n)
+        self.sigma_stable_freq = float(sigma_stable_freq)
+        self.sigma_stable_diss = float(sigma_stable_diss)
+        self.flat_eps = float(flat_slope_eps)
+        self._detection_index = None
+        self.reset()
+
+    def reset(self) -> None:
+        """Reset the drying detection state.
+
+        Clears all internal buffers and resets detection flags and counters.
+
+        Returns:
+            None
+        """
+        self.freq_w.clear()
+        self.diss_w.clear()
+        self.time_w.clear()
+        self._dried = False
+        self._sample_count = 0
+        self._dry_time = 0.0
+
+    @property
+    def is_dry(self) -> bool:
+        """bool: Whether a drying event has been detected.
+
+        Returns:
+            bool: True if drying has been detected at least once; False otherwise.
+        """
+        return self._dried
+
+    @property
+    def dry_time(self) -> float:
+        """float: The relative time at which the drying event was detected.
+
+        Returns:
+            float: The time value from the input time array where drying was first detected,
+                or None if no drying has been detected.
+        """
+        return self._dry_time
+
+    def update(
+        self,
+        resonance_frequency: np.ndarray,
+        dissipation: np.ndarray,
+        relative_time: np.ndarray,
+    ):
+        """
+        Feed in arrays of newest-first samples; process them in one batch.
+
+        Args:
+            resonance_frequency: 1D array of newest-first frequency samples.
+            dissipation:        1D array of newest-first dissipation samples.
+            relative_time:      1D array of newest-first time samples.
+
+        Returns:
+            Tuple[bool, str]:
+                dried:  True if drying has just been detected (only once).
+                status: A newline-separated string of one or more status messages.
+        """
+        status = ""
+        if self._dried:
+            status += "Dried<br>"
+            return True, status
+        f_arr = np.asarray(resonance_frequency)[::-1]
+        d_arr = np.asarray(dissipation)[::-1]
+        t_arr = np.asarray(relative_time)[::-1]
+        if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
+            status += "Error: input shapes do not match; skipping this batch.<br>"
+            return False, status
+
+        batch_size = f_arr.size
+        self._sample_count += batch_size
+        self.freq_w.extend(f_arr)
+        self.diss_w.extend(d_arr)
+        self.time_w.extend(t_arr)
+        if len(self.freq_w) < self.win_n:
+            status += f"Calibrating...<br>"
+            return False, status
+        arr_f = np.array(self.freq_w, dtype=float)
+        arr_d = np.array(self.diss_w, dtype=float)
+        nf = self._normalize(arr_f)
+        nd = self._normalize(arr_d)
+        sigma_f = float(np.nanstd(nf))
+        sigma_d = float(np.nanstd(nd))
+        slope_f = self._compute_slope(nf)
+        slope_d = self._compute_slope(nd)
+        if (
+            sigma_f < self.sigma_stable_freq and
+            sigma_d < self.sigma_stable_diss and
+            abs(slope_f) < self.flat_eps and
+            abs(slope_d) < self.flat_eps
+        ):
+            self._dried = True
+            self._dry_time = float(self.time_w[-1])
+            status += "Dried<br>"
+            Log.w(f"Dry time was {self._dry_time}")
+            return True, status
+        Log.d(
+            f"DryingDetection stats:\n"
+            f"  sigma_f={sigma_f:.5f}/{self.sigma_stable_freq}\n"
+            f"  sigma_d={sigma_d:.5f}/{self.sigma_stable_diss}\n"
+            f"  slope_f={slope_f:.6f}/{self.flat_eps}\n"
+            f"  slope_d={slope_d:.6f}/{self.flat_eps}"
+        )
+        status += "Drying in progress:<br>"
+        if sigma_f >= self.sigma_stable_freq or abs(slope_f) >= self.flat_eps:
+            status += " - Resonance frequency unstable<br>"
+        if sigma_d >= self.sigma_stable_diss or abs(slope_d) >= self.flat_eps:
+            status += " - Dissipation unstable<br>"
+        status += " " * 33
+        return False, status
+
+    def _normalize(self, arr: np.ndarray) -> np.ndarray:
+        """Min-max normalize an array to the [0, 1] range.
+
+        If the input array has no finite range (all values are equal or non-finite),
+        returns an array of zeros with the same shape.
+
+        Args:
+            arr (np.ndarray): Input array of values to normalize.
+
+        Returns:
+            np.ndarray: Normalized array with values scaled to [0, 1], or zeros
+            array if normalization is not possible.
+        """
+        mn, mx = np.nanmin(arr), np.nanmax(arr)
+        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
+            return np.zeros_like(arr)
+        return (arr - mn) / (mx - mn)
+
+    def _compute_slope(self, arr: np.ndarray) -> float:
+        """Compute the slope of a linear fit to the array.
+
+        Fits a first-degree polynomial to the data points (x, arr) with x values
+        from 0 to N-1 and returns the slope.
+
+        Args:
+            arr (np.ndarray): 1D array of values for slope computation.
+
+        Returns:
+            float: Slope of the fitted line. Returns 0.0 if the array has fewer than
+            two points.
+        """
+        if arr.size < 2:
+            return 0.0
+        x = np.arange(arr.size)
+        m, _ = np.polyfit(x, arr, 1)
+        return float(m)
