@@ -33,6 +33,11 @@ NvMem_RAM NvMem::defaults(void)
   defaults.HW_Revision = HW_REVISION_X;
   defaults.OffsetM = 0;
   defaults.Ethernet_EN = 0;
+  defaults.POGO_PosOpened1 = DEFAULT_POS_OPENED_1;
+  defaults.POGO_PosClosed1 = DEFAULT_POS_CLOSED_1;
+  defaults.POGO_PosOpened2 = DEFAULT_POS_OPENED_2;
+  defaults.POGO_PosClosed2 = DEFAULT_POS_CLOSED_2;
+  defaults.POGO_MoveDelay = DEFAULT_MOVE_DELAY;
   // defaults.NewValue = 42;
 
   struct_is_valid = true; // required for saving defaults, which is required to come soon after this call
@@ -120,6 +125,31 @@ byte NvMem::update(void)
   if (mem.Ethernet_EN == 0xFF && DEFAULT.Ethernet_EN != 0xFF)
   {
     mem.Ethernet_EN = DEFAULT.Ethernet_EN;
+    modified_entries++;
+  }
+  if (mem.POGO_PosOpened1 == 0xFF && DEFAULT.POGO_PosOpened1 != 0xFF)
+  {
+    mem.POGO_PosOpened1 = DEFAULT.POGO_PosOpened1;
+    modified_entries++;
+  }
+  if (mem.POGO_PosClosed1 == 0xFF && DEFAULT.POGO_PosClosed1 != 0xFF)
+  {
+    mem.POGO_PosClosed1 = DEFAULT.POGO_PosClosed1;
+    modified_entries++;
+  }
+  if (mem.POGO_PosOpened2 == 0xFF && DEFAULT.POGO_PosOpened2 != 0xFF)
+  {
+    mem.POGO_PosOpened2 = DEFAULT.POGO_PosOpened2;
+    modified_entries++;
+  }
+  if (mem.POGO_PosClosed2 == 0xFF && DEFAULT.POGO_PosClosed2 != 0xFF)
+  {
+    mem.POGO_PosClosed2 = DEFAULT.POGO_PosClosed2;
+    modified_entries++;
+  }
+  if (mem.POGO_MoveDelay == 0xFF && DEFAULT.POGO_MoveDelay != 0xFF)
+  {
+    mem.POGO_MoveDelay = DEFAULT.POGO_MoveDelay;
     modified_entries++;
   }
   // if (mem.NewValue == 0xFF && DEFAULT.NewValue != 0xFF)
