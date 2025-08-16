@@ -83,8 +83,9 @@ class Executor:
                 if record.callback:
                     try:
                         record.callback(record)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"ERROR occurred when calling callback method: {e}")
 
         thread = Thread(target=_wrapper, name=final_thread_name, daemon=False)
         record._thread = thread

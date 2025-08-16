@@ -20,7 +20,7 @@ import os
 import sys
 import logging
 from pathlib import Path
-from typing import Union, Dict, List, Tuple
+from typing import Union, Dict, List, Tuple, Optional
 
 import numpy as np
 import pandas as pd
@@ -323,7 +323,7 @@ class Predictor:
         # store `save` for caller to query if a save was performed with `was_saved()`
         self._saved = save
 
-    def save_path(self) -> str | None:
+    def save_path(self) -> Optional[str]:
         """Path to the temporary directory associated with this Predictor session if a save occurred; otherwise None."""
         return self._tmpdir.name if self._saved else None
 
