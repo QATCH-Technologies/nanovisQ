@@ -44,18 +44,38 @@ class Logger:
             None
         """
         # Suppress TensorFlow and FutureWarnings
+        # Suppress TensorFlow future warnings
+        # Suppress Python-level FutureWarnings from TensorFlow imports
         warnings.filterwarnings(
-            'ignore', category=FutureWarning, module='tensorflow')
+            "ignore", category=FutureWarning, module="tensorflow"
+        )
+
+        # Suppress low-level C++ backend logs
+        # 0=all, 1=INFO, 2=WARN, 3=ERROR
+        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
         try:
             import tensorflow as tf
-            tf.get_logger().setLevel('ERROR')
-            try:
+
+            # Try TF-specific logger if available
+            if hasattr(tf, "get_logger"):
+                tf.get_logger().setLevel(logging.ERROR)
+
+            # Otherwise just use Python's root logger (works because TF uses logging too)
+            else:
+                logging.getLogger("tensorflow").setLevel(logging.ERROR)
+
+            # Suppress Autograph verbosity if available
+            if hasattr(tf, "autograph") and hasattr(tf.autograph, "set_verbosity"):
                 tf.autograph.set_verbosity(0)
-            except Exception:
-                pass
+
         except ImportError:
+            # TensorFlow not installed
             pass
 
+        except ImportError:
+            # TensorFlow is not installed — skip
+            pass
         try:
             from absl import logging as absl_logging
             absl_logging.set_verbosity(absl_logging.ERROR)
