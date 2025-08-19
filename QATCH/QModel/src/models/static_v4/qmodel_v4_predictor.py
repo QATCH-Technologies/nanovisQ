@@ -11,7 +11,7 @@ Date:
     2025-08-19
 
 Version: 
-    QModel.Ver4.1
+    QModel.Ver4.1.1
 """
 from itertools import chain
 import numpy as np
@@ -689,8 +689,8 @@ class QModelPredictorV4:
                 }
 
         # Convert to final format
-        final_poi = self._format_final_predictions(best_predictions, force)
-
+        # final_poi = self._format_final_predictions(best_predictions, force)
+        Log.w(final_poi)
         # Track prediction
         self._track_prediction(final_poi)
 
@@ -803,27 +803,38 @@ class QModelPredictorV4:
 
         return np.array(peaks)
 
-    def find_flat_spot(self, x, y, index, step=0.01, max_iter=1000, tol=1e-5):
+    def _poi1_adjustment(self, x, y, index, step=0.01, max_iter=1000, tol=1e-5) -> int:
+        """
+        Applys a minor adjustment to POI1 to ensure that it does not appear to the left
+        of the drop application.  Operates by taking the relative slope between neighbors until
+        the relative slope between 2 neighbors and the index is ~0.
+
+        Args:
+            x (np.ndarray): Relative time vector.
+            y (np.ndarray): Dissipation vector.
+            index (int): Initial estimation of POI1 position for refinement.
+            step (int): Relative time x step.
+            max_iter (int): Maximum number of steps to take for evaluation.
+            tol (float): The 0 approximation.
+
+        Returns:
+            int: The modified index for POI1.
+        """
         x = np.array(x, dtype=float)
         y = np.array(y, dtype=float)
-
         for i in range(max_iter):
-            # Compute slope with neighbors
             slope_left = (y[index] - y[index-1]) / \
                 (x[index] - x[index-1]) if index > 0 else 0
             slope_right = (y[index+1] - y[index]) / \
                 (x[index+1] - x[index]) if index < len(x)-1 else 0
 
             avg_slope = (slope_left + slope_right) / 2
-
-            # Check if slope is near zero
             if abs(avg_slope) < tol:
-                return index  # flat spot found
+                return index + i
 
-            # Move to the right
             x[index] += step * np.sign(-avg_slope)
 
-        return index  # return last index if flat spot not found within max_iter
+        return index + max_iter
 
     def _apply_constraints_to_topk(self, predictions: Dict[int, Dict],
                                    df: pd.DataFrame) -> Dict[int, Dict]:
@@ -944,9 +955,9 @@ class QModelPredictorV4:
                 Only POIs satisfying the requested sequential and temporal constraints are retained.
         """
         validated = predictions.copy()
-        valid_1 = self.find_flat_spot(
+        valid_1 = self._poi1_adjustment(
             df["Relative_time"].values, y=df["Dissipation"].values, index=validated[1].get("indices"), max_iter=20)
-        Log.w(valid_1)
+        validated[1]["indices"] = valid_1
         if enforce_sequential:
             validated = self._enforce_sequential_constraints(validated)
 

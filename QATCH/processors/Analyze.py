@@ -3368,7 +3368,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict_best(
+                            predict_result = predictor.predict(
                                 file_buffer=fh)
                             predictions = []
                             candidates = []
@@ -3754,13 +3754,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_val = self.poi_markers[self.stateStep - 2].value()
                     cur_idx = next(x for x, y in enumerate(
                         self.xs) if y >= cur_val)
-                    if cur_idx + 2 < len(self.xs) - 1:
-                        self.poi_markers[self.stateStep - 1].setValue(
-                            self.xs[int(cur_idx + 2)]
-                        )
-                    else:
-                        Log.d(f"Marker {self.stateStep - 1} is already flagged as unused."
-                              " Not bumping POI to be in sequential order.")
+                    self.poi_markers[self.stateStep - 1].setValue(
+                        self.xs[int(cur_idx + 2)]
+                    )
             self.zoomLevel = 1  # reset default zoom level for each point
             show_fits = 1.0 if self.stateStep >= 4 else 0.0
             show_scat = 0.1 if self.stateStep >= 4 else 1.0
