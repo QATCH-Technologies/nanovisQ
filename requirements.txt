@@ -220,6 +220,11 @@ tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
 termcolor==2.5.0
     # via tensorflow-intel
+tf_keras==2.19.0
+    # Required for QModelv4.x compatibility
+    # NOTE: This requires tensorflow 2.19 and will error on install
+    # but does work with 2.18. Upgrading to tensorflow 2.19 causes compatibilty
+    # issues with QModelv2.x. which requires 2.18.  To be resolved in the future.
 threadpoolctl==3.5.0
     # via
     #   imbalanced-learn
