@@ -3,7 +3,7 @@ try:
     from QATCH.core.constants import Constants
     from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
-except:
+except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
@@ -194,8 +194,8 @@ class FrameStep2(QtWidgets.QDialog):
         self.btn_start.clicked.connect(
             getattr(self, "learn" if step == 4 else "optimize")
         )
-        self.btn_cancel.clicked.connect(
-            lambda: self.model_selected(None))
+        # self.btn_cancel.clicked.connect(
+        #     lambda: self.model_selected(None))
         self.btn_cancel.clicked.connect(self.action_cancel)
         self.btn_next.clicked.connect(self.proceed_to_next_step)
 
@@ -229,8 +229,8 @@ class FrameStep2(QtWidgets.QDialog):
             self.load_changes()
 
     def action_cancel(self):
-        if hasattr(self, "progressBar"):
-            self.progressBar.cancel()
+        if hasattr(self, "progressState"):
+            self.progressState.cancel()
         if hasattr(self, "timer") and self.timer.isActive():
             self.progress_label.setText("% - Canceling... please wait...")
         else:
@@ -344,8 +344,8 @@ class FrameStep2(QtWidgets.QDialog):
         return rate_list
 
     def update_ui_next_step(self, this_idx):
-        value_0_to_100 = ((this_idx - self.progressBar.minimum()) * 100 //
-                          (self.progressBar.maximum() - self.progressBar.minimum()))
+        value_0_to_100 = ((this_idx - self.progressState.minimum()) * 100 //
+                          (self.progressState.maximum() - self.progressState.minimum()))
         self.progress_bar.setValue(value_0_to_100)
 
         if not self.predictor.save_path():
@@ -389,9 +389,9 @@ class FrameStep2(QtWidgets.QDialog):
         total_steps = len(self.parent.import_formulations)
         self.learn_idx = -1
 
-        self.progressBar = Lite_QProgressDialog(  # QtWidgets.QProgressDialog(
+        self.progressState = Lite_QProgressDialog(  # QtWidgets.QProgressDialog(
             "Learning...", "Cancel", self.learn_idx, total_steps, self)
-        # progressBar is retained for cancel state and min/max tracking
+        # progressState is retained for cancel state and min/max tracking
 
         self.timer = QtCore.QTimer()
         self.timer.setInterval(100)
@@ -408,7 +408,7 @@ class FrameStep2(QtWidgets.QDialog):
                     f"Error occurred while updating the model: {record.exception}")
                 return
 
-            if self.progressBar.wasCanceled():
+            if self.progressState.wasCanceled():
                 Log.w("Learning canceled!")
                 return
 
@@ -418,13 +418,13 @@ class FrameStep2(QtWidgets.QDialog):
             self.last_learn_start_time = now
 
             self.learn_idx += 1  # step to next run queued
-            self.progressBar.setValue(self.learn_idx)
+            self.progressState.setValue(self.learn_idx)
 
             if not self.predictor.save_path():
 
                 # process next queued run
                 this_idx = self.learn_idx
-                is_final_run = (this_idx == self.progressBar.maximum() - 1)
+                is_final_run = (this_idx == self.progressState.maximum() - 1)
                 queued_df = self.parent.import_formulations[this_idx].to_dataframe(
                     encoded=False, training=False)
 
@@ -467,7 +467,10 @@ class FrameStep2(QtWidgets.QDialog):
                         root_dir=save_dir,
                         base_dir="."
                     )
-                    self.predictor.add_security_to_zip(saved_model)
+                    enc_ok = self.predictor.add_security_to_zip(saved_model)
+                    if not enc_ok:
+                        Log.w(
+                            TAG, "Failed to add security to ZIP; committing unencrypted archive.")
                     sha = self.mvc.commit(
                         model_file=saved_model,
                         metadata={
@@ -501,17 +504,21 @@ class FrameStep2(QtWidgets.QDialog):
         self.mvc = VersionManager(
             self.model_dialog.directory().path(), retention=255)
 
+        # Track success/failure of save; used to decide whether to prompt loading
+        self.new_model_path = None
+
         self.last_learn_start_time = time.time()
         self.run_learn_time = 20  # starting assumption
 
         # Start from 0%, do not increment learn_idx yet
-        value_0_to_100 = ((self.learn_idx - self.progressBar.minimum()) * 100 //
-                          (self.progressBar.maximum() - self.progressBar.minimum()))
+        value_0_to_100 = ((self.learn_idx - self.progressState.minimum()) * 100 //
+                          (self.progressState.maximum() - self.progressState.minimum()))
         self.progress_bar.setValue(value_0_to_100)
 
+        lines = self.summary_text.toPlainText().splitlines()
+        first_label = lines[0] if lines else "Initial Selection"
         format_str = "{}% - Learning run \"{}\"...".format(
-            value_0_to_100,
-            self.summary_text.toPlainText().splitlines()[0])
+            value_0_to_100, first_label)
         self.progress_label.setText(format_str)
 
         if self.parent.select_formulation.viscosity_profile.is_measured:
@@ -640,16 +647,19 @@ class FrameStep2(QtWidgets.QDialog):
             self.progress_label.setText("100% - Finished")
             Log.i(TAG, "Learning finished successfully.")
 
-            if not self.progressBar.wasCanceled():
+            if not self.progressState.wasCanceled() and getattr(self, "new_model_path", None):
                 QtCore.QTimer.singleShot(1000, self.done_learning)
+            elif not self.progressState.wasCanceled():
+                Log.w(TAG, "Learning finished but no new model was created.")
 
         else:
-            if not self.progressBar.queue().empty():
-                self.update_ui_next_step(self.progressBar.queue().get_nowait())
+            if not self.progressState.queue().empty():
+                self.update_ui_next_step(
+                    self.progressState.queue().get_nowait())
 
             # Increment progress bar periodically to show that the thread isn't frozen solid (~20s per run)
-            pct_per_run = 100 // (self.progressBar.maximum() -
-                                  self.progressBar.minimum())
+            pct_per_run = 100 // (self.progressState.maximum() -
+                                  self.progressState.minimum())
             # secs per run (tracked dynamically based on real timing)
             sec_per_run = self.run_learn_time
             # ms per increment (min 50ms)
