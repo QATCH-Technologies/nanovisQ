@@ -3769,9 +3769,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     cur_val = self.poi_markers[self.stateStep - 2].value()
                     cur_idx = next(x for x, y in enumerate(
                         self.xs) if y >= cur_val)
-                    self.poi_markers[self.stateStep - 1].setValue(
-                        self.xs[int(cur_idx + 2)]
-                    )
+                    new_idx = min(cur_idx + 2, len(self.xs) - 1)
+                    if new_idx > cur_idx:
+                        self.poi_markers[self.stateStep -
+                                         1].setValue(self.xs[int(new_idx)])
+                    else:
+                        Log.d(
+                            "Current marker cannot be bumped forward without exceeding data bounds; leaving as-is.")
             self.zoomLevel = 1  # reset default zoom level for each point
             show_fits = 1.0 if self.stateStep >= 4 else 0.0
             show_scat = 0.1 if self.stateStep >= 4 else 1.0
