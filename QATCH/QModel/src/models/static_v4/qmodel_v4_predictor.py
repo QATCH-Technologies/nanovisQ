@@ -640,7 +640,7 @@ class QModelPredictorV4:
 
         for poi_num, pred_idx in self.poi_indices.items():
             poi_probs = predictions[:, pred_idx]
-            threshold = adaptive_thresholds.get(poi_num, 0.5)
+            threshold = adaptive_thresholds.get(poi_num, 0.3)
 
             if force or np.max(poi_probs) >= threshold:
                 above_threshold = poi_probs >= threshold if not force else np.ones_like(
@@ -861,6 +861,9 @@ class QModelPredictorV4:
 
         # POI1 and POI2 can exist independently
         if 1 in predictions:
+            valid_1 = self._poi1_adjustment(
+                df["Relative_time"].values, y=df["Dissipation"].values, index=predictions[1].get("indices")[0], max_iter=20)
+            predictions[1]["indices"][0] = valid_1
             validated[1] = predictions[1]
         if 2 in predictions:
             validated[2] = predictions[2]

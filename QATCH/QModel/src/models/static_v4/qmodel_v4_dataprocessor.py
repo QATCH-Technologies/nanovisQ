@@ -145,7 +145,7 @@ class DataProcessorV4:
             return ys_freq - difference_factor * ys_diss
 
         df = df.copy()
-        df = df.drop(columns=DataProcessorV4.DROP)
+        df = df.drop(columns=DataProcessorV4.DROP, errors="ignore")
         smooth_win = int(
             0.005 * len(df["Relative_time"].values))
         if smooth_win % 2 == 0:
