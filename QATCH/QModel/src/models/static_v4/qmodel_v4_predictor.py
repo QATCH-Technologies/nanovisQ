@@ -15,6 +15,7 @@ Date:
 Version: 
     QModel.Ver4.1
 """
+from itertools import chain
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -104,7 +105,6 @@ class QModelPredictorV4:
         _validate_file_buffer(file_buffer): Validate and read CSV data into DataFrame.
         generate_features(df): Generate features from raw data.
         preprocess_data(df): Preprocess data and create sliding window arrays.
-        _filter_poi1(indices, confidences, feature_vector, relative_time): Filter POI1 predictions.
         predict_best(file_buffer=None, df=None, ...): Predict the single best POI locations.
         _get_default_predictions(): Return default placeholder predictions.
         _format_final_predictions(poi_predictions, force): Format predictions for output.
@@ -576,117 +576,8 @@ class QModelPredictorV4:
 
         # Track prediction
         self._track_prediction(final_poi)
-        poi_1, conf_1 = self._filter_poi1(final_poi.get("POI1").get("indices"),
-                                          final_poi.get("POI1").get("confidences"), self._features_df, self._features_df["Relative_time"])
-        final_poi["POI1"]["indices"][0] = poi_1
 
         return final_poi
-
-    def _filter_poi1(self,
-                     indices: List[int],
-                     confidences: List[float],
-                     feature_vector: pd.DataFrame,
-                     relative_time: np.ndarray
-                     ) -> Tuple[List[int], List[float]]:
-        """Filters candidate POI-1 indices based on signal characteristics and SVM scores.
-
-        This method applies multiple heuristics to refine the list of candidate
-        indices for POI-1 detection. The filters include gradient thresholds,
-        height thresholds, peak-jump detection, and checks for flat/no-incline
-        regions. It also aligns candidates based on SVM-derived features if
-        available.
-
-        Args:
-            indices (List[int]): Initial candidate indices from the prediction model.
-            confidences (List[float]): Confidence scores corresponding to the indices.
-            feature_vector (pd.DataFrame): Feature DataFrame containing columns
-                such as 'Dissipation', 'Resonance_Frequency', 'Difference', and
-                optional SVM score columns ending with '_DoG_SVM_Score'.
-            relative_time (np.ndarray): Array of relative time points corresponding
-                to the feature vector rows.
-
-        Returns:
-            Tuple[List[int], List[float]]:
-                final_inds: Filtered and refined list of candidate indices.
-                final_confs: Corresponding confidence scores for the filtered indices.
-        """
-        dissipation = feature_vector['Dissipation'].values
-        resonance = feature_vector['Resonance_Frequency'].values
-        diff_smooth = feature_vector['Difference'].values
-        svm_scores = {
-            col: feature_vector[col].values
-            for col in feature_vector.columns
-            if col.endswith('_DoG_SVM_Score')
-        }
-        orig_inds = list(indices)
-        orig_confs = list(confidences)
-
-        def pick_after(cands, times, t):
-            return [i for i in cands if times[i] > t]
-        grad_d = np.gradient(dissipation, relative_time)
-        thr_d = grad_d.mean() + grad_d.std()
-        sh_d = np.where(grad_d > thr_d)[0]
-        if len(sh_d):
-            t1 = relative_time[sh_d[0]]
-            inds = pick_after(orig_inds, relative_time, t1)
-        else:
-            inds = orig_inds
-        grad_r = np.gradient(resonance, relative_time)
-        thr_r = grad_r.mean() - grad_r.std()
-        sh_r = np.where(grad_r < thr_r)[0]
-        if len(sh_r):
-            t2 = relative_time[sh_r[0]]
-            inds = pick_after(inds, relative_time, t2)
-        grad_diff = np.gradient(diff_smooth, relative_time)
-        thr_diff = grad_diff.mean() + grad_diff.std()
-        sh_diff = np.where(grad_diff > thr_diff)[0]
-        if len(sh_diff):
-            t_diff = relative_time[sh_diff[0]]
-            avg_interval = np.mean(np.diff(sorted(relative_time[orig_inds])))
-            tol = avg_interval / 2
-            aligned = [i for i in inds if abs(
-                relative_time[i] - t_diff) <= tol]
-            inds = aligned or inds
-        if not inds:
-            for scores in svm_scores.values():
-                jumps = np.abs(np.diff(scores))
-                thr_j = jumps.mean() + jumps.std()
-                big = np.where(jumps > thr_j)[0]
-                if len(big):
-                    t3 = relative_time[big[0] + 1]
-                    inds = pick_after(orig_inds, relative_time, t3)
-                    if inds:
-                        break
-        inds = orig_inds.copy()
-
-        # HEIGHT FILTER
-        baseline_window = int(0.015*len(dissipation))
-        base_vals = dissipation[int(0.005*len(dissipation)):baseline_window]
-        height_thresh = base_vals.mean() + 2 * base_vals.std()
-        height_filtered = [i for i in inds if dissipation[i] > height_thresh]
-        inds_after_height = height_filtered or inds.copy()
-
-        # PEAK-JUMP FILTER
-        delta_d = np.diff(dissipation)
-        thr_jump = delta_d.mean() + delta_d.std()
-        jump_idxs = np.where(delta_d > thr_jump)[0] + 1
-
-        if len(jump_idxs):
-            injection_idx = jump_idxs[0]
-        else:
-            # fallback to global max if nothing exceeds thr_jump
-            injection_idx = np.argmax(delta_d) + 1
-
-        jump_filtered = [i for i in inds_after_height if i >= injection_idx]
-        inds_after_jump = jump_filtered or inds_after_height.copy()
-
-        # NO-INCLINE FILTER
-        flat_filtered = [i for i in inds_after_jump if grad_d[i] <= thr_d]
-        final_inds = flat_filtered or inds_after_jump.copy()
-
-        final_confs = [orig_confs[orig_inds.index(i)] for i in final_inds]
-
-        return final_inds, final_confs
 
     def predict_best(self,
                      file_buffer: Union[str, object] = None,
@@ -828,21 +719,27 @@ class QModelPredictorV4:
 
         Ensures that all six POIs are included in the output. POI3 is always
         returned with placeholder values `-1`. For other POIs, if no valid
-        prediction is available, `-1` values are used.
-
-        Args:
-            poi_predictions (Dict): Dictionary containing intermediate POI predictions
-                with keys as POI numbers and values containing 'indices' and 'confidences'.
-            force (bool): Whether to force predictions even if confidence is low
-                (currently affects placeholder handling).
-
-        Returns:
-            Dict[str, Dict[str, List]]: Dictionary of final POI predictions where
-            each key is a POI label (e.g., 'POI1') and values contain:
-                - 'indices': List of predicted indices (or [-1] if none)
-                - 'confidences': List of confidence scores (or [-1] if none)
+        prediction is available, `-1` values are used. Also flattens lists
+        and removes duplicate indices while keeping first occurrence.
         """
         final_poi = {}
+
+        def _flatten_and_dedupe(indices, confidences):
+            # flatten
+            flat_indices = list(chain.from_iterable(indices)) if any(
+                isinstance(i, list) for i in indices) else indices
+            flat_confidences = list(chain.from_iterable(confidences)) if any(
+                isinstance(c, list) for c in confidences) else confidences
+
+            # dedupe while keeping first occurrence
+            seen = set()
+            dedup_indices, dedup_confidences = [], []
+            for idx, conf in zip(flat_indices, flat_confidences):
+                if idx not in seen:
+                    seen.add(idx)
+                    dedup_indices.append(idx)
+                    dedup_confidences.append(conf)
+            return dedup_indices, dedup_confidences
 
         # Always include POI3 with -1 values
         final_poi["POI3"] = {"indices": [-1], "confidences": [-1]}
@@ -852,20 +749,20 @@ class QModelPredictorV4:
             if poi_num in poi_predictions:
                 pred = poi_predictions[poi_num]
                 if pred['indices'] and pred['confidences']:
+                    indices, confidences = _flatten_and_dedupe(
+                        pred['indices'], pred['confidences'])
+                    if not indices:  # fallback if all got removed
+                        indices, confidences = [-1], [-1]
                     final_poi[f"POI{poi_num}"] = {
-                        "indices": pred['indices'],
-                        "confidences": pred['confidences']
+                        "indices": indices,
+                        "confidences": confidences
                     }
                 else:
                     final_poi[f"POI{poi_num}"] = {
-                        "indices": [-1],
-                        "confidences": [-1]
-                    }
+                        "indices": [-1], "confidences": [-1]}
             else:
                 final_poi[f"POI{poi_num}"] = {
-                    "indices": [-1],
-                    "confidences": [-1]
-                }
+                    "indices": [-1], "confidences": [-1]}
 
         return final_poi
 
