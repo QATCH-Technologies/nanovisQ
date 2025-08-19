@@ -497,8 +497,9 @@ class FrameStep2(QtWidgets.QDialog):
                     Log.e(f"Error occurred while saving the model: {e}")
                     return
 
-                # Cleanup temp files when finished
-                self.predictor.cleanup()
+                finally:
+                    # Cleanup temp files when finished
+                    self.predictor.cleanup()
 
         self.executor = Executor()
         self.mvc = VersionManager(
