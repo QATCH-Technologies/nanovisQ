@@ -1,16 +1,13 @@
 """
 qmodel_v4_dataprocessor.py
 
-Provides the QModelPredictor class for predicting Points of Interest (POIs) in dissipation
-data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Includes methods for
-file validation, feature extraction, probability formatting, and bias correction for refined
-POI selection.
+Provides the QModelDataProcessor for generating features and santizing input to QModel V4.x
 
 Author: 
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date: 
-    2025-08-18
+    2025-08-19
 
 Version: 
     QModel.Ver4.1
