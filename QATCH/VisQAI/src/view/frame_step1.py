@@ -735,13 +735,12 @@ class FrameStep1(QtWidgets.QDialog):
                 Log.e("ERROR: No `record` provided to `add_new_suggestion(record)`")
                 return
 
-            form = record.result
             exception = record.exception
-
             if exception:
                 Log.e(f"ERROR: Failed to suggest: {str(exception)}")
                 return
 
+            form = record.result
             self.add_formulation(form)
 
         Log.d("Waiting for suggestion results...")
@@ -879,12 +878,12 @@ class FrameStep1(QtWidgets.QDialog):
                 Log.e("ERROR: No `record` provided to `get_prediction_result(record)`")
                 return
 
-            predicted_mean_vp, mean_std = record.result
             exception = record.exception
-
             if exception:
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
                 return
+
+            predicted_mean_vp, mean_std = record.result
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
