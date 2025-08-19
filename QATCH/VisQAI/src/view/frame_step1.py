@@ -24,7 +24,7 @@ from scipy.optimize import curve_fit
 import webbrowser
 from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
-from typing import Dict, Any, List, Tuple, Type
+from typing import Optional
 from typing import TYPE_CHECKING
 
 try:
@@ -371,8 +371,8 @@ class FrameStep1(QtWidgets.QDialog):
         self.h_splitter.addWidget(self.run_canvas)
 
         # Set fixed width for left widget
-        left_widget.setMinimumWidth(420)
-        right_header.setMinimumWidth(420)
+        left_widget.setMinimumWidth(450)
+        right_header.setMinimumWidth(350)
 
         # add collapse/expand icon arrows
         self.h_splitter.setHandleWidth(10)
@@ -669,6 +669,11 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d("Saving selected formulation to parent for later")
             self.parent.select_formulation = form_saved
             # print(self.parent.form_ctrl.get_all_as_dataframe())
+        if self.step == 3 and form_saved not in self.parent.import_formulations:
+            num_forms = len(self.parent.import_formulations)
+            Log.d(
+                f"Saving imported formulation #{num_forms+1} to parent for later")
+            self.parent.import_formulations.append(form_saved)
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
@@ -714,19 +719,23 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def add_new_suggestion(record: ExecutionRecord):
+        def add_new_suggestion(record: Optional[ExecutionRecord] = None):
             if self.progressBar.wasCanceled():
                 Log.d("User canceled suggestion. Ignoring results.")
                 return
 
             Log.d("Processing suggestion results!")
 
-            form = record.result
+            if not record:
+                Log.e("ERROR: No `record` provided to `add_new_suggestion(record)`")
+                return
+
             exception = record.exception
             if exception:
                 Log.e(f"ERROR: Failed to suggest: {str(exception)}")
                 return
 
+            form = record.result
             self.add_formulation(form)
 
         Log.d("Waiting for suggestion results...")
@@ -802,8 +811,6 @@ class FrameStep1(QtWidgets.QDialog):
         self.save_formulation()
 
         self.predictor = Predictor(zip_path=self.model_path)
-        select_df = self.parent.select_formulation.to_dataframe(
-            encoded=False, training=False)
         predict_df = self.parent.predict_formulation.to_dataframe(
             encoded=False, training=False)
 
@@ -831,7 +838,13 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def run_prediction_result(record: ExecutionRecord):
+        def run_prediction_result(record: Optional[ExecutionRecord] = None):
+
+            if record and record.exception:
+                # NOTE: Progress bar and timer will end on next call to `check_finished()`
+                Log.e(
+                    f"Error occurred while updating the model: {record.exception}")
+                return
 
             Log.d("Waiting for prediction results...")
             self.progressBar.setLabelText("Predicting...")
@@ -842,7 +855,7 @@ class FrameStep1(QtWidgets.QDialog):
                 data=predict_df,
                 callback=get_prediction_result)
 
-        def get_prediction_result(record: ExecutionRecord):
+        def get_prediction_result(record: Optional[ExecutionRecord] = None):
 
             if self.progressBar.wasCanceled():
                 Log.d("User canceled prediction. Ignoring results.")
@@ -855,10 +868,17 @@ class FrameStep1(QtWidgets.QDialog):
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
             # a series of standard deviations for each predicted value.
-            predicted_mean_vp, mean_std = record.result
+
+            if not record:
+                Log.e("ERROR: No `record` provided to `get_prediction_result(record)`")
+                return
+
             exception = record.exception
             if exception:
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
+                return
+
+            predicted_mean_vp, mean_std = record.result
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
@@ -893,7 +913,8 @@ class FrameStep1(QtWidgets.QDialog):
                                 s in zip(shear, mean_arr, std_arr))
                 ax.set_xscale("log")
                 ax.set_yscale("log")
-                ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
+                ax.set_ylim(self.calc_limits(
+                    yall=np.concatenate((ys_dn, ys_up))))
                 ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
                 ax.set_ylabel("Viscosity (cP)", fontsize=10)
                 ax.grid(True, which="both", ls=":")
@@ -918,28 +939,12 @@ class FrameStep1(QtWidgets.QDialog):
             make_plot("name", self.profile_shears,
                       predicted_mean_vp[0], mean_std[0], "title", "blue")
 
+            # Cleanup temp files
+            self.predictor.cleanup()
+
         self.executor = Executor()
 
-        if self.parent.select_formulation.viscosity_profile.is_measured:
-
-            # Get the viscosity profile or y target to update with.
-            vp = self._get_viscosity_list(self.parent.select_formulation)
-
-            # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
-            # Also I have this set so updating does not overwrite the existing model until
-            # we figure out how model storage works
-            self.executor.run(
-                self.predictor,
-                method_name="update",
-                new_data=select_df,
-                new_targets=np.array([vp]),
-                epochs=10,
-                batch_size=32,
-                save=True,
-                callback=run_prediction_result)
-
-        else:
-            run_prediction_result()
+        run_prediction_result()
 
     def check_finished(self):
         # at least 1 record expected, but may be more based on task count
@@ -989,19 +994,49 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.tab_widget.setCurrentIndex(i+1)
 
     def proceed_to_step_4(self):
-        # First of all, there must be at least 1 imported experiment
+        # First of all, there must be at least 1 imported experiment (no longer a requirement)
         # For each run in list, must pass the same criteria from Step 1
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
         #   4. All formulations saved, and XMLs up-to-date
-        if len(self.all_files) == 0:
-            QtWidgets.QMessageBox.information(
-                None, Constants.app_title,
-                "Please import at least 1 experiment before proceeding.",
-                QtWidgets.QMessageBox.Ok)
-            return
+
+        # NOTE: No longer a requirement, but can be added back if needed
+        # if len(self.all_files) == 0:
+        #     QtWidgets.QMessageBox.information(
+        #         None, Constants.app_title,
+        #         "Please import at least 1 experiment before proceeding.",
+        #         QtWidgets.QMessageBox.Ok)
+        #     return
+
+        # Show progress bar while loading imported experiments for learning
+        self.progressBarDiag = QtWidgets.QProgressDialog(
+            "Preparing...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBarDiag.setAutoReset(False)
+        self.progressBarDiag.setAutoClose(False)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/reset.png')
+        self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
+        self.progressBarDiag.setWindowTitle("Busy")
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBarDiag.setFixedSize(
+            int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
+        self.progressBarDiag.setModal(True)
+        self.progressBarDiag.show()
+
+        cancelButton = self.progressBarDiag.findChild(
+            QtWidgets.QPushButton)
+        cancelButton.setEnabled(False)
+
+        # draw progress bar immediately (it will freeze)
+        QtCore.QCoreApplication.processEvents()
+
         all_is_good = True
+        self.parent.import_formulations.clear()
         for file_name, file_path in self.all_files.items():
             self.file_selected(file_path)  # load each run
             if (len(self.run_captured.text()) and
@@ -1014,6 +1049,7 @@ class FrameStep1(QtWidgets.QDialog):
             else:
                 all_is_good = False
                 # break # maybe not, if we want to highlight *all* errors on "Next"
+        self.progressBarDiag.hide()
         if all_is_good:
             # ready to proceed
             if self.parent is not None:
@@ -1241,6 +1277,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.parent.select_formulation = Formulation()
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
+                self.parent.import_formulations.clear()
             if self.step == 5:  # Predict
                 self.parent.predict_formulation = Formulation()
             if True:  # Always, all tabs
@@ -1647,7 +1684,7 @@ class FrameStep1(QtWidgets.QDialog):
             )
         return ymin, ymax
 
-    def model_selected(self, path: str | None):
+    def model_selected(self, path: Optional[str] = None):
         self.model_path = path
 
         if path is None:

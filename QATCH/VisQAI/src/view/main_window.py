@@ -22,6 +22,7 @@ from scipy.optimize import curve_fit
 import datetime as dt
 from types import SimpleNamespace
 import webbrowser
+from typing import Optional
 
 try:
     from src.models.formulation import Formulation
@@ -205,8 +206,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.check_license()  # see BASE CLASS
         self._unsaved_changes = False
 
-        self.select_formulation = Formulation()
-        self.predict_formulation = Formulation()
+        self.select_formulation: Formulation = Formulation()
+        self.import_formulations: list[Formulation] = []
+        self.predict_formulation: Formulation = Formulation()
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
@@ -356,15 +358,16 @@ class VisQAIWindow(BaseVisQAIWindow):
                                 "Please select a run.",
                                 QtWidgets.QMessageBox.Ok)
                             return True  # deny tab change
-                    if tab_step == 4:
-                        widget: FrameStep1 = self.tab_widget.widget(
-                            2)  # Import
-                        if len(widget.all_files) == 0:
-                            QtWidgets.QMessageBox.information(
-                                None, Constants.app_title,
-                                "Please import at least 1 experiment before proceeding.",
-                                QtWidgets.QMessageBox.Ok)
-                            return True  # deny tab change
+                    # NOTE: No longer a requirement, but can be added back if needed
+                    # if tab_step == 4:
+                    #     widget: FrameStep1 = self.tab_widget.widget(
+                    #         2)  # Import
+                    #     if len(widget.all_files) == 0:
+                    #         QtWidgets.QMessageBox.information(
+                    #             None, Constants.app_title,
+                    #             "Please import at least 1 experiment before proceeding.",
+                    #             QtWidgets.QMessageBox.Ok)
+                    #         return True  # deny tab change
                 if hasattr(self.tab_widget.currentWidget(), "btn_next"):
                     self.tab_widget.currentWidget().btn_next.click()
                     # still perform click action
@@ -488,6 +491,13 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.sign.setReadOnly(False)
         self.sign.setMaxLength(4)
         self.sign.clear()
+
+    def set_global_model_path(self, model_path: Optional[str] = None):
+        # Get each widget and call its model select handler (if exists)
+        for index in range(self.tab_widget.count()):
+            current_widget = self.tab_widget.widget(index)
+            if hasattr(current_widget, 'model_selected') and callable(current_widget.model_selected):
+                current_widget.model_selected(model_path)
 
     def enable(self, enable=False) -> None:
         if not enable:

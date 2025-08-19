@@ -10,13 +10,21 @@ from enum import Enum
 
 
 class Architecture:
+    """
+    Provides architecture-specific methods for OS detection, Python versioning,
+    and working directory management. All methods are static and utility-focused.
+    """
 
     ###########################################################################
     # Gets the current OS
     ###########################################################################
     @staticmethod
     def get_os():
-        # :return: OS type by OSType enum.
+        """
+        Detects the current operating system and returns its type as an OSType enum.
+        Returns:
+            OSType: Enum value representing the OS type (linux, windows, macosx, unknown).
+        """
         tmp = str(Architecture.get_os_type())
         if "Linux" in tmp:
             return OSType.linux
@@ -34,7 +42,11 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_os_name():
-        # :return: OS name :rtype: str.
+        """
+        Returns the name of the current operating system node (hostname).
+        Returns:
+            str: The OS node name as reported by platform.node().
+        """
         return platform.node()
 
     ###########################################################################
@@ -42,7 +54,11 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_os_type():
-        # :return: OS type :rtype: str.
+        """
+        Returns the platform type string for the current operating system.
+        Returns:
+            str: The OS type string as reported by platform.platform().
+        """
         return platform.platform()
 
     ###########################################################################
@@ -51,9 +67,11 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_path():
-        # :return: Path of the PWD or CWD :rtype: str.
-        # :if EXE: Temporary path of extracted bundle.
-        # :if _PY: Working directory of parent module.
+        """
+        Returns the current working directory or the temporary path if running from an EXE bundle.
+        Returns:
+            str: Path of the current working directory or bundle extraction directory.
+        """
         if getattr(sys, 'frozen', False):
             # we are running in a bundle from an EXE
             bundle_dir = sys._MEIPASS
@@ -67,7 +85,11 @@ class Architecture:
     ###########################################################################
     @staticmethod
     def get_python_version():
-        # :return: Python version formatted as major.minor.release :rtype: str.
+        """
+        Returns the running Python version as a string in 'major.minor.release' format.
+        Returns:
+            str: Python version string.
+        """
         version = sys.version_info
         return str("{}.{}.{}".format(version[0], version[1], version[2]))
 
@@ -78,10 +100,12 @@ class Architecture:
     @staticmethod
     def is_python_version(major, minor=0):
         """
-        :param major: Major value of the version :type major: int.
-        :param minor: Minor value of the version :type minor: int.
-        :return: True if the version specified is >= than the current version.
-        :rtype: bool.
+        Checks if the running Python version is greater than or equal to the specified version.
+        Args:
+            major (int): Major version to check against.
+            minor (int, optional): Minor version to check against. Defaults to 0.
+        Returns:
+            bool: True if the running Python version is >= specified version, False otherwise.
         """
         version = sys.version_info
         if version[0] >= major and version[1] >= minor:
@@ -94,6 +118,9 @@ class Architecture:
 
 
 class OSType(Enum):
+    """
+    Enum representing supported operating system types.
+    """
     unknown = 0
     linux = 1
     macosx = 2
