@@ -2411,7 +2411,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.zoomLevel = float(self.zoomLevel * offset)
             is_clipped = self.getContextWidth()[1]
             if was_clipped == True and is_clipped == True:
-                if self.stateStep <= 3:  # start, end of fill, post point
+                # Compute visible ordinal 1..5; POI1/POI2 are the only "early" cases now
+                visible_ord = (px if px <= 1 else px - 1) + 1
+                if visible_ord <= 2:  # start, end of fill
                     self.zoomLevel = 5 * \
                         self.getContextWidth()[0] / self.smooth_factor
                 else:  # blips
