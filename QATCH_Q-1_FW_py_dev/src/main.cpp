@@ -3479,29 +3479,26 @@ void stopStreaming(void)
 //   int old_address = 0; // PID
 //   int new_address = (EEPROM.length() - 1) - old_address;
 //   EEPROM_pid = EEPROM.read(new_address);
-
 //   if (millis() > 1000)
 //   {
 //     Serial.printf("Set PID = %X\n", EEPROM_pid);
 //   }
-
 //   return EEPROM_pid;
+// }
+
 /**
  * @brief Interrupt Service Routine for the POGO button.
  *
  * Sets the ISR flag indicating the POGO button was pressed. Meant to be executed in interrupt context
  * and performs only the minimal action of updating the volatile flag for main-loop debounce/handling.
+ * To avoid duplicate button pressed events, only set the hit flag when a pressed flag is not pending.
  */
-
-// Flag ISR as hit only if not handling a prior press
 FASTRUN void pogo_button_ISR(void)
 {
   if (!pogo_pressed_flag)
     pogo_isr_hit_flag = true;
 }
 
-// Handles a pogo button event and lid/LED/servo1/servo2 behavior.
-// init=true: perform one-time initialization toggling to open (e.g., on setup).
 /**
  * @brief Toggle or initialize the POGO lid position by moving the lid servo.
  *
