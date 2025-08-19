@@ -51,8 +51,10 @@ NvMem_RAM NvMem::defaults(void)
   defaults.HW_Revision = HW_REVISION_X;
   defaults.OffsetM = 0;
   defaults.Ethernet_EN = 0;
-  defaults.POGO_PosOpened = DEFAULT_POS_OPENED;
-  defaults.POGO_PosClosed = DEFAULT_POS_CLOSED;
+  defaults.POGO_PosOpened1 = DEFAULT_POS_OPENED_1;
+  defaults.POGO_PosClosed1 = DEFAULT_POS_CLOSED_1;
+  defaults.POGO_PosOpened2 = DEFAULT_POS_OPENED_2;
+  defaults.POGO_PosClosed2 = DEFAULT_POS_CLOSED_2;
   defaults.POGO_MoveDelay = DEFAULT_MOVE_DELAY;
   // defaults.NewValue = 42;
 
@@ -157,14 +159,24 @@ byte NvMem::update(void)
     mem.Ethernet_EN = DEFAULT.Ethernet_EN;
     modified_entries++;
   }
-  if (mem.POGO_PosOpened == 0xFF && DEFAULT.POGO_PosOpened != 0xFF)
+  if (mem.POGO_PosOpened1 == 0xFF && DEFAULT.POGO_PosOpened1 != 0xFF)
   {
-    mem.POGO_PosOpened = DEFAULT.POGO_PosOpened;
+    mem.POGO_PosOpened1 = DEFAULT.POGO_PosOpened1;
     modified_entries++;
   }
-  if (mem.POGO_PosClosed == 0xFF && DEFAULT.POGO_PosClosed != 0xFF)
+  if (mem.POGO_PosClosed1 == 0xFF && DEFAULT.POGO_PosClosed1 != 0xFF)
   {
-    mem.POGO_PosClosed = DEFAULT.POGO_PosClosed;
+    mem.POGO_PosClosed1 = DEFAULT.POGO_PosClosed1;
+    modified_entries++;
+  }
+  if (mem.POGO_PosOpened2 == 0xFF && DEFAULT.POGO_PosOpened2 != 0xFF)
+  {
+    mem.POGO_PosOpened2 = DEFAULT.POGO_PosOpened2;
+    modified_entries++;
+  }
+  if (mem.POGO_PosClosed2 == 0xFF && DEFAULT.POGO_PosClosed2 != 0xFF)
+  {
+    mem.POGO_PosClosed2 = DEFAULT.POGO_PosClosed2;
     modified_entries++;
   }
   if (mem.POGO_MoveDelay == 0xFF && DEFAULT.POGO_MoveDelay != 0xFF)

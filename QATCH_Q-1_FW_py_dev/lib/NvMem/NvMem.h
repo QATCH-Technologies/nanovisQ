@@ -36,14 +36,18 @@
 // Constraints:
 // - Positions: 0–180 (0x00–0xB4, in degrees); 0xFF is reserved by NVMEM for "uninitialized"
 // - Move delay (ms of step delay): 0–254; 0xFF reserved
-// NOTE: The lid switch code expects the OPENED position to be less than the CLOSED position...
-//       If OPENED >= CLOSED, the servo movement will be the wrong direction and will not stop.
-#define DEFAULT_POS_OPENED 30
-#define DEFAULT_POS_CLOSED 50
+// NOTE: Servo 1 is used for Solo and Quad devices (Servo 2 not used here).
+//       Servo 1 & Servo 2 are used for Flux devices to move the 4x6 POGOs.
+#define DEFAULT_POS_OPENED_1 30
+#define DEFAULT_POS_CLOSED_1 50
+#define DEFAULT_POS_OPENED_2 0
+#define DEFAULT_POS_CLOSED_2 0
 #define DEFAULT_MOVE_DELAY 25
 
 // Compile-time guards to preserve 0xFF sentinel semantics
-#if (DEFAULT_POS_OPENED == 0xFF) || (DEFAULT_POS_CLOSED == 0xFF) || (DEFAULT_MOVE_DELAY == 0xFF)
+#if (DEFAULT_POS_OPENED_1 == 0xFF) || (DEFAULT_POS_CLOSED_1 == 0xFF) \
+ || (DEFAULT_POS_OPENED_2 == 0xFF) || (DEFAULT_POS_CLOSED_2 == 0xFF) \
+ || (DEFAULT_MOVE_DELAY == 0xFF)
 #error "DEFAULT_* must not be 0xFF (reserved for NVMEM uninitialized sentinel)"
 #endif
 
@@ -55,9 +59,11 @@ struct NvMem_RAM
   byte HW_Revision; // 2: see 'HW_REVISION_[#]' #defines for supported values
   byte OffsetM;     // 3: measuring (FW fixed offset, in EEPROM)
   byte Ethernet_EN; // 4: enable Ethernet PHY to report an IP (if chip present) - default: disable
-  byte POGO_PosOpened; // 5: POGO lid open position (servo)
-  byte POGO_PosClosed; // 6: POGO lid closed position (servo)
-  byte POGO_MoveDelay; // 7: POGO lid move delay (ms)
+  byte POGO_PosOpened1; // 5: POGO lid open position (servo 1)
+  byte POGO_PosClosed1; // 6: POGO lid closed position (servo 1)
+  byte POGO_PosOpened2; // 7: POGO lid open position (servo 2)
+  byte POGO_PosClosed2; // 8: POGO lid closed position (servo 2)
+  byte POGO_MoveDelay; // 9: POGO lid move delay (ms)
   // byte NewValue;
   /// @note Add new entries here, even if inverted!
   /// @note Also increment NVMEM_VERSION, add a value in defaults(), and add logic in update()
