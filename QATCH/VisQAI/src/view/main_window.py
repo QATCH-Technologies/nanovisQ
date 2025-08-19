@@ -493,7 +493,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.sign.clear()
 
     def set_global_model_path(self, model_path: Optional[str] = None):
-        # Get each widget and call it's model select handler (if exists)
+        # Get each widget and call its model select handler (if exists)
         for index in range(self.tab_widget.count()):
             current_widget = self.tab_widget.widget(index)
             if hasattr(current_widget, 'model_selected') and callable(current_widget.model_selected):

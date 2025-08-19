@@ -350,12 +350,17 @@ class FrameStep2(QtWidgets.QDialog):
 
         if not self.predictor.save_path():
 
+            lines = self.summary_text.toPlainText().splitlines()
+            if len(lines) > this_idx + 1:
+                run_label = lines[this_idx + 1]
+            else:
+                run_label = f"Import #{this_idx + 1}"
             format_str = "{}% - Learning run \"{}\"...".format(
-                value_0_to_100,
-                self.summary_text.toPlainText().splitlines()[this_idx+1])
+                value_0_to_100, run_label)
             self.progress_label.setText(format_str)
 
-            if self.parent.import_formulations[this_idx].viscosity_profile.is_measured:
+            if 0 <= this_idx < len(self.parent.import_formulations) and \
+               self.parent.import_formulations[this_idx].viscosity_profile.is_measured:
                 # Get the viscosity profile or y target to update with.
                 vp = self._get_viscosity_list(
                     self.parent.import_formulations[this_idx])
@@ -419,7 +424,7 @@ class FrameStep2(QtWidgets.QDialog):
 
                 # process next queued run
                 this_idx = self.learn_idx
-                is_final_run = True if this_idx == self.progressBar.maximum()-1 else False
+                is_final_run = (this_idx == self.progressBar.maximum() - 1)
                 queued_df = self.parent.import_formulations[this_idx].to_dataframe(
                     encoded=False, training=False)
 
@@ -443,9 +448,10 @@ class FrameStep2(QtWidgets.QDialog):
                         callback=learn_run_result)
 
                 else:
+                    # Schedule next step without recursion
+                    QtCore.QTimer.singleShot(0, lambda: learn_run_result(None))
                     Log.w(
                         f"Not learning run #{self.learn_idx+1} because it has no measured Viscosity Profile. Run skipped...")
-                    learn_run_result()
 
             else:
 
@@ -459,7 +465,7 @@ class FrameStep2(QtWidgets.QDialog):
                         base_name=zip_base,
                         format="zip",
                         root_dir=save_dir,
-                        base_dir=save_dir
+                        base_dir="."
                     )
                     self.predictor.add_security_to_zip(saved_model)
                     sha = self.mvc.commit(
@@ -524,7 +530,7 @@ class FrameStep2(QtWidgets.QDialog):
                 new_targets=np.array([vp]),
                 epochs=10,
                 batch_size=32,
-                save=True if total_steps == 0 else False,  # only save final learned run to disk
+                save=(total_steps == 0),  # only save final learned run to disk
                 callback=learn_run_result)
 
         else:
@@ -533,7 +539,9 @@ class FrameStep2(QtWidgets.QDialog):
             learn_run_result()
 
     def calc_limits(self, yall):
-        ymin, ymax = 0, 1000
+        # For log scale, ymin must be > 0
+        EPS = 1e-6
+        ymin, ymax = EPS, 1000
         lower_limit = np.amin(yall) / 1.5
         power = 1
         while power > -5:
@@ -548,26 +556,25 @@ class FrameStep2(QtWidgets.QDialog):
                 upper_limit = 10**power
                 break
             power += 1
-        if lower_limit >= upper_limit:
+        if lower_limit <= EPS or lower_limit >= upper_limit:
             Log.d(
-                "Limits were auto-calculated but are in an invalid range! Using ylim [0, 1000]."
+                f"Limits were auto-calculated but are in an invalid range! Using ylim [{EPS}, 1000]."
             )
         elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
             Log.d(
                 f"Auto-calculated y-range limits for figure are: [{lower_limit}, {upper_limit}]"
             )
-            ymin = lower_limit
+            ymin = max(lower_limit, EPS)
             ymax = upper_limit
         else:
             Log.d(
-                "Limits were auto-calculated but were not finite values! Using ylim [0, 1000]."
+                f"Limits were auto-calculated but were not finite values! Using ylim [{EPS}, 1000]."
             )
         return ymin, ymax
 
     def plot_figure(self, vp: list):
         self.profile_shears = [100, 1000, 10000, 100000, 15000000]
         self.profile_viscos = vp
-        color = "blue"
 
         # Helper functions for plotting
         def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
@@ -645,7 +652,9 @@ class FrameStep2(QtWidgets.QDialog):
                                   self.progressBar.minimum())
             # secs per run (tracked dynamically based on real timing)
             sec_per_run = self.run_learn_time
-            pct_period = 1000 * sec_per_run // pct_per_run  # milliseconds per pct increment
+            # ms per increment (min 50ms)
+            pct_period = max(
+                50, int(1000 * sec_per_run // max(1, pct_per_run)))
             max_pct_at = (self.learn_idx + 2) * pct_per_run
 
             now_ms = int(time.time() * 1000)

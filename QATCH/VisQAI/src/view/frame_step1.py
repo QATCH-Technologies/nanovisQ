@@ -24,10 +24,8 @@ from scipy.optimize import curve_fit
 import webbrowser
 from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
-from typing import Dict, Any, List, Tuple, Type, Optional
+from typing import Optional
 from typing import TYPE_CHECKING
-from shutil import make_archive
-from pathlib import Path
 
 try:
     from src.io.file_storage import SecureOpen
@@ -43,7 +41,6 @@ try:
     from src.view.checkable_combo_box import CheckableComboBox
     from src.view.table_view import TableView, Color
     from src.view.constraints_ui import ConstraintsUI
-    from src.managers.version_manager import VersionManager
     if TYPE_CHECKING:
         from src.view.frame_step2 import FrameStep2
         from src.view.main_window import VisQAIWindow
@@ -62,7 +59,6 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
     from QATCH.VisQAI.src.view.table_view import TableView, Color
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
-    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -673,12 +669,11 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d("Saving selected formulation to parent for later")
             self.parent.select_formulation = form_saved
             # print(self.parent.form_ctrl.get_all_as_dataframe())
-        if self.step == 3:
-            if not form_saved in self.parent.import_formulations:
-                num_forms = len(self.parent.import_formulations)
-                Log.d(
-                    f"Saving imported formulation #{num_forms+1} to parent for later")
-                self.parent.import_formulations.append(form_saved)
+        if self.step == 3 and form_saved not in self.parent.import_formulations:
+            num_forms = len(self.parent.import_formulations)
+            Log.d(
+                f"Saving imported formulation #{num_forms+1} to parent for later")
+            self.parent.import_formulations.append(form_saved)
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
@@ -918,7 +913,8 @@ class FrameStep1(QtWidgets.QDialog):
                                 s in zip(shear, mean_arr, std_arr))
                 ax.set_xscale("log")
                 ax.set_yscale("log")
-                ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
+                ax.set_ylim(self.calc_limits(
+                    yall=np.concatenate((ys_dn, ys_up))))
                 ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
                 ax.set_ylabel("Viscosity (cP)", fontsize=10)
                 ax.grid(True, which="both", ls=":")
@@ -1281,7 +1277,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.parent.select_formulation = Formulation()
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
-                self.parent.import_formulations = []
+                self.parent.import_formulations.clear()
             if self.step == 5:  # Predict
                 self.parent.predict_formulation = Formulation()
             if True:  # Always, all tabs
