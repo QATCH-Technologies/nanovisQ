@@ -934,7 +934,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel4_Predict:
+        if Constants.QModel4_predict:
             self.cBox_Models.setCurrentIndex(4)
         elif Constants.PF_predict:
             self.cBox_Models.setCurrentIndex(3)
@@ -1804,6 +1804,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.QModel2_predict = True if index >= 1 else False
             Constants.QModel3_predict = True if index >= 2 else False
             Constants.PF_predict = True if index >= 3 else False
+            Constants.QModel4_predict = True if index >= 4 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -1816,9 +1817,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.parent.ControlsWin.q_version_v2.setChecked(
                 True if index == 1 else False)
             self.parent.ControlsWin.q_version_v3.setChecked(
-                True if index >= 2 else False)
+                True if index in [2, 3] else False)
             self.parent.ControlsWin.pf_version.setChecked(
                 True if index == 3 else False)
+            self.parent.ControlsWin.q_version_v4.setChecked(
+                True if index == 4 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2357,6 +2360,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             pass
 
     def zoomFinderPlots(self, offset):
+        if not hasattr(self, "smooth_factor"):
+            Log.d("Ignoring arrow key input when no run is loaded.")
+            return
         px = self.stateStep - 1
         if px in range(0, len(self.poi_markers)):
             was_clipped = self.getContextWidth()[1]
@@ -2728,7 +2734,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("Failed to load 'QModel v3' modules at load of run.")
         # ---------- LOADING QMODEL V4 -----------#
         try:
-            if Constants.QModel4_Predict and not self.QModel_v4_modules_loaded:
+            if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
                 model_path = os.path.join(
                     Architecture.get_path(),
                     "QATCH", "QModel", "SavedModels", "qmodel_v4",
@@ -2948,6 +2954,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.getPoints()
 
     def getContextWidth(self):
+        if not hasattr(self, "smooth_factor"):
+            Log.d("Ignoring arrow key input when no run is loaded.")
+            return
         clipped = False
         if self.stateStep <= 3:  # start, end of fill, post point
             ws = int(self.zoomLevel * self.smooth_factor / 2)  # context width
@@ -3031,7 +3040,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_candidates = None
             self.model_engine = "None"
 
-            if Constants.QModel4_Predict:
+            if Constants.QModel4_predict:
                 Log.w("Predicting points with QModel v4... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
@@ -3060,6 +3069,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             and len(self.model_result) == 6
                         ):
                             poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
                         else:
                             self.model_result = -1  # try fallback model
                 except Exception as e:
@@ -3360,7 +3372,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel4_Predict:
+                if Constants.QModel4_predict:
                     Log.w(
                         "Predicting points with QModel v4... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -3390,6 +3402,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 and len(self.model_result) == 6
                             ):
                                 poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
                             else:
                                 self.model_result = -1  # try fallback model
                     except Exception as e:
@@ -4733,6 +4748,65 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
+                if Constants.QModel4_predict and self.prior_points_in_xml:
+                    # skip running QModel v4 if prior points are available (it's too slow)
+                    self.model_result = poi_vals
+                    self.model_engine = "QModel v4 skipped (using prior points)"
+                if self.model_result == -1 and Constants.QModel4_predict:
+                    Log.w(
+                        "Predicting points with QModel v4... (may take a few seconds)")
+                    self._text1.setHtml(
+                        "<span style='font-size: 14pt'>Predicting points with QModel v4... </span>"
+                    )
+                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v4_predictor
+                            predict_result = predictor.predict_with_confidence(
+                                file_buffer=fh)
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                poi_indices = predict_result.get(
+                                    poi_key, {}).get("indices", [])
+                                poi_confidences = predict_result.get(
+                                    poi_key, {}).get("confidences", [])
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(best_pair)
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = "QModel v4"
+                            if (
+                                isinstance(self.model_result, list)
+                                and len(self.model_result) == 6
+                            ):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # try fallback model
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                        )
+                        # raise e # debug only
+                        self.model_result = -1  # try fallback model
                 if Constants.QModel3_predict and self.prior_points_in_xml:
                     # skip running QModel v3 if prior points are available (it's too slow)
                     self.model_result = poi_vals
