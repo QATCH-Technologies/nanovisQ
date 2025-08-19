@@ -1,19 +1,17 @@
 """
 qmodel_v4_predictor.py
 
-Provides the QModelPredictor class for predicting Points of Interest (POIs) in dissipation
-data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Includes methods for
-file validation, feature extraction, probability formatting, and bias correction for refined
-POI selection.
+Provides the QModelPredictor class for version 4.x of QModel based on a CNN, it 
+supports partially filled runs as well as fully filled runs with high precision.
 
 Author: 
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date: 
-    2025-08-18
+    2025-08-19
 
 Version: 
-    QModel.Ver4.1
+    QModel.Ver4.1.1
 """
 from itertools import chain
 import numpy as np
@@ -76,7 +74,7 @@ class QModelPredictorV4:
     Features:
         - Load pre-trained model and scaler with multiple fallback strategies.
         - Preprocess input data and generate sliding window features.
-        - Predict the best POI locations with confidence scores.
+        - Predict the best POI locations with confidences scores.
         - Apply sequential and temporal constraints to predictions.
         - Validate that predictions follow all POI dependencies.
         - Non-maximum suppression to reduce duplicate detections.
@@ -489,13 +487,13 @@ class QModelPredictorV4:
 
         return windows_normalized, window_positions, window_times
 
-    def predict_with_confidence(self,
-                                file_buffer: Union[str, object] = None,
-                                df: pd.DataFrame = None,
-                                top_k: int = 3,
-                                min_confidence: float = 0.3,
-                                force: bool = False,
-                                apply_constraints: bool = True) -> Dict[str, Dict[str, List]]:
+    def predict(self,
+                file_buffer: Union[str, object] = None,
+                df: pd.DataFrame = None,
+                top_k: int = 3,
+                min_confidence: float = 0.3,
+                force: bool = False,
+                apply_constraints: bool = True) -> Dict[str, Dict[str, List]]:
         """Preprocesses raw data into normalized sliding windows for prediction.
 
         This method generates features from the raw data, constructs sliding
@@ -541,7 +539,7 @@ class QModelPredictorV4:
         for poi_num, pred_idx in self.poi_indices.items():
             poi_probs = predictions[:, pred_idx]
 
-            # Find indices above minimum confidence
+            # Find indices above minimum confidences
             if force:
                 sorted_indices = np.argsort(poi_probs)[::-1][:top_k]
                 valid_indices = sorted_indices
@@ -587,7 +585,7 @@ class QModelPredictorV4:
                      adaptive_thresholds: Optional[Dict[int, float]] = None,
                      force: bool = False,
                      apply_constraints: bool = True) -> Dict[str, Dict[str, List]]:
-        """Predicts the single best location for each POI along with confidence scores.
+        """Predicts the single best location for each POI along with confidences scores.
 
         This method processes input data (from a CSV file buffer or DataFrame),
         generates feature windows, applies the trained model to obtain predictions,
@@ -604,14 +602,14 @@ class QModelPredictorV4:
             nms_window (int, optional): Window size for NMS peak suppression. Defaults to 30.
             adaptive_thresholds (Optional[Dict[int, float]], optional): Custom thresholds
                 for each POI. If None, default thresholds are used.
-            force (bool, optional): If True, forces selection even if confidence is below threshold.
+            force (bool, optional): If True, forces selection even if confidences is below threshold.
             apply_constraints (bool, optional): If True, applies post-prediction constraints.
 
         Returns:
             Dict[str, Dict[str, List]]: A dictionary where each key is a POI label
             (e.g., 'POI1') and each value contains:
                 - 'indices': List of predicted data indices (or [-1] if no prediction)
-                - 'confidences': List of corresponding confidence scores (or [-1] if no prediction)
+                - 'confidences': List of corresponding confidences scores (or [-1] if no prediction)
         """
         # Handle input data
         if file_buffer is not None:
@@ -660,8 +658,8 @@ class QModelPredictorV4:
                         best_idx = peak_indices[np.argmax(
                             poi_probs[peak_indices])]
                         best_predictions[poi_num] = {
-                            'data_index': positions[best_idx],
-                            'confidence': float(poi_probs[best_idx]),
+                            'indices': positions[best_idx],
+                            'confidences': float(poi_probs[best_idx]),
                             'time': times[best_idx] if times else None
                         }
 
@@ -680,8 +678,8 @@ class QModelPredictorV4:
                 }
             elif poi_num in best_predictions:
                 final_poi[f"POI{poi_num}"] = {
-                    "indices": [best_predictions[poi_num]['data_index']],
-                    "confidences": [best_predictions[poi_num]['confidence']]
+                    "indices": [best_predictions[poi_num]['indices']],
+                    "confidences": [best_predictions[poi_num]['confidences']]
                 }
             else:
                 # No confident prediction found
@@ -690,6 +688,9 @@ class QModelPredictorV4:
                     "confidences": [-1]
                 }
 
+        # Convert to final format
+        # final_poi = self._format_final_predictions(best_predictions, force)
+        Log.w(final_poi)
         # Track prediction
         self._track_prediction(final_poi)
 
@@ -698,7 +699,7 @@ class QModelPredictorV4:
     def _get_default_predictions(self) -> Dict[str, Dict[str, List]]:
         """Returns a default POI prediction dictionary with placeholder values.
 
-        All POIs are set to `-1` for both indices and confidence scores,
+        All POIs are set to `-1` for both indices and confidences scores,
         indicating that no prediction was made.
 
         Returns:
@@ -801,6 +802,39 @@ class QModelPredictorV4:
             probs_copy[start:end] = 0
 
         return np.array(peaks)
+
+    def _poi1_adjustment(self, x, y, index, step=0.01, max_iter=1000, tol=1e-5) -> int:
+        """
+        Applys a minor adjustment to POI1 to ensure that it does not appear to the left
+        of the drop application.  Operates by taking the relative slope between neighbors until
+        the relative slope between 2 neighbors and the index is ~0.
+
+        Args:
+            x (np.ndarray): Relative time vector.
+            y (np.ndarray): Dissipation vector.
+            index (int): Initial estimation of POI1 position for refinement.
+            step (int): Relative time x step.
+            max_iter (int): Maximum number of steps to take for evaluation.
+            tol (float): The 0 approximation.
+
+        Returns:
+            int: The modified index for POI1.
+        """
+        x = np.array(x, dtype=float)
+        y = np.array(y, dtype=float)
+        for i in range(max_iter):
+            slope_left = (y[index] - y[index-1]) / \
+                (x[index] - x[index-1]) if index > 0 else 0
+            slope_right = (y[index+1] - y[index]) / \
+                (x[index+1] - x[index]) if index < len(x)-1 else 0
+
+            avg_slope = (slope_left + slope_right) / 2
+            if abs(avg_slope) < tol:
+                return index + i
+
+            x[index] += step * np.sign(-avg_slope)
+
+        return index + max_iter
 
     def _apply_constraints_to_topk(self, predictions: Dict[int, Dict],
                                    df: pd.DataFrame) -> Dict[int, Dict]:
@@ -921,7 +955,9 @@ class QModelPredictorV4:
                 Only POIs satisfying the requested sequential and temporal constraints are retained.
         """
         validated = predictions.copy()
-
+        valid_1 = self._poi1_adjustment(
+            df["Relative_time"].values, y=df["Dissipation"].values, index=validated[1].get("indices"), max_iter=20)
+        validated[1]["indices"] = valid_1
         if enforce_sequential:
             validated = self._enforce_sequential_constraints(validated)
 
@@ -943,19 +979,19 @@ class QModelPredictorV4:
         # POI4 requires both POI1 and POI2, and must come after POI2
         if 4 in predictions:
             if 1 in validated and 2 in validated:
-                if predictions[4]['data_index'] > validated[2]['data_index']:
+                if predictions[4]['indices'] > validated[2]['indices']:
                     validated[4] = predictions[4]
 
         # POI5 requires POI4 and must come after it
         if 5 in predictions:
             if 4 in validated:
-                if predictions[5]['data_index'] > validated[4]['data_index']:
+                if predictions[5]['indices'] > validated[4]['indices']:
                     validated[5] = predictions[5]
 
         # POI6 requires POI5 and must come after it
         if 6 in predictions:
             if 5 in validated:
-                if predictions[6]['data_index'] > validated[5]['data_index']:
+                if predictions[6]['indices'] > validated[5]['indices']:
                     validated[6] = predictions[6]
 
         return validated
@@ -974,7 +1010,7 @@ class QModelPredictorV4:
 
         Args:
             predictions (Dict[int, Dict]): Dictionary of POI predictions. Each key
-                is a POI number, and values contain at least 'data_index'.
+                is a POI number, and values contain at least 'indices'.
             df (pd.DataFrame): Input data containing the 'Relative_time' column.
 
         Returns:
@@ -993,15 +1029,15 @@ class QModelPredictorV4:
 
         # Check gap constraints
         if 1 in refined and 2 in refined:
-            time1 = get_time(refined[1]['data_index'])
-            time2 = get_time(refined[2]['data_index'])
+            time1 = get_time(refined[1]['indices'])
+            time2 = get_time(refined[2]['indices'])
 
             if time1 is not None and time2 is not None:
                 gap_1_2 = abs(time2 - time1)
 
                 # Check POI4
                 if 4 in refined:
-                    time4 = get_time(refined[4]['data_index'])
+                    time4 = get_time(refined[4]['indices'])
                     if time4 is not None:
                         gap_2_4 = abs(time4 - time2)
                         if gap_2_4 < gap_1_2:
@@ -1009,7 +1045,7 @@ class QModelPredictorV4:
                         else:
                             # Check POI5
                             if 5 in refined:
-                                time5 = get_time(refined[5]['data_index'])
+                                time5 = get_time(refined[5]['indices'])
                                 if time5 is not None:
                                     gap_4_5 = abs(time5 - time4)
                                     if gap_4_5 < gap_2_4:
@@ -1018,7 +1054,7 @@ class QModelPredictorV4:
                                         # Check POI6
                                         if 6 in refined:
                                             time6 = get_time(
-                                                refined[6]['data_index'])
+                                                refined[6]['indices'])
                                             if time6 is not None:
                                                 gap_5_6 = abs(time6 - time5)
                                                 if gap_5_6 < gap_4_5:
