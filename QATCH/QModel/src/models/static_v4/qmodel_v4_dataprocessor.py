@@ -24,7 +24,7 @@ from scipy.signal import savgol_filter
 
 
 class DataProcessorV4:
-    """Columns to ignore from incomming data."""
+    """Columns to ignore from incoming data."""
     DROP = ["Date", "Time", "Ambient", "Peak Magnitude (RAW)", "Temperature"]
 
     """Default baseline window size."""
