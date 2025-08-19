@@ -2933,12 +2933,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
             )  # context width
         if ws > len(self.xs) / 2:
             ws = int(len(self.xs) / 20)
-        px = self.stateStep - 1
-        if px in range(len(self.poi_markers)):
+
+        # Use visible-aware px
+        px = self._current_visible_poi_index()
+        if 0 <= px < len(self.poi_markers):
             tt1 = self.poi_markers[px].value()
         else:
             # self.poi_markers[self.AI_SelectTool_At].value()
             tt1 = self.xs[-1]
+
         tx1 = next(x for x, y in enumerate(self.xs) if y >= tt1)
         if tx1 - ws < 0:
             clipped = True
@@ -3229,7 +3232,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def getPoints(self):
         self.graphStack.setCurrentIndex(0)
         self.btn_Back.setEnabled(True)
-        if not self.stateStep == 7:
+        if self.stateStep != 7:
             self.btn_Next.setText("Next")
         self.stateStep += 1  # Increment to next step
         if self.stateStep == 6:  # Skip over hidden dot marker 8
@@ -3258,9 +3261,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax2 = self.graphWidget2
         ax3 = self.graphWidget3
         # Only show 5 points (skip POI3)
-        w123 = True if self.stateStep in range(1, 6) else False
-        was_vis = ax1.isVisible()
+        w123 = self.stateStep in range(1, 6)
         self.lowerGraphs.setVisible(w123)
+        # was_vis = ax1.isVisible()
         # if w123 and not was_vis:
         #     ax2.setFocus() # allow keyboard shortcuts left/right/up/down to work immediately
         # ax1.setVisible(w123)
@@ -3685,13 +3688,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.scat_1.setAlpha(show_scat, False)
             self.scat_2.setAlpha(show_scat, False)
             self.scat_3.setAlpha(show_scat, False)
-            self._update_progress_value(
-                12 * (step_num - 1),
-                f"Step {step_num - 1} of 6: Select Precise Fill Point {self.stateStep}",
-            )
-            ax.setTitle(None)
             # px is the index in poi_markers, skip POI3 (index 2)
             px = self._current_visible_poi_index()
+            visible_ord = (px if px <= 1 else px - 1) + 1  # 1..5
+            self._update_progress_value(
+                12 * (step_num - 1),
+                f"Step {step_num - 1} of 6: Select Precise Fill Point {visible_ord}",
+            )
+            ax.setTitle(None)
             if px < 0 or px >= len(self.poi_markers):
                 return
             tt0 = self.poi_markers[0].value()
