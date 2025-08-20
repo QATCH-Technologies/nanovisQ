@@ -81,7 +81,7 @@ class Commands:
 
     @staticmethod
     def _create_base_command(
-        command_type: CommandType, params: dict, intents: Intents
+        command_type: CommandType, params: dict, intents: Intents = None
     ) -> dict:
         """
         Build the base command dictionary with common data fields.
@@ -94,13 +94,21 @@ class Commands:
         Returns:
             dict: A structured command payload ready for JSON serialization.
         """
-        return {
-            "data": {
-                "commandType": command_type.value,
-                "params": params,
-                "intent": intents.value,
+        if intents:
+            return {
+                "data": {
+                    "commandType": command_type.value,
+                    "params": params,
+                    "intent": intents.value,
+                }
             }
-        }
+        else:
+            return {
+                "data": {
+                    "commandType": command_type.value,
+                    "params": params,
+                }
+            }
 
     @staticmethod
     def load_labware(
@@ -337,10 +345,23 @@ class Commands:
         Returns:
             dict: Payload for the MOVE_TO_WELL command (relative move).
         """
-        params = {"axis": axis.value, "distance": distance, "pipetteId": pipette.id}
+        params = {"axis": axis.value,
+                  "distance": distance, "pipetteId": pipette.id}
         return Commands._create_base_command(
             CommandType.MOVE_TO_WELL, params, Intents.SETUP
         )
+
+    @staticmethod
+    def home_robot() -> dict:
+        """
+        Creates the command to home the entire robot
+
+        Returns:    
+            dict: Payload for the HOME command.
+        """
+        params = {}
+        return Commands._create_base_command(
+            command_type=CommandType.HOME, params=params)
 
     @staticmethod
     def send_command(command_url: str, command_dict: dict) -> dict:
@@ -360,7 +381,8 @@ class Commands:
         headers.update(HEADERS)
 
         try:
-            response = requests.post(command_url, headers=headers, data=payload)
+            response = requests.post(
+                command_url, headers=headers, data=payload)
             response.raise_for_status()
             return response.json()
         except Exception as e:

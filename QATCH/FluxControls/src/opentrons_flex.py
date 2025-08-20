@@ -98,7 +98,8 @@ class OpentronsFlex:
         Returns:
             None
         """
-        Log.i(f"Initializing OpentronsFlex with MAC: {self._get_robot_mac_address()}")
+        Log.i(
+            f"Initializing OpentronsFlex with MAC: {self._get_robot_mac_address()}")
         self.available_protocols = {}
         self.gantry = {
             MountPositions.LEFT_MOUNT: None,
@@ -115,7 +116,8 @@ class OpentronsFlex:
         self._set_protocols_url(f"{self._get_base_url()}/protocols")
         self.update_available_protocols()
         self._set_lights_url(f"{self._get_base_url()}/robot/lights")
-        self._set_home_url(f"{self._get_base_url()}/robot/home")
+        self._set_home_url(
+            f"{self._get_base_url()}/commands?waitUntilComplete=true")
         self._set_command_url(
             f"{self._get_base_url()}/robot/{self.get_run_list()[0].get('id')}/commands"
         )
@@ -156,7 +158,8 @@ class OpentronsFlex:
         Returns:
             None
         """
-        Log.i(f"Loading pipette: {pipette.value} at position: {position.value}")
+        Log.i(
+            f"Loading pipette: {pipette.value} at position: {position.value}")
         new_pipette = Pipette(pipette=pipette, mount_position=position)
 
         if position is MountPositions.LEFT_MOUNT:
@@ -205,7 +208,8 @@ class OpentronsFlex:
         Log.i(
             f"Loading labware at location: {location.value} from definition: {labware_definition}"
         )
-        labware = Labware(location=location, labware_definition=labware_definition)
+        labware = Labware(location=location,
+                          labware_definition=labware_definition)
         if self.available_labware.get(location) is not None:
             Log.e(f"Labware already loaded at location: {location.value}")
             raise Exception(
@@ -491,7 +495,8 @@ class OpentronsFlex:
             f"Relative move of pipette {pipette.id} {distance}mm along {axis.value} axis"
         )
         self.validate_configuration(pipette=pipette)
-        payload = Commands.move_relative(pipette=pipette, distance=distance, axis=axis)
+        payload = Commands.move_relative(
+            pipette=pipette, distance=distance, axis=axis)
         response = Commands.send_command(
             command_url=self._get_command_url(), command_dict=payload
         )
@@ -522,7 +527,8 @@ class OpentronsFlex:
             Log.e(f"Protocol '{protocol_name}' not available.")
             raise ValueError(f"Protocol '{protocol_name}' not available.")
         protocol_id = protocol.get("id")
-        Log.i(f"Setting up '{protocol_name}' protocol for run with ID: {protocol_id}")
+        Log.i(
+            f"Setting up '{protocol_name}' protocol for run with ID: {protocol_id}")
         try:
             run_id = Runs.run_protocol(
                 runs_url=self._get_runs_url(), protocol_id=protocol_id
@@ -592,7 +598,8 @@ class OpentronsFlex:
         Log.i(f"Uploading protocol from file: {protocol_file_path}")
         if not os.path.exists(protocol_file_path):
             Log.e(f"Protocol file path does not exist: {protocol_file_path}")
-            raise Exception(f"Protocol path {protocol_file_path} does not exist")
+            raise Exception(
+                f"Protocol path {protocol_file_path} does not exist")
 
         try:
             response = Runs.upload_protocol(
@@ -603,7 +610,8 @@ class OpentronsFlex:
             Log.i("Protocol uploaded successfully.")
             return response
         except Exception as e:
-            Log.e(f"Failed to upload protocol from file {protocol_file_path}: {e}")
+            Log.e(
+                f"Failed to upload protocol from file {protocol_file_path}: {e}")
             raise
 
     def upload_protocol_custom_labware(
@@ -634,11 +642,13 @@ class OpentronsFlex:
         # Check if protocol file and all custom labware files exist
         if not os.path.exists(protocol_file_path):
             Log.e(f"Protocol file path does not exist: {protocol_file_path}")
-            raise Exception(f"Protocol file path does not exist: {protocol_file_path}")
+            raise Exception(
+                f"Protocol file path does not exist: {protocol_file_path}")
 
         for labware_file_path in custom_labware_file_paths:
             if not os.path.exists(labware_file_path):
-                Log.e(f"Custom labware file path does not exist: {labware_file_path}")
+                Log.e(
+                    f"Custom labware file path does not exist: {labware_file_path}")
                 raise Exception(
                     f"Custom labware file path does not exist: {labware_file_path}"
                 )
@@ -647,7 +657,8 @@ class OpentronsFlex:
             response = Runs.upload_protocol_custom_labware(
                 protocols_url=self._get_protocols_url(),
                 protocol_file_path=protocol_file_path,
-                labware_file_paths=list(custom_labware_file_paths),  # Updated parameter
+                labware_file_paths=list(
+                    custom_labware_file_paths),  # Updated parameter
             )
             self.update_available_protocols()
             Log.i("Protocol uploaded with custom labware successfully.")
@@ -674,7 +685,8 @@ class OpentronsFlex:
         """
         Log.i("Fetching protocol list.")
         try:
-            response = Runs.get_protocols_list(protocols_url=self._get_protocols_url())
+            response = Runs.get_protocols_list(
+                protocols_url=self._get_protocols_url())
             Log.i(f"Retrieved protocol list successfully")
             return response
         except Exception as e:
@@ -723,7 +735,8 @@ class OpentronsFlex:
                     }
 
         # Extract only protocol names and their corresponding IDs
-        result = {name: data["id"] for name, data in self.available_protocols.items()}
+        result = {name: data["id"]
+                  for name, data in self.available_protocols.items()}
 
         return result
 
@@ -746,7 +759,8 @@ class OpentronsFlex:
         """
         Log.i(f"Deleting run with ID: {run_id}")
         try:
-            response = Runs.delete_run(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.delete_run(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} deleted successfully. ")
             return response
         except Exception as e:
@@ -772,7 +786,8 @@ class OpentronsFlex:
         """
         Log.i(f"Fetching status for run ID: {run_id}")
         try:
-            response = Runs.get_run_status(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.get_run_status(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Status for run {run_id} retrieved successfully. ")
             return response
         except Exception as e:
@@ -821,7 +836,8 @@ class OpentronsFlex:
         """
         Log.i(f"Pausing run with ID: {run_id}")
         try:
-            response = Runs.pause_run(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.pause_run(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} paused successfully. ")
             return response
         except Exception as e:
@@ -847,7 +863,8 @@ class OpentronsFlex:
         """
         Log.i(f"Playing run with ID: {run_id}")
         try:
-            response = Runs.play_run(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.play_run(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} started successfully. ")
             return response
         except Exception as e:
@@ -873,7 +890,8 @@ class OpentronsFlex:
         """
         Log.i(f"Stopping run with ID: {run_id}")
         try:
-            response = Runs.stop_run(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.stop_run(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} stopped successfully. ")
             return response
         except Exception as e:
@@ -899,7 +917,8 @@ class OpentronsFlex:
         """
         Log.i(f"Resuming run with ID: {run_id}")
         try:
-            response = Runs.resume_run(runs_url=self._get_runs_url(), run_id=run_id)
+            response = Runs.resume_run(
+                runs_url=self._get_runs_url(), run_id=run_id)
             Log.i(f"Run {run_id} stopped successfully. ")
             return response
         except Exception as e:
@@ -1038,9 +1057,9 @@ class OpentronsFlex:
             Log.e("Failed to create a new run.")
             raise
 
-    def home(self) -> str:
+    def home_robot(self) -> str:
         """
-        Sends a command to home the system.
+        Sends a command to home the entire robot.
 
         This method sends a "home" command to the system. If the command is
         executed successfully, it logs the success message. If there is an error,
@@ -1054,10 +1073,12 @@ class OpentronsFlex:
         """
         Log.i("Sending home command.")
         try:
-            response = Runs.home(self._get_home_url())
-            Log.i("Home command executed successfully.")
+            payload = Commands.home_robot()
+            response = Commands.send_command(
+                command_url=self._get_home_url(), command_dict=payload
+            )
             return response
-        except Exception as e:
+        except Exception:
             Log.e("Failed to execute home command.")
             raise
 
@@ -1171,9 +1192,11 @@ class OpentronsFlex:
             )
             if result.returncode != 0:
                 Log.e(f"Cannot communicate with IP address: {ipv4}")
-                raise ConnectionError(f"Cannot communicate with IP address: {ipv4}")
+                raise ConnectionError(
+                    f"Cannot communicate with IP address: {ipv4}")
         except Exception as e:
-            Log.e(f"Error during communication check for IP address {ipv4}: {e}")
+            Log.e(
+                f"Error during communication check for IP address {ipv4}: {e}")
             raise
 
         self._robot_ipv4 = ipv4

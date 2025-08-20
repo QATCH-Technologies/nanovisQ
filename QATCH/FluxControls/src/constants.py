@@ -106,6 +106,7 @@ class CommandType(Enum):
     MOVE_TO_WELL = "moveToWell"
     MOVE_TO_COORDINATES = "moveToCoordinates"
     MOVE_RELATIVE = "moveRelative"
+    HOME = "home"
 
 
 class MountPositions(Enum):

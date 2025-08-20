@@ -79,10 +79,12 @@ class Runs:
             requests.exceptions.RequestException: If the HTTP request fails due to a network issue or server error.
         """
         try:
-            request_kwargs = {"url": url, "headers": HEADERS}
 
             if method == "POST":
                 if payload:
+                    headers = {"Content-Type": "application/json"}
+                    headers.update(HEADERS)
+                    request_kwargs = {"url": url, "headers": headers}
                     if isinstance(payload, dict) and "files" in payload:
                         request_kwargs["files"] = payload
                     elif isinstance(payload, list) and all(
@@ -92,10 +94,13 @@ class Runs:
                         request_kwargs["files"] = payload
                     else:
                         request_kwargs["data"] = json.dumps(payload)
+                Log.i(f"===POST REQUEST===\n{request_kwargs}")
                 response = requests.post(**request_kwargs)
             elif method == "GET":
+                request_kwargs = {"url": url, "headers": HEADERS}
                 response = requests.get(**request_kwargs)
             elif method == "DELETE":
+                request_kwargs = {"url": url, "headers": HEADERS}
                 response = requests.delete(**request_kwargs)
             else:
                 Log.e(f"Unsupported HTTP method: {method}")
@@ -503,28 +508,28 @@ class Runs:
         Log.i(f"GET: fetching light status from {lights_url}")
         return Runs._send_request(method="GET", url=lights_url)
 
-    @staticmethod
-    def home(home_url: str) -> dict:
-        """
-        Homes the Flex robot by sending a POST request to the specified URL.
+    # @staticmethod
+    # def home(home_url: str) -> dict:
+    #     """
+    #     Homes the Flex robot by sending a POST request to the specified URL.
 
-        Sends a POST request to the `home_url` with a payload to command the Flex robot to home (move to a known reference position).
+    #     Sends a POST request to the `home_url` with a payload to command the Flex robot to home (move to a known reference position).
 
-        Args:
-            home_url (str): The URL where the homing request is sent.
+    #     Args:
+    #         home_url (str): The URL where the homing request is sent.
 
-        Returns:
-            dict: The JSON response from the server indicating the result of the homing action.
+    #     Returns:
+    #         dict: The JSON response from the server indicating the result of the homing action.
 
-        Logs:
-            Logs the POST operation, including the target URL, for debugging and informational purposes.
+    #     Logs:
+    #         Logs the POST operation, including the target URL, for debugging and informational purposes.
 
-        Raises:
-            requests.exceptions.RequestException: If the HTTP request fails (handled internally by `_send_request`).
-        """
-        Log.i(f"POST: homing Flex at {home_url}")
-        command_dict = {"target": "robot"}
-        command_payload = json.dumps(command_dict)
-        return Runs._send_request(
-            method="POST", url=home_url, payload=command_payload
-        )
+    #     Raises:
+    #         requests.exceptions.RequestException: If the HTTP request fails (handled internally by `_send_request`).
+    #     """
+    #     Log.i(f"POST: homing Flex at {home_url}")
+    #     command_dict = {"target": "robot"}
+    #     command_payload = json.dumps(command_dict)
+    #     return Runs._send_request(
+    #         method="POST", url=home_url, payload=command_payload
+    #     )

@@ -97,7 +97,8 @@ class RobotWorker(QThread):
                 mac = self.params.get("mac")
                 ip = self.params.get("ip")
                 self.robot = OpentronsFlex(mac_address=mac, ip_address=ip)
-                result = {"status": "connected", "ip": self.robot._get_robot_ipv4()}
+                result = {"status": "connected",
+                          "ip": self.robot._get_robot_ipv4()}
 
             elif self.operation == "load_pipette":
                 pipette = self.params.get("pipette")
@@ -267,7 +268,8 @@ class OpentronFlexControlPanel(QMainWindow):
         self.status_bar = QTextEdit()
         self.status_bar.setMaximumHeight(100)
         self.status_bar.setReadOnly(True)
-        self.status_bar.setPlaceholderText("System messages will appear here...")
+        self.status_bar.setPlaceholderText(
+            "System messages will appear here...")
         main_layout.addWidget(self.status_bar)
 
         # Main Tab Widget
@@ -302,13 +304,15 @@ class OpentronFlexControlPanel(QMainWindow):
         # MAC Address
         layout.addWidget(QLabel("MAC Address:"))
         self.mac_input = QLineEdit()
-        self.mac_input.setPlaceholderText("XX:XX:XX:XX:XX:XX")
+        # self.mac_input.setPlaceholderText("XX:XX:XX:XX:XX:XX")
+        self.mac_input.setText("36:6F:24:31:17:EF")
         layout.addWidget(self.mac_input)
 
         # IP Address
         layout.addWidget(QLabel("IP Address (optional):"))
         self.ip_input = QLineEdit()
-        self.ip_input.setPlaceholderText("192.168.1.XXX")
+        # self.ip_input.setPlaceholderText("192.168.1.XXX")
+        self.ip_input.setText("172.28.12.87")
         layout.addWidget(self.ip_input)
 
         # Connect Button
@@ -462,7 +466,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
         self.protocols_table = QTableWidget()
         self.protocols_table.setColumnCount(3)
-        self.protocols_table.setHorizontalHeaderLabels(["Name", "ID", "Created"])
+        self.protocols_table.setHorizontalHeaderLabels(
+            ["Name", "ID", "Created"])
         self.protocols_table.horizontalHeader().setSectionResizeMode(
             QHeaderView.Stretch
         )
@@ -635,7 +640,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
         self.runs_table = QTableWidget()
         self.runs_table.setColumnCount(3)
-        self.runs_table.setHorizontalHeaderLabels(["Run ID", "Status", "Created"])
+        self.runs_table.setHorizontalHeaderLabels(
+            ["Run ID", "Status", "Created"])
         self.runs_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         history_layout.addWidget(self.runs_table)
 
@@ -739,7 +745,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
         if status == "connected":
             self.connection_status.setText("Connected")
-            self.connection_status.setStyleSheet("color: green; font-weight: bold;")
+            self.connection_status.setStyleSheet(
+                "color: green; font-weight: bold;")
             self.robot_ip_label.setText(result.get("ip", ""))
             self.robot_mac_label.setText(self.mac_input.text())
             self.enable_controls(True)
@@ -760,7 +767,8 @@ class OpentronFlexControlPanel(QMainWindow):
             self.current_run_id = result.get("run_id")
             self.run_id_label.setText(f"Run ID: {self.current_run_id}")
             self.run_status_label.setText("Status: Running")
-            self.log_message(f"Protocol started with run ID: {self.current_run_id}")
+            self.log_message(
+                f"Protocol started with run ID: {self.current_run_id}")
 
         elif status == "protocol_uploaded":
             self.log_message("Protocol uploaded successfully")
@@ -842,7 +850,8 @@ class OpentronFlexControlPanel(QMainWindow):
         ip = self.ip_input.text().strip() if self.ip_input.text().strip() else None
 
         if not mac:
-            QMessageBox.warning(self, "Connection Error", "Please enter a MAC address")
+            QMessageBox.warning(self, "Connection Error",
+                                "Please enter a MAC address")
             return
 
         self.log_message("Attempting to connect to robot...")
@@ -853,7 +862,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
             # Update UI
             self.connection_status.setText("Connected")
-            self.connection_status.setStyleSheet("color: green; font-weight: bold;")
+            self.connection_status.setStyleSheet(
+                "color: green; font-weight: bold;")
             self.robot_ip_label.setText(self.robot._get_robot_ipv4())
             self.robot_mac_label.setText(mac)
             self.enable_controls(True)
@@ -873,7 +883,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def load_pipette(self, mount: str):
         """Load pipette on specified mount"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         if mount == "left":
@@ -903,7 +914,8 @@ class OpentronFlexControlPanel(QMainWindow):
             self.log_message(f"Loading {pipette_text} on {mount} mount...")
             self.robot.load_pipette(pipette, position)
             self.loaded_pipettes[mount] = pipette
-            self.log_message(f"Successfully loaded {pipette_text} on {mount} mount")
+            self.log_message(
+                f"Successfully loaded {pipette_text} on {mount} mount")
             self.update_deck_view()
         except Exception as e:
             self.handle_worker_error(f"Failed to load pipette: {str(e)}")
@@ -911,7 +923,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def load_labware(self):
         """Load labware at specified position"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         position_text = self.deck_position_combo.currentText()
@@ -934,7 +947,8 @@ class OpentronFlexControlPanel(QMainWindow):
             return
 
         try:
-            self.log_message(f"Loading {labware_text} at position {position_text}...")
+            self.log_message(
+                f"Loading {labware_text} at position {position_text}...")
             self.robot.load_labware(position, labware)
             self.loaded_labware[position_text] = labware_text
             self.log_message(
@@ -987,12 +1001,14 @@ class OpentronFlexControlPanel(QMainWindow):
     def upload_protocol(self):
         """Upload protocol with optional custom labware"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         protocol_file = self.protocol_file_label.text()
         if protocol_file == "No file selected":
-            QMessageBox.warning(self, "No File", "Please select a protocol file")
+            QMessageBox.warning(
+                self, "No File", "Please select a protocol file")
             return
 
         custom_labware = []
@@ -1024,7 +1040,8 @@ class OpentronFlexControlPanel(QMainWindow):
             self.protocols_table.setRowCount(len(protocols))
             for i, (name, data) in enumerate(protocols.items()):
                 self.protocols_table.setItem(i, 0, QTableWidgetItem(name))
-                self.protocols_table.setItem(i, 1, QTableWidgetItem(data["id"]))
+                self.protocols_table.setItem(
+                    i, 1, QTableWidgetItem(data["id"]))
                 self.protocols_table.setItem(
                     i, 2, QTableWidgetItem(str(data["createdAt"]))
                 )
@@ -1036,12 +1053,14 @@ class OpentronFlexControlPanel(QMainWindow):
     def run_selected_protocol(self):
         """Run the selected protocol"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         current_row = self.protocols_table.currentRow()
         if current_row < 0:
-            QMessageBox.warning(self, "No Selection", "Please select a protocol to run")
+            QMessageBox.warning(self, "No Selection",
+                                "Please select a protocol to run")
             return
 
         protocol_name = self.protocols_table.item(current_row, 0).text()
@@ -1059,7 +1078,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def delete_selected_protocol(self):
         """Delete the selected protocol"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         current_row = self.protocols_table.currentRow()
@@ -1085,7 +1105,8 @@ class OpentronFlexControlPanel(QMainWindow):
                 self.log_message(f"Protocol deleted successfully")
                 self.refresh_protocols()
             except Exception as e:
-                self.handle_worker_error(f"Failed to delete protocol: {str(e)}")
+                self.handle_worker_error(
+                    f"Failed to delete protocol: {str(e)}")
 
     class _PipetteLabwareDialog(QDialog):
         def __init__(
@@ -1120,7 +1141,8 @@ class OpentronFlexControlPanel(QMainWindow):
             form.addRow("Well (e.g., A1):", self.well_edit)
 
             lay.addLayout(form)
-            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
             buttons.accepted.connect(self.accept)
             buttons.rejected.connect(self.reject)
             lay.addWidget(buttons)
@@ -1187,7 +1209,8 @@ class OpentronFlexControlPanel(QMainWindow):
             )
             return None
 
-        lab_positions = self._filter_labware_positions(require_tiprack=require_tiprack)
+        lab_positions = self._filter_labware_positions(
+            require_tiprack=require_tiprack)
         if not lab_positions:
             msg = (
                 "Load a tip rack on the deck."
@@ -1266,7 +1289,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def pickup_tip(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         selection = self._prompt_pipette_and_location(
@@ -1288,7 +1312,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def aspirate(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         volume = float(self.volume_spin.value())
@@ -1322,7 +1347,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def dispense(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         volume = float(self.volume_spin.value())
@@ -1356,7 +1382,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def blowout(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         flow_rate = float(self.flow_rate_spin.value())
@@ -1386,7 +1413,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def drop_tip(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         selection = self._prompt_pipette_and_location(
@@ -1409,7 +1437,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def move_to_well(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         selection = self._prompt_pipette_and_location(
@@ -1440,7 +1469,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def move_to_coordinates(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         x = float(self.x_spin.value())
@@ -1465,7 +1495,8 @@ class OpentronFlexControlPanel(QMainWindow):
 
     def move_relative(self):
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         distance = float(self.relative_distance_spin.value())
@@ -1548,8 +1579,10 @@ class OpentronFlexControlPanel(QMainWindow):
             self.runs_table.setRowCount(len(runs))
 
             for i, run in enumerate(runs):
-                self.runs_table.setItem(i, 0, QTableWidgetItem(run.get("id", "")))
-                self.runs_table.setItem(i, 1, QTableWidgetItem(run.get("status", "")))
+                self.runs_table.setItem(
+                    i, 0, QTableWidgetItem(run.get("id", "")))
+                self.runs_table.setItem(
+                    i, 1, QTableWidgetItem(run.get("status", "")))
                 self.runs_table.setItem(
                     i, 2, QTableWidgetItem(run.get("createdAt", ""))
                 )
@@ -1561,12 +1594,14 @@ class OpentronFlexControlPanel(QMainWindow):
     def delete_selected_run(self):
         """Delete selected run"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         current_row = self.runs_table.currentRow()
         if current_row < 0:
-            QMessageBox.warning(self, "No Selection", "Please select a run to delete")
+            QMessageBox.warning(self, "No Selection",
+                                "Please select a run to delete")
             return
 
         run_id = self.runs_table.item(current_row, 0).text()
@@ -1589,12 +1624,13 @@ class OpentronFlexControlPanel(QMainWindow):
     def home_robot(self):
         """Home all axes"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         try:
             self.log_message("Homing robot...")
-            self.robot.home()
+            self.robot.home_robot()
             self.log_message("Robot homed successfully")
         except Exception as e:
             self.handle_worker_error(f"Failed to home robot: {str(e)}")
@@ -1602,7 +1638,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def lights_on(self):
         """Turn lights on"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         try:
@@ -1615,7 +1652,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def lights_off(self):
         """Turn lights off"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         try:
@@ -1628,7 +1666,8 @@ class OpentronFlexControlPanel(QMainWindow):
     def flash_lights(self):
         """Flash lights"""
         if not self.robot:
-            QMessageBox.warning(self, "Not Connected", "Please connect to robot first")
+            QMessageBox.warning(self, "Not Connected",
+                                "Please connect to robot first")
             return
 
         count = self.flash_count_spin.value()
