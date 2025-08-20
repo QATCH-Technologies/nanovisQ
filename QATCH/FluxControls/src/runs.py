@@ -16,6 +16,11 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.FluxControls.src.constants import Actions, Lights, HEADERS
 
 
+class Run:
+    def __init__(self):
+        pass
+
+
 class Runs:
     """
     A class that provides methods to interact with the Opentrons Flex HTTP API for managing protocols, runs, and robotic actions.
@@ -94,7 +99,6 @@ class Runs:
                         request_kwargs["files"] = payload
                     else:
                         request_kwargs["data"] = json.dumps(payload)
-                Log.i(f"===POST REQUEST===\n{request_kwargs}")
                 response = requests.post(**request_kwargs)
             elif method == "GET":
                 request_kwargs = {"url": url, "headers": HEADERS}
@@ -306,6 +310,13 @@ class Runs:
         Log.i(f"GET: fetching protocols list from {protocols_url}")
         response = Runs._send_request("GET", protocols_url)
         return [protocol for protocol in response["data"]]
+
+    @staticmethod
+    def create_run(runs_url: str, protocol_id: str):
+        Log.i(
+            f"POST: creating run from {runs_url} from protocol id {protocol_id}")
+        payload = {"data": {"protocolId": f"{protocol_id}"}}
+        return Runs._send_request("POST", runs_url, payload)
 
     @staticmethod
     def get_run_status(runs_url: str, run_id: int) -> dict:
