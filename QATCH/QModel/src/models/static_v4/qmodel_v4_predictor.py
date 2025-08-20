@@ -689,9 +689,7 @@ class QModelPredictorV4:
                 }
 
         # Convert to final format
-        # final_poi = self._format_final_predictions(best_predictions, force)
-        Log.w(final_poi)
-        # Track prediction
+        # final_poi = self._format_final_predictions(best_predictions, force)        # Track prediction
         self._track_prediction(final_poi)
 
         return final_poi
