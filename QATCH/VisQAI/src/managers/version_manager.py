@@ -21,6 +21,9 @@ _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
 
 class VersionManager:
+    """ Protected file names to prevent pruning seed model. """
+    _PROTECTED_FILENAMES = {"VisQAI-base.zip"}
+
     def __init__(self, repo_dir: str, retention: int = _DEFAULT_RETENTION) -> None:
         """Initializes a content-addressed snapshot repository.
 
@@ -223,6 +226,9 @@ class VersionManager:
             "filename": model_path.name,
             "metadata": metadata,
         }
+        if model_path.name in self._PROTECTED_FILENAMES:
+            meta["metadata"]["pin"] = True
+            meta["metadata"]["protected"] = True  # internal flag
 
         # Ensure only one thread writes this SHA at once
         with self._lock:
@@ -346,7 +352,10 @@ class VersionManager:
         for meta in items:
             if len(index) <= self.retention:
                 break
-            if not meta.get("metadata", {}).get("pin", False):
+
+            is_pinned = meta.get("metadata", {}).get("pin", False)
+            is_protected = meta.get("metadata", {}).get("protected", False)
+            if not (is_pinned or is_protected):
                 sha = meta["sha"]
                 obj_dir = self._object_path(sha)
                 try:
@@ -382,12 +391,12 @@ class VersionManager:
             meta["pin"] = True
             self._write_index(index)
 
-    def unpin(self, sha: str) -> None:
+    def unpin(self, sha: str, force: bool = False) -> None:
         """Unpin a snapshot so it becomes subject to pruning again.
 
         Args:
-            sha: 64-character lowercase SHA-256 hex digest of the snapshot.
-
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot.
+            force (bool): Parameter to allow forceful pruning of protected snapshots.
         Raises:
             ValueError: If `sha` is not a valid SHA-256 hex digest.
             KeyError: If no snapshot with the given `sha` exists.
@@ -400,6 +409,11 @@ class VersionManager:
             raise KeyError(f"No such snapshot to unpin: {sha}")
 
         meta = index[sha].get("metadata", {})
+        if meta.get("protected", False) and not force:
+            raise PermissionError(
+                f"Cannot unpin protected artifact {meta.get('filename')} without force=True"
+            )
+
         if "pin" in meta:
             meta.pop("pin")
             self._write_index(index)
