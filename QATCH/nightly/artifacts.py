@@ -4,12 +4,41 @@ import requests as r
 import pyzipper as z
 
 try:
+    from QATCH.common.logger import Logger as Log
+except:
+    class Log:
+        """
+        Minimal drop-in replacement for QATCH.common.logger.Logger
+        """
+        @staticmethod
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
+        @staticmethod
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        @staticmethod
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        @staticmethod
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
+try:
     from QATCH.nightly.security import GH_Security
 except:
     from security import GH_Security
 
 from PyQt5.QtCore import pyqtBoundSignal
 from threading import Event as event
+
+# NOTE: Assuming at most 1 build is compiled per day,
+# the code will return (at minimum) 1 week of builds.
+# Any more is a waste, as builds expire after 1 week.
+ARTIFACTS_PER_PAGE = 7
+RETURN_PAGE_NUM = 1  # only look at the 1st page
 
 
 class GH_Artifacts:
@@ -27,7 +56,8 @@ class GH_Artifacts:
 
     def raw(self) -> dict:
         resp = r.get(
-            self.security.caesar_decipher("*".join(self.security.GHAPIURL)),
+            self.security.caesar_decipher("*".join(self.security.GHAPIURL)) +
+            f"?per_page={ARTIFACTS_PER_PAGE}&page={RETURN_PAGE_NUM}",
             headers=self.headers)
         resp.raise_for_status()
         return resp.json()
@@ -35,8 +65,9 @@ class GH_Artifacts:
     def all(self) -> tuple[dict, str]:
         resp = self.raw()
         keys = []
-        for i in range(resp['total_count']):
-            for j in list(resp['artifacts'][i].keys()).copy():
+        for i, a in enumerate(resp['artifacts']):
+            artifact: dict = a
+            for j in list(artifact.keys()).copy():
                 k: str = j
                 if any(list([
                     k.startswith('a'),
@@ -110,7 +141,7 @@ class GH_Artifacts:
                 if pct != last_pct:
                     status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
                     if progress is None:
-                        print("[GH_Artifacts]", status_str)
+                        Log.d("[GH_Artifacts]", status_str)
                     else:
                         progress.emit(status_str[:status_str.rfind(' (')], pct)
                     last_pct = pct
@@ -130,44 +161,44 @@ class GH_Artifacts:
                     try:
                         running_build: dict = j.load(fp)
                     except:
-                        print(
+                        Log.e(
                             "[ERROR]", "Cannot parse latest build file. Repairing it.")
                         self.write_latest_build_file(latest_build)
-                        print(
+                        Log.w(
                             "[WARN]", "You *may* be out-of-date. Assuming no update is available.")
                         update_recommended = False
                     if 'created_at' not in running_build.keys():
-                        print(
+                        Log.w(
                             "[WARN]", "Running build date is unknown. Update IS recommended...")
                         update_recommended = True
                     elif 'created_at' not in latest_build.keys():
-                        print(
+                        Log.w(
                             "[WARN]", "Most recent build date is unknown. Update NOT recommended...")
                         update_recommended = False
                     elif running_build['created_at'] != latest_build['created_at']:
                         update_recommended = True
                     else:
-                        print(
+                        Log.i(
                             "[INFO]", "You are running the most recent nightly build available.")
                         update_recommended = False
                     if "dev_branch" in running_build.keys() and running_build["dev_branch"]:
                         # Never recommend a nightly build update for a development branch.
                         update_recommended = False
             else:
-                print(
+                Log.i(
                     "[INFO]", "Writing latest build file as none exists. Assuming no update.")
                 self.write_latest_build_file(latest_build)
                 update_recommended = False
 
             if update_recommended:
-                print("Current:", running_build['name'])
-                print("Upgrade:", latest_build['name'])
-                print("Created:", latest_build['created_at'])
+                Log.d("Current:", running_build['name'])
+                Log.d("Upgrade:", latest_build['name'])
+                Log.d("Created:", latest_build['created_at'])
                 return [running_build, latest_build, key]
         except r.HTTPError:
             raise
         except:
-            print(
+            Log.e(
                 "[ERROR]", "Failed to fetch the most recent nightly build information.")
             # raise  # TODO: testing only, comment out!
             return
@@ -178,7 +209,7 @@ class GH_Artifacts:
                            progress: pyqtBoundSignal = None,
                            abort_flag: event = None) -> list[str] | str | None:
         if latest is None:
-            print("Nothing to prepare.")
+            Log.d("Nothing to prepare.")
             return
 
         latest_build, key = latest
@@ -188,12 +219,12 @@ class GH_Artifacts:
             progress=progress,
             abort_flag=abort_flag
         )
-        print("[GH_Artifacts]", f"Saved artifact to: {filename}")
+        Log.d("[GH_Artifacts]", f"Saved artifact to: {filename}")
         if abort_flag is not None and abort_flag.is_set():
             if o.path.exists(filename):
-                print(f"Removing parital file download: {filename}")
+                Log.d(f"Removing parital file download: {filename}")
                 o.remove(filename)
-            print("User aborted download.")
+            Log.w("User aborted download.")
             return
         if extract_to is None:
             extract_to = o.path.expanduser(o.path.join("~", "Downloads"))
@@ -237,12 +268,12 @@ if __name__ == "__main__":
     display_only = False
     if display_only:
         available, key = artifacts.available()
-        print("[GH_Artifacts]", j.dumps(available, indent=2))
-        print("[GH_Artifacts]", "Key Key:", key)
+        Log.d("[GH_Artifacts]", j.dumps(available, indent=2))
+        Log.d("[GH_Artifacts]", "Key Key:", key)
     else:
         update_result = artifacts.check_for_update()
         if update_result is not None:
             running, latest, key = update_result
             latest_bundle = (latest, key)
             install_path = artifacts.prepare_for_update(latest_bundle)
-            print("File(s):", install_path)
+            Log.d("File(s):", install_path)
