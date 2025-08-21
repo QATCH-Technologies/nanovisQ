@@ -184,6 +184,9 @@ class GH_Artifacts:
                     if "dev_branch" in running_build.keys() and running_build["dev_branch"]:
                         # Never recommend a nightly build update for a development branch.
                         update_recommended = False
+                        # NOTE: If testing the main app updater, you'll need these two lines:
+                        # raise NotImplementedError(
+                        #     "'dev_branch' = True; skipping Nightly update checks.")
             else:
                 Log.i(
                     "[INFO]", "Writing latest build file as none exists. Assuming no update.")
@@ -195,7 +198,7 @@ class GH_Artifacts:
                 Log.d("Upgrade:", latest_build['name'])
                 Log.d("Created:", latest_build['created_at'])
                 return [running_build, latest_build, key]
-        except r.HTTPError:
+        except (r.HTTPError, NotImplementedError):
             raise
         except:
             Log.e(

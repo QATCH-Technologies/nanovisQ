@@ -4424,9 +4424,25 @@ class MainWindow(QtWidgets.QMainWindow):
                                              "path": build['archive_download_url'],
                                              "size": build['size_in_bytes']}
                         self.start_download()
+
+                    # Check for nightly resource updates (if no build available)
+                    if not hasattr(self, 'url_download'):
+                        Constants.UpdateEngine = UpdateEngines.GitHub
+                        branch = f"{Constants.app_version[0:4]}x"
+                        if self.update_resources_check(branch):
+                            if self.update_resources(branch):
+                                labelweb3 = 'Resources updated'
+                            else:
+                                labelweb3 = 'Resources out-of-date'
+                        else:
+                            labelweb3 = 'Resources up-to-date'
+                        Constants.UpdateEngine = UpdateEngines.Nightly
+                        Log.i(f"Nightly resource update check: {labelweb3}")
+
                     return color, labelweb2
                 except:
                     # raise  # TODO: testing only, comment out!
+                    Constants.UpdateEngine = UpdateEngines.GitHub
                     if hasattr(self, "url_download"):
                         delattr(self, "url_download")
                     pass
@@ -4543,6 +4559,16 @@ class MainWindow(QtWidgets.QMainWindow):
                                      "Running SW: {} ({})\nRecommended: {}\n".format(Constants.app_version, Constants.app_date, v) +
                                      "Filename: {}\n\nPlease save your work before updating.".format(os.path.basename(self.url_download["path"]))):
                     self.start_download()
+                else:
+                    # Check for resource updates still (if build update declined)
+                    branch = f"{Constants.app_version[0:4]}x"
+                    if self.update_resources_check(branch):
+                        if self.update_resources(branch):
+                            labelweb3 = 'Resources updated'
+                        else:
+                            labelweb3 = 'Resources out-of-date'
+                    else:
+                        pass  # 'Resources up-to-date'
             else:
                 Log.w(
                     "A software update is available! Please ask your administrator to install update.")
