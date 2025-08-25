@@ -1301,14 +1301,6 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.btn_update.setEnabled(False)
 
-        if Constants.log_prefer_path not in path:
-            Log.e("The selected run is not in your working directory and cannot be used.")
-            Log.e("If desired, please change your working directory to use this run.")
-            # deselect file path, will show log_prefer_path next time
-            path = None
-            self.run_file_run = None
-            # NOTE: method will return after next block
-
         if path is None:
             if self.step == 1:  # Select
                 self.parent.select_formulation = Formulation()
@@ -1319,6 +1311,13 @@ class FrameStep1(QtWidgets.QDialog):
                 self.parent.predict_formulation = Formulation()
             # if True:  # Always, all tabs
             #     self.model_selected(None)
+            return
+
+        if Constants.log_prefer_path not in path:
+            Log.e("The selected run is not in your working directory and cannot be used.")
+            Log.e("If desired, please change your working directory to use this run.")
+            # deselect file run, will show log_prefer_path next time
+            self.run_file_run = None
             return
 
         self.btn_update.setEnabled(True)
