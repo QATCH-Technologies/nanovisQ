@@ -1252,12 +1252,16 @@ class FrameStep1(QtWidgets.QDialog):
 
     def file_dialog_show(self):
         selected_files = self.file_dialog.selectedFiles()
-        prefer_abs = os.path.abspath(Constants.log_prefer_path)
-        path_abs = os.path.abspath(selected_files[0])
-        try:
-            inside = os.path.commonpath([prefer_abs, path_abs]) == prefer_abs
-        except ValueError:
-            inside = False
+        inside = True  # assume it is until proven otherwise
+        if selected_files:
+            prefer_abs = os.path.abspath(Constants.log_prefer_path)
+            path_abs = os.path.abspath(selected_files[0])
+            try:
+                inside = os.path.commonpath(
+                    [prefer_abs, path_abs]) == prefer_abs
+            except ValueError:
+                inside = False
+
         if not selected_files or not inside:
             # Set run directory from User Preferences.
             self.file_dialog.setDirectory(Constants.log_prefer_path)
@@ -1269,6 +1273,7 @@ class FrameStep1(QtWidgets.QDialog):
             # (set_directory = "full/path", select_file = "to")
             self.file_dialog.setDirectory(set_directory)
             self.file_dialog.selectFile(select_file)
+
         self.file_dialog.show()
 
     def file_selected(self, path: str | None, cancel: bool = False):
