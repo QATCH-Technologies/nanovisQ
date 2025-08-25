@@ -405,10 +405,10 @@ class FrameStep1(QtWidgets.QDialog):
         self.file_dialog.fileSelected.connect(self.file_selected)
         if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
+            global_handler = getattr(
+                self.parent, 'set_global_model_path', None)
             self.model_dialog.fileSelected.connect(
-                self.parent.set_global_model_path
-                if hasattr(self.parent, 'set_global_model_path') and callable(self.parent.set_global_model_path) else
-                self.model_selected)
+                global_handler if callable(global_handler) else self.model_selected)
 
     def on_tab_selected(self):
 
