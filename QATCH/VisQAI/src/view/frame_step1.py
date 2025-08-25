@@ -1033,36 +1033,38 @@ class FrameStep1(QtWidgets.QDialog):
 
         all_is_good = True
         self.parent.import_formulations.clear()
-        for i, (file_name, file_path) in enumerate(self.all_files.items()):
 
-            # draw progress bar immediately (it will freeze)
-            # and handle any other pending events (i.e. cancel click)
-            self.progressBarDiag.setValue(i)
-            for _ in range(2):
-                QtCore.QCoreApplication.processEvents()
+        try:
+            for i, (_file_name, file_path) in enumerate(self.all_files.items()):
 
-            # Check for cancel and stop if true
-            if self.progressBarDiag.wasCanceled():
-                Log.w("User canceled import preparing!")
-                self.progressBarDiag.close()  # close it
-                return
+                # draw progress bar immediately (it will freeze)
+                # and handle any other pending events (i.e. cancel click)
+                self.progressBarDiag.setValue(i)
+                for _ in range(2):
+                    QtCore.QCoreApplication.processEvents()
 
-            self.file_selected(file_path)  # load each run
-            if (len(self.run_captured.text()) and
-                len(self.run_updated.text()) and
-                len(self.run_analyzed.text()) and
-                    self.feature_table.allSet() and
-                    self.run_figure_valid):
-                if not self.save_formulation():
-                    Log.w("Unable to save formulation while preparing!")
+                # Check for cancel and stop if true
+                if self.progressBarDiag.wasCanceled():
+                    Log.w("User canceled import preparing!")
                     self.progressBarDiag.close()  # close it
                     return
-            else:
-                all_is_good = False
-                break  # highlight *first* run with errors on "Next"
 
-        # Close the active progress bar dialog window
-        self.progressBarDiag.close()
+                self.file_selected(file_path)  # load each run
+                if (len(self.run_captured.text()) and
+                    len(self.run_updated.text()) and
+                    len(self.run_analyzed.text()) and
+                        self.feature_table.allSet() and
+                        self.run_figure_valid):
+                    if not self.save_formulation():
+                        Log.w("Unable to save formulation while preparing!")
+                        self.progressBarDiag.close()  # close it
+                        return
+                else:
+                    all_is_good = False
+                    break  # highlight *first* run with errors on "Next"
+        finally:
+            # Close the active progress bar dialog window
+            self.progressBarDiag.close()
 
         if all_is_good:
             # ready to proceed
@@ -1250,13 +1252,19 @@ class FrameStep1(QtWidgets.QDialog):
 
     def file_dialog_show(self):
         selected_files = self.file_dialog.selectedFiles()
-        if len(selected_files) == 0 or Constants.log_prefer_path not in selected_files[0]:
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        path_abs = os.path.abspath(selected_files[0])
+        try:
+            inside = os.path.commonpath([prefer_abs, path_abs]) == prefer_abs
+        except ValueError:
+            inside = False
+        if not selected_files or not inside:
             # Set run directory from User Preferences.
             self.file_dialog.setDirectory(Constants.log_prefer_path)
         else:
             # File selected previously, reference parent directory
             set_directory, select_file = os.path.split(
-                os.path.dirname(selected_files[0]))
+                os.path.dirname(path_abs))
             # e.g "full/path/to/capture.zip" will yield:
             # (set_directory = "full/path", select_file = "to")
             self.file_dialog.setDirectory(set_directory)
@@ -1313,7 +1321,13 @@ class FrameStep1(QtWidgets.QDialog):
             #     self.model_selected(None)
             return
 
-        if Constants.log_prefer_path not in path:
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        path_abs = os.path.abspath(path)
+        try:
+            inside = os.path.commonpath([prefer_abs, path_abs]) == prefer_abs
+        except ValueError:
+            inside = False
+        if not inside:
             Log.e("The selected run is not in your working directory and cannot be used.")
             Log.e("If desired, please change your working directory to use this run.")
             # deselect file run, will show log_prefer_path next time
@@ -1677,7 +1691,8 @@ class FrameStep1(QtWidgets.QDialog):
         ax.set_yscale("log")
         self.run_canvas.draw()
 
-        avg_temp = np.average(data[:, 2])
+        avg_temp = np.average(in_temperature) if len(
+            in_temperature) else np.nan
         if np.isnan(avg_temp):
             self.run_temperature.setText("(Unknown)")
         else:
