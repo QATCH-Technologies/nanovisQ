@@ -368,9 +368,13 @@ class VisQAIWindow(BaseVisQAIWindow):
                     #             "Please import at least 1 experiment before proceeding.",
                     #             QtWidgets.QMessageBox.Ok)
                     #         return True  # deny tab change
-                if hasattr(self.tab_widget.currentWidget(), "btn_next"):
-                    self.tab_widget.currentWidget().btn_next.click()
+                if now_step >= tab_step:
+                    # do not click next when user is going backwards
+                    # (or nowhere) from the currently selected step.
+                    pass
+                elif hasattr(self.tab_widget.currentWidget(), "btn_next"):
                     # still perform click action
+                    self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
 
     def sign_edit(self):
