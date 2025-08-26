@@ -82,7 +82,7 @@ matplotlib==3.9.2
     #   seaborn
 mdurl==0.1.2
     # via markdown-it-py
-ml-dtypes==0.4.1
+ml-dtypes==0.5.3
     # via
     #   keras
     #   tensorflow-intel
@@ -206,25 +206,18 @@ six==1.16.0
     #   tensorflow-intel
 stone==3.3.1
     # via dropbox
-tensorboard==2.18.0
+tensorboard==2.19.0
     # via tensorflow-intel
 tensorboard-data-server==0.7.2
     # via tensorboard
-tensorflow==2.18.0
+tensorflow==2.19.1
     # via -r requirements.in
-tensorflow-intel==2.18.0
-    # via
-    #   -r requirements.in
-    #   tensorflow
 tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
 termcolor==2.5.0
     # via tensorflow-intel
 tf_keras==2.19.0
-    # Required for QModelv4.x compatibility
-    # NOTE: This requires tensorflow 2.19 and will error on install
-    # but does work with 2.18. Upgrading to tensorflow 2.19 causes compatibilty
-    # issues with QModelv2.x. which requires 2.18.  To be resolved in the future.
+    # via -r requirements.in
 threadpoolctl==3.5.0
     # via
     #   imbalanced-learn
