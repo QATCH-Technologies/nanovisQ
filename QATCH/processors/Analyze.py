@@ -3207,7 +3207,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
-                        label = self.QModel_clusterer.predict_label(fh)
+                        label = 0
                         fh.seek(0)
                         act_poi = [None] * 6  # no initial guesses
                         candidates = getattr(
@@ -3575,7 +3575,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            label = self.QModel_clusterer.predict_label(fh)
+                            label = 0
                             fh.seek(0)
                             act_poi = [None] * 6  # no initial guesses
                             candidates = getattr(
@@ -5023,7 +5023,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     try:
                         with secure_open(data_path, "r", "capture") as f:
                             fh = BytesIO(f.read())
-                            label = self.QModel_clusterer.predict_label(fh)
+                            label = 0
                             fh.seek(0)
                             act_poi = [None] * 6  # no initial guesses
                             candidates = getattr(
