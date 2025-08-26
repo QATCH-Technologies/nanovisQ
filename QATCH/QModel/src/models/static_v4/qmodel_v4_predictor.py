@@ -26,10 +26,6 @@ import json
 from datetime import datetime
 warnings.filterwarnings('ignore')
 
-# Configure TensorFlow for better compatibility
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
-
 # Try to use legacy Keras if available
 try:
     import tf_keras

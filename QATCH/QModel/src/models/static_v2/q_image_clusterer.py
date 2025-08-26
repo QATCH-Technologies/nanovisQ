@@ -69,12 +69,12 @@ import matplotlib.pyplot as plt
 import joblib
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
-from keras.applications import VGG16
-from keras.models import Model
+from tensorflow.keras.applications import VGG16
+from tensorflow.keras.models import Model
 try:
-    from keras_preprocessing.image import img_to_array
+    from tensorflow.keras_preprocessing.image import img_to_array
 except:
-    from keras.preprocessing.image import img_to_array
+    from tensorflow.keras.preprocessing.image import img_to_array
 from PIL import Image
 from tqdm import tqdm
 
