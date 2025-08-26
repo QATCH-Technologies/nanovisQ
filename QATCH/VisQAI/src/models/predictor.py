@@ -114,6 +114,10 @@ class Predictor:
             FileNotFoundError: If the archive does not exist.
             RuntimeError: If expected folders or files are missing inside the archive.
         """
+        # Disable LEGACY KERAS to properly import and load the ZIP file
+        # Other models in our application may have set this flag to '1'
+        os.environ['TF_USE_LEGACY_KERAS'] = '0'
+
         self.zip_path = Path(zip_path)
         self.mc_samples = mc_samples
         self.model_filename = model_filename
