@@ -73,9 +73,6 @@ class Logger:
             # TensorFlow not installed
             pass
 
-        except ImportError:
-            # TensorFlow is not installed — skip
-            pass
         try:
             from absl import logging as absl_logging
             absl_logging.set_verbosity(absl_logging.ERROR)
