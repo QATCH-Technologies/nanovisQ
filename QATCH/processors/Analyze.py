@@ -1457,7 +1457,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.graphStack.setCurrentIndex(0)
 
         # Clear subset for batched processing
-        if exit_batched_processing_mode:
+        if hasattr(self, "_batched_runs") and self._batched_runs and exit_batched_processing_mode:
             last_run_in_batch_loaded = False
             if self.cBox_Runs.itemText(self.cBox_Runs.count() - 1) in self._current_run:
                 last_run_in_batch_loaded = True
