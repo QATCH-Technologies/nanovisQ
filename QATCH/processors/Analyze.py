@@ -13,7 +13,6 @@ from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QCompleter
 from PyQt5.QtCore import Qt
-from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
 from QATCH.QModel.src.models.static_v4.qmodel_v4_predictor import QModelPredictorV4
@@ -393,8 +392,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # lazy load these modules on 'loadRun()' call (if selected)
         self.QModel_v2_modules_loaded = False
-        # QClusterer(model_path=cluster_model_path)
-        self.QModel_clusterer = None
         self.QModel_predict_0 = (
             None  # QPredictor(model_path=predict_model_path.format(0))
         )
@@ -2739,13 +2736,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         try:
             if Constants.QModel2_predict and not self.QModel_v2_modules_loaded:
-                cluster_model_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v2",
-                    "cluster.joblib"
-                )
-                self.QModel_clusterer = QClusterer(
-                    model_path=cluster_model_path)
 
                 predict_model_path = os.path.join(
                     Architecture.get_path(),
