@@ -41,7 +41,7 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b62"
+    app_version = "v2.6b61"
     app_date = "2025-07-02"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
@@ -312,8 +312,10 @@ class Constants:
     list_predict_models = ["ModelData",
                            "QModel v2",
                            "QModel v3",
-                           "QModel v3 + Partial Fills"]
+                           "QModel v3 + Partial Fills",
+                           "QModel v4 (mini)"]
     PF_predict = False
+    QModel4_predict = True
     QModel3_predict = True
     QModel2_predict = True
     ModelData_predict = True
