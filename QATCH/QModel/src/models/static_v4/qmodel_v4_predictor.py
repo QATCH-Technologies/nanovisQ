@@ -152,8 +152,6 @@ class QModelPredictorV4:
                 detection.
             prediction_history (list): History of predictions made by the model.
         """
-        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-        os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
         self.window_size = window_size
         self.stride = stride
