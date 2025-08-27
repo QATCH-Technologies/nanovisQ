@@ -16,6 +16,7 @@ from QATCH.common.findDevices import Discovery
 from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
+from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
@@ -387,6 +388,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint.setEnabled(False)
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():

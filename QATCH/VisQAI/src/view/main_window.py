@@ -25,6 +25,7 @@ import webbrowser
 from typing import Optional
 
 try:
+    from src.managers.license_manager import LicenseManager, LicenseStatus
     from src.models.formulation import Formulation
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
@@ -34,6 +35,7 @@ try:
     from src.view.horizontal_tab_bar import HorizontalTabBar
 
 except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.managers.license_manager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
@@ -50,6 +52,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         self.setWindowTitle("VisQ.AI Base Class")
         self.setMinimumSize(900, 600)
+
+        # TODO: Add active dropbox token!
+        self._license_manager = LicenseManager(
+            dropbox_token="")
 
         # Create dummy database object for base class.
         self.database = SimpleNamespace(is_open=False)
@@ -117,8 +123,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
     def check_license(self) -> bool:
         free_preview_period = 90  # days
-        # TODO: dummy check, always false for now
-        is_valid_license = False
+
+        # Validate license with DropBox licenses.
+        is_valid_license, msg, license_info = self._license_manager.validate_license()
+        Log.d(msg=msg)
         if not is_valid_license:
             # how long ago did the preview period start?
             if not os.path.exists(DB_PATH):
