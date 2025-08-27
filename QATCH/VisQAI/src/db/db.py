@@ -21,6 +21,8 @@ Version:
     1.6
 """
 
+import tempfile
+import shutil
 import sqlite3
 import json
 from typing import List, Optional, Union
@@ -609,7 +611,7 @@ class Database:
 
         Args:
             text (str): The string to be shuffled (or unshuffled, perhaps).
-            seed (Union[int, None]): The seed for `random` to use (for repeatability). 
+            seed (Union[int, None]): The seed for `random` to use (for repeatability).
 
         Returns:
             str: The character shuffled string.
@@ -752,6 +754,105 @@ class Database:
                 pass
         self.conn.close()
         self.is_open = False
+
+    def create_temp_decrypt(self) -> Optional[Path]:
+        """Create a temporary decrypted copy of the current database.
+
+        This method generates a standard SQLite database file in the system's
+        temporary directory that contains all the same data as the current
+        database, but without encryption. This is useful for operations that
+        require direct SQLite access or third-party tools.
+
+        The temporary file is tracked internally and should be removed using
+        `cleanup_temp_decrypt()` when no longer needed.
+
+        Returns:
+            Optional[Path]: Path to the temporary decrypted database file, or
+            None if the operation failed.
+
+        Notes:
+            - The temporary file will have a '.db' extension.
+            - The temporary file contains sensitive data in plaintext.
+            - The file descriptor is closed immediately after creation.
+        """
+        try:
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix='.db', prefix='app_temp_')
+            temp_path = Path(temp_path)
+            os.close(temp_fd)
+            temp_conn = sqlite3.connect(str(temp_path))
+            sql_script = "\n".join(self.conn.iterdump())
+            temp_conn.executescript(sql_script)
+            temp_conn.commit()
+            temp_conn.close()
+            if not hasattr(self, '_temp_db_paths'):
+                self._temp_db_paths = []
+            self._temp_db_paths.append(temp_path)
+
+            return temp_path
+
+        except Exception as e:
+            Log.e(f"Failed to create temporary decrypted database: {e}")
+            return None
+
+    def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
+        """Remove one or all temporary decrypted database files.
+
+        This method deletes temporary decrypted database files created by
+        `create_temp_decrypt()`. You can specify a particular file to remove,
+        or omit the argument to clean up all temporary files associated with
+        this instance.
+
+        Args:
+            temp_path (Optional[Path]): Path to a specific temporary database
+                to remove. If None, all temporary databases created by this
+                instance will be removed.
+
+        Returns:
+            bool: True if the cleanup operation completed successfully for all
+            targeted files, False if any deletion failed.
+
+        Notes:
+            - Attempting to delete a non-existent file will be ignored.
+            - All files tracked internally in `_temp_db_paths` are candidates
+            for removal when `temp_path` is None.
+        """
+        try:
+            if not hasattr(self, '_temp_db_paths'):
+                return True
+
+            if temp_path is not None:
+                # Remove specific temp file
+                if temp_path.exists():
+                    temp_path.unlink()
+                if temp_path in self._temp_db_paths:
+                    self._temp_db_paths.remove(temp_path)
+            else:
+                # Otherwise, remove all temp files created by this instance
+                for path in self._temp_db_paths[:]:
+                    try:
+                        if path.exists():
+                            path.unlink()
+                        self._temp_db_paths.remove(path)
+                    except Exception as e:
+                        Log.e(f"Failed to remove temp file {path}: {e}")
+
+            return True
+
+        except Exception as e:
+            Log.e(f"Failed to cleanup temporary database: {e}")
+            return False
+
+    def __del__(self):
+        """Destructor to ensure temporary decrypted files are cleaned up.
+
+        When the object is destroyed, this method automatically calls
+        `cleanup_temp_decrypt()` to remove any temporary decrypted database
+        files created during the instance's lifetime. This helps prevent
+        sensitive data from persisting on disk.
+        """
+        if hasattr(self, '_temp_db_paths'):
+            self.cleanup_temp_decrypt()
 
     def backup(self) -> None:
         """Writes database from memory to disk

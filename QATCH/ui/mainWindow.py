@@ -1187,7 +1187,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
-        self._configure_database()
+        self._configure_database(exec_migrations=False)
 
         self.VisQAIWin = VisQAIWindow(self)
 
@@ -2425,7 +2425,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # Configures the database file for VisQ.AI (if missing or out-of-date)
     ###########################################################################
 
-    def _configure_database(self):
+    def _configure_database(self, exec_migrations: bool = False):
         # check if local app data contains a database file already
         try:
             machine_database_path = os.path.join(
@@ -2442,26 +2442,57 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
                 # TODO: This should be done when tagging, not here
-                Log.w(
-                    f"Adding core training samples to database (happens once; may take a bit)...")
-                machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
-                form_ctrl = FormulationController(db=machine_database)
-                csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                                        "VisQAI", "assets", "formulation_data_05302025.csv")
-                if not os.path.isfile(csv_path):
-                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                df = pd.read_csv(csv_path)
-                added_forms = form_ctrl.add_all_from_dataframe(df)
-                machine_database.close()
-                Log.w(f"Added {len(added_forms)} core training samples!")
-            elif bundled_exists and localapp_exists:
+                # Log.w(
+                #     f"Adding core training samples to database (happens once; may take a bit)...")
+                # machine_database = Database(
+                #     path=machine_database_path, parse_file_key=True)
+                # form_ctrl = FormulationController(db=machine_database)
+                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
+                #                         "VisQAI", "assets", "formulation_data_05302025.csv")
+                # if not os.path.isfile(csv_path):
+                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                # df = pd.read_csv(csv_path)
+                # added_forms = form_ctrl.add_all_from_dataframe(df)
+                # machine_database.close()
+                # Log.w(f"Added {len(added_forms)} core training samples!")
+            elif localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
                     path=bundled_database_path, parse_file_key=True)
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
+
+                if exec_migrations:
+                    from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
+                    tmp_path = machine_database.create_temp_decrypt()
+                    migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                    current_version = migrator.get_current_version()
+                    target_version = MigrationVersion(1, 1, 0)
+                    if current_version < target_version:
+                        new_migration = Migration(
+                            from_version=current_version,
+                            to_version=target_version,
+                            up_sql=[
+                                ""
+                            ],
+                            down_sql=[
+                                ""
+                            ],
+                            data_transform=lambda conn: conn.execute(
+                                ""
+                            ),
+                            autofill_defaults={
+                                ""
+                            },
+                            description=""
+                        )
+                        migrator.register_migration(new_migration)
+                        status, msgs = migrator.migrate(
+                            target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                        if status == MigrationStatus.FAILED:
+                            Log.e("Migration failed!")
+                        machine_database.cleanup_temp_decrypt()
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
