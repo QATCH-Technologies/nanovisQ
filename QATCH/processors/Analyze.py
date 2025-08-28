@@ -4915,7 +4915,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict_with_confidence(
+                            predict_result = predictor.predict(
                                 file_buffer=fh)
                             predictions = []
                             candidates = []
