@@ -4726,7 +4726,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._dbx_connection = dropbox.Dropbox(access_token)
             self._license_manager = LicenseManager(
                 dbx_conn=self._dbx_connection)
-            self._license_manager.validate_license(auto_create_if_missing=True)
+            is_valid, messages, license_data = self._license_manager.validate_license(
+                auto_create_if_missing=True)
+            Log.d(f"{is_valid}, {messages}, {license_data}")
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(

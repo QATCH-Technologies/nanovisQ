@@ -1,4 +1,5 @@
 try:
+    from typing import Optional, Tuple
     from QATCH.ui.popUp import PopUp
     from QATCH.core.constants import Constants
     from QATCH.common.userProfiles import UserProfiles, UserRoles
@@ -16,6 +17,7 @@ except:
 from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 import os
 import hashlib
 from scipy.optimize import curve_fit
@@ -46,10 +48,9 @@ except (ModuleNotFoundError, ImportError):
 
 
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent=None, license_manager=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
-        self._license_manager = license_manager
         """BASE CLASS DEFINITION"""
 
         self.setWindowTitle("VisQ.AI Base Class")
@@ -118,72 +119,208 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.trial_layout.addWidget(self.trial_label)
         self.trial_layout.addLayout(self.trial_buttons)
 
-    def check_license(self) -> bool:
+    def check_license(self, license_manager: Optional[LicenseManager]) -> bool:
         free_preview_period = 90  # days
+        is_valid_license = False
+        message = ""
+        license_data = {}
+        if license_manager is not None:
+            try:
+                is_valid_license, message, license_data = license_manager.validate_license()
+                status = license_data.get('status', 'unknown')
+                expiration_str = license_data.get('expiration', '')
+                if is_valid_license and expiration_str and status != LicenseStatus.ADMIN:
+                    try:
+                        expiration_date = dt.datetime.fromisoformat(
+                            expiration_str)
+                        now = dt.datetime.now()
+                        days_remaining = (expiration_date - now).days
+                        if days_remaining <= 7:
+                            message += f"License expires soon!"
+                        elif days_remaining <= 30:
+                            message += f"Consider renewal"
 
-        # Validate license with DropBox licenses.
-        if self._license_manager:
-            is_valid_license, message, license_info = self._license_manager.validate_license()
+                    except (ValueError, TypeError):
+                        pass
+                if license_manager.cache_enabled:
+                    cache_status = license_manager.get_cache_status()
+                    if cache_status.get('cache_expired', False):
+                        Log.d(
+                            f"Cache expired, background refresh: {cache_status.get('refresh_thread_active', False)}")
+
+            except Exception as e:
+                Log.e(f"License validation error: {e}")
+                is_valid_license = False
+                message = f"License check failed: {str(e)}"
+                license_data = {}
         else:
             is_valid_license = False
-            message = "License manager uninitialized!"
-            license_info = {}
-        Log.d(message)
-        if not is_valid_license:
-            # how long ago did the preview period start?
-            if not os.path.exists(DB_PATH):
-                Log.e("No VisQAI license or trial found.")
-                self.setCentralWidget(self._expired_widget)
-                return is_valid_license
+            message = "License manager not initialized!"
+            license_data = {}
+        Log.i(f"{message}")
 
-            file_stats = os.stat(DB_PATH)
+        # Handle valid license
+        if is_valid_license:
+            status = license_data.get('status', 'unknown')
+            if status == LicenseStatus.ADMIN:
+                self.setCentralWidget(self.tab_widget)
+                self._update_status_bar(
+                    "Licensed: Administrator", permanent=True)
 
-            # Get creation time (st_ctime on Unix is actually change time,
-            # but on Windows it's creation time)
-            # For true creation time on all platforms, use st_birthtime if available
-            if hasattr(file_stats, 'st_birthtime'):
-                creation_time = file_stats.st_birthtime  # macOS/BSD
+            elif status == LicenseStatus.ACTIVE:
+                self.setCentralWidget(self.tab_widget)
+                expiration_str = license_data.get('expiration', '')
+                if expiration_str:
+                    try:
+                        expiration_date = dt.datetime.fromisoformat(
+                            expiration_str)
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
+                        self._update_status_bar(
+                            f"Licensed: {days_remaining} days remaining", permanent=True)
+                    except:
+                        self._update_status_bar(
+                            "Licensed: Active", permanent=True)
+
+            elif status == LicenseStatus.TRIAL:
+                self.setCentralWidget(self.tab_widget)
+                expiration_str = license_data.get('expiration', '')
+                if expiration_str:
+                    try:
+                        expiration_date = dt.datetime.fromisoformat(
+                            expiration_str)
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
+
+                        if days_remaining <= 7:
+                            self._update_status_bar(f"Trial expires in {days_remaining} days!",
+                                                    permanent=True,
+                                                    style="color: orange;")
+                        else:
+                            self._update_status_bar(f"Trial: {days_remaining} days remaining",
+                                                    permanent=True)
+                    except:
+                        self._update_status_bar(
+                            "Trial: Active", permanent=True)
             else:
-                creation_time = file_stats.st_ctime  # Windows/Linux
+                self.setCentralWidget(self.tab_widget)
+                self._update_status_bar(f"Licensed: {status}", permanent=True)
 
-            # Rollback to midnight UTC, day of file creation
+            return True
+
+        if not os.path.exists(DB_PATH):
+            Log.e(f"No license found and no database exists. {message}")
+            self.setCentralWidget(self._expired_widget)
+            self._update_status_bar(
+                "License Required", permanent=True, style="color: red;")
+            return False
+        try:
+            file_stats = os.stat(DB_PATH)
+            creation_time = file_stats.st_ctime
             creation_time -= creation_time % 86400
-
-            # Get local time with timezone info
             local_time = dt.datetime.now().astimezone()
             utc_offset = local_time.utcoffset()
-
-            # Adjust file creation time to midnight local time
-            creation_time -= utc_offset.total_seconds()
-
-            # Current time
+            if utc_offset:
+                creation_time -= utc_offset.total_seconds()
             current_time = dt.datetime.now().timestamp()
-
-            # Calculate time difference in seconds
             time_ago_seconds = current_time - creation_time
-
-            # Compare to allowable age
             time_allowed_secs = dt.timedelta(
                 days=free_preview_period).total_seconds()
 
             if time_ago_seconds >= time_allowed_secs:
-                # Trial preview expired
-                Log.w("No VisQAI license found; trial preview has expired.")
+                Log.w(f"Free preview period expired. {message}")
                 self.setCentralWidget(self._expired_widget)
-            else:
-                self.trial_left = free_preview_period - \
-                    dt.timedelta(seconds=time_ago_seconds).days
-                Log.i(
-                    f"No VisQAI license found; trial preview has {self.trial_left} days remaining.")
-                self.trial_label.setText(
-                    self.trial_label.text().format(self.trial_left))  # insert # of days remaining
-                self.setCentralWidget(self._trial_widget)
-        else:
-            # valid license found
-            Log.i("VisQAI license found and is valid.")
-            self.setCentralWidget(self.tab_widget)
+                self._update_status_bar("Preview Expired - License Required",
+                                        permanent=True,
+                                        style="color: red;")
 
-        return is_valid_license
+                if hasattr(self._expired_widget, 'set_message'):
+                    days_over = int(
+                        (time_ago_seconds - time_allowed_secs) / 86400)
+                    self._expired_widget.set_message(
+                        f"Your {free_preview_period}-day preview ended {days_over} days ago.\n"
+                        f"Please contact support to purchase a license."
+                    )
+
+            else:
+                days_elapsed = int(time_ago_seconds / 86400)
+                self.trial_left = free_preview_period - days_elapsed
+
+                Log.i(
+                    f"Free preview: {self.trial_left} days remaining. {message}")
+
+                if hasattr(self, 'trial_label'):
+                    trial_text = self.trial_label.text()
+                    if '{}' in trial_text:
+                        self.trial_label.setText(
+                            trial_text.format(self.trial_left))
+                    else:
+                        self.trial_label.setText(
+                            f"Free Preview: {self.trial_left} days remaining")
+
+                if self.trial_left <= 3:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview expires in {self.trial_left} days!",
+                                            permanent=True,
+                                            style="color: orange; font-weight: bold;")
+                elif self.trial_left <= 7:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
+                                            permanent=True,
+                                            style="color: orange;")
+                else:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
+                                            permanent=True)
+
+        except Exception as e:
+            Log.e(f"Error calculating preview period: {e}")
+            self.setCentralWidget(self._expired_widget)
+            self._update_status_bar(
+                "License Error", permanent=True, style="color: red;")
+            return False
+
+        return False
+
+    def _update_status_bar(self, message: str, permanent: bool = False, style: str = None):
+        if hasattr(self, 'statusBar'):
+            status_bar = self.statusBar()
+            if permanent:
+                if not hasattr(self, '_license_status_label'):
+                    self._license_status_label = QtWidgets.QLabel()
+                    status_bar.addPermanentWidget(self._license_status_label)
+                self._license_status_label.setText(message)
+                if style:
+                    self._license_status_label.setStyleSheet(style)
+            else:
+                timeout = 5000
+                status_bar.showMessage(message, timeout)
+
+    def refresh_license_async(self, license_manager: Optional[LicenseManager]):
+        if license_manager is None:
+            return
+
+        def refresh_callback():
+            try:
+                is_valid, message, data = license_manager.refresh_license()
+
+                # Update UI in main thread
+                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
+                QMetaObject.invokeMethod(
+                    self,
+                    "check_license",
+                    Qt.QueuedConnection,
+                    Q_ARG(object, license_manager)
+                )
+
+            except Exception as e:
+                Log.e(f"Background license refresh failed: {e}")
+
+        # Start background thread
+        import threading
+        thread = threading.Thread(target=refresh_callback, daemon=True)
+        Log.i("Refreshing VisQAI license lease")
+        thread.start()
 
     def clear(self):
         """BASE CLASS DEFINITION"""
@@ -205,18 +342,21 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 class VisQAIWindow(BaseVisQAIWindow):
     def __init__(self, parent=None):
         super(VisQAIWindow, self).__init__(parent)
-        super().__init__(parent, license_manager=self.parent._license_manager)
 
         # import typing here to avoid circularity
         from QATCH.ui.mainWindow import MainWindow
         self.parent: MainWindow = parent
-        self._license_manager = self.parent._license_manager
-
-        self.setWindowTitle("VisQ.AI Mockup")
+        self.setWindowTitle("VisQ.AI")
         self.setMinimumSize(900, 600)
         self.init_ui()
         self.init_sign()
-        self.check_license()  # see BASE CLASS
+        self.check_license(
+            self.parent._license_manager)
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(
+            lambda: self.refresh_license_async(self.parent._license_manager)
+        )
+        self.timer.start(3600000)
         self._unsaved_changes = False
 
         self.select_formulation: Formulation = Formulation()
