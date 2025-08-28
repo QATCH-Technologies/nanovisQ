@@ -17,6 +17,7 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
@@ -1169,6 +1170,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_required = True
         self.signature_received = False
         self.signed_at = "[NEVER]"
+        # Uninitialized license manager object.
+        self._license_manager = None
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -4721,7 +4724,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-
+            self._license_manager = LicenseManager(
+                dbx_conn=self._dbx_connection)
+            self._license_manager.validate_license(auto_create_if_missing=True)
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(

@@ -185,8 +185,8 @@ class GH_Artifacts:
                         # Never recommend a nightly build update for a development branch.
                         update_recommended = False
                         # NOTE: If testing the main app updater, you'll need these two lines:
-                        # raise NotImplementedError(
-                        #     "'dev_branch' = True; skipping Nightly update checks.")
+                        raise NotImplementedError(
+                            "'dev_branch' = True; skipping Nightly update checks.")
             else:
                 Log.i(
                     "[INFO]", "Writing latest build file as none exists. Assuming no update.")

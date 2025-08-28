@@ -3,8 +3,26 @@ import hashlib
 import subprocess
 import platform
 import json
+import os
 from typing import Dict, Union
-from QATCH.common.logger import Logger as Log
+import dropbox
+from dropbox.exceptions import ApiError
+
+try:
+    from QATCH.common.logger import Logger as Log
+except (ModuleNotFoundError, ImportError):
+    class Log:
+        @staticmethod
+        def w(msg: str) -> None:
+            print(msg)
+
+        @staticmethod
+        def e(msg: str) -> None:
+            print(msg)
+
+        @staticmethod
+        def i(msg: str) -> None:
+            print(msg)
 
 
 class DeviceFingerprint:
@@ -101,3 +119,7 @@ class DeviceFingerprint:
         except:
             Log.e("Device fingerprint could not be generated.")
             return None
+
+
+if __name__ == "__main__":
+    DeviceFingerprint.get_key()

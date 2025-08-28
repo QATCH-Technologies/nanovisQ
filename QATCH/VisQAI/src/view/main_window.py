@@ -25,7 +25,7 @@ import webbrowser
 from typing import Optional
 
 try:
-    from src.managers.license_manager import LicenseManager, LicenseStatus
+    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from src.models.formulation import Formulation
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
@@ -35,7 +35,7 @@ try:
     from src.view.horizontal_tab_bar import HorizontalTabBar
 
 except (ModuleNotFoundError, ImportError):
-    from QATCH.VisQAI.src.managers.license_manager import LicenseManager, LicenseStatus
+    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
@@ -46,20 +46,17 @@ except (ModuleNotFoundError, ImportError):
 
 
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
-    def __init__(self, parent=None):
-        """BASE CLASS DEFINITION"""
+    def __init__(self, parent=None, license_manager=None):
         super().__init__(parent)
+        self.parent = parent
+        self._license_manager = license_manager
+        """BASE CLASS DEFINITION"""
 
         self.setWindowTitle("VisQ.AI Base Class")
         self.setMinimumSize(900, 600)
 
-        # TODO: Add active dropbox token!
-        self._license_manager = LicenseManager(
-            dropbox_token="")
-
         # Create dummy database object for base class.
         self.database = SimpleNamespace(is_open=False)
-
         # Create dummy UI for main tab widget
         self.tab_widget = QtWidgets.QDialog()
 
@@ -125,8 +122,13 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         free_preview_period = 90  # days
 
         # Validate license with DropBox licenses.
-        is_valid_license, msg, license_info = self._license_manager.validate_license()
-        Log.d(msg=msg)
+        if self._license_manager:
+            is_valid_license, message, license_info = self._license_manager.validate_license()
+        else:
+            is_valid_license = False
+            message = "License manager uninitialized!"
+            license_info = {}
+        Log.d(message)
         if not is_valid_license:
             # how long ago did the preview period start?
             if not os.path.exists(DB_PATH):
@@ -203,10 +205,13 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 class VisQAIWindow(BaseVisQAIWindow):
     def __init__(self, parent=None):
         super(VisQAIWindow, self).__init__(parent)
+        super().__init__(parent, license_manager=self.parent._license_manager)
 
         # import typing here to avoid circularity
         from QATCH.ui.mainWindow import MainWindow
         self.parent: MainWindow = parent
+        self._license_manager = self.parent._license_manager
+
         self.setWindowTitle("VisQ.AI Mockup")
         self.setMinimumSize(900, 600)
         self.init_ui()
