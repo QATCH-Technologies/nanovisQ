@@ -735,7 +735,33 @@ byte float_to_byte(float f)
   return b;
 }
 
-/**************************** SETUP ****************************/
+/**
+ * @brief Initialize hardware, peripherals, and runtime state for the device.
+ *
+ * Performs all board startup tasks required before entering the main loop.
+ * This includes: serial console and RNG seeding; loading and applying NVM
+ * configuration; initializing the display (TFT splash and idle UI); configuring
+ * and starting timers; initializing I2C and setting the external potentiometer;
+ * initializing measurement hardware (AD8302, optional MAX31855 / MCP9808);
+ * configuring LEDs, fan/TEC controls, and the POGO button/LED (with interrupt);
+ * initializing network/Ethernet on supported hardware; and computing smoothing
+ * factors used by measurement code.
+ *
+ * Side effects:
+ * - May set global status flags (e.g., hw_error, net_error, tft_error) based on
+ *   peripheral health checks.
+ * - Attaches an interrupt handler for the pogo button.
+ * - Powers and configures GPIOs (LEDs, TEMP_CIRCUIT, TEC_SENSE).
+ * - Calls initialization routines that configure AD9851/AD8302, temperature
+ *   sensors, and the TFT; may print diagnostics to Serial.
+ * - Invokes pogo_button_pressed(true) to initialize lid/servo state.
+ *
+ * Exceptional behavior:
+ * - On unrecognized hardware revision the function enters a permanent loop
+ *   (halts execution).
+ *
+ * @note This function is intended to be called once during system startup.
+ */
 
 void QATCH_setup()
 {
@@ -1012,7 +1038,29 @@ void ledWrite(int pin, int value)
   }
 }
 
-/**************************** LOOP *****************************/
+/**
+ * @brief Main application loop: handles I/O, command parsing, and periodic hardware tasks.
+ *
+ * This routine implements the device's primary event loop. It polls Serial (and Ethernet on TEENSY41)
+ * for incoming commands, parses and executes a wide set of control commands (VERSION, INFO, MULTI,
+ * MSGBOX, SYNC, TEMP, LID, EEPROM, PROGRAM, SPEED, AVG, STREAM, STOP, SLEEP, IDENTIFY and sweep
+ * specifications), and initiates/controls frequency sweep operations using the AD9851 DDS and AD8302
+ * detector. While a sweep is active the function performs peak finding, averaging/smoothing,
+ * telemetry output (streaming or one-shot), and temperature sampling. When not sweeping it
+ * manages idle behavior (LEDs, screensaver), network maintenance (DHCP/NTP on TEENSY41),
+ * temperature/TEC control updates (L298NHB), TFT UI state transitions, and power-up/shutdown of
+ * peripherals. It also services the POGO lid hardware: debounced button/interrupt processing and
+ * queued servo movements via pogo_button_pressed().
+ *
+ * Side effects:
+ * - Reads/writes Serial and (optionally) Ethernet clients.
+ * - Starts/stops streaming and sweeps, updates global sweep/stream state and timing variables.
+ * - Drives AD9851, AD8302, temperature sensors, L298NHB TEC controller, LEDs, and TFT UI.
+ * - May save/load NVMEM via EEPROM/NvMem when EEPROM commands are handled.
+ * - Calls functions that block briefly (delays) for hardware settling.
+ *
+ * Note: This function does not return values; errors and status are reported to the active client.
+ */
 
 void QATCH_loop()
 {
@@ -3440,25 +3488,41 @@ void stopStreaming(void)
 //   int old_address = 0; // PID
 //   int new_address = (EEPROM.length() - 1) - old_address;
 //   EEPROM_pid = EEPROM.read(new_address);
-
 //   if (millis() > 1000)
 //   {
 //     Serial.printf("Set PID = %X\n", EEPROM_pid);
 //   }
-
 //   return EEPROM_pid;
 // }
 
-// Flag ISR as hit only if not handling a prior press
+/**
+ * @brief Interrupt Service Routine for the POGO button.
+ *
+ * Sets the ISR flag indicating the POGO button was pressed. Meant to be executed in interrupt context
+ * and performs only the minimal action of updating the volatile flag for main-loop debounce/handling.
+ * To avoid duplicate button pressed events, only set the hit flag when a pressed flag is not pending.
+ */
 FASTRUN void pogo_button_ISR(void)
 {
   if (!pogo_pressed_flag)
     pogo_isr_hit_flag = true;
 }
 
-// Handles a pogo button event and lid/LED/servo1/servo2 behavior.
-// init=true: perform one-time initialization toggling to open (e.g., on setup).
-// init=false: handle a real button press (should be called from loop, not ISR).
+/**
+ * @brief Toggle or initialize the POGO lid position by moving the lid servo.
+ *
+ * Moves the POGO lid to the opened, closed, or initial position and updates
+ * the global `pogo_lid_opened` state. This is a blocking operation that
+ * attaches the servo, steps it through positions with delays, then detaches it.
+ * It also drives the POGO button LED and prints an error to the serial client
+ * if the stored calibration positions are out of range.
+ *
+ * @param init When true, perform startup initialization (move from POS_INIT to POS_OPENED).
+ *             When false, handle a normal button-triggered toggle between opened and closed.
+ *
+ * @note This function must not be called from an ISR — call it from loop() after
+ *       debouncing. It performs delays and blocks while sweeping the servo.
+ */
 void pogo_button_pressed(bool init)
 {
   // Validate servo positions are within safe range
@@ -3519,7 +3583,27 @@ void pogo_button_pressed(bool init)
   pogoServo2.detach();
 }
 
-// Function to set calibration values at runtime
+/**
+ * @brief Update and persist POGO lid servo(s) calibration.
+ *
+ * Validates and stores the calibrated servo positions for the lid open/closed
+ * angles and the inter-step move delay, writing them into the device NVMEM.
+ * On success the values are copied into NVMEM and saved via nv.save() when
+ * the NV region is valid. Status and error messages are written to the
+ * global `client` stream.
+ *
+ * Validation rules:
+ * - `opened_1` and `closed_1` are servo angles in degrees for Servo 1 (0–180).
+ * - `opened_2` and `closed_2` are servo angles in degrees for Servo 2 (0–180).
+ * - `delay_ms` is the per-step move delay in milliseconds (0–254).
+ * If validation fails, no values are written or saved.
+ *
+ * @param opened_1 Servo 1 angle (degrees) for the fully opened lid. Range: 0–180.
+ * @param closed_1 Servo 1 angle (degrees) for the fully closed lid. Range: 0–180.
+ * @param opened_2 Servo 2 angle (degrees) for the fully opened lid. Range: 0–180.
+ * @param closed_2 Servo 2 angle (degrees) for the fully closed lid. Range: 0–180.
+ * @param delay_ms Per-step move delay in milliseconds. Range: 0–254.
+ */
 void setLidCalibration(byte opened_1, byte closed_1, 
                        byte opened_2, byte closed_2, 
                        byte delay_ms)
