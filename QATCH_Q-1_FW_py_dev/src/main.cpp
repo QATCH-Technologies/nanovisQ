@@ -923,15 +923,18 @@ void QATCH_setup()
   ledWrite(LED_ORANGE_PIN, _led_pwr);
   ledWrite(LED_WHITE_PIN, _led_pwr);
 
-  // Initialize POGO button and LED status
-  pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
-  pinMode(POGO_BTN_LED_PIN, OUTPUT);
-  digitalWrite(POGO_BTN_LED_PIN, HIGH);
+  if (!PID_IS_SECONDARY(NVMEM.pid))
+  {
+    // Initialize POGO button and LED status
+    pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
+    pinMode(POGO_BTN_LED_PIN, OUTPUT);
+    digitalWrite(POGO_BTN_LED_PIN, HIGH);
 
-  // Attach POGO button interrupt - triggers on FALLING edge (button press)
-  attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, FALLING);
-  // NOTE: Wait to initialize POGO state to open until ready to turn off other LEDs
-  // pogo_button_pressed(true); // initialize to open state
+    // Attach POGO button interrupt - triggers on FALLING edge (button press)
+    attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, FALLING);
+    // NOTE: Wait to initialize POGO state to open until ready to turn off other LEDs
+    // pogo_button_pressed(true); // initialize to open state
+  }
 
   // Set FAN on at boot
   pinMode(TEMP_CIRCUIT, OUTPUT);
@@ -963,7 +966,8 @@ void QATCH_setup()
   }
 #endif
 
-  pogo_button_pressed(true); // initialize to open state
+  if (!PID_IS_SECONDARY(NVMEM.pid))
+    pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
   if (hw_error)
@@ -1880,6 +1884,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("LID"))
     {
+      if (PID_IS_SECONDARY(NVMEM.pid))
+      {
+        client->println("LID command is not supported on secondary devices.");
+        return;
+      }
       if (message_str.endsWith("STATE"))
       {
         // Report current state of lid
@@ -3495,14 +3504,14 @@ void pogo_button_pressed(bool init)
 
   // Move pogo servos to target(s)
   if (init) { // init -> opened
-    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
     move_servos(POS_INIT_1, POS_OPENED_1, POS_INIT_2, POS_OPENED_2, MOVE_DELAY);
   } else if (pogo_lid_opened) {  // closed -> opened
-    digitalWrite(POGO_BTN_LED_PIN, LOW);
+    digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
     move_servos(POS_CLOSED_1, POS_OPENED_1, POS_CLOSED_2, POS_OPENED_2, MOVE_DELAY);
   } else {  // opened -> closed
-    digitalWrite(POGO_BTN_LED_PIN, HIGH);
     move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY);
+    digitalWrite(POGO_BTN_LED_PIN, HIGH); // LED on after movement
   }
 
   // Detach pogo servos (idle)
