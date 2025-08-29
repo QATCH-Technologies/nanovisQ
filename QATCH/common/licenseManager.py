@@ -2,24 +2,67 @@ import json
 import os
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Tuple, List
+from enum import Enum
 import dropbox
 from dropbox.exceptions import ApiError
 from pathlib import Path
 import hashlib
 import threading
 
-
-from QATCH.common.logger import Logger as Log
-from QATCH.common.deviceFingerprint import DeviceFingerprint
+try:
+    from QATCH.common.logger import Logger as Log
+    from QATCH.common.deviceFingerprint import DeviceFingerprint
+except:
+    print("Running standalone, or import of main app logging and/or other modules failed.")
 
 TAG = "[LicenseManager]"
 
 
-class LicenseStatus:
+class LicenseServer(Enum):
+    DROPBOX = "dbx"
+    AIVENIO = "avn"
+
+
+USE_SERVER = LicenseServer.AIVENIO
+
+
+class LicenseStatus(Enum):
     ADMIN = "admin"
     ACTIVE = "active"
     TRIAL = "trial"
     INACTIVE = "inactive"
+
+
+class AVN_TEST:
+
+    def __init__(self):
+
+        import pymysql
+        import cryptography
+
+        timeout = 10
+        connection = pymysql.connect(
+            host="redacted",
+            user="redacted",
+            password="redacted",
+            database="redacted",
+
+            read_timeout=timeout,
+            write_timeout=timeout,
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.DictCursor,
+            connect_timeout=timeout,
+        )
+
+        try:
+            cursor = connection.cursor()
+            # cursor.execute("CREATE TABLE mytest (id INTEGER PRIMARY KEY)")
+            # cursor.execute("INSERT INTO mytest (id) VALUES (1), (2)")
+            cursor.execute("SELECT * FROM mytest")
+            print(cursor.fetchall())
+        finally:
+            connection.commit()
+            connection.close()
 
 
 class LicenseCache:
@@ -527,38 +570,43 @@ class LicenseManager:
 
 # Example usage
 if __name__ == "__main__":
-    # Initialize with cache-first approach
-    license_mgr = LicenseManager(
-        dropbox_token="YOUR_DROPBOX_TOKEN",
-        auto_register_trial=True,
-        trial_duration_days=90,
-        cache_enabled=True,           # Enable caching
-        cache_duration_hours=24,       # Cache valid for 24 hours
-        background_refresh=True        # Refresh in background when expired
-    )
+    if USE_SERVER == LicenseServer.AIVENIO:
+        AVN_TEST()
 
-    # First call - checks cache first, only goes online if no cache or expired
-    # If cache is expired, returns expired data immediately and refreshes in background
-    is_valid, message, license_data = license_mgr.validate_license()
-    print(f"License valid: {is_valid}")
-    # Will show (cached) or (cached Xh old, refreshing)
-    print(f"Message: {message}")
-
-    # Subsequent calls within cache period are instant
-    is_valid, message, license_data = license_mgr.validate_license()
-    print(f"License valid: {is_valid}")
-    print(f"Message: {message}")  # Will show (cached)
-
-    # Force fresh check from remote (only when needed)
-    is_valid, message, license_data = license_mgr.refresh_license()
-    print(f"Fresh license valid: {is_valid}")
-
-    # Check cache status
-    cache_status = license_mgr.get_cache_status()
-    print(f"Cache status: {json.dumps(cache_status, indent=2)}")
-
-    # Wait for background refresh if one is running
-    if license_mgr.wait_for_background_refresh(timeout=5.0):
-        print("Background refresh completed")
     else:
-        print("Background refresh still running")
+
+        # Initialize with cache-first approach
+        license_mgr = LicenseManager(
+            dropbox_token="YOUR_DROPBOX_TOKEN",
+            auto_register_trial=True,
+            trial_duration_days=90,
+            cache_enabled=True,           # Enable caching
+            cache_duration_hours=24,       # Cache valid for 24 hours
+            background_refresh=True        # Refresh in background when expired
+        )
+
+        # First call - checks cache first, only goes online if no cache or expired
+        # If cache is expired, returns expired data immediately and refreshes in background
+        is_valid, message, license_data = license_mgr.validate_license()
+        print(f"License valid: {is_valid}")
+        # Will show (cached) or (cached Xh old, refreshing)
+        print(f"Message: {message}")
+
+        # Subsequent calls within cache period are instant
+        is_valid, message, license_data = license_mgr.validate_license()
+        print(f"License valid: {is_valid}")
+        print(f"Message: {message}")  # Will show (cached)
+
+        # Force fresh check from remote (only when needed)
+        is_valid, message, license_data = license_mgr.refresh_license()
+        print(f"Fresh license valid: {is_valid}")
+
+        # Check cache status
+        cache_status = license_mgr.get_cache_status()
+        print(f"Cache status: {json.dumps(cache_status, indent=2)}")
+
+        # Wait for background refresh if one is running
+        if license_mgr.wait_for_background_refresh(timeout=5.0):
+            print("Background refresh completed")
+        else:
+            print("Background refresh still running")
