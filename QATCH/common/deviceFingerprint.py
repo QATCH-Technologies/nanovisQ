@@ -1,4 +1,5 @@
-"""Device fingerprinting module for generating unique hardware-based license keys.
+"""
+deviceFingerprint.py
 
 This module provides functionality to generate unique device fingerprints based on
 immutable Windows hardware information such as BIOS serial numbers, motherboard
