@@ -3076,9 +3076,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker._forecaster_in.put(new_data)
                 if not self.worker._forecaster_out.empty():
                     self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
-            else:
-                self.forecast_status = self._forecaster.update_predictions(
-                    new_data=new_data)
+            # else:
+                # self.forecast_status = self._forecaster.update_predictions(
+                #     new_data=new_data)
 
             # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
             #     self.forecast_status.value)
