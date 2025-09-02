@@ -3080,10 +3080,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.forecast_status = self._forecaster.update_predictions(
                     new_data=new_data)
 
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-                self.forecast_status.value)
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-                Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+            #     self.forecast_status.value)
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+            #     Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
