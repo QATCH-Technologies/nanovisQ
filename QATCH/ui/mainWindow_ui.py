@@ -887,6 +887,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.Layout_controls = QtWidgets.QGridLayout()
         self.Layout_controls.setObjectName("Layout_controls")
         # TODO: Track lid state with call too device
+        # Flag to track state of device lid.
         self.lid_is_closed = self.query_lid_state()
         # frequency/quartz combobox -------------------------------------------
         self.cBox_Speed = QtWidgets.QComboBox()
@@ -1404,12 +1405,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # self.tool_Advanced.mousePressEvent = self.action_advanced
         # self.toolBar.addWidget(self.tool_Advanced)
 
+        # Path to open icon (up arrow)
         self.icon_lid_open = QtGui.QIcon()
         self.icon_open_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/open-icon.png')
         self.icon_lid_open .addPixmap(QtGui.QPixmap(
             self.icon_open_path), QtGui.QIcon.Normal)
 
+        # Path to close icon (down arrow)
         self.icon_lid_closed = QtGui.QIcon()
         self.icon_closed_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/close-icon.png')
@@ -1668,11 +1671,26 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         #     self.advancedwidget)
 
     def query_lid_state(self) -> bool:
-        # TODO Implement system to query state of lid button from device.
+        """Query the current state of the device lid.
+
+        This method is intended to communicate with the device hardware
+        to determine whether the lid is currently open or closed. Currently,
+        this is a placeholder that always returns False.
+
+        Returns:
+            bool: True if the lid is closed, False otherwise.
+        """
+        # TODO: Implement system to query state of lid button from device.
         return False
 
     def open_lid(self) -> None:
-        # TODO
+        """Open the device lid.
+
+        Disables all critical tool buttons while the lid is open,
+        preventing initialization, start, stop, reset, or temperature
+        control operations until the lid is closed again.
+        """
+        # TODO: Implement hardware action for opening lid.
         Log.d("Opening Lid")
         self.tool_Initialize.setEnabled(False)
         self.tool_Start.setEnabled(False)
@@ -1681,11 +1699,21 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_TempControl.setEnabled(False)
 
     def close_lid(self) -> None:
-        # TODO
+        """Close the device lid.
+
+        Re-enables initialization controls after the lid is closed.
+        """
+        # TODO: Implement hardware action for closing lid.
         Log.d("Closing Lid")
         self.tool_Initialize.setEnabled(True)
 
     def action_toggle_lid(self) -> None:
+        """Toggle the device lid state.
+
+        Switches the lid between open and closed states. Updates the
+        toolbar button icon and text accordingly, and invokes either
+        `open_lid` or `close_lid`.
+        """
         if self.lid_is_closed:
             self.tool_Lid.setIcon(self.icon_lid_closed)
             self.tool_Lid.setText("Close Lid")
