@@ -2142,12 +2142,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if enable_temp:
             # at least one device connected
             enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
+        if self.ControlsWin.ui1.lid_is_closed:
+            self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
+            self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
+            self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
+            self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
+            self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+        else:
+            self.ControlsWin.ui1.tool_Initialize.setEnabled(not enabled)
+            self.ControlsWin.ui1.tool_Reset.setEnabled(not enabled)
+            self.ControlsWin.ui1.tool_TempControl.setEnabled(not enable_temp)
+            self.ControlsWin.ui1.tool_Start.setEnabled(not enable_start)
+            self.ControlsWin.ui1.tool_Stop.setEnabled(not enable_stop)
 
-        self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
-        self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
-        self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
-        self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
-        self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui1.tool_Advanced.setEnabled(enabled)
 
         # For more details on "bug in PyQt under macOS"... http://stackoverflow.com/a/60074600

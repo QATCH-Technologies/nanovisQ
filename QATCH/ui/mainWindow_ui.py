@@ -886,7 +886,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.gridLayout.setObjectName("gridLayout")
         self.Layout_controls = QtWidgets.QGridLayout()
         self.Layout_controls.setObjectName("Layout_controls")
-
+        # TODO: Track lid state with call too device
+        self.lid_is_closed = self.query_lid_state()
         # frequency/quartz combobox -------------------------------------------
         self.cBox_Speed = QtWidgets.QComboBox()
         self.cBox_Speed.setEditable(False)
@@ -1308,6 +1309,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_Initialize.setText("Initialize")
         self.tool_Initialize.clicked.connect(self.action_initialize)
         self.tool_bar.addWidget(self.tool_Initialize)
+        if self.lid_is_closed:
+            self.tool_Initialize.setEnabled(True)
+        else:
+            self.tool_Initialize.setEnabled(False)
 
         self.tool_bar.addSeparator()
 
@@ -1399,11 +1404,34 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # self.tool_Advanced.mousePressEvent = self.action_advanced
         # self.toolBar.addWidget(self.tool_Advanced)
 
+        self.icon_lid_open = QtGui.QIcon()
+        self.icon_open_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/open-icon.png')
+        self.icon_lid_open .addPixmap(QtGui.QPixmap(
+            self.icon_open_path), QtGui.QIcon.Normal)
+
+        self.icon_lid_closed = QtGui.QIcon()
+        self.icon_closed_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/close-icon.png')
+        self.icon_lid_closed .addPixmap(QtGui.QPixmap(
+            self.icon_closed_path), QtGui.QIcon.Normal)
+
+        # `Lid Control` buton
+        self.tool_Lid = QtWidgets.QToolButton()
+        self.tool_Lid.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_Lid.setIcon(self.icon_lid_closed)
+        self.tool_Lid.setText("Close Lid")
+        self.tool_Lid.clicked.connect(self.action_toggle_lid)
+        self.tool_bar_2.addWidget(self.tool_Lid)
+
+        self.tool_bar_2.addSeparator()
         icon_advanced = QtGui.QIcon()
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/advanced.png')
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
+        # 'Advanced' menu options for main window.
         self.tool_Advanced = QtWidgets.QToolButton()
         self.tool_Advanced.setToolButtonStyle(
             QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1638,6 +1666,35 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         #     QtCore.QPoint(int(self.advancedwidget.width() / 2), int(self.advancedwidget.height() * (2/3))),
         #     self.advancedwidget.whatsThis(),
         #     self.advancedwidget)
+
+    def query_lid_state(self) -> bool:
+        # TODO Implement system to query state of lid button from device.
+        return False
+
+    def open_lid(self) -> None:
+        # TODO
+        Log.d("Opening Lid")
+        self.tool_Initialize.setEnabled(False)
+        self.tool_Start.setEnabled(False)
+        self.tool_Stop.setEnabled(False)
+        self.tool_Reset.setEnabled(False)
+        self.tool_TempControl.setEnabled(False)
+
+    def close_lid(self) -> None:
+        # TODO
+        Log.d("Closing Lid")
+        self.tool_Initialize.setEnabled(True)
+
+    def action_toggle_lid(self) -> None:
+        if self.lid_is_closed:
+            self.tool_Lid.setIcon(self.icon_lid_closed)
+            self.tool_Lid.setText("Close Lid")
+            self.open_lid()
+        else:
+            self.tool_Lid.setIcon(self.icon_lid_open)
+            self.tool_Lid.setText("Open Lid")
+            self.close_lid()
+        self.lid_is_closed = not self.lid_is_closed
 
     def doPlateConfig(self):
         if hasattr(self, "wellPlateUI"):
