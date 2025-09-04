@@ -197,20 +197,30 @@ class FrameStep1(QtWidgets.QDialog):
             add_remove_export_layout = QtWidgets.QHBoxLayout(
                 add_remove_export_widget)
             add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
+
             if step in [2, 5]:
                 btn_text = "Suggestion" if step == 2 else "Prediction"
                 self.btn_add = QtWidgets.QPushButton(f"Add {btn_text}")
                 self.btn_add.clicked.connect(self.add_another_item)
                 add_remove_export_layout.addWidget(self.btn_add)
+
+            # Remove Selected Run
             self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
+
+            # Remove All Runs
+            self.btn_remove_all = QtWidgets.QPushButton("Remove All Runs")
+            self.btn_remove_all.clicked.connect(
+                self.user_all_runs_removed)
+            add_remove_export_layout.addWidget(self.btn_remove_all)
+
             if step in [2, 5]:  # Suggest, Predict
                 self.btn_export = QtWidgets.QPushButton("Export as PDF")
                 self.btn_export.clicked.connect(self.export_table_data)
                 add_remove_export_layout.addWidget(self.btn_export)
-            form_layout.addRow("", add_remove_export_widget)
 
+            form_layout.addRow("", add_remove_export_widget)
         self.run_notes = QtWidgets.QTextEdit()
         self.run_notes.setPlaceholderText("None")
         self.run_notes.setReadOnly(True)
@@ -1109,6 +1119,37 @@ class FrameStep1(QtWidgets.QDialog):
             self.constraints_ui.add_suggestion_dialog()
         if self.step == 5:
             self.add_formulation(Formulation())
+
+    def user_all_runs_removed(self) -> None:
+        """Prompt the user to confirm and remove all runs.
+
+        Displays a confirmation dialog asking the user if they want to 
+        remove all runs. If confirmed, clears all internal data 
+        structures (`all_files` and `loaded_features`), removes all 
+        items from the list view model, resets the placeholder text, 
+        and clears any active file selection.
+
+        Raises:
+            Exception: If an unexpected error occurs while clearing runs.
+        """
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Confirm Remove All Runs",
+            "Are you sure you want to remove all runs?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                self.all_files.clear()
+                if self.step in [2, 5]:
+                    self.loaded_features.clear()
+                self.model.clear()
+                self.list_view_addPlaceholderText()
+                self.file_selected(None)
+            except Exception as e:
+                raise e
 
     def user_run_removed(self):
         try:
