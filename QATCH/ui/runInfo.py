@@ -972,7 +972,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.signForm = QtWidgets.QDialog()
         # | QtCore.Qt.WindowStaysOnTopHint)
         self.signForm.setWindowFlags(QtCore.Qt.Dialog)
-
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/sign.png')
+        self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
         self.signForm.setModal(True)
         layout_sign = QtWidgets.QVBoxLayout()
@@ -1039,19 +1041,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addStretch()
 
         self.setLayout(layout_v)
-        self.setWindowTitle("Enter Run Info")
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/info.png')
+        self.setWindowIcon(QtGui.QIcon(icon_path))  # .png
+        self.setWindowTitle("Enter Run Info")
 
-        pixmap = QtGui.QPixmap(icon_path)
-        mask = pixmap.createMaskFromColor(
-            QtGui.QColor("black"), QtCore.Qt.MaskOutColor)
-
-        white_pixmap = QtGui.QPixmap(pixmap.size())
-        white_pixmap.fill(QtCore.Qt.white)
-        white_pixmap.setMask(mask)
-
-        self.setWindowIcon(QtGui.QIcon(white_pixmap))
         ###### scannow widget for batch number ######
         # note: this must be after self.setLayout() #
         self.l_scannow = QtWidgets.QWidget(self)    #
