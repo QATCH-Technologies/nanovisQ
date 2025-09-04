@@ -1285,7 +1285,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     #     self.AI_SelectTool_Frame.hide()
 
     def get_results_split_auto_sizes(self, setMinimumWidth=True):
-        tableWidget = self.results_split.widget(0)
+        tableWidget = self.results_split.widget(0) \
+            .findChild(QtWidgets.QTableWidget)
         full_width = self.results_split.width()
         min_width = tableWidget.verticalHeader().width() + 6  # +6 seems to be needed
         min_width += tableWidget.verticalScrollBar().width()
@@ -8672,10 +8673,42 @@ class AnalyzerWorker(QtCore.QObject):
                 data.pop("Temperature (C)")
                 cols -= 1
             # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
+            table_layout = QtWidgets.QVBoxLayout()
+            tableWidgetWithFooter = QtWidgets.QWidget()
+            tableWidgetWithFooter.setLayout(table_layout)
             tableWidget = TableView(data, rows, cols)
             # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")
             # tableWidget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-            self.parent.results_split.replaceWidget(0, tableWidget)
+            table_layout.addWidget(tableWidget)
+            if n >= 0.7:
+                try:
+                    # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
+                    values_to_average = len(distances)
+                    # high_shear_counts = np.count_nonzero(
+                    #     [high_shear_5x, high_shear_15x])
+                    idx_start = 0
+                    idx_end = max(2, values_to_average - 1)
+                    visc_avg = np.average(in_viscosity[idx_start:idx_end+1])
+                    visc_std = np.std(in_viscosity[idx_start:idx_end+1])
+                    shear_min = in_shear_rate[idx_start]
+                    shear_max = in_shear_rate[idx_end]
+                    summary_row = "Average viscosity is {:2.2f} cP \u00b1 {:2.2f} for shear rates in range {:2.0f} - {:2.0f} 1/s.".format(
+                        visc_avg, visc_std, shear_min, shear_max)
+                    # Add summary text to bottom of table data
+                    tableLabel = QtWidgets.QLabel(summary_row)
+                    table_layout.addWidget(tableLabel)
+                    # Add centered label to plot data
+                    fig4.text(0.53, 0.82,
+                              "{:2.2f} cP \u00b1 {:2.2f}\n({:2.0f} - {:2.0f}) 1/s".format(
+                                  visc_avg, visc_std, shear_min, shear_max),
+                              horizontalalignment='center',
+                              verticalalignment='center',
+                              color='blue',
+                              fontsize=10)
+                except:
+                    Log.e(
+                        "Failed to show average viscosity over shear rate range summary text.")
+            self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
             self.parent.results_split.setSizes(
                 self.parent.get_results_split_auto_sizes()
             )

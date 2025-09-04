@@ -1824,22 +1824,22 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_salts(self):
         old_salts = self.salts.copy()
-        new_salts = self.stabilizer_types_multiline.toPlainText().splitlines()
+        new_salts = self.salt_types_multiline.toPlainText().splitlines()
         for name in new_salts:
             name = name.strip()
             if name not in old_salts and len(name): \
                     # TODO: fix enc_id
-                self.ing_ctrl.add_salt(Stabilizer(enc_id=id, name=name))
+                self.ing_ctrl.add_salt(Salt(enc_id=id, name=name))
                 self.salts.append(name)
         for name in old_salts:
             if name not in new_salts:
                 self.ing_ctrl.delete_salt_by_name(name=name)
                 self.salts.remove(name)
-        # self.excipient_stabilizers.sort()
+        # self.excipient_salts.sort()
         self.salts = sorted(
             self.salts, key=str.casefold)
-        self.populate_stabilizers()
-        self.add_stabilizer_type.close()
+        self.populate_salts()
+        self.add_salt_type.close()
 
     def populate_proteins(self):
         try:
