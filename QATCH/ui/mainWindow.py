@@ -1304,17 +1304,17 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
-        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            pass
-        else:
-            start_booster_path = os.path.join(Architecture.get_path(),
-                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
-            end_booster_path = os.path.join(Architecture.get_path(),
-                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
-            scaler_path = os.path.join(Architecture.get_path(),
-                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
-            self._forecaster = QForecastPredictor(
-                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+        # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+        #     pass
+        # else:
+        #     start_booster_path = os.path.join(Architecture.get_path(),
+        #                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+        #     end_booster_path = os.path.join(Architecture.get_path(),
+        #                                     r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+        #     scaler_path = os.path.join(Architecture.get_path(),
+        #                                r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+        #     self._forecaster = QForecastPredictor(
+        #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_status = FillStatus.NO_FILL
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
@@ -3068,17 +3068,17 @@ class MainWindow(QtWidgets.QMainWindow):
             vectoramb = self.worker.get_d4_buffer(0)
 
             #  Build dataframe from worker databuffer.
-            new_data = QForecastDataProcessor.convert_to_dataframe(
-                self.worker)
+            # new_data = QForecastDataProcessor.convert_to_dataframe(
+            #     self.worker)
 
             # Flag to use the fill forecaster.
-            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-                self.worker._forecaster_in.put(new_data)
-                if not self.worker._forecaster_out.empty():
-                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
+            # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            #     self.worker._forecaster_in.put(new_data)
+            #     if not self.worker._forecaster_out.empty():
+            #         self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
             # else:
-                # self.forecast_status = self._forecaster.update_predictions(
-                #     new_data=new_data)
+            # self.forecast_status = self._forecaster.update_predictions(
+            #     new_data=new_data)
 
             # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
             #     self.forecast_status.value)
