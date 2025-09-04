@@ -1,3 +1,16 @@
+"""
+lincenseManager.py
+
+This module provides a comprehensive license management solution that handles trial licenses,
+license validation, and caching with Dropbox as the remote storage backend.
+
+Author: 
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date: 
+    2025-09-02
+"""
+
 import json
 import os
 from datetime import datetime, timedelta
@@ -27,6 +40,14 @@ USE_SERVER = LicenseServer.AIVENIO
 
 
 class LicenseStatus(Enum):
+    """Constants for license status types.
+
+    Attributes:
+        ADMIN (str): Administrator license with unlimited access.
+        ACTIVE (str): Active paid license.
+        TRIAL (str): Trial license with expiration.
+        INACTIVE (str): Inactive or suspended license.
+    """
     ADMIN = "admin"
     ACTIVE = "active"
     TRIAL = "trial"
@@ -66,15 +87,20 @@ class AVN_TEST:
 
 
 class LicenseCache:
-    """Handles local caching of license data"""
+    """Handles local caching of license data for improved performance.
+
+    This class manages local filesystem caching of license information to reduce
+    network requests and improve application responsiveness.
+    """
 
     def __init__(self, cache_dir: str = None, cache_duration_hours: int = 24):
-        """
-        Initialize the license cache
+        """Initialize the license cache.
 
         Args:
-            cache_dir: Directory for cache files (defaults to user's temp directory)
-            cache_duration_hours: How long cache is valid in hours (default 24)
+            cache_dir (str, optional): Directory for cache files. Defaults to system 
+                temp directory with app-specific subdirectory.
+            cache_duration_hours (int, optional): How long cache is valid in hours. 
+                Defaults to 24.
         """
         if cache_dir is None:
             # Use system temp directory with app-specific subdirectory
@@ -87,13 +113,28 @@ class LicenseCache:
         self.cache_duration = timedelta(hours=cache_duration_hours)
 
     def _get_cache_filepath(self, device_key: str) -> Path:
-        """Generate cache file path for a device key"""
+        """Generate cache file path for a device key.
+
+        Args:
+            device_key (str): Unique device identifier.
+
+        Returns:
+            Path: Path to the cache file for the given device.
+        """
         # Hash the device key for privacy in local cache
         key_hash = hashlib.sha256(device_key.encode()).hexdigest()[:16]
         return self.cache_dir / f"license_cache_{key_hash}.json"
 
     def save(self, device_key: str, license_data: Dict) -> bool:
-        """Save license data to cache"""
+        """Save license data to cache.
+
+        Args:
+            device_key (str): Unique device identifier.
+            license_data (Dict): License information to cache.
+
+        Returns:
+            bool: True if successfully cached, False otherwise.
+        """
         try:
             cache_filepath = self._get_cache_filepath(device_key)
             cache_data = {
@@ -113,13 +154,17 @@ class LicenseCache:
             return False
 
     def load(self, device_key: str, ignore_expiry: bool = False) -> Tuple[Optional[Dict], bool]:
-        """
-        Load license data from cache
+        """Load license data from cache.
+
+        Args:
+            device_key (str): Unique device identifier.
+            ignore_expiry (bool, optional): Whether to ignore cache expiration. 
+                Defaults to False.
 
         Returns:
-            Tuple of (license_data, is_expired)
-            - license_data: The cached license or None if not found
-            - is_expired: True if cache exists but is expired
+            Tuple[Optional[Dict], bool]: A tuple containing:
+                - license_data: The cached license or None if not found
+                - is_expired: True if cache exists but is expired
         """
         try:
             cache_filepath = self._get_cache_filepath(device_key)
@@ -150,7 +195,14 @@ class LicenseCache:
             return None, False
 
     def get_cache_age(self, device_key: str) -> Optional[timedelta]:
-        """Get the age of the cached data"""
+        """Get the age of the cached data.
+
+        Args:
+            device_key (str): Unique device identifier.
+
+        Returns:
+            Optional[timedelta]: Age of cached data or None if cache doesn't exist.
+        """
         try:
             cache_filepath = self._get_cache_filepath(device_key)
             if not cache_filepath.exists():
@@ -166,7 +218,14 @@ class LicenseCache:
             return None
 
     def clear(self, device_key: str) -> bool:
-        """Clear cached license data"""
+        """Clear cached license data.
+
+        Args:
+            device_key (str): Unique device identifier.
+
+        Returns:
+            bool: True if successfully cleared, False otherwise.
+        """
         try:
             cache_filepath = self._get_cache_filepath(device_key)
             if cache_filepath.exists():
@@ -179,6 +238,19 @@ class LicenseCache:
 
 
 class LicenseManager:
+    """Manages license validation, creation, and caching with Dropbox backend.
+
+    This class provides a comprehensive license management system that supports:
+    - Trial license auto-registration
+    - License validation with caching
+    - Background cache refresh
+    - License extension
+    - Remote storage via Dropbox
+
+    Attributes:
+        _TRIAL_PERIOD (int): Default trial period in days (90).
+    """
+
     _TRIAL_PERIOD = 90
 
     def __init__(self,
@@ -190,18 +262,23 @@ class LicenseManager:
                  cache_duration_hours: int = 24,
                  cache_dir: str = None,
                  background_refresh: bool = True):
-        """
-        Initialize License Manager with cache-first approach
+        """Initialize License Manager with cache-first approach.
 
         Args:
-            dbx_conn: Dropbox connection
-            license_directory: Remote directory for licenses
-            auto_register_trial: Auto-create trial licenses
-            trial_duration_days: Trial period duration
-            cache_enabled: Enable local caching
-            cache_duration_hours: How long cache is valid
-            cache_dir: Local cache directory (None for temp)
-            background_refresh: Refresh cache in background when expired
+            dbx_conn (dropbox.Dropbox): Dropbox connection instance.
+            license_directory (str, optional): Remote directory for licenses. 
+                Defaults to "/device-licenses".
+            auto_register_trial (bool, optional): Auto-create trial licenses for new devices. 
+                Defaults to True.
+            trial_duration_days (int, optional): Trial period duration in days. 
+                Defaults to _TRIAL_PERIOD (90).
+            cache_enabled (bool, optional): Enable local caching. Defaults to True.
+            cache_duration_hours (int, optional): How long cache is valid in hours. 
+                Defaults to 24.
+            cache_dir (str, optional): Local cache directory. None uses system temp. 
+                Defaults to None.
+            background_refresh (bool, optional): Refresh cache in background when expired. 
+                Defaults to True.
         """
         self.dbx = dbx_conn
         self.license_directory = license_directory
@@ -223,7 +300,11 @@ class LicenseManager:
         self._last_refresh_attempt = None
 
     def _ensure_directory_exists(self) -> bool:
-        """Check/create remote directory"""
+        """Check if remote license directory exists and create it if needed.
+
+        Returns:
+            bool: True if directory exists or was created successfully, False otherwise.
+        """
         try:
             self.dbx.files_get_metadata(self.license_directory)
             return True
@@ -242,7 +323,11 @@ class LicenseManager:
             return False
 
     def _download_license_from_remote(self) -> Optional[Dict]:
-        """Download license file from Dropbox (no cache check)"""
+        """Download license file from Dropbox without checking cache.
+
+        Returns:
+            Optional[Dict]: License data if found and valid, None otherwise.
+        """
         try:
             _, response = self.dbx.files_download(self.license_filepath)
             content = response.content.decode('utf-8')
@@ -269,7 +354,11 @@ class LicenseManager:
             return None
 
     def _refresh_cache_background(self):
-        """Background thread to refresh expired cache"""
+        """Background thread to refresh expired cache.
+
+        This method runs in a separate thread to update cache without blocking
+        the main application flow.
+        """
         Log.i(TAG, "Starting background cache refresh")
         self._last_refresh_attempt = datetime.now()
 
@@ -285,14 +374,16 @@ class LicenseManager:
             self._refresh_thread = None
 
     def _get_license_data(self, force_remote: bool = False) -> Tuple[Optional[Dict], str]:
-        """
-        Get license data using cache-first approach
+        """Get license data using cache-first approach.
 
         Args:
-            force_remote: Skip cache and go directly to remote
+            force_remote (bool, optional): Skip cache and go directly to remote. 
+                Defaults to False.
 
         Returns:
-            Tuple of (license_data, source) where source is 'cache', 'remote', or 'expired_cache'
+            Tuple[Optional[Dict], str]: A tuple containing:
+                - license_data: The license data or None if not found
+                - source: Data source ('cache', 'remote', 'expired_cache', or 'none')
         """
         # Force remote check if requested
         if force_remote:
@@ -331,7 +422,14 @@ class LicenseManager:
         return data, 'remote' if data else 'none'
 
     def _upload_license_file(self, license_data: Dict) -> bool:
-        """Upload a license file to Dropbox"""
+        """Upload a license file to Dropbox.
+
+        Args:
+            license_data (Dict): License data to upload.
+
+        Returns:
+            bool: True if upload successful, False otherwise.
+        """
         try:
             content = json.dumps(license_data, indent=2).encode('utf-8')
             self.dbx.files_upload(
@@ -354,7 +452,18 @@ class LicenseManager:
             return False
 
     def register(self, additional_info: Dict = None) -> Tuple[bool, str, Dict]:
-        """Register a new trial license"""
+        """Register a new trial license for the current device.
+
+        Args:
+            additional_info (Dict, optional): Additional information to include 
+                in the license. Defaults to None.
+
+        Returns:
+            Tuple[bool, str, Dict]: A tuple containing:
+                - success: True if registration successful
+                - message: Human-readable status message
+                - license_data: The created license data (empty dict if failed)
+        """
         creation_date = datetime.now()
         expiration_date = creation_date + \
             timedelta(days=self.trial_duration_days)
@@ -379,15 +488,19 @@ class LicenseManager:
     def validate_license(self,
                          auto_create_if_missing: Optional[bool] = None,
                          force_remote: bool = False) -> Tuple[bool, str, Dict]:
-        """
-        Validate license with cache-first approach
+        """Validate license with cache-first approach.
 
         Args:
-            auto_create_if_missing: Override auto-registration setting
-            force_remote: Force remote check, bypassing cache
+            auto_create_if_missing (Optional[bool], optional): Override auto-registration 
+                setting. Uses instance setting if None. Defaults to None.
+            force_remote (bool, optional): Force remote check, bypassing cache. 
+                Defaults to False.
 
         Returns:
-            Tuple of (is_valid, message, license_data)
+            Tuple[bool, str, Dict]: A tuple containing:
+                - is_valid: True if license is valid
+                - message: Human-readable status message with source info
+                - license_data: The license data (empty dict if no license)
         """
 
         # Get license data (cache-first unless forced)
@@ -476,7 +589,20 @@ class LicenseManager:
         return False, f"Unknown license status: {status}{source_msg}", license_data
 
     def extend_license(self, additional_days: int) -> Tuple[bool, str, Dict]:
-        """Extend license (requires remote connection)"""
+        """Extend license expiration by specified number of days.
+
+        This operation requires a remote connection and will update both remote
+        storage and local cache.
+
+        Args:
+            additional_days (int): Number of days to extend the license.
+
+        Returns:
+            Tuple[bool, str, Dict]: A tuple containing:
+                - success: True if extension successful
+                - message: Human-readable status message
+                - license_data: Updated license data (original data if failed)
+        """
         # Force remote check for extension
         license_data, source = self._get_license_data(force_remote=True)
 
@@ -509,28 +635,52 @@ class LicenseManager:
             return False, "Error processing license extension", license_data
 
     def get_license_info(self, prefer_cache: bool = True) -> Optional[Dict]:
-        """
-        Get license information
+        """Get license information.
 
         Args:
-            prefer_cache: Use cache if available (default True)
+            prefer_cache (bool, optional): Use cache if available. Set to False 
+                to force remote check. Defaults to True.
+
+        Returns:
+            Optional[Dict]: License data or None if not found.
         """
         data, _ = self._get_license_data(force_remote=not prefer_cache)
         return data
 
     def clear_cache(self) -> bool:
-        """Clear local license cache"""
+        """Clear local license cache.
+
+        Returns:
+            bool: True if cache cleared successfully, False if caching disabled 
+                or clear failed.
+        """
         if self.cache_enabled:
             return self.cache.clear(self.device_key)
         return False
 
     def refresh_license(self) -> Tuple[bool, str, Dict]:
-        """Force refresh license from remote source"""
+        """Force refresh license from remote source.
+
+        Returns:
+            Tuple[bool, str, Dict]: Same as validate_license() with forced remote check.
+        """
         Log.i(TAG, "Forcing license refresh from remote")
         return self.validate_license(force_remote=True)
 
     def get_cache_status(self) -> Dict:
-        """Get information about cache status"""
+        """Get information about cache status and configuration.
+
+        Returns:
+            Dict: Cache status information including:
+                - enabled: Whether caching is enabled
+                - cache_exists: Whether cache file exists (if enabled)
+                - cache_path: Path to cache file (if enabled)
+                - background_refresh: Whether background refresh is enabled
+                - refresh_thread_active: Whether refresh thread is currently running
+                - last_refresh_attempt: ISO timestamp of last refresh attempt
+                - cache_age_hours: Age of cache in hours (if exists)
+                - cache_expired: Whether cache is expired (if exists)
+        """
         if not self.cache_enabled:
             return {'enabled': False}
 
@@ -553,19 +703,21 @@ class LicenseManager:
         return status
 
     def wait_for_background_refresh(self, timeout: float = 5.0) -> bool:
-        """
-        Wait for background refresh to complete
+        """Wait for background refresh to complete.
 
         Args:
-            timeout: Maximum seconds to wait
+            timeout (float, optional): Maximum seconds to wait. Defaults to 5.0.
 
         Returns:
-            True if refresh completed, False if timeout
+            bool: True if refresh completed within timeout, False if timeout occurred.
         """
         if self._refresh_thread and self._refresh_thread.is_alive():
             self._refresh_thread.join(timeout)
             return not self._refresh_thread.is_alive()
         return True
+
+
+<< << << < HEAD
 
 
 # Example usage
@@ -610,3 +762,5 @@ if __name__ == "__main__":
             print("Background refresh completed")
         else:
             print("Background refresh still running")
+== == == =
+>>>>>> > f7f0b768ee44f5278c4cac4956f14af290b745da
