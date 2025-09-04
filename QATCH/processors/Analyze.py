@@ -935,7 +935,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
         self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.l3.setText("<font color=#ffffff >Predict Model</font> </a>")
+        self.l3.setText("<font color=#ffffff >Auto-Fit Model</font> </a>")
         if USE_FULLSCREEN:
             self.l3.setFixedHeight(50)
         # else:
@@ -3515,7 +3515,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -3567,7 +3567,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -4954,7 +4954,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -5015,7 +5015,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
