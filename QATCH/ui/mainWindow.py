@@ -17,7 +17,9 @@ from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
+# NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
+# from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.src.models.live.q_forecast_predictor import FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -1304,17 +1306,17 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
-        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            pass
-        else:
-            start_booster_path = os.path.join(Architecture.get_path(),
-                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
-            end_booster_path = os.path.join(Architecture.get_path(),
-                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
-            scaler_path = os.path.join(Architecture.get_path(),
-                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
-            self._forecaster = QForecastPredictor(
-                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
+        # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+        #     pass
+        # else:
+        #     start_booster_path = os.path.join(Architecture.get_path(),
+        #                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+        #     end_booster_path = os.path.join(Architecture.get_path(),
+        #                                     r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+        #     scaler_path = os.path.join(Architecture.get_path(),
+        #                                r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+        #     self._forecaster = QForecastPredictor(
+        #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_status = FillStatus.NO_FILL
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
@@ -3068,22 +3070,22 @@ class MainWindow(QtWidgets.QMainWindow):
             vectoramb = self.worker.get_d4_buffer(0)
 
             #  Build dataframe from worker databuffer.
-            new_data = QForecastDataProcessor.convert_to_dataframe(
-                self.worker)
+            # new_data = QForecastDataProcessor.convert_to_dataframe(
+            #     self.worker)
 
             # Flag to use the fill forecaster.
-            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-                self.worker._forecaster_in.put(new_data)
-                if not self.worker._forecaster_out.empty():
-                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
-            else:
-                self.forecast_status = self._forecaster.update_predictions(
-                    new_data=new_data)
+            # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            #     self.worker._forecaster_in.put(new_data)
+            #     if not self.worker._forecaster_out.empty():
+            #         self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
+            # else:
+            # self.forecast_status = self._forecaster.update_predictions(
+            #     new_data=new_data)
 
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-                self.forecast_status.value)
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-                Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+            #     self.forecast_status.value)
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+            #     Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
