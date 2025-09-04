@@ -1041,6 +1041,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addStretch()
 
         self.setLayout(layout_v)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/info.png')
+        self.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.setWindowTitle("Enter Run Info")
 
         ###### scannow widget for batch number ######
