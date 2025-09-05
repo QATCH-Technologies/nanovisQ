@@ -22,6 +22,11 @@ from pathlib import Path
 import hashlib
 import threading
 
+import pymysql
+import cryptography
+import zipfile
+import base64
+
 try:
     from QATCH.common.logger import Logger as Log
     from QATCH.common.deviceFingerprint import DeviceFingerprint
@@ -58,32 +63,33 @@ class AVN_TEST:
 
     def __init__(self):
 
-        import pymysql
-        import cryptography
-
         timeout = 10
-        connection = pymysql.connect(
-            host="redacted",
-            user="redacted",
-            password="redacted",
-            database="redacted",
-
-            read_timeout=timeout,
-            write_timeout=timeout,
-            charset="utf8mb4",
-            cursorclass=pymysql.cursors.DictCursor,
-            connect_timeout=timeout,
-        )
+        connection = pymysql.connect(**AVN_TEST.load_avn_key_store())
 
         try:
             cursor = connection.cursor()
             # cursor.execute("CREATE TABLE mytest (id INTEGER PRIMARY KEY)")
             # cursor.execute("INSERT INTO mytest (id) VALUES (1), (2)")
-            cursor.execute("SELECT * FROM mytest")
+            cursor.execute("SELECT * FROM subscribers")
+            print(cursor.fetchall())
+            cursor.execute("SELECT * FROM licenses")
             print(cursor.fetchall())
         finally:
             connection.commit()
             connection.close()
+
+    @staticmethod
+    def load_avn_key_store():
+        DB_CONFIG = {}
+        with zipfile.ZipFile("QATCH/resources/avn_key_store.zip", 'r') as zip_key:
+            pem_file = zip_key.read("db_config.pem").splitlines()
+            pem_file[0] = b""  # remove begin line
+            pem_file[-1] = b""  # remove end line
+            pem_file[1] = pem_file[1][4:]  # remove "AVN_"
+            pem_file = b"".join(pem_file)
+            DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
+            DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
+        return DB_CONFIG
 
 
 class LicenseCache:
@@ -717,9 +723,6 @@ class LicenseManager:
         return True
 
 
-<< << << < HEAD
-
-
 # Example usage
 if __name__ == "__main__":
     if USE_SERVER == LicenseServer.AIVENIO:
@@ -762,5 +765,3 @@ if __name__ == "__main__":
             print("Background refresh completed")
         else:
             print("Background refresh still running")
-== == == =
->>>>>> > f7f0b768ee44f5278c4cac4956f14af290b745da
