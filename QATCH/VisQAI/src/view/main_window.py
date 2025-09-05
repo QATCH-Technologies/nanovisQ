@@ -496,21 +496,20 @@ class VisQAIWindow(BaseVisQAIWindow):
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
             if tab_step > 0:
-                if tab_step == now_step + 1:
+                widget: FrameStep1 = self.tab_widget.widget(
+                    0)  # Select
+                if tab_step == now_step + 1 and widget.run_file_run:
                     if hasattr(self.tab_widget.currentWidget(), "btn_next"):
                         self.tab_widget.currentWidget().btn_next.click()
                         return True  # ignore click, let "Next" btn decide
                 # Block tab change based on some condition
-                if tab_step in [2, 4, 5]:
-                    if tab_step == 2 or tab_step == 5:
-                        widget: FrameStep1 = self.tab_widget.widget(
-                            0)  # Select
-                        if not widget.run_file_run:
-                            QtWidgets.QMessageBox.information(
-                                None, Constants.app_title,
-                                "Please select a run.",
-                                QtWidgets.QMessageBox.Ok)
-                            return True  # deny tab change
+                if tab_step in [3, 4, 6]:
+                    if not widget.run_file_run:
+                        QtWidgets.QMessageBox.information(
+                            None, Constants.app_title,
+                            "Please select a run.",
+                            QtWidgets.QMessageBox.Ok)
+                        return True  # deny tab change
                     # NOTE: No longer a requirement, but can be added back if needed
                     # if tab_step == 4:
                     #     widget: FrameStep1 = self.tab_widget.widget(
@@ -525,7 +524,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                     # do not click next when user is going backwards
                     # (or nowhere) from the currently selected step.
                     pass
-                elif hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                elif hasattr(self.tab_widget.currentWidget(), "btn_next") and widget.run_file_run:
                     # still perform click action
                     self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
