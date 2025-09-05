@@ -1,5 +1,5 @@
 """
-lincenseManager.py
+licenseManager.py
 
 This module provides a comprehensive license management solution that handles trial licenses,
 license validation, and caching with Dropbox as the remote storage backend.
@@ -41,7 +41,7 @@ class LicenseServer(Enum):
     AIVENIO = "avn"
 
 
-USE_SERVER = LicenseServer.AIVENIO
+DB_SERVER = LicenseServer.AIVENIO
 
 
 class LicenseStatus(Enum):
@@ -59,27 +59,37 @@ class LicenseStatus(Enum):
     INACTIVE = "inactive"
 
 
-class AVN_TEST:
+class AVN_Database:
 
     def __init__(self):
+        self.connection = pymysql.connect(**AVN_Database._load_avn_key_store())
+        self.cursor = self.connection.cursor()
 
-        timeout = 10
-        connection = pymysql.connect(**AVN_TEST.load_avn_key_store())
+        # cursor.execute(
+        #     """
+        #     ALTER TABLE licenses
+        #     RENAME COLUMN trial_days TO term_days;
+        #     """
+        # )
 
+        # cursor.execute("SELECT * FROM subscribers")
+        # print(cursor.fetchall())
+        # cursor.execute("SELECT * FROM licenses")
+        # print(cursor.fetchall())
+
+    def close(self):
         try:
-            cursor = connection.cursor()
-            # cursor.execute("CREATE TABLE mytest (id INTEGER PRIMARY KEY)")
-            # cursor.execute("INSERT INTO mytest (id) VALUES (1), (2)")
-            cursor.execute("SELECT * FROM subscribers")
-            print(cursor.fetchall())
-            cursor.execute("SELECT * FROM licenses")
-            print(cursor.fetchall())
-        finally:
-            connection.commit()
-            connection.close()
+            if self.connection.open:
+                self.connection.commit()
+                self.connection.close()
+        except:
+            pass
+
+    def __del__(self):
+        self.close()
 
     @staticmethod
-    def load_avn_key_store():
+    def _load_avn_key_store():
         DB_CONFIG = {}
         with zipfile.ZipFile("QATCH/resources/avn_key_store.zip", 'r') as zip_key:
             pem_file = zip_key.read("db_config.pem").splitlines()
@@ -89,6 +99,7 @@ class AVN_TEST:
             pem_file = b"".join(pem_file)
             DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
             DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
+            DB_CONFIG['defer_connect'] = True
         return DB_CONFIG
 
 
@@ -286,12 +297,19 @@ class LicenseManager:
             background_refresh (bool, optional): Refresh cache in background when expired. 
                 Defaults to True.
         """
-        self.dbx = dbx_conn
-        self.license_directory = license_directory
+        if DB_SERVER == LicenseServer.AIVENIO:
+            self.avn = AVN_Database()
+            self.license_table = license_directory.split("-")[1]
+            self.license_exists = False
+
+        if DB_SERVER == LicenseServer.DROPBOX:
+            self.dbx = dbx_conn
+            self.license_directory = license_directory
+            self.license_filename = f"{self.device_key}.json"
+            self.license_filepath = f"{self.license_directory}/{self.license_filename}"
+
         self.device_key = DeviceFingerprint.generate_key()
         self.device_summary = DeviceFingerprint.get_device_summary()
-        self.license_filename = f"{self.device_key}.json"
-        self.license_filepath = f"{self.license_directory}/{self.license_filename}"
         self.auto_register_trial = auto_register_trial
         self.trial_duration_days = trial_duration_days
 
@@ -306,27 +324,37 @@ class LicenseManager:
         self._last_refresh_attempt = None
 
     def _ensure_directory_exists(self) -> bool:
-        """Check if remote license directory exists and create it if needed.
+        """Prepares the directory or database for use as a license manager.
+        For AVN: Attempt to open the database, create a connection and cursor.
+        For DBX: Check if remote license directory exists and create it if needed.
 
         Returns:
-            bool: True if directory exists or was created successfully, False otherwise.
+            bool: True if database/directory exists or was created successfully, False otherwise.
         """
-        try:
-            self.dbx.files_get_metadata(self.license_directory)
-            return True
-        except ApiError as e:
-            if e.error.is_path() and e.error.get_path().is_not_found():
-                try:
-                    Log.i(
-                        TAG, f"Creating license directory: {self.license_directory}")
-                    self.dbx.files_create_folder_v2(self.license_directory)
-                    return True
-                except ApiError as create_error:
-                    Log.e(
-                        TAG, f"Failed to create license directory: {create_error}")
-                    return False
-            Log.e(TAG, f"Error checking remote directory: {e}")
-            return False
+        if DB_SERVER == LicenseServer.AIVENIO:
+            try:
+                self.avn.connection.ping(reconnect=True)
+                self.avn.close()
+                return True
+            except:
+                Log.e("Failed to connect to AVN database for license checking.")
+
+        if DB_SERVER == LicenseServer.DROPBOX:
+            try:
+                self.dbx.files_get_metadata(self.license_directory)
+                return True
+            except ApiError as e:
+                if e.error.is_path() and e.error.get_path().is_not_found():
+                    try:
+                        Log.i(
+                            TAG, f"Creating license directory: {self.license_directory}")
+                        self.dbx.files_create_folder_v2(self.license_directory)
+                        return True
+                    except ApiError as create_error:
+                        Log.e(
+                            TAG, f"Failed to create license directory: {create_error}")
+                Log.e(TAG, f"Error checking remote directory: {e}")
+        return False
 
     def _download_license_from_remote(self) -> Optional[Dict]:
         """Download license file from Dropbox without checking cache.
@@ -335,9 +363,34 @@ class LicenseManager:
             Optional[Dict]: License data if found and valid, None otherwise.
         """
         try:
-            _, response = self.dbx.files_download(self.license_filepath)
-            content = response.content.decode('utf-8')
-            license_data = json.loads(content)
+            if DB_SERVER == LicenseServer.AIVENIO:
+                self.avn.connection.ping(reconnect=True)
+                self.avn.cursor.execute(
+                    "SELECT * FROM {} WHERE license_key=%s".format(self.license_table), (self.device_key,))
+                license_data: dict = self.avn.cursor.fetchone()
+                self.avn.close()
+
+                self.license_exists = True if license_data else False
+                if self.license_exists:
+                    # Convert datetime fields to iso-format strings
+                    license_data['creation_date'] = license_data['creation_date'].isoformat(
+                    )
+                    license_data['expiration'] = license_data['expiration'].isoformat()
+                    # Move "device_info" fields
+                    license_data['device_info'] = {}
+                    device_info_fields = ['computer_name', 'os_version', 'bios_serial', 'motherboard_serial',
+                                          'cpu_id', 'disk_serial', 'system_uuid']
+                    for field in device_info_fields:
+                        license_data['device_info'][field] = license_data.pop(
+                            field, "UNKNOWN")
+                    license_data.pop('subscriber_id')
+                else:
+                    return None  # no record found
+
+            if DB_SERVER == LicenseServer.DROPBOX:
+                _, response = self.dbx.files_download(self.license_filepath)
+                content = response.content.decode('utf-8')
+                license_data = json.loads(content)
 
             Log.i(TAG, "Successfully downloaded license from remote")
 
@@ -346,6 +399,10 @@ class LicenseManager:
                 self.cache.save(self.device_key, license_data)
 
             return license_data
+
+        except pymysql.err.Error:
+            Log.e("Failed to download license from remote DB.")
+            return None
 
         except ApiError as e:
             if e.error.is_path() and e.error.get_path().is_not_found():
@@ -437,21 +494,62 @@ class LicenseManager:
             bool: True if upload successful, False otherwise.
         """
         try:
-            content = json.dumps(license_data, indent=2).encode('utf-8')
-            self.dbx.files_upload(
-                content,
-                self.license_filepath,
-                mode=dropbox.files.WriteMode('overwrite'),
-                autorename=False
-            )
+
+            if DB_SERVER == LicenseServer.AIVENIO:
+                self.avn.connection.ping(reconnect=True)
+                if not self.license_exists:
+                    DB_COLS_1 = ",".join(
+                        ['license_key',
+                         'status',
+                         'creation_date',
+                         'expiration',
+                         'term_days',
+                         'auto_generated',
+                         'computer_name',
+                         'os_version',
+                         'bios_serial',
+                         'motherboard_serial',
+                         'cpu_id',
+                         'disk_serial',
+                         'system_uuid',
+                         'subscriber_id'])
+                    self.avn.cursor.execute(
+                        "INSERT INTO {} ({}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)".format(
+                            self.license_table, DB_COLS_1),
+                        (license_data['license_key'], license_data['status'], license_data['creation_date'], license_data['expiration'], license_data['trial_days'],
+                         license_data['auto_generated'], license_data['device_info'][
+                             'computer_name'], license_data['device_info']['os_version'],
+                         license_data['device_info']['bios_serial'], license_data['device_info'][
+                             'motherboard_serial'], license_data['device_info']['cpu_id'],
+                         license_data['device_info']['disk_serial'], license_data['device_info']['system_uuid'], None,))
+                else:
+                    self.avn.cursor.execute(
+                        "UPDATE {} SET status=%s, expiration=%s, term_days=%s WHERE license_key=%s".format(
+                            self.license_table),
+                        (license_data['status'], license_data['expiration'], license_data['trial_days'], license_data['license_key'],))
+                self.avn.close()
+
+            if DB_SERVER == LicenseServer.DROPBOX:
+                content = json.dumps(license_data, indent=2).encode('utf-8')
+                self.dbx.files_upload(
+                    content,
+                    self.license_filepath,
+                    mode=dropbox.files.WriteMode('overwrite'),
+                    autorename=False
+                )
+
             Log.i(
-                TAG, f"Successfully uploaded license file: {self.license_filename}")
+                TAG, f"Successfully uploaded license key: {self.device_key}")
 
             # Update cache with new license data
             if self.cache_enabled:
                 self.cache.save(self.device_key, license_data)
 
             return True
+
+        except pymysql.err.Error:
+            Log.e("Failed to upload license to remote DB.")
+            return False
 
         except ApiError as e:
             Log.e(TAG, f"Error uploading license file: {e}")
@@ -476,7 +574,7 @@ class LicenseManager:
 
         license_data = {
             'license_key': self.device_key,
-            'status': LicenseStatus.TRIAL,
+            'status': LicenseStatus.TRIAL.value,
             'creation_date': creation_date.isoformat(),
             'expiration': expiration_date.isoformat(),
             'trial_days': self.trial_duration_days,
@@ -725,8 +823,8 @@ class LicenseManager:
 
 # Example usage
 if __name__ == "__main__":
-    if USE_SERVER == LicenseServer.AIVENIO:
-        AVN_TEST()
+    if DB_SERVER == LicenseServer.AIVENIO:
+        AVN_Database()
 
     else:
 
