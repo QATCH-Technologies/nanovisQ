@@ -292,21 +292,24 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Buffer pH",  # not in Run Info
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
-                                             "Salt Type", "Salt Concentration"],
+                                             "Salt Type", "Salt Concentration",
+                                             "Temperature"],  # only displayed on Predict tab (for now)
                                  "Value": [self.proteins, "",
                                            self.class_types, "", "", "",  # class, molecular weight, pI mean, pI range
                                            self.buffers, "",
                                            "",  # buffer pH
                                            self.surfactants, "",
                                            self.stabilizers, "",
-                                           self.salts, ""],
+                                           self.salts, "",
+                                           ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
                                            "", "mM",
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
-                                           "", "mM"]}
+                                           "", "mM",
+                                           "\u00b0C"]}  # degrees Celsius
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
                                                 len(list(self.default_features.keys())))
 
@@ -504,7 +507,12 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Proteins By Class:", self.proteins_by_class)
 
     def hide_extended_features(self):
-        hide_rows = [2, 3, 4, 5, 8]
+        hide_rows = []
+        if self.step in [2, 5]:
+            hide_rows.extend([2, 3, 4, 5, 8])
+        if self.step != 5:
+            # Hide Temperature everywhere other than Predict
+            hide_rows.append(15)
         for row in hide_rows:
             self.feature_table.hideRow(row)
 
@@ -513,7 +521,7 @@ class FrameStep1(QtWidgets.QDialog):
             Log.e("Not all features have been set. " +
                   "Cannot save formulation info. " +
                   "Enter missing values and try again.")
-            return
+            return False
 
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
@@ -531,6 +539,7 @@ class FrameStep1(QtWidgets.QDialog):
         stabilizer_conc = self.feature_table.item(12, 1).text()
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
+        temp = self.feature_table.item(15, 1).text()
 
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
@@ -574,6 +583,7 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = stabilizer_conc
             feature["Value"][13] = salt_type
             feature["Value"][14] = salt_conc
+            feature["Value"][15] = temp
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
@@ -617,27 +627,27 @@ class FrameStep1(QtWidgets.QDialog):
             protein.class_type = str(protein_class)
         elif not protein.class_type:
             Log.e("Missing protein class!")
-            return
+            return False
         if is_number(protein_weight):
             protein.molecular_weight = float(protein_weight)
         elif not protein.molecular_weight:
             Log.e("Missing protein molecular weight!")
-            return
+            return False
         if is_number(protein_pI_mean):
             protein.pI_mean = float(protein_pI_mean)
         elif not protein.pI_mean:
             Log.e("Missing protein pI mean!")
-            return
+            return False
         if is_number(protein_pI_range):
             protein.pI_range = float(protein_pI_range)
         elif not protein.pI_range:
             Log.e("Missing protein pI range!")
-            return
+            return False
         if is_number(buffer_pH):
             buffer.pH = float(buffer_pH)
         elif not buffer.pH:
             Log.e("Missing buffer pH!")
-            return
+            return False
 
         # if no changes, nothing is done on 'update' call
         self.parent.ing_ctrl.update_protein(protein.id, protein)
@@ -652,12 +662,18 @@ class FrameStep1(QtWidgets.QDialog):
                               units='cP')
         vp.is_measured = self.run_figure_valid
 
-        # pull temperaure
-        temp = self.run_temperature.text()
-        if temp.endswith('C'):
-            temp = temp[:-1]  # strip Celsius unit character
+        # pull temperaure (already pulled from feature table)
+        # temp = self.run_temperature.text()
+        # if temp.endswith('C'):
+        #     temp = temp[:-1]  # strip Celsius unit character
         if not is_number(temp):
             temp = "nan"  # not a number, casts to float as nan
+        elif self.step == 5:
+            # Predict tab can specify custom Temperature target
+            if float(temp) < 0 or float(temp) > 100:
+                Log.e(
+                    f"Temperature input {temp}\u00b0C is out-of-range! (Allowed: 0 - 100)")
+                return False
 
         form = Formulation()
         form.set_protein(
@@ -786,6 +802,7 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = form.stabilizer.concentration
             feature["Value"][13] = form.salt.ingredient.name
             feature["Value"][14] = form.salt.concentration
+            feature["Value"][15] = form.temperature
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -818,7 +835,9 @@ class FrameStep1(QtWidgets.QDialog):
                 None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
             return
 
-        self.save_formulation()
+        if not self.save_formulation():
+            Log.w("Aborting prediction. Failed to save formulation.")
+            return
 
         self.predictor = Predictor(zip_path=self.model_path)
         predict_df = self.parent.predict_formulation.to_dataframe(
@@ -1537,7 +1556,8 @@ class FrameStep1(QtWidgets.QDialog):
                       "",  # pH
                       "surfactant_type", "surfactant_concentration",
                       "stabilizer_type", "stabilizer_concentration",
-                      "salt_type", "salt_concentration"]
+                      "salt_type", "salt_concentration",
+                      "temperature"]
         for x, y in enumerate(value_tags):
             try:
                 if y == "":
@@ -1579,8 +1599,6 @@ class FrameStep1(QtWidgets.QDialog):
             if buffer != None:
                 if buffer.pH != None:
                     run_features["Value"][8] = buffer.pH
-
-        self.feature_table.setData(run_features)
 
         # Import most recent analysis
         in_shear_rate = []
@@ -1743,6 +1761,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_temperature.setText("(Unknown)")
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
+
+        run_features["Value"][15] = self.run_temperature.text().rstrip("C")
+        self.feature_table.setData(run_features)
+        self.hide_extended_features()
 
         if self.feature_table.allSet():
             self.handleSplitterButton(collapse=True)
