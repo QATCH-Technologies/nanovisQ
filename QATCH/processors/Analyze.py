@@ -3018,7 +3018,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("Ignoring arrow key input when no run is loaded.")
             return
         clipped = False
-        if self.stateStep <= 3:  # start, end of fill, post point
+        if self.stateStep <= 2:  # start, end of fill, (no longer post point)
             ws = int(self.zoomLevel * self.smooth_factor / 2)  # context width
         else:  # blips
             ws = int(
@@ -3891,9 +3891,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(
                             "Current marker cannot be bumped forward without exceeding data bounds; leaving as-is.")
             self.zoomLevel = 1  # reset default zoom level for each point
-            show_fits = 1.0 if self.stateStep >= 4 else 0.0
-            show_scat = 0.1 if self.stateStep >= 4 else 1.0
-            pad = 0.05 if self.stateStep >= 4 else 0.05
+            show_fits = 1.0 if self.stateStep >= 3 else 0.0
+            show_scat = 0.1 if self.stateStep >= 3 else 1.0
+            pad = 0.05 if self.stateStep >= 3 else 0.05
             self.fit_1.setAlpha(show_fits, False)
             self.fit_2.setAlpha(show_fits, False)
             self.fit_3.setAlpha(show_fits, False)
@@ -3953,7 +3953,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     np.amax(self.ys_diff_fit[tx0:tx2]),
                 )
             ax.setYRange(mn, mx, padding=pad)
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 if not clipped:
                     ax1.setYRange(
                         np.min(self.ys_freq_fit[slice_start: slice_end]),
@@ -4031,7 +4031,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(idx == px)  # only current marker is movable
                 marker.setPen(color=("blue" if idx == px else "blue"))
                 marker.addMarker("<|>") if idx == px else marker.clearMarkers()
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 pos1 = np.column_stack(
                     (self.xs[gstar_idxs], self.ys_freq_fit[gstar_idxs])
                 )
@@ -4470,7 +4470,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if cur_idx == len(self.xs) - 1:
                 return  # do not process skipped points on marker move
             ws = self.getContextWidth()[0]
-            pad = 0.05 if self.stateStep >= 4 else 0.05
+            pad = 0.05 if self.stateStep >= 3 else 0.05
             # Calculate safe index boundaries prior to setting ranges
             slice_start, slice_end = [tx1 - ws, tx1 + ws]
             if slice_start < 0:
@@ -4483,7 +4483,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 ax1.setYRange(
                     np.min(self.ys_freq_fit[slice_start: slice_end]),
                     np.max(self.ys_freq_fit[slice_start: slice_end]),
