@@ -2527,6 +2527,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWidget = QtWidgets.QWidget(self)
         self.TutorialScroll = QtWidgets.QScrollArea(self)
         self.TutorialText = QtWidgets.QLabel(self)
+        # Automatically opens links
+        self.TutorialText.setOpenExternalLinks(True)
         self.TutorialCheckbox = QtWidgets.QCheckBox(
             "Show these tutorials on startup", self)
         # stylesheet applies to titlebar and all children widgets
@@ -2547,8 +2549,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialScroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.TutorialScroll.setWidgetResizable(True)
         self.TutorialScroll.setWidget(scroll_widget)
+        # CONVENIENCE COMBINATION:
+        # QtCore.Qt.TextInteractionFlag.TextBrowserInteraction = (
+        #    TextSelectableByMouse | LinksAccessibleByMouse | LinksAccessibleByKeyboard)
         self.TutorialText.setTextInteractionFlags(
-            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
         self.TutorialText.setWordWrap(True)
         # apply layout to tutorials widget
         top_layout = QtWidgets.QVBoxLayout()
