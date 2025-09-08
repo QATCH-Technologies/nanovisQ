@@ -62,26 +62,91 @@ class LicenseStatus(Enum):
 class AVN_Database:
 
     def __init__(self):
-        self.connection = pymysql.connect(**AVN_Database._load_avn_key_store())
-        self.cursor = self.connection.cursor()
+        self.conn = pymysql.connect(**AVN_Database._load_avn_key_store())
 
-        # cursor.execute(
-        #     """
-        #     ALTER TABLE licenses
-        #     RENAME COLUMN trial_days TO term_days;
-        #     """
-        # )
+        # with self.conn.cursor() as cursor:
+        #     cursor.execute(
+        #         """
+        #         ALTER TABLE licenses
+        #         RENAME COLUMN trial_days TO term_days;
+        #         """
+        #     )
+        #     cursor.execute("SELECT * FROM subscribers")
+        #     print(cursor.fetchall())
+        #     cursor.execute("SELECT * FROM licenses")
+        #     print(cursor.fetchall())
 
-        # cursor.execute("SELECT * FROM subscribers")
-        # print(cursor.fetchall())
-        # cursor.execute("SELECT * FROM licenses")
-        # print(cursor.fetchall())
+    def license_select(self, license_table, device_key):
+        try:
+            self.conn.ping(reconnect=True)
+            with self.conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT * FROM {} WHERE license_key=%s".format(license_table), (device_key,))
+                license_data: dict = cursor.fetchone()
+                return license_data
+
+        except pymysql.err.Error as e:
+            Log.e(f"AVN ERROR: {e}")
+
+        finally:
+            self.close()
+
+    def license_insert(self, license_table, license_data):
+        try:
+            self.conn.ping(reconnect=True)
+            with self.conn.cursor() as cursor:
+                DB_COLS_1 = ",".join(
+                    ['license_key',
+                     'status',
+                     'creation_date',
+                     'expiration',
+                     'term_days',
+                     'auto_generated',
+                     'computer_name',
+                     'os_version',
+                     'bios_serial',
+                     'motherboard_serial',
+                     'cpu_id',
+                     'disk_serial',
+                     'system_uuid',
+                     'subscriber_id'])
+                cursor.execute(
+                    "INSERT INTO {} ({}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)".format(
+                        license_table, DB_COLS_1),
+                    (license_data['license_key'], license_data['status'], license_data['creation_date'], license_data['expiration'], license_data['trial_days'],
+                     license_data['auto_generated'], license_data['device_info'][
+                        'computer_name'], license_data['device_info']['os_version'],
+                     license_data['device_info']['bios_serial'], license_data['device_info'][
+                        'motherboard_serial'], license_data['device_info']['cpu_id'],
+                     license_data['device_info']['disk_serial'], license_data['device_info']['system_uuid'], None,))
+
+        except pymysql.err.Error as e:
+            Log.e(f"AVN ERROR: {e}")
+
+        finally:
+            self.close()
+
+    def license_update(self, license_table, license_data):
+        try:
+            self.conn.ping(reconnect=True)
+            with self.conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE {} SET status=%s, expiration=%s, term_days=%s WHERE license_key=%s".format(
+                        license_table),
+                    (license_data['status'], license_data['expiration'], license_data['trial_days'], license_data['license_key'],))
+
+        except pymysql.err.Error as e:
+            Log.e(f"AVN ERROR: {e}")
+
+        finally:
+            self.close()
 
     def close(self):
         try:
-            if self.connection.open:
-                self.connection.commit()
-                self.connection.close()
+            if self.conn.open:
+                self.conn.commit()
+                self.conn.close()
+
         except:
             pass
 
@@ -333,7 +398,7 @@ class LicenseManager:
         """
         if DB_SERVER == LicenseServer.AIVENIO:
             try:
-                self.avn.connection.ping(reconnect=True)
+                self.avn.conn.ping(reconnect=True)
                 self.avn.close()
                 return True
             except:
@@ -364,12 +429,9 @@ class LicenseManager:
         """
         try:
             if DB_SERVER == LicenseServer.AIVENIO:
-                self.avn.connection.ping(reconnect=True)
-                self.avn.cursor.execute(
-                    "SELECT * FROM {} WHERE license_key=%s".format(self.license_table), (self.device_key,))
-                license_data: dict = self.avn.cursor.fetchone()
-                self.avn.close()
-
+                license_data = self.avn.license_select(
+                    license_table=self.license_table,
+                    device_key=self.device_key)
                 self.license_exists = True if license_data else False
                 if self.license_exists:
                     # Convert datetime fields to iso-format strings
@@ -496,38 +558,14 @@ class LicenseManager:
         try:
 
             if DB_SERVER == LicenseServer.AIVENIO:
-                self.avn.connection.ping(reconnect=True)
                 if not self.license_exists:
-                    DB_COLS_1 = ",".join(
-                        ['license_key',
-                         'status',
-                         'creation_date',
-                         'expiration',
-                         'term_days',
-                         'auto_generated',
-                         'computer_name',
-                         'os_version',
-                         'bios_serial',
-                         'motherboard_serial',
-                         'cpu_id',
-                         'disk_serial',
-                         'system_uuid',
-                         'subscriber_id'])
-                    self.avn.cursor.execute(
-                        "INSERT INTO {} ({}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)".format(
-                            self.license_table, DB_COLS_1),
-                        (license_data['license_key'], license_data['status'], license_data['creation_date'], license_data['expiration'], license_data['trial_days'],
-                         license_data['auto_generated'], license_data['device_info'][
-                             'computer_name'], license_data['device_info']['os_version'],
-                         license_data['device_info']['bios_serial'], license_data['device_info'][
-                             'motherboard_serial'], license_data['device_info']['cpu_id'],
-                         license_data['device_info']['disk_serial'], license_data['device_info']['system_uuid'], None,))
+                    self.avn.license_insert(
+                        license_table=self.license_table,
+                        license_data=license_data)
                 else:
-                    self.avn.cursor.execute(
-                        "UPDATE {} SET status=%s, expiration=%s, term_days=%s WHERE license_key=%s".format(
-                            self.license_table),
-                        (license_data['status'], license_data['expiration'], license_data['trial_days'], license_data['license_key'],))
-                self.avn.close()
+                    self.avn.license_update(
+                        license_table=self.license_table,
+                        license_data=license_data)
 
             if DB_SERVER == LicenseServer.DROPBOX:
                 content = json.dumps(license_data, indent=2).encode('utf-8')
