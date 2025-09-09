@@ -198,8 +198,11 @@ class CurveOptimizer:
                     f"Input CSV must contain the following columns: {required_columns}")
 
             xs = self._dataframe["Relative_time"]
-            i = next(x for x, t in enumerate(xs) if t > 0.5)
-            j = next(x for x, t in enumerate(xs) if t > 2.5)
+            i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
+            j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+            if i == j:
+                j = next((x for x, t in enumerate(
+                    xs) if t > xs[j] + 2.0), j + 1)
 
             avg_resonance_frequency = self._dataframe["Resonance_Frequency"][i:j].mean(
             )

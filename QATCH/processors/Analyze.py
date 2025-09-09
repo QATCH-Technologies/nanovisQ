@@ -261,13 +261,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     t_0p5 = (
                         0
                         if (xs[-1] < 0.5)
-                        else next(x for x, t in enumerate(xs) if t > 0.5)
+                        else next((x for x, t in enumerate(xs) if t > 0.5), 0)
                     )
                     t_1p0 = (
                         100
                         if (len(xs) < 500)
-                        else next(x for x, t in enumerate(xs) if t > 1.0)
+                        else next((x for x, t in enumerate(xs) if t > 1.0), 1)
                     )
+                    if t_0p5 == t_1p0:
+                        t_1p0 = next((x for x, t in enumerate(
+                            xs) if t > xs[t_1p0] + 0.5), t_1p0 + 1)
 
                     # t_1p0, done = QtWidgets.QInputDialog.getDouble(None, 'Input Dialog', 'Confirm rough start index:', value=t_1p0)
 
@@ -5265,13 +5268,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             t_0p5 = (
                 0
                 if xs[t_start] < 0.5
-                else next(x + 0 for x, t in enumerate(xs) if t > 0.5)
+                else next((x for x, t in enumerate(xs) if t > 0.5), 0)
             )
             t_1p0 = (
                 t_start
                 if xs[t_start] < 2.0
-                else next(x + 1 for x, t in enumerate(xs) if t > 2.0)
+                else next((x for x, t in enumerate(xs) if t > 2.0), 1)
             )
+            if t_0p5 == t_1p0:
+                t_1p0 = next((x for x, t in enumerate(
+                    xs) if t > xs[t_1p0] + 1.5), t_1p0 + 1)
 
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
@@ -6355,13 +6361,16 @@ class AnalyzerWorker(QtCore.QObject):
             t_0p5 = (
                 0
                 if xs[t_start] < 0.5
-                else next(x + 0 for x, t in enumerate(xs) if t > 0.5)
+                else next((x for x, t in enumerate(xs) if t > 0.5), 0)
             )
             t_1p0 = (
                 t_start
                 if xs[t_start] < 2.0
-                else next(x + 1 for x, t in enumerate(xs) if t > 2.0)
+                else next((x for x, t in enumerate(xs) if t > 2.0), 1)
             )
+            if t_0p5 == t_1p0:
+                t_1p0 = next((x for x, t in enumerate(
+                    xs) if t > xs[t_1p0] + 1.5), t_1p0 + 1)
 
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
