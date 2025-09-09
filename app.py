@@ -58,7 +58,7 @@ class QATCH:
                 Constants.app_name,
                 Constants.app_version,
                 Constants.app_date
-            )  # arbitrary string, required for Windows Toolbar to display QATCH iocn
+            )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 myappid)
             ctypes.windll.kernel32.SetConsoleTitleW(
