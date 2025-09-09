@@ -621,7 +621,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Predict = QtWidgets.QToolButton()
         self.tBtn_Predict.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Predict.setIcon(icon_predict)  # normal and disabled pixmaps
-        self.tBtn_Predict.setText("Predict")
+        self.tBtn_Predict.setText("Auto-Fit")
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tool_Load.addWidget(self.tBtn_Predict)
 
@@ -938,7 +938,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
         self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.l3.setText("<font color=#ffffff >Predict Model</font> </a>")
+        self.l3.setText("<font color=#ffffff >Auto-Fit Model</font> </a>")
         if USE_FULLSCREEN:
             self.l3.setFixedHeight(50)
         # else:
@@ -3055,15 +3055,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 # no run is loaded
                 PopUp.information(
                     self,
-                    "QModel Not Available",
-                    "Predictions cannot be run at this time.\nPlease load a run first."
+                    "Auto-Fit Not Available",
+                    "Auto-fit cannot be run at this time.\nPlease load a run first."
                 )
                 # special exception case: indicates software declined action
                 raise ConnectionRefusedError()
             if not PopUp.question(
                 self,
                 "Are you sure?",
-                "Any manual points will be lost if you run \"Predict\" again.\n\nProceed?",
+                "Any manual points will be lost if you run \"Auto-Fit\" again.\n\nProceed?",
             ):
                 # special exception case: indicates user declined action
                 raise ConnectionAbortedError()
@@ -3072,7 +3072,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.prediction_restored = False
 
             self.progressBarDiag = QtWidgets.QProgressDialog(
-                "Predicting...", "Cancel", 0, 0, self)
+                "Auto-fitting points...", "Cancel", 0, 0, self)
             # Disable auto-reset and auto-close to retain `wasCanceled()` state
             self.progressBarDiag.setAutoReset(False)
             self.progressBarDiag.setAutoClose(False)
@@ -3106,7 +3106,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_engine = "None"
 
             if Constants.QModel4_predict:
-                Log.w("Predicting points with QModel v4... (may take a few seconds)")
+                Log.w("Auto-fitting points with QModel v4... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3151,12 +3151,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(line)
                     Log.e(e)
                     Log.e(TAG,
-                          f"Error using 'QModel v4'... Using a fallback model for predictions."
+                          f"Error using 'QModel v4'... Using a fallback model for auto-fitting."
                           )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
             if self.model_result == -1 and Constants.QModel3_predict:
-                Log.w("Predicting points with QModel v3... (may take a few seconds)")
+                Log.w("Auto-fitting points with QModel v3... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3202,7 +3202,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(line)
                     Log.e(e)
                     Log.e(TAG,
-                          f"Error using 'QModel v3'... Using a fallback model for predictions."
+                          f"Error using 'QModel v3'... Using a fallback model for auto-fitting."
                           )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
@@ -3238,7 +3238,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                         # print this on 1st indication only
                                         Log.e(
                                             tag=f"[{self.model_engine}]",
-                                            msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                            msg=f"Auto-fit points are out of order! They have been corrected to prevent errors."
                                         )
                                     out_of_order = True
                                     if i == 0:  # first POI
@@ -3334,23 +3334,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
                 Log.i(
-                    f"[Predict] Restored {self.model_engine} predictions for this run.")
+                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
                 for i, pm in enumerate(self.poi_markers):
                     pm.setValue(self.xs[poi_vals[i]])
                 self._log_model_confidences()
                 self.detect_change()
             else:
                 Log.w(
-                    "[Predict] No predictions for this run. Leaving points unchanged.")
+                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
-            Log.d("Restore prediction with no run loaded. No action taken.")
+            Log.d("Attempt to auto-fit with no run loaded. No action taken.")
 
         except ConnectionAbortedError:
-            Log.d("User declined prediction restore prompt. No action taken.")
+            Log.d("User declined auto-fit restore prompt. No action taken.")
 
         except Exception as e:
-            Log.e(f"Prediction restore failed: {str(e)}")
+            Log.e(f"Auto-fit restore failed: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
@@ -3473,7 +3473,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_engine = "None"
                 if Constants.QModel4_predict:
                     Log.w(
-                        "Predicting points with QModel v4... (may take a few seconds)")
+                        "Auto-fitting points with QModel v4... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3518,13 +3518,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
                 if self.model_result == -1 and Constants.QModel3_predict:
                     Log.w(
-                        "Predicting points with QModel v3... (may take a few seconds)")
+                        "Auto-fitting points with QModel v3... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3570,7 +3570,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -4908,9 +4908,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.model_engine = "QModel v4 skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w(
-                        "Predicting points with QModel v4... (may take a few seconds)")
+                        "Auto-fitting points with QModel v4... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Predicting points with QModel v4... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v4... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -4957,7 +4957,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -4967,9 +4967,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.model_engine = "QModel v3 skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel3_predict:
                     Log.w(
-                        "Predicting points with QModel v3... (may take a few seconds)")
+                        "Auto-fitting points with QModel v3... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Predicting points with QModel v3... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v3... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -5018,7 +5018,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
