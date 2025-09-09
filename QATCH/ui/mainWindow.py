@@ -5642,7 +5642,7 @@ class TECTask(QtCore.QThread):
     _tec_update_now = False
     _tec_stop_thread = False
     _tec_debug = False
-    _tec_out_of_sync = False
+    _tec_out_of_sync = 0  # counter, task aborts if it gets to 3
 
     _task_timer = None
     _task_rate = 5000
@@ -5686,17 +5686,19 @@ class TECTask(QtCore.QThread):
             if True:  # was while()
                 try:
                     sp = ""  # only update TEC if changed
+                    # Log.d("TEC debug: {}, {}, {}".format(
+                    #     self.slider_value, self._tec_setpoint, self.slider_down))
                     if (self.slider_value != self._tec_setpoint and not self.slider_down):
                         # Try to update now to re-sync; if that fails, then auto-off.
-                        if not self._tec_out_of_sync:
+                        if self._tec_out_of_sync < 3:
                             Log.d(
                                 "Scheduling TEC for immediate update (out-of-sync)!")
-                            self._tec_out_of_sync = True
+                            self._tec_out_of_sync += 1
                             self._tec_update_now = True
                         else:
                             Log.w(
                                 "Shutting down TEC to re-sync states (out-of-sync)!")
-                            self._tec_out_of_sync = False
+                            self._tec_out_of_sync = 0
                             new_l1 = "[AUTO-OFF ERROR]"
                             self._tec_update("OFF")
                             self._task_stop()
@@ -5706,7 +5708,8 @@ class TECTask(QtCore.QThread):
                                 "background-color: {}".format('red'))
                             return
                     else:
-                        self._tec_out_of_sync = False
+                        # Log.d("TEC is in-sync!")
+                        self._tec_out_of_sync = 0
                     if self._tec_update_now and not self._tec_locked:
                         sp = self.slider_value
                     if self.slider_enable:
@@ -5714,6 +5717,9 @@ class TECTask(QtCore.QThread):
                             f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status...")
                         self._tec_update(sp)
                         self._tec_locked = False
+                        if (self.slider_value == self._tec_setpoint and not self.slider_down):
+                            # Log.d("TEC sync success!")
+                            self._tec_out_of_sync = 0
                     elif not self._tec_stop_thread:
                         if not self._tec_locked:
                             Log.d("Temp Control is locked while main thead is busy!")
