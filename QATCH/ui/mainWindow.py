@@ -3257,7 +3257,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
+                                        if time_running < vector0.min() + 3.0:
                                             labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
@@ -3275,9 +3275,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                             if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
                                                     and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
                                                 self._drop_applied[i] = True
-                                    except:
+                                    except Exception as e:
                                         Log.e(
                                             "Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                        Log.d("ERROR DETAILS:", str(e))
                                         self._drop_applied[i] = True
                             else:
                                 labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
