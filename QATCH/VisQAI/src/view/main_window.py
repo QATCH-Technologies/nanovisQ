@@ -656,7 +656,8 @@ class VisQAIWindow(BaseVisQAIWindow):
             # Do things here to shutdown resources and disable:
 
             # Disable hourly license check timer.
-            self.timer.stop()
+            if hasattr(self, "timer") and self.timer.isActive():
+                self.timer.stop()
 
             # Close database.
             if self.database.is_open:
@@ -675,7 +676,8 @@ class VisQAIWindow(BaseVisQAIWindow):
             # Do things here to initialize resources and enable:
 
             # Enable hourly license check timer.
-            self.timer.start(3600000)
+            if hasattr(self, "timer") and not self.timer.isActive():
+                self.timer.start(3600000)
 
             # Create database objects, and open DB from file.
             self.database = Database(parse_file_key=True)
