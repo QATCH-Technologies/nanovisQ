@@ -398,10 +398,12 @@ class VersionManager:
 
         Args:
             sha (str): 64-character lowercase SHA-256 hex digest of the snapshot.
-            force (bool): Parameter to allow forceful pruning of protected snapshots.
+            force (bool): If True, allows unpinning even when the snapshot is protected.
+                Note: the 'protected' flag remains set, so pruning will still not remove it.
         Raises:
             ValueError: If `sha` is not a valid SHA-256 hex digest.
             KeyError: If no snapshot with the given `sha` exists.
+            PermissionError: If attempting to unpin a protected snapshot without force=True.
         """
         if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
             raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
