@@ -80,21 +80,19 @@ except ImportError:
 try:
     from QATCH.QModel.src.models.static_v3.q_model_data_processor import QDataProcessor
     from QATCH.models.ModelData import ModelData
-    from QATCH.QModel.src.models.static_v2.q_image_clusterer import QClusterer
     from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
     from QATCH.common.architecture import Architecture
 except ImportError as e:
     Log().w("Could not import QATCH core modules: %s", e)
     from q_model_data_processor import QDataProcessor
     from ModelData import ModelData
-    from q_image_clusterer import QClusterer
     from q_predictor import QPredictor
 
 PLOTTING = False
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
-TAG = ["QModel V3"]
+TAG = "[QModel V3]"
 
 
 class QModelPredictor:
@@ -321,17 +319,10 @@ class QModelPredictor:
                 "QModel", "SavedModels", "qmodel_v2"
             )
 
-        cluster_model_path = os.path.join(base_path, "cluster.joblib")
         predict_model_template = os.path.join(base_path, "QMultiType_{}.json")
 
         # Initialize clusterer
-        clusterer = QClusterer(model_path=cluster_model_path)
-        try:
-            label = clusterer.predict_label(file_buffer)
-        except Exception as e:
-            label = 0
-            Log.w(
-                f"Failed clustering in QModel v2, defaulting to label 0: {e}")
+        label = 0
 
         # Reset buffer for predictor
         try:

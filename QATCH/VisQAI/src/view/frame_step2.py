@@ -188,7 +188,10 @@ class FrameStep2(QtWidgets.QDialog):
 
         # Signals
         self.select_model_btn.clicked.connect(self.model_dialog.show)
-        self.model_dialog.fileSelected.connect(self.model_selected)
+        global_handler = getattr(
+            self.parent, 'set_global_model_path', None)
+        self.model_dialog.fileSelected.connect(
+            global_handler if callable(global_handler) else self.model_selected)
         self.btn_resume.clicked.connect(
             lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
         self.btn_start.clicked.connect(

@@ -22,6 +22,8 @@ class GH_Interface:
         try:
             update_result = self.artifacts.check_for_update()
             labelweb2 = "ONLINE"
+        except NotImplementedError:
+            raise
         except:
             Log.e("HTTP Error, assuming we must be offline!")
 

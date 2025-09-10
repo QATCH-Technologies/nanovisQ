@@ -533,8 +533,10 @@ class QForecastDataProcessor:
                 raise ValueError(f"Column '{col}' is missing from DataFrame.")
 
         xs = df["Relative_time"]
-        i = next((x for x, t in enumerate(xs) if t > 0.5), None)
-        j = next((x for x, t in enumerate(xs) if t > 2.5), None)
+        i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
+        j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+        if i == j:
+            j = next((x for x, t in enumerate(xs) if t > xs[j] + 2.0), j + 1)
 
         avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()
         avg_diss = df["Dissipation"].iloc[i:j].mean()

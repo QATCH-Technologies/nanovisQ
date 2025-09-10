@@ -171,11 +171,11 @@ class Worker:
                      spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
 
                 # Create and start live forecaster
-                self._forecaster_process = FillForecasterProcess(
-                    self._queueLog,
-                    self._forecaster_in,
-                    self._forecaster_out)
-                self._forecaster_process.start()
+                # self._forecaster_process = FillForecasterProcess(
+                #     self._queueLog,
+                #     self._forecaster_in,
+                #     self._forecaster_out)
+                # self._forecaster_process.start()
 
                 # Prepopulate frequency buffer before starting
                 for i in range(len(self._data0_buffer)):

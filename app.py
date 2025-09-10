@@ -1,4 +1,11 @@
 from multiprocessing import freeze_support
+
+# NOTE: Tensorflow 2.19 does not load properly outside of a DEBUG environment
+# if/when you try to "lazy load" the module at time-of-use, causes app crash.
+# Importing it here, at the earliest possible point of app load solves issue.
+import tensorflow as tf
+from tensorflow import keras
+
 import sys
 import os  # add
 import time
@@ -51,7 +58,7 @@ class QATCH:
                 Constants.app_name,
                 Constants.app_version,
                 Constants.app_date
-            )  # arbitrary string, required for Windows Toolbar to display QATCH iocn
+            )  # arbitrary string, required for Windows Toolbar to display QATCH icon
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
                 myappid)
             ctypes.windll.kernel32.SetConsoleTitleW(

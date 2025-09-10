@@ -21,6 +21,7 @@ import random
 from sklearn.svm import OneClassSVM
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import savgol_filter
+from QATCH.common.logger import Logger as Log
 
 
 class DataProcessorV4:
@@ -97,6 +98,8 @@ class DataProcessorV4:
             ValueError: If the input DataFrame is empty or does not contain required columns.
         """
         def compute_ocsvm_score(shift_series: pd.Series):
+
+            shift_series.fillna(0, inplace=True)
             if shift_series.empty:
                 raise ValueError("shift_series is empty.")
             X = shift_series.values.reshape(-1, 1)
@@ -135,8 +138,11 @@ class DataProcessorV4:
                         f"Column '{col}' is missing from DataFrame.")
 
             xs = df["Relative_time"]
-            i = next((x for x, t in enumerate(xs) if t > 0.5), None)
-            j = next((x for x, t in enumerate(xs) if t > 2.5), None)
+            i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
+            j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+            if i == j:
+                j = next((x for x, t in enumerate(
+                    xs) if t > xs[j] + 2.0), j + 1)
 
             avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()
             avg_diss = df["Dissipation"].iloc[i:j].mean()
@@ -179,7 +185,6 @@ class DataProcessorV4:
         )
         df['Dissipation_DoG_SVM_Score'] = compute_ocsvm_score(
             df['Dissipation_DoG_shift'])
-
         # `Resonance_Frequency` DoG processing
         df['Resonance_Frequency_DoG'] = compute_DoG(
             df, col='Resonance_Frequency')
@@ -197,6 +202,7 @@ class DataProcessorV4:
         df['Difference_DoG_baseline'], df['Difference_DoG_shift'] = compute_rolling_baseline_and_shift(
             df['Difference_DoG'], baseline_window
         )
+
         df['Difference_DoG_SVM_Score'] = compute_ocsvm_score(
             df['Difference_DoG_shift'])
 

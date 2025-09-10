@@ -643,8 +643,10 @@ class QDataPipeline:
 
         # Calculate the average value of 'Dissipation' and 'Resonance_Frequency' columns
         xs = self.__dataframe__["Relative_time"]
-        i = next(x + 0 for x, t in enumerate(xs) if t > 0.5)
-        j = next(x + 1 for x, t in enumerate(xs) if t > 2.5)
+        i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
+        j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+        if i == j:
+            j = next((x for x, t in enumerate(xs) if t > xs[j] + 2.0), j + 1)
         avg_resonance_frequency = self.__dataframe__[
             "Resonance_Frequency"][i:j].mean()
         avg_dissipation = self.__dataframe__["Dissipation"][i:j].mean()

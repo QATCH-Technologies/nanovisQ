@@ -17,7 +17,6 @@ from itertools import chain
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow import keras
 import joblib
 from typing import Dict, List, Tuple, Optional, Union
 import warnings
@@ -25,10 +24,6 @@ import os
 import json
 from datetime import datetime
 warnings.filterwarnings('ignore')
-
-# Configure TensorFlow for better compatibility
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_USE_LEGACY_KERAS'] = '1'
 
 # Try to use legacy Keras if available
 try:
@@ -268,9 +263,6 @@ class QModelPredictorV4:
         # Load with keras v2 compatibility
         if not model_loaded:
             try:
-                Log.d("Attempting to load with Keras v2 compatibility...")
-                os.environ['TF_USE_LEGACY_KERAS'] = '1'
-
                 try:
                     from keras.src.saving import load_model
                 except ImportError:
