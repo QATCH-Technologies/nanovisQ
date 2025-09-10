@@ -2448,7 +2448,7 @@ class MainWindow(QtWidgets.QMainWindow):
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.basename(
+                os.makedirs(os.path.dirname(
                     machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
