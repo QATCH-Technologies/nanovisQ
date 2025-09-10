@@ -15,9 +15,9 @@ _OBJECTS_DIR = "objects"
 _DEFAULT_RETENTION = 50
 _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
-# NOTE: VisQAI-base.zip library will be pruned with this class after the retention period.
-#       Software should invoke front-end protections to automatically pin the base library
-#       and prevent it from being unpinned by the user.
+# NOTE: VisQAI-base.zip is treated as a protected artifact by VersionManager.
+#       It is auto-pinned on commit and marked as protected; prune will never remove it.
+#       Unpinning it requires force=True, but the 'protected' flag remains to guard against pruning.
 
 
 class VersionManager:
@@ -218,6 +218,8 @@ class VersionManager:
         sha = self._hash_file(model_path)
         obj_dir = self._object_path(sha)
         metadata = metadata or {}
+        # Disallow caller-supplied 'protected'; only VersionManager sets it.
+        metadata.pop("protected", None)
         committed_at = datetime.now().astimezone().replace(
             microsecond=0).isoformat()
         meta = {
