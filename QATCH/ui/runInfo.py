@@ -1748,7 +1748,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_proteins(self):
         old_proteins = self.proteins.copy()
-        new_proteins = self.protein_types_multiline.toPlainText().splitlines()
+        new_proteins_raw = self.protein_types_multiline.toPlainText().splitlines()
+        new_proteins = [n.strip() for n in new_proteins_raw if n.strip()]
         for name in new_proteins:
             name = name.strip()
             if name not in old_proteins and len(name):
@@ -1767,7 +1768,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_buffers(self):
         old_buffers = self.buffers.copy()
-        new_buffers = self.buffer_types_multiline.toPlainText().splitlines()
+        new_buffers_raw = self.buffer_types_multiline.toPlainText().splitlines()
+        new_buffers = [n.strip() for n in new_buffers_raw if n.strip()]
         for name in new_buffers:
             name = name.strip()
             if name not in old_buffers and len(name):
@@ -1786,7 +1788,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_surfactants(self):
         old_surfactants = self.surfactants.copy()
-        new_surfactants = self.surfactant_types_multiline.toPlainText().splitlines()
+        new_surfactants_raw = self.surfactant_types_multiline.toPlainText().splitlines()
+        new_surfactants = [n.strip() for n in new_surfactants_raw if n.strip()]
         for name in new_surfactants:
             name = name.strip()
             if name not in old_surfactants and len(name):
@@ -1805,12 +1808,13 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_stabilizers(self):
         old_stabilizers = self.stabilizers.copy()
-        new_stabilizers = self.stabilizer_types_multiline.toPlainText().splitlines()
+        new_stabilizers_raw = self.stabilizer_types_multiline.toPlainText().splitlines()
+        new_stabilizers = [n.strip() for n in new_stabilizers_raw if n.strip()]
         for name in new_stabilizers:
             name = name.strip()
             if name not in old_stabilizers and len(name): \
                     # TODO: fix enc_id
-                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=1, name=name))
+                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=0, name=name))
                 self.stabilizers.append(name)
         for name in old_stabilizers:
             if name not in new_stabilizers:
@@ -1824,12 +1828,13 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def save_salts(self):
         old_salts = self.salts.copy()
-        new_salts = self.salt_types_multiline.toPlainText().splitlines()
+        new_salts_raw = self.salt_types_multiline.toPlainText().splitlines()
+        new_salts = [n.strip() for n in new_salts_raw if n.strip()]
         for name in new_salts:
             name = name.strip()
             if name not in old_salts and len(name): \
                     # TODO: fix enc_id
-                self.ing_ctrl.add_salt(Salt(enc_id=id, name=name))
+                self.ing_ctrl.add_salt(Salt(enc_id=0, name=name))
                 self.salts.append(name)
         for name in old_salts:
             if name not in new_salts:

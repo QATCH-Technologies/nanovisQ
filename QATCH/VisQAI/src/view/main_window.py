@@ -5,7 +5,7 @@ try:
     from QATCH.common.userProfiles import UserProfiles, UserRoles
     from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
-except:
+except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
@@ -24,7 +24,6 @@ from scipy.optimize import curve_fit
 import datetime as dt
 from types import SimpleNamespace
 import webbrowser
-from typing import Optional
 
 try:
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
@@ -49,9 +48,9 @@ except (ModuleNotFoundError, ImportError):
 
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
+        """BASE CLASS DEFINITION"""
         super().__init__(parent)
         self.parent = parent
-        """BASE CLASS DEFINITION"""
 
         self.setWindowTitle("VisQ.AI Base Class")
         self.setMinimumSize(900, 600)
@@ -127,12 +126,19 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         if license_manager is not None:
             try:
                 is_valid_license, message, license_data = license_manager.validate_license()
-                status = license_data.get('status', 'unknown')
-                expiration_str = license_data.get('expiration', '')
+                status_raw = license_data.get('status', LicenseStatus.INACTIVE)
+                if isinstance(status_raw, str):
+                    try:
+                        status = LicenseStatus(status_raw)
+                    except ValueError:
+                        status = LicenseStatus.INACTIVE
+                else:
+                    status = status_raw
+                expiration_str: str = license_data.get('expiration', '')
                 if is_valid_license and expiration_str and status != LicenseStatus.ADMIN:
                     try:
-                        expiration_date = dt.datetime.fromisoformat(
-                            expiration_str)
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
                         now = dt.datetime.now()
                         days_remaining = (expiration_date - now).days
                         if days_remaining <= 7:
@@ -169,11 +175,11 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
             elif status == LicenseStatus.ACTIVE:
                 self.setCentralWidget(self.tab_widget)
-                expiration_str = license_data.get('expiration', '')
+                expiration_str: str = license_data.get('expiration', '')
                 if expiration_str:
                     try:
-                        expiration_date = dt.datetime.fromisoformat(
-                            expiration_str)
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
                         days_remaining = (expiration_date -
                                           dt.datetime.now()).days
                         self._update_status_bar(
@@ -184,11 +190,11 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
             elif status == LicenseStatus.TRIAL:
                 self.setCentralWidget(self.tab_widget)
-                expiration_str = license_data.get('expiration', '')
+                expiration_str: str = license_data.get('expiration', '')
                 if expiration_str:
                     try:
-                        expiration_date = dt.datetime.fromisoformat(
-                            expiration_str)
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
                         days_remaining = (expiration_date -
                                           dt.datetime.now()).days
 
@@ -204,7 +210,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                             "Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
-                self._update_status_bar(f"Licensed: {status}", permanent=True)
+                status_text = status.value if isinstance(status, LicenseStatus) else str(status)
+                self._update_status_bar(f"Licensed: {status_text}", permanent=True)
 
             return True
 
@@ -215,15 +222,9 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 "License Required", permanent=True, style="color: red;")
             return False
         try:
-            file_stats = os.stat(DB_PATH)
-            creation_time = file_stats.st_ctime
-            creation_time -= creation_time % 86400
-            local_time = dt.datetime.now().astimezone()
-            utc_offset = local_time.utcoffset()
-            if utc_offset:
-                creation_time -= utc_offset.total_seconds()
-            current_time = dt.datetime.now().timestamp()
-            time_ago_seconds = current_time - creation_time
+            creation_ts = os.stat(DB_PATH).st_ctime
+            creation_dt = dt.datetime.fromtimestamp(creation_ts)
+            time_ago_seconds = (dt.datetime.now() - creation_dt).total_seconds()
             time_allowed_secs = dt.timedelta(
                 days=free_preview_period).total_seconds()
 
@@ -305,13 +306,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 is_valid, message, data = license_manager.refresh_license()
 
                 # Update UI in main thread
-                from PyQt5.QtCore import QMetaObject, Qt, Q_ARG
-                QMetaObject.invokeMethod(
-                    self,
-                    "check_license",
-                    Qt.QueuedConnection,
-                    Q_ARG(object, license_manager)
-                )
+                QtCore.QTimer.singleShot(0, lambda lm=license_manager: self.check_license(lm))
 
             except Exception as e:
                 Log.e(f"Background license refresh failed: {e}")
@@ -330,7 +325,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         """BASE CLASS DEFINITION"""
         pass
 
-    def enable(self, bool=False):
+    def enable(self, enabled=False):
         """BASE CLASS DEFINITION"""
         pass
 
@@ -660,6 +655,9 @@ class VisQAIWindow(BaseVisQAIWindow):
             # VisQ.AI UI is not in foreground, Mode not selected
             # Do things here to shutdown resources and disable:
 
+            # Disable hourly license check timer.
+            self.timer.stop()
+
             # Close database.
             if self.database.is_open:
                 self.database.close()
@@ -675,6 +673,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         else:
             # VisQ.AI UI is now in foreground, Mode is selected
             # Do things here to initialize resources and enable:
+
+            # Enable hourly license check timer.
+            self.timer.start(3600000)
 
             # Create database objects, and open DB from file.
             self.database = Database(parse_file_key=True)

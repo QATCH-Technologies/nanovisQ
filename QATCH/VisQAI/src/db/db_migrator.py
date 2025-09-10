@@ -981,7 +981,10 @@ class DatabaseMigrator:
 # Example usage
 def example_usage():
     import os
-    from db import Database
+    try:
+        from db import Database
+    except (ModuleNotFoundError, ImportError):
+        from QATCH.VisQAI.src.db.db import Database
 
     db_path = os.path.join('assets', 'app.db')
     db = Database(db_path, parse_file_key=True)
@@ -1015,7 +1018,6 @@ def example_usage():
     for msg in messages:
         print(msg)
 
-    migrator.register_migration()
     # Perform actual migration
     success, messages = migrator.migrate(
         target_version=MigrationVersion(1, 1, 0),

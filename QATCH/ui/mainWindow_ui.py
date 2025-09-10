@@ -411,7 +411,7 @@ class Ui_Main(object):
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(True)
                 self.parent.VisQAIWin.check_license(
-                    self.parent._license_manager)
+                    getattr(self.parent, "_license_manager", None))
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(

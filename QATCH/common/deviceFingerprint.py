@@ -65,7 +65,12 @@ class DeviceFingerprint:
 
     @staticmethod
     def run_command(command: str, shell: bool = True, use_powershell: bool = False) -> str:
-        """Execute a system command and return its output.
+        """Execute an arbitrary given system command string and return its output.
+
+        WARNING: This method has security implications if misused. In its current usage,
+        the caller passes in commands that are always hardcoded, with no opportunity for
+        injection of malicious commands by users; however the function accepts arbitrary
+        command strings which could potentially be a security risk if it is ever misused.
 
         Args:
             command: The command string to execute.

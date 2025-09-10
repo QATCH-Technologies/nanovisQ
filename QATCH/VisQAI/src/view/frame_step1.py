@@ -1146,10 +1146,10 @@ class FrameStep1(QtWidgets.QDialog):
         remove all runs. If confirmed, clears all internal data 
         structures (`all_files` and `loaded_features`), removes all 
         items from the list view model, resets the placeholder text, 
-        and clears any active file selection.
+        and clears any active file selections, suppressing prompts.
 
-        Raises:
-            Exception: If an unexpected error occurs while clearing runs.
+        Any errors encountered will be logged to `Log.e`.
+        
         """
         reply = QtWidgets.QMessageBox.question(
             self,
@@ -1166,9 +1166,10 @@ class FrameStep1(QtWidgets.QDialog):
                     self.loaded_features.clear()
                 self.model.clear()
                 self.list_view_addPlaceholderText()
-                self.file_selected(None)
+                # Discard any pending changes and suppress save prompts when bulk-clearing.
+                self.file_selected(None, cancel=True)
             except Exception as e:
-                raise e
+                Log.e("Failed to remove all runs.", str(e))
 
     def user_run_removed(self):
         try:
@@ -1253,8 +1254,8 @@ class FrameStep1(QtWidgets.QDialog):
                     # Draw page header/title
                     font.setBold(True)
                     painter.setFont(font)
-                    painter.drawText(cell_pad_left, y,
-                                     f"Suggested Experiment {i+1}")
+                    title = "Suggested Experiment" if self.step == 2 else ("Prediction" if self.step == 5 else "Formulation")
+                    painter.drawText(cell_pad_left, y, f"{title} {i+1}")
                     y += row_height
 
                     # Draw headers
@@ -1759,10 +1760,11 @@ class FrameStep1(QtWidgets.QDialog):
             in_temperature) else np.nan
         if np.isnan(avg_temp):
             self.run_temperature.setText("(Unknown)")
+            run_features["Value"][15] = ""
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
+            run_features["Value"][15] = f"{avg_temp:0.2f}"
 
-        run_features["Value"][15] = self.run_temperature.text().rstrip("C")
         self.feature_table.setData(run_features)
         self.hide_extended_features()
 

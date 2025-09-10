@@ -23,15 +23,35 @@ import hashlib
 import threading
 
 import pymysql
-import cryptography
+import cryptography  # required by pymysql
 import zipfile
 import base64
 
 try:
     from QATCH.common.logger import Logger as Log
     from QATCH.common.deviceFingerprint import DeviceFingerprint
-except:
+    from QATCH.common.architecture import Architecture
+except (ModuleNotFoundError, ImportError):
     print("Running standalone, or import of main app logging and/or other modules failed.")
+    class Log:
+        @staticmethod
+        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        @staticmethod
+        def i(tag, msg=""): print("INFO:", tag, msg)
+        @staticmethod
+        def w(tag, msg=""): print("WARNING:", tag, msg)
+        @staticmethod
+        def e(tag, msg=""): print("ERROR:", tag, msg)
+    class DeviceFingerprint:  # minimal fallback
+        @staticmethod
+        def generate_key() -> str: return "THIS-IS-AN-UNKNOWN-KEY"
+        @staticmethod
+        def get_device_summary() -> dict: return {
+            "license_key": "THIS-IS-AN-UNKNOWN-KEY", 
+            "reason": "standalone minimal fallback class"}
+    class Architecture:  # minimal fallback
+        @staticmethod
+        def get_path()-> str: return os.getcwd()
 
 TAG = "[LicenseManager]"
 
@@ -147,8 +167,8 @@ class AVN_Database:
                 self.conn.commit()
                 self.conn.close()
 
-        except:
-            pass
+        except Exception as e:
+            Log.w(TAG, f"AVN close() suppressed error: {e}")
 
     def __del__(self):
         self.close()
@@ -156,15 +176,23 @@ class AVN_Database:
     @staticmethod
     def _load_avn_key_store():
         DB_CONFIG = {}
-        with zipfile.ZipFile("QATCH/resources/avn_key_store.zip", 'r') as zip_key:
-            pem_file = zip_key.read("db_config.pem").splitlines()
-            pem_file[0] = b""  # remove begin line
-            pem_file[-1] = b""  # remove end line
-            pem_file[1] = pem_file[1][4:]  # remove "AVN_"
-            pem_file = b"".join(pem_file)
-            DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
-            DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
-            DB_CONFIG['defer_connect'] = True
+        working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+        bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/")  # otherwise, use bundled resource path
+        # prefer working keystore, if it exists
+        keystore = os.path.join(working_resource_path, "avn_key_store.zip")
+        if not os.path.exists(keystore):
+            # use bundled keystore, if none in working folder
+            keystore = os.path.join(bundled_resource_path, "avn_key_store.zip")
+        if os.path.exists(keystore):
+            with zipfile.ZipFile("QATCH/resources/avn_key_store.zip", 'r') as zip_key:
+                pem_file = zip_key.read("db_config.pem").splitlines()
+                pem_file[0] = b""  # remove begin line
+                pem_file[-1] = b""  # remove end line
+                pem_file[1] = pem_file[1][4:]  # remove "AVN_"
+                pem_file = b"".join(pem_file)
+                DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
+                DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
+                DB_CONFIG['defer_connect'] = True
         return DB_CONFIG
 
 
@@ -362,9 +390,13 @@ class LicenseManager:
             background_refresh (bool, optional): Refresh cache in background when expired. 
                 Defaults to True.
         """
+        # Compute device identity first; used by both backends
+        self.device_key = DeviceFingerprint.generate_key()
+        self.device_summary = DeviceFingerprint.get_device_summary()
+
         if DB_SERVER == LicenseServer.AIVENIO:
             self.avn = AVN_Database()
-            self.license_table = license_directory.split("-")[1]
+            self.license_table = "licenses"
             self.license_exists = False
 
         if DB_SERVER == LicenseServer.DROPBOX:
@@ -373,8 +405,6 @@ class LicenseManager:
             self.license_filename = f"{self.device_key}.json"
             self.license_filepath = f"{self.license_directory}/{self.license_filename}"
 
-        self.device_key = DeviceFingerprint.generate_key()
-        self.device_summary = DeviceFingerprint.get_device_summary()
         self.auto_register_trial = auto_register_trial
         self.trial_duration_days = trial_duration_days
 
@@ -401,8 +431,8 @@ class LicenseManager:
                 self.avn.conn.ping(reconnect=True)
                 self.avn.close()
                 return True
-            except:
-                Log.e("Failed to connect to AVN database for license checking.")
+            except Exception as e:
+                Log.e(TAG, f"Failed to connect to AVN database for license checking: {e}")
 
         if DB_SERVER == LicenseServer.DROPBOX:
             try:
@@ -682,7 +712,10 @@ class LicenseManager:
                 else:
                     return False, f"Failed to auto-register trial: {message}", {}
             else:
-                return False, f"No license file found for device: {self.license_filename}", {}
+                if DB_SERVER == LicenseServer.DROPBOX:
+                    return False, f"No license file found for device: {self.license_filename}", {}
+                else:
+                    return False, f"No license record found for device: {self.device_key}", {}
 
         # Verify the key in the file matches this device
         file_key = license_data.get('license_key', '')
@@ -693,7 +726,16 @@ class LicenseManager:
             return False, f"License key mismatch. File key: {file_key}, Device key: {self.device_key}", {}
 
         # Check license status
-        status = license_data.get('status', LicenseStatus.INACTIVE)
+        raw_status = license_data.get('status', LicenseStatus.INACTIVE)
+        if isinstance(raw_status, str):
+            try:
+                status = LicenseStatus(raw_status)
+            except ValueError:
+                status = LicenseStatus.INACTIVE
+        elif isinstance(raw_status, LicenseStatus):
+            status = raw_status
+        else:
+            status = LicenseStatus.INACTIVE
 
         if status == LicenseStatus.INACTIVE:
             return False, f"License is inactive{source_msg}", license_data
@@ -751,7 +793,11 @@ class LicenseManager:
         if license_data is None:
             return False, "No license file found to extend", {}
 
-        status = license_data.get('status', LicenseStatus.INACTIVE)
+        raw_status = license_data.get('status', LicenseStatus.INACTIVE)
+        try:
+            status = LicenseStatus(raw_status) if isinstance(raw_status, str) else raw_status
+        except ValueError:
+            status = LicenseStatus.INACTIVE
         if status not in [LicenseStatus.TRIAL, LicenseStatus.ACTIVE]:
             return False, f"Cannot extend license with status: {status}", license_data
 

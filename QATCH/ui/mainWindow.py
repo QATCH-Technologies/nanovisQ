@@ -392,8 +392,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
         fingerprint_txt = DeviceFingerprint.get_key()
         if fingerprint_txt is not None:
             self.menubar[3].addSeparator()
-            fingerprint = self.menubar[3].addAction(fingerprint_txt)
-            fingerprint.setEnabled(False)
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+            )
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -2475,33 +2478,38 @@ class MainWindow(QtWidgets.QMainWindow):
                 if exec_migrations:
                     from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
                     tmp_path = machine_database.create_temp_decrypt()
-                    migrator = DatabaseMigrator(tmp_path, backup_dir=None)
-                    current_version = migrator.get_current_version()
-                    target_version = MigrationVersion(1, 1, 0)
-                    if current_version < target_version:
-                        new_migration = Migration(
-                            from_version=current_version,
-                            to_version=target_version,
-                            up_sql=[
-                                ""
-                            ],
-                            down_sql=[
-                                ""
-                            ],
-                            data_transform=lambda conn: conn.execute(
-                                ""
-                            ),
-                            autofill_defaults={
-                                ""
-                            },
-                            description=""
-                        )
-                        migrator.register_migration(new_migration)
-                        status, msgs = migrator.migrate(
-                            target_version=MigrationVersion(1, 1, 0), dry_run=True)
-                        if status == MigrationStatus.FAILED:
-                            Log.e("Migration failed!")
-                        machine_database.cleanup_temp_decrypt()
+                    try:
+                        if tmp_path:
+                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            current_version = migrator.get_current_version()
+                            target_version = MigrationVersion(1, 1, 0)
+                            if current_version < target_version:
+                                new_migration = Migration(
+                                    from_version=current_version,
+                                    to_version=target_version,
+                                    up_sql=[
+                                        ""
+                                    ],
+                                    down_sql=[
+                                        ""
+                                    ],
+                                    data_transform=lambda conn: conn.execute(
+                                        ""
+                                    ),
+                                    autofill_defaults={
+                                        ""
+                                    },
+                                    description=""
+                                )
+                                migrator.register_migration(new_migration)
+                                status, msgs = migrator.migrate(
+                                    target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                                if not status:
+                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
+                        else:
+                            Log.w("Skipping migration check: could not create temp decrypted DB.")
+                    finally:
+                            machine_database.cleanup_temp_decrypt()
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -4731,9 +4739,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self._dbx_connection = dropbox.Dropbox(access_token)
             self._license_manager = LicenseManager(
                 dbx_conn=self._dbx_connection)
-            is_valid, messages, license_data = self._license_manager.validate_license(
+            is_valid, message, license_data = self._license_manager.validate_license(
                 auto_create_if_missing=True)
-            Log.d(f"{is_valid}, {messages}, {license_data}")
+            Log.d(f"License valid={is_valid}; message={message}")
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(

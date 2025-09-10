@@ -8687,7 +8687,10 @@ class AnalyzerWorker(QtCore.QObject):
                     # high_shear_counts = np.count_nonzero(
                     #     [high_shear_5x, high_shear_15x])
                     idx_start = 0
-                    idx_end = max(2, values_to_average - 1)
+                    # keep within current arrays (handles extra high-shear rows appended at end)
+                    idx_end = min(len(in_viscosity) - 1,
+                                  len(in_shear_rate) - 1,
+                                  max(2, values_to_average - 1))
                     visc_avg = np.average(in_viscosity[idx_start:idx_end+1])
                     visc_std = np.std(in_viscosity[idx_start:idx_end+1])
                     shear_min = in_shear_rate[idx_start]
@@ -8705,9 +8708,9 @@ class AnalyzerWorker(QtCore.QObject):
                               verticalalignment='center',
                               color='blue',
                               fontsize=10)
-                except:
+                except Exception as e:
                     Log.e(
-                        "Failed to show average viscosity over shear rate range summary text.")
+                        "Failed to show average viscosity summary.", str(e))
             self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
             self.parent.results_split.setSizes(
                 self.parent.get_results_split_auto_sizes()

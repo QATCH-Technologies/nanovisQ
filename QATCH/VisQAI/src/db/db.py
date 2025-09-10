@@ -780,6 +780,11 @@ class Database:
                 suffix='.db', prefix='app_temp_')
             temp_path = Path(temp_path)
             os.close(temp_fd)
+            try:
+                os.chmod(temp_path, 0o600)
+            except OSError:
+                # Best-effort; continue on platforms where chmod is a no-op
+                pass
             temp_conn = sqlite3.connect(str(temp_path))
             sql_script = "\n".join(self.conn.iterdump())
             temp_conn.executescript(sql_script)
@@ -793,6 +798,12 @@ class Database:
 
         except Exception as e:
             Log.e(f"Failed to create temporary decrypted database: {e}")
+            # Best-effort cleanup of partially created file
+            try:
+                if 'temp_path' in locals() and Path(temp_path).exists():
+                    Path(temp_path).unlink()
+            except OSError as oe:
+                Log.e(f"Failed to remove temp file {temp_path}: {oe}")
             return None
 
     def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
