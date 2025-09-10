@@ -1,10 +1,11 @@
 try:
+    from typing import Optional, Tuple
     from QATCH.ui.popUp import PopUp
     from QATCH.core.constants import Constants
     from QATCH.common.userProfiles import UserProfiles, UserRoles
     from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
-except:
+except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
@@ -16,15 +17,16 @@ except:
 from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
+
 import os
 import hashlib
 from scipy.optimize import curve_fit
 import datetime as dt
 from types import SimpleNamespace
 import webbrowser
-from typing import Optional
 
 try:
+    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from src.models.formulation import Formulation
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
@@ -34,6 +36,7 @@ try:
     from src.view.horizontal_tab_bar import HorizontalTabBar
 
 except (ModuleNotFoundError, ImportError):
+    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
@@ -47,13 +50,13 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         """BASE CLASS DEFINITION"""
         super().__init__(parent)
+        self.parent = parent
 
         self.setWindowTitle("VisQ.AI Base Class")
         self.setMinimumSize(900, 600)
 
         # Create dummy database object for base class.
         self.database = SimpleNamespace(is_open=False)
-
         # Create dummy UI for main tab widget
         self.tab_widget = QtWidgets.QDialog()
 
@@ -115,65 +118,204 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.trial_layout.addWidget(self.trial_label)
         self.trial_layout.addLayout(self.trial_buttons)
 
-    def check_license(self) -> bool:
+    def check_license(self, license_manager: Optional[LicenseManager]) -> bool:
         free_preview_period = 90  # days
-        # TODO: dummy check, always false for now
         is_valid_license = False
-        if not is_valid_license:
-            # how long ago did the preview period start?
-            if not os.path.exists(DB_PATH):
-                Log.e("No VisQAI license or trial found.")
-                self.setCentralWidget(self._expired_widget)
-                return is_valid_license
+        message = ""
+        license_data = {}
+        if license_manager is not None:
+            try:
+                is_valid_license, message, license_data = license_manager.validate_license()
+                status_raw = license_data.get('status', LicenseStatus.INACTIVE)
+                if isinstance(status_raw, str):
+                    try:
+                        status = LicenseStatus(status_raw)
+                    except ValueError:
+                        status = LicenseStatus.INACTIVE
+                else:
+                    status = status_raw
+                expiration_str: str = license_data.get('expiration', '')
+                if is_valid_license and expiration_str and status != LicenseStatus.ADMIN:
+                    try:
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
+                        now = dt.datetime.now()
+                        days_remaining = (expiration_date - now).days
+                        if days_remaining <= 7:
+                            message += f"License expires soon!"
+                        elif days_remaining <= 30:
+                            message += f"Consider renewal"
 
-            file_stats = os.stat(DB_PATH)
+                    except (ValueError, TypeError):
+                        pass
+                if license_manager.cache_enabled:
+                    cache_status = license_manager.get_cache_status()
+                    if cache_status.get('cache_expired', False):
+                        Log.d(
+                            f"Cache expired, background refresh: {cache_status.get('refresh_thread_active', False)}")
 
-            # Get creation time (st_ctime on Unix is actually change time,
-            # but on Windows it's creation time)
-            # For true creation time on all platforms, use st_birthtime if available
-            if hasattr(file_stats, 'st_birthtime'):
-                creation_time = file_stats.st_birthtime  # macOS/BSD
+            except Exception as e:
+                Log.e(f"License validation error: {e}")
+                is_valid_license = False
+                message = f"License check failed: {str(e)}"
+                license_data = {}
+        else:
+            is_valid_license = False
+            message = "License manager not initialized!"
+            license_data = {}
+        Log.i(f"{message}")
+
+        # Handle valid license
+        if is_valid_license:
+            status = license_data.get('status', 'unknown')
+            if status == LicenseStatus.ADMIN:
+                self.setCentralWidget(self.tab_widget)
+                self._update_status_bar(
+                    "Licensed: Administrator", permanent=True)
+
+            elif status == LicenseStatus.ACTIVE:
+                self.setCentralWidget(self.tab_widget)
+                expiration_str: str = license_data.get('expiration', '')
+                if expiration_str:
+                    try:
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
+                        self._update_status_bar(
+                            f"Licensed: {days_remaining} days remaining", permanent=True)
+                    except:
+                        self._update_status_bar(
+                            "Licensed: Active", permanent=True)
+
+            elif status == LicenseStatus.TRIAL:
+                self.setCentralWidget(self.tab_widget)
+                expiration_str: str = license_data.get('expiration', '')
+                if expiration_str:
+                    try:
+                        iso = expiration_str.replace('Z', '+00:00')
+                        expiration_date = dt.datetime.fromisoformat(iso)
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
+
+                        if days_remaining <= 7:
+                            self._update_status_bar(f"Trial expires in {days_remaining} days!",
+                                                    permanent=True,
+                                                    style="color: orange;")
+                        else:
+                            self._update_status_bar(f"Trial: {days_remaining} days remaining",
+                                                    permanent=True)
+                    except:
+                        self._update_status_bar(
+                            "Trial: Active", permanent=True)
             else:
-                creation_time = file_stats.st_ctime  # Windows/Linux
+                self.setCentralWidget(self.tab_widget)
+                status_text = status.value if isinstance(status, LicenseStatus) else str(status)
+                self._update_status_bar(f"Licensed: {status_text}", permanent=True)
 
-            # Rollback to midnight UTC, day of file creation
-            creation_time -= creation_time % 86400
+            return True
 
-            # Get local time with timezone info
-            local_time = dt.datetime.now().astimezone()
-            utc_offset = local_time.utcoffset()
-
-            # Adjust file creation time to midnight local time
-            creation_time -= utc_offset.total_seconds()
-
-            # Current time
-            current_time = dt.datetime.now().timestamp()
-
-            # Calculate time difference in seconds
-            time_ago_seconds = current_time - creation_time
-
-            # Compare to allowable age
+        if not os.path.exists(DB_PATH):
+            Log.e(f"No license found and no database exists. {message}")
+            self.setCentralWidget(self._expired_widget)
+            self._update_status_bar(
+                "License Required", permanent=True, style="color: red;")
+            return False
+        try:
+            creation_ts = os.stat(DB_PATH).st_ctime
+            creation_dt = dt.datetime.fromtimestamp(creation_ts)
+            time_ago_seconds = (dt.datetime.now() - creation_dt).total_seconds()
             time_allowed_secs = dt.timedelta(
                 days=free_preview_period).total_seconds()
 
             if time_ago_seconds >= time_allowed_secs:
-                # Trial preview expired
-                Log.w("No VisQAI license found; trial preview has expired.")
+                Log.w(f"Free preview period expired. {message}")
                 self.setCentralWidget(self._expired_widget)
-            else:
-                self.trial_left = free_preview_period - \
-                    dt.timedelta(seconds=time_ago_seconds).days
-                Log.i(
-                    f"No VisQAI license found; trial preview has {self.trial_left} days remaining.")
-                self.trial_label.setText(
-                    self.trial_label.text().format(self.trial_left))  # insert # of days remaining
-                self.setCentralWidget(self._trial_widget)
-        else:
-            # valid license found
-            Log.i("VisQAI license found and is valid.")
-            self.setCentralWidget(self.tab_widget)
+                self._update_status_bar("Preview Expired - License Required",
+                                        permanent=True,
+                                        style="color: red;")
 
-        return is_valid_license
+                if hasattr(self._expired_widget, 'set_message'):
+                    days_over = int(
+                        (time_ago_seconds - time_allowed_secs) / 86400)
+                    self._expired_widget.set_message(
+                        f"Your {free_preview_period}-day preview ended {days_over} days ago.\n"
+                        f"Please contact support to purchase a license."
+                    )
+
+            else:
+                days_elapsed = int(time_ago_seconds / 86400)
+                self.trial_left = free_preview_period - days_elapsed
+
+                Log.i(
+                    f"Free preview: {self.trial_left} days remaining. {message}")
+
+                if hasattr(self, 'trial_label'):
+                    trial_text = self.trial_label.text()
+                    if '{}' in trial_text:
+                        self.trial_label.setText(
+                            trial_text.format(self.trial_left))
+                    else:
+                        self.trial_label.setText(
+                            f"Free Preview: {self.trial_left} days remaining")
+
+                if self.trial_left <= 3:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview expires in {self.trial_left} days!",
+                                            permanent=True,
+                                            style="color: orange; font-weight: bold;")
+                elif self.trial_left <= 7:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
+                                            permanent=True,
+                                            style="color: orange;")
+                else:
+                    self.setCentralWidget(self._trial_widget)
+                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
+                                            permanent=True)
+
+        except Exception as e:
+            Log.e(f"Error calculating preview period: {e}")
+            self.setCentralWidget(self._expired_widget)
+            self._update_status_bar(
+                "License Error", permanent=True, style="color: red;")
+            return False
+
+        return False
+
+    def _update_status_bar(self, message: str, permanent: bool = False, style: str = None):
+        if hasattr(self, 'statusBar'):
+            status_bar = self.statusBar()
+            if permanent:
+                if not hasattr(self, '_license_status_label'):
+                    self._license_status_label = QtWidgets.QLabel()
+                    status_bar.addPermanentWidget(self._license_status_label)
+                self._license_status_label.setText(message)
+                if style:
+                    self._license_status_label.setStyleSheet(style)
+            else:
+                timeout = 5000
+                status_bar.showMessage(message, timeout)
+
+    def refresh_license_async(self, license_manager: Optional[LicenseManager]):
+        if license_manager is None:
+            return
+
+        def refresh_callback():
+            try:
+                is_valid, message, data = license_manager.refresh_license()
+
+                # Update UI in main thread
+                QtCore.QTimer.singleShot(0, lambda lm=license_manager: self.check_license(lm))
+
+            except Exception as e:
+                Log.e(f"Background license refresh failed: {e}")
+
+        # Start background thread
+        import threading
+        thread = threading.Thread(target=refresh_callback, daemon=True)
+        Log.i("Refreshing VisQAI license lease")
+        thread.start()
 
     def clear(self):
         """BASE CLASS DEFINITION"""
@@ -183,7 +325,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         """BASE CLASS DEFINITION"""
         pass
 
-    def enable(self, bool=False):
+    def enable(self, enabled=False):
         """BASE CLASS DEFINITION"""
         pass
 
@@ -199,11 +341,17 @@ class VisQAIWindow(BaseVisQAIWindow):
         # import typing here to avoid circularity
         from QATCH.ui.mainWindow import MainWindow
         self.parent: MainWindow = parent
-        self.setWindowTitle("VisQ.AI Mockup")
+        self.setWindowTitle("VisQ.AI")
         self.setMinimumSize(900, 600)
         self.init_ui()
         self.init_sign()
-        self.check_license()  # see BASE CLASS
+        self.check_license(
+            self.parent._license_manager)
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(
+            lambda: self.refresh_license_async(self.parent._license_manager)
+        )
+        self.timer.start(3600000)
         self._unsaved_changes = False
 
         self.select_formulation: Formulation = Formulation()
@@ -343,21 +491,20 @@ class VisQAIWindow(BaseVisQAIWindow):
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
             if tab_step > 0:
-                if tab_step == now_step + 1:
+                widget: FrameStep1 = self.tab_widget.widget(
+                    0)  # Select
+                if tab_step == now_step + 1 and widget.run_file_run:
                     if hasattr(self.tab_widget.currentWidget(), "btn_next"):
                         self.tab_widget.currentWidget().btn_next.click()
                         return True  # ignore click, let "Next" btn decide
                 # Block tab change based on some condition
-                if tab_step in [2, 4, 5]:
-                    if tab_step == 2 or tab_step == 5:
-                        widget: FrameStep1 = self.tab_widget.widget(
-                            0)  # Select
-                        if not widget.run_file_run:
-                            QtWidgets.QMessageBox.information(
-                                None, Constants.app_title,
-                                "Please select a run.",
-                                QtWidgets.QMessageBox.Ok)
-                            return True  # deny tab change
+                if tab_step in [3, 4, 6]:
+                    if not widget.run_file_run:
+                        QtWidgets.QMessageBox.information(
+                            None, Constants.app_title,
+                            "Please select a run.",
+                            QtWidgets.QMessageBox.Ok)
+                        return True  # deny tab change
                     # NOTE: No longer a requirement, but can be added back if needed
                     # if tab_step == 4:
                     #     widget: FrameStep1 = self.tab_widget.widget(
@@ -372,7 +519,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                     # do not click next when user is going backwards
                     # (or nowhere) from the currently selected step.
                     pass
-                elif hasattr(self.tab_widget.currentWidget(), "btn_next"):
+                elif hasattr(self.tab_widget.currentWidget(), "btn_next") and widget.run_file_run:
                     # still perform click action
                     self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
@@ -508,6 +655,10 @@ class VisQAIWindow(BaseVisQAIWindow):
             # VisQ.AI UI is not in foreground, Mode not selected
             # Do things here to shutdown resources and disable:
 
+            # Disable hourly license check timer.
+            if hasattr(self, "timer") and self.timer.isActive():
+                self.timer.stop()
+
             # Close database.
             if self.database.is_open:
                 self.database.close()
@@ -523,6 +674,10 @@ class VisQAIWindow(BaseVisQAIWindow):
         else:
             # VisQ.AI UI is now in foreground, Mode is selected
             # Do things here to initialize resources and enable:
+
+            # Enable hourly license check timer.
+            if hasattr(self, "timer") and not self.timer.isActive():
+                self.timer.start(3600000)
 
             # Create database objects, and open DB from file.
             self.database = Database(parse_file_key=True)

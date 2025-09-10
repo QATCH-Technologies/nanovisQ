@@ -16,6 +16,8 @@ from QATCH.common.findDevices import Discovery
 from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
+from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
@@ -389,6 +391,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+            )
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -1165,6 +1175,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_required = True
         self.signature_received = False
         self.signed_at = "[NEVER]"
+        # Uninitialized license manager object.
+        self._license_manager = None
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -1189,7 +1201,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
-        self._configure_database()
+        self._configure_database(exec_migrations=False)
 
         self.VisQAIWin = VisQAIWindow(self)
 
@@ -2427,7 +2439,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # Configures the database file for VisQ.AI (if missing or out-of-date)
     ###########################################################################
 
-    def _configure_database(self):
+    def _configure_database(self, exec_migrations: bool = False):
         # check if local app data contains a database file already
         try:
             machine_database_path = os.path.join(
@@ -2438,32 +2450,68 @@ class MainWindow(QtWidgets.QMainWindow):
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.basename(
+                os.makedirs(os.path.dirname(
                     machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
                 # TODO: This should be done when tagging, not here
-                Log.w(
-                    f"Adding core training samples to database (happens once; may take a bit)...")
-                machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
-                form_ctrl = FormulationController(db=machine_database)
-                csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                                        "VisQAI", "assets", "formulation_data_05302025.csv")
-                if not os.path.isfile(csv_path):
-                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                df = pd.read_csv(csv_path)
-                added_forms = form_ctrl.add_all_from_dataframe(df)
-                machine_database.close()
-                Log.w(f"Added {len(added_forms)} core training samples!")
-            elif bundled_exists and localapp_exists:
+                # Log.w(
+                #     f"Adding core training samples to database (happens once; may take a bit)...")
+                # machine_database = Database(
+                #     path=machine_database_path, parse_file_key=True)
+                # form_ctrl = FormulationController(db=machine_database)
+                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
+                #                         "VisQAI", "assets", "formulation_data_05302025.csv")
+                # if not os.path.isfile(csv_path):
+                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                # df = pd.read_csv(csv_path)
+                # added_forms = form_ctrl.add_all_from_dataframe(df)
+                # machine_database.close()
+                # Log.w(f"Added {len(added_forms)} core training samples!")
+            elif localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
                     path=bundled_database_path, parse_file_key=True)
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
+
+                if exec_migrations:
+                    from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
+                    tmp_path = machine_database.create_temp_decrypt()
+                    try:
+                        if tmp_path:
+                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            current_version = migrator.get_current_version()
+                            target_version = MigrationVersion(1, 1, 0)
+                            if current_version < target_version:
+                                new_migration = Migration(
+                                    from_version=current_version,
+                                    to_version=target_version,
+                                    up_sql=[
+                                        ""
+                                    ],
+                                    down_sql=[
+                                        ""
+                                    ],
+                                    data_transform=lambda conn: conn.execute(
+                                        ""
+                                    ),
+                                    autofill_defaults={
+                                        ""
+                                    },
+                                    description=""
+                                )
+                                migrator.register_migration(new_migration)
+                                status, msgs = migrator.migrate(
+                                    target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                                if not status:
+                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
+                        else:
+                            Log.w("Skipping migration check: could not create temp decrypted DB.")
+                    finally:
+                            machine_database.cleanup_temp_decrypt()
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2489,6 +2537,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWidget = QtWidgets.QWidget(self)
         self.TutorialScroll = QtWidgets.QScrollArea(self)
         self.TutorialText = QtWidgets.QLabel(self)
+        # Automatically opens links
+        self.TutorialText.setOpenExternalLinks(True)
         self.TutorialCheckbox = QtWidgets.QCheckBox(
             "Show these tutorials on startup", self)
         # stylesheet applies to titlebar and all children widgets
@@ -2509,8 +2559,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialScroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.TutorialScroll.setWidgetResizable(True)
         self.TutorialScroll.setWidget(scroll_widget)
+        # CONVENIENCE COMBINATION:
+        # QtCore.Qt.TextInteractionFlag.TextBrowserInteraction = (
+        #    TextSelectableByMouse | LinksAccessibleByMouse | LinksAccessibleByKeyboard)
         self.TutorialText.setTextInteractionFlags(
-            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
         self.TutorialText.setWordWrap(True)
         # apply layout to tutorials widget
         top_layout = QtWidgets.QVBoxLayout()
@@ -4686,7 +4739,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-
+            self._license_manager = LicenseManager(
+                dbx_conn=self._dbx_connection)
+            is_valid, message, license_data = self._license_manager.validate_license(
+                auto_create_if_missing=True)
+            Log.d(f"License valid={is_valid}; message={message}")
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(

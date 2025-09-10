@@ -92,7 +92,7 @@ PLOTTING = False
 POI_1_OFFSET = 2
 POI_2_OFFSET = -2
 
-TAG = ["QModel V3"]
+TAG = "[QModel V3]"
 
 
 class QModelPredictor:
