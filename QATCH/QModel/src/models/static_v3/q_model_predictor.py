@@ -2543,7 +2543,7 @@ class QModelPredictor:
             feature_vector=feature_vector,
             raw_vector=df)
         try:
-            for i in range(3, 7):
+            for i in range(2, 7):
                 v4_point = qmodel_v4_labels.get(
                     f"POI{i}").get("indices", -1)[0]
                 v4_conf = qmodel_v4_labels.get(
