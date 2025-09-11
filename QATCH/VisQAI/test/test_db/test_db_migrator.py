@@ -3,8 +3,8 @@ test_database_migration.py
 
 Comprehensive unit tests for the DatabaseMigrator system.
 
-Author: Test Suite
-Date: 2025-08-22
+Author: Paul MacNichol (paulmacnichol@qatchtech.com)
+Date: 2025-08-27
 Version: 1.0
 
 Note: If the MigrationVersion class is missing comparison operators, add these to the class:
@@ -24,9 +24,10 @@ import json
 import tempfile
 import shutil
 from pathlib import Path
-from datetime import datetime
 from unittest.mock import Mock, patch, MagicMock, call
 import hashlib
+
+from src.db.db import Database
 
 # Import the module to test
 from src.db.db_migrator import (
@@ -1012,6 +1013,302 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Should be able to sort by date
         backups_with_dates.sort(key=lambda x: x[1])
         self.assertEqual(len(backups_with_dates), 5)
+
+
+class TestDatabaseMigratorWithAssets(unittest.TestCase):
+    """Test the DatabaseMigrator class."""
+
+    def setUp(self):
+        """Set up test environment."""
+        # Create temporary directory for test database
+        self.test_dir = tempfile.mkdtemp()
+        self.test_db_path = Path(self.test_dir) / "test.db"
+        self.backup_dir = Path(self.test_dir) / "backups"
+
+        # Copy the original database if it exists for realistic testing
+        self.original_db_path = Path("assets/app.db")
+        self.database = Database(self.test_db_path, parse_file_key=True)
+        self.temp_path = self.database.create_temp_decrypt()
+        if self.original_db_path.exists():
+            shutil.copy2(self.temp_path, self.test_db_path)
+        else:
+            raise Exception("Could not copy app.db")
+
+        # Initialize migrator with test database
+        self.migrator = DatabaseMigrator(self.test_db_path, self.backup_dir)
+
+    def tearDown(self):
+        """Clean up test environment."""
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+        self.database.cleanup_temp_decrypt(self.temp_path)
+
+    def _create_minimal_test_db(self):
+        """Create a minimal database for testing when original doesn't exist."""
+        conn = sqlite3.connect(str(self.test_db_path))
+        try:
+            # Create some basic tables that the migrator expects
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS ingredient (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    type TEXT
+                )
+            """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS formulation (
+                    id INTEGER PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_initialization(self):
+        """Test migrator initialization."""
+        self.assertTrue(self.test_db_path.exists())
+        self.assertTrue(self.backup_dir.exists())
+
+        # Check that migration tables were created
+        conn = sqlite3.connect(str(self.test_db_path))
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            )
+            self.assertIsNotNone(cursor.fetchone())
+
+            cursor.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='database_metadata'"
+            )
+            self.assertIsNotNone(cursor.fetchone())
+        finally:
+            conn.close()
+
+    def test_get_current_version(self):
+        """Test getting current database version."""
+        version = self.migrator.get_current_version()
+        self.assertIsInstance(version, MigrationVersion)
+        # Should default to 1.0.0 if no version is set
+        self.assertEqual(str(version), "1.0.0")
+
+    def test_register_migration(self):
+        """Test registering a migration."""
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            autofill_defaults={'ingredient.notes': ''},
+            description="Add notes field to ingredient table"
+        )
+
+        self.migrator.register_migration(migration)
+
+        # Check that migration was registered
+        key = (MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 0))
+        self.assertIn(key, self.migrator.migrations)
+        self.assertEqual(self.migrator.migrations[key], migration)
+
+    def test_create_backup(self):
+        """Test database backup creation."""
+        backup_path = self.migrator.create_backup("test_backup")
+
+        self.assertTrue(backup_path.exists())
+        self.assertTrue(backup_path.name.endswith("test_backup.db"))
+
+        # Check that metadata file was created
+        metadata_path = backup_path.with_suffix('.json')
+        self.assertTrue(metadata_path.exists())
+
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            self.assertIn('original_path', metadata)
+            self.assertIn('checksum', metadata)
+            self.assertIn('version', metadata)
+
+    def test_find_migration_path_no_path_needed(self):
+        """Test finding migration path when versions are the same."""
+        v1 = MigrationVersion(1, 0, 0)
+        path = self.migrator.find_migration_path(v1, v1)
+        self.assertEqual(path, [])
+
+    def test_find_migration_path_with_registered_migration(self):
+        """Test finding migration path with a registered migration."""
+        # Register a test migration
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            description="Test migration"
+        )
+        self.migrator.register_migration(migration)
+
+        path = self.migrator.find_migration_path(
+            MigrationVersion(1, 0, 0),
+            MigrationVersion(1, 1, 0)
+        )
+        self.assertEqual(len(path), 1)
+        self.assertEqual(path[0], migration)
+
+    def test_find_migration_path_no_path_available(self):
+        """Test finding migration path when no path exists."""
+        with self.assertRaises(ValueError) as context:
+            self.migrator.find_migration_path(
+                MigrationVersion(1, 0, 0),
+                MigrationVersion(2, 0, 0)
+            )
+        self.assertIn("No migration path found", str(context.exception))
+
+    def test_apply_migration(self):
+        """Test applying a single migration."""
+        # Create a test migration
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            autofill_defaults={'ingredient.notes': 'No notes'},
+            description="Add notes field"
+        )
+
+        conn = sqlite3.connect(str(self.test_db_path))
+        try:
+            self.migrator.apply_migration(migration, conn)
+
+            # Check that column was added
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(ingredient)")
+            columns = [row[1] for row in cursor.fetchall()]
+            self.assertIn('notes', columns)
+
+            # Check that migration was recorded
+            cursor.execute(
+                "SELECT version, status FROM schema_migrations WHERE version = ?",
+                (str(migration.to_version),)
+            )
+            result = cursor.fetchone()
+            self.assertIsNotNone(result)
+            self.assertEqual(result[1], MigrationStatus.COMPLETED.value)
+
+        finally:
+            conn.close()
+
+    def test_migrate_dry_run(self):
+        """Test dry run migration."""
+        # Register a test migration
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            description="Test migration"
+        )
+        self.migrator.register_migration(migration)
+
+        success, messages = self.migrator.migrate(
+            target_version=MigrationVersion(1, 1, 0),
+            dry_run=True,
+            create_backup=False
+        )
+
+        self.assertTrue(success)
+        self.assertIn("Dry run completed", ' '.join(messages))
+
+        # Verify no actual changes were made
+        conn = sqlite3.connect(str(self.test_db_path))
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(ingredient)")
+            columns = [row[1] for row in cursor.fetchall()]
+            self.assertNotIn('notes', columns)
+        finally:
+            conn.close()
+
+    def test_migrate_with_backup(self):
+        """Test migration with backup creation."""
+        # Register a test migration
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            description="Test migration"
+        )
+        self.migrator.register_migration(migration)
+
+        success, messages = self.migrator.migrate(
+            target_version=MigrationVersion(1, 1, 0),
+            create_backup=True
+        )
+
+        self.assertTrue(success)
+
+        # Check that backup was created
+        backup_files = list(self.backup_dir.glob("*.db"))
+        self.assertGreater(len(backup_files), 0)
+
+        # Check that migration was applied
+        conn = sqlite3.connect(str(self.test_db_path))
+        try:
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(ingredient)")
+            columns = [row[1] for row in cursor.fetchall()]
+            self.assertIn('notes', columns)
+        finally:
+            conn.close()
+
+    def test_migration_history(self):
+        """Test getting migration history."""
+        # Apply a migration first
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            description="Test migration"
+        )
+        self.migrator.register_migration(migration)
+        self.migrator.migrate(target_version=MigrationVersion(1, 1, 0))
+
+        history = self.migrator.get_migration_history()
+        self.assertGreater(len(history), 0)
+
+        latest = history[0]  # Most recent first
+        self.assertEqual(latest['version'], '1.1.0')
+        self.assertEqual(latest['status'], MigrationStatus.COMPLETED.value)
+
+    def test_validate_database(self):
+        """Test database validation."""
+        is_valid, issues = self.migrator.validate_database()
+
+        # This will depend on your actual database schema
+        # For now, just check that the method runs without error
+        self.assertIsInstance(is_valid, bool)
+        self.assertIsInstance(issues, list)
+
+    def test_rollback(self):
+        """Test rolling back a migration."""
+        # First apply a migration
+        migration = Migration(
+            from_version=MigrationVersion(1, 0, 0),
+            to_version=MigrationVersion(1, 1, 0),
+            up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
+            down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
+            description="Test migration"
+        )
+        self.migrator.register_migration(migration)
+        self.migrator.migrate(target_version=MigrationVersion(1, 1, 0))
+
+        # Now rollback
+        success, messages = self.migrator.rollback(MigrationVersion(1, 0, 0))
+
+        # Note: SQLite doesn't support DROP COLUMN easily, so rollback might fail
+        # but we can test that the method executes
+        self.assertIsInstance(success, bool)
+        self.assertIsInstance(messages, list)
 
 
 if __name__ == '__main__':

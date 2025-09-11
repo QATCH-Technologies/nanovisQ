@@ -16,6 +16,8 @@ from QATCH.common.findDevices import Discovery
 from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
+from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
@@ -389,6 +391,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+            )
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -1165,6 +1175,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_required = True
         self.signature_received = False
         self.signed_at = "[NEVER]"
+        # Uninitialized license manager object.
+        self._license_manager = None
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -1189,7 +1201,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
-        self._configure_database()
+        self._configure_database(exec_migrations=False)
 
         self.VisQAIWin = VisQAIWindow(self)
 
@@ -2427,7 +2439,7 @@ class MainWindow(QtWidgets.QMainWindow):
     # Configures the database file for VisQ.AI (if missing or out-of-date)
     ###########################################################################
 
-    def _configure_database(self):
+    def _configure_database(self, exec_migrations: bool = False):
         # check if local app data contains a database file already
         try:
             machine_database_path = os.path.join(
@@ -2438,32 +2450,68 @@ class MainWindow(QtWidgets.QMainWindow):
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.basename(
+                os.makedirs(os.path.dirname(
                     machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
                 # TODO: This should be done when tagging, not here
-                Log.w(
-                    f"Adding core training samples to database (happens once; may take a bit)...")
-                machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
-                form_ctrl = FormulationController(db=machine_database)
-                csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                                        "VisQAI", "assets", "formulation_data_05302025.csv")
-                if not os.path.isfile(csv_path):
-                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                df = pd.read_csv(csv_path)
-                added_forms = form_ctrl.add_all_from_dataframe(df)
-                machine_database.close()
-                Log.w(f"Added {len(added_forms)} core training samples!")
-            elif bundled_exists and localapp_exists:
+                # Log.w(
+                #     f"Adding core training samples to database (happens once; may take a bit)...")
+                # machine_database = Database(
+                #     path=machine_database_path, parse_file_key=True)
+                # form_ctrl = FormulationController(db=machine_database)
+                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
+                #                         "VisQAI", "assets", "formulation_data_05302025.csv")
+                # if not os.path.isfile(csv_path):
+                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                # df = pd.read_csv(csv_path)
+                # added_forms = form_ctrl.add_all_from_dataframe(df)
+                # machine_database.close()
+                # Log.w(f"Added {len(added_forms)} core training samples!")
+            elif localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
                     path=bundled_database_path, parse_file_key=True)
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
+
+                if exec_migrations:
+                    from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
+                    tmp_path = machine_database.create_temp_decrypt()
+                    try:
+                        if tmp_path:
+                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            current_version = migrator.get_current_version()
+                            target_version = MigrationVersion(1, 1, 0)
+                            if current_version < target_version:
+                                new_migration = Migration(
+                                    from_version=current_version,
+                                    to_version=target_version,
+                                    up_sql=[
+                                        ""
+                                    ],
+                                    down_sql=[
+                                        ""
+                                    ],
+                                    data_transform=lambda conn: conn.execute(
+                                        ""
+                                    ),
+                                    autofill_defaults={
+                                        ""
+                                    },
+                                    description=""
+                                )
+                                migrator.register_migration(new_migration)
+                                status, msgs = migrator.migrate(
+                                    target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                                if not status:
+                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
+                        else:
+                            Log.w("Skipping migration check: could not create temp decrypted DB.")
+                    finally:
+                            machine_database.cleanup_temp_decrypt()
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2489,6 +2537,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWidget = QtWidgets.QWidget(self)
         self.TutorialScroll = QtWidgets.QScrollArea(self)
         self.TutorialText = QtWidgets.QLabel(self)
+        # Automatically opens links
+        self.TutorialText.setOpenExternalLinks(True)
         self.TutorialCheckbox = QtWidgets.QCheckBox(
             "Show these tutorials on startup", self)
         # stylesheet applies to titlebar and all children widgets
@@ -2509,8 +2559,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialScroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.TutorialScroll.setWidgetResizable(True)
         self.TutorialScroll.setWidget(scroll_widget)
+        # CONVENIENCE COMBINATION:
+        # QtCore.Qt.TextInteractionFlag.TextBrowserInteraction = (
+        #    TextSelectableByMouse | LinksAccessibleByMouse | LinksAccessibleByKeyboard)
         self.TutorialText.setTextInteractionFlags(
-            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
         self.TutorialText.setWordWrap(True)
         # apply layout to tutorials widget
         top_layout = QtWidgets.QVBoxLayout()
@@ -3204,7 +3257,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
+                                        if time_running < vector0.min() + 3.0:
                                             labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
@@ -3222,9 +3275,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                             if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
                                                     and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
                                                 self._drop_applied[i] = True
-                                    except:
+                                    except Exception as e:
                                         Log.e(
                                             "Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                        Log.d("ERROR DETAILS:", str(e))
                                         self._drop_applied[i] = True
                             else:
                                 labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
@@ -4686,7 +4740,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-
+            self._license_manager = LicenseManager(
+                dbx_conn=self._dbx_connection)
+            is_valid, message, license_data = self._license_manager.validate_license(
+                auto_create_if_missing=True)
+            Log.d(f"License valid={is_valid}; message={message}")
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(
@@ -5642,7 +5700,7 @@ class TECTask(QtCore.QThread):
     _tec_update_now = False
     _tec_stop_thread = False
     _tec_debug = False
-    _tec_out_of_sync = False
+    _tec_out_of_sync = 0  # counter, task aborts if it gets to 3
 
     _task_timer = None
     _task_rate = 5000
@@ -5686,17 +5744,19 @@ class TECTask(QtCore.QThread):
             if True:  # was while()
                 try:
                     sp = ""  # only update TEC if changed
+                    # Log.d("TEC debug: {}, {}, {}".format(
+                    #     self.slider_value, self._tec_setpoint, self.slider_down))
                     if (self.slider_value != self._tec_setpoint and not self.slider_down):
                         # Try to update now to re-sync; if that fails, then auto-off.
-                        if not self._tec_out_of_sync:
+                        if self._tec_out_of_sync < 3:
                             Log.d(
                                 "Scheduling TEC for immediate update (out-of-sync)!")
-                            self._tec_out_of_sync = True
+                            self._tec_out_of_sync += 1
                             self._tec_update_now = True
                         else:
                             Log.w(
                                 "Shutting down TEC to re-sync states (out-of-sync)!")
-                            self._tec_out_of_sync = False
+                            self._tec_out_of_sync = 0
                             new_l1 = "[AUTO-OFF ERROR]"
                             self._tec_update("OFF")
                             self._task_stop()
@@ -5706,7 +5766,8 @@ class TECTask(QtCore.QThread):
                                 "background-color: {}".format('red'))
                             return
                     else:
-                        self._tec_out_of_sync = False
+                        # Log.d("TEC is in-sync!")
+                        self._tec_out_of_sync = 0
                     if self._tec_update_now and not self._tec_locked:
                         sp = self.slider_value
                     if self.slider_enable:
@@ -5714,6 +5775,9 @@ class TECTask(QtCore.QThread):
                             f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status...")
                         self._tec_update(sp)
                         self._tec_locked = False
+                        if (self.slider_value == self._tec_setpoint and not self.slider_down):
+                            # Log.d("TEC sync success!")
+                            self._tec_out_of_sync = 0
                     elif not self._tec_stop_thread:
                         if not self._tec_locked:
                             Log.d("Temp Control is locked while main thead is busy!")
