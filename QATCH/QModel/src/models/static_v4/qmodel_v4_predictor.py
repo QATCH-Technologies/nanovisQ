@@ -650,7 +650,7 @@ class QModelPredictorV4:
         #         poi_indices=final_poi["POI6"]["indices"], relative_time=df["Relative_time"].values, confidences=final_poi["POI6"]["confidences"])
         # Track prediction
         self._track_prediction(final_poi)
-        plot_predictions_with_confidences(df, final_poi)
+        # plot_predictions_with_confidences(df, final_poi)
         return final_poi
 
     def _get_default_predictions(self) -> Dict[str, Dict[str, List]]:

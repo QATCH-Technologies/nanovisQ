@@ -2543,11 +2543,19 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
-        for i in range(3, 7):
-            v4_point = qmodel_v4_labels.get(f"POI{i}").get("indices", -1)[0]
-            v4_conf = qmodel_v4_labels.get(f"POI{i}").get("confidences", -1)[0]
-            final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
-            final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+        try:
+            for i in range(3, 7):
+                v4_point = qmodel_v4_labels.get(
+                    f"POI{i}").get("indices", -1)[0]
+                if i == 6:
+                    v4_point = max(qmodel_v4_labels.get(
+                        f"POI{i}").get("indices", -1))
+                v4_conf = qmodel_v4_labels.get(
+                    f"POI{i}").get("confidences", -1)[0]
+                final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
+                final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+        except:
+            Log.e("Failed v4 tail insertion. Skipping")
         return final_predictions
 
 
