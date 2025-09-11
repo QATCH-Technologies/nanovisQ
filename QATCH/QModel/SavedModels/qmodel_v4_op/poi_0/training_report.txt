@@ -1,0 +1,36 @@
+XGBoost POI Detection Model Training Report
+==================================================
+Target POI: 1
+Window Size: 128
+Stride: 16
+Tolerance: 32
+
+Post-processing Parameters:
+  Gaussian Sigma: 8.50
+  Peak Threshold: 0.850
+  Peak Distance: 32
+
+Post-processing Tuning Results:
+  Best F1 Score: 0.2857
+
+Top 20 Most Important Features:
+  t0_f28: 0.0490
+  t127_f35: 0.0379
+  t11_f51: 0.0276
+  t0_f16: 0.0247
+  t0_f2: 0.0222
+  t0_f6: 0.0205
+  t0_f59: 0.0183
+  t125_f35: 0.0180
+  t126_f35: 0.0072
+  t102_f51: 0.0072
+  t12_f51: 0.0051
+  t101_f51: 0.0049
+  t55_f51: 0.0047
+  t0_f34: 0.0044
+  t68_f61: 0.0041
+  t19_f51: 0.0040
+  t66_f61: 0.0039
+  t10_f52: 0.0037
+  t87_f61: 0.0036
+  t116_f35: 0.0033
