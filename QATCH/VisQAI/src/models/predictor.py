@@ -275,7 +275,7 @@ class Predictor:
             return self.ensemble.predict(data, return_confidence=True)
         except Exception as ex:
             Log.e(f"Error in predict_uncertainty(): {ex}")
-            raise
+            raise ex
 
     def update(
         self,
