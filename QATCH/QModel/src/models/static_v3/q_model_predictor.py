@@ -2557,13 +2557,27 @@ class QModelPredictor:
                         v4_point = v4_max
                     elif abs(v4_conf - qmodel_v4_labels.get(
                             f"POI{i}").get("confidences", -1)[-1]) <= 0.02 and len(v4_6_labels) > 1:
-                        v4_point = np.average(v4_6_labels)
+                        v4_point = int(np.average(v4_6_labels))
                 if v4_point == -1:
                     continue
 
+                from itertools import chain
                 final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
-                final_predictions[f"POI{i}"]["confidences"].insert(
-                    0, v4_conf)
+                final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+
+                final_predictions[f"POI{i}"]["indices"] = list(
+                    chain.from_iterable(
+                        x if isinstance(x, (list, tuple)) else [x]
+                        for x in final_predictions[f"POI{i}"]["indices"]
+                    )
+                )
+
+                final_predictions[f"POI{i}"]["confidences"] = list(
+                    chain.from_iterable(
+                        x if isinstance(x, (list, tuple)) else [x]
+                        for x in final_predictions[f"POI{i}"]["confidences"]
+                    )
+                )
         except:
             Log.e("Failed v4 tail insertion. Skipping")
         Log.i(final_predictions)
