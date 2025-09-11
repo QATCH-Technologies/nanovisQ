@@ -98,7 +98,6 @@ class DataProcessorV4:
             ValueError: If the input DataFrame is empty or does not contain required columns.
         """
         def compute_ocsvm_score(shift_series: pd.Series):
-
             shift_series.fillna(0, inplace=True)
             if shift_series.empty:
                 raise ValueError("shift_series is empty.")
@@ -138,6 +137,7 @@ class DataProcessorV4:
                         f"Column '{col}' is missing from DataFrame.")
 
             xs = df["Relative_time"]
+
             i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
             j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
             if i == j:

@@ -1,18 +1,19 @@
 """
 qmodel_v4_predictor.py
 
-Provides the QModelPredictor class for version 4.x of QModel based on a CNN, it 
+Provides the QModelPredictor class for version 4.x of QModel based on a CNN, it
 supports partially filled runs as well as fully filled runs with high precision.
 
-Author: 
+Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
-Date: 
-    2025-08-19
+Date:
+    2025-09-09
 
-Version: 
-    QModel.Ver4.1.1
+Version:
+    QModel.Ver4.2
 """
+import matplotlib.pyplot as plt
 from itertools import chain
 import numpy as np
 import pandas as pd
@@ -23,6 +24,7 @@ import warnings
 import os
 import json
 from datetime import datetime
+from QATCH.QModel.src.models.static_v4.qmodel_v4_post import V4PostProcess
 warnings.filterwarnings('ignore')
 
 # Try to use legacy Keras if available
@@ -56,6 +58,76 @@ except (ImportError, ModuleNotFoundError):
         @staticmethod
         def e(message):
             print(f"[ERROR] {message}")
+
+
+def plot_predictions_with_confidences(df, final_poi):
+    """
+    Plot all candidate predictions with different colors based on confidence levels.
+
+    Args:
+        df: DataFrame with the data (must contain 'Relative_time' and 'Dissipation')
+        final_poi: Dictionary of POI predictions with indices and confidences
+    """
+    plt.figure(figsize=(12, 8))
+
+    # Plot the main dissipation signal with time on x-axis
+    plt.plot(df["Relative_time"].values, df["Dissipation"].values,
+             color='grey', linewidth=1.5, label="Dissipation", alpha=0.7)
+
+    # Colormap for confidence levels
+    colors = plt.cm.RdYlBu_r  # Red=high, blue=low
+
+    # Collect predictions and confidences
+    all_confidences = []
+    all_predictions = []
+
+    for poi_num, poi_data in final_poi.items():
+        indices = poi_data.get("indices", [])
+        confidences = poi_data.get("confidences", [])
+
+        for idx, conf in zip(indices, confidences):
+            if 0 <= idx < len(df):
+                all_predictions.append((poi_num, idx, conf))
+                all_confidences.append(conf)
+
+    if all_confidences:
+        # Normalize confidences
+        min_conf = min(all_confidences)
+        max_conf = max(all_confidences)
+        conf_range = max_conf - min_conf if max_conf > min_conf else 1
+
+        # Plot each prediction
+        for poi_num, idx, conf in all_predictions:
+            # use time instead of index
+            time_val = df["Relative_time"].iloc[idx]
+            norm_conf = (conf - min_conf) / conf_range
+            color = colors(norm_conf)
+
+            # Vertical line at the time point
+            plt.axvline(time_val, color=color, linewidth=2.5, alpha=0.8)
+
+            # Annotation
+            plt.text(time_val, plt.ylim()[1] * 0.9,
+                     f'POI{poi_num}\n{conf:.3f}',
+                     rotation=0, ha='center', va='top', fontsize=9,
+                     bbox=dict(boxstyle="round,pad=0.3",
+                               facecolor=color, alpha=0.7))
+
+        # Colorbar
+        sm = plt.cm.ScalarMappable(cmap=colors,
+                                   norm=plt.Normalize(vmin=min(all_confidences),
+                                                      vmax=max(all_confidences)))
+        sm.set_array([])
+        cbar = plt.colorbar(sm, ax=plt.gca(), shrink=0.8, aspect=20)
+        cbar.set_label('Confidence Level', rotation=270, labelpad=20)
+
+    plt.xlabel('Relative Time')
+    plt.ylabel('Dissipation')
+    plt.title('Prediction Results with Confidence Levels')
+    plt.legend()
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
 
 
 class QModelPredictorV4:
@@ -109,7 +181,8 @@ class QModelPredictorV4:
         validate_predictions(predictions): Validate that predictions follow all constraints.
 
     Example:
-        predictor = POIPredictor(model_path="model.h5", scaler_path="scaler.pkl")
+        predictor = POIPredictor(
+            model_path="model.h5", scaler_path="scaler.pkl")
         predictions = predictor.predict_best(file_buffer="data.csv")
         is_valid = predictor.validate_predictions(predictions)
     """
@@ -483,7 +556,7 @@ class QModelPredictorV4:
                 file_buffer: Union[str, object] = None,
                 df: pd.DataFrame = None,
                 top_k: int = 3,
-                min_confidence: float = 0.3,
+                min_confidence: float = 0.25,
                 force: bool = False,
                 apply_constraints: bool = True) -> Dict[str, Dict[str, List]]:
         """Preprocesses raw data into normalized sliding windows for prediction.
@@ -564,128 +637,20 @@ class QModelPredictorV4:
         # Convert to final format
         final_poi = self._format_final_predictions(poi_predictions, force)
 
+        # final_poi = V4PostProcess.reasign(
+        #     final_poi, df["Relative_time"].values)
+
+        # final_poi["POI1"]["indices"][0] = V4PostProcess.poi_1(
+        #     final_poi["POI1"]["indices"], final_poi["POI1"]["confidences"], self._features_df, relative_time=df["Relative_time"].values)
+        # if final_poi["POI4"].get("indices")[0] > -1:
+        #     final_poi["POI5"]["indices"][0] = V4PostProcess.density_select(
+        #         poi_indices=final_poi["POI5"]["indices"], relative_time=df["Relative_time"].values, confidences=final_poi["POI5"]["confidences"])
+        # if final_poi["POI5"].get("indices")[0] > -1:
+        #     final_poi["POI6"]["indices"][0] = V4PostProcess.density_select(
+        #         poi_indices=final_poi["POI6"]["indices"], relative_time=df["Relative_time"].values, confidences=final_poi["POI6"]["confidences"])
         # Track prediction
         self._track_prediction(final_poi)
-
-        return final_poi
-
-    def predict_best(self,
-                     file_buffer: Union[str, object] = None,
-                     df: pd.DataFrame = None,
-                     use_nms: bool = True,
-                     nms_window: int = 30,
-                     adaptive_thresholds: Optional[Dict[int, float]] = None,
-                     force: bool = False,
-                     apply_constraints: bool = True) -> Dict[str, Dict[str, List]]:
-        """Predicts the single best location for each POI along with confidences scores.
-
-        This method processes input data (from a CSV file buffer or DataFrame),
-        generates feature windows, applies the trained model to obtain predictions,
-        optionally applies non-maximum suppression (NMS), and returns the most
-        confident prediction for each POI. Constraints can be applied to refine
-        predictions.
-
-        Args:
-            file_buffer (Union[str, object], optional): Path to CSV file or
-                file-like object containing raw data. Either this or `df` must be provided.
-            df (pd.DataFrame, optional): Pre-loaded DataFrame containing raw data.
-            use_nms (bool, optional): Whether to apply non-maximum suppression to
-                filter peaks. Defaults to True.
-            nms_window (int, optional): Window size for NMS peak suppression. Defaults to 30.
-            adaptive_thresholds (Optional[Dict[int, float]], optional): Custom thresholds
-                for each POI. If None, default thresholds are used.
-            force (bool, optional): If True, forces selection even if confidences is below threshold.
-            apply_constraints (bool, optional): If True, applies post-prediction constraints.
-
-        Returns:
-            Dict[str, Dict[str, List]]: A dictionary where each key is a POI label
-            (e.g., 'POI1') and each value contains:
-                - 'indices': List of predicted data indices (or [-1] if no prediction)
-                - 'confidences': List of corresponding confidences scores (or [-1] if no prediction)
-        """
-        # Handle input data
-        if file_buffer is not None:
-            try:
-                df = self._validate_file_buffer(file_buffer=file_buffer)
-            except Exception as e:
-                Log.d(f"File buffer could not be validated: {e}")
-                return self._get_default_predictions()
-        elif df is None:
-            raise ValueError("Either file_buffer or df must be provided")
-
-        # Use default thresholds if not provided
-        if adaptive_thresholds is None:
-            adaptive_thresholds = self.default_thresholds.copy()
-
-        # Preprocess data
-        windows, positions, times = self.preprocess_data(df)
-
-        if len(windows) == 0:
-            Log.w("No windows generated from data")
-            return self._get_default_predictions()
-
-        # Get model predictions
-        predictions = self.model.predict(windows, verbose=0)
-
-        # Find best prediction for each POI
-        best_predictions = {}
-
-        for poi_num, pred_idx in self.poi_indices.items():
-            poi_probs = predictions[:, pred_idx]
-            threshold = adaptive_thresholds.get(poi_num, 0.3)
-
-            if force or np.max(poi_probs) >= threshold:
-                above_threshold = poi_probs >= threshold if not force else np.ones_like(
-                    poi_probs, dtype=bool)
-
-                if np.any(above_threshold):
-                    if use_nms:
-                        peak_indices = self._non_maximum_suppression(
-                            poi_probs, above_threshold, nms_window
-                        )
-                    else:
-                        peak_indices = np.where(above_threshold)[0]
-
-                    if len(peak_indices) > 0:
-                        best_idx = peak_indices[np.argmax(
-                            poi_probs[peak_indices])]
-                        best_predictions[poi_num] = {
-                            'indices': positions[best_idx],
-                            'confidences': float(poi_probs[best_idx]),
-                            'time': times[best_idx] if times else None
-                        }
-
-        # Apply constraints if requested
-        if apply_constraints:
-            best_predictions = self.apply_constraints(best_predictions, df)
-
-        # Convert to final format
-        final_poi = {}
-        for poi_num in [1, 2, 3, 4, 5, 6]:
-            if poi_num == 3:
-                # POI-3 always returns -1
-                final_poi[f"POI{poi_num}"] = {
-                    "indices": [-1],
-                    "confidences": [-1]
-                }
-            elif poi_num in best_predictions:
-                final_poi[f"POI{poi_num}"] = {
-                    "indices": [best_predictions[poi_num]['indices']],
-                    "confidences": [best_predictions[poi_num]['confidences']]
-                }
-            else:
-                # No confident prediction found
-                final_poi[f"POI{poi_num}"] = {
-                    "indices": [-1],
-                    "confidences": [-1]
-                }
-
-        # Convert to final format
-        # final_poi = self._format_final_predictions(best_predictions, force)
-        Log.w(final_poi)
-        # Track prediction
-        self._track_prediction(final_poi)
-
+        plot_predictions_with_confidences(df, final_poi)
         return final_poi
 
     def _get_default_predictions(self) -> Dict[str, Dict[str, List]]:
@@ -759,75 +724,6 @@ class QModelPredictorV4:
 
         return final_poi
 
-    def _non_maximum_suppression(self, probs: np.ndarray, mask: np.ndarray,
-                                 window: int) -> np.ndarray:
-        """Applies non-maximum suppression to reduce duplicate predictions.
-
-        This method identifies local maxima in a probability array, ensuring that
-        only the most prominent peaks within a specified window are retained.
-        Nearby values within the window are suppressed to prevent multiple detections
-        of the same event.
-
-        Args:
-            probs (np.ndarray): Array of probability values from model predictions.
-            mask (np.ndarray): Boolean mask indicating which indices are valid candidates.
-            window (int): Window size for suppression around each detected peak.
-
-        Returns:
-            np.ndarray: Array of indices corresponding to the retained peaks after
-            non-maximum suppression.
-        """
-        peaks = []
-        probs_copy = probs.copy()
-
-        while True:
-            valid_indices = np.where(mask & (probs_copy > 0))[0]
-            if len(valid_indices) == 0:
-                break
-
-            max_idx = valid_indices[np.argmax(probs_copy[valid_indices])]
-            peaks.append(max_idx)
-
-            # Suppress nearby values
-            start = max(0, max_idx - window // 2)
-            end = min(len(probs_copy), max_idx + window // 2 + 1)
-            probs_copy[start:end] = 0
-
-        return np.array(peaks)
-
-    def _poi1_adjustment(self, x, y, index, step=0.01, max_iter=1000, tol=1e-5) -> int:
-        """
-        Applys a minor adjustment to POI1 to ensure that it does not appear to the left
-        of the drop application.  Operates by taking the relative slope between neighbors until
-        the relative slope between 2 neighbors and the index is ~0.
-
-        Args:
-            x (np.ndarray): Relative time vector.
-            y (np.ndarray): Dissipation vector.
-            index (int): Initial estimation of POI1 position for refinement.
-            step (int): Relative time x step.
-            max_iter (int): Maximum number of steps to take for evaluation.
-            tol (float): The 0 approximation.
-
-        Returns:
-            int: The modified index for POI1.
-        """
-        x = np.array(x, dtype=float)
-        y = np.array(y, dtype=float)
-        for i in range(max_iter):
-            slope_left = (y[index] - y[index-1]) / \
-                (x[index] - x[index-1]) if index > 0 else 0
-            slope_right = (y[index+1] - y[index]) / \
-                (x[index+1] - x[index]) if index < len(x)-1 else 0
-
-            avg_slope = (slope_left + slope_right) / 2
-            if abs(avg_slope) < tol:
-                return index + i
-
-            x[index] += step * np.sign(-avg_slope)
-
-        return index + max_iter
-
     def _apply_constraints_to_topk(self, predictions: Dict[int, Dict],
                                    df: pd.DataFrame) -> Dict[int, Dict]:
         """Applies sequential and temporal constraints to top-k POI predictions.
@@ -853,9 +749,6 @@ class QModelPredictorV4:
 
         # POI1 and POI2 can exist independently
         if 1 in predictions:
-            valid_1 = self._poi1_adjustment(
-                df["Relative_time"].values, y=df["Dissipation"].values, index=predictions[1].get("indices")[0], max_iter=20)
-            predictions[1]["indices"][0] = valid_1
             validated[1] = predictions[1]
         if 2 in predictions:
             validated[2] = predictions[2]
@@ -922,146 +815,6 @@ class QModelPredictorV4:
                     }
 
         return validated
-
-    def apply_constraints(self,
-                          predictions: Dict[int, Dict],
-                          df: pd.DataFrame,
-                          enforce_sequential: bool = True,
-                          enforce_gaps: bool = True) -> Dict[int, Dict]:
-        """Applies sequential and temporal constraints to POI predictions.
-
-        This method validates and refines predictions by enforcing optional constraints:
-            - Sequential constraints ensure that certain POIs occur in a defined order.
-            - Gap (temporal) constraints ensure minimum spacing or ordering based on
-            'Relative_time' in the input data.
-
-        Args:
-            predictions (Dict[int, Dict]): Dictionary of predicted POIs. Keys are POI numbers,
-                and values contain 'indices', 'confidences', and optionally 'times'.
-            df (pd.DataFrame): Original input data containing at least 'Relative_time' if
-                temporal constraints are applied.
-            enforce_sequential (bool, optional): If True, enforces sequential constraints
-                between dependent POIs. Defaults to True.
-            enforce_gaps (bool, optional): If True, enforces temporal spacing constraints
-                using 'Relative_time'. Defaults to True.
-
-        Returns:
-            Dict[int, Dict]: Filtered predictions dictionary with constraints applied.
-                Only POIs satisfying the requested sequential and temporal constraints are retained.
-        """
-        validated = predictions.copy()
-        valid_1 = self._poi1_adjustment(
-            df["Relative_time"].values, y=df["Dissipation"].values, index=validated[1].get("indices"), max_iter=20)
-        validated[1]["indices"] = valid_1
-        if enforce_sequential:
-            validated = self._enforce_sequential_constraints(validated)
-
-        if enforce_gaps and 'Relative_time' in df.columns:
-            validated = self._enforce_gap_constraints(validated, df)
-
-        return validated
-
-    def _enforce_sequential_constraints(self, predictions: Dict[int, Dict]) -> Dict[int, Dict]:
-        """Enforce POI sequential ordering rules."""
-        validated = {}
-
-        # POI1 and POI2 can exist independently
-        if 1 in predictions:
-            validated[1] = predictions[1]
-        if 2 in predictions:
-            validated[2] = predictions[2]
-
-        # POI4 requires both POI1 and POI2, and must come after POI2
-        if 4 in predictions:
-            if 1 in validated and 2 in validated:
-                if predictions[4]['indices'] > validated[2]['indices']:
-                    validated[4] = predictions[4]
-
-        # POI5 requires POI4 and must come after it
-        if 5 in predictions:
-            if 4 in validated:
-                if predictions[5]['indices'] > validated[4]['indices']:
-                    validated[5] = predictions[5]
-
-        # POI6 requires POI5 and must come after it
-        if 6 in predictions:
-            if 5 in validated:
-                if predictions[6]['indices'] > validated[5]['indices']:
-                    validated[6] = predictions[6]
-
-        return validated
-
-    def _enforce_gap_constraints(self, predictions: Dict[int, Dict],
-                                 df: pd.DataFrame) -> Dict[int, Dict]:
-        """Applies temporal gap constraints to POI predictions using relative time.
-
-        Ensures that dependent POIs occur after their parent POIs and that the
-        time intervals between sequential POIs meet minimum gap requirements.
-        Specifically:
-            - POI4 is checked relative to POI2.
-            - POI5 is checked relative to POI4.
-            - POI6 is checked relative to POI5.
-        If a dependent POI violates the temporal gap constraint, it is removed.
-
-        Args:
-            predictions (Dict[int, Dict]): Dictionary of POI predictions. Each key
-                is a POI number, and values contain at least 'indices'.
-            df (pd.DataFrame): Input data containing the 'Relative_time' column.
-
-        Returns:
-            Dict[int, Dict]: Refined predictions dictionary with temporal constraints applied.
-                POIs violating the gap constraints or missing their parent POIs are removed.
-        """
-        refined = predictions.copy()
-
-        if 'Relative_time' not in df.columns:
-            return refined
-
-        def get_time(idx):
-            if idx < len(df):
-                return df['Relative_time'].iloc[idx]
-            return None
-
-        # Check gap constraints
-        if 1 in refined and 2 in refined:
-            time1 = get_time(refined[1]['indices'])
-            time2 = get_time(refined[2]['indices'])
-
-            if time1 is not None and time2 is not None:
-                gap_1_2 = abs(time2 - time1)
-
-                # Check POI4
-                if 4 in refined:
-                    time4 = get_time(refined[4]['indices'])
-                    if time4 is not None:
-                        gap_2_4 = abs(time4 - time2)
-                        if gap_2_4 < gap_1_2:
-                            del refined[4]
-                        else:
-                            # Check POI5
-                            if 5 in refined:
-                                time5 = get_time(refined[5]['indices'])
-                                if time5 is not None:
-                                    gap_4_5 = abs(time5 - time4)
-                                    if gap_4_5 < gap_2_4:
-                                        del refined[5]
-                                    else:
-                                        # Check POI6
-                                        if 6 in refined:
-                                            time6 = get_time(
-                                                refined[6]['indices'])
-                                            if time6 is not None:
-                                                gap_5_6 = abs(time6 - time5)
-                                                if gap_5_6 < gap_4_5:
-                                                    del refined[6]
-
-        # Remove dependent POIs if parent was removed
-        if 5 in refined and 4 not in refined:
-            del refined[5]
-        if 6 in refined and 5 not in refined:
-            del refined[6]
-
-        return refined
 
     def _track_prediction(self, prediction: Dict):
         """Tracks a prediction for logging, metrics, or future analysis.
