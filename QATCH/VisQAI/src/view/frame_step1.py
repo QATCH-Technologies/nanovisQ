@@ -294,13 +294,13 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration",
                                              "Temperature"],  # only displayed on Predict tab (for now)
-                                 "Value": [self.proteins, "",
-                                           self.class_types, "", "", "",  # class, molecular weight, pI mean, pI range
-                                           self.buffers, "",
+                                 "Value": [{"choices": self.proteins, "selected": ""}, "",
+                                           {"choices": self.class_types, "selected": ""}, "", "", "",  # class, molecular weight, pI mean, pI range
+                                           {"choices": self.buffers, "selected": ""}, "",
                                            "",  # buffer pH
-                                           self.surfactants, "",
-                                           self.stabilizers, "",
-                                           self.salts, "",
+                                           {"choices": self.surfactants, "selected": ""}, "",
+                                           {"choices": self.stabilizers, "selected": ""}, "",
+                                           {"choices": self.salts, "selected": ""}, "",
                                            ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
@@ -567,21 +567,22 @@ class FrameStep1(QtWidgets.QDialog):
 
         if self.step == 5:  # Predict
             # save table to loaded_features
+            # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             feature = copy.deepcopy(self.default_features)
-            feature["Value"][0] = protein_type
+            feature["Value"][0]["selected"] = protein_type
             feature["Value"][1] = protein_conc
-            feature["Value"][2] = protein_class
+            feature["Value"][2]["selected"] = protein_class
             feature["Value"][3] = protein_weight
             feature["Value"][4] = protein_pI_mean
             feature["Value"][5] = protein_pI_range
-            feature["Value"][6] = buffer_type
+            feature["Value"][6]["selected"] = buffer_type
             feature["Value"][7] = buffer_conc
             feature["Value"][8] = buffer_pH
-            feature["Value"][9] = surfactant_type
+            feature["Value"][9]["selected"] = surfactant_type
             feature["Value"][10] = surfactant_conc
-            feature["Value"][11] = stabilizer_type
+            feature["Value"][11]["selected"] = stabilizer_type
             feature["Value"][12] = stabilizer_conc
-            feature["Value"][13] = salt_type
+            feature["Value"][13]["selected"] = salt_type
             feature["Value"][14] = salt_conc
             feature["Value"][15] = temp
             self.loaded_features[self.list_view.selectedIndexes()[
@@ -787,20 +788,21 @@ class FrameStep1(QtWidgets.QDialog):
     def add_formulation(self, form: Formulation):
         feature = copy.deepcopy(self.default_features)
         if form.protein:  # NOT an empty Formulation() object
-            feature["Value"][0] = form.protein.ingredient.name
+            # NOTE: combobox items are `dict[choices: list[str], selected: str]`
+            feature["Value"][0]["selected"] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2] = form.protein.ingredient.class_type
+            feature["Value"][2]["selected"] = form.protein.ingredient.class_type
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
-            feature["Value"][6] = form.buffer.ingredient.name
+            feature["Value"][6]["selected"] = form.buffer.ingredient.name
             feature["Value"][7] = form.buffer.concentration
             feature["Value"][8] = form.buffer.ingredient.pH
-            feature["Value"][9] = form.surfactant.ingredient.name
+            feature["Value"][9]["selected"] = form.surfactant.ingredient.name
             feature["Value"][10] = form.surfactant.concentration
-            feature["Value"][11] = form.stabilizer.ingredient.name
+            feature["Value"][11]["selected"] = form.stabilizer.ingredient.name
             feature["Value"][12] = form.stabilizer.concentration
-            feature["Value"][13] = form.salt.ingredient.name
+            feature["Value"][13]["selected"] = form.salt.ingredient.name
             feature["Value"][14] = form.salt.concentration
             feature["Value"][15] = form.temperature
 
@@ -1570,7 +1572,10 @@ class FrameStep1(QtWidgets.QDialog):
                         value = "Tween-80"
                     if value == "TWEEN20":
                         value = "Tween-20"
-                    run_features["Value"][x] = value
+                    if isinstance(run_features["Value"][x], dict):
+                        run_features["Value"][x]["selected"] = value
+                    else:
+                        run_features["Value"][x] = value
             except Exception as e:
                 print(e)
 
@@ -1584,11 +1589,12 @@ class FrameStep1(QtWidgets.QDialog):
                 del values[2]  # protein class
         else:
             # Pull protein and buffer characteristics from database (if available)
+            # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             protein = self.parent.ing_ctrl.get_protein_by_name(
                 name=xml_params.get("protein_type", None))
             if protein != None:
                 if protein.class_type != None:
-                    run_features["Value"][2] = protein.class_type
+                    run_features["Value"][2]["selected"] = protein.class_type
                 if protein.molecular_weight != None:
                     run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:
