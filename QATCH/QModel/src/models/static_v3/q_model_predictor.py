@@ -545,7 +545,6 @@ class QModelPredictor:
                     poi_results[key]["indices"].insert(0, point[0])
                 if conf[0] > -1:
                     poi_results[key]["confidences"].insert(0, conf[0])
-        Log.w(poi_results)
         return poi_results
 
     def _correct_bias(
@@ -2547,15 +2546,22 @@ class QModelPredictor:
             for i in range(3, 7):
                 v4_point = qmodel_v4_labels.get(
                     f"POI{i}").get("indices", -1)[0]
-                if i == 6:
-                    v4_point = max(qmodel_v4_labels.get(
-                        f"POI{i}").get("indices", -1))
                 v4_conf = qmodel_v4_labels.get(
                     f"POI{i}").get("confidences", -1)[0]
+                if i == 6:
+                    v4_max = max(qmodel_v4_labels.get(
+                        f"POI{i}").get("indices", -1))
+                    if v4_conf == qmodel_v4_labels.get(
+                            f"POI{i}").get("confidences", -1)[-1]:
+                        v4_point = v4_max
+                if v4_point == -1:
+                    continue
+
                 final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
                 final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
         except:
             Log.e("Failed v4 tail insertion. Skipping")
+        Log.i(final_predictions)
         return final_predictions
 
 
