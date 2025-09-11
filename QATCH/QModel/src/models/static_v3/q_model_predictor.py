@@ -7,13 +7,13 @@ data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Include
 file validation, feature extraction, probability formatting, and bias correction for refined
 POI selection.
 
-Author: 
+Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
-Date: 
+Date:
     2025-07-02
 
-Version: 
+Version:
     QModel.Ver3.3
 """
 import math
@@ -2549,16 +2549,21 @@ class QModelPredictor:
                 v4_conf = qmodel_v4_labels.get(
                     f"POI{i}").get("confidences", -1)[0]
                 if i == 6:
-                    v4_max = max(qmodel_v4_labels.get(
-                        f"POI{i}").get("indices", -1))
+                    v4_6_labels = qmodel_v4_labels.get(
+                        f"POI{i}").get("indices", -1)
+                    v4_max = max(v4_6_labels)
                     if v4_conf == qmodel_v4_labels.get(
                             f"POI{i}").get("confidences", -1)[-1]:
                         v4_point = v4_max
+                    elif abs(v4_conf - qmodel_v4_labels.get(
+                            f"POI{i}").get("confidences", -1)[-1]) <= 0.02 and len(v4_6_labels) > 1:
+                        v4_point = np.average(v4_6_labels)
                 if v4_point == -1:
                     continue
 
                 final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
-                final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+                final_predictions[f"POI{i}"]["confidences"].insert(
+                    0, v4_conf)
         except:
             Log.e("Failed v4 tail insertion. Skipping")
         Log.i(final_predictions)
