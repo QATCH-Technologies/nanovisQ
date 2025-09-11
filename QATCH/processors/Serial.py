@@ -365,6 +365,7 @@ class SerialProcess(multiprocessing.Process):
                     speed = 0
                     overtone = 0
                     last_overtone = 0
+                    elaborating = False
 
                     while not self._exit.is_set():
 
@@ -870,10 +871,36 @@ class SerialProcess(multiprocessing.Process):
 
                             # prepend "MSGBOX" cmd for single devices to clear msgbox (as was set from cal) AND
                             # append "STREAM" cmd and newlines to end of command (it's prepared for sending now)
+                            # HOWEVER streaming will STOP until the Elaborate thread has had time to fully load.
                             cmd = f"MSGBOX\n{cmd}\nSTREAM\n" if k == 0 else "\n"
 
+                            # Once streaming, but before elaborating, send STOP cmd
+                            if k == 1 and not elaborating:
+                                start = time()
+                                waitFor = 3
+                                while time() - start < waitFor:  # delay timeout
+                                    if self._serial[0].in_waiting > waitFor: # more than MSGBOX reply
+                                        cmd = "STOP\n"
+                                        break
+
+                            # Wait for Elaborate thread to fully initialize before proceeding with STREAM
+                            if k == 2 and not elaborating:
+                                start = time()
+                                waitFor = 30
+                                Log.i(TAG, "Waiting on Elaborate thread...")
+                                while time() - start < waitFor:  # delay timeout
+                                    if not self._elaborate_out_q.empty():  # wait for "READY!" flag
+                                        _ = self._elaborate_out_q.get_nowait()  # clear ready flag
+                                        break
+                                # Proceed with streaming, regardless of success or timeout
+                                Log.i(TAG, "Starting data stream...")
+                                _ = self._serial[0].read(self._serial[0].in_waiting)  # clear serial buffer
+                                cmd = "STREAM\n"  # start streaming
+                                elaborating = True  # set elaborating flag
+                                k = 0  # reset sweep counter
+
                             # allow FW some time to stream before giving up on it
-                            if k == 1:
+                            if k == 1 and elaborating:
                                 start = time()
                                 waitFor = 3
                                 while time() - start < waitFor:  # delay timeout
@@ -881,7 +908,7 @@ class SerialProcess(multiprocessing.Process):
                                         break
 
                             # if buffer is pre-filled (even just once) we don't need to send CMD again (ever, this RUN)
-                            if self._serial[0].in_waiting:
+                            if self._serial[0].in_waiting and elaborating:
                                 streaming = True
 
                             if not streaming:
@@ -889,6 +916,10 @@ class SerialProcess(multiprocessing.Process):
                                 self._serial[0].write(cmd.encode())
                                 Log.d(
                                     TAG, "{} {} - Sending FREQ CMD {}".format(k, streaming, cmd))
+                                
+                            if not elaborating:
+                                k += 1  # next sweep step
+                                continue
 
                             # Dynamically adjust FW loop timing to match SW loop timing (sync)
                             # At k=  10: Take initial timestamp
@@ -1190,7 +1221,6 @@ class SerialProcess(multiprocessing.Process):
                             w_time = temperature = dissipation = 0
                             freq_left = freq_peak = freq_right = 0
                             self._err1 = self._err2 = self._err3 = self._err4 = 0
-                            Log.i(TAG, "Waiting on Elaborate thread...")
 
                         last_overtone = overtone
 

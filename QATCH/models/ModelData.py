@@ -274,8 +274,11 @@ class ModelData():
                 Log.e(
                     "ERROR: Data run must be at least 3 seconds in total runtime to analyze.")
                 return -1
-            t_0p5 = next(x+0 for x, t in enumerate(xs) if t > 0.5)
-            t_1p0 = next(x+1 for x, t in enumerate(xs) if t > 2.5)
+            t_0p5 = next((x for x, t in enumerate(xs) if t > 0.5), 0)
+            t_1p0 = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+            if t_0p5 == t_1p0:
+                t_1p0 = next((x for x, t in enumerate(
+                    xs) if t > xs[t_1p0] + 2.0), t_1p0 + 1)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
             ys = ys * avg / 2
             ys_fit = ys_fit * avg / 2

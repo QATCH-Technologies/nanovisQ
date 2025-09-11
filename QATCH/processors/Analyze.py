@@ -261,13 +261,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     t_0p5 = (
                         0
                         if (xs[-1] < 0.5)
-                        else next(x for x, t in enumerate(xs) if t > 0.5)
+                        else next((x for x, t in enumerate(xs) if t > 0.5), 0)
                     )
                     t_1p0 = (
                         100
                         if (len(xs) < 500)
-                        else next(x for x, t in enumerate(xs) if t > 1.0)
+                        else next((x for x, t in enumerate(xs) if t > 1.0), 1)
                     )
+                    if t_0p5 == t_1p0:
+                        t_1p0 = next((x for x, t in enumerate(
+                            xs) if t > xs[t_1p0] + 0.5), t_1p0 + 1)
 
                     # t_1p0, done = QtWidgets.QInputDialog.getDouble(None, 'Input Dialog', 'Confirm rough start index:', value=t_1p0)
 
@@ -618,7 +621,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.tBtn_Predict = QtWidgets.QToolButton()
         self.tBtn_Predict.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tBtn_Predict.setIcon(icon_predict)  # normal and disabled pixmaps
-        self.tBtn_Predict.setText("Predict")
+        self.tBtn_Predict.setText("Auto-Fit")
         self.tBtn_Predict.clicked.connect(self._restore_qmodel_predictions)
         self.tool_Load.addWidget(self.tBtn_Predict)
 
@@ -935,7 +938,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
         self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.l3.setText("<font color=#ffffff >Predict Model</font> </a>")
+        self.l3.setText("<font color=#ffffff >Auto-Fit Model</font> </a>")
         if USE_FULLSCREEN:
             self.l3.setFixedHeight(50)
         # else:
@@ -1285,7 +1288,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     #     self.AI_SelectTool_Frame.hide()
 
     def get_results_split_auto_sizes(self, setMinimumWidth=True):
-        tableWidget = self.results_split.widget(0)
+        tableWidget = self.results_split.widget(0) \
+            .findChild(QtWidgets.QTableWidget)
         full_width = self.results_split.width()
         min_width = tableWidget.verticalHeader().width() + 6  # +6 seems to be needed
         min_width += tableWidget.verticalScrollBar().width()
@@ -3017,7 +3021,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d("Ignoring arrow key input when no run is loaded.")
             return
         clipped = False
-        if self.stateStep <= 3:  # start, end of fill, post point
+        if self.stateStep <= 2:  # start, end of fill, (no longer post point)
             ws = int(self.zoomLevel * self.smooth_factor / 2)  # context width
         else:  # blips
             ws = int(
@@ -3052,15 +3056,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 # no run is loaded
                 PopUp.information(
                     self,
-                    "QModel Not Available",
-                    "Predictions cannot be run at this time.\nPlease load a run first."
+                    "Auto-Fit Not Available",
+                    "Auto-fit cannot be run at this time.\nPlease load a run first."
                 )
                 # special exception case: indicates software declined action
                 raise ConnectionRefusedError()
             if not PopUp.question(
                 self,
                 "Are you sure?",
-                "Any manual points will be lost if you run \"Predict\" again.\n\nProceed?",
+                "Any manual points will be lost if you run \"Auto-Fit\" again.\n\nProceed?",
             ):
                 # special exception case: indicates user declined action
                 raise ConnectionAbortedError()
@@ -3069,7 +3073,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.prediction_restored = False
 
             self.progressBarDiag = QtWidgets.QProgressDialog(
-                "Predicting...", "Cancel", 0, 0, self)
+                "Auto-fitting points...", "Cancel", 0, 0, self)
             # Disable auto-reset and auto-close to retain `wasCanceled()` state
             self.progressBarDiag.setAutoReset(False)
             self.progressBarDiag.setAutoClose(False)
@@ -3103,7 +3107,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_engine = "None"
 
             if Constants.QModel4_predict:
-                Log.w("Predicting points with QModel v4... (may take a few seconds)")
+                Log.w("Auto-fitting points with QModel v4... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3149,12 +3153,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(line)
                     Log.e(e)
                     Log.e(TAG,
-                          f"Error using 'QModel v4'... Using a fallback model for predictions."
+                          f"Error using 'QModel v4'... Using a fallback model for auto-fitting."
                           )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
             if self.model_result == -1 and Constants.QModel3_predict:
-                Log.w("Predicting points with QModel v3... (may take a few seconds)")
+                Log.w("Auto-fitting points with QModel v3... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3200,7 +3204,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(line)
                     Log.e(e)
                     Log.e(TAG,
-                          f"Error using 'QModel v3'... Using a fallback model for predictions."
+                          f"Error using 'QModel v3'... Using a fallback model for auto-fitting."
                           )
                     # raise e # debug only
                     self.model_result = -1  # try fallback model
@@ -3236,7 +3240,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                         # print this on 1st indication only
                                         Log.e(
                                             tag=f"[{self.model_engine}]",
-                                            msg=f"Predictions are out of order! They have been corrected to prevent errors."
+                                            msg=f"Auto-fit points are out of order! They have been corrected to prevent errors."
                                         )
                                     out_of_order = True
                                     if i == 0:  # first POI
@@ -3332,23 +3336,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
                 Log.i(
-                    f"[Predict] Restored {self.model_engine} predictions for this run.")
+                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
                 for i, pm in enumerate(self.poi_markers):
                     pm.setValue(self.xs[poi_vals[i]])
                 self._log_model_confidences()
                 self.detect_change()
             else:
                 Log.w(
-                    "[Predict] No predictions for this run. Leaving points unchanged.")
+                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
-            Log.d("Restore prediction with no run loaded. No action taken.")
+            Log.d("Attempt to auto-fit with no run loaded. No action taken.")
 
         except ConnectionAbortedError:
-            Log.d("User declined prediction restore prompt. No action taken.")
+            Log.d("User declined auto-fit restore prompt. No action taken.")
 
         except Exception as e:
-            Log.e(f"Prediction restore failed: {str(e)}")
+            Log.e(f"Auto-fit restore failed: {str(e)}")
 
             limit = None
             t, v, tb = sys.exc_info()
@@ -3471,7 +3475,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_engine = "None"
                 if Constants.QModel4_predict:
                     Log.w(
-                        "Predicting points with QModel v4... (may take a few seconds)")
+                        "Auto-fitting points with QModel v4... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3516,13 +3520,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
                 if self.model_result == -1 and Constants.QModel3_predict:
                     Log.w(
-                        "Predicting points with QModel v3... (may take a few seconds)")
+                        "Auto-fitting points with QModel v3... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3568,7 +3572,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -3891,9 +3895,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.d(
                             "Current marker cannot be bumped forward without exceeding data bounds; leaving as-is.")
             self.zoomLevel = 1  # reset default zoom level for each point
-            show_fits = 1.0 if self.stateStep >= 4 else 0.0
-            show_scat = 0.1 if self.stateStep >= 4 else 1.0
-            pad = 0.05 if self.stateStep >= 4 else 0.05
+            show_fits = 1.0 if self.stateStep >= 3 else 0.0
+            show_scat = 0.1 if self.stateStep >= 3 else 1.0
+            pad = 0.05 if self.stateStep >= 3 else 0.05
             self.fit_1.setAlpha(show_fits, False)
             self.fit_2.setAlpha(show_fits, False)
             self.fit_3.setAlpha(show_fits, False)
@@ -3953,7 +3957,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     np.amax(self.ys_diff_fit[tx0:tx2]),
                 )
             ax.setYRange(mn, mx, padding=pad)
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 if not clipped:
                     ax1.setYRange(
                         np.min(self.ys_freq_fit[slice_start: slice_end]),
@@ -4031,7 +4035,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 marker.setMovable(idx == px)  # only current marker is movable
                 marker.setPen(color=("blue" if idx == px else "blue"))
                 marker.addMarker("<|>") if idx == px else marker.clearMarkers()
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 pos1 = np.column_stack(
                     (self.xs[gstar_idxs], self.ys_freq_fit[gstar_idxs])
                 )
@@ -4470,7 +4474,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             if cur_idx == len(self.xs) - 1:
                 return  # do not process skipped points on marker move
             ws = self.getContextWidth()[0]
-            pad = 0.05 if self.stateStep >= 4 else 0.05
+            pad = 0.05 if self.stateStep >= 3 else 0.05
             # Calculate safe index boundaries prior to setting ranges
             slice_start, slice_end = [tx1 - ws, tx1 + ws]
             if slice_start < 0:
@@ -4483,7 +4487,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax1.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
-            if self.stateStep >= 4:
+            if self.stateStep >= 3:
                 ax1.setYRange(
                     np.min(self.ys_freq_fit[slice_start: slice_end]),
                     np.max(self.ys_freq_fit[slice_start: slice_end]),
@@ -4906,9 +4910,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.model_engine = "QModel v4 skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w(
-                        "Predicting points with QModel v4... (may take a few seconds)")
+                        "Auto-fitting points with QModel v4... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Predicting points with QModel v4... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v4... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -4955,7 +4959,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v4'... Using a fallback model for predictions."
+                            "Error using 'QModel v4'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -4965,9 +4969,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.model_engine = "QModel v3 skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel3_predict:
                     Log.w(
-                        "Predicting points with QModel v3... (may take a few seconds)")
+                        "Auto-fitting points with QModel v3... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Predicting points with QModel v3... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v3... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -5016,7 +5020,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for predictions."
+                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
                         )
                         # raise e # debug only
                         self.model_result = -1  # try fallback model
@@ -5266,13 +5270,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
             t_0p5 = (
                 0
                 if xs[t_start] < 0.5
-                else next(x + 0 for x, t in enumerate(xs) if t > 0.5)
+                else next((x for x, t in enumerate(xs) if t > 0.5), 0)
             )
             t_1p0 = (
                 t_start
                 if xs[t_start] < 2.0
-                else next(x + 1 for x, t in enumerate(xs) if t > 2.0)
+                else next((x for x, t in enumerate(xs) if t > 2.0), 1)
             )
+            if t_0p5 == t_1p0:
+                t_1p0 = next((x for x, t in enumerate(
+                    xs) if t > xs[t_1p0] + 1.5), t_1p0 + 1)
 
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
@@ -6356,13 +6363,16 @@ class AnalyzerWorker(QtCore.QObject):
             t_0p5 = (
                 0
                 if xs[t_start] < 0.5
-                else next(x + 0 for x, t in enumerate(xs) if t > 0.5)
+                else next((x for x, t in enumerate(xs) if t > 0.5), 0)
             )
             t_1p0 = (
                 t_start
                 if xs[t_start] < 2.0
-                else next(x + 1 for x, t in enumerate(xs) if t > 2.0)
+                else next((x for x, t in enumerate(xs) if t > 2.0), 1)
             )
+            if t_0p5 == t_1p0:
+                t_1p0 = next((x for x, t in enumerate(
+                    xs) if t > xs[t_1p0] + 1.5), t_1p0 + 1)
 
             # new maths for resonance and dissipation (scaled)
             avg = np.average(resonance_frequency[t_0p5:t_1p0])
@@ -8673,10 +8683,47 @@ class AnalyzerWorker(QtCore.QObject):
                 data.pop("Temperature (C)")
                 cols -= 1
             # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
+            table_layout = QtWidgets.QVBoxLayout()
+            tableWidgetWithFooter = QtWidgets.QWidget()
+            tableWidgetWithFooter.setLayout(table_layout)
             tableWidget = TableView(data, rows, cols)
             # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")
             # tableWidget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-            self.parent.results_split.replaceWidget(0, tableWidget)
+            table_layout.addWidget(tableWidget)
+            if n >= 0.7:
+                try:
+                    # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
+                    values_to_average = len(distances)
+                    # high_shear_counts = np.count_nonzero(
+                    #     [high_shear_5x, high_shear_15x])
+                    idx_start = 0
+                    # keep within current arrays (handles extra high-shear rows appended at end)
+                    idx_end = min(len(in_viscosity) - 1,
+                                  len(in_shear_rate) - 1,
+                                  max(2, values_to_average - 1))
+                    visc_avg = np.average(in_viscosity[idx_start:idx_end+1])
+                    visc_std = np.std(in_viscosity[idx_start:idx_end+1])
+                    shear_min = in_shear_rate[idx_start]
+                    shear_max = in_shear_rate[idx_end]
+                    summary_text = "Average viscosity is {:2.2f} cP \u00b1 {:2.2f} for shear rates in range {:2.0f} - {:2.0f} 1/s.".format(
+                        visc_avg, visc_std, shear_min, shear_max)
+                    # Add summary text to bottom of table data
+                    tableLabel = QtWidgets.QLabel(summary_text)
+                    tableLabel.setStyleSheet("font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
+                    tableLabel.setWordWrap(True)
+                    table_layout.addWidget(tableLabel)
+                    # Add centered label to plot data
+                    fig4.text(0.53, 0.82,
+                              "{:2.2f} cP \u00b1 {:2.2f}\n({:2.0f} - {:2.0f}) 1/s".format(
+                                  visc_avg, visc_std, shear_min, shear_max),
+                              horizontalalignment='center',
+                              verticalalignment='center',
+                              color='blue',
+                              fontsize=10)
+                except Exception as e:
+                    Log.e(
+                        "Failed to show average viscosity summary.", str(e))
+            self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
             self.parent.results_split.setSizes(
                 self.parent.get_results_split_auto_sizes()
             )
