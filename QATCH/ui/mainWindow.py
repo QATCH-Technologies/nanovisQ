@@ -1175,8 +1175,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_required = True
         self.signature_received = False
         self.signed_at = "[NEVER]"
+
         # Uninitialized license manager object.
         self._license_manager = None
+        self._dbx_connection = None
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -4468,6 +4470,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
+                    self._license_manager = LicenseManager(
+                        dbx_conn=self._dbx_connection)
+                    is_valid, message, license_data = self._license_manager.validate_license(
+                        auto_create_if_missing=True)
+                    Log.d(f"License valid={is_valid}; message={message}")
+
                     from QATCH.nightly.interface import GH_Interface
                     ((update_available, update_now),
                      latest_bundle) = GH_Interface(self).update_check()

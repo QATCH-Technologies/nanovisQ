@@ -45,6 +45,10 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
 
+TRIAL_LABEL_TEXT = (
+    "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
+    "Please subscribe to retain access on this system.<br/><br/>"
+)
 
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -95,9 +99,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.trial_layout.setAlignment(QtCore.Qt.AlignCenter)
         # self.setCentralWidget(self._trial_widget)
 
-        self.trial_label = QtWidgets.QLabel(
-            "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>" +
-            "Please subscribe to retain access on this system.<br/><br/>")
+        self.trial_label = QtWidgets.QLabel(TRIAL_LABEL_TEXT.format(-1))
         self.trial_label.setAlignment(QtCore.Qt.AlignCenter)
         self.trial_label.setStyleSheet("font-size: 24px;")
 
@@ -117,6 +119,28 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         self.trial_layout.addWidget(self.trial_label)
         self.trial_layout.addLayout(self.trial_buttons)
+
+        self._super_widget = QtWidgets.QWidget()
+        self._super_layout = QtWidgets.QVBoxLayout(self._super_widget)
+        self._super_layout.addWidget(self._expired_widget)
+        self._super_layout.addWidget(self._trial_widget)
+        self._super_layout.addWidget(self.tab_widget)
+        self.setCentralWidget(self._super_widget)
+
+    def setCentralWidget(self, widget):
+        if hasattr(self, '_super_widget') and widget is self._super_widget:
+            return super().setCentralWidget(widget)
+        
+        # Only show the set widget (hide all others)
+        # This is required to prevent garbage collection of unused layout widgets
+        is_widget_in_layout = False
+        for i in range(self._super_layout.count()):
+            self._super_layout.itemAt(i).widget().setHidden(True)
+            if self._super_layout.itemAt(i).widget() is widget:
+                is_widget_in_layout = True
+        if not is_widget_in_layout:
+            self._super_layout.addWidget(widget)
+        widget.setVisible(True)            
 
     def check_license(self, license_manager: Optional[LicenseManager]) -> bool:
         free_preview_period = 90  # days
@@ -250,29 +274,27 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 Log.i(
                     f"Free preview: {self.trial_left} days remaining. {message}")
 
-                if hasattr(self, 'trial_label'):
-                    trial_text = self.trial_label.text()
-                    if '{}' in trial_text:
-                        self.trial_label.setText(
-                            trial_text.format(self.trial_left))
-                    else:
-                        self.trial_label.setText(
-                            f"Free Preview: {self.trial_left} days remaining")
+                self.setCentralWidget(self._trial_widget)
 
                 if self.trial_left <= 3:
-                    self.setCentralWidget(self._trial_widget)
                     self._update_status_bar(f"Preview expires in {self.trial_left} days!",
                                             permanent=True,
                                             style="color: orange; font-weight: bold;")
                 elif self.trial_left <= 7:
-                    self.setCentralWidget(self._trial_widget)
                     self._update_status_bar(f"Preview: {self.trial_left} days remaining",
                                             permanent=True,
                                             style="color: orange;")
                 else:
-                    self.setCentralWidget(self._trial_widget)
                     self._update_status_bar(f"Preview: {self.trial_left} days remaining",
                                             permanent=True)
+                    
+                if hasattr(self, 'trial_label'):
+                    if '{}' in TRIAL_LABEL_TEXT:
+                        self.trial_label.setText(
+                            TRIAL_LABEL_TEXT.format(self.trial_left))
+                    else:
+                        self.trial_label.setText(
+                            f"Free Preview: {self.trial_left} days remaining")
 
         except Exception as e:
             Log.e(f"Error calculating preview period: {e}")
