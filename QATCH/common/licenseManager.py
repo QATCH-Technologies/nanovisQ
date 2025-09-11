@@ -252,6 +252,8 @@ class LicenseCache:
                 'cached_at': datetime.now().isoformat(),
                 'cache_version': '1.0'
             }
+            cache_string = json.dumps(cache_data, indent=2)
+            cache_data['signature'] = hashlib.sha256(cache_string.encode()).hexdigest()
 
             with open(cache_filepath, 'w') as f:
                 json.dump(cache_data, f, indent=2)
@@ -274,6 +276,7 @@ class LicenseCache:
         Returns:
             Tuple[Optional[Dict], bool]: A tuple containing:
                 - license_data: The cached license or None if not found
+                                or the signature is invalid
                 - is_expired: True if cache exists but is expired
         """
         try:
@@ -284,7 +287,14 @@ class LicenseCache:
                 return None, False
 
             with open(cache_filepath, 'r') as f:
-                cache_data = json.load(f)
+                cache_data: dict = json.load(f)
+
+            # Check signature
+            signature = cache_data.pop('signature', None)
+            cache_string = json.dumps(cache_data, indent=2)
+            if signature != hashlib.sha256(cache_string.encode()).hexdigest():
+                Log.w(TAG, "Cache signature mismatch. Refusing to load.")
+                return None, False
 
             # Check cache age
             cached_at = datetime.fromisoformat(cache_data['cached_at'])
