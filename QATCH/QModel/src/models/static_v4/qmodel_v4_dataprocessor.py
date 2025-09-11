@@ -98,7 +98,6 @@ class DataProcessorV4:
             ValueError: If the input DataFrame is empty or does not contain required columns.
         """
         def compute_ocsvm_score(shift_series: pd.Series):
-
             shift_series.fillna(0, inplace=True)
             if shift_series.empty:
                 raise ValueError("shift_series is empty.")
@@ -140,7 +139,7 @@ class DataProcessorV4:
             xs = df["Relative_time"]
             i = next((x for x, t in enumerate(xs) if t > 0.5), None)
             j, t_j = next(((x, t) for x, t in enumerate(xs) if t > 2.5), None)
-            if i == j:
+            while i == j:
                 j = next((x for x, t in enumerate(xs) if t > t_j + 2.5), None)
 
             avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()

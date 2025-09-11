@@ -3110,7 +3110,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         predict_result = predictor.predict(
-                            file_buffer=fh)
+                            file_buffer=fh,
+                            apply_constraints=False)
                         predictions = []
                         candidates = []
                         for i in range(6):
