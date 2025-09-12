@@ -11,10 +11,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date: 
-    2025-07-02
+    2025-09-12
 
 Version: 
-    QModel.Ver3.3
+    QModel.Ver3.4.0
 """
 import math
 import xgboost as xgb
