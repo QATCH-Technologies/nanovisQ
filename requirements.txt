@@ -21,6 +21,8 @@ colorama==0.4.6
     # via tqdm
 contourpy==1.3.0
     # via matplotlib
+cryptography==45.0.7
+    # via pymysql
 cycler==0.12.1
     # via matplotlib
 dropbox==12.0.2
@@ -143,6 +145,8 @@ pycryptodomex==3.21.0
     # via pyzipper
 pygments==2.18.0
     # via rich
+PyMySQL==1.1.2
+    # via -r requirements.in
 pyparsing==3.2.0
     # via matplotlib
 pyqt5==5.15.11
