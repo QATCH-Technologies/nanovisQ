@@ -7,7 +7,7 @@ data using a pre-trained XGBoost booster and an sklearn scaler pipeline. Include
 file validation, feature extraction, probability formatting, and bias correction for refined
 POI selection.
 
-Author: 
+Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date: 
@@ -82,11 +82,13 @@ try:
     from QATCH.models.ModelData import ModelData
     from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
     from QATCH.common.architecture import Architecture
+    from QATCH.QModel.src.models.static_v4.qmodel_v4_predictor import QModelPredictorV4
 except ImportError as e:
     Log().w("Could not import QATCH core modules: %s", e)
     from q_model_data_processor import QDataProcessor
     from ModelData import ModelData
     from q_predictor import QPredictor
+    from qmodel_v4_predictor import QModelPredictorV4
 
 PLOTTING = False
 POI_1_OFFSET = 2
@@ -130,6 +132,18 @@ class QModelPredictor:
 
         self._booster: xgb.Booster = xgb.Booster()
         self._scaler: Pipeline = None
+        v4_model_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH", "QModel", "SavedModels", "qmodel_v4",
+            "v4_model_mini.h5"
+        )
+        v4_scaler_path = os.path.join(
+            Architecture.get_path(),
+            "QATCH", "QModel", "SavedModels", "qmodel_v4",
+            "v4_scaler_mini.joblib",
+        )
+        self._v4_model = QModelPredictorV4(
+            model_path=v4_model_path, scaler_path=v4_scaler_path)
 
         try:
             self._booster.load_model(fname=booster_path)
@@ -282,6 +296,9 @@ class QModelPredictor:
                 elif isinstance(pt, list) and pt:
                     model_data_points.append(max(pt, key=lambda x: x[1])[0])
         return model_data_points
+
+    def _get_qmodel_v4_predictions(self, file_buffer: str) -> dict:
+        return self._v4_model.predict(file_buffer, apply_constraints=False)
 
     def _get_qmodel_v2_predictions(self, file_buffer: str) -> List[int]:
         """Generate point-of-interest predictions using QModel v2.
@@ -436,6 +453,7 @@ class QModelPredictor:
         self,
         predicted_probabilities: np.ndarray,
         model_data_labels: np.ndarray,
+        qmodel_v4_predictions: dict,
         threshold: float = 0.5,
         min_count: int = 5
     ) -> Dict[str, Dict[str, List[float]]]:
@@ -518,7 +536,15 @@ class QModelPredictor:
                 "indices": selected_indices.tolist(),
                 "confidences": selected_confs.tolist()
             }
-
+        for poi in range(1, 7):
+            key = f"POI{poi}"
+            point = qmodel_v4_predictions.get(key).get("indices", -1)
+            conf = qmodel_v4_predictions.get(key).get("confidences", -1)
+            if len(point) > 0:
+                if point[0] > -1:
+                    poi_results[key]["indices"].insert(0, point[0])
+                if conf[0] > -1:
+                    poi_results[key]["confidences"].insert(0, conf[0])
         return poi_results
 
     def _correct_bias(
@@ -2462,6 +2488,8 @@ class QModelPredictor:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
+        qmodel_v4_labels = self._get_qmodel_v4_predictions(
+            file_buffer=file_buffer)
         qmodel_v2_labels = self._get_qmodel_v2_predictions(
             file_buffer=file_buffer)
         self._qmodel_v2_labels = qmodel_v2_labels
@@ -2488,13 +2516,18 @@ class QModelPredictor:
             feature_vector.values)
         ddata = xgb.DMatrix(transformed_feature_vector)
         predicted_probabilites = self._booster.predict(ddata)
+        gt = []
+        for i in range(1, 7):
+            point = qmodel_v4_labels.get(f"POI{i}").get("indices", -1)[0]
+            gt.append(point)
         extracted_predictions = self._extract_predictions(
-            predicted_probabilites, model_data_labels)
+            predicted_probabilites, model_data_labels, qmodel_v4_predictions=qmodel_v4_labels)
         relative_time = df["Relative_time"].values
         relative_time = relative_time[:len(feature_vector)]
         init_correct = self._select_best_predictions(
             predictions=extracted_predictions,
-            ground_truth=qmodel_v2_labels,
+            # ground_truth=qmodel_v2_labels,
+            ground_truth=gt,
             model_data_labels=model_data_labels,
             relative_time=relative_time,
             feature_vector=feature_vector,
@@ -2509,7 +2542,45 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
+        try:
+            for i in range(2, 7):
+                v4_point = qmodel_v4_labels.get(
+                    f"POI{i}").get("indices", -1)[0]
+                v4_conf = qmodel_v4_labels.get(
+                    f"POI{i}").get("confidences", -1)[0]
+                if i == 6:
+                    v4_6_labels = qmodel_v4_labels.get(
+                        f"POI{i}").get("indices", -1)
+                    v4_max = max(v4_6_labels)
+                    if v4_conf == qmodel_v4_labels.get(
+                            f"POI{i}").get("confidences", -1)[-1]:
+                        v4_point = v4_max
+                    elif abs(v4_conf - qmodel_v4_labels.get(
+                            f"POI{i}").get("confidences", -1)[-1]) <= 0.02 and len(v4_6_labels) > 1:
+                        v4_point = int(np.average(v4_6_labels))
+                if v4_point == -1:
+                    continue
 
+                from itertools import chain
+                final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
+                final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+
+                final_predictions[f"POI{i}"]["indices"] = list(
+                    chain.from_iterable(
+                        x if isinstance(x, (list, tuple)) else [x]
+                        for x in final_predictions[f"POI{i}"]["indices"]
+                    )
+                )
+
+                final_predictions[f"POI{i}"]["confidences"] = list(
+                    chain.from_iterable(
+                        x if isinstance(x, (list, tuple)) else [x]
+                        for x in final_predictions[f"POI{i}"]["confidences"]
+                    )
+                )
+        except:
+            Log.e("Failed v4 tail insertion. Skipping")
+        Log.i(final_predictions)
         return final_predictions
 
 

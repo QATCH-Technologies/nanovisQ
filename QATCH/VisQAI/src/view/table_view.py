@@ -50,7 +50,27 @@ class TableView(QtWidgets.QTableWidget):
                 else:
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")
-                    if isinstance(item, list):
+                    if isinstance(item, dict):
+                        choices, selected = list(item.values())
+                        # skip Protein Type/Class and Buffer Type rows
+                        if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
+                            newitem.addItem("None")
+                        newitem.addItems(choices)
+                        if len(selected):
+                            try:
+                                newitem.setCurrentIndex(
+                                    [newitem.itemText(i) for i in range(newitem.count())]
+                                    .index(str(selected)))
+                            except ValueError:
+                                print(f"WARNING: Entry \"{str(selected)}\" is not a known type!")
+                                newitem.setCurrentText(str(selected))
+                            self.data["Units"][m] = ""  # clear flag
+                        else:
+                            newitem.setCurrentIndex(-1)  # no selection
+                            self.data["Units"][m] = "\u2190"  # unicode left arrow
+                            newitem.currentIndexChanged.connect(
+                                lambda idx, row=m: self._row_combo_set(row))
+                    elif isinstance(item, list):
                         # skip Protein Type/Class and Buffer Type rows
                         if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
                             newitem.addItem("None")
@@ -58,12 +78,13 @@ class TableView(QtWidgets.QTableWidget):
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
-                        newitem.currentIndexChanged.connect(
-                            lambda idx, row=m: self._on_combo_change(idx, row))
                         newitem.setCurrentIndex(-1)  # no selection
                     else:  # str
                         newitem.addItem(item)
                         self.data["Units"][m] = ""  # clear flag
+                    # add `_on_combo_change` handler to all QComboBox widgets
+                    newitem.currentIndexChanged.connect(
+                        lambda idx, row=m: self._on_combo_change(idx, row))
                 # disable 1st and last column items (not selectable or editable)
                 if n == 0 or n == 2:
                     if n == 0:  # bold 1st column items (headers)

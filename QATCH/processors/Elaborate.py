@@ -74,6 +74,7 @@ class ElaborateProcess(multiprocessing.Process):
             multiprocessing_logger.handlers[0].setStream(sys.stderr)
             multiprocessing_logger.setLevel(logging.WARNING)
 
+            self._queue_out.put("READY!") # flag to Serial class
             while not self._exit.is_set():
                 # Log.d"waiting for data!")
                 while self._queue_in.empty() and not self._exit.is_set():

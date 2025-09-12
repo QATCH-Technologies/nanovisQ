@@ -24,12 +24,12 @@ try:
     from src.db.db import Database
     from src.controller.ingredient_controller import IngredientController
     from src.models.formulation import Formulation, Component, ViscosityProfile
-    from src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant
+    from src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant
+    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass
 
 
 class FormulationController:
@@ -220,7 +220,7 @@ class FormulationController:
         added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
         expected = {
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
@@ -232,22 +232,17 @@ class FormulationController:
         if missing:
             raise ValueError(f"DataFrame is missing columns: `{missing}`")
 
-        # df = (
-        #     df.replace({"none": 0, "NaN": 0})
-        #     .apply(pd.to_numeric, errors="coerce")
-        #     .replace([np.inf, -np.inf], np.nan)
-        #     .fillna(0)
-        # )
-
         for _, row in df.iterrows():
+            # TODO: Add class_type as not none from this.
+
             protein = self.ingredient_controller.add_protein(
                 Protein(
                     enc_id=0,
                     name=str(row["Protein_type"]),
                     molecular_weight=float(row["MW"]),
                     pI_mean=float(row["PI_mean"]),
-                    pI_range=float(row["PI_range"])
-                )
+                    pI_range=float(row["PI_range"]),
+                    class_type=ProteinClass.from_value(row["Protein_class"]))
             )
             buffer = self.ingredient_controller.add_buffer(
                 Buffer(
@@ -339,7 +334,7 @@ class FormulationController:
         """
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

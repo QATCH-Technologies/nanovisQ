@@ -3114,7 +3114,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         predict_result = predictor.predict(
-                            file_buffer=fh)
+                            file_buffer=fh,
+                            apply_constraints=False)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -8704,10 +8705,12 @@ class AnalyzerWorker(QtCore.QObject):
                     visc_std = np.std(in_viscosity[idx_start:idx_end+1])
                     shear_min = in_shear_rate[idx_start]
                     shear_max = in_shear_rate[idx_end]
-                    summary_row = "Average viscosity is {:2.2f} cP \u00b1 {:2.2f} for shear rates in range {:2.0f} - {:2.0f} 1/s.".format(
+                    summary_text = "Average viscosity is {:2.2f} cP \u00b1 {:2.2f} for shear rates in range {:2.0f} - {:2.0f} 1/s.".format(
                         visc_avg, visc_std, shear_min, shear_max)
                     # Add summary text to bottom of table data
-                    tableLabel = QtWidgets.QLabel(summary_row)
+                    tableLabel = QtWidgets.QLabel(summary_text)
+                    tableLabel.setStyleSheet("font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
+                    tableLabel.setWordWrap(True)
                     table_layout.addWidget(tableLabel)
                     # Add centered label to plot data
                     fig4.text(0.53, 0.82,

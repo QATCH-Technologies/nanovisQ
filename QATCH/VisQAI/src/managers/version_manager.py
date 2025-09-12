@@ -15,12 +15,15 @@ _OBJECTS_DIR = "objects"
 _DEFAULT_RETENTION = 50
 _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
-# NOTE: VisQAI-base.zip library will be pruned with this class after the retention period.
-#       Software should invoke front-end protections to automatically pin the base library
-#       and prevent it from being unpinned by the user.
+# NOTE: VisQAI-base.zip is treated as a protected artifact by VersionManager.
+#       It is auto-pinned on commit and marked as protected; prune will never remove it.
+#       Unpinning it requires force=True, but the 'protected' flag remains to guard against pruning.
 
 
 class VersionManager:
+    """ Protected file names to prevent pruning seed model. """
+    _PROTECTED_FILENAMES = {"VisQAI-base.zip"}
+
     def __init__(self, repo_dir: str, retention: int = _DEFAULT_RETENTION) -> None:
         """Initializes a content-addressed snapshot repository.
 
@@ -215,6 +218,8 @@ class VersionManager:
         sha = self._hash_file(model_path)
         obj_dir = self._object_path(sha)
         metadata = metadata or {}
+        # Disallow caller-supplied 'protected'; only VersionManager sets it.
+        metadata.pop("protected", None)
         committed_at = datetime.now().astimezone().replace(
             microsecond=0).isoformat()
         meta = {
@@ -223,6 +228,9 @@ class VersionManager:
             "filename": model_path.name,
             "metadata": metadata,
         }
+        if model_path.name in self._PROTECTED_FILENAMES:
+            meta["metadata"]["pin"] = True
+            meta["metadata"]["protected"] = True  # internal flag
 
         # Ensure only one thread writes this SHA at once
         with self._lock:
@@ -346,7 +354,10 @@ class VersionManager:
         for meta in items:
             if len(index) <= self.retention:
                 break
-            if not meta.get("metadata", {}).get("pin", False):
+
+            is_pinned = meta.get("metadata", {}).get("pin", False)
+            is_protected = meta.get("metadata", {}).get("protected", False)
+            if not (is_pinned or is_protected):
                 sha = meta["sha"]
                 obj_dir = self._object_path(sha)
                 try:
@@ -382,15 +393,17 @@ class VersionManager:
             meta["pin"] = True
             self._write_index(index)
 
-    def unpin(self, sha: str) -> None:
+    def unpin(self, sha: str, force: bool = False) -> None:
         """Unpin a snapshot so it becomes subject to pruning again.
 
         Args:
-            sha: 64-character lowercase SHA-256 hex digest of the snapshot.
-
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot.
+            force (bool): If True, allows unpinning even when the snapshot is protected.
+                Note: the 'protected' flag remains set, so pruning will still not remove it.
         Raises:
             ValueError: If `sha` is not a valid SHA-256 hex digest.
             KeyError: If no snapshot with the given `sha` exists.
+            PermissionError: If attempting to unpin a protected snapshot without force=True.
         """
         if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
             raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
@@ -400,6 +413,11 @@ class VersionManager:
             raise KeyError(f"No such snapshot to unpin: {sha}")
 
         meta = index[sha].get("metadata", {})
+        if meta.get("protected", False) and not force:
+            raise PermissionError(
+                f"Cannot unpin protected artifact {meta.get('filename')} without force=True"
+            )
+
         if "pin" in meta:
             meta.pop("pin")
             self._write_index(index)

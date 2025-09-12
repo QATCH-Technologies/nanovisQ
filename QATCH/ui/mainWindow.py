@@ -1175,8 +1175,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_required = True
         self.signature_received = False
         self.signed_at = "[NEVER]"
+
         # Uninitialized license manager object.
         self._license_manager = None
+        self._dbx_connection = None
 
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
@@ -3257,7 +3259,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
+                                        if time_running < vector0.min() + 3.0:
                                             labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
@@ -3275,9 +3277,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                             if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
                                                     and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
                                                 self._drop_applied[i] = True
-                                    except:
+                                    except Exception as e:
                                         Log.e(
                                             "Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                        Log.d("ERROR DETAILS:", str(e))
                                         self._drop_applied[i] = True
                             else:
                                 labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
@@ -4467,6 +4470,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
+                    self._license_manager = LicenseManager(
+                        dbx_conn=self._dbx_connection)
+                    is_valid, message, license_data = self._license_manager.validate_license(
+                        auto_create_if_missing=True)
+                    Log.d(f"License valid={is_valid}; message={message}")
+
                     from QATCH.nightly.interface import GH_Interface
                     ((update_available, update_now),
                      latest_bundle) = GH_Interface(self).update_check()
