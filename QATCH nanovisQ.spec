@@ -46,6 +46,7 @@ upx_exclude = [
     'libtensorflow_framework.dll',
     'libtensorflow.dll',
     'libtensorflow_cc.dll',
+    '_pywrap_tensorflow_internal.pyd',
 
 # gRPC and protobuf often include native binaries
     'grpcio',
