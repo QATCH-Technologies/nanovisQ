@@ -371,8 +371,16 @@ class ControlsWindow(QtWidgets.QMainWindow):
             'QModel v{} ({})'.format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[4]))
+        QModel4_TN_version = "4.1.1 (TN)"
+        QModel4_TN_release = "2025-08-18"
+        self.q_version_v4_TN = self.menubar[5].addAction(
+            'QModel v{} ({})'.format(QModel4_TN_version, QModel4_TN_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[5]))
         self.q_version_v4.setCheckable(True)
-        if Constants.QModel4_predict:
+        if Constants.QModel4_TN_predict:
+            self.q_version_v4_TN.setChecked(True)
+        elif Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)
         elif Constants.PF_predict:
             self.q_version_v3.setChecked(True)
@@ -2484,7 +2492,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     tmp_path = machine_database.create_temp_decrypt()
                     try:
                         if tmp_path:
-                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            migrator = DatabaseMigrator(
+                                tmp_path, backup_dir=None)
                             current_version = migrator.get_current_version()
                             target_version = MigrationVersion(1, 1, 0)
                             if current_version < target_version:
@@ -2509,11 +2518,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                 status, msgs = migrator.migrate(
                                     target_version=MigrationVersion(1, 1, 0), dry_run=True)
                                 if not status:
-                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
+                                    Log.e(
+                                        f"Database migration dry-run failed: {'; '.join(msgs)}")
                         else:
-                            Log.w("Skipping migration check: could not create temp decrypted DB.")
+                            Log.w(
+                                "Skipping migration check: could not create temp decrypted DB.")
                     finally:
-                            machine_database.cleanup_temp_decrypt()
+                        machine_database.cleanup_temp_decrypt()
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`

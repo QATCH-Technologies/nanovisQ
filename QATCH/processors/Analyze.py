@@ -16,6 +16,7 @@ from PyQt5.QtCore import Qt
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
 from QATCH.QModel.src.models.static_v4.qmodel_v4_predictor import QModelPredictorV4
+from QATCH.QModel.src.models.static_v4_tn.tabnet_predictor import TabNetPOIPredictor
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.fileManager import FileManager
@@ -411,6 +412,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
+
+        # ----- TabNet predictor loading ----- #
+        self.QModel_v4_TN_modules_loaded = False
+        self.QModel_v4_TN_predictor = None
+
         self.PF_modules_loaded = False
         self.PF_predictor = None
 
@@ -947,7 +953,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel4_predict:
+        if Constants.QModel4_TN_predict:
+            self.cBox_Models.setCurrentIndex(5)
+        elif Constants.QModel4_predict:
             self.cBox_Models.setCurrentIndex(4)
         elif Constants.PF_predict:
             self.cBox_Models.setCurrentIndex(3)
@@ -1819,6 +1827,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Constants.QModel3_predict = True if index >= 2 else False
             Constants.PF_predict = True if index >= 3 else False
             Constants.QModel4_predict = True if index >= 4 else False
+            Constants.QModel4_TN_predict = True if index >= 5 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -2806,6 +2815,27 @@ class AnalyzeProcess(QtWidgets.QWidget):
         except Exception as e:
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v4' modules at load of run.")
+        # ---------- LOADING QMODEL V4 (TN) -----------#
+        try:
+            if Constants.QModel4_TN_predict and not self.QModel_v4_TN_modules_loaded:
+                model_path = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "qmodel_v4_tn", "qmodel_tn_clf.zip"
+                )
+                scaler_path = os.path.join(
+                    Architecture.get_path(),
+                    "QATCH", "QModel", "SavedModels", "qmodel_v4_tn", "qmodel_tn_clf_scaler.joblib"
+                )
+                self.QModel_v4_TN_predictor = TabNetPOIPredictor(
+                    model_path=model_path,
+                    scaler_path=scaler_path,
+                    confidence_threshold=0.1)
+
+                self.QModel_v4_TN_modules_loaded = True
+
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'QModel v4 (TN)' modules at load of run.")
 
         try:
             if Constants.PF_predict and not self.PF_modules_loaded:
@@ -3105,8 +3135,59 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
+            if Constants.QModel4_TN_predict:
+                Log.w(
+                    "Auto-fitting points with QModel v4 (TN)... (may take a few seconds)")
+                QtCore.QCoreApplication.processEvents()
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        predictor = self.QModel_v4_TN_predictor
+                        predict_result = predictor.get_top_predictions(
+                            file_buffer=fh,
+                            top_n=3)
+                        predictions = []
+                        candidates = []
+                        for i in range(6):
+                            poi_key = f"POI{i+1}"
+                            poi_indices = predict_result.get(
+                                poi_key, {}).get("indices", [])
+                            poi_confidences = predict_result.get(
+                                poi_key, {}).get("confidences", [])
+                            best_pair = (poi_indices[0], poi_confidences[0])
+                            predictions.append(best_pair[0])
+                            candidates.append((poi_indices, poi_confidences))
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = "QModel v4 (TN)"
+                        if (
+                            isinstance(self.model_result, list)
+                            and len(self.model_result) == 6
+                        ):
+                            poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
+                        else:
+                            self.model_result = -1  # try fallback model
+                except Exception as e:
+                    limit = None
+                    t, v, tb = sys.exc_info()
+                    from traceback import format_tb
 
-            if Constants.QModel4_predict:
+                    a_list = ["Traceback (most recent call last):"]
+                    a_list = a_list + format_tb(tb, limit)
+                    a_list.append(f"{t.__name__}: {str(v)}")
+                    for line in a_list:
+                        Log.d(line)
+                    Log.e(e)
+                    Log.e(TAG,
+                          f"Error using 'QModel v4'... Using a fallback model for auto-fitting."
+                          )
+                    # raise e # debug only
+                    self.model_result = -1  # try fallback model
+            if self.model_result == -1 and Constants.QModel4_predict:
                 Log.w("Auto-fitting points with QModel v4... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
@@ -3473,7 +3554,59 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel4_predict:
+                if Constants.QModel4_TN_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel v4 (TN)... (may take a few seconds)")
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v4_TN_predictor
+                            predict_result = predictor.get_top_predictions(
+                                file_buffer=fh,
+                                top_n=3)
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                poi_indices = predict_result.get(
+                                    poi_key, {}).get("indices", [])
+                                poi_confidences = predict_result.get(
+                                    poi_key, {}).get("confidences", [])
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(best_pair)
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = "QModel v4 (TN)"
+                            if (
+                                isinstance(self.model_result, list)
+                                and len(self.model_result) == 6
+                            ):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # try fallback model
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            "Error using 'QModel v4 (TN)'... Using a fallback model for auto-fitting."
+                        )
+                        # raise e # debug only
+                        self.model_result = -1  # try fallback model
+                if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w(
                         "Auto-fitting points with QModel v4... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -4904,6 +5037,67 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
+
+                if Constants.QModel4_TN_predict and self.prior_points_in_xml:
+                    # skip running QModel v4 (TN) if prior points are available (it's too slow)
+                    self.model_result = poi_vals
+                    self.model_engine = "QModel v4 (TN) skipped (using prior points)"
+                if self.model_result == -1 and Constants.QModel4_TN_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel v4 (TN)... (may take a few seconds)")
+                    self._text1.setHtml(
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v4 (TN)... </span>"
+                    )
+                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v4_TN_predictor
+                            predict_result = predictor.get_top_predictions(
+                                file_buffer=fh,
+                                top_n=3)
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                poi_indices = predict_result.get(
+                                    poi_key, {}).get("indices", [])
+                                poi_confidences = predict_result.get(
+                                    poi_key, {}).get("confidences", [])
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(best_pair)
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = "QModel v4 (TN)"
+                            if (
+                                isinstance(self.model_result, list)
+                                and len(self.model_result) == 6
+                            ):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # try fallback model
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            "Error using 'QModel v4 (TN)'... Using a fallback model for auto-fitting."
+                        )
+                        # raise e # debug only
+                        self.model_result = -1  # try fallback model
                 if Constants.QModel4_predict and self.prior_points_in_xml:
                     # skip running QModel v4 if prior points are available (it's too slow)
                     self.model_result = poi_vals
@@ -8709,7 +8903,8 @@ class AnalyzerWorker(QtCore.QObject):
                         visc_avg, visc_std, shear_min, shear_max)
                     # Add summary text to bottom of table data
                     tableLabel = QtWidgets.QLabel(summary_text)
-                    tableLabel.setStyleSheet("font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
+                    tableLabel.setStyleSheet(
+                        "font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
                     tableLabel.setWordWrap(True)
                     table_layout.addWidget(tableLabel)
                     # Add centered label to plot data
