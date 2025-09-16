@@ -2464,7 +2464,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 #     path=machine_database_path, parse_file_key=True)
                 # form_ctrl = FormulationController(db=machine_database)
                 # csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                #                         "VisQAI", "assets", "formulation_data_05302025.csv")
+                #                         "VisQAI", "assets", "formulation_data_09112025.csv")
                 # if not os.path.isfile(csv_path):
                 #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
                 # df = pd.read_csv(csv_path)
@@ -4470,11 +4470,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
-                    self._license_manager = LicenseManager(
-                        dbx_conn=self._dbx_connection)
-                    is_valid, message, license_data = self._license_manager.validate_license(
-                        auto_create_if_missing=True)
-                    Log.d(f"License valid={is_valid}; message={message}")
+                    def fetch_license():
+                        self._license_manager = LicenseManager(
+                            dbx_conn=self._dbx_connection)
+                        is_valid, message, license_data = self._license_manager.validate_license(
+                            auto_create_if_missing=True)
+                        Log.d(f"License valid={is_valid}; message={message}")
+                        
+                    self.web_thread = threading.Thread(
+                        target=fetch_license)  # non-blocking
+                    self.web_thread.start()
 
                     from QATCH.nightly.interface import GH_Interface
                     ((update_available, update_now),
@@ -4488,20 +4493,20 @@ class MainWindow(QtWidgets.QMainWindow):
                                              "path": build['archive_download_url'],
                                              "size": build['size_in_bytes']}
                         self.start_download()
-
-                    # Check for nightly resource updates (if no build available)
-                    if not hasattr(self, 'url_download'):
+                    else:
+                        # Check for nightly resource updates (if no build available)
                         Constants.UpdateEngine = UpdateEngines.GitHub
                         branch = f"{Constants.app_version[0:4]}x"
                         if self.update_resources_check(branch):
-                            if self.update_resources(branch):
-                                labelweb3 = 'Resources updated'
-                            else:
-                                labelweb3 = 'Resources out-of-date'
+                            labelweb3 = 'Resources out-of-date'
+                            # self.res_download = True
                         else:
-                            labelweb3 = 'Resources up-to-date'
+                            labelweb3 = 'UP-TO-DATE!'
                         Constants.UpdateEngine = UpdateEngines.Nightly
                         Log.i(f"Nightly resource update check: {labelweb3}")
+
+                    # ping periodically for task to finish
+                    QtCore.QTimer.singleShot(1000, self.update_ping)
 
                     return color, labelweb2
                 except:
@@ -4586,11 +4591,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     labelweb3 = 'UP-TO-DATE!'
                 self.ask_for_update = False
-            else:
+            elif Constants.UpdateEngine == UpdateEngines.GitHub:
                 color, labelweb3 = self.update_found(self.build_descr)
 
-            if hasattr(self, "_dbx_connection"):
+            if hasattr(self, "_dbx_connection") and self._dbx_connection:
                 self._dbx_connection.close()
+
+            if hasattr(self, "_license_manager") and self._license_manager:
+                self.VisQAIWin.check_license(
+                    getattr(self, "_license_manager", None))
 
         except Exception as e:
             Log.e("Update Task error:", e)

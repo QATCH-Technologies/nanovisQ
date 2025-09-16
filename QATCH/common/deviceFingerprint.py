@@ -63,6 +63,16 @@ class DeviceFingerprint:
     All methods are static as this is a utility class that doesn't maintain state.
     """
 
+    # These are class variables, with a shared state across DeviceFingerprint method calls
+    no_powershell_cmds = False
+    no_wmic_cmds = False
+
+    @staticmethod
+    def reset_failure_flags():
+        """Provide option to reset failure flags when/if needed"""
+        DeviceFingerprint.no_powershell_cmds = False
+        DeviceFingerprint.no_wmic_cmds = False
+
     @staticmethod
     def run_command(command: str, shell: bool = True, use_powershell: bool = False) -> str:
         """Execute an arbitrary given system command string and return its output.
@@ -83,6 +93,13 @@ class DeviceFingerprint:
         Note:
             Errors are suppressed and logged as warnings. STDERR is redirected to DEVNULL.
         """
+        if use_powershell and DeviceFingerprint.no_powershell_cmds:
+            Log.d(f"Skipping powershell command: {command}")
+            return ""
+        if command.lower().startswith("wmic") and DeviceFingerprint.no_wmic_cmds:
+            Log.d(f"Skipping wmic utility command: {command}")
+            return ""
+
         try:
             if use_powershell:
                 ps_command = ['powershell', '-Command', command]
@@ -93,8 +110,13 @@ class DeviceFingerprint:
                     command, shell=shell, stderr=subprocess.DEVNULL, text=True)
 
             return output.strip()
+        
         except Exception as e:
             Log.w(f"Command failed: {command}, Error: {e}")
+            if use_powershell:
+                DeviceFingerprint.no_powershell_cmds = True
+            elif command.lower().startswith("wmic"):
+                DeviceFingerprint.no_wmic_cmds = True
             return ""
 
     @staticmethod
