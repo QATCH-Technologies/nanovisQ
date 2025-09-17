@@ -26,6 +26,9 @@ void calibrate(long start, long stop, long step);
 byte deltaMag(int val1, int val2);
 void sendNTPpacket(const char *address);
 bool check_and_correct_micros_rollover(void);
+FASTRUN void pogo_button_ISR(void);
+void pogo_button_pressed(bool init);
+void setLidCalibration(byte opened_1, byte closed_1, byte opened_2, byte closed_2, byte delay_ms);
 
 void tft_wakeup();
 void tft_screensaver();
