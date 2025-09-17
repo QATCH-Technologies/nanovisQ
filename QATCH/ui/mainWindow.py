@@ -4471,11 +4471,14 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
                     def fetch_license():
-                        self._license_manager = LicenseManager(
-                            dbx_conn=self._dbx_connection)
-                        is_valid, message, license_data = self._license_manager.validate_license(
-                            auto_create_if_missing=True)
-                        Log.d(f"License valid={is_valid}; message={message}")
+                        try:
+                            self._license_manager = LicenseManager(
+                                dbx_conn=self._dbx_connection)
+                            is_valid, message, license_data = self._license_manager.validate_license(
+                                auto_create_if_missing=True)
+                            Log.d(f"License valid={is_valid}; message={message}")
+                        except Exception as e:
+                            Log.e(f"License fetch error: {e}")
                         
                     self.web_thread = threading.Thread(
                         target=fetch_license)  # non-blocking
@@ -4547,8 +4550,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     color, labelweb3 = self.update_found(self.build_descr)
 
-                if hasattr(self, "_dbx_connection"):
+                if hasattr(self, "_dbx_connection") and self._dbx_connection:
                     self._dbx_connection.close()
+                    self._dbx_connection = None
                 return color, labelweb2
 
             self.web_thread = threading.Thread(
@@ -4596,6 +4600,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if hasattr(self, "_dbx_connection") and self._dbx_connection:
                 self._dbx_connection.close()
+                self._dbx_connection = None
 
             if hasattr(self, "_license_manager") and self._license_manager:
                 self.VisQAIWin.check_license(
