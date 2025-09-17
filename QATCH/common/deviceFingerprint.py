@@ -54,6 +54,15 @@ except (ModuleNotFoundError, ImportError):
             """
             print(msg)
 
+        @staticmethod
+        def d(msg: str) -> None:
+            """Log a debug message.
+
+            Args:
+                msg: The debug message to log.
+            """
+            print(msg)
+
 
 class DeviceFingerprint:
     """A utility class for generating device fingerprints based on hardware information.
@@ -63,8 +72,22 @@ class DeviceFingerprint:
     All methods are static as this is a utility class that doesn't maintain state.
     """
 
+    # These are class variables, with a shared state across DeviceFingerprint method calls
+    no_powershell_cmds = False
+    no_wmic_cmds = False
+
+    # Protects flag reads/writes in concurrent contexts
+    _flag_lock = __import__("threading").Lock()
+
     @staticmethod
-    def run_command(command: str, shell: bool = True, use_powershell: bool = False) -> str:
+    def reset_failure_flags():
+        """Provide option to reset failure flags when/if needed"""
+        with DeviceFingerprint._flag_lock:
+            DeviceFingerprint.no_powershell_cmds = False
+            DeviceFingerprint.no_wmic_cmds = False
+
+    @staticmethod
+    def run_command(command: str, shell: bool = True, use_powershell: bool = False, timeout: float = 5.0) -> str:
         """Execute an arbitrary given system command string and return its output.
 
         WARNING: This method has security implications if misused. In its current usage,
@@ -83,19 +106,33 @@ class DeviceFingerprint:
         Note:
             Errors are suppressed and logged as warnings. STDERR is redirected to DEVNULL.
         """
+        with DeviceFingerprint._flag_lock:
+            if use_powershell and DeviceFingerprint.no_powershell_cmds:
+                Log.d(f"Skipping powershell command: {command}")
+                return ""
+            if command.lower().startswith("wmic") and DeviceFingerprint.no_wmic_cmds:
+                Log.d(f"Skipping wmic utility command: {command}")
+                return ""
+
         try:
             if use_powershell:
                 ps_command = ['powershell', '-Command', command]
                 output = subprocess.check_output(
-                    ps_command, stderr=subprocess.DEVNULL, text=True)
+                    ps_command, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
             else:
                 output = subprocess.check_output(
-                    command, shell=shell, stderr=subprocess.DEVNULL, text=True)
+                    command, shell=shell, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
 
             return output.strip()
-        except Exception as e:
+        
+        except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
             Log.w(f"Command failed: {command}, Error: {e}")
-            return ""
+            with DeviceFingerprint._flag_lock:
+                if use_powershell:
+                    DeviceFingerprint.no_powershell_cmds = True
+                elif command.lower().startswith("wmic"):
+                    DeviceFingerprint.no_wmic_cmds = True
+                return ""
 
     @staticmethod
     def query_registry(key_path: str, value_name: str, hive=winreg.HKEY_LOCAL_MACHINE) -> Optional[str]:
