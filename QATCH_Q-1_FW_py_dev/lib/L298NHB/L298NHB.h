@@ -6,7 +6,7 @@
 
 #include "Arduino.h"
 
-#define MAX_PWR_HEAT 200
+#define MAX_PWR_HEAT 255
 #define MAX_PWR_COOL 255
 
 /**************************************************************************/
