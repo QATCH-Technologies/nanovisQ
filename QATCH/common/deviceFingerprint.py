@@ -47,10 +47,11 @@ except (ModuleNotFoundError, ImportError):
 
         @staticmethod
         def i(msg: str) -> None:
-            """Log an info message.
-
-            Args:
-                msg: The info message to log.
+            """
+            Log an informational message.
+            
+            Parameters:
+                msg (str): The message to log.
             """
             print(msg)
 
@@ -81,30 +82,41 @@ class DeviceFingerprint:
 
     @staticmethod
     def reset_failure_flags():
-        """Provide option to reset failure flags when/if needed"""
+        """
+        Reset persistent failure flags that disable PowerShell and WMIC command execution.
+        
+        Sets DeviceFingerprint.no_powershell_cmds and DeviceFingerprint.no_wmic_cmds to False under the internal lock to ensure a thread-safe update. Call this after environment changes or when retrying command-based probes that were previously disabled.
+        
+        No return value.
+        """
         with DeviceFingerprint._flag_lock:
             DeviceFingerprint.no_powershell_cmds = False
             DeviceFingerprint.no_wmic_cmds = False
 
     @staticmethod
     def run_command(command: str, shell: bool = True, use_powershell: bool = False, timeout: float = 5.0) -> str:
-        """Execute an arbitrary given system command string and return its output.
-
-        WARNING: This method has security implications if misused. In its current usage,
-        the caller passes in commands that are always hardcoded, with no opportunity for
-        injection of malicious commands by users; however the function accepts arbitrary
-        command strings which could potentially be a security risk if it is ever misused.
-
-        Args:
-            command: The command string to execute.
-            shell: Whether to use shell execution (default: True).
-            use_powershell: Whether to execute the command via PowerShell (default: False).
-
+        """
+        Execute a system command and return its trimmed stdout.
+        
+        This will run the provided command (optionally via PowerShell) and return the command's
+        stdout with surrounding whitespace removed. STDERR is discarded. On failure the function
+        returns an empty string and sets class-level failure flags to avoid repeating failing
+        invocations: if a PowerShell invocation fails, DeviceFingerprint.no_powershell_cmds is set;
+        if a WMIC command (commands starting with "wmic") fails, DeviceFingerprint.no_wmic_cmds is set.
+        If the corresponding failure flag is already set, matching commands are skipped and an empty
+        string is returned immediately.
+        
+        Security: accepting arbitrary command strings is potentially dangerous. Callers MUST ensure
+        commands are not influenced by untrusted input.
+        
+        Parameters:
+            command (str): Command string to execute.
+            shell (bool): If True (default) run the command through the system shell when not using PowerShell.
+            use_powershell (bool): If True, invoke PowerShell to run the command; failure will toggle the PowerShell failure flag.
+            timeout (float): Timeout in seconds for the command (default 5.0).
+        
         Returns:
-            The stripped output of the command, or empty string if the command fails.
-
-        Note:
-            Errors are suppressed and logged as warnings. STDERR is redirected to DEVNULL.
+            str: Trimmed stdout from the command on success, or an empty string on failure or when skipped.
         """
         with DeviceFingerprint._flag_lock:
             if use_powershell and DeviceFingerprint.no_powershell_cmds:

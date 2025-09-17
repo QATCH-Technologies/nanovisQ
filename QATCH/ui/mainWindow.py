@@ -2443,6 +2443,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _configure_database(self, exec_migrations: bool = False):
         # check if local app data contains a database file already
+        """
+        Configure the local VisQAI SQLite database used by the application.
+        
+        If a bundled database exists in the application install assets and no database
+        is present in the local application data folder, this function copies the
+        bundled database into the local application data path. If a local database
+        already exists, it compares the bundled database and adds any missing core
+        ingredients from the bundled copy into the local database.
+        
+        When exec_migrations is True, the function attempts a non-destructive migration
+        dry-run against a temporary decrypted copy of the local database to detect
+        required schema/data migrations (no migrations are applied here; this is a
+        safety check).
+        
+        Parameters:
+            exec_migrations (bool): If True, perform a migration dry-run check on a
+                temporary decrypted copy of the local database before merging missing
+                core data. Defaults to False.
+        
+        Side effects:
+        - May create directories and copy the bundled database file into local app
+          data.
+        - May add records (core ingredients) to the existing local database.
+        - Logs progress and warnings.
+        
+        Exceptions:
+        - Exceptions from filesystem or database operations are propagated to the caller.
+        """
         try:
             machine_database_path = os.path.join(
                 Constants.local_app_data_path, "database/app.db")
@@ -4461,6 +4489,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def get_web_info(self, return_info):
 
+        """
+        Check for available software and resource updates from configured backends.
+        
+        Performs an online update check using the configured update engine (Nightly or GitHub). Depending on
+        runtime state and the return_info flag this method will:
+        - run a blocking check and return a result tuple, or
+        - spawn background threads to perform update/license checks and schedule periodic pings to monitor
+          their progress.
+        
+        Side effects:
+        - May start background threads (self.web_thread) to fetch license information or perform update checks.
+        - May change Constants.UpdateEngine temporarily when probing nightly resources.
+        - May set attributes such as self.latest_build, self.url_download, and self.ask_for_update.
+        - May initiate a download via self.start_download().
+        - May close and clear self._dbx_connection when finished.
+        - Schedules periodic progress checks via QtCore.QTimer.singleShot(..., self.update_ping).
+        
+        Parameters:
+            return_info (bool): If True, perform a blocking update check and return status immediately.
+                If False, start non-blocking/background checks and return None (or return early in some
+                Nightly branches where a tuple is produced).
+        
+        Returns:
+            tuple(str, str) or None: When a synchronous result is produced, returns (color, labelweb2),
+            where `color` is an HTML color string representing update status (green/orange/red) and
+            `labelweb2` is a short status label (typically 'ONLINE'). In non-blocking flows this method
+            may return None.
+        """
         try:
             Log.i(TAG, 'Checking online for updates...')
 
@@ -4568,6 +4624,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_ping(self):
         # periodic check for update task completion
+        """
+        Periodic poll for asynchronous update and resource-check tasks.
+        
+        Checks branch/version mapping from Constants.app_version, waits for a background web_thread to finish (re-scheduling itself via Qt singleShot while the thread is alive), then determines update/resource status:
+        - If a GitHub update build URL is present, delegates to update_found to produce UI labels.
+        - Otherwise, optionally calls update_resources to refresh resources for the detected branch and sets an internal ask_for_update flag.
+        - Closes any open Dropbox connection and triggers VisQAIWin.check_license if a license manager exists.
+        
+        This function does not return a value. Exceptions are caught and logged; on thread-alive it re-schedules another ping after 1 second.
+        """
         try:
             if "v2.3" in Constants.app_version:
                 branch = "v2.3x"
