@@ -1318,7 +1318,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     # new parameters for revamped run info
                     if name == "protein_type":
-                        if value not in self.proteins and value.casefold() != "none" \
+                        if value.casefold() not in [p.casefold() for p in self.proteins] \
+                                and value.casefold() != "none" \
                                 and len(value) != 0:  # protein uses blank value default
                             Log.w(
                                 f"Adding new Protein Type: \"{value}\"")
@@ -1332,7 +1333,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     if name == "protein_concentration":
                         self.t12.setText(value)
                     if name == "buffer_type":
-                        if value not in self.buffers and value.casefold() != "none":
+                        if value.casefold() not in [b.casefold() for b in self.buffers] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Buffer Type: \"{value}\"")
                             self.buffers.append(value)
@@ -1345,7 +1347,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     if name == "buffer_concentration":
                         self.t14.setText(value)
                     if name == "surfactant_type":
-                        if value not in self.surfactants and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.surfactants] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Surfactant Type: \"{value}\"")
                             self.surfactants.append(value)
@@ -1358,7 +1361,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     if name == "surfactant_concentration":
                         self.t6.setText(value)
                     if name == "stabilizer_type":
-                        if value not in self.stabilizers and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.stabilizers] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Stabilizer Type: \"{value}\"")
                             self.stabilizers.append(value)
@@ -1371,7 +1375,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                     if name == "stabilizer_concentration":
                         self.t8.setText(value)
                     if name == "salt_type":
-                        if value not in self.salts and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.salts] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Salt Type: \"{value}\"")
                             self.salts.append(value)

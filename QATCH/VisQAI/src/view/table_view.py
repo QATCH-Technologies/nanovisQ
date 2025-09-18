@@ -17,6 +17,11 @@ class TableView(QtWidgets.QTableWidget):
 
     def __init__(self, data, *args):
         QtWidgets.QTableWidget.__init__(self, *args)
+
+        # Lookup table for mapping protein names to class types
+        # i.e. {"Protein #1": "None", "Protein #2": "Other"}
+        self._protein_type_to_class = {}
+        
         self.itemChanged.connect(self._on_item_changed)
         self.setData(data)
         self.resizeColumnsToContents()
@@ -26,6 +31,7 @@ class TableView(QtWidgets.QTableWidget):
     def clear(self):
         super().clear()
         self._is_empty = True
+        
 
     def setData(self, data: dict[str, str]) -> None:
         self.data = data
@@ -54,13 +60,13 @@ class TableView(QtWidgets.QTableWidget):
                         choices, selected = list(item.values())
                         # skip Protein Type/Class and Buffer Type rows
                         if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
-                            newitem.addItem("None")
+                            choices.insert(0, "None")
                         newitem.addItems(choices)
                         if len(selected):
                             try:
                                 newitem.setCurrentIndex(
-                                    [newitem.itemText(i) for i in range(newitem.count())]
-                                    .index(str(selected)))
+                                    [newitem.itemText(i).casefold() for i in range(newitem.count())]
+                                    .index(str(selected).casefold()))  # case-insensitive matching
                             except ValueError:
                                 print(f"WARNING: Entry \"{str(selected)}\" is not a known type!")
                                 newitem.setCurrentText(str(selected))
@@ -118,6 +124,16 @@ class TableView(QtWidgets.QTableWidget):
                 if item.background().color().name() in [Color.light_yellow.name(), Color.light_red.name()]:
                     return False
         return True
+    
+    def setProteinsByClass(self, proteins_by_class: dict):        
+        result = {}
+        for key, values in proteins_by_class.items():
+            for value in values:
+                if value in result:
+                    print(f"Warning: '{value}' appears multiple times")
+                result[value] = key
+        self._protein_type_to_class = result
+    
 
     def isEmpty(self) -> bool:
         return self._is_empty
@@ -174,6 +190,19 @@ class TableView(QtWidgets.QTableWidget):
 
     def _on_combo_change(self, idx: int, row: int):
         # self.blockSignals(True)
+        if row == self.PROTEIN_TYPE_ROW:
+            # Update protein class type to match protein name
+            protein_type = self.cellWidget(row, 1).currentText()
+            protein_class = self._protein_type_to_class.get(protein_type, "None")
+            class_item: QtWidgets.QComboBox = self.cellWidget(self.PROTEIN_CLASS_ROW, 1)
+            try:
+                class_item.setCurrentIndex(
+                    [class_item.itemText(i).casefold() for i in range(class_item.count())]
+                    .index(str(protein_class).casefold()))  # case-insensitive matching
+            except ValueError:
+                print(f"WARNING: Entry \"{str(protein_class)}\" is not a known type!")
+                class_item.setCurrentText(str(protein_class))
+            # NOTE: Do NOT return here, Protein Type has an associated Protein Concentration field
         conc_item = self.item(row+1, 1)  # concentration item
         if conc_item is None or row == self.PROTEIN_CLASS_ROW:
             return  # no concentration item to change
