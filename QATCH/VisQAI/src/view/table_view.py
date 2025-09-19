@@ -21,7 +21,7 @@ class TableView(QtWidgets.QTableWidget):
         # Lookup table for mapping protein names to class types
         # i.e. {"Protein #1": "None", "Protein #2": "Other"}
         self._protein_type_to_class = {}
-        
+
         self.itemChanged.connect(self._on_item_changed)
         self.setData(data)
         self.resizeColumnsToContents()
@@ -60,7 +60,8 @@ class TableView(QtWidgets.QTableWidget):
                         choices, selected = list(item.values())
                         # skip Protein Type/Class and Buffer Type rows
                         if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
-                            choices.insert(0, "None")
+                            if not any(str(c).casefold() == "none" for c in choices):
+                                choices.insert(0, "None")
                         newitem.addItems(choices)
                         if len(selected):
                             try:
@@ -127,11 +128,13 @@ class TableView(QtWidgets.QTableWidget):
     
     def setProteinsByClass(self, proteins_by_class: dict):        
         result = {}
-        for key, values in proteins_by_class.items():
-            for value in values:
-                if value in result:
-                    print(f"Warning: '{value}' appears multiple times")
-                result[value] = key
+        for p_class, types in proteins_by_class.items():
+            for type in types:
+                p_type = str(type).casefold()
+                if p_type in result:
+                    print(f"Warning: '{type}' appears multiple times")
+                    print(f"         '{type}' was '{result[p_type]}'; now '{p_class}'.")
+                result[p_type] = str(p_class)
         self._protein_type_to_class = result
     
 
@@ -192,16 +195,21 @@ class TableView(QtWidgets.QTableWidget):
         # self.blockSignals(True)
         if row == self.PROTEIN_TYPE_ROW:
             # Update protein class type to match protein name
-            protein_type = self.cellWidget(row, 1).currentText()
-            protein_class = self._protein_type_to_class.get(protein_type, "None")
+            protein_type = self.cellWidget(row, 1).currentText().casefold()
+            protein_class: str = self._protein_type_to_class.get(protein_type, "none")
             class_item: QtWidgets.QComboBox = self.cellWidget(self.PROTEIN_CLASS_ROW, 1)
             try:
                 class_item.setCurrentIndex(
                     [class_item.itemText(i).casefold() for i in range(class_item.count())]
-                    .index(str(protein_class).casefold()))  # case-insensitive matching
+                    .index(protein_class.casefold()))  # case-insensitive matching
             except ValueError:
-                print(f"WARNING: Entry \"{str(protein_class)}\" is not a known type!")
-                class_item.setCurrentText(str(protein_class))
+                print(f"WARNING: Entry \"{protein_class}\" is not a known Protein Class! Using \"Other\" instead.")
+                try:
+                    class_item.setCurrentIndex(
+                        [class_item.itemText(i).casefold() for i in range(class_item.count())]
+                        .index("other"))
+                except ValueError:
+                    class_item.setCurrentIndex(-1)
             # NOTE: Do NOT return here, Protein Type has an associated Protein Concentration field
         conc_item = self.item(row+1, 1)  # concentration item
         if conc_item is None or row == self.PROTEIN_CLASS_ROW:
@@ -218,7 +226,7 @@ class TableView(QtWidgets.QTableWidget):
             # If the user selects any other item, enable the concentration
             # value and set it to the default value (blank, missing input)
             conc_item.setFlags(conc_item.flags() |
-                               (QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEditable))
+                               (QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEditable))
             conc_item.setText("")
         # NOTE: By not blocking signals here, we allow the `itemChanged` signal
         #       to propagate and set/clear the background color based on text.

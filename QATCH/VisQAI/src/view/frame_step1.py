@@ -317,7 +317,7 @@ class FrameStep1(QtWidgets.QDialog):
                                        self.default_rows, self.default_cols)
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
-        
+
         # Update proteins by class for table view auto-selection
         self.feature_table.setProteinsByClass(self.proteins_by_class)
 
@@ -1640,26 +1640,26 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 0:  # Protein Type
                         Log.w(
                             f"Adding new Protein Type: \"{value}\"")
-                        self.ing_ctrl.add(Protein(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Protein(enc_id=1, name=value))
                     if idx == 2:  # Protein Class
                         Log.w(
                             f"Unknown Protein Class Type: \"{value}\"")
                     if idx == 6:  # Buffer Type
                         Log.w(
                             f"Adding new Buffer Type: \"{value}\"")
-                        self.ing_ctrl.add(Buffer(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Buffer(enc_id=1, name=value))
                     if idx == 9:  # Surfactant Type
                         Log.w(
                             f"Adding new Surfactant Type: \"{value}\"")
-                        self.ing_ctrl.add(Surfactant(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Surfactant(enc_id=1, name=value))
                     if idx == 11:  # Stabilizer Type
                         Log.w(
                             f"Adding new Stabilizer Type: \"{value}\"")
-                        self.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
                     if idx == 13:  # Salt Type
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")
-                        self.ing_ctrl.add(Salt(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Salt(enc_id=1, name=value))
 
             # Reload excipient choices (only if needed)
             if reload_excipients:
