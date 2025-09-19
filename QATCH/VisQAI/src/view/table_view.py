@@ -58,11 +58,13 @@ class TableView(QtWidgets.QTableWidget):
                     # newitem.addItem("add new...")
                     if isinstance(item, dict):
                         choices, selected = list(item.values())
+                        # use a local copy to avoid mutating source choices too
+                        local_choices = list(choices)
                         # skip Protein Type/Class and Buffer Type rows
                         if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
-                            if not any(str(c).casefold() == "none" for c in choices):
-                                choices.insert(0, "None")
-                        newitem.addItems(choices)
+                            if not any(str(c).casefold() == "none" for c in local_choices):
+                                local_choices.insert(0, "None")
+                        newitem.addItems(local_choices)
                         if len(selected):
                             try:
                                 newitem.setCurrentIndex(
@@ -199,9 +201,10 @@ class TableView(QtWidgets.QTableWidget):
             protein_class: str = self._protein_type_to_class.get(protein_type, "none")
             class_item: QtWidgets.QComboBox = self.cellWidget(self.PROTEIN_CLASS_ROW, 1)
             try:
-                class_item.setCurrentIndex(
-                    [class_item.itemText(i).casefold() for i in range(class_item.count())]
-                    .index(protein_class.casefold()))  # case-insensitive matching
+                if class_item is not None:
+                    class_item.setCurrentIndex(
+                        [class_item.itemText(i).casefold() for i in range(class_item.count())]
+                        .index(protein_class.casefold()))  # case-insensitive matching
             except ValueError:
                 print(f"WARNING: Entry \"{protein_class}\" is not a known Protein Class! Using \"Other\" instead.")
                 try:

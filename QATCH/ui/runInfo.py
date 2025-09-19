@@ -1327,7 +1327,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.proteins = sorted(
                                 self.proteins, key=str.casefold)
                             self.populate_proteins()
-                            self.ing_ctrl.add(Protein(enc_id=1, name=value))
+                            self.ing_ctrl.add(Protein(enc_id=-1, name=value))
                             self.detect_change()
                         self.c10.setCurrentText(value)
                     if name == "protein_concentration":
@@ -1341,7 +1341,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.buffers = sorted(
                                 self.buffers, key=str.casefold)
                             self.populate_buffers()
-                            self.ing_ctrl.add(Buffer(enc_id=1, name=value))
+                            self.ing_ctrl.add(Buffer(enc_id=-1, name=value))
                             self.detect_change()
                         self.c13.setCurrentText(value)
                     if name == "buffer_concentration":
@@ -1355,7 +1355,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.surfactants = sorted(
                                 self.surfactants, key=str.casefold)
                             self.populate_surfactants()
-                            self.ing_ctrl.add(Surfactant(enc_id=1, name=value))
+                            self.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
                             self.detect_change()
                         self.c9.setCurrentText(value)
                     if name == "surfactant_concentration":
@@ -1369,7 +1369,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.stabilizers = sorted(
                                 self.stabilizers, key=str.casefold)
                             self.populate_stabilizers()
-                            self.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
+                            self.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
                             self.detect_change()
                         self.c11.setCurrentText(value)
                     if name == "stabilizer_concentration":
@@ -1383,7 +1383,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.salts = sorted(
                                 self.salts, key=str.casefold)
                             self.populate_salts()
-                            self.ing_ctrl.add(Salt(enc_id=1, name=value))
+                            self.ing_ctrl.add(Salt(enc_id=-1, name=value))
                             self.detect_change()
                         self.c15.setCurrentText(value)
                     if name == "salt_concentration":
@@ -1761,8 +1761,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_proteins:
             name = name.strip()
             if name not in old_proteins and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_protein(Protein(enc_id=0, name=name))
+                self.ing_ctrl.add_protein(Protein(enc_id=-1, name=name))
                 self.proteins.append(name)
         for name in old_proteins:
             if name not in new_proteins:
@@ -1781,8 +1780,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_buffers:
             name = name.strip()
             if name not in old_buffers and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_buffer(Buffer(enc_id=0, name=name))
+                self.ing_ctrl.add_buffer(Buffer(enc_id=-1, name=name))
                 self.buffers.append(name)
         for name in old_buffers:
             if name not in new_buffers:
@@ -1801,8 +1799,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_surfactants:
             name = name.strip()
             if name not in old_surfactants and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_surfactant(Surfactant(enc_id=0, name=name))
+                self.ing_ctrl.add_surfactant(Surfactant(enc_id=-1, name=name))
                 self.surfactants.append(name)
         for name in old_surfactants:
             if name not in new_surfactants:
@@ -1820,9 +1817,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         new_stabilizers = [n.strip() for n in new_stabilizers_raw if n.strip()]
         for name in new_stabilizers:
             name = name.strip()
-            if name not in old_stabilizers and len(name): \
-                    # TODO: fix enc_id
-                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=0, name=name))
+            if name not in old_stabilizers and len(name):
+                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=-1, name=name))
                 self.stabilizers.append(name)
         for name in old_stabilizers:
             if name not in new_stabilizers:
@@ -1840,9 +1836,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         new_salts = [n.strip() for n in new_salts_raw if n.strip()]
         for name in new_salts:
             name = name.strip()
-            if name not in old_salts and len(name): \
-                    # TODO: fix enc_id
-                self.ing_ctrl.add_salt(Salt(enc_id=0, name=name))
+            if name not in old_salts and len(name):
+                self.ing_ctrl.add_salt(Salt(enc_id=-1, name=name))
                 self.salts.append(name)
         for name in old_salts:
             if name not in new_salts:

@@ -810,7 +810,8 @@ class FrameStep1(QtWidgets.QDialog):
             # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             feature["Value"][0]["selected"] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2]["selected"] = form.protein.ingredient.class_type.value
+            feature["Value"][2]["selected"] = form.protein.ingredient.class_type.value \
+                if form.protein.ingredient.class_type else "None"  # class_type could be None
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
@@ -1613,7 +1614,8 @@ class FrameStep1(QtWidgets.QDialog):
                 name=xml_params.get("protein_type", None))
             if protein != None:
                 if protein.class_type != None:
-                    run_features["Value"][2]["selected"] = protein.class_type.value
+                    run_features["Value"][2]["selected"] = protein.class_type.value \
+                        if protein.class_type else "None"  # class_type could be None
                 if protein.molecular_weight != None:
                     run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:
@@ -1633,33 +1635,33 @@ class FrameStep1(QtWidgets.QDialog):
             for idx in [0, 2, 6, 9, 11, 13]: 
                 item = run_features["Value"][idx]
                 choices, selected = list(dict(item).values())
-                value = str(selected)
+                value = str(selected).strip()
                 if value.casefold() not in [str(c).casefold() for c in choices] and value.casefold() != "none" \
                         and len(value) != 0:  # NOTE: Only protein uses blank value default
                     reload_excipients = True
                     if idx == 0:  # Protein Type
                         Log.w(
                             f"Adding new Protein Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Protein(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Protein(enc_id=-1, name=value))
                     if idx == 2:  # Protein Class
                         Log.w(
                             f"Unknown Protein Class Type: \"{value}\"")
                     if idx == 6:  # Buffer Type
                         Log.w(
                             f"Adding new Buffer Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Buffer(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Buffer(enc_id=-1, name=value))
                     if idx == 9:  # Surfactant Type
                         Log.w(
                             f"Adding new Surfactant Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Surfactant(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
                     if idx == 11:  # Stabilizer Type
                         Log.w(
                             f"Adding new Stabilizer Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
                     if idx == 13:  # Salt Type
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Salt(enc_id=1, name=value))
+                        self.parent.ing_ctrl.add(Salt(enc_id=-1, name=value))
 
             # Reload excipient choices (only if needed)
             if reload_excipients:
