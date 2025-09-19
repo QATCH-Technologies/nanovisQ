@@ -481,6 +481,7 @@ class Protein(Ingredient):
             and self.molecular_weight == other.molecular_weight
             and self.pI_mean == other.pI_mean
             and self.pI_range == other.pI_range
+            and self.class_type == other.class_type
         )
 
 

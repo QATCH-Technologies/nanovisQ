@@ -1318,7 +1318,8 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                     # new parameters for revamped run info
                     if name == "protein_type":
-                        if value not in self.proteins and value.casefold() != "none" \
+                        if value.casefold() not in [p.casefold() for p in self.proteins] \
+                                and value.casefold() != "none" \
                                 and len(value) != 0:  # protein uses blank value default
                             Log.w(
                                 f"Adding new Protein Type: \"{value}\"")
@@ -1326,59 +1327,63 @@ class QueryRunInfo(QtWidgets.QWidget):
                             self.proteins = sorted(
                                 self.proteins, key=str.casefold)
                             self.populate_proteins()
-                            self.ing_ctrl.add(Protein(enc_id=1, name=value))
+                            self.ing_ctrl.add(Protein(enc_id=-1, name=value))
                             self.detect_change()
                         self.c10.setCurrentText(value)
                     if name == "protein_concentration":
                         self.t12.setText(value)
                     if name == "buffer_type":
-                        if value not in self.buffers and value.casefold() != "none":
+                        if value.casefold() not in [b.casefold() for b in self.buffers] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Buffer Type: \"{value}\"")
                             self.buffers.append(value)
                             self.buffers = sorted(
                                 self.buffers, key=str.casefold)
                             self.populate_buffers()
-                            self.ing_ctrl.add(Buffer(enc_id=1, name=value))
+                            self.ing_ctrl.add(Buffer(enc_id=-1, name=value))
                             self.detect_change()
                         self.c13.setCurrentText(value)
                     if name == "buffer_concentration":
                         self.t14.setText(value)
                     if name == "surfactant_type":
-                        if value not in self.surfactants and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.surfactants] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Surfactant Type: \"{value}\"")
                             self.surfactants.append(value)
                             self.surfactants = sorted(
                                 self.surfactants, key=str.casefold)
                             self.populate_surfactants()
-                            self.ing_ctrl.add(Surfactant(enc_id=1, name=value))
+                            self.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
                             self.detect_change()
                         self.c9.setCurrentText(value)
                     if name == "surfactant_concentration":
                         self.t6.setText(value)
                     if name == "stabilizer_type":
-                        if value not in self.stabilizers and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.stabilizers] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Stabilizer Type: \"{value}\"")
                             self.stabilizers.append(value)
                             self.stabilizers = sorted(
                                 self.stabilizers, key=str.casefold)
                             self.populate_stabilizers()
-                            self.ing_ctrl.add(Stabilizer(enc_id=1, name=value))
+                            self.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
                             self.detect_change()
                         self.c11.setCurrentText(value)
                     if name == "stabilizer_concentration":
                         self.t8.setText(value)
                     if name == "salt_type":
-                        if value not in self.salts and value.casefold() != "none":
+                        if value.casefold() not in [s.casefold() for s in self.salts] \
+                                and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Salt Type: \"{value}\"")
                             self.salts.append(value)
                             self.salts = sorted(
                                 self.salts, key=str.casefold)
                             self.populate_salts()
-                            self.ing_ctrl.add(Salt(enc_id=1, name=value))
+                            self.ing_ctrl.add(Salt(enc_id=-1, name=value))
                             self.detect_change()
                         self.c15.setCurrentText(value)
                     if name == "salt_concentration":
@@ -1756,8 +1761,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_proteins:
             name = name.strip()
             if name not in old_proteins and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_protein(Protein(enc_id=0, name=name))
+                self.ing_ctrl.add_protein(Protein(enc_id=-1, name=name))
                 self.proteins.append(name)
         for name in old_proteins:
             if name not in new_proteins:
@@ -1776,8 +1780,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_buffers:
             name = name.strip()
             if name not in old_buffers and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_buffer(Buffer(enc_id=0, name=name))
+                self.ing_ctrl.add_buffer(Buffer(enc_id=-1, name=name))
                 self.buffers.append(name)
         for name in old_buffers:
             if name not in new_buffers:
@@ -1796,8 +1799,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         for name in new_surfactants:
             name = name.strip()
             if name not in old_surfactants and len(name):
-                # TODO: fix enc_id
-                self.ing_ctrl.add_surfactant(Surfactant(enc_id=0, name=name))
+                self.ing_ctrl.add_surfactant(Surfactant(enc_id=-1, name=name))
                 self.surfactants.append(name)
         for name in old_surfactants:
             if name not in new_surfactants:
@@ -1815,9 +1817,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         new_stabilizers = [n.strip() for n in new_stabilizers_raw if n.strip()]
         for name in new_stabilizers:
             name = name.strip()
-            if name not in old_stabilizers and len(name): \
-                    # TODO: fix enc_id
-                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=0, name=name))
+            if name not in old_stabilizers and len(name):
+                self.ing_ctrl.add_stabilizer(Stabilizer(enc_id=-1, name=name))
                 self.stabilizers.append(name)
         for name in old_stabilizers:
             if name not in new_stabilizers:
@@ -1835,9 +1836,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         new_salts = [n.strip() for n in new_salts_raw if n.strip()]
         for name in new_salts:
             name = name.strip()
-            if name not in old_salts and len(name): \
-                    # TODO: fix enc_id
-                self.ing_ctrl.add_salt(Salt(enc_id=0, name=name))
+            if name not in old_salts and len(name):
+                self.ing_ctrl.add_salt(Salt(enc_id=-1, name=name))
                 self.salts.append(name)
         for name in old_salts:
             if name not in new_salts:

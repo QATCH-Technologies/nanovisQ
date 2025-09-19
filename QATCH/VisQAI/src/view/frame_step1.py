@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass
     from src.models.predictor import Predictor
     from src.db.db import Database
     from src.processors.sampler import Sampler
@@ -48,7 +48,7 @@ try:
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
@@ -318,6 +318,9 @@ class FrameStep1(QtWidgets.QDialog):
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
 
+        # Update proteins by class for table view auto-selection
+        self.feature_table.setProteinsByClass(self.proteins_by_class)
+
         self.btn_update = QtWidgets.QPushButton()
         self.btn_update.setEnabled(False)
         if step == 1:  # Select
@@ -423,10 +426,26 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(
                 global_handler if callable(global_handler) else self.model_selected)
 
-    def on_tab_selected(self):
+    def reload_excipient_choices(self):
 
         # Reload all excipients from DB
         self.load_all_excipient_types()
+
+        # Update choices lists in default features for dropdown items
+        self.default_features["Value"][0]["choices"] = self.proteins
+        self.default_features["Value"][2]["choices"] = self.class_types
+        self.default_features["Value"][6]["choices"] = self.buffers
+        self.default_features["Value"][9]["choices"] = self.surfactants
+        self.default_features["Value"][11]["choices"] = self.stabilizers
+        self.default_features["Value"][13]["choices"] = self.salts
+
+        # Update proteins by class for table view auto-selection
+        self.feature_table.setProteinsByClass(self.proteins_by_class)
+
+    def on_tab_selected(self):
+
+        # Reload excipients from DB and update default choices
+        self.reload_excipient_choices()
 
         if self.step == 2:  # Suggest
             # self.load_suggestion()
@@ -625,7 +644,7 @@ class FrameStep1(QtWidgets.QDialog):
         # update protein and buffer characteristics
         # bail if any extended features are missing
         if protein_class in self.class_types:
-            protein.class_type = str(protein_class)
+            protein.class_type = ProteinClass.from_value(protein_class)
         elif not protein.class_type:
             Log.e("Missing protein class!")
             return False
@@ -791,7 +810,8 @@ class FrameStep1(QtWidgets.QDialog):
             # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             feature["Value"][0]["selected"] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2]["selected"] = form.protein.ingredient.class_type
+            feature["Value"][2]["selected"] = form.protein.ingredient.class_type.value \
+                if form.protein.ingredient.class_type else "None"  # class_type could be None
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
@@ -1594,7 +1614,8 @@ class FrameStep1(QtWidgets.QDialog):
                 name=xml_params.get("protein_type", None))
             if protein != None:
                 if protein.class_type != None:
-                    run_features["Value"][2]["selected"] = protein.class_type
+                    run_features["Value"][2]["selected"] = protein.class_type.value \
+                        if protein.class_type else "None"  # class_type could be None
                 if protein.molecular_weight != None:
                     run_features["Value"][3] = protein.molecular_weight
                 if protein.pI_mean != None:
@@ -1606,6 +1627,54 @@ class FrameStep1(QtWidgets.QDialog):
             if buffer != None:
                 if buffer.pH != None:
                     run_features["Value"][8] = buffer.pH
+
+            # Check for new and/or missing features
+            # NOTE: Unknown Class_Types (idx 2) will not be added to the DB. 
+            # Instead, only a warning will be displayed (and a reload will still occur).
+            reload_excipients = False
+            for idx in [0, 2, 6, 9, 11, 13]: 
+                item = run_features["Value"][idx]
+                choices, selected = list(dict(item).values())
+                value = str(selected).strip()
+                if value.casefold() not in [str(c).casefold() for c in choices] and value.casefold() != "none" \
+                        and len(value) != 0:  # NOTE: Only protein uses blank value default
+                    reload_excipients = True
+                    if idx == 0:  # Protein Type
+                        Log.w(
+                            f"Adding new Protein Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(Protein(enc_id=-1, name=value))
+                    if idx == 2:  # Protein Class
+                        Log.w(
+                            f"Unknown Protein Class Type: \"{value}\"")
+                    if idx == 6:  # Buffer Type
+                        Log.w(
+                            f"Adding new Buffer Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(Buffer(enc_id=-1, name=value))
+                    if idx == 9:  # Surfactant Type
+                        Log.w(
+                            f"Adding new Surfactant Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
+                    if idx == 11:  # Stabilizer Type
+                        Log.w(
+                            f"Adding new Stabilizer Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
+                    if idx == 13:  # Salt Type
+                        Log.w(
+                            f"Adding new Salt Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(Salt(enc_id=-1, name=value))
+
+            # Reload excipient choices (only if needed)
+            if reload_excipients:
+                # Reload excipients from DB and update default choices
+                self.reload_excipient_choices()
+
+                # Copy the updated default choices to the run features
+                run_features["Value"][0]["choices"] = self.proteins
+                run_features["Value"][2]["choices"] = self.class_types
+                run_features["Value"][6]["choices"] = self.buffers
+                run_features["Value"][9]["choices"] = self.surfactants
+                run_features["Value"][11]["choices"] = self.stabilizers
+                run_features["Value"][13]["choices"] = self.salts
 
         # Import most recent analysis
         in_shear_rate = []

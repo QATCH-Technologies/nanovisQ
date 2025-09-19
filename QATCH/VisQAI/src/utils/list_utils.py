@@ -37,12 +37,14 @@ class ListUtils:
                 # This could lead to unexpected behaviors if a protein ends up
                 # in both the allowed and the not allowed class type category.
                 # TODO: Add filter to restrict protein names to a single type!
-                if not isinstance(i.class_type, str):
+                # NOTE: `i.class_type` will be ProteinClass or None; never str
+                if not isinstance(i.class_type, ProteinClass):
                     class_type = "None"  # must be None
-                elif i.class_type not in class_types:
+                elif i.class_type.value not in class_types:
+                    # Something is off; value is not in `all_strings`
                     class_type = "Other"  # mark unknown as Other
-                else:
-                    class_type = i.class_type
+                else:  # class_type must be a ProteinClass object
+                    class_type = i.class_type.value
                 if i.name not in proteins_by_class[class_type]:
                     proteins_by_class[class_type].append(i.name)
             elif i.type == "Buffer":
