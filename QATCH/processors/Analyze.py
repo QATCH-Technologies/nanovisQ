@@ -7682,7 +7682,7 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d("the distances are now:", distances)
             Log.d("the times are now:", times)
 
-            all_pos = np.concatenate((line1_y_fit[dropUnder2:], distances))
+            all_pos = np.concatenate((line1_y[dropUnder2:], distances))
             all_time = np.concatenate((line1_x[dropUnder2:], xs[times]))
             all_temp = np.concatenate(
                 (temperature[t0: t0 + len(line1_x[dropUnder2:])],
