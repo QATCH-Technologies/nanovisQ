@@ -497,9 +497,9 @@ long stepperOffset = -110; // position of Port 1 relative to L1 switch
 #endif
 #if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
-const bool stepperHomingDir = false; // backwards
-long stepSize = 132; // assumes equal step sizes
-long stepperOffset = 1; // position of Port 1 relative to L1 switch
+const bool stepperHomingDir = true; // forwards
+long stepSize = -132; // assumes equal step sizes
+long stepperOffset = -50; // position of Port 1 relative to L1 switch
 #endif
 long stepperPositions[6] = {0, stepSize, 2*stepSize, 3*stepSize, 4*stepSize, 5*stepSize};
 void stepper_home(); // prototype
