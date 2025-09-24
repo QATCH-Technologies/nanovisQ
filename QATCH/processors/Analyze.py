@@ -7456,36 +7456,36 @@ class AnalyzerWorker(QtCore.QObject):
 
             self.update(status_label)
 
-            dropUnder5 = 0
+            dropUnder2 = 0
             ####################################
             # NEW CODE for 2023-11-07 TESTING:
             # Drop 5 Hz or 3.33% of initial fill (whichever is larger)
             # default, if/when Band-Aid #2 disabled
-            dropBelowPct = float(1 / 30)
+            # dropBelowPct = float(1 / 30)
             #######################################
             # Band-Aid #2: Drop more initial fill
             # To disable: Comment out line below:
-            dropBelowPct = 0.10  # 0.15 if BIOFORMULATION else 0.40
-            Log.w(
-                f"Dropping {int(dropBelowPct * 100)}% of initial fill region...")
+            # dropBelowPct = 0.10  # 0.15 if BIOFORMULATION else 0.40
+            # Log.w(
+            #     f"Dropping {int(dropBelowPct * 100)}% of initial fill region...")
             ### END Band-Aid #2 ###################
-            dropFreqBelow = max(5, initial_fill[-1] * dropBelowPct)
+            dropFreqBelow = 2 # max(5, initial_fill[-1] * dropBelowPct)
             ### END NEW CODE ###################
             for i in range(len(initial_fill)):
                 if initial_fill[i] > dropFreqBelow:
-                    Log.d(f"Dropped {i} initial samples under 5 Hz threshold")
+                    Log.d(f"Dropped {i} initial samples under 2 Hz threshold")
                     log_velocity = log_velocity[i:]
                     log_position = log_position[i:]
-                    dropUnder5 = i
+                    dropUnder2 = i
                     ####################################
                     # NEW CODE for 02/03/2023 TESTING:
                     # REMOVED 2023-11-07:
                     # if initial_fill[-1] > 1.1*DENSITY*300:
-                    #     dropUnder5 = int(np.floor(len(initial_fill)/5))
+                    #     dropUnder2 = int(np.floor(len(initial_fill)/5))
                     # else:
-                    #     dropUnder5 = i
+                    #     dropUnder2 = i
                     ### END NEW CODE ###################
-                    Log.d(f"dropUnder5 = {dropUnder5}")
+                    Log.d(f"dropUnder2 = {dropUnder2}")
                     break
 
             self.update(status_label)
@@ -7682,10 +7682,10 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d("the distances are now:", distances)
             Log.d("the times are now:", times)
 
-            all_pos = np.concatenate((line1_y[dropUnder5:], distances))
-            all_time = np.concatenate((line1_x[dropUnder5:], xs[times]))
+            all_pos = np.concatenate((line1_y[dropUnder2:], distances))
+            all_time = np.concatenate((line1_x[dropUnder2:], xs[times]))
             all_temp = np.concatenate(
-                (temperature[t0: t0 + len(line1_x[dropUnder5:])],
+                (temperature[t0: t0 + len(line1_x[dropUnder2:])],
                  temperature[times])
             )
             avg_temp = np.average(temperature[t0: times[-1]])
@@ -7694,8 +7694,8 @@ class AnalyzerWorker(QtCore.QObject):
             # all_velocity[-6] /= 1.5 # 2.17 (#3 in distances)
             # all_velocity[-5] /= 1 # 2.67 (#4 in distances)
 
-            fill_pos = line1_y_fit[dropUnder5:]
-            fill_time = line1_x[dropUnder5:]
+            fill_pos = line1_y_fit[dropUnder2:]
+            fill_time = line1_x[dropUnder2:]
             fill_velocity = fill_pos / fill_time
 
             self.update(status_label)
