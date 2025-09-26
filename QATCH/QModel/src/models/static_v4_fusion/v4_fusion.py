@@ -19,7 +19,7 @@ try:
     from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
 
 except (ImportError, ModuleNotFoundError):
-    from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
+    from v4_fusion_dataprocessor import FusionDataprocessor
 
     class Log:
         @staticmethod
@@ -868,7 +868,12 @@ class QModelV4Fusion:
                 window_margin: int = 100,
                 use_regression_threshold: float = 0.5,
                 enforce_constraints: bool = True,
-                format_output: bool = False) -> Dict[str, any]:
+                format_output: bool = False,
+                progress_signal = None) -> Dict[str, any]:
+        
+        if progress_signal:
+            this_progress_step = 0
+            total_progress_steps = 7
 
         if file_buffer is not None:
             try:
@@ -881,6 +886,12 @@ class QModelV4Fusion:
 
         Log.d(self.TAG, "Predicting using QModelV4Fusion.")
         Log.d(self.TAG, "Classification head prediction active.")
+        if progress_signal:
+            this_progress_step += 1
+            progress_signal.emit(
+                int(100 * this_progress_step / total_progress_steps), 
+                "Step 1/7: Searching for channel regions..."
+            )
         clf_results = self.clf_predictor.predict(
             df=df,
             enforce_constraints=enforce_constraints
@@ -902,6 +913,12 @@ class QModelV4Fusion:
         poi_map = {1: 'POI1', 2: 'POI2', 4: 'POI4', 5: 'POI5', 6: 'POI6'}
         for poi_name, predictor in self.reg_predictors.items():
             Log.d(self.TAG, f"Executing {poi_name} regression head.")
+            if progress_signal:
+                this_progress_step += 1
+                progress_signal.emit(
+                    int(100 * this_progress_step / total_progress_steps), 
+                    f"Step {this_progress_step}/7: Refining {poi_name} position..."
+                )
             reg_result = predictor.predict(
                 df=df,
                 apply_smoothing=True
@@ -913,6 +930,12 @@ class QModelV4Fusion:
         methods_used = {}
         confidence_scores = {}
 
+        if progress_signal:
+            this_progress_step += 1
+            progress_signal.emit(
+                int(100 * this_progress_step / total_progress_steps), 
+                f"Step {this_progress_step}/7: Validating auto-fit positions..."
+            )
         for poi_num, clf_position in clf_positions.items():
             poi_name = poi_map.get(poi_num)
 

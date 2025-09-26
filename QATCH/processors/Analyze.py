@@ -13,6 +13,7 @@ from io import BytesIO
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QCompleter
 from PyQt5.QtCore import Qt
+from typing import Optional
 from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
 from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
 from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
@@ -60,6 +61,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressValue = QtCore.pyqtSignal(int)
     progressFormat = QtCore.pyqtSignal(str)
     progressUpdate = QtCore.pyqtSignal()
+    predict_progress = QtCore.pyqtSignal(int, str)
 
     @staticmethod
     def Lookup_ST(surfactant, concentration):
@@ -3053,6 +3055,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
+    def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
+        self.progressBarDiag.setValue(pct)
+        if status and len(status):
+            self.progressBarDiag.setLabelText(status)
+        QtCore.QCoreApplication.processEvents()
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -3117,12 +3125,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
+                        self.progressBarDiag.setRange(0, 100)  # percentage
+                        self.predict_progress.connect(self._QModel_v4_progress_update)
                         predict_result = predictor.predict(
                             file_buffer=fh,
                             window_margin=64,
                             use_regression_threshold=0.25,
                             enforce_constraints=False,
-                            format_output=True)
+                            format_output=True,
+                            progress_signal=self.predict_progress)
                         predictions = []
                         candidates = []
                         for i in range(6):
