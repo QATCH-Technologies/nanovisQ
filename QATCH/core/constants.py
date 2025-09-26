@@ -313,8 +313,8 @@ class Constants:
                            "QModel v2",
                            "QModel v3",
                            "QModel v3 + Partial Fills",
-                           "QModel v4 (mini)"]
-    QModel4_predict = False
+                           "QModel v4 (Fusion)"]
+    QModel4_predict = True
     PF_predict = False
     QModel3_predict = True
     QModel2_predict = True
