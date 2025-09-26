@@ -1,0 +1,18 @@
+{
+  "window_size": 128,
+  "stride": 16,
+  "tolerance": 64,
+  "feature_dim": 38,
+  "best_params": {
+    "conv_filters_1": 64,
+    "conv_filters_2": 256,
+    "kernel_size": 5,
+    "lstm_units_1": 256,
+    "lstm_units_2": 32,
+    "dense_units": 192,
+    "dropout_rate": 0.30000000000000004,
+    "learning_rate": 0.0005452750912724706,
+    "batch_size": 64
+  },
+  "device": "cuda"
+}

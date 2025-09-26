@@ -26,7 +26,7 @@ import json
 from datetime import datetime
 from QATCH.QModel.src.models.static_v4.qmodel_v4_post import V4PostProcess
 warnings.filterwarnings('ignore')
-
+TAG = "[QModelv4.x]"
 # Try to use legacy Keras if available
 try:
     import tf_keras
@@ -300,17 +300,17 @@ class QModelPredictorV4:
             Log.w(f"Failed to load config: {e}")
 
     def _load_model(self):
-        """Loads the machine learning model with multiple fallback strategies.
+        """Loads the .h5 machine learning model with comprehensive fallback strategies.
+
+        Handles compatibility issues between TensorFlow 2.10 (training) and 2.18 (deployment)
+        for .h5 format models. Attempts multiple loading strategies optimized for exe compilation.
 
         The method attempts to load the model in the following order:
-            1. Using `tf_keras` for legacy model support.
-            2. Using Keras v2 compatibility mode.
-            3. Using custom object registration for layers.
-            4. Standard Keras model loading.
-
-        If all strategies fail, an exception is raised. After loading,
-        the model is compiled with the Adam optimizer and binary cross-entropy
-        loss.
+            1. Standard Keras .h5 loading with compatibility settings
+            2. Legacy tf_keras compatibility mode  
+            3. Custom object scope with common layer registrations
+            4. Architecture + weights loading (separate files)
+            5. HDF5 direct loading with manual reconstruction
 
         Attributes:
             model (keras.Model): The loaded Keras model.
@@ -318,89 +318,305 @@ class QModelPredictorV4:
         Raises:
             Exception: If the model cannot be loaded with any of the strategies.
         """
-        Log.d(f"Loading model from {self.model_path}...")
-        model_loaded = False
+        import tensorflow as tf
+        import os
+        import warnings
+        import h5py
 
-        # Try using tf_keras for legacy model support
+        # Suppress compatibility warnings that don't affect functionality
+        warnings.filterwarnings(
+            'ignore', category=UserWarning, module='tensorflow')
+        warnings.filterwarnings(
+            'ignore', category=FutureWarning, module='tensorflow')
+
+        Log.d(TAG, f"Loading .h5 model from {self.model_path}...")
+        Log.d(TAG, f"TensorFlow version: {tf.__version__}")
+
+        # Verify the file exists and is accessible
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model file not found: {self.model_path}")
+
+        if not self.model_path.endswith('.h5'):
+            raise ValueError(f"Expected .h5 file, got: {self.model_path}")
+
+        model_loaded = False
+        load_errors = []
+
+        # Strategy 1: Standard Keras .h5 loading with compatibility settings
+        if not model_loaded:
+            try:
+                Log.d(TAG, "Attempting standard Keras .h5 model loading...")
+
+                # Set compatibility options for TensorFlow 2.18
+                tf.compat.v1.disable_eager_execution() if hasattr(
+                    tf.compat.v1, 'disable_eager_execution') else None
+
+                self.model = tf.keras.models.load_model(
+                    self.model_path,
+                    compile=False,
+                    custom_objects=self._get_h5_custom_objects()
+                )
+                Log.d(TAG, "Model loaded successfully with standard Keras")
+                model_loaded = True
+
+            except Exception as e:
+                error_msg = f"Standard Keras .h5 loading failed: {str(e)[:200]}..."
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
+
+        # Strategy 2: Try tf_keras for legacy .h5 support
         if not model_loaded:
             try:
                 import tf_keras
-                Log.d("Attempting to load with tf_keras...")
+                Log.d(TAG, "Attempting to load .h5 with tf_keras...")
+
                 self.model = tf_keras.models.load_model(
-                    self.model_path, compile=False)
-                Log.d("Model loaded successfully with tf_keras")
-                model_loaded = True
-            except Exception as e:
-                Log.d(f"tf_keras loading failed: {e}")
-
-        # Load with keras v2 compatibility
-        if not model_loaded:
-            try:
-                try:
-                    from keras.src.saving import load_model
-                except ImportError:
-                    from keras.saving import load_model
-
-                self.model = load_model(self.model_path, compile=False)
-                Log.d("Model loaded with Keras v2 compatibility")
-                model_loaded = True
-            except Exception as e:
-                Log.d(f"Keras v2 compatibility loading failed: {e}")
-
-        # Load with custom object registration
-        if not model_loaded:
-            try:
-                Log.d("Attempting to load with custom object registration...")
-                from tensorflow.keras import layers, models
-
-                custom_objects = {
-                    'LSTM': layers.LSTM,
-                    'Dense': layers.Dense,
-                    'Dropout': layers.Dropout,
-                    'BatchNormalization': layers.BatchNormalization,
-                    'Activation': layers.Activation,
-                    'Input': layers.Input,
-                    'Flatten': layers.Flatten,
-                    'Reshape': layers.Reshape,
-                }
-
-                self.model = models.load_model(
                     self.model_path,
-                    custom_objects=custom_objects,
-                    compile=False
+                    compile=False,
+                    custom_objects=self._get_h5_custom_objects()
                 )
-                Log.d("Model loaded with custom objects")
+                Log.d(TAG, "Model loaded successfully with tf_keras")
                 model_loaded = True
-            except Exception as e:
-                Log.d(f"Custom object loading failed: {e}")
 
-        # Standard loading
+            except ImportError:
+                error_msg = "tf_keras not available for .h5 loading"
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
+            except Exception as e:
+                error_msg = f"tf_keras .h5 loading failed: {str(e)[:200]}..."
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
+
+        # Strategy 3: Custom object scope with H5-specific handling
         if not model_loaded:
             try:
-                Log.d("Attempting standard model loading...")
-                self.model = keras.models.load_model(
-                    self.model_path, compile=False)
-                Log.d("Model loaded with standard method")
+                Log.d(TAG, "Attempting .h5 loading with enhanced custom object scope...")
+
+                custom_objects = self._get_comprehensive_custom_objects()
+
+                with tf.keras.utils.custom_object_scope(custom_objects):
+                    self.model = tf.keras.models.load_model(
+                        self.model_path,
+                        compile=False
+                    )
+                Log.d(TAG, "Model loaded successfully with enhanced custom object scope")
                 model_loaded = True
+
             except Exception as e:
-                Log.d(f"Standard loading failed: {e}")
+                error_msg = f"Enhanced custom object scope .h5 loading failed: {str(e)[:200]}..."
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
+
+        # Strategy 4: Try to extract and load architecture + weights separately
+        if not model_loaded:
+            try:
+                Log.d(TAG, "Attempting architecture + weights separation loading...")
+
+                # Read the .h5 file structure
+                with h5py.File(self.model_path, 'r') as h5file:
+                    # Check if we can extract model config
+                    if 'model_config' in h5file.attrs:
+                        import json
+                        model_config = json.loads(
+                            h5file.attrs['model_config'].decode('utf-8'))
+
+                        # Reconstruct model from config
+                        self.model = tf.keras.models.model_from_json(
+                            json.dumps(model_config),
+                            custom_objects=self._get_comprehensive_custom_objects()
+                        )
+
+                        # Load weights
+                        self.model.load_weights(self.model_path)
+                        Log.d(
+                            TAG, "Model loaded successfully with architecture + weights separation")
+                        model_loaded = True
+
+            except Exception as e:
+                error_msg = f"Architecture + weights separation failed: {str(e)[:200]}..."
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
+
+        # Strategy 5: Manual HDF5 reconstruction (last resort)
+        if not model_loaded:
+            try:
+                Log.d(TAG, "Attempting manual HDF5 reconstruction...")
+
+                model_info = self._analyze_h5_structure()
+                if model_info:
+                    self.model = self._reconstruct_from_h5_analysis(model_info)
+                    if self.model:
+                        Log.d(
+                            TAG, "Model loaded successfully with manual HDF5 reconstruction")
+                        model_loaded = True
+
+            except Exception as e:
+                error_msg = f"Manual HDF5 reconstruction failed: {str(e)[:200]}..."
+                Log.d(TAG, error_msg)
+                load_errors.append(error_msg)
 
         if not model_loaded:
+            error_summary = "\n".join(
+                [f"  - {error}" for error in load_errors])
             raise Exception(
-                f"Failed to load model from {self.model_path}. "
-                "Please ensure the model is compatible with your TensorFlow version."
-            )
+                f"Failed to load .h5 model with all strategies:\n{error_summary}")
 
-        # Compile the model
+        # Compile the model with exe-friendly settings
         try:
-            self.model.compile(
-                optimizer='adam',
-                loss='binary_crossentropy',
-                metrics=['accuracy']
-            )
-            Log.d("Model compiled successfully")
+            if hasattr(self.model, 'compile') and callable(getattr(self.model, 'compile')):
+                Log.d(TAG, "Compiling model...")
+                self.model.compile(
+                    optimizer=tf.keras.optimizers.Adam(
+                        learning_rate=0.001),  # Explicit optimizer
+                    loss='binary_crossentropy',
+                    metrics=['accuracy'],
+                    run_eagerly=False,  # Important for exe compatibility
+                    steps_per_execution=1  # Helps with TF 2.18 compatibility
+                )
+                Log.d(TAG, "Model compiled successfully")
+            else:
+                Log.d(
+                    TAG, "Model compilation skipped (not supported by this model type)")
+
         except Exception as e:
-            Log.d(f"Warning: Could not compile model: {e}")
+            Log.d(TAG, f"Warning: Could not compile model: {e}")
+            Log.d(TAG, "Model will work for inference without compilation")
+
+    def _get_h5_custom_objects(self):
+        """Returns custom objects specifically for .h5 model compatibility."""
+        import tensorflow as tf
+
+        custom_objects = {}
+
+        # Common activation functions that might have changed between versions
+        activations = ['swish', 'mish', 'gelu']
+        for activation in activations:
+            try:
+                if hasattr(tf.nn, activation):
+                    custom_objects[activation] = getattr(tf.nn, activation)
+                elif hasattr(tf.keras.activations, activation):
+                    custom_objects[activation] = getattr(
+                        tf.keras.activations, activation)
+            except (AttributeError, ImportError):
+                continue
+
+        # Add legacy layer mappings
+        try:
+            custom_objects['BatchNormalization'] = tf.keras.layers.BatchNormalization
+            custom_objects['LayerNormalization'] = tf.keras.layers.LayerNormalization
+        except AttributeError:
+            pass
+
+        return custom_objects
+
+    def _get_comprehensive_custom_objects(self):
+        """Returns comprehensive custom objects for problematic .h5 models."""
+        import tensorflow as tf
+
+        custom_objects = self._get_h5_custom_objects()
+
+        # Add common optimizers
+        try:
+            custom_objects['Adam'] = tf.keras.optimizers.Adam
+            custom_objects['RMSprop'] = tf.keras.optimizers.RMSprop
+            custom_objects['SGD'] = tf.keras.optimizers.SGD
+        except AttributeError:
+            try:
+                # TF 2.18 might have different optimizer paths
+                custom_objects['Adam'] = tf.keras.optimizers.legacy.Adam
+            except AttributeError:
+                pass
+
+        # Add common loss functions
+        try:
+            custom_objects['binary_crossentropy'] = tf.keras.losses.binary_crossentropy
+            custom_objects['categorical_crossentropy'] = tf.keras.losses.categorical_crossentropy
+        except AttributeError:
+            pass
+
+        # Add common metrics
+        try:
+            custom_objects['accuracy'] = tf.keras.metrics.accuracy
+            custom_objects['Accuracy'] = tf.keras.metrics.Accuracy
+        except AttributeError:
+            pass
+
+        # Handle potential custom layers or functions you might have used
+        custom_objects.update(self._get_project_specific_objects())
+
+        return custom_objects
+
+    def _get_project_specific_objects(self):
+        """Add any custom objects specific to your model here."""
+        # Replace this with any custom layers, functions, or objects your model uses
+        return {}
+
+    def _analyze_h5_structure(self):
+        """Analyzes the .h5 file structure to understand the model."""
+        try:
+            import h5py
+            import json
+
+            with h5py.File(self.model_path, 'r') as h5file:
+                model_info = {}
+
+                # Extract model configuration if available
+                if 'model_config' in h5file.attrs:
+                    model_info['config'] = json.loads(
+                        h5file.attrs['model_config'].decode('utf-8'))
+
+                # Extract keras version info
+                if 'keras_version' in h5file.attrs:
+                    model_info['keras_version'] = h5file.attrs['keras_version'].decode(
+                        'utf-8')
+
+                # Extract layer information
+                model_info['layer_names'] = []
+                if 'model_weights' in h5file:
+                    model_weights = h5file['model_weights']
+                    if hasattr(model_weights, 'keys'):
+                        model_info['layer_names'] = list(model_weights.keys())
+
+                return model_info
+
+        except Exception as e:
+            Log.d(TAG, f"H5 structure analysis failed: {e}")
+            return None
+
+    def _reconstruct_from_h5_analysis(self, model_info):
+        """Attempts to reconstruct model from H5 analysis (implement based on your model)."""
+        # This is a placeholder - you would implement this based on your specific model architecture
+        # For now, return None to indicate this strategy failed
+        Log.d(TAG, "Manual reconstruction not implemented - would need specific model architecture")
+        return None
+
+    def _validate_model_loading(self):
+        """Validates that the loaded model is functional."""
+        if not hasattr(self, 'model') or self.model is None:
+            return False
+
+        try:
+            # Try to get model summary (basic functionality check)
+            if hasattr(self.model, 'summary'):
+                # Capture summary to verify model structure
+                import io
+                import sys
+
+                old_stdout = sys.stdout
+                sys.stdout = buffer = io.StringIO()
+                try:
+                    self.model.summary()
+                    summary = buffer.getvalue()
+                    Log.d(TAG, f"Model validation successful - layers detected")
+                    return True
+                finally:
+                    sys.stdout = old_stdout
+
+            return True
+
+        except Exception as e:
+            Log.d(TAG, f"Model validation failed: {e}")
+            return False
 
     def _load_scaler(self):
         """Loads the feature scaler from a file.

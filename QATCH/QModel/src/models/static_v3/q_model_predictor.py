@@ -135,7 +135,7 @@ class QModelPredictor:
         v4_model_path = os.path.join(
             Architecture.get_path(),
             "QATCH", "QModel", "SavedModels", "qmodel_v4",
-            "v4_model_mini.h5"
+            "v4_model_mini(tf218).h5"
         )
         v4_scaler_path = os.path.join(
             Architecture.get_path(),
@@ -2488,8 +2488,8 @@ class QModelPredictor:
             Log.e(
                 f"File buffer `{file_buffer}` could not be validated because of error: `{e}`.")
             return
-        qmodel_v4_labels = self._get_qmodel_v4_predictions(
-            file_buffer=file_buffer)
+        # qmodel_v4_labels = self._get_qmodel_v4_predictions(
+        #     file_buffer=file_buffer)
         qmodel_v2_labels = self._get_qmodel_v2_predictions(
             file_buffer=file_buffer)
         self._qmodel_v2_labels = qmodel_v2_labels
@@ -2542,45 +2542,45 @@ class QModelPredictor:
             relative_time=relative_time,
             feature_vector=feature_vector,
             raw_vector=df)
-        try:
-            for i in range(2, 7):
-                v4_point = qmodel_v4_labels.get(
-                    f"POI{i}").get("indices", -1)[0]
-                v4_conf = qmodel_v4_labels.get(
-                    f"POI{i}").get("confidences", -1)[0]
-                if i == 6:
-                    v4_6_labels = qmodel_v4_labels.get(
-                        f"POI{i}").get("indices", -1)
-                    v4_max = max(v4_6_labels)
-                    if v4_conf == qmodel_v4_labels.get(
-                            f"POI{i}").get("confidences", -1)[-1]:
-                        v4_point = v4_max
-                    elif abs(v4_conf - qmodel_v4_labels.get(
-                            f"POI{i}").get("confidences", -1)[-1]) <= 0.02 and len(v4_6_labels) > 1:
-                        v4_point = int(np.average(v4_6_labels))
-                if v4_point == -1:
-                    continue
+        # try:
+        #     for i in range(2, 7):
+        #         v4_point = qmodel_v4_labels.get(
+        #             f"POI{i}").get("indices", -1)[0]
+        #         v4_conf = qmodel_v4_labels.get(
+        #             f"POI{i}").get("confidences", -1)[0]
+        #         if i == 6:
+        #             v4_6_labels = qmodel_v4_labels.get(
+        #                 f"POI{i}").get("indices", -1)
+        #             v4_max = max(v4_6_labels)
+        #             if v4_conf == qmodel_v4_labels.get(
+        #                     f"POI{i}").get("confidences", -1)[-1]:
+        #                 v4_point = v4_max
+        #             elif abs(v4_conf - qmodel_v4_labels.get(
+        #                     f"POI{i}").get("confidences", -1)[-1]) <= 0.02 and len(v4_6_labels) > 1:
+        #                 v4_point = int(np.average(v4_6_labels))
+        #         if v4_point == -1:
+        #             continue
 
-                from itertools import chain
-                final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
-                final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
+        #         from itertools import chain
+        #         final_predictions[f"POI{i}"]["indices"].insert(0, v4_point)
+        #         final_predictions[f"POI{i}"]["confidences"].insert(0, v4_conf)
 
-                final_predictions[f"POI{i}"]["indices"] = list(
-                    chain.from_iterable(
-                        x if isinstance(x, (list, tuple)) else [x]
-                        for x in final_predictions[f"POI{i}"]["indices"]
-                    )
-                )
+        #         final_predictions[f"POI{i}"]["indices"] = list(
+        #             chain.from_iterable(
+        #                 x if isinstance(x, (list, tuple)) else [x]
+        #                 for x in final_predictions[f"POI{i}"]["indices"]
+        #             )
+        #         )
 
-                final_predictions[f"POI{i}"]["confidences"] = list(
-                    chain.from_iterable(
-                        x if isinstance(x, (list, tuple)) else [x]
-                        for x in final_predictions[f"POI{i}"]["confidences"]
-                    )
-                )
-        except:
-            Log.e("Failed v4 tail insertion. Skipping")
-        Log.i(final_predictions)
+        #         final_predictions[f"POI{i}"]["confidences"] = list(
+        #             chain.from_iterable(
+        #                 x if isinstance(x, (list, tuple)) else [x]
+        #                 for x in final_predictions[f"POI{i}"]["confidences"]
+        #             )
+        #         )
+        # except:
+        #     Log.e("Failed v4 tail insertion. Skipping")
+        # Log.i(final_predictions)
         return final_predictions
 
 
