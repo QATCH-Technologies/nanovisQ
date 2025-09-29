@@ -1275,6 +1275,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             lambda value: self.progressBar.setFormat(value))
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
+        self.predict_progress.connect(self._QModel_v4_progress_update)
 
     def _validate_run(self):
         """
@@ -3126,8 +3127,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
+<<<<<<< HEAD
                         self.predict_progress.connect(
                             self._QModel_v4_progress_update)
+=======
+>>>>>>> 6834169d72771a512603210aa04af5b4bbd34542
                         predict_result = predictor.predict(
                             file_buffer=fh,
                             window_margin=128,
