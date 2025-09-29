@@ -964,7 +964,7 @@ class QModelV4Fusion:
                 try:
                     # Run regression on the segment only
                     reg_result = self.reg_predictors[poi_name].predict(
-                        df=df_segment,
+                        features_df=df_segment,
                         apply_smoothing=True
                     )
 
