@@ -3126,10 +3126,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
-                        self.predict_progress.connect(self._QModel_v4_progress_update)
+                        self.predict_progress.connect(
+                            self._QModel_v4_progress_update)
                         predict_result = predictor.predict(
                             file_buffer=fh,
-                            window_margin=64,
+                            window_margin=128,
                             use_regression_threshold=0.25,
                             enforce_constraints=False,
                             format_output=True,
@@ -3501,7 +3502,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
                                 file_buffer=fh,
-                                window_margin=64,
+                                window_margin=128,
                                 use_regression_threshold=0.25,
                                 enforce_constraints=False,
                                 format_output=True)
@@ -4944,7 +4945,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
                                 file_buffer=fh,
-                                window_margin=64,
+                                window_margin=128,
                                 use_regression_threshold=0.25,
                                 enforce_constraints=False,
                                 format_output=True)
