@@ -163,7 +163,7 @@ class V4RegPredictor:
                 'op_smoothed': np.array([]),
                 'window_positions': np.array([]),
                 'all_peaks': [],
-                'dataframe': df
+                'dataframe': features_df
             }
 
         windows = np.array(windows)
@@ -218,7 +218,7 @@ class V4RegPredictor:
             'op_smoothed': op_smoothed if apply_smoothing else None,
             'window_positions': window_positions,
             'all_peaks': all_peaks,
-            'dataframe': df
+            'dataframe': features_df
         }
 
     def visualize(self,
