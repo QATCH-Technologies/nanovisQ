@@ -746,7 +746,7 @@ class Database:
         if self.file_handle is not None:
             self.file_handle.close()
         # Only operate on an open database; nothing to do if already closed.
-        if self.is_open and self.conn and not self.conn.closed:
+        if self.is_open:
             # If there are changes or the file does not exist, save or commit
             if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
                 if self.use_encryption:
