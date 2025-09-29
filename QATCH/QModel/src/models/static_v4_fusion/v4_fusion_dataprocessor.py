@@ -17,13 +17,13 @@ class FusionDataprocessor:
 
     @staticmethod
     def load_content(data_dir: str, num_datasets: Union[int, float] = np.inf) -> List[Tuple[str, str]]:
-
+        """Load dataset pairs from directory."""
         if not isinstance(data_dir, str) or not data_dir.strip():
             raise ValueError("data_dir must be a non-empty string.")
         if not os.path.isdir(data_dir):
             raise ValueError(f"Directory '{data_dir}' does not exist.")
 
-        # First, collect all valid datasets with their POI characteristics
+        # Collect all valid datasets with their POI characteristics
         dataset_poi_info: Dict[str, Dict] = {}
 
         for root, _, files in tqdm(os.walk(data_dir), desc='Scanning files...'):
@@ -35,7 +35,7 @@ class FusionDataprocessor:
                         continue
                     try:
                         poi_df = pd.read_csv(poi_path, header=None)
-                    except Exception as e:
+                    except Exception:
                         continue
 
                     poi_values = poi_df.values.flatten()
@@ -69,298 +69,256 @@ class FusionDataprocessor:
 
     @staticmethod
     def compute_difference_curve(df: pd.DataFrame, difference_factor: int = 2) -> pd.Series:
-        required_cols = ["Relative_time",
-                         "Resonance_Frequency", "Dissipation"]
+        """Compute difference curve from resonance frequency and dissipation."""
+        required_cols = ["Relative_time", "Resonance_Frequency", "Dissipation"]
         for col in required_cols:
             if col not in df.columns:
-                raise ValueError(
-                    f"Column '{col}' is missing from DataFrame.")
+                raise ValueError(f"Column '{col}' is missing from DataFrame.")
 
-        xs = df["Relative_time"]
+        xs = df["Relative_time"].values
 
-        i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
-        j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
+        # Vectorized search for indices
+        i = np.searchsorted(xs, 0.5)
+        j = np.searchsorted(xs, 2.5)
         if i == j:
-            j = next((x for x, t in enumerate(
-                xs) if t > xs[j] + 2.0), j + 1)
+            j = np.searchsorted(xs, xs[j] + 2.0)
 
+        # Use numpy for faster computation
         avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()
         avg_diss = df["Dissipation"].iloc[i:j].mean()
-        ys_diss = (df["Dissipation"] - avg_diss) * avg_res_freq / 2
-        ys_freq = avg_res_freq - df["Resonance_Frequency"]
-        return ys_freq - difference_factor * ys_diss
+
+        ys_diss = (df["Dissipation"].values - avg_diss) * avg_res_freq / 2
+        ys_freq = avg_res_freq - df["Resonance_Frequency"].values
+
+        return pd.Series(ys_freq - difference_factor * ys_diss, index=df.index)
 
     @staticmethod
-    def compute_time_aware_baseline(df, baseline_duration=3.0):
-        """
-        Compute baseline using time duration instead of sample count
-        """
+    def compute_time_aware_baseline(df: pd.DataFrame, baseline_duration: float = 3.0):
+        """Compute baseline using time duration instead of sample count."""
         time = df["Relative_time"].values
         baseline_mask = time <= baseline_duration
 
-        base_d = df["Dissipation"][baseline_mask].mean()
-        base_rf = df["Resonance_Frequency"][baseline_mask].mean()
+        base_d = df["Dissipation"].values[baseline_mask].mean()
+        base_rf = df["Resonance_Frequency"].values[baseline_mask].mean()
 
         return base_d, base_rf
 
     @staticmethod
-    def weighted_smooth(values, time, window_size=0.1):  # window in seconds
+    def weighted_smooth(values: np.ndarray, time: np.ndarray, window_size: float = 0.1) -> np.ndarray:
+        """Apply weighted smoothing based on time proximity."""
         smoothed = np.zeros_like(values)
+        half_window = window_size / 2
+        quarter_window = window_size / 4
+
         for i, t in enumerate(time):
-            mask = np.abs(time - t) <= window_size/2
+            mask = np.abs(time - t) <= half_window
             if np.sum(mask) > 0:
                 distances = np.abs(time[mask] - t)
-                weights = np.exp(-distances / (window_size/4))
+                weights = np.exp(-distances / quarter_window)
                 weights /= weights.sum()
-
                 smoothed[i] = np.average(values[mask], weights=weights)
             else:
                 smoothed[i] = values[i]
         return smoothed
 
     @staticmethod
-    def get_features(df: pd.DataFrame):
-        def compute_ocsvm_score(shift_series: pd.Series):
-            if shift_series.empty:
-                raise ValueError("shift_series is empty.")
-            X = shift_series.values.reshape(-1, 1)
-            ocsvm = OneClassSVM(nu=0.05, kernel='rbf',
-                                gamma='scale', shrinking=False)
-            ocsvm.fit(X)
-            # get raw decision scores and flip so negative spikes become positive
-            scores = ocsvm.decision_function(X)
-            scores = -scores
-            # baseline at zero
-            scores = scores - np.min(scores)
-            return scores
+    def compute_ocsvm_score(shift_series: pd.Series) -> np.ndarray:
+        """Compute One-Class SVM anomaly scores."""
+        if shift_series.empty:
+            raise ValueError("shift_series is empty.")
 
-        def compute_DoG(df: pd.DataFrame, col: str, sigma: float = 2):
-            if col not in df.columns:
-                raise ValueError(f"Column '{col}' not found in DataFrame.")
-            if sigma <= 0:
-                raise ValueError("sigma must be a positive number.")
-            result = gaussian_filter1d(df[col], sigma=sigma, order=1)
-            return pd.Series(result, index=df.index)
+        X = shift_series.values.reshape(-1, 1)
+        ocsvm = OneClassSVM(nu=0.05, kernel='rbf',
+                            gamma='scale', shrinking=False)
+        ocsvm.fit(X)
 
-        def compute_rolling_baseline_and_shift(dog_series: pd.Series, window: int):
-            if window <= 0:
-                raise ValueError("window must be a positive integer.")
-            baseline = dog_series.rolling(
-                window=window, center=True, min_periods=1).median()
-            shift = dog_series - baseline
-            return baseline, shift
-        df = df.copy()
-        df = df.drop(columns=FusionDataprocessor.DROP)
+        # Get raw decision scores and flip so negative spikes become positive
+        scores = -ocsvm.decision_function(X)
+        # Baseline at zero
+        scores = scores - np.min(scores)
+        return scores
 
-        baseline_duration = FusionDataprocessor.BASELINE_WIN * 0.008  # convert to seconds
-        base_d, base_rf = FusionDataprocessor.compute_time_aware_baseline(
-            df, baseline_duration)
+    @staticmethod
+    def compute_DoG(series: pd.Series, sigma: float = 2) -> pd.Series:
+        """Compute Difference of Gaussians (first derivative of Gaussian)."""
+        if sigma <= 0:
+            raise ValueError("sigma must be a positive number.")
+        result = gaussian_filter1d(series.values, sigma=sigma, order=1)
+        return pd.Series(result, index=series.index)
 
-        # Apply baseline correction
-        df["Dissipation"] = df["Dissipation"] - base_d
-        df["Resonance_Frequency"] = -(df["Resonance_Frequency"] - base_rf)
+    @staticmethod
+    def compute_rolling_baseline_and_shift(dog_series: pd.Series, window: int) -> Tuple[pd.Series, pd.Series]:
+        """Compute rolling baseline and shift from baseline."""
+        if window <= 0:
+            raise ValueError("window must be a positive integer.")
+        baseline = dog_series.rolling(
+            window=window, center=True, min_periods=1).median()
+        shift = dog_series - baseline
+        return baseline, shift
 
-        # Compute difference with regularized data
-        df["Difference"] = FusionDataprocessor.compute_difference_curve(
-            df, difference_factor=2)
-        df["Difference"] = -(df["Difference"])
-        needs_smoothing = True
-        if needs_smoothing:
-            for col in ["Dissipation", "Resonance_Frequency", "Difference"]:
-                df[col] = FusionDataprocessor.weighted_smooth(df[col].values,
-                                                              df["Relative_time"].values,
-                                                              window_size=0.05)
-        df['Dissipation_DoG'] = compute_DoG(
-            df, col='Dissipation')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Dissipation_DoG_baseline'], df['Dissipation_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Dissipation_DoG'], baseline_window
-        )
-        df['Dissipation_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Dissipation_DoG_shift'])
+    @staticmethod
+    def process_dog_features(df: pd.DataFrame, columns: List[str]) -> pd.DataFrame:
+        """Process DoG features for specified columns."""
+        for col in columns:
+            # Compute DoG
+            df[f'{col}_DoG'] = FusionDataprocessor.compute_DoG(df[col])
 
-        # `Resonance_Frequency` DoG processing
-        df['Resonance_Frequency_DoG'] = compute_DoG(
-            df, col='Resonance_Frequency')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Resonance_Frequency_DoG_baseline'], df['Resonance_Frequency_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Resonance_Frequency_DoG'], baseline_window
-        )
-        df['Resonance_Frequency_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Resonance_Frequency_DoG_shift'])
+            # Compute baseline and shift
+            baseline_window = max(3, int(np.ceil(0.05 * len(df))))
+            df[f'{col}_DoG_baseline'], df[f'{col}_DoG_shift'] = \
+                FusionDataprocessor.compute_rolling_baseline_and_shift(
+                    df[f'{col}_DoG'], baseline_window
+            )
 
-        # `Difference` DoG processing
-        df['Difference_DoG'] = compute_DoG(
-            df, col='Difference')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Difference_DoG_baseline'], df['Difference_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Difference_DoG'], baseline_window
-        )
-        df['Difference_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Difference_DoG_shift'])
+            # Compute SVM scores
+            df[f'{col}_DoG_SVM_Score'] = FusionDataprocessor.compute_ocsvm_score(
+                df[f'{col}_DoG_shift']
+            )
+
         return df
 
     @staticmethod
-    def gen_features(df: pd.DataFrame):
-        def compute_ocsvm_score(shift_series: pd.Series):
-            if shift_series.empty:
-                raise ValueError("shift_series is empty.")
-            X = shift_series.values.reshape(-1, 1)
-            ocsvm = OneClassSVM(nu=0.05, kernel='rbf',
-                                gamma='scale', shrinking=False)
-            ocsvm.fit(X)
-            # get raw decision scores and flip so negative spikes become positive
-            scores = ocsvm.decision_function(X)
-            scores = -scores
-            # baseline at zero
-            scores = scores - np.min(scores)
-            return scores
+    def apply_baseline_correction(df: pd.DataFrame, use_time_aware: bool = True) -> pd.DataFrame:
+        """Apply baseline correction to the dataframe."""
+        if use_time_aware:
+            baseline_duration = FusionDataprocessor.BASELINE_WIN * 0.008  # convert to seconds
+            base_d, base_rf = FusionDataprocessor.compute_time_aware_baseline(
+                df, baseline_duration)
+        else:
+            base_d = df["Dissipation"].iloc[:FusionDataprocessor.BASELINE_WIN].mean()
+            base_rf = df["Resonance_Frequency"].iloc[:FusionDataprocessor.BASELINE_WIN].mean(
+            )
 
-        def compute_DoG(df: pd.DataFrame, col: str, sigma: float = 2):
-            if col not in df.columns:
-                raise ValueError(f"Column '{col}' not found in DataFrame.")
-            if sigma <= 0:
-                raise ValueError("sigma must be a positive number.")
-            result = gaussian_filter1d(df[col], sigma=sigma, order=1)
-            return pd.Series(result, index=df.index)
+        df["Dissipation"] = df["Dissipation"] - base_d
+        df["Resonance_Frequency"] = -(df["Resonance_Frequency"] - base_rf)
 
-        def compute_rolling_baseline_and_shift(dog_series: pd.Series, window: int):
-            if window <= 0:
-                raise ValueError("window must be a positive integer.")
-            baseline = dog_series.rolling(
-                window=window, center=True, min_periods=1).median()
-            shift = dog_series - baseline
-            return baseline, shift
+        return df, base_d, base_rf
 
-        def compute_difference_curve(df: pd.DataFrame, difference_factor: int = 2) -> pd.Series:
-            required_cols = ["Relative_time",
-                             "Resonance_Frequency", "Dissipation"]
-            for col in required_cols:
-                if col not in df.columns:
-                    raise ValueError(
-                        f"Column '{col}' is missing from DataFrame.")
-
-            xs = df["Relative_time"]
-
-            i = next((x for x, t in enumerate(xs) if t > 0.5), 0)
-            j = next((x for x, t in enumerate(xs) if t > 2.5), 1)
-            if i == j:
-                j = next((x for x, t in enumerate(
-                    xs) if t > xs[j] + 2.0), j + 1)
-
-            avg_res_freq = df["Resonance_Frequency"].iloc[i:j].mean()
-            avg_diss = df["Dissipation"].iloc[i:j].mean()
-            ys_diss = (df["Dissipation"] - avg_diss) * avg_res_freq / 2
-            ys_freq = avg_res_freq - df["Resonance_Frequency"]
-            return ys_freq - difference_factor * ys_diss
-
+    @staticmethod
+    def get_reg_features(df: pd.DataFrame) -> pd.DataFrame:
+        """Generate features for regression tasks."""
         df = df.copy()
         df = df.drop(columns=FusionDataprocessor.DROP)
-        smooth_win = int(
-            0.005 * len(df["Relative_time"].values))
-        if smooth_win % 2 == 0:
-            smooth_win += 1
-        if smooth_win <= 1:
-            smooth_win = 2
+
+        # Apply baseline correction (time-aware)
+        df, base_d, base_rf = FusionDataprocessor.apply_baseline_correction(
+            df, use_time_aware=True)
+
+        # Compute difference with regularized data
+        df["Difference"] = - \
+            FusionDataprocessor.compute_difference_curve(
+                df, difference_factor=2)
+
+        # Apply weighted smoothing
+        time_values = df["Relative_time"].values
+        for col in ["Dissipation", "Resonance_Frequency", "Difference"]:
+            df[col] = FusionDataprocessor.weighted_smooth(
+                df[col].values, time_values, window_size=0.05
+            )
+
+        # Process DoG features for all three columns
+        df = FusionDataprocessor.process_dog_features(
+            df, ["Dissipation", "Resonance_Frequency", "Difference"]
+        )
+
+        return df
+
+    @staticmethod
+    def get_clf_features(df: pd.DataFrame) -> pd.DataFrame:
+        """Generate features for classification tasks."""
+        df = df.copy()
+        df = df.drop(columns=FusionDataprocessor.DROP)
+
+        # Compute smoothing window
+        smooth_win = int(0.005 * len(df["Relative_time"]))
+        smooth_win = smooth_win + 1 if smooth_win % 2 == 0 else smooth_win
+        smooth_win = max(2, smooth_win)
         polyorder = 3
-        # Rebaseline
-        df["Difference"] = compute_difference_curve(df, difference_factor=2)
+
+        # Compute difference curve first
+        df["Difference"] = FusionDataprocessor.compute_difference_curve(
+            df, difference_factor=2)
+
+        # Apply baseline correction (sample-based)
         base_d = df["Dissipation"].iloc[:FusionDataprocessor.BASELINE_WIN].mean()
         base_rf = df["Resonance_Frequency"].iloc[:FusionDataprocessor.BASELINE_WIN].mean()
         base_diff = df["Difference"].iloc[:FusionDataprocessor.BASELINE_WIN].mean()
+
         df["Dissipation"] = df["Dissipation"] - base_d
         df["Difference"] = df["Difference"] - base_diff
         df["Resonance_Frequency"] = -(df["Resonance_Frequency"] - base_rf)
 
-        # Smooth and compute difference
-        df["Difference"] = savgol_filter(
-            df["Difference"], smooth_win, polyorder)
-        df["Dissipation"] = savgol_filter(
-            df["Dissipation"], smooth_win, polyorder)
-        df["Resonance_Frequency"] = savgol_filter(
-            df["Resonance_Frequency"], smooth_win, polyorder)
+        # Apply Savitzky-Golay smoothing
+        for col in ["Difference", "Dissipation", "Resonance_Frequency"]:
+            df[col] = savgol_filter(df[col], smooth_win, polyorder)
 
-        # `Dissipation` DoG processing
-        df['Dissipation_DoG'] = compute_DoG(
-            df, col='Dissipation')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Dissipation_DoG_baseline'], df['Dissipation_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Dissipation_DoG'], baseline_window
+        # Process DoG features
+        df = FusionDataprocessor.process_dog_features(
+            df, ["Dissipation", "Resonance_Frequency", "Difference"]
         )
-        df['Dissipation_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Dissipation_DoG_shift'])
 
-        # `Resonance_Frequency` DoG processing
-        df['Resonance_Frequency_DoG'] = compute_DoG(
-            df, col='Resonance_Frequency')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Resonance_Frequency_DoG_baseline'], df['Resonance_Frequency_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Resonance_Frequency_DoG'], baseline_window
-        )
-        df['Resonance_Frequency_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Resonance_Frequency_DoG_shift'])
+        # Compute additional classification features efficiently
+        df = FusionDataprocessor._add_classification_features(df)
 
-        # `Difference` DoG processing
-        df['Difference_DoG'] = compute_DoG(
-            df, col='Difference')
-        baseline_window = max(3, int(np.ceil(0.05 * len(df))))
-        df['Difference_DoG_baseline'], df['Difference_DoG_shift'] = compute_rolling_baseline_and_shift(
-            df['Difference_DoG'], baseline_window
-        )
-        df['Difference_DoG_SVM_Score'] = compute_ocsvm_score(
-            df['Difference_DoG_shift'])
+        # Fill NaN values
+        df.fillna(0, inplace=True)
 
-        # 1) Compute slopes as Δy/Δt
+        return df
+
+    @staticmethod
+    def _add_classification_features(df: pd.DataFrame) -> pd.DataFrame:
+        """Add additional features for classification."""
+        # Precompute common values
         dt = df['Relative_time'].diff().replace(0, np.nan)
+        diss_values = df['Dissipation'].values
+        rf_values = df['Resonance_Frequency'].values
+        time_values = df['Relative_time'].values
+
+        # Compute slopes
         df['Diss_slope'] = df['Dissipation'].diff() / dt
         df['RF_slope'] = df['Resonance_Frequency'].diff() / dt
         df[['Diss_slope', 'RF_slope']] = df[[
             'Diss_slope', 'RF_slope']].fillna(0)
 
-        # 2) Rolling aggregates for Dissipation
-        df['Diss_roll_mean'] = df['Dissipation'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).mean()
-        df['Diss_roll_std'] = df['Dissipation'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).std().fillna(0)
-        df['Diss_roll_min'] = df['Dissipation'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).min()
-        df['Diss_roll_max'] = df['Dissipation'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).max()
+        # Rolling aggregates - use numpy for efficiency
+        roll_win = FusionDataprocessor.ROLLING_WIN
 
-        # 3) Rolling aggregates for Resonance_Frequency
-        df['RF_roll_mean'] = df['Resonance_Frequency'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).mean()
-        df['RF_roll_std'] = df['Resonance_Frequency'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).std().fillna(0)
-        df['RF_roll_min'] = df['Resonance_Frequency'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).min()
-        df['RF_roll_max'] = df['Resonance_Frequency'].rolling(
-            window=FusionDataprocessor.ROLLING_WIN, min_periods=1).max()
+        # Dissipation rolling stats
+        for stat_name, stat_func in [('mean', 'mean'), ('std', 'std'), ('min', 'min'), ('max', 'max')]:
+            df[f'Diss_roll_{stat_name}'] = df['Dissipation'].rolling(
+                window=roll_win, min_periods=1
+            ).agg(stat_func)
 
-        df['Diss_x_RF'] = df['Dissipation'] * df['Resonance_Frequency']
+        # Resonance Frequency rolling stats
+        for stat_name, stat_func in [('mean', 'mean'), ('std', 'std'), ('min', 'min'), ('max', 'max')]:
+            df[f'RF_roll_{stat_name}'] = df['Resonance_Frequency'].rolling(
+                window=roll_win, min_periods=1
+            ).agg(stat_func)
+
+        # Fill NaN in std columns
+        df['Diss_roll_std'] = df['Diss_roll_std'].fillna(0)
+        df['RF_roll_std'] = df['RF_roll_std'].fillna(0)
+
+        # Vectorized feature computations
+        df['Diss_x_RF'] = diss_values * rf_values
         df['slope_DxRF'] = df['Diss_slope'] * df['RF_slope']
         df['rollmean_DxrollRF'] = df['Diss_roll_mean'] * df['RF_roll_mean']
-        df['Diss_over_RF'] = df['Dissipation'] / \
-            (df['Resonance_Frequency'] + 1e-6)
-        df['slope_ratio'] = df['Diss_slope'] / (df['RF_slope'] + 1e-6)
-        df['rollstd_ratio'] = df['Diss_roll_std'] * \
-            0  # placeholder if you compute RF_roll_std
-        df['time_x_Diss'] = df['Relative_time'] * df['Dissipation']
-        df['time_x_slope_sum'] = df['Relative_time'] * \
+        df['Diss_over_RF'] = diss_values / (rf_values + 1e-6)
+        df['slope_ratio'] = df['Diss_slope'] / (df['RF_slope'].values + 1e-6)
+        df['rollstd_ratio'] = df['Diss_roll_std'] * 0  # placeholder
+        df['time_x_Diss'] = time_values * diss_values
+        df['time_x_slope_sum'] = time_values * \
             (df['Diss_slope'] + df['RF_slope'])
-        df['Diss_t_x_RF_t1'] = df['Dissipation'] * \
-            df['Resonance_Frequency'].shift(1)
-        df['Diss_t1_x_RF_t'] = df['Dissipation'].shift(
-            1) * df['Resonance_Frequency']
 
-        window = df  # or the slice of df you’re summarizing
-        df['range_Dx_range_RF'] = (window['Dissipation'].max() - window['Dissipation'].min()) \
-            * (window['Resonance_Frequency'].max() - window['Resonance_Frequency'].min())
-        # if you compute area under the curve:
-        df['area_Dx_area_RF'] = (
-            window['Dissipation'].sum()) * (window['Resonance_Frequency'].sum())
+        # Shifted features
+        df['Diss_t_x_RF_t1'] = diss_values * np.roll(rf_values, 1)
+        df['Diss_t1_x_RF_t'] = np.roll(diss_values, 1) * rf_values
 
-        df.fillna(0, inplace=True)
+        # Range and area features (computed once for entire window)
+        diss_range = diss_values.max() - diss_values.min()
+        rf_range = rf_values.max() - rf_values.min()
+        df['range_Dx_range_RF'] = diss_range * rf_range
+        df['area_Dx_area_RF'] = diss_values.sum() * rf_values.sum()
 
         return df
 
@@ -373,7 +331,7 @@ if __name__ == "__main__":
 
     for data_file, _ in tqdm(file_pairs):
         df = pd.read_csv(data_file, engine="pyarrow")
-        df = FusionDataprocessor.get_features(df)
+        df = FusionDataprocessor.get_reg_features(df)
         plt.figure()
         plt.plot(df["Difference"])
         plt.show()

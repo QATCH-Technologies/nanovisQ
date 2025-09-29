@@ -19,7 +19,7 @@ try:
     from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
 
 except (ImportError, ModuleNotFoundError):
-    from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
+    from v4_fusion_dataprocessor import FusionDataprocessor
 
     class Log:
         @staticmethod
@@ -140,10 +140,9 @@ class V4RegPredictor:
             self.TAG, f"Model loaded from {model_path}, POI Type: {self.poi_type},Window size: {self.window_size}, Stride: {self.stride}")
 
     def predict(self,
-                df: pd.DataFrame = None,
+                features_df: pd.DataFrame = None,
                 apply_smoothing: bool = True,
                 custom_threshold: float = None) -> Dict[str, any]:
-        features_df = FusionDataprocessor.get_features(df)
         features = features_df.values
         n_samples = len(features)
         windows = []
@@ -423,7 +422,7 @@ class V4ClfPredictor:
                 threshold: float = 0.5,
                 adaptive_thresholds: Dict[int, float] = None,
                 enforce_constraints: bool = True) -> Dict[str, any]:
-        features_df = FusionDataprocessor.gen_features(df)
+        features_df = FusionDataprocessor.get_clf_features(df)
         features = features_df.values
         windows = []
         window_positions = []
@@ -868,8 +867,14 @@ class QModelV4Fusion:
                 window_margin: int = 100,
                 use_regression_threshold: float = 0.5,
                 enforce_constraints: bool = True,
-                format_output: bool = False) -> Dict[str, any]:
+                format_output: bool = False,
+                progress_signal=None) -> Dict[str, any]:
 
+        if progress_signal:
+            this_progress_step = 0
+            total_progress_steps = 7
+
+        # Validate input
         if file_buffer is not None:
             try:
                 df = self._validate_file_buffer(file_buffer=file_buffer)
@@ -881,6 +886,15 @@ class QModelV4Fusion:
 
         Log.d(self.TAG, "Predicting using QModelV4Fusion.")
         Log.d(self.TAG, "Classification head prediction active.")
+
+        if progress_signal:
+            this_progress_step += 1
+            progress_signal.emit(
+                int(100 * this_progress_step / total_progress_steps),
+                "Step 1/7: Searching for channel regions..."
+            )
+
+        # Run classification to identify POI regions
         clf_results = self.clf_predictor.predict(
             df=df,
             enforce_constraints=enforce_constraints
@@ -893,92 +907,197 @@ class QModelV4Fusion:
         Log.d(
             self.TAG, f"Classification found {len(clf_positions)} POIs: {list(clf_positions.keys())}")
 
+        # Early exit if no POIs found
+        if not clf_positions:
+            Log.d(self.TAG, "No POIs found by classifier, returning early.")
+            return {
+                'final_positions': {},
+                'methods_used': {},
+                'classification_results': clf_results,
+                'regression_refinements': {},
+                'confidence_scores': {},
+                'poi_binary': np.zeros(5),
+                'poi_count': 0,
+                'dataframe': df
+            }
+
         Log.d(self.TAG, "Regression head predictions active.")
-        final_positions = {}
-        methods_used = {}
-        regression_refinements = {}
-        confidence_scores = {}
-        all_regression_results = {}
+
+        # Pre-compute regression features once for the entire dataframe
+        # This is more efficient than computing features multiple times on segments
+        reg_features = FusionDataprocessor.get_reg_features(df=df)
+
+        # Map POI numbers to names
         poi_map = {1: 'POI1', 2: 'POI2', 4: 'POI4', 5: 'POI5', 6: 'POI6'}
-        for poi_name, predictor in self.reg_predictors.items():
-            Log.d(self.TAG, f"Executing {poi_name} regression head.")
-            reg_result = predictor.predict(
-                df=df,
-                apply_smoothing=True
-            )
-            all_regression_results[poi_name] = reg_result
+
+        # Only process regression for POIs that were actually detected
+        all_regression_results = {}
+        detected_poi_names = {
+            poi_map[poi_num] for poi_num in clf_positions.keys() if poi_num in poi_map}
+
+        # Process each detected POI with its specific window
+        for poi_num, clf_position in clf_positions.items():
+            poi_name = poi_map.get(poi_num)
+
+            if poi_name and poi_name in self.reg_predictors:
+                Log.d(self.TAG, f"Executing {poi_name} regression head.")
+
+                if progress_signal:
+                    this_progress_step += 1
+                    progress_signal.emit(
+                        int(100 * this_progress_step / total_progress_steps),
+                        f"Step {this_progress_step}/7: Refining {poi_name} position..."
+                    )
+
+                # Define window for regression analysis
+                # Only process the region around the classified POI position
+                window_start = max(0, clf_position - window_margin)
+                window_end = min(len(reg_features),
+                                 clf_position + window_margin)
+
+                # Extract the relevant segment
+                df_segment = reg_features.iloc[window_start:window_end].copy()
+
+                # Store the offset so we can convert back to original indices
+                segment_offset = window_start
+
+                try:
+                    # Run regression on the segment only
+                    reg_result = self.reg_predictors[poi_name].predict(
+                        features_df=df_segment,
+                        apply_smoothing=True
+                    )
+
+                    # Adjust peak positions back to original dataframe indices
+                    if 'all_peaks' in reg_result:
+                        adjusted_peaks = []
+                        for peak_pos, peak_conf in reg_result.get('all_peaks', []):
+                            adjusted_pos = peak_pos + segment_offset
+                            adjusted_peaks.append((adjusted_pos, peak_conf))
+                        reg_result['all_peaks'] = adjusted_peaks
+
+                    # Adjust main prediction if present
+                    if 'position' in reg_result:
+                        reg_result['position'] += segment_offset
+
+                    all_regression_results[poi_name] = reg_result
+
+                except Exception as e:
+                    Log.d(self.TAG, f"Regression failed for {poi_name}: {e}")
+                    # Create empty result for failed regression
+                    all_regression_results[poi_name] = {'all_peaks': []}
 
         Log.d(self.TAG, "Regression peak search active.")
+
+        # Initialize result containers
         final_positions = {}
         methods_used = {}
         confidence_scores = {}
 
-        for poi_num, clf_position in clf_positions.items():
+        if progress_signal:
+            this_progress_step += 1
+            progress_signal.emit(
+                int(100 * this_progress_step / total_progress_steps),
+                f"Step {this_progress_step}/7: Validating auto-fit positions..."
+            )
+
+        # Process results in order to handle POI2 dependency on POI1
+        poi_order = [1, 2, 4, 5, 6]
+
+        for poi_num in poi_order:
+            if poi_num not in clf_positions:
+                continue
+
+            clf_position = clf_positions[poi_num]
             poi_name = poi_map.get(poi_num)
 
             if poi_name and poi_name in all_regression_results:
                 reg_result = all_regression_results[poi_name]
-                poi1_final = final_positions.get(
-                    1, None) if poi_num == 2 else None
+                poi1_final = final_positions.get(1) if poi_num == 2 else None
 
+                # Find best regression peak within window
                 best_peak = None
                 best_distance = float('inf')
 
                 for peak_pos, peak_conf in reg_result.get('all_peaks', []):
+                    # Check if peak is within acceptable distance and confidence
                     distance = abs(peak_pos - clf_position)
+
                     if distance <= window_margin and peak_conf >= use_regression_threshold:
+                        # Special constraint for POI2: must be after POI1
                         if poi_num == 2 and poi1_final is not None and peak_pos <= poi1_final:
                             continue
+
                         if distance < best_distance:
                             best_peak = (peak_pos, peak_conf)
                             best_distance = distance
+
                 if best_peak:
                     final_positions[poi_num] = best_peak[0]
                     methods_used[poi_num] = 'regression'
                     confidence_scores[poi_num] = best_peak[1]
                 else:
-                    # fallback chain for POI2
+                    # Fallback strategies
                     if poi_num == 2 and poi1_final is not None:
-                        # 1) classification after POI1?
+                        # POI2 specific fallback chain
                         if clf_position > poi1_final:
                             final_positions[poi_num] = clf_position
                             methods_used[poi_num] = 'classification'
                         else:
-                            # 2) right bound of POI1 classification window
-                            right_bound = final_positions[1] + 64
+                            # Use right bound of POI1 classification window
+                            right_bound = poi1_final + 64
                             final_positions[poi_num] = right_bound
                             methods_used[poi_num] = 'poi1_right_bound'
                     else:
-                        # default classification fallback
+                        # Default classification fallback
                         final_positions[poi_num] = clf_position
                         methods_used[poi_num] = 'classification'
-                poi_indices = {1: 1, 2: 2, 4: 3, 5: 4, 6: 5}
-                if clf_probabilities is not None and poi_num in poi_indices:
-                    closest_window_idx = np.argmin(
-                        np.abs(np.array(window_positions) - clf_position))
-                    confidence_scores[poi_num] = float(
-                        clf_probabilities[closest_window_idx, poi_indices[poi_num]])
-                else:
-                    confidence_scores[poi_num] = 0.5
 
-        # binary output
-        poi_binary = np.zeros(5)
-        for poi_num in [1, 2, 4, 5, 6]:
-            if poi_num in final_positions:
-                idx = {1: 0, 2: 1, 4: 2, 5: 3, 6: 4}[poi_num]
-                poi_binary[idx] = 1
-        # Print summary
-        Log.d(self.TAG, "QModelV4Fusion Preidction Successful")
+                    # Set confidence from classification if using fallback
+                    poi_indices = {1: 1, 2: 2, 4: 3, 5: 4, 6: 5}
+                    if clf_probabilities is not None and poi_num in poi_indices:
+                        # Find the window position closest to the classification position
+                        window_positions_array = np.array(window_positions)
+                        closest_window_idx = np.argmin(
+                            np.abs(window_positions_array - clf_position))
+                        confidence_scores[poi_num] = float(
+                            clf_probabilities[closest_window_idx,
+                                              poi_indices[poi_num]]
+                        )
+                    else:
+                        confidence_scores[poi_num] = 0.5
+            else:
+                # No regression available, use classification
+                final_positions[poi_num] = clf_position
+                methods_used[poi_num] = 'classification_only'
+                confidence_scores[poi_num] = 0.5
+
+        # Create binary output array
+        # Use int8 for memory efficiency
+        poi_binary = np.zeros(5, dtype=np.int8)
+        poi_idx_map = {1: 0, 2: 1, 4: 2, 5: 3, 6: 4}
+        for poi_num in final_positions.keys():
+            if poi_num in poi_idx_map:
+                poi_binary[poi_idx_map[poi_num]] = 1
+
+        # Log summary
+        Log.d(self.TAG, "QModelV4Fusion Prediction Successful")
         Log.d(self.TAG, f"Total POIs detected: {len(final_positions)}")
         Log.d(
-            self.TAG, f"Binarized output[POI1, POI2, POI4, POI5, POI6]: {poi_binary.astype(int)}")
+            self.TAG, f"Binarized output[POI1, POI2, POI4, POI5, POI6]: {poi_binary}")
+
         if format_output:
-            return self._format_output(final_positions=final_positions, confidence_scores=confidence_scores)
+            return self._format_output(
+                final_positions=final_positions,
+                confidence_scores=confidence_scores
+            )
+
         return {
             'final_positions': final_positions,
             'methods_used': methods_used,
             'classification_results': clf_results,
-            'regression_refinements': regression_refinements,
+            # Changed from regression_refinements
+            'regression_refinements': all_regression_results,
             'confidence_scores': confidence_scores,
             'poi_binary': poi_binary,
             'poi_count': len(final_positions),
