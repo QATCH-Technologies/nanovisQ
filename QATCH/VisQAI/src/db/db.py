@@ -745,15 +745,17 @@ class Database:
         """
         if self.file_handle is not None:
             self.file_handle.close()
-        # If there are changes or the file does not exist, save or commit
-        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
-            if self.use_encryption:
-                self._save_cdb(self.db_path, self.encryption_key)
-            else:
-                # No additional action needed; changes have been committed inline.
-                pass
-        self.conn.close()
-        self.is_open = False
+        # Only operate on an open database; nothing to do if already closed.
+        if self.is_open:
+            # If there are changes or the file does not exist, save or commit
+            if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+                if self.use_encryption:
+                    self._save_cdb(self.db_path, self.encryption_key)
+                else:
+                    # No additional action needed; changes have been committed inline.
+                    pass
+            self.conn.close()
+            self.is_open = False
 
     def create_temp_decrypt(self) -> Optional[Path]:
         """Create a temporary decrypted copy of the current database.
