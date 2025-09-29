@@ -86,9 +86,14 @@ class FrameStep2(QtWidgets.QDialog):
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(
-            os.getcwd(), "QATCH/VisQAI/assets")
-        self.model_dialog.setDirectory(model_path)
+        model_path = os.path.join(Architecture.get_path(), 
+                                  "QATCH/VisQAI/assets")
+        if os.path.exists(model_path):
+            # working or bundled directory, if exists
+            self.model_dialog.setDirectory(model_path)
+        else:
+            # fallback to their local logged data folder
+            self.model_dialog.setDirectory(Constants.log_prefer_path)
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
         self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")

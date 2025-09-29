@@ -1421,8 +1421,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         icon_path = os.path.join(
             Architecture.get_path(), 'QATCH/icons/user.png')
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        icon_user.addPixmap(QtGui.QPixmap(
-            'QATCH/icons/user.png'), QtGui.QIcon.Disabled)
+        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
         self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_User.setIcon(icon_user)  # normal and disabled pixmaps
