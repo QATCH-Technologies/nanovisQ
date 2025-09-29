@@ -341,8 +341,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
         from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
         from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
-        from QATCH.QModel.src.models.static_v4.__init__ import __version__ as QModel4_version
-        from QATCH.QModel.src.models.static_v4.__init__ import __release__ as QModel4_release
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __version__ as QModel4_version
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __release__ as QModel4_release
         qmodel_versions_menu = self.menubar[3].addMenu(
             'Model versions (5 available)')
         self.menubar.append(qmodel_versions_menu)
@@ -368,7 +368,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 Constants.list_predict_models[3 if checked else 2]))
         self.pf_version.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
-            'QModel v{} ({})'.format(QModel4_version, QModel4_release),
+            'QModel Fusion v{} ({})'.format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[4]))
         self.q_version_v4.setCheckable(True)
