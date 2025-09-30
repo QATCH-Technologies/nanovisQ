@@ -7,6 +7,7 @@ import datetime as dt
 from time import strftime, localtime, sleep
 from xml.dom import minidom
 from numpy import loadtxt
+from scipy import interpolate
 import numpy as np
 import pandas as pd
 from io import BytesIO
@@ -4959,6 +4960,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                     poi_indices[0], poi_confidences[0])
                                 predictions.append(best_pair[0])
                                 candidates.append(best_pair)
+                            self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
                             self.model_engine = "QModel v4 (Fusion)"
@@ -8064,6 +8066,7 @@ class AnalyzerWorker(QtCore.QObject):
             # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 10% of POI2 and POI4
             try:
                 normal_idxs = []
+                percent_pts = {}
                 for i in idx_of_normal_pts_to_retain:
                     if i in times:
                         normal_idxs.append(-len(distances)+times.index(i))
@@ -8089,6 +8092,7 @@ class AnalyzerWorker(QtCore.QObject):
                 # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
                 for x, i in enumerate(normal_idxs):
                     pt = "60%" if x == 0 else "80%"
+                    percent_pts[pt] =  (in_shear_rate[i], in_viscosity[i])
                     if min_visc <= viscosity[i] <= max_visc:
                         continue
                     Log.w(
@@ -8310,7 +8314,7 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             ax7.set_title(f"Shear-rate vs. Viscosity: {data_title}")
-            ax7.set_xlabel("Shear-rate (1/s)")
+            ax7.set_xlabel("Shear-rate (s⁻¹)")
             ax7.set_ylabel("Viscosity (cP)")
             lower_limit = np.amin(in_viscosity) / 1.5
             power = 1
@@ -8693,7 +8697,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             # add data to table view of results
             data = {
-                "Shear Rate (1/s)": in_shear_rate,
+                "Shear Rate (s⁻¹)": in_shear_rate,
                 "Raw Viscosity (cP)": in_viscosity,
                 "Avg Viscosity (cP)": str_viscosity,
                 "Temperature (C)": in_temp,
@@ -8715,8 +8719,36 @@ class AnalyzerWorker(QtCore.QObject):
             # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")
             # tableWidget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
             table_layout.addWidget(tableWidget)
-            if n >= 0.7:
-                try:
+            try:
+                if abs(n - 1.0) > Constants.shear_interp_threshold:
+                    # Highly non-Newtonian: use interpolated value at 1000 s⁻¹
+                    # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
+                    # excluding the 60% and 80% points from the initial fill region (if present)
+                    shear_interp = 1000
+                    in_shear_san_60_80 : list = in_shear_rate.tolist()
+                    in_visco_san_60_80 : list = in_viscosity.tolist()
+                    if "percent_pts" in locals():
+                        # Remove 60% and 80% points from data for interpolation
+                        for (shear, visco) in percent_pts.values():
+                            if shear in in_shear_san_60_80:
+                                in_shear_san_60_80.remove(shear)
+                            if visco in in_visco_san_60_80:
+                                in_visco_san_60_80.remove(visco)
+                    interp_func = interpolate.interp1d(in_shear_san_60_80, in_visco_san_60_80, fill_value='extrapolate')
+                    visc_interp = float(interp_func(shear_interp))
+                    i_l, i_r = next((i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp)
+                    if i_l == -1 or i_r == len(in_shear_san_60_80):
+                        # indicate 10% error when extrapolating beyond left or right of the shear array
+                        visc_error = visc_interp / 10
+                    else:
+                        # indicate half of absolute difference for left/right points when interpolating
+                        visc_error = np.abs(in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]) / 2
+                    summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹".format(
+                        visc_interp, visc_error, shear_interp)
+                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
+                        visc_interp, visc_error, shear_interp)
+                else:
+                    # Nearly Newtonian: use current average method
                     # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
                     values_to_average = len(distances)
                     # high_shear_counts = np.count_nonzero(
@@ -8730,25 +8762,26 @@ class AnalyzerWorker(QtCore.QObject):
                     visc_std = np.std(in_viscosity[idx_start:idx_end+1])
                     shear_min = in_shear_rate[idx_start]
                     shear_max = in_shear_rate[idx_end]
-                    summary_text = "Average viscosity is {:2.2f} cP \u00b1 {:2.2f} for shear rates in range {:2.0f} - {:2.0f} 1/s.".format(
+                    summary_text = "Average viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates in range {:2.0f} - {:2.0f} s⁻¹.".format(
                         visc_avg, visc_std, shear_min, shear_max)
-                    # Add summary text to bottom of table data
-                    tableLabel = QtWidgets.QLabel(summary_text)
-                    tableLabel.setStyleSheet(
-                        "font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
-                    tableLabel.setWordWrap(True)
-                    table_layout.addWidget(tableLabel)
-                    # Add centered label to plot data
-                    fig4.text(0.53, 0.82,
-                              "{:2.2f} cP \u00b1 {:2.2f}\n({:2.0f} - {:2.0f}) 1/s".format(
-                                  visc_avg, visc_std, shear_min, shear_max),
-                              horizontalalignment='center',
-                              verticalalignment='center',
-                              color='blue',
-                              fontsize=10)
-                except Exception as e:
-                    Log.e(
-                        "Failed to show average viscosity summary.", str(e))
+                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
+                        visc_avg, visc_std, shear_min, shear_max)
+                # Add summary text to bottom of table data
+                tableLabel = QtWidgets.QLabel(summary_text)
+                tableLabel.setStyleSheet(
+                    "font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;")
+                tableLabel.setWordWrap(True)
+                table_layout.addWidget(tableLabel)
+                # Add centered label to plot data
+                fig4.text(0.53, 0.82,
+                          plot_text,
+                          horizontalalignment='center',
+                          verticalalignment='center',
+                          color='blue',
+                          fontsize=10)
+            except Exception as e:
+                Log.e(
+                    "Failed to show average viscosity summary.", str(e))
             self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
             self.parent.results_split.setSizes(
                 self.parent.get_results_split_auto_sizes()
