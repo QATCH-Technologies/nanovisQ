@@ -117,9 +117,14 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog = QtWidgets.QFileDialog()
             self.model_dialog.setOption(
                 QtWidgets.QFileDialog.DontUseNativeDialog, True)
-            model_path = os.path.join(
-                os.getcwd(), "QATCH/VisQAI/assets")
-            self.model_dialog.setDirectory(model_path)
+            model_path = os.path.join(Architecture.get_path(), 
+                                      "QATCH/VisQAI/assets")
+            if os.path.exists(model_path):
+                # working or bundled directory, if exists
+                self.model_dialog.setDirectory(model_path)
+            else:
+                # fallback to their local logged data folder
+                self.model_dialog.setDirectory(Constants.log_prefer_path)
             self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
             self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
             self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
@@ -132,8 +137,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
             if step == 1:
-                predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
+                predictor_path = os.path.join(model_path, 
+                                              "VisQAI-base.zip")
                 if os.path.exists(predictor_path):
+                    # working or bundled predictor, if exists
                     self.model_selected(path=predictor_path)
             select_model_layout.addWidget(self.select_model_btn)
             select_model_layout.addWidget(self.select_model_label)

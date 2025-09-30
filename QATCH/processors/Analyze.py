@@ -798,8 +798,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         icon_path = os.path.join(
             Architecture.get_path(), "QATCH/icons/user.png")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
-        icon_user.addPixmap(QtGui.QPixmap(
-            "QATCH/icons/user.png"), QtGui.QIcon.Disabled)
+        icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
         self.tool_User.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_User.setIcon(icon_user)  # normal and disabled pixmaps
@@ -8819,6 +8818,7 @@ class AnalyzerWorker(QtCore.QObject):
     def correctHighShear(self, initial, visc):
         output = initial
         try:
+            # NOTE: Even when frozen the working path will have resource files
             with open("QATCH/resources/lookup_shear_correction.csv", "r") as f:
                 data = np.loadtxt(f.readlines(), delimiter=",", skiprows=1)
                 col = 1 if initial == 5e6 else 2

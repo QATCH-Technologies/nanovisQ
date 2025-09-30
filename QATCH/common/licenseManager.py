@@ -176,15 +176,10 @@ class AVN_Database:
     @staticmethod
     def _load_avn_key_store():
         DB_CONFIG = {}
-        working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
-        bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/")  # otherwise, use bundled resource path
-        # prefer working keystore, if it exists
-        keystore = os.path.join(working_resource_path, "avn_key_store.zip")
-        if not os.path.exists(keystore):
-            # use bundled keystore, if none in working folder
-            keystore = os.path.join(bundled_resource_path, "avn_key_store.zip")
+        keystore = os.path.join(Architecture.get_path(), 
+                                "QATCH/resources/avn_key_store.zip")
         if os.path.exists(keystore):
-            with zipfile.ZipFile("QATCH/resources/avn_key_store.zip", 'r') as zip_key:
+            with zipfile.ZipFile(keystore, 'r') as zip_key:
                 pem_file = zip_key.read("db_config.pem").splitlines()
                 pem_file[0] = b""  # remove begin line
                 pem_file[-1] = b""  # remove end line
