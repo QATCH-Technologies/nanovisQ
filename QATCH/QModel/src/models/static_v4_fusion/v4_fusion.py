@@ -210,8 +210,7 @@ class V4RegPredictor:
             max_op = np.max(op_smoothed) if len(op_smoothed) > 0 else 0
             Log.d(
                 self.TAG, f"Max OP value: {max_op:.3f} (threshold: {threshold:.3f})")
-
-        return {
+        result = {
             'poi_position': poi_position,
             'poi_confidence': poi_confidence,
             'op_values': op_values,
@@ -220,6 +219,8 @@ class V4RegPredictor:
             'all_peaks': all_peaks,
             'dataframe': features_df
         }
+        # self.visualize(prediction_result=result)
+        return result
 
     def visualize(self,
                   prediction_result: Dict,
@@ -417,18 +418,21 @@ class V4ClfPredictor:
             **params
         ).to(self.device)
 
-    def predict(self,
-                df: pd.DataFrame = None,
-                threshold: float = 0.5,
-                adaptive_thresholds: Dict[int, float] = None,
-                enforce_constraints: bool = True) -> Dict[str, any]:
+    def predict(
+        self,
+        df: pd.DataFrame = None,
+        threshold: float = 0.5,
+        adaptive_thresholds: Dict[int, float] = None,
+        enforce_constraints: bool = True,
+        batch_size: int = 64   # used only if GPU can't fit all windows
+    ) -> Dict[str, any]:
+
         features_df = FusionDataprocessor.get_clf_features(df)
         features = features_df.values
-        windows = []
-        window_positions = []
-        n = len(features)
-        w = self.window_size
-        s = self.stride
+        windows, window_positions = [], []
+        n, w, s = len(features), self.window_size, self.stride
+
+        # ---- build padded windows ----
         for i in range(0, n, s):
             end = i + w
             if end <= n:
@@ -442,7 +446,7 @@ class V4ClfPredictor:
             center = min(i + w // 2, n - 1)
             window_positions.append(center)
 
-        if len(windows) == 0:
+        if not windows:
             Log.w(self.TAG, "Not enough data for prediction")
             return {
                 'poi_locations': {},
@@ -452,20 +456,42 @@ class V4ClfPredictor:
                 'dataframe': df
             }
 
+        # ---- scale windows ----
         windows = np.array(windows)
-        windows_reshaped = windows.reshape(-1, windows.shape[-1])
-        windows_reshaped = self.scaler.transform(windows_reshaped)
-        windows = windows_reshaped.reshape(windows.shape)
+        ws = windows.reshape(-1, windows.shape[-1])
+        ws = self.scaler.transform(ws)
+        windows = ws.reshape(windows.shape)
+
+        predictions = None
         with torch.no_grad():
-            windows_tensor = torch.FloatTensor(windows).to(self.device)
-            predictions = self.model(windows_tensor).cpu().numpy()
+            device = self.device
+            try:
+                windows_tensor = torch.FloatTensor(windows).to(device)
+                predictions = self.model(windows_tensor).cpu().numpy()
+
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower() and torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                    all_preds = []
+                    for start in range(0, len(windows), batch_size):
+                        batch = windows[start:start + batch_size]
+                        try:
+                            batch_tensor = torch.FloatTensor(batch).to(device)
+                        except RuntimeError:
+                            device = torch.device("cpu")
+                            batch_tensor = torch.FloatTensor(batch).to(device)
+                        preds = self.model(batch_tensor).cpu().numpy()
+                        all_preds.append(preds)
+                    predictions = np.vstack(all_preds)
+                else:
+                    raise
 
         # Set adaptive thresholds
         if adaptive_thresholds is None:
             adaptive_thresholds = {
                 1: 0.5,   # POI-1
                 2: 0.5,   # POI-2
-                4: 0.01,   # POI-4
+                4: 0.1,   # POI-4
                 5: 0.1,   # POI-5
                 6: 0.1   # POI-6
             }
@@ -862,9 +888,122 @@ class QModelV4Fusion:
 
         return df
 
+    def _postprocess_poi1(self,
+                          df: pd.DataFrame,
+                          clf_position: int,
+                          window_margin: int = 100,
+                          baseline_window: int = 50,
+                          deviation_threshold: float = 0.1) -> int:
+        """
+        Post-process POI1 position by finding where it occurs just after 
+        a positive deviation from baseline in the dissipation curve.
+
+        Args:
+            df: DataFrame with dissipation data
+            clf_position: Initial classification position for POI1
+            window_margin: Window size around classification position to search
+            baseline_window: Window size for calculating baseline
+            deviation_threshold: Minimum deviation from baseline to be considered significant
+
+        Returns:
+            Refined POI1 position
+        """
+        # Define search window
+        window_start = max(0, clf_position - window_margin)
+        window_end = min(len(df), clf_position + window_margin)
+
+        # Extract dissipation signal (assuming column name - adjust as needed)
+        # You may need to adjust the column name based on your actual data
+        # or df.columns[0] if it's the first column
+        dissipation_col = 'Dissipation'
+
+        if dissipation_col not in df.columns:
+            # Try to find dissipation column
+            for col in df.columns:
+                if 'dissipation' in col.lower() or 'diss' in col.lower():
+                    dissipation_col = col
+                    break
+            else:
+                # Fallback to first numeric column
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                if len(numeric_cols) > 0:
+                    dissipation_col = numeric_cols[0]
+                else:
+                    Log.d(
+                        self.TAG, "Could not find dissipation column, using classification position")
+                    return clf_position
+
+        dissipation = df[dissipation_col].values
+
+        # Calculate baseline in the window
+        window_data = dissipation[window_start:window_end]
+
+        # Find baseline regions (relatively stable parts)
+        baseline_values = []
+        for i in range(len(window_data) - baseline_window):
+            segment = window_data[i:i + baseline_window]
+            # Check if segment is stable (low variance)
+            if np.std(segment) < np.mean(np.abs(segment)) * 0.1:  # Adjust threshold as needed
+                baseline_values.extend(segment)
+
+        if not baseline_values:
+            # If no stable baseline found, use median of the window
+            baseline = np.median(window_data)
+        else:
+            baseline = np.mean(baseline_values)
+
+        # Look for positive deviation from baseline followed by a transition
+        best_position = clf_position
+        max_score = 0
+
+        for i in range(window_start + 2, window_end - 2):
+            # Calculate local deviation from baseline
+            local_value = dissipation[i]
+            prev_value = dissipation[i - 1]
+            prev_prev_value = dissipation[i - 2]
+
+            # Check for positive deviation before this point
+            deviation = prev_value - baseline
+            relative_deviation = deviation / (abs(baseline) + 1e-10)
+
+            # Check for transition: positive deviation followed by decrease
+            if (relative_deviation > deviation_threshold and  # Positive deviation from baseline
+                prev_value > prev_prev_value and  # Was increasing
+                    local_value < prev_value):  # Now decreasing (just after peak)
+
+                # Calculate a score based on deviation magnitude and proximity to clf_position
+                deviation_score = min(
+                    relative_deviation / deviation_threshold, 2.0)
+                distance_penalty = 1.0 / \
+                    (1.0 + abs(i - clf_position) / window_margin)
+                score = deviation_score * distance_penalty
+
+                if score > max_score:
+                    max_score = score
+                    best_position = i
+                    Log.d(self.TAG, f"Found POI1 candidate at {i} with score {score:.3f}, "
+                          f"deviation {relative_deviation:.3f}")
+
+        # Additional validation: ensure POI1 is not in a flat baseline region
+        if best_position != clf_position:
+            # Check local gradient around the position
+            local_window = 5
+            start_idx = max(0, best_position - local_window)
+            end_idx = min(len(dissipation), best_position + local_window)
+            local_gradient = np.gradient(dissipation[start_idx:end_idx])
+
+            # If the gradient is too flat, it might still be baseline
+            if np.max(np.abs(local_gradient)) < deviation_threshold * 0.5:
+                Log.d(self.TAG, f"POI1 position {best_position} rejected - too flat, "
+                      f"keeping classification position {clf_position}")
+                return clf_position
+
+        Log.d(self.TAG, f"POI1 refined from {clf_position} to {best_position}")
+        return best_position
+
     def predict(self,
                 file_buffer: str = None,
-                window_margin: int = 100,
+                window_margin: int = 128,
                 use_regression_threshold: float = 0.5,
                 enforce_constraints: bool = True,
                 format_output: bool = False,
@@ -1011,16 +1150,82 @@ class QModelV4Fusion:
             clf_position = clf_positions[poi_num]
             poi_name = poi_map.get(poi_num)
 
-            if poi_name and poi_name in all_regression_results:
+            # Special handling for POI1
+            if poi_num == 1:
+                # Apply POI1-specific post-processing
+                if poi_name and poi_name in all_regression_results:
+                    reg_result = all_regression_results[poi_name]
+
+                    # Find best regression peak within window
+                    best_peak = None
+                    best_distance = float('inf')
+
+                    for peak_pos, peak_conf in reg_result.get('all_peaks', []):
+                        distance = abs(peak_pos - clf_position)
+                        if distance <= window_margin and peak_conf >= use_regression_threshold:
+                            if distance < best_distance:
+                                best_peak = (peak_pos, peak_conf)
+                                best_distance = distance
+
+                    # Start with regression result if available
+                    if best_peak:
+                        candidate_position = best_peak[0]
+                        base_confidence = best_peak[1]
+                    else:
+                        candidate_position = clf_position
+                        base_confidence = 0.5
+
+                    # Apply POI1-specific post-processing to refine position
+                    refined_position = self._postprocess_poi1(
+                        df=df,
+                        clf_position=candidate_position,
+                        window_margin=window_margin // 2,  # Use smaller window for refinement
+                        baseline_window=50,
+                        deviation_threshold=0.1
+                    )
+
+                    final_positions[poi_num] = refined_position
+
+                    # Update method used based on whether position was refined
+                    if refined_position != candidate_position:
+                        if best_peak:
+                            methods_used[poi_num] = 'regression_refined_dissipation'
+                        else:
+                            methods_used[poi_num] = 'classification_refined_dissipation'
+                        # Slightly reduce confidence if position was adjusted
+                        confidence_scores[poi_num] = base_confidence * 0.9
+                    else:
+                        if best_peak:
+                            methods_used[poi_num] = 'regression'
+                        else:
+                            methods_used[poi_num] = 'classification'
+                        confidence_scores[poi_num] = base_confidence
+
+                else:
+                    # No regression available, apply post-processing directly to classification
+                    refined_position = self._postprocess_poi1(
+                        df=df,
+                        clf_position=clf_position,
+                        window_margin=window_margin // 2,
+                        baseline_window=50,
+                        deviation_threshold=0.1
+                    )
+
+                    final_positions[poi_num] = refined_position
+                    methods_used[poi_num] = 'classification_refined_dissipation' if refined_position != clf_position else 'classification_only'
+                    confidence_scores[poi_num] = 0.5
+
+            # Handle other POIs as before
+            elif poi_name and poi_name in all_regression_results:
                 reg_result = all_regression_results[poi_name]
                 poi1_final = final_positions.get(1) if poi_num == 2 else None
 
+                # [Rest of the existing POI processing logic remains the same]
                 # Find best regression peak within window
                 best_peak = None
                 best_distance = float('inf')
 
                 for peak_pos, peak_conf in reg_result.get('all_peaks', []):
-                    # Check if peak is within acceptable distance and confidence
                     distance = abs(peak_pos - clf_position)
 
                     if distance <= window_margin and peak_conf >= use_regression_threshold:
@@ -1056,7 +1261,6 @@ class QModelV4Fusion:
                     # Set confidence from classification if using fallback
                     poi_indices = {1: 1, 2: 2, 4: 3, 5: 4, 6: 5}
                     if clf_probabilities is not None and poi_num in poi_indices:
-                        # Find the window position closest to the classification position
                         window_positions_array = np.array(window_positions)
                         closest_window_idx = np.argmin(
                             np.abs(window_positions_array - clf_position))
@@ -1072,8 +1276,8 @@ class QModelV4Fusion:
                 methods_used[poi_num] = 'classification_only'
                 confidence_scores[poi_num] = 0.5
 
+        # [Rest of the existing code remains the same]
         # Create binary output array
-        # Use int8 for memory efficiency
         poi_binary = np.zeros(5, dtype=np.int8)
         poi_idx_map = {1: 0, 2: 1, 4: 2, 5: 3, 6: 4}
         for poi_num in final_positions.keys():
@@ -1086,23 +1290,23 @@ class QModelV4Fusion:
         Log.d(
             self.TAG, f"Binarized output[POI1, POI2, POI4, POI5, POI6]: {poi_binary}")
 
-        if format_output:
-            return self._format_output(
-                final_positions=final_positions,
-                confidence_scores=confidence_scores
-            )
-
-        return {
+        results = {
             'final_positions': final_positions,
             'methods_used': methods_used,
             'classification_results': clf_results,
-            # Changed from regression_refinements
             'regression_refinements': all_regression_results,
             'confidence_scores': confidence_scores,
             'poi_binary': poi_binary,
             'poi_count': len(final_positions),
             'dataframe': df
         }
+        # self.visualize(results)
+        if format_output:
+            return self._format_output(
+                final_positions=final_positions,
+                confidence_scores=confidence_scores
+            )
+        return results
 
     def visualize(self,
                   prediction_result: Dict,
