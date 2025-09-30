@@ -219,7 +219,7 @@ class V4RegPredictor:
             'all_peaks': all_peaks,
             'dataframe': features_df
         }
-        self.visualize(prediction_result=result)
+        # self.visualize(prediction_result=result)
         return result
 
     def visualize(self,
@@ -1300,7 +1300,7 @@ class QModelV4Fusion:
             'poi_count': len(final_positions),
             'dataframe': df
         }
-        self.visualize(results)
+        # self.visualize(results)
         if format_output:
             return self._format_output(
                 final_positions=final_positions,
