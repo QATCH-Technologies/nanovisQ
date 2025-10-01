@@ -5187,6 +5187,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             smooth_factor = int(smooth_factor) + (int(smooth_factor + 1) % 2)
             if smooth_factor < 3:
                 smooth_factor = 3
+            if smooth_factor > 69:
+                smooth_factor = 69
             Log.i(TAG, f"Total run time: {total_runtime} secs")
             Log.d(
                 TAG, f"Smoothing: {smooth_factor}"
