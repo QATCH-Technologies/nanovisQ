@@ -345,6 +345,7 @@ class Constants:
     drop_effect_multiplier_low = 1.025
     drop_effect_multiplier_high = 1.299
     drop_effect_cutoff_freq = 32
+    shear_interp_threshold = 0.15  # n < 0.85 or n > 1.15
 
     ######################
     # BATCH # parameters #
