@@ -374,8 +374,13 @@ class FrameStep2(QtWidgets.QDialog):
                 Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
                 form_idx = this_idx
 
-            if 0 <= this_idx < len(self.parent.import_formulations) and \
-               self.parent.import_formulations[form_idx].viscosity_profile.is_measured:
+            vf = (0 <= form_idx < len(self.parent.import_formulations))
+            if not vf:
+                Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
+
+            vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
+            if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
                 # Get the viscosity profile or y target to update with.
                 vp = self._get_viscosity_list(
                     self.parent.import_formulations[form_idx])
@@ -444,16 +449,24 @@ class FrameStep2(QtWidgets.QDialog):
                     run_label = lines[this_idx + 1]
                 else:
                     run_label = f"Import #{this_idx + 1}"
+
                 try:
                     form_idx = self.parent.import_run_names.index(run_label)
                 except ValueError:
                     Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
                     form_idx = this_idx
+
+                vf = (0 <= form_idx < len(self.parent.import_formulations))
+                if not vf:
+                    Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                    form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
+                
                 is_final_run = (this_idx == self.progressState.maximum() - 1)
                 queued_df = self.parent.import_formulations[form_idx].to_dataframe(
                     encoded=False, training=False)
 
-                if self.parent.import_formulations[form_idx].viscosity_profile.is_measured:
+                vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
+                if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
 
                     # Get the viscosity profile or y target to update with.
                     vp = self._get_viscosity_list(
