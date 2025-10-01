@@ -280,6 +280,9 @@ class Ui_Main(object):
             if obj == None:
                 return True
             return
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(self, "Learning In-Progress...", "Mode change is not allowed while learning.")
+            return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
@@ -340,6 +343,9 @@ class Ui_Main(object):
             Log.d("Analyze mode already active. Skipping mode change request.")
             if obj == None:
                 return True
+            return
+        if self.parent.VisQAIWin.isBusy():
+            PopUp.warning(self, "Learning In-Progress...", "Mode change is not allowed while learning.")
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
