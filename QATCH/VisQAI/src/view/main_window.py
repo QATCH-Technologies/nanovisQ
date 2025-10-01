@@ -354,6 +354,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def hasUnsavedChanges(self):
         """BASE CLASS DEFINITION"""
         return False
+    
+    def isBusy(self):
+        """BASE CLASS DEFINITION"""
+        return False
 
 
 class VisQAIWindow(BaseVisQAIWindow):
@@ -378,6 +382,7 @@ class VisQAIWindow(BaseVisQAIWindow):
 
         self.select_formulation: Formulation = Formulation()
         self.import_formulations: list[Formulation] = []
+        self.import_run_names: list[str] = []
         self.predict_formulation: Formulation = Formulation()
 
     def init_ui(self):
@@ -510,6 +515,10 @@ class VisQAIWindow(BaseVisQAIWindow):
             event.type() == QtCore.QEvent.MouseButtonPress
             and obj == self.tab_widget.tabBar()
         ):
+            # Disallow tab change if learning in-progress
+            if self.isBusy():
+                PopUp.warning(self, "Learning In-Progress...", "Tab change is not allowed while learning.")
+                return True  # ignore click
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
             if tab_step > 0:
@@ -655,6 +664,10 @@ class VisQAIWindow(BaseVisQAIWindow):
     def hasUnsavedChanges(self) -> bool:
         return self._unsaved_changes
 
+    def isBusy(self) -> bool:
+        return hasattr(self.tab_widget.currentWidget(), "timer") and \
+                       self.tab_widget.currentWidget().timer.isActive()
+    
     def reset(self) -> None:
         self.check_user_info()
         self.signedInAs.setText(self.username)

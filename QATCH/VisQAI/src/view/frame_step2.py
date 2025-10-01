@@ -234,6 +234,7 @@ class FrameStep2(QtWidgets.QDialog):
                 self.model_selected(found_model_path)
 
         if self.step == 4:  # learn
+            self.action_cancel()
             self.load_changes()
 
     def action_cancel(self):
@@ -367,11 +368,17 @@ class FrameStep2(QtWidgets.QDialog):
                 value_0_to_100, run_label)
             self.progress_label.setText(format_str)
 
+            try:
+                form_idx = self.parent.import_run_names.index(run_label)
+            except ValueError:
+                Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
+                form_idx = this_idx
+
             if 0 <= this_idx < len(self.parent.import_formulations) and \
-               self.parent.import_formulations[this_idx].viscosity_profile.is_measured:
+               self.parent.import_formulations[form_idx].viscosity_profile.is_measured:
                 # Get the viscosity profile or y target to update with.
                 vp = self._get_viscosity_list(
-                    self.parent.import_formulations[this_idx])
+                    self.parent.import_formulations[form_idx])
                 self.plot_figure(vp)
         else:
             self.run_figure.clear()
@@ -432,15 +439,25 @@ class FrameStep2(QtWidgets.QDialog):
 
                 # process next queued run
                 this_idx = self.learn_idx
+                lines = self.summary_text.toPlainText().splitlines()
+                if len(lines) > this_idx + 1:
+                    run_label = lines[this_idx + 1]
+                else:
+                    run_label = f"Import #{this_idx + 1}"
+                try:
+                    form_idx = self.parent.import_run_names.index(run_label)
+                except ValueError:
+                    Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
+                    form_idx = this_idx
                 is_final_run = (this_idx == self.progressState.maximum() - 1)
-                queued_df = self.parent.import_formulations[this_idx].to_dataframe(
+                queued_df = self.parent.import_formulations[form_idx].to_dataframe(
                     encoded=False, training=False)
 
-                if self.parent.import_formulations[this_idx].viscosity_profile.is_measured:
+                if self.parent.import_formulations[form_idx].viscosity_profile.is_measured:
 
                     # Get the viscosity profile or y target to update with.
                     vp = self._get_viscosity_list(
-                        self.parent.import_formulations[this_idx])
+                        self.parent.import_formulations[form_idx])
 
                     # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
                     # Also I have this set so updating does not overwrite the existing model until
