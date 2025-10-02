@@ -316,7 +316,7 @@ class Constants:
                            "QModel v4 (Fusion)"]
     QModel4_predict = True
     PF_predict = False
-    QModel3_predict = True
+    QModel3_predict = False
     QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
