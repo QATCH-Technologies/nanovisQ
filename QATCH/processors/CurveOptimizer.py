@@ -586,7 +586,8 @@ class DropEffectCorrection(CurveOptimizer):
 
         region_slice = slice(left_idx, right_idx + 1)
         values = self._dataframe[col_name].values[region_slice]
-        values = savgol_filter(values, window_length=11, polyorder=3)
+        values = savgol_filter(
+            values, window_length=self._safe_savgol_win(len(values), 11, 3), polyorder=3)
 
         # Compute differences with the specified offset to smooth out noise.
         local_indices = np.arange(diff_offset, len(values))
@@ -703,6 +704,18 @@ class DropEffectCorrection(CurveOptimizer):
         end = start + count
         middle = whole[start:end]
         return middle
+    
+    def _safe_savgol_win(self, n: int, preferred: int, poly: int) -> int:
+        """
+        Choose robust window lengths (odd, <= series length, > polyorder)
+        """
+        # best odd <= n
+        best = n if n % 2 == 1 else n - 1
+        w = min(preferred, max(3, best))
+        min_odd = (poly + 2) if ((poly + 2) % 2 == 1) else (poly + 3)
+        if w < min_odd:
+            w = min(min_odd, best)
+        return max(w, poly + 1)  # ensure > poly
 
     def correct_drop_effects(self,
                              baseline_diss: list = None,
@@ -821,14 +834,17 @@ class DropEffectCorrection(CurveOptimizer):
             # Start with right-most, working left, to avoid baseline shift offsets.
             contiguous_regions.reverse()
 
-        smooth_diss_full = savgol_filter(original_diss, window_length=11, polyorder=3)
-        super_smooth_diss_full = savgol_filter(original_diss, window_length=69, polyorder=3)
-        super_smooth_rf_full = savgol_filter(original_rf, window_length=69, polyorder=3)
+        smooth_diss_full = savgol_filter(
+            original_diss, window_length=self._safe_savgol_win(len(original_diss), 11, 3), polyorder=3)
+        super_smooth_diss_full = savgol_filter(
+            original_diss, window_length=self._safe_savgol_win(len(original_diss), 69, 3), polyorder=3)
+        super_smooth_rf_full = savgol_filter(
+            original_rf, window_length=self._safe_savgol_win(len(original_rf), 69, 3), polyorder=3)
 
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
         for region in contiguous_regions:
 
-            # Check that the directionality of the region is a drop, not a spike.
+            # Check that the directionality of the region is a spike, not a drop.
             if smooth_diss_full[region[0]] - smooth_diss_full[region[-1]] > 0:
                 Log.d(
                     self.TAG, f"Skipping region from {relative_time[region[0]]} to {relative_time[region[-1]]}")
@@ -879,7 +895,8 @@ class DropEffectCorrection(CurveOptimizer):
                 np.linspace(0, avg_diff_rf, len(region))
 
             # Only if end-of-fill is contained in the region.
-            if region[0] < self.bounds[1] < region[-1]:
+            if len(self.bounds) > 1 and isinstance(self.bounds[1], int) and \
+                    region[0] < self.bounds[1] < region[-1]:  # indices, not timestamps
                 Log.d(self.TAG, "Correcting drop with smoothed data due to region conflicts with end-of-fill")
                 insert_diss = super_smooth_diss_full[region[0]:region[-1]+1]
                 insert_rf = super_smooth_rf_full[region[0]:region[-1]+1]
