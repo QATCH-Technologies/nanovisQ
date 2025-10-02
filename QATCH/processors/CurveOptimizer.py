@@ -39,7 +39,7 @@ TAIL_TRIM_PERCENTAGE = 0.5
 """ Restricts the difference factor. """
 DIFFERENCE_FACTOR_RESTRICTION = (0.5, 3.0)
 """ The relative time (in seconds) for where to place the right bound of region. """
-REGION_RIGHT_BOUND_SEC = 2.0
+REGION_RIGHT_BOUND_SEC = 1.0
 
 ##########################################
 # CHANGE THESE
@@ -325,7 +325,7 @@ class CurveOptimizer:
                 return
 
             # Warn user that there were no times large enough to calculate the right boundary.
-            Log.w(self.TAG,
+            Log.d(self.TAG,
                   f"Not using given `bounds`. No times greater than `START + {REGION_RIGHT_BOUND_SEC}s`. Attempting to detect region...")
 
         # Else (no usable bounds), use default left/right boundary detection.
@@ -385,7 +385,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
 
             # Check that we have enough data.
             if len(values) < 2:
-                Log.w(self.TAG, "ROI is too short; returning a high penalty.")
+                Log.d(self.TAG, "ROI is too short; returning a high penalty.")
                 return np.inf
 
             # Use only the first 20% of the ROI.
@@ -396,7 +396,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             # Compute first differences on the restricted subset.
             diffs = np.diff(sub_values)
             if len(diffs) == 0:
-                Log.w(
+                Log.d(
                     self.TAG, "Not enough differences in the subset; returning a high penalty.")
                 return np.inf
 
@@ -453,7 +453,7 @@ class DifferenceFactorOptimizer(CurveOptimizer):
             else:
                 self._optimal_difference_factor = max(
                     0.5, min(optimal_difference_factor, 3.0))
-                Log.w(
+                Log.d(
                     self.TAG,
                     f"Optimal difference factor {optimal_difference_factor} out of bounds [0.5, 3.0], "
                     f"using {self._optimal_difference_factor}."
@@ -530,6 +530,7 @@ class DropEffectCorrection(CurveOptimizer):
                          initial_diff_factor=initial_diff_factor, bounds=bounds)
 
         self.loaded_datapath = file_path
+        self.bounds = bounds
 
         if "Dissipation" not in self._dataframe.columns:
             Log.e(self.TAG, "The dataframe does not contain a 'Dissipation' column.")
@@ -632,12 +633,12 @@ class DropEffectCorrection(CurveOptimizer):
             last_region_size = len(current_streak)
             starting_threshold_factor -= 1
             if starting_threshold_factor <= 0:
-                Log.w(
+                Log.d(
                     self.TAG, "Reverting to initial region. Reached min threshold factor.")
                 current_streak = first_region_found
                 break
         if diff_offset in current_streak:
-            Log.w(self.TAG, "Reverting to initial region. Returned min diff offset.")
+            Log.d(self.TAG, "Reverting to initial region. Returned min diff offset.")
             current_streak = first_region_found
 
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
@@ -656,7 +657,7 @@ class DropEffectCorrection(CurveOptimizer):
             min_drop = min_drop - 1
             # Pretend this step never happened if it fails to find an acceptable edge before the left bound.
             if min_drop <= 0:
-                Log.w(
+                Log.d(
                     self.TAG, "Drop effect using original bounds, scanning left never reached an acceptable edge.")
                 current_streak = current_streak[:min_count]
                 break
@@ -797,7 +798,7 @@ class DropEffectCorrection(CurveOptimizer):
             region = contiguous_regions[0]
             idx = region[0]
             if idx - self._left_bound['index'] < len(region) // 2:
-                Log.w(
+                Log.d(
                     self.TAG, "Trimming the left region to prevent it from being skipped.")
                 start_at = max(drop_effects_diss[0], drop_effects_rf[0])
                 end_at = max(drop_effects_diss[-1], drop_effects_rf[-1])
@@ -820,8 +821,18 @@ class DropEffectCorrection(CurveOptimizer):
             # Start with right-most, working left, to avoid baseline shift offsets.
             contiguous_regions.reverse()
 
+        smooth_diss_full = savgol_filter(original_diss, window_length=11, polyorder=3)
+        super_smooth_diss_full = savgol_filter(original_diss, window_length=69, polyorder=3)
+        super_smooth_rf_full = savgol_filter(original_rf, window_length=69, polyorder=3)
+
         # Process each detected drop effect region for Dissipation and Resonance Frequency.
         for region in contiguous_regions:
+
+            # Check that the directionality of the region is a drop, not a spike.
+            if smooth_diss_full[region[0]] - smooth_diss_full[region[-1]] > 0:
+                Log.d(
+                    self.TAG, f"Skipping region from {relative_time[region[0]]} to {relative_time[region[-1]]}")
+                continue
 
             # Skip if the drop effect is at the very beginning.
             idx = region[0]
@@ -867,10 +878,16 @@ class DropEffectCorrection(CurveOptimizer):
             insert_rf = original_rf[region[0]] + \
                 np.linspace(0, avg_diff_rf, len(region))
 
-            # Apply randomness to insert data based on stdev of baseline
-            insert_diss = [hz + 2*base_diss_std*(random()-0.5)
+            # Only if end-of-fill is contained in the region.
+            if region[0] < self.bounds[1] < region[-1]:
+                Log.d(self.TAG, "Correcting drop with smoothed data due to region conflicts with end-of-fill")
+                insert_diss = super_smooth_diss_full[region[0]:region[-1]+1]
+                insert_rf = super_smooth_rf_full[region[0]:region[-1]+1]
+
+            # Apply randomness to insert data based on stdev of baseline.
+            insert_diss = [hz + 10*base_diss_std*(random()-0.5)
                            for hz in insert_diss]
-            insert_rf = [hz + 2*base_rf_std*(random()-0.5)
+            insert_rf = [hz + 10*base_rf_std*(random()-0.5)
                          for hz in insert_rf]
 
             # Replace the drop effect region with a smoother insert.
@@ -991,7 +1008,7 @@ class DropEffectCorrection(CurveOptimizer):
             export_path = export_path.replace("_3rd", "")
             export_path = export_path.replace(".csv", "_0.pdf")
             Log.i(
-                f'Exporting Figure to:\n\t{export_path}')
+                self.TAG, f'Exporting Figure to:\n\t{export_path}')
             fig.savefig(export_path)
 
         if show:
