@@ -715,7 +715,7 @@ class DropEffectCorrection(CurveOptimizer):
         min_odd = (poly + 2) if ((poly + 2) % 2 == 1) else (poly + 3)
         if w < min_odd:
             w = min(min_odd, best)
-        return max(w, poly + 1)  # ensure > poly
+        return min(n, max(w, poly + 1))  # ensure > poly and < n
 
     def correct_drop_effects(self,
                              baseline_diss: list = None,
@@ -902,10 +902,9 @@ class DropEffectCorrection(CurveOptimizer):
                 insert_rf = super_smooth_rf_full[region[0]:region[-1]+1]
 
             # Apply randomness to insert data based on stdev of baseline.
-            insert_diss = [hz + 10*base_diss_std*(random()-0.5)
-                           for hz in insert_diss]
-            insert_rf = [hz + 10*base_rf_std*(random()-0.5)
-                         for hz in insert_rf]
+            rng = np.random.default_rng()
+            insert_diss = np.asarray(insert_diss) + rng.normal(0.0, 2*base_diss_std, size=len(insert_diss))
+            insert_rf = np.asarray(insert_rf) + rng.normal(0.0, 2*base_rf_std, size=len(insert_rf))
 
             # Replace the drop effect region with a smoother insert.
             corrected_diss[region[0]:region[-1]+1] = insert_diss
