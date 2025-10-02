@@ -727,7 +727,9 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d(
                 f"Saving imported formulation #{num_forms+1} to parent for later")
             self.parent.import_formulations.append(form_saved)
-            self.parent.import_run_names.append(self.run_name.text())
+            # Store the same label used in the left list (select_label),
+            # so FrameStep2 can resolve indices reliably.
+            self.parent.import_run_names.append(self.select_label.text())
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
