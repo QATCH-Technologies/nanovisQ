@@ -727,6 +727,9 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d(
                 f"Saving imported formulation #{num_forms+1} to parent for later")
             self.parent.import_formulations.append(form_saved)
+            # Store the same label used in the left list (select_label),
+            # so FrameStep2 can resolve indices reliably.
+            self.parent.import_run_names.append(self.select_label.text())
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
@@ -1091,6 +1094,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         all_is_good = True
         self.parent.import_formulations.clear()
+        self.parent.import_run_names.clear()
 
         try:
             for i, (_file_name, file_path) in enumerate(self.all_files.items()):
@@ -1108,6 +1112,7 @@ class FrameStep1(QtWidgets.QDialog):
                     return
 
                 self.file_selected(file_path)  # load each run
+                QtCore.QCoreApplication.processEvents()  # redraw plot now
                 if (len(self.run_captured.text()) and
                     len(self.run_updated.text()) and
                     len(self.run_analyzed.text()) and
@@ -1410,6 +1415,7 @@ class FrameStep1(QtWidgets.QDialog):
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
                 self.parent.import_formulations.clear()
+                self.parent.import_run_names.clear()
             if self.step == 5:  # Predict
                 self.parent.predict_formulation = Formulation()
             # if True:  # Always, all tabs

@@ -316,7 +316,7 @@ class Constants:
                            "QModel v4 (Fusion)"]
     QModel4_predict = True
     PF_predict = False
-    QModel3_predict = True
+    QModel3_predict = False
     QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
@@ -345,6 +345,7 @@ class Constants:
     drop_effect_multiplier_low = 1.025
     drop_effect_multiplier_high = 1.299
     drop_effect_cutoff_freq = 32
+    shear_interp_threshold = 0.15  # n < 0.85 or n > 1.15
 
     ######################
     # BATCH # parameters #

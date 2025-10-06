@@ -1099,15 +1099,31 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.g1.buttonClicked.connect(self.detect_change)
         self.q_recall.stateChanged.connect(self.detect_change)
         self.notes.textChanged.connect(self.detect_change)
-        self.c9.currentTextChanged.connect(self.detect_change)
-        self.c10.currentTextChanged.connect(self.detect_change)
-        self.c11.currentTextChanged.connect(self.detect_change)
-        self.c13.currentTextChanged.connect(self.detect_change)
-        self.c15.currentTextChanged.connect(self.detect_change)
         self.t_channels.valueChanged.connect(self.detect_change)
+
+        cb_elems = [self.c9, self.c10, self.c11, self.c13, self.c15]
+        for cb in cb_elems:
+            self._init_combobox_menu(cb)
+            cb.currentTextChanged.connect(self.detect_change)
 
         if self.post_run:
             self.t_batch.setFocus()
+
+    def _init_combobox_menu(self, combobox: QtWidgets.QComboBox):
+        # Enable custom context menu policy
+        combobox.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        # Connect the custom context menu signal to the menu-building method
+        combobox.customContextMenuRequested.connect(lambda p: self.show_context_menu(combobox, p))
+
+    def show_context_menu(self, combobox: QtWidgets.QComboBox, point):
+        """Creates and displays the context menu."""
+        menu = QtWidgets.QMenu(combobox)
+        clear_icon = QtGui.QIcon(os.path.join(
+            Architecture.get_path(), "QATCH", "icons", "cancel.png"))
+        clear_action = menu.addAction(clear_icon, "Clear")
+        # Connect the clear action to the QComboBox's setCurrentIndex method
+        clear_action.triggered.connect(lambda: combobox.setCurrentIndex(-1))
+        menu.exec(combobox.mapToGlobal(point))
 
     def resize_on_collapse_change(self):
         Log.d("Resizing Run Info on Advanced Information toggle...")
@@ -2222,99 +2238,156 @@ class QueryRunInfo(QtWidgets.QWidget):
         # Contact Angle, Density, Protein Concentration, Buffer Concentration, Surfactant
         # Concentration, Stabilizer Concentration, and Salt Concentration.
         # Errors are logged to the user and the input_error flag is set to True.
+        error_details = ""
+        input_warning = False
         input_error = False
         if self.t3.isEnabled() and not self.t3.hasAcceptableInput():
-            Log.e(tags=TAG, msg="Input Error: Surfactant must be between {} and {}."
+            msg = "Input Error: Surfactant must be between {} and {}." \
                   .format(
                       self.validSurfactant.bottom(),
-                      self.validSurfactant.top()))
+                      self.validSurfactant.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if self.t4.isEnabled() and not self.t4.hasAcceptableInput():
-            Log.e(tag=TAG, msg="Input Error: Concentration must be between {} and {}."
+            msg = "Input Error: Concentration must be between {} and {}." \
                   .format(
                       self.validConcentration.bottom(),
-                      self.validConcentration.top()))
+                      self.validConcentration.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if not self.t1.hasAcceptableInput():
-            Log.e(tag=TAG, msg="Input Error: Surface Tension must be between {} and {}."
+            msg = "Input Error: Surface Tension must be between {} and {}." \
                   .format(
                       self.validSurfaceTension.bottom(),
-                      self.validSurfaceTension.top()))
+                      self.validSurfaceTension.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if not self.t2.hasAcceptableInput():
-            Log.e(tag=TAG, msg="Input Error: Contact Angle must be between {} and {}."
+            msg = "Input Error: Contact Angle must be between {} and {}." \
                   .format(
                       self.validContactAngle.bottom(),
-                      self.validContactAngle.top()))
+                      self.validContactAngle.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if not self.t5.hasAcceptableInput():
-            Log.e(tag=TAG, msg="Input Error: Density must be between {} and {}."
+            msg = "Input Error: Density must be between {} and {}." \
                   .format(
                       self.validDensity.bottom(),
-                      self.validDensity.top()))
+                      self.validDensity.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if self.t12.isVisible() and not self.t12.hasAcceptableInput():
-            Log.e("Input Error: Protein Concentration must be between {} and {}."
+            msg = "Input Error: Protein Concentration must be between {} and {}." \
                   .format(
                       self.validProteinConcentration.bottom(),
-                      self.validProteinConcentration.top()))
-            input_error = True
-        if self.t14.isVisible() and not self.t14.hasAcceptableInput():
-            Log.e("Input Error: Buffer Concentration must be between {} and {}."
-                  .format(
-                      self.validBufferConcentration.bottom(),
-                      self.validBufferConcentration.top()))
-            input_error = True
-        if self.t6.isVisible() and not self.t6.hasAcceptableInput():
-            Log.e("Input Error: Surfactant Concentration must be between {} and {}."
-                  .format(
-                      self.validSurfactantConcentration.bottom(),
-                      self.validSurfactantConcentration.top()))
+                      self.validProteinConcentration.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if self.t8.isVisible() and not self.t8.hasAcceptableInput():
-            Log.e("Input Error: Stabilizer Concentration must be between {} and {}."
+            msg = "Input Error: Stabilizer Concentration must be between {} and {}." \
                   .format(
                       self.validStabilizerConcentration.bottom(),
-                      self.validStabilizerConcentration.top()))
+                      self.validStabilizerConcentration.top())
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
-        if self.t16.isVisible() and not self.t16.hasAcceptableInput():
-            Log.e("Input Error: Salt Concentration must be between {} and {}."
-                  .format(
-                      self.validSaltConcentration.bottom(),
-                      self.validSaltConcentration.top()))
-            input_error = True
+        if not self.collapsibleBox.isCollapsed():  # only when Advanced Info visible
+            if self.t14.isVisible() and not self.t14.hasAcceptableInput():
+                msg = "Input Error: Buffer Concentration must be between {} and {}." \
+                    .format(
+                        self.validBufferConcentration.bottom(),
+                        self.validBufferConcentration.top())
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
+            if self.t6.isVisible() and not self.t6.hasAcceptableInput():
+                msg = "Input Error: Surfactant Concentration must be between {} and {}." \
+                    .format(
+                        self.validSurfactantConcentration.bottom(),
+                        self.validSurfactantConcentration.top())
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
+            if self.t16.isVisible() and not self.t16.hasAcceptableInput():
+                msg = "Input Error: Salt Concentration must be between {} and {}." \
+                    .format(
+                        self.validSaltConcentration.bottom(),
+                        self.validSaltConcentration.top())
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
         if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
-            Log.e(
-                "Input Error: You must provide a Protein Type if this is a bioformulation.")
-            Log.e(
-                "Either select a Protein Type or click \"no\" for \"Is this a bioformulation?\"")
+            msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
+            Log.e(msg)
+            error_details += msg + "\n"
+            msg = "Either select a Protein Type or click \"no\" for \"Is this a bioformulation?\""
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if self.t12.text() == "0" and self.t12.isEnabled() and self.t12.isVisible():
-            Log.e(
-                "Input Error: Protein Concentration should be non-zero when Protein Type is not \"none\".")
-            input_error = True
-        if self.t14.text() == "0" and self.t14.isEnabled() and self.t14.isVisible():
-            Log.e(
-                "Input Error: Buffer Concentration should be non-zero when Buffer Type is not \"none\".")
-            input_error = True
-        if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
-            Log.e(
-                "Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not \"none\".")
+            msg = "Input Error: Protein Concentration should be non-zero when Protein Type is not \"none\"."
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
         if self.t8.text() == "0" and self.t8.isEnabled() and self.t8.isVisible():
-            Log.e(
-                "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\".")
+            msg = "Input Error: Stabilizer Concentration should be non-zero when Stabilizer Type is not \"none\"."
+            Log.e(msg)
+            error_details += msg + "\n"
             input_error = True
-        if self.t16.text() == "0" and self.t16.isEnabled() and self.t16.isVisible():
-            Log.e(
-                "Input Error: Salt Concentration should be non-zero when Salt Type is not \"none\".")
-            input_error = True
+        if not self.collapsibleBox.isCollapsed():  # only when Advanced Info visible
+            if self.t14.text() == "0" and self.t14.isEnabled() and self.t14.isVisible():
+                msg = "Input Error: Buffer Concentration should be non-zero when Buffer Type is not \"none\"."
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
+            if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
+                msg = "Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not \"none\"."
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
+            if self.t16.text() == "0" and self.t16.isEnabled() and self.t16.isVisible():
+                msg = "Input Error: Salt Concentration should be non-zero when Salt Type is not \"none\"."
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
+
+        # User Warning Popup Dialog when Advanced Information has missing fields
+        if input_warning and not input_error:
+            if PopUp.critical(
+                self, 
+                "Missing Advanced Information", 
+                "One or more field has an empty or invalid value.\n" +
+                "Would you like to make corrections before saving?",
+                details=error_details,
+                btn1_text="Yes"):
+                # User said "Yes"; Allow corrections before saving
+                input_error = True  # set error flag to abort saving
+            else:
+                # User said "Ignore"; save with missing field(s)
+                input_warning = False  # clear warning flag
+        elif input_warning and input_error:
+            # Both flags set: error flag takes priority
+            input_warning = False  # clear warning flag
 
         # If the force parameter is set to True, input errors are ignored.
         if force:
             Log.w(tag=TAG, msg="Forcing XML write regardless of input errors!")
             input_error = False
         if input_error:
+            if not input_warning:
+                PopUp.critical(
+                    self, 
+                    "Input Error(s)", 
+                    "One or more field has an empty or invalid value.\n" +
+                    "Please make corrections before saving. See details.",
+                    details=error_details,
+                    ok_only=True)
             Log.w(tag=TAG, msg="Input error: Not saving Run Info.")
             return False
 

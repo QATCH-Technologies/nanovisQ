@@ -132,18 +132,18 @@ class QModelPredictor:
 
         self._booster: xgb.Booster = xgb.Booster()
         self._scaler: Pipeline = None
-        v4_model_path = os.path.join(
-            Architecture.get_path(),
-            "QATCH", "QModel", "SavedModels", "qmodel_v4",
-            "v4_model_mini(tf218).h5"
-        )
-        v4_scaler_path = os.path.join(
-            Architecture.get_path(),
-            "QATCH", "QModel", "SavedModels", "qmodel_v4",
-            "v4_scaler_mini.joblib",
-        )
-        self._v4_model = QModelPredictorV4(
-            model_path=v4_model_path, scaler_path=v4_scaler_path)
+        # v4_model_path = os.path.join(
+        #     Architecture.get_path(),
+        #     "QATCH", "QModel", "SavedModels", "qmodel_v4",
+        #     "v4_model_mini(tf218).h5"
+        # )
+        # v4_scaler_path = os.path.join(
+        #     Architecture.get_path(),
+        #     "QATCH", "QModel", "SavedModels", "qmodel_v4",
+        #     "v4_scaler_mini.joblib",
+        # )
+        # self._v4_model = QModelPredictorV4(
+        #     model_path=v4_model_path, scaler_path=v4_scaler_path)
 
         try:
             self._booster.load_model(fname=booster_path)
@@ -536,15 +536,15 @@ class QModelPredictor:
                 "indices": selected_indices.tolist(),
                 "confidences": selected_confs.tolist()
             }
-        for poi in range(1, 7):
-            key = f"POI{poi}"
-            point = qmodel_v4_predictions.get(key).get("indices", -1)
-            conf = qmodel_v4_predictions.get(key).get("confidences", -1)
-            if len(point) > 0:
-                if point[0] > -1:
-                    poi_results[key]["indices"].insert(0, point[0])
-                if conf[0] > -1:
-                    poi_results[key]["confidences"].insert(0, conf[0])
+        # for poi in range(1, 7):
+        #     key = f"POI{poi}"
+        #     point = qmodel_v4_predictions.get(key).get("indices", -1)
+        #     conf = qmodel_v4_predictions.get(key).get("confidences", -1)
+        #     if len(point) > 0:
+        #         if point[0] > -1:
+        #             poi_results[key]["indices"].insert(0, point[0])
+        #         if conf[0] > -1:
+        #             poi_results[key]["confidences"].insert(0, conf[0])
         return poi_results
 
     def _correct_bias(
@@ -2517,9 +2517,10 @@ class QModelPredictor:
         ddata = xgb.DMatrix(transformed_feature_vector)
         predicted_probabilites = self._booster.predict(ddata)
         gt = []
-        for i in range(1, 7):
-            point = qmodel_v4_labels.get(f"POI{i}").get("indices", -1)[0]
-            gt.append(point)
+        # for i in range(1, 7):
+        #     point = qmodel_v4_labels.get(f"POI{i}").get("indices", -1)[0]
+        #     gt.append(point)
+        qmodel_v4_labels = []
         extracted_predictions = self._extract_predictions(
             predicted_probabilites, model_data_labels, qmodel_v4_predictions=qmodel_v4_labels)
         relative_time = df["Relative_time"].values
