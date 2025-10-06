@@ -2787,25 +2787,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # ---------- LOADING QMODEL V4 (Fusion) -----------#
         try:
             if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
-                classification_paths = {
-                    'model': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch.pth"),
-                    'scaler': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_scaler_pytorch.joblib"),
-                    'config': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_config_pytorch.json")
-                }
-
-                regression_paths = {
-                    'POI1': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth"),
-                    'POI2': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_small_window_1.pth"),
-                    'POI4': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_med_window_3.pth"),
-                    'POI5': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_large_window_4.pth"),
-                    'POI6': os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_small_window_5.pth")
-                }
+                reg_path_1 = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
+                reg_path_2 = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
+                clf_path = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch.pth")
                 self.QModel_v4_predictor = QModelV4Fusion(
-                    classification_model_path=classification_paths['model'],
-                    classification_scaler_path=classification_paths['scaler'],
-                    classification_config_path=classification_paths['config'],
-                    regression_model_paths=regression_paths
+                    reg_path_1=reg_path_1,
+                    reg_path_2=reg_path_2,
+                    clf_path=clf_path,
+                    reg_batch_size=2048,
+                    clf_batch_size=1024
                 )
+
 
                 self.QModel_v4_modules_loaded = True
 
@@ -3127,13 +3119,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
-                        predict_result = predictor.predict(
-                            file_buffer=fh,
-                            window_margin=128,
-                            use_regression_threshold=0.25,
-                            enforce_constraints=False,
-                            format_output=True,
-                            progress_signal=self.predict_progress)
+                        predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3499,12 +3485,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict(
-                                file_buffer=fh,
-                                window_margin=128,
-                                use_regression_threshold=0.25,
-                                enforce_constraints=False,
-                                format_output=True)
+                            predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+
                             predictions = []
                             candidates = []
                             for i in range(6):
@@ -4942,12 +4924,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict(
-                                file_buffer=fh,
-                                window_margin=128,
-                                use_regression_threshold=0.25,
-                                enforce_constraints=False,
-                                format_output=True)
+                            predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+
                             predictions = []
                             candidates = []
                             for i in range(6):
