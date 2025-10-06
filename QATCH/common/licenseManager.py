@@ -176,8 +176,15 @@ class AVN_Database:
     @staticmethod
     def _load_avn_key_store():
         DB_CONFIG = {}
-        keystore = os.path.join(Architecture.get_path(), 
-                                "QATCH/resources/avn_key_store.zip")
+        PATH_TO_AVN_KEY = "QATCH/resources/avn_key_store.zip"
+
+        # by default: try looking for it in the working directory
+        keystore = os.path.join(os.getcwd(), 
+                                PATH_TO_AVN_KEY)
+        if not os.path.exists(keystore):
+            # as fallback: try looking for it bundled with the app
+            keystore = os.path.join(Architecture.get_path(), 
+                                    PATH_TO_AVN_KEY)
         if os.path.exists(keystore):
             with zipfile.ZipFile(keystore, 'r') as zip_key:
                 pem_file = zip_key.read("db_config.pem").splitlines()
@@ -188,6 +195,7 @@ class AVN_Database:
                 DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
                 DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
                 DB_CONFIG['defer_connect'] = True
+
         return DB_CONFIG
 
 

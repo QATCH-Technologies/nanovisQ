@@ -2,9 +2,6 @@ pip-tools
 pipreqs
 pyinstaller
 altgraph
-packaging>=24.2
-pefile!=2024.8.26,>=2022.5.30
+pefile
 pyinstaller-hooks-contrib
 pywin32
-pywin32-ctypes
-setuptools==80.9.0
