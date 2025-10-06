@@ -4500,7 +4500,7 @@ class MainWindow(QtWidgets.QMainWindow):
         
         Side effects:
         - May start background threads (self.web_thread) to fetch license information or perform update checks.
-        - May change Constants.UpdateEngine temporarily when probing nightly resources.
+        - May change Constants.UpdateEngine on failure when probing nightly resources and/or updates.
         - May set attributes such as self.latest_build, self.url_download, and self.ask_for_update.
         - May initiate a download via self.start_download().
         - May close and clear self._dbx_connection when finished.
@@ -4554,14 +4554,12 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.start_download()
                     else:
                         # Check for nightly resource updates (if no build available)
-                        Constants.UpdateEngine = UpdateEngines.GitHub
                         branch = f"{Constants.app_version[0:4]}x"
                         if self.update_resources_check(branch):
                             labelweb3 = 'Resources out-of-date'
                             # self.res_download = True
                         else:
                             labelweb3 = 'UP-TO-DATE!'
-                        Constants.UpdateEngine = UpdateEngines.Nightly
                         Log.i(f"Nightly resource update check: {labelweb3}")
 
                     # ping periodically for task to finish
@@ -4661,7 +4659,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     labelweb3 = 'UP-TO-DATE!'
                 self.ask_for_update = False
-            elif Constants.UpdateEngine == UpdateEngines.GitHub:
+            elif Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 color, labelweb3 = self.update_found(self.build_descr)
 
             if hasattr(self, "_dbx_connection") and self._dbx_connection:
@@ -4881,7 +4879,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                  "path": entry.path_display,
                                  "size": entry.size}  # ,
                         builds.append(build)
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 latest_release_url = Constants.UpdateGitRepo + "/releases/latest"
                 # url redirects to latest tag
                 resp = requests.get(latest_release_url)
@@ -4913,7 +4911,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                         metadata, response = self._dbx_connection.files_download(
                             build_targets_path)
-                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                         metadata = requests.get(install_check_path)
                         response = requests.get(build_targets_path)
                         if metadata.ok:
@@ -5082,7 +5080,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                 for resource in self._dbx_connection.files_list_folder(remote_resource_path, recursive=False).entries:
                     resources.append(resource.name)
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 resources = os.listdir(bundled_resource_path)
             self.res_files = resources.copy()
 
@@ -5129,7 +5127,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 for line in response.iter_lines():
                     latest_version = line.decode().strip()  # last line saved
                 server_file_size = metadata.size
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 resource_file_url = Constants.UpdateGitRepo + "/raw/" + \
                     Constants.UpdateGitBranch + \
                     remote_file_compare.replace(branch, "QATCH")
@@ -5174,6 +5172,10 @@ class MainWindow(QtWidgets.QMainWindow):
             resources = self.res_files
             current_version = self.res_current_version
             latest_version = self.res_latest_version
+
+            if Constants.UpdateEngine not in [UpdateEngines.DropboxAPI, UpdateEngines.GitHub, UpdateEngines.Nightly]:
+                Log.e(f"Invalid UpdateEngine \"{Constants.UpdateEngine}\": Cannot update resource files.")
+                return
 
             if download_resources:
                 if not PopUp.question_FW(self,
@@ -5220,20 +5222,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     detail_text.append(f"Updating \"{resource}\"...")
                     file_local = os.path.join(working_resource_path, resource)
                     file_remote = os.path.join(remote_resource_path, resource)
-                    if os.path.exists(file_local):
-                        Log.d(f"Deleting {file_local}...")
-                        os.remove(file_local)
                     Log.d(f"Downloading {file_remote} to {file_local}...")
                     if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                        if os.path.exists(file_local):
+                            Log.d(f"Deleting {file_local}...")
+                            os.remove(file_local)
+                        Log.d(f"Writing {file_local}...")
                         self._dbx_connection.files_download_to_file(
                             file_local, file_remote)
-                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                         git_mapped_url = Constants.UpdateGitRepo + '/raw/' + \
                             Constants.UpdateGitBranch + \
                             file_remote.replace(branch, "QATCH")
                         response = requests.get(git_mapped_url)
                         response.raise_for_status()
+                        if os.path.exists(file_local):
+                            Log.d(f"Deleting {file_local}...")
+                            os.remove(file_local)
                         with open(file_local, 'wb') as f:
+                            Log.d(f"Writing {file_local}...")
                             f.write(response.content)
                         response.close()
                     detail_text[-1] += "\tDONE!"

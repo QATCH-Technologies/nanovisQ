@@ -4,8 +4,6 @@
 #
 #    pip-compile --strip-extras
 #
---extra-index-url https://download.pytorch.org/whl/cu121
-# required for installing torch, torchvision, and torchaudio
 absl-py==2.3.1
     # via
     #   -r requirements.in
@@ -283,18 +281,15 @@ tf-keras==2.18.0
     # via -r requirements.in
 threadpoolctl==3.6.0
     # via scikit-learn
-torch==2.5.1+cu121
+torch==2.8.0
     # via
     #   -r requirements.in
-    #   (requires --extra-index-url flag)
-torchvision==0.20.1+cu121
+torchaudio==2.8.0
     # via
     #   -r requirements.in
-    #   (requires --extra-index-url flag)
-torchaudio==2.5.1+cu121
+torchvision==0.23.0
     # via
     #   -r requirements.in
-    #   (requires --extra-index-url flag)
 tqdm==4.67.1
     # via
     #   -r requirements.in

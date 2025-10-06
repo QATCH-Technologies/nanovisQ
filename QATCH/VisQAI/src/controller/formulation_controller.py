@@ -192,7 +192,7 @@ class FormulationController:
         self.db.add_formulation(f_new)
         return f_new
 
-    def add_all_from_dataframe(self, df: pd.DataFrame) -> List[Formulation]:
+    def add_all_from_dataframe(self, df: pd.DataFrame, verbose_print: bool = False) -> List[Formulation]:
         """Bulk import multiple formulations from a pandas DataFrame.
 
         The DataFrame must contain specific columns for each ingredient type,
@@ -200,7 +200,7 @@ class FormulationController:
         row corresponds to a single formulation.
 
         Expected columns:
-            - Protein_type, MW, PI_mean, PI_range, Protein_conc
+            - Protein_type, Protein_class, MW, PI_mean, PI_range, Protein_conc
             - Temperature
             - Buffer_type, Buffer_pH, Buffer_conc
             - Salt_type, Salt_conc
@@ -210,6 +210,7 @@ class FormulationController:
 
         Args:
             df (pd.DataFrame): DataFrame containing formulation data row-wise.
+            verbose_print (bool, False): If True, display a `tqdm` progress bar for status.
 
         Returns:
             List[Formulation]: A list of all `Formulation` instances added to the database.
@@ -232,7 +233,15 @@ class FormulationController:
         if missing:
             raise ValueError(f"DataFrame is missing columns: `{missing}`")
 
+        if verbose_print:
+            from tqdm import tqdm
+            p_bar = tqdm(total=len(df))
+
         for _, row in df.iterrows():
+
+            if verbose_print:
+                p_bar.update()
+
             # TODO: Add class_type as not none from this.
 
             protein = self.ingredient_controller.add_protein(
@@ -306,6 +315,9 @@ class FormulationController:
 
             saved = self.add_formulation(form)
             added_forms.append(saved)
+
+        if verbose_print:
+            p_bar.close()
 
         return added_forms
 

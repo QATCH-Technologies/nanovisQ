@@ -104,7 +104,8 @@ class DeviceFingerprint:
         invocations: if a PowerShell invocation fails, DeviceFingerprint.no_powershell_cmds is set;
         if a WMIC command (commands starting with "wmic") fails, DeviceFingerprint.no_wmic_cmds is set.
         If the corresponding failure flag is already set, matching commands are skipped and an empty
-        string is returned immediately.
+        string is returned immediately. The use of creationflags with PowerShell commands is required
+        to prevent console windows from flashing on the screen when running from a frozen EXE process.
         
         Security: accepting arbitrary command strings is potentially dangerous. Callers MUST ensure
         commands are not influenced by untrusted input.
@@ -128,15 +129,18 @@ class DeviceFingerprint:
 
         try:
             if use_powershell:
+                # Windows-specific flag: required to prevent window flicker when frozen
+                CREATE_NO_WINDOW = 0x08000000
                 ps_command = ['powershell', '-Command', command]
                 output = subprocess.check_output(
-                    ps_command, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
+                    ps_command, stderr=subprocess.DEVNULL, text=True, timeout=timeout,
+                    creationflags=CREATE_NO_WINDOW)
             else:
                 output = subprocess.check_output(
                     command, shell=shell, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
 
             return output.strip()
-        
+
         except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired) as e:
             Log.w(f"Command failed: {command}, Error: {e}")
             with DeviceFingerprint._flag_lock:
