@@ -973,7 +973,7 @@ class QModelV4Fusion:
             this_progress_step += 1
             progress_signal.emit(
                 int(100 * this_progress_step / total_progress_steps),
-                "Step 1/7: Detecting POI 1..."
+                "Step 1/7: Detecting initial fill..."
             )
 
         try:
@@ -982,16 +982,16 @@ class QModelV4Fusion:
                 final_positions[1] = poi1_idx
                 confidence_scores[1] = poi1_conf
             Log.d(
-                self.TAG, f"POI1: index={poi1_idx}, confidence={poi1_conf:.3f}")
+                self.TAG, f"Initial fill: index={poi1_idx}, confidence={poi1_conf:.3f}")
         except Exception as e:
-            Log.e(self.TAG, f"Error predicting POI1: {e}")
+            Log.e(self.TAG, f"Error predicting initial fill: {e}")
 
         # Step 2: Predict POI 2
         if progress_signal:
             this_progress_step += 1
             progress_signal.emit(
                 int(100 * this_progress_step / total_progress_steps),
-                "Step 2/7: Detecting POI 2..."
+                "Step 2/7: End-of-fill..."
             )
 
         try:
@@ -1003,16 +1003,16 @@ class QModelV4Fusion:
                 final_positions[2] = poi2_idx
                 confidence_scores[2] = poi2_conf
             Log.d(
-                self.TAG, f"POI2: index={poi2_idx}, confidence={poi2_conf:.3f}")
+                self.TAG, f"End-of-fill: index={poi2_idx}, confidence={poi2_conf:.3f}")
         except Exception as e:
-            Log.e(self.TAG, f"Error predicting POI2: {e}")
+            Log.e(self.TAG, f"Error detecting end-of-fill: {e}")
 
         # Step 3-6: Predict POI 4, 5, 6 (classification model)
         if progress_signal:
             this_progress_step += 1
             progress_signal.emit(
                 int(100 * this_progress_step / total_progress_steps),
-                "Step 3/7: Detecting POI 4, 5, 6..."
+                "Step 3/7: Detecting channels 1, 2, & 3 ..."
             )
 
         try:
@@ -1023,7 +1023,7 @@ class QModelV4Fusion:
                 Log.d(
                     self.TAG, f"POI{poi_num}: index={idx}, confidence={conf:.3f}")
         except Exception as e:
-            Log.e(self.TAG, f"Error predicting POI 4/5/6: {e}")
+            Log.e(self.TAG, f"Error pDetecting channels 1, 2, & 3: {e}")
 
         # Note: POI 3 is not currently predicted by either model
         # This could be added in future iterations
@@ -1040,7 +1040,7 @@ class QModelV4Fusion:
         self._last_predictions = output
 
         if progress_signal:
-            progress_signal.emit(100, "Prediction complete!")
+            progress_signal.emit(100, "Auto-fit complete!")
 
         if visualize:
             self.visualize()
