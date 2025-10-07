@@ -19,6 +19,7 @@ try:
     from QATCH.models.ModelData import ModelData
 except (ImportError, ModuleNotFoundError):
     from v4_fusion_dataprocessor import FusionDataprocessor
+    from ModelData import ModelData
 
     class Log:
         @staticmethod
@@ -129,7 +130,7 @@ class RegPredictor:
             Log.e("RegPredictor", f"Failed to load model: {e}")
             raise
 
-    def predict(self, data: pd.DataFrame, poi1_idx: int, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
+    def predict(self, data: pd.DataFrame, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
         """
         Predict POI location from data.
 
@@ -145,14 +146,14 @@ class RegPredictor:
         # Generate features
         features_df = FusionDataprocessor.get_reg_features(data)
         result = self._predict_from_features(
-            features_df, poi1_idx, progress_signal, visualize)
+            features_df, progress_signal, visualize)
 
         if visualize:
             self.visualize()
 
         return result
 
-    def _predict_from_features(self, features_df: pd.DataFrame, poi_1_idx: int, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
+    def _predict_from_features(self, features_df: pd.DataFrame, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
         """
         Predict POI location from pre-computed features.
         This allows feature reuse between POI1 and POI2 models.
@@ -218,32 +219,14 @@ class RegPredictor:
             distance=self._tolerance // self._stride
         )
 
-        # If POI1 exists, filter peaks to those occurring after it
-        if poi_1_idx != -1:
-            peaks = [p for p in peaks if window_positions[p] > poi_1_idx]
-
         if len(peaks) > 0:
             # Select the most prominent valid peak
             max_idx = peaks[np.argmax(op_smoothed[peaks])]
             pred_index = int(window_positions[max_idx])
             confidence = float(op_smoothed[max_idx])
         else:
-            # No valid peaks found — fallback: choose max overall *after poi_1_idx if possible*
-            if poi_1_idx != -1:
-                valid_mask = window_positions > poi_1_idx
-                if np.any(valid_mask):
-                    max_idx = np.argmax(op_smoothed * valid_mask)
-                    pred_index = int(window_positions[max_idx])
-                    confidence = float(op_smoothed[max_idx])
-                else:
-                    # fallback to global max if nothing beyond poi_1_idx
-                    max_idx = np.argmax(op_smoothed)
-                    pred_index = int(window_positions[max_idx])
-                    confidence = float(op_smoothed[max_idx])
-            else:
-                max_idx = np.argmax(op_smoothed)
-                pred_index = int(window_positions[max_idx])
-                confidence = float(op_smoothed[max_idx])
+            Log.e("No significant peaks found in in REG prediction.")
+            return -1, -1
 
         return pred_index, confidence
 
@@ -975,9 +958,8 @@ class QModelV4Fusion:
                 int(100 * this_progress_step / total_progress_steps),
                 "Step 1/7: Detecting initial fill..."
             )
-
         try:
-            poi1_idx, poi1_conf = self.poi_1_model.predict(df, poi1_idx=-1)
+            poi1_idx, poi1_conf = self.poi_1_model.predict(df)
             if poi1_idx != -1:
                 final_positions[1] = poi1_idx
                 confidence_scores[1] = poi1_conf
@@ -995,10 +977,7 @@ class QModelV4Fusion:
             )
 
         try:
-            # poi2_idx, poi2_conf = self.poi_2_model.predict(
-            #     df, poi1_idx=poi1_idx)
-            poi2_conf = poi1_conf
-            poi2_idx = self._get_model_data_predictions(file_buffer)[1]
+            poi2_idx, poi2_conf = self.poi_2_model.predict(df)
             if poi2_idx != -1:
                 final_positions[2] = poi2_idx
                 confidence_scores[2] = poi2_conf
@@ -1200,7 +1179,7 @@ class QModelV4Fusion:
 # Example usage
 if __name__ == "__main__":
 
-    fusion = QModelV4Fusion(
+    fusion = V4Fusion(
         reg_path_1="poi_model_mini_window_0.pth",
         reg_path_2="poi_model_mini_window_1.pth",
         clf_path="v4_model_pytorch.pth",
