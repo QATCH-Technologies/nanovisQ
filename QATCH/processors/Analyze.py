@@ -2787,9 +2787,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # ---------- LOADING QMODEL V4 (Fusion) -----------#
         try:
             if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
-                reg_path_1 = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
-                reg_path_2 = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
-                clf_path = os.path.join(Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch.pth")
+                reg_path_1 = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
+                reg_path_2 = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1.pth")
+                clf_path = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch.pth")
                 self.QModel_v4_predictor = QModelV4Fusion(
                     reg_path_1=reg_path_1,
                     reg_path_2=reg_path_2,
@@ -2797,7 +2800,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     reg_batch_size=2048,
                     clf_batch_size=1024
                 )
-
 
                 self.QModel_v4_modules_loaded = True
 
@@ -3119,7 +3121,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
-                        predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                        predict_result = predictor.predict(
+                            file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3485,7 +3488,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                            predict_result = predictor.predict(
+                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
 
                             predictions = []
                             candidates = []
@@ -4924,7 +4928,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
-                            predict_result = predictor.predict(file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                            predict_result = predictor.predict(
+                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
 
                             predictions = []
                             candidates = []
@@ -8072,7 +8077,7 @@ class AnalyzerWorker(QtCore.QObject):
                 # Log.d("Indices 0-3 are:", [idx0, idx1, idx2, idx3])
                 for x, i in enumerate(normal_idxs):
                     pt = "60%" if x == 0 else "80%"
-                    percent_pts[pt] =  (in_shear_rate[i], in_viscosity[i])
+                    percent_pts[pt] = (in_shear_rate[i], in_viscosity[i])
                     if min_visc <= viscosity[i] <= max_visc:
                         continue
                     Log.w(
@@ -8705,8 +8710,8 @@ class AnalyzerWorker(QtCore.QObject):
                     # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
                     # excluding the 60% and 80% points from the initial fill region (if present)
                     shear_interp = 1000
-                    in_shear_san_60_80 : list = in_shear_rate.tolist()
-                    in_visco_san_60_80 : list = in_viscosity.tolist()
+                    in_shear_san_60_80: list = in_shear_rate.tolist()
+                    in_visco_san_60_80: list = in_viscosity.tolist()
                     if "percent_pts" in locals():
                         # Remove 60% and 80% points from data for interpolation
                         for (shear, visco) in percent_pts.values():
@@ -8714,15 +8719,18 @@ class AnalyzerWorker(QtCore.QObject):
                                 in_shear_san_60_80.remove(shear)
                             if visco in in_visco_san_60_80:
                                 in_visco_san_60_80.remove(visco)
-                    interp_func = interpolate.interp1d(in_shear_san_60_80, in_visco_san_60_80, fill_value='extrapolate')
+                    interp_func = interpolate.interp1d(
+                        in_shear_san_60_80, in_visco_san_60_80, fill_value='extrapolate')
                     visc_interp = float(interp_func(shear_interp))
-                    i_l, i_r = next((i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp)
+                    i_l, i_r = next(
+                        (i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp)
                     if i_l == -1 or i_r == len(in_shear_san_60_80):
                         # indicate 10% error when extrapolating beyond left or right of the shear array
                         visc_error = visc_interp / 10
                     else:
                         # indicate half of absolute difference for left/right points when interpolating
-                        visc_error = np.abs(in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]) / 2
+                        visc_error = np.abs(
+                            in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]) / 2
                     summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹".format(
                         visc_interp, visc_error, shear_interp)
                     plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
