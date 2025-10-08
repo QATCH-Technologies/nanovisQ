@@ -7,7 +7,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy.signal import find_peaks
-from scipy.ndimage import gaussian_filter1d
 from sklearn.preprocessing import StandardScaler
 import json
 
@@ -130,7 +129,7 @@ class RegPredictor:
             Log.e("RegPredictor", f"Failed to load model: {e}")
             raise
 
-    def predict(self, data: pd.DataFrame, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
+    def predict(self, data: pd.DataFrame, progress_signal=None, visualize: bool = False, poi2_idx: int = -1) -> Tuple[int, float]:
         """
         Predict POI location from data.
 
@@ -146,37 +145,36 @@ class RegPredictor:
         # Generate features
         features_df = FusionDataprocessor.get_reg_features(data)
         result = self._predict_from_features(
-            features_df, progress_signal, visualize)
+            features_df, progress_signal, visualize, poi2_idx=poi2_idx)
 
         if visualize:
             self.visualize()
 
         return result
 
-    def _predict_from_features(self, features_df: pd.DataFrame, progress_signal=None, visualize: bool = False) -> Tuple[int, float]:
+    def _predict_from_features(self, features_df: pd.DataFrame, progress_signal=None, visualize: bool = False, poi2_idx: int = -1) -> Tuple[int, float]:
         """
         Predict POI location from pre-computed features.
         This allows feature reuse between POI1 and POI2 models.
+
+        Args:
+            poi2_idx: If not -1, only peaks to the left of (less than) this index are considered
 
         Returns:
             Tuple of (predicted_index, confidence_score)
         """
         if self._model is None:
             raise ValueError("Model not loaded")
-
         features = features_df.values
         n_samples = len(features)
-
         # Create sliding windows
         windows = []
         window_positions = []
-
         for i in range(0, n_samples - self._window_size + 1, self._stride):
             window = features[i:i + self._window_size]
             windows.append(window)
             window_center = i + self._window_size // 2
             window_positions.append(window_center)
-
         # Handle tail
         last_start = (n_samples - self._window_size + 1)
         if last_start % self._stride != 0:
@@ -188,21 +186,16 @@ class RegPredictor:
             windows.append(window)
             window_center = start_idx + self._window_size // 2
             window_positions.append(window_center)
-
         if len(windows) == 0:
             return -1, -1
-
         windows = np.array(windows)
         window_positions = np.array(window_positions)
-
         # Normalize
         flat = windows.reshape(-1, self._feature_dim)
         flat = self._scaler.transform(flat)
         windows = flat.reshape(windows.shape)
-
         # Predict with batching
         op_predictions = self._predict_batched(windows)
-
         # Apply smoothing
         # op_smoothed = gaussian_filter1d(
         #     op_predictions, sigma=self._gaussian_sigma)
@@ -211,15 +204,22 @@ class RegPredictor:
         self._last_predictions = op_predictions
         self._last_smoothed = op_smoothed
         self._last_window_positions = window_positions
-
         # Find peaks
         peaks, _ = find_peaks(
             op_smoothed,
             height=self._peak_threshold,
             distance=self._tolerance // self._stride
         )
-
         if len(peaks) > 0:
+            # Filter peaks based on poi2_idx constraint if specified
+            if poi2_idx != -1:
+                # Keep only peaks that are to the left of (less than) poi2_idx
+                valid_peaks = peaks[window_positions[peaks] < poi2_idx]
+                if len(valid_peaks) == 0:
+                    Log.e("No valid peaks found before poi2_idx in REG prediction.")
+                    return -1, -1
+                peaks = valid_peaks
+
             # Select the most prominent valid peak
             max_idx = peaks[np.argmax(op_smoothed[peaks])]
             pred_index = int(window_positions[max_idx])
@@ -227,7 +227,6 @@ class RegPredictor:
         else:
             Log.e("No significant peaks found in in REG prediction.")
             return -1, -1
-
         return pred_index, confidence
 
     def _predict_batched(self, windows: np.ndarray) -> np.ndarray:
@@ -958,8 +957,19 @@ class QModelV4Fusion:
                 int(100 * this_progress_step / total_progress_steps),
                 "Step 1/7: Detecting initial fill..."
             )
+
         try:
-            poi1_idx, poi1_conf = self.poi_1_model.predict(df)
+            poi2_idx, poi2_conf = self.poi_2_model.predict(df, poi2_idx=-1)
+            if poi2_idx != -1:
+                final_positions[2] = poi2_idx
+                confidence_scores[2] = poi2_conf
+            Log.d(
+                self.TAG, f"End-of-fill: index={poi2_idx}, confidence={poi2_conf:.3f}")
+        except Exception as e:
+            Log.e(self.TAG, f"Error detecting end-of-fill: {e}")
+        try:
+            poi1_idx, poi1_conf = self.poi_1_model.predict(
+                df, poi2_idx=poi2_idx)
             if poi1_idx != -1:
                 final_positions[1] = poi1_idx
                 confidence_scores[1] = poi1_conf
@@ -975,16 +985,6 @@ class QModelV4Fusion:
                 int(100 * this_progress_step / total_progress_steps),
                 "Step 2/7: End-of-fill..."
             )
-
-        try:
-            poi2_idx, poi2_conf = self.poi_2_model.predict(df)
-            if poi2_idx != -1:
-                final_positions[2] = poi2_idx
-                confidence_scores[2] = poi2_conf
-            Log.d(
-                self.TAG, f"End-of-fill: index={poi2_idx}, confidence={poi2_conf:.3f}")
-        except Exception as e:
-            Log.e(self.TAG, f"Error detecting end-of-fill: {e}")
 
         # Step 3-6: Predict POI 4, 5, 6 (classification model)
         if progress_signal:
@@ -1179,7 +1179,7 @@ class QModelV4Fusion:
 # Example usage
 if __name__ == "__main__":
 
-    fusion = V4Fusion(
+    fusion = QModelV4Fusion(
         reg_path_1="poi_model_mini_window_0.pth",
         reg_path_2="poi_model_mini_window_1.pth",
         clf_path="v4_model_pytorch.pth",
