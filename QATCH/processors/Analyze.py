@@ -3122,7 +3122,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
-                            file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3489,7 +3489,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
 
                             predictions = []
                             candidates = []
@@ -4929,7 +4929,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
 
                             predictions = []
                             candidates = []
