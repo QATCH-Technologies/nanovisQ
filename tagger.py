@@ -67,7 +67,7 @@ class QatchTagger():
 
             os.makedirs(path_to_tag)  # may raise OSError
             for f in os.listdir(path_to_trunk):
-                if f.startswith(".git"):
+                if f.startswith("."):
                     continue
                 src = os.path.join(path_to_trunk, f)
                 dst = os.path.join(path_to_tag, f)
@@ -97,7 +97,8 @@ class QatchTagger():
             keepers = ["docs", "QATCH", f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
                        "tools", "app.py", "launch.bat", "requirements.txt"]
             if not self.args.nightly:
-                path_to_nightly_dir = os.path.join(path_to_tag, "QATCH", "nightly")
+                path_to_nightly_dir = os.path.join(
+                    path_to_tag, "QATCH", "nightly")
                 if os.path.isdir(path_to_nightly_dir):
                     logging.debug(f"Removing: {path_to_nightly_dir}")
                     shutil.rmtree(path_to_nightly_dir)
@@ -208,12 +209,12 @@ class QatchTagger():
             try:
                 logging.info(
                     "Making ZIP of installer code... (may take a while)")
-                installer_version = "1.0.0.2"
+                installer_version = "1.0.2.1"
                 # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
                 installer_src = os.path.join(
-                    path_to_dev, "tools", "installer", "tags", installer_version, "dist", "QATCH installer.exe")
+                    path_to_trunk, "tools", "installer", "tags", installer_version, "dist", "QATCH.installer.exe")
                 installer_crc = os.path.join(
-                    path_to_dev, "tools", "installer", "tags", installer_version, "dist", "installer.checksum")
+                    path_to_trunk, "tools", "installer", "tags", installer_version, "dist", "installer.checksum")
                 # installer_dst = os.path.join(path_to_tag, "dist")  # , "installer")
                 os.makedirs(installer_dst, exist_ok=True)
                 shutil.copy2(installer_src, installer_dst)
@@ -224,7 +225,7 @@ class QatchTagger():
                 # shutil.rmtree(installer_dst)
                 # logging.info(f"Installer ZIP: {zip_installer}")
                 logging.info(
-                    f"Installer EXE: {os.path.join(installer_dst, 'QATCH installer.exe')}")
+                    f"Installer EXE: {os.path.join(installer_dst, 'QATCH.installer.exe')}")
 
             except Exception as e:
                 logging.error(e)
