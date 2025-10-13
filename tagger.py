@@ -209,7 +209,7 @@ class QatchTagger():
             try:
                 logging.info(
                     "Making ZIP of installer code... (may take a while)")
-                installer_version = "1.0.2.1"
+                installer_version = "1.0.2.2"
                 # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
                 installer_src = os.path.join(
                     path_to_trunk, "tools", "installer", "tags", installer_version, "dist", "QATCH.installer.exe")

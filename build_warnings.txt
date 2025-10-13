@@ -11,5 +11,5 @@ __import__(name)
 406021 WARNING: Library nvrtc64_120_0.dll required via ctypes not found
 27387 WARNING: Failed to collect submodules for 'keras.src.backend.openvino' because importing 'keras.src.backend.openvino' raised: ModuleNotFoundError: No module named 'openvino'
 15310 WARNING: Failed to collect submodules for 'torch.testing._internal.opinfo' because importing 'torch.testing._internal.opinfo' raised: ModuleNotFoundError: No module named 'expecttest'
-W1009 15:23:20.954000 11328 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
 C:\Users\Alexander J. Ross\Documents\QATCH Work\v2.6x branch\trunk\.venv\Lib\site-packages\PyInstaller\utils\hooks\__init__.py:665: DeprecationWarning: `torch.distributed._shard.checkpoint` will be deprecated, use `torch.distributed.checkpoint` instead
+W1013 12:51:08.361000 29972 Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
