@@ -894,7 +894,10 @@ class SerialProcess(multiprocessing.Process):
                                         break
                                 # Proceed with streaming, regardless of success or timeout
                                 Log.i(TAG, "Starting data stream...")
-                                _ = self._serial[0].read(self._serial[0].in_waiting)  # clear serial buffer
+                                while time() - start < waitFor:  # delay timeout
+                                    buffer = self._serial[0].read_until().decode().strip().lower()
+                                    if buffer in ["stop", ""]:
+                                        break  # proceed on STOP or no reply
                                 cmd = "STREAM\n"  # start streaming
                                 elaborating = True  # set elaborating flag
                                 k = 0  # reset sweep counter
@@ -907,15 +910,18 @@ class SerialProcess(multiprocessing.Process):
                                     if self._serial[0].in_waiting:
                                         break
 
-                            # if buffer is pre-filled (even just once) we don't need to send CMD again (ever, this RUN)
-                            if self._serial[0].in_waiting and elaborating:
-                                streaming = True
-
-                            if not streaming:
+                            # Check command length is greater than zero and we are not yet streaming
+                            # NOTE: This order of the startup code prevents a race condition between
+                            # the `in_waiting` and `elaborating` flags that prevents STREAM command.
+                            if len(cmd.strip()) and not streaming:
                                 # WRITES encoded command to the serial port
                                 self._serial[0].write(cmd.encode())
                                 Log.d(
                                     TAG, "{} {} - Sending FREQ CMD {}".format(k, streaming, cmd))
+                                
+                            # if buffer is pre-filled (even just once) we don't need to send CMD again (ever, this RUN)
+                            if self._serial[0].in_waiting and elaborating:
+                                streaming = True
                                 
                             if not elaborating:
                                 k += 1  # next sweep step

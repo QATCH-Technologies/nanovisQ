@@ -18,7 +18,7 @@ import win32com.client
 import win32process
 
 # NOTE: When changing version, also modify `version.rc` file
-INSTALLER_VERSION = "v1.0.2.1"
+INSTALLER_VERSION = "v1.0.2.2"
 
 CHECKSUM_METHOD = "hashlib" # enter 'hashlib' or 'certutil'
 
@@ -318,6 +318,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 raise requests.HTTPError("No redirect where one was expected.")
 
             releases = None
+            latest_pre_release = False
             if latest_tag and latest_tag.startswith('v'):
                 # Get the list of tags available for the latest release
                 self.worker = RequestWorker(url=f'{GIT_ROOT}/download/{latest_tag}/tags.txt')
@@ -342,6 +343,26 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     for tag in releases.copy():
                         if tag.find('r') == -1 or not tag.startswith('v'):
                             releases.remove(tag)
+
+                # Get the list of targets available for the latest release
+                self.worker = RequestWorker(url=f'{GIT_ROOT}/download/{releases[0]}/targets.csv')
+                self.worker.finished.connect(self.on_request_response)
+                # self.worker.finished.connect(self.worker.deleteLater)
+                self.worker.exception.connect(self.show_exception)
+                self.worker.progress.connect(self.on_request_progress)
+
+                self.worker_finished = False
+                self.worker.start()
+                while not self.worker_finished:
+                    # wait here until finished querying
+                    QApplication.processEvents()
+
+                response = self.response
+                response.raise_for_status()
+
+                if response.content.decode().strip().upper() != "ALL":
+                    Log.debug(f"Disabling tag \"{releases[0]}\" in available releases. Not available to all targets.")
+                    latest_pre_release = True
             else:
                 raise requests.HTTPError("Latest tag is not a valid version.")
 
@@ -351,8 +372,13 @@ class QatchInstaller(QtWidgets.QMessageBox):
             selected_version = None
             if releases and len(releases):
                 Log.debug(f"Found releases: {releases}")
+                pre_release_label = " (pre-release)"
                 latest_label = " (latest)"
-                releases[0] += latest_label
+                k = 0
+                if latest_pre_release:
+                    releases[k] += pre_release_label
+                    k += 1
+                releases[k] += latest_label
 
                 self.setWindowIcon(QtGui.QIcon(tempicon))
                 self.setWindowTitle("QATCH nanovisQ | Install Version")
@@ -366,7 +392,11 @@ class QatchInstaller(QtWidgets.QMessageBox):
                 self.setDefaultButton(QtWidgets.QMessageBox.Yes)
                 self.comboBox = QtWidgets.QComboBox(None)
                 self.comboBox.addItems(releases)
-                self.comboBox.setCurrentIndex(0)
+                if latest_pre_release:
+                    c_model = self.comboBox.model()
+                    c_item = c_model.item(0)
+                    c_item.setFlags(c_item.flags() & ~QtCore.Qt.ItemIsEnabled)
+                self.comboBox.setCurrentIndex(k)
                 self.layout().addWidget(self.comboBox, 1, 2, 1, 1) # widget, row, col, rowSpan, colSpan
                 self.exec_() # wait for user interaction
                 

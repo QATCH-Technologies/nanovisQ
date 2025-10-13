@@ -4,10 +4,11 @@ from QATCH.core.constants import Constants
 
 CLEAN_PATH = os.getcwd()
 CLEAN_PATTERNS = ["build", "dist", "data", "__pycache__"]
+SKIP_DIRS = ["tools"]
 SKIP_DOT_DIRS = True
 
 
-def delete_folders_by_patterns(root_path, patterns, skip_dirs):
+def delete_folders_by_patterns(root_path, patterns, skip_dirs, skip_dot_dirs):
     """
     Recursively walk through `root_path`, and delete all directories 
     where the full path ends with one of the given `patterns`.
@@ -24,10 +25,10 @@ def delete_folders_by_patterns(root_path, patterns, skip_dirs):
     """
     skipped_dirs = set()
     for dirpath, dirnames, filenames in os.walk(root_path, topdown=False):
-        if skip_dirs:
+        if skip_dot_dirs:
             rel_path: str = os.path.relpath(dirpath, root_path)
             rel_root = rel_path.split(os.sep)[0]
-            if rel_root.startswith(".") and rel_root != ".":
+            if (rel_root.startswith(".") or rel_root in skip_dirs) and rel_root != ".":
                 if rel_root not in skipped_dirs:
                     print(f"Skipping folder: {rel_root}")
                     skipped_dirs.add(rel_root)
@@ -40,5 +41,4 @@ def delete_folders_by_patterns(root_path, patterns, skip_dirs):
                     shutil.rmtree(full_path)
     print(f"The following folders were skipped: {skipped_dirs}")
 
-
-delete_folders_by_patterns(CLEAN_PATH, CLEAN_PATTERNS, SKIP_DOT_DIRS)
+delete_folders_by_patterns(CLEAN_PATH, CLEAN_PATTERNS, SKIP_DIRS, SKIP_DOT_DIRS)
