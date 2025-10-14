@@ -18,7 +18,7 @@ import win32com.client
 import win32process
 
 # NOTE: When changing version, also modify `version.rc` file
-INSTALLER_VERSION = "v1.0.2.2"
+INSTALLER_VERSION = "v1.0.2.3"
 
 CHECKSUM_METHOD = "hashlib" # enter 'hashlib' or 'certutil'
 
@@ -564,7 +564,7 @@ class QatchInstaller(QtWidgets.QMessageBox):
                     modified_at = os.path.getmtime(file)
                     if modified_at > most_recent:
                         most_recent = modified_at
-                        copy_src = os.path.join(copy_src, file)
+                        copy_src = os.path.join(os.getcwd(), file)
                         copy_dst = os.path.join(nanopath, file[0:-4]) # drop '.zip'
                         found = True
 
