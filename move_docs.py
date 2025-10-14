@@ -60,11 +60,14 @@ def move_release_notes(path):
 
     dst = os.path.join(
         to_path, "docs", f"Release Notes {sw_version}.pdf")
-    if os.path.exists(dst):
-        os.remove(dst)
+    files = [f for f in os.listdir(os.path.dirname(
+        dst)) if f.startswith("Release Notes")]
+    if len(files) == 1:
+        full_path = os.path.join(os.path.dirname(dst), files[0])
+        os.remove(full_path)
     else:
         print("Release Notes file was missing. Is this the right place?")
-        print(dst)
+        print(os.path.dirname(dst))
     shutil.move(path, dst)  # move
     print("Moved Release Notes")
 

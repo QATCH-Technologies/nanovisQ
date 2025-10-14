@@ -4,6 +4,7 @@ import sys
 import threading
 from colorama import init, Fore, Style
 from pathlib import Path
+from dateutil import parser
 
 # Files
 WARNING_LOG_FILE = "build_warnings.txt"
@@ -34,6 +35,14 @@ if Path(WARNING_LOG_FILE).exists():
             previous_warnings.append(line)
 
 
+def is_timestamp(string: str) -> bool:
+    try:
+        parser.parse(string)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
 def strip_time_and_levelname(line: str) -> str:
     if line.find(":"):
         # parse timestamp (in ms) and log level from line (if present)
@@ -44,7 +53,10 @@ def strip_time_and_levelname(line: str) -> str:
                 level = levelmap.get(split_of_line[1], logging.NOTSET)
                 if level > logging.NOTSET:
                     # take off leader time/level
-                    line = line.split(":", maxsplit=1)[1]
+                    line = line.split(":", maxsplit=1)[-1]
+            elif is_timestamp(line.split()[1]):
+                # take off "W[xxxx] [timestamp] [runtime]"
+                line = line.split(maxsplit=3)[-1]
     return line.strip()
 
 # Formatter with color for new warnings

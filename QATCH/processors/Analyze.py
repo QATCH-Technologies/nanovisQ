@@ -2792,7 +2792,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 reg_path_2 = os.path.join(Architecture.get_path(
                 ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1.pth")
                 clf_path = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch_2000.pth")
                 self.QModel_v4_predictor = QModelV4Fusion(
                     reg_path_1=reg_path_1,
                     reg_path_2=reg_path_2,

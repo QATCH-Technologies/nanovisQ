@@ -1,0 +1,5 @@
+NOTE: All lines in file must end with a \n character to be yanked properly
+
+v2.6r63
+
+[Add new versions above this line]

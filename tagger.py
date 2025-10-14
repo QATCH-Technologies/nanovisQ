@@ -37,7 +37,7 @@ class QatchTagger():
         path_to_parent = os.path.dirname(os.getcwd())
         path_to_trunk = os.path.join(path_to_parent, "trunk")
         path_to_tag = os.path.join(path_to_parent, "tags", tag_name)
-        path_to_dev = os.path.join(path_to_parent, "dev")
+        path_to_tools = os.path.join(path_to_trunk, "tools")
         installer_dst = os.path.join(path_to_tag, "dist")
 
         if self.args.nightly:
@@ -58,6 +58,10 @@ class QatchTagger():
 
         # MOVE TRUNK TO TAG (IF NOT EXISTS)
         try:
+            skippers = [f for f in os.listdir(path_to_trunk) if f.startswith(
+                "QATCH_Q-1_FW_py") and f != f"QATCH_Q-1_FW_py_{Constants.best_fw_version}"]
+            # NOTE: tools files copied separately, below
+            skippers.extend(["build", "tools"])
             if os.path.exists(path_to_tag):
                 if len(os.listdir(path_to_tag)) == 0:
                     # remove empty folder
@@ -67,7 +71,7 @@ class QatchTagger():
 
             os.makedirs(path_to_tag)  # may raise OSError
             for f in os.listdir(path_to_trunk):
-                if f.startswith("."):
+                if f.startswith(".") or f in skippers:
                     continue
                 src = os.path.join(path_to_trunk, f)
                 dst = os.path.join(path_to_tag, f)
@@ -75,6 +79,23 @@ class QatchTagger():
                     shutil.copytree(src, dst)
                 else:
                     shutil.copy2(src, dst)
+
+            # Copy required files from "tools"
+            tools_files = [  # NOTE: skip "installer" files
+                "gpl3.txt", "README.md", "teensy_loader_cli.exe",   # tool-teensy
+                "LICENSE.txt", "README.md", "tycmd.exe"             # tytools
+            ]
+            if self.args.nightly:  # add debug tools for nightly builds
+                tools_files.extend(["TyCommander.exe", "TyUploader.exe",
+                                    "clear_tokens.bat"])
+            for dirpath, dirnames, filenames in os.walk(path_to_tools):
+                for f in filenames:
+                    if f in tools_files:
+                        src = os.path.join(dirpath, f)
+                        dst = os.path.join(path_to_tag,
+                                           os.path.relpath(src, path_to_trunk))
+                        os.makedirs(os.path.dirname(dst), exist_ok=True)
+                        shutil.copy2(src, dst)
 
         except OSError as e:
             logging.error(f"Tag already exists: {tag_name}. Cannot continue.")
@@ -251,6 +272,8 @@ class QatchTagger():
                     f"git push origin {Constants.app_version}\n")
                 f.write(
                     f"git tag -l --sort=taggerdate > tags.txt\n")
+                f.write(
+                    f"call filter_yanked_tags\n")
                 f.write(
                     f"REM move 'tags.txt' to 'dist' folder\n")
                 f.write(
