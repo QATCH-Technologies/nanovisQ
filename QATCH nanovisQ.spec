@@ -15,14 +15,14 @@ data_files = [
     ( "QATCH\\models", "QATCH\\models" ),
     ( "QATCH\\QModel\\SavedModels", "QATCH\\QModel\\SavedModels" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
-    ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets\\app.db" ),
-    ( "QATCH\\VisQAI\\assets\\VisQAI-base.zip", "QATCH\\VisQAI\\assets\\VisQAI-base.zip" ),
+    ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\assets\\VisQAI-base.zip", "QATCH\\VisQAI\\assets" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( "tools\\tool-teensy", "tools\\tool-teensy" ),
-    ( "tools\\tytools\\LICENSE.txt", "tools\\tytools\\LICENSE.txt" ),
-    ( "tools\\tytools\\README.md", "tools\\tytools\\README.md" ),
-    ( "tools\\tytools\\tycmd.exe", "tools\\tytools\\tycmd.exe" )
+    ( "tools\\tytools\\LICENSE.txt", "tools\\tytools" ),
+    ( "tools\\tytools\\README.md", "tools\\tytools" ),
+    ( "tools\\tytools\\tycmd.exe", "tools\\tytools" )
 ]
 # NOTE: Use of UPX requires `upx.exe` to be in the `.venv\Scripts` folder (not there by default)
 upx_exclude = [
