@@ -1180,8 +1180,8 @@ class QModelV4Fusion:
 if __name__ == "__main__":
 
     fusion = QModelV4Fusion(
-        reg_path_1="poi_model_mini_window_0.pth",
-        reg_path_2="poi_model_mini_window_1.pth",
+        reg_path_1="poi_model_mini_window_1600_0.pth",
+        reg_path_2="poi_model_mini_window_1600_1.pth",
         clf_path="v4_model_pytorch.pth",
         reg_batch_size=2048,
         clf_batch_size=1024

@@ -2788,9 +2788,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
                 reg_path_1 = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0_1600.pth")
                 reg_path_2 = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1_1600.pth")
                 clf_path = os.path.join(Architecture.get_path(
                 ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch_2000.pth")
                 self.QModel_v4_predictor = QModelV4Fusion(
