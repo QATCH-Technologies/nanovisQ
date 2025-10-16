@@ -117,7 +117,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog = QtWidgets.QFileDialog()
             self.model_dialog.setOption(
                 QtWidgets.QFileDialog.DontUseNativeDialog, True)
-            model_path = os.path.join(Architecture.get_path(), 
+            model_path = os.path.join(Architecture.get_path(),
                                       "QATCH/VisQAI/assets")
             if os.path.exists(model_path):
                 # working or bundled directory, if exists
@@ -137,8 +137,8 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
             if step == 1:
-                predictor_path = os.path.join(model_path, 
-                                              "VisQAI-base.zip")
+                predictor_path = os.path.join(model_path,
+                                              "visq3x.zip")
                 if os.path.exists(predictor_path):
                     # working or bundled predictor, if exists
                     self.model_selected(path=predictor_path)
@@ -302,12 +302,18 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Salt Type", "Salt Concentration",
                                              "Temperature"],  # only displayed on Predict tab (for now)
                                  "Value": [{"choices": self.proteins, "selected": ""}, "",
-                                           {"choices": self.class_types, "selected": ""}, "", "", "",  # class, molecular weight, pI mean, pI range
-                                           {"choices": self.buffers, "selected": ""}, "",
+                                           # class, molecular weight, pI mean, pI range
+                                           {"choices": self.class_types,
+                                               "selected": ""}, "", "", "",
+                                           {"choices": self.buffers,
+                                               "selected": ""}, "",
                                            "",  # buffer pH
-                                           {"choices": self.surfactants, "selected": ""}, "",
-                                           {"choices": self.stabilizers, "selected": ""}, "",
-                                           {"choices": self.salts, "selected": ""}, "",
+                                           {"choices": self.surfactants,
+                                               "selected": ""}, "",
+                                           {"choices": self.stabilizers,
+                                               "selected": ""}, "",
+                                           {"choices": self.salts,
+                                               "selected": ""}, "",
                                            ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
@@ -913,7 +919,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.executor.run(
                 self.predictor,
                 method_name="predict_uncertainty",
-                data=predict_df,
+                df=predict_df,
                 callback=get_prediction_result)
 
         def get_prediction_result(record: Optional[ExecutionRecord] = None):
@@ -925,7 +931,7 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d("Processing prediction results!")
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5]
-            # predicted_vp = self.parent.predictor.predict(data=form_df)
+            # predicted_vp = self.parent.predictor.predict(df=form_df)
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
             # a series of standard deviations for each predicted value.
@@ -939,7 +945,7 @@ class FrameStep1(QtWidgets.QDialog):
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
                 return
 
-            predicted_mean_vp, mean_std = record.result
+            predicted_mean_vp, uncertainty_dict = record.result
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
@@ -954,52 +960,153 @@ class FrameStep1(QtWidgets.QDialog):
                 ys = 10**f_interp(xs_log)
                 return xs, ys
 
-            def make_plot(name, shear, mean_arr, std_arr, title, color):
-                # clear existing plot before making a new one
+            def make_plot(name, shear, mean_arr, uncertainty_dict, title, color):
+                """Create a sleek, modern viscosity vs shear rate plot with 95% CI."""
+                # Clear existing plot before making a new one
                 self.run_figure_valid = False
                 self.run_figure.clear()
                 self.run_canvas.draw()
 
+                # Convert inputs to numpy arrays if needed
+                shear = np.asarray(shear)
+                mean_arr = np.asarray(mean_arr)
+
+                # Extract 95% confidence bounds from uncertainty dict
+                lower_95 = uncertainty_dict['lower_95']
+                upper_95 = uncertainty_dict['upper_95']
+
+                # Flatten if needed (in case they're 2D arrays like [[values]])
+                if lower_95.ndim > 1:
+                    lower_95 = lower_95.flatten()
+                if upper_95.ndim > 1:
+                    upper_95 = upper_95.flatten()
+
+                # Create main plot with modern styling
                 ax = self.run_figure.add_subplot(111)
+                ax.set_facecolor('#ffffff')
+                self.run_figure.patch.set_facecolor('#ffffff')
+
+                # Smooth interpolation for mean and bounds
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
-                xs_up, ys_up = smooth_log_interpolate(
-                    shear, mean_arr + std_arr)
-                xs_dn, ys_dn = smooth_log_interpolate(
-                    shear, mean_arr - std_arr)
-                ax.plot(xs, ys, '-', lw=2.5, color=color)
-                ax.fill_between(xs_dn, ys_dn, ys_up, alpha=0.25, color=color)
-                ax.scatter(shear, mean_arr, s=40, color=color, zorder=5)
-                ax.set_xlim(xs.min(), xs.max())
-                ann = "\n".join(f"{x:.0e}: {m:.1f}±{s:.1f}" for x, m,
-                                s in zip(shear, mean_arr, std_arr))
+                xs_up, ys_up = smooth_log_interpolate(shear, upper_95)
+                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_95)
+
+                # Modern color palette - using deeper, more sophisticated colors
+                main_color = '#2C5F8D'  # Deep blue
+                ci_color = '#7EB6D9'     # Light blue for CI
+
+                # Plot confidence interval with subtle gradient
+                ax.fill_between(xs_up, ys_dn, ys_up, alpha=0.15, color=ci_color,
+                                linewidth=0, label='95% CI')
+
+                # Plot mean line - sleek and bold
+                ax.plot(xs, ys, '-', lw=2.5, color=main_color,
+                        label='Predicted Viscosity', zorder=3, alpha=0.95)
+
+                # Plot upper and lower bounds as thin subtle lines
+                ax.plot(xs_up, ys_up, '-', lw=1,
+                        color=ci_color, alpha=0.7, zorder=2)
+                ax.plot(xs_dn, ys_dn, '-', lw=1,
+                        color=ci_color, alpha=0.7, zorder=2)
+
+                # Scatter plot with modern styling
+                ax.scatter(shear, mean_arr, s=80, color=main_color, zorder=5,
+                           edgecolors='white', linewidths=2.5, alpha=1)
+
+                # Set scales and limits
                 ax.set_xscale("log")
                 ax.set_yscale("log")
+                ax.set_xlim(xs.min() * 0.8, xs.max() * 1.2)
                 ax.set_ylim(self.calc_limits(
                     yall=np.concatenate((ys_dn, ys_up))))
-                ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
-                ax.set_ylabel("Viscosity (cP)", fontsize=10)
-                ax.grid(True, which="both", ls=":")
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
 
-                # Calculate offset as percentage of y-range
+                # Modern, clean labels
+                ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
+                              color='#2d3436')
+                ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
+                              color='#2d3436')
+                ax.set_title(title, fontsize=13, fontweight='600', pad=15,
+                             color='#2d3436')
+
+                # Minimal, elegant grid
+                ax.grid(True, which="major", ls='-',
+                        alpha=0.15, color='#636e72', lw=0.8)
+                ax.grid(True, which="minor", ls='-',
+                        alpha=0.07, color='#b2bec3', lw=0.5)
+
+                # Clean axis formatting
+                ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+                ax.tick_params(axis='both', which='major', labelsize=9,
+                               colors='#2d3436', width=1)
+                ax.tick_params(axis='both', which='minor', labelsize=8,
+                               colors='#636e72', width=0.5)
+
+                # Remove top and right spines for cleaner look
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#dfe6e9')
+                ax.spines['bottom'].set_color('#dfe6e9')
+                ax.spines['left'].set_linewidth(1.5)
+                ax.spines['bottom'].set_linewidth(1.5)
+
+                # Modern legend - minimal and clean
+                legend = ax.legend(loc='best', frameon=True, fancybox=False,
+                                   shadow=False, fontsize=9, framealpha=1,
+                                   edgecolor='#dfe6e9', borderpad=1)
+                legend.get_frame().set_facecolor('#ffffff')
+                legend.get_frame().set_linewidth(1)
+
+                # Calculate offset for annotations
                 ylim = ax.get_ylim()
-                y_range = max(ylim) - min(ylim)
-                offset = y_range * 0.05  # 5% of the y-range
-                # Add labels with offset above points
+                y_range = np.log10(ylim[1]) - np.log10(ylim[0])
+
+                # Simplified, sleek annotations
                 for i in range(len(mean_arr)):
-                    ax.text(shear[i], mean_arr[i] + offset,
-                            f'{mean_arr[i]:.02f}±{std_arr[i]:.02f}',
-                            ha='center', va='bottom',
-                            fontsize=10,
-                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+                    # Simple annotation with just the essential info
+                    annotation = f'{mean_arr[i]:.1f}\n[{lower_95[i]:.1f}–{upper_95[i]:.1f}]'
+
+                    # Position annotation above point (in log space)
+                    y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
+
+                    # Sleek, minimal annotation box
+                    ax.annotate(annotation,
+                                xy=(shear[i], mean_arr[i]),
+                                xytext=(shear[i], y_offset),
+                                ha='center', va='bottom',
+                                fontsize=8,
+                                color='#2d3436',
+                                weight='500',
+                                bbox=dict(boxstyle='round,pad=0.4',
+                                          facecolor='white',
+                                          edgecolor=main_color,
+                                          alpha=0.95,
+                                          linewidth=1.2),
+                                arrowprops=dict(arrowstyle='-',
+                                                connectionstyle='arc3,rad=0',
+                                                color=main_color,
+                                                alpha=0.4,
+                                                lw=1.2))
+
+                # Subtle timestamp in corner
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                ax.text(0.98, 0.02, timestamp,
+                        transform=ax.transAxes, fontsize=7,
+                        verticalalignment='bottom', horizontalalignment='right',
+                        alpha=0.4, style='italic', color='#636e72')
+
+                # Adjust layout to prevent label cutoff
+                self.run_figure.tight_layout()
 
                 self.run_figure_valid = True
                 self.run_canvas.draw()
 
-            # Plot
-            make_plot("name", self.profile_shears,
-                      predicted_mean_vp[0], mean_std[0], "title", "blue")
+            Log.d(f"VP={predicted_mean_vp}, {uncertainty_dict}")
 
+            # Updated function call
+            make_plot("Viscosity Profile", self.profile_shears,
+                      predicted_mean_vp[0], uncertainty_dict,
+                      "Viscosity Profile Prediction", "blue")
             # Cleanup temp files
             self.predictor.cleanup()
 
@@ -1183,7 +1290,7 @@ class FrameStep1(QtWidgets.QDialog):
         and clears any active file selections, suppressing prompts.
 
         Any errors encountered will be logged to `Log.e`.
-        
+
         """
         reply = QtWidgets.QMessageBox.question(
             self,
@@ -1288,7 +1395,8 @@ class FrameStep1(QtWidgets.QDialog):
                     # Draw page header/title
                     font.setBold(True)
                     painter.setFont(font)
-                    title = "Suggested Experiment" if self.step == 2 else ("Prediction" if self.step == 5 else "Formulation")
+                    title = "Suggested Experiment" if self.step == 2 else (
+                        "Prediction" if self.step == 5 else "Formulation")
                     painter.drawText(cell_pad_left, y, f"{title} {i+1}")
                     y += row_height
 
@@ -1642,10 +1750,10 @@ class FrameStep1(QtWidgets.QDialog):
                     run_features["Value"][8] = buffer.pH
 
             # Check for new and/or missing features
-            # NOTE: Unknown Class_Types (idx 2) will not be added to the DB. 
+            # NOTE: Unknown Class_Types (idx 2) will not be added to the DB.
             # Instead, only a warning will be displayed (and a reload will still occur).
             reload_excipients = False
-            for idx in [0, 2, 6, 9, 11, 13]: 
+            for idx in [0, 2, 6, 9, 11, 13]:
                 item = run_features["Value"][idx]
                 choices, selected = list(dict(item).values())
                 value = str(selected).strip()
@@ -1655,7 +1763,8 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 0:  # Protein Type
                         Log.w(
                             f"Adding new Protein Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Protein(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Protein(enc_id=-1, name=value))
                     if idx == 2:  # Protein Class
                         Log.w(
                             f"Unknown Protein Class Type: \"{value}\"")
@@ -1666,11 +1775,13 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 9:  # Surfactant Type
                         Log.w(
                             f"Adding new Surfactant Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Surfactant(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Surfactant(enc_id=-1, name=value))
                     if idx == 11:  # Stabilizer Type
                         Log.w(
                             f"Adding new Stabilizer Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Stabilizer(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Stabilizer(enc_id=-1, name=value))
                     if idx == 13:  # Salt Type
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")

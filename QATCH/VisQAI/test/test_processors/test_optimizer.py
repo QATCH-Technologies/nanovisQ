@@ -153,7 +153,7 @@ class TestOptimizer(unittest.TestCase):
         )
 
         self.predictor = Predictor(zip_path=os.path.join(
-            "test", "assets", "VisQAI-base.zip"))
+            "test", "assets", "visq3x.zip"))
 
         self.optimizer = Optimizer(
             constraints=self.constraints,

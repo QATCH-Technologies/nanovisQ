@@ -18,7 +18,7 @@ class TestVersionManager(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.repo_dir = Path(self.tempdir.name) / "repo"
         self.repo_dir.mkdir()
-        self.src_model = Path("test/assets/VisQAI-base.zip")
+        self.src_model = Path("test/assets/visq3x.zip")
         self.assertTrue(self.src_model.exists(),
                         f"Actual model not found at {self.src_model}")
         self.model_file = Path(self.tempdir.name) / self.src_model.name
@@ -188,7 +188,7 @@ class TestVersionManager(unittest.TestCase):
         self.assertIsInstance(idx, dict)
 
     def test_protected_autopin(self):
-        """Protected artifacts like VisQAI-base.zip should auto-pin on commit."""
+        """Protected artifacts like visq3x.zip should auto-pin on commit."""
         sha = self.mvc.commit(str(self.model_file))
         idx = json.loads((self.repo_dir / "index.json").read_text())
         meta = idx[sha]["metadata"]
@@ -225,7 +225,7 @@ class TestVersionManager(unittest.TestCase):
         # Reload index
         idx = json.loads((self.repo_dir / "index.json").read_text())
         self.assertIn(sha_protected, idx,
-                      "Protected VisQAI-base.zip should never be pruned")
+                      "Protected visq3x.zip should never be pruned")
 
 
 if __name__ == "__main__":
