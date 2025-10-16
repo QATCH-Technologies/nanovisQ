@@ -86,7 +86,7 @@ class FrameStep2(QtWidgets.QDialog):
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(Architecture.get_path(), 
+        model_path = os.path.join(Architecture.get_path(),
                                   "QATCH/VisQAI/assets")
         if os.path.exists(model_path):
             # working or bundled directory, if exists
@@ -371,13 +371,16 @@ class FrameStep2(QtWidgets.QDialog):
             try:
                 form_idx = self.parent.import_run_names.index(run_label)
             except ValueError:
-                Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
+                Log.e(
+                    f"ERROR: Failed to find import formulation index for {run_label}")
                 form_idx = this_idx
 
             vf = (0 <= form_idx < len(self.parent.import_formulations))
             if not vf:
-                Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
-                form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
+                Log.e(
+                    f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                form_idx = min(max(this_idx, 0), len(
+                    self.parent.import_formulations) - 1)
 
             vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
             if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
@@ -398,7 +401,7 @@ class FrameStep2(QtWidgets.QDialog):
 
         self.predictor = Predictor(zip_path=self.model_path)
         select_df = self.parent.select_formulation.to_dataframe(
-            encoded=False, training=False)
+            encoded=False, training=True)
 
         # Progress bar has 1 interim step:
         # value -1 = "Learning run {select_df}...""
@@ -453,17 +456,20 @@ class FrameStep2(QtWidgets.QDialog):
                 try:
                     form_idx = self.parent.import_run_names.index(run_label)
                 except ValueError:
-                    Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
+                    Log.e(
+                        f"ERROR: Failed to find import formulation index for {run_label}")
                     form_idx = this_idx
 
                 vf = (0 <= form_idx < len(self.parent.import_formulations))
                 if not vf:
-                    Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
-                    form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
-                
+                    Log.e(
+                        f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                    form_idx = min(max(this_idx, 0), len(
+                        self.parent.import_formulations) - 1)
+
                 is_final_run = (this_idx == self.progressState.maximum() - 1)
                 queued_df = self.parent.import_formulations[form_idx].to_dataframe(
-                    encoded=False, training=False)
+                    encoded=False, training=True)
 
                 vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
                 if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
@@ -477,12 +483,10 @@ class FrameStep2(QtWidgets.QDialog):
                     # we figure out how model storage works
                     self.executor.run(
                         self.predictor,
-                        method_name="update",
-                        new_data=queued_df,
-                        new_targets=np.array([vp]),
-                        epochs=10,
-                        batch_size=32,
-                        save=is_final_run,  # only save final learned run to disk
+                        method_name="learn",
+                        new_df=queued_df,
+                        n_epochs=10,
+                        save=True,
                         callback=learn_run_result)
 
                 else:
@@ -571,12 +575,10 @@ class FrameStep2(QtWidgets.QDialog):
             # we figure out how model storage works
             self.executor.run(
                 self.predictor,
-                method_name="update",
-                new_data=select_df,
-                new_targets=np.array([vp]),
-                epochs=10,
-                batch_size=32,
-                save=(total_steps == 0),  # only save final learned run to disk
+                method_name="learn",
+                new_df=select_df,
+                n_epochs=10,
+                save=True,
                 callback=learn_run_result)
 
         else:

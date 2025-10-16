@@ -184,7 +184,7 @@ class Optimizer:
         """
         feat_dict = self._decode(x)
         formulation = self._build_formulation(feat_dict)
-        pred = self.predictor.predict(data=formulation.to_dataframe())
+        pred = self.predictor.predict(df=formulation.to_dataframe())
         pred_vp = ViscosityProfile(
             shear_rates=[100, 1000, 10000, 100000, 15000000],
             viscosities=pred.flatten().tolist()

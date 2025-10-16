@@ -1,7 +1,7 @@
 """
 Module: predictor.py
 
-Provides the PackagedPredictor class for loading a packaged viscosity model
+Provides the Predictor class for loading a packaged viscosity model
 and performing inference, uncertainty estimation, and incremental updates.
 
 Author:
@@ -11,14 +11,18 @@ Date:
     2025-10-15
 
 Version:
-    2.0
+    3.1
 """
+import os
 import zipfile
 import tempfile
 import sys
 import json
 from pathlib import Path
 from typing import Dict, Tuple, Optional
+import hashlib
+import pyzipper
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -61,7 +65,7 @@ except (ImportError, ModuleNotFoundError):
 
 class Predictor:
     """
-    Predictor for loading a packaged VisQ2x model and performing
+    Predictor for loading a packaged visq3x model and performing
     predictions and updates.
 
     This class extracts a zip archive containing source files and model checkpoint,
@@ -75,7 +79,7 @@ class Predictor:
         mc_samples: int = 50,
     ):
         """
-        Initialize the PackagedPredictor by unpacking the archive and loading the model.
+        Initialize the Predictor by unpacking the archive and loading the model.
 
         Args:
             zip_path: Path to the zip archive containing model/ and src/ directories.
@@ -87,20 +91,20 @@ class Predictor:
         """
         self.zip_path = Path(zip_path)
         self.mc_samples = mc_samples
-
+        self._saved = False
         self._tmpdir = None
         self.predictor = None
         self.metadata = None
 
         Log.i(
-            f"PackagedPredictor.__init__: archive={self.zip_path!r}, mc_samples={mc_samples}")
+            f"Predictor.__init__: archive={self.zip_path!r}, mc_samples={mc_samples}")
         self._load_zip(self.zip_path)
 
     def _load_zip(self, zip_path: Path) -> None:
         """
         Unpack the zip file, load source modules, and instantiate the predictor.
 
-        Args:
+        Args: 
             zip_path: Path object pointing to the zip archive.
 
         Raises:
@@ -118,7 +122,26 @@ class Predictor:
         self._tmpdir = tempfile.TemporaryDirectory()
         extract_dir = Path(self._tmpdir.name)
 
-        with zipfile.ZipFile(zip_path, 'r') as zf:
+        with pyzipper.AESZipFile(zip_path, 'r',
+                                 compression=pyzipper.ZIP_DEFLATED,
+                                 allowZip64=True,
+                                 encryption=pyzipper.WZ_AES) as zf:
+            try:
+                zf.testzip()
+            except RuntimeError as e:
+                # Encrypted ZIP if "encrypted" in exception message
+                if 'encrypted' in str(e):
+                    Log.d("Accessing secured records...")
+                    # Derive password from the archive comment via SHA-256
+                    if len(zf.comment) == 0:
+                        Log.e("ZIP archive comment is empty, cannot derive password")
+                        raise RuntimeError("Empty ZIP archive comment")
+                    zf.setpassword(hashlib.sha256(
+                        zf.comment).hexdigest().encode())
+                else:
+                    Log.e("ZIP RuntimeError: " + str(e))
+            except Exception as e:
+                Log.e("ZIP Exception: " + str(e))
             zf.extractall(extract_dir)
 
         Log.d(f"Extracted {zip_path.name} -> {extract_dir}")
@@ -145,13 +168,13 @@ class Predictor:
         # Load source modules dynamically
         self._load_source_modules(src_dir)
 
-        # Import the Predictor class and VisQ2xConfig
+        # Import the Predictor class and visq3xConfig
         try:
             from inference import Predictor
-            from config import VisQ2xConfig
+            from config import visq3xConfig
         except ImportError as e:
             Log.e(f"Failed to import required classes: {e}")
-            raise RuntimeError(f"Could not import Predictor or VisQ2xConfig. "
+            raise RuntimeError(f"Could not import Predictor or visq3xConfig. "
                                f"Ensure inference.py and config.py are in the src/ directory. Error: {e}")
 
         # Find the checkpoint file
@@ -161,13 +184,13 @@ class Predictor:
 
         # Instantiate the predictor and load the model
         Log.i("Instantiating Predictor...")
-        config = VisQ2xConfig()
+        config = visq3xConfig()
         self.predictor = Predictor(config)
 
         Log.i(f"Loading model from {checkpoint_path}...")
         self.predictor.load(str(checkpoint_path))
 
-        Log.i("PackagedPredictor ready for inference")
+        Log.i("Predictor ready for inference")
 
     def _load_source_modules(self, src_dir: Path) -> None:
         """
@@ -222,9 +245,9 @@ class Predictor:
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
 
-                Log.d(f"  ✓ Loaded {py_file.name}")
+                Log.d(f"Loaded {py_file.name}")
             except Exception as e:
-                Log.e(f"  ✗ Failed to load {py_file.name}: {e}")
+                Log.e(f"Failed to load {py_file.name}: {e}")
                 raise RuntimeError(f"Failed to load module {module_name}: {e}")
 
     def predict(
@@ -248,7 +271,7 @@ class Predictor:
             raise RuntimeError("No predictor loaded")
 
         try:
-            Log.d(f"PackagedPredictor.predict() with {len(df)} samples")
+            Log.d(f"Predictor.predict() with {len(df)} samples")
             return self.predictor.predict(df, return_uncertainty=False)
         except Exception as ex:
             Log.e(f"Error in predict(): {ex}")
@@ -280,7 +303,7 @@ class Predictor:
             n_samples = self.mc_samples
 
         try:
-            Log.d(f"PackagedPredictor.predict_uncertainty() with {len(df)} samples, "
+            Log.d(f"Predictor.predict_uncertainty() with {len(df)} samples, "
                   f"n_samples={n_samples}")
             return self.predictor.predict(df, return_uncertainty=True, n_samples=n_samples)
         except Exception as ex:
@@ -291,6 +314,7 @@ class Predictor:
         self,
         new_df: pd.DataFrame,
         n_epochs: Optional[int] = None,
+        save: bool = False,
         verbose: bool = True,
     ) -> Dict:
         """
@@ -311,13 +335,14 @@ class Predictor:
             Log.e("learn() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
 
-        Log.i(f"PackagedPredictor.learn(): data.shape={new_df.shape}, "
+        Log.i(f"Predictor.learn(): data.shape={new_df.shape}, "
               f"n_epochs={n_epochs}, verbose={verbose}")
 
         try:
             result = self.predictor.learn(
                 new_df, n_epochs=n_epochs, verbose=verbose)
-            Log.i("Incremental learning completed successfully")
+            Log.i(f"Incremental learning completed successfully, {result}")
+            self._saved = save
             return result
         except Exception as ex:
             Log.e(f"Error during learn(): {ex}")
@@ -331,6 +356,10 @@ class Predictor:
             Dictionary containing metadata or None if not available.
         """
         return self.metadata
+
+    def save_path(self) -> Optional[str]:
+        """Path to the temporary directory associated with this Predictor session if a save occurred; otherwise None."""
+        return self._tmpdir.name if self._saved else None
 
     def save(self, path: str) -> None:
         """
@@ -350,6 +379,69 @@ class Predictor:
         self.predictor.save_state(path)
         Log.i("Model saved successfully")
 
+    def add_security_to_zip(self, zip_path) -> bool:
+        """Replace an existing ZIP in-place with a secured ZIP"""
+        try:
+            comment = self._calculate_sha256_safe(zip_path)
+            if not comment:
+                Log.e("Could not compute SHA-256 of zip; aborting encryption")
+                return False
+            password = hashlib.sha256(comment.encode()).hexdigest()
+            # replace ZIP with encrypted version
+            self._add_password_and_comment(
+                zip_path, zip_path, password, comment)
+            Log.i("Updated ensemble saved to archive")
+            return True
+        except Exception as e:
+            Log.e(f"Error saving updated ensemble: {e}")
+            return False
+
+    def _calculate_sha256_safe(self, file_path):
+        """Calculate SHA256 with error handling"""
+        try:
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"File not found: {file_path}")
+
+            sha256_hash = hashlib.sha256()
+
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(4096), b""):
+                    sha256_hash.update(chunk)
+
+            return sha256_hash.hexdigest()
+
+        except Exception as e:
+            Log.e(f"Error calculating hash: {e}")
+            return None
+
+    def _add_password_and_comment(self, input_zip, output_zip, password, comment):
+        """Create a new encrypted zip file with a password and comment."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Extract input zip
+            with zipfile.ZipFile(input_zip, 'r') as zip_ref:
+                zip_ref.extractall(temp_dir)
+
+            # Create new encrypted zip with pyzipper
+            with pyzipper.AESZipFile(output_zip, 'w',
+                                     compression=pyzipper.ZIP_DEFLATED,
+                                     encryption=pyzipper.WZ_AES) as zf:
+                # Set password
+                zf.setpassword(password.encode('utf-8'))
+                zf.setencryption(pyzipper.WZ_AES, nbits=256)
+
+                # Add comment
+                zf.comment = comment.encode('utf-8')
+
+                # Add all files recursively
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        # Calculate archive path (relative to temp_dir)
+                        arc_path = os.path.relpath(file_path, temp_dir)
+                        # Normalize path separators for cross-platform compatibility
+                        arc_path = arc_path.replace('\\', '/')
+                        zf.write(file_path, arc_path)
+
     def reload_archive(self, new_zip: str) -> None:
         """
         Reload a different archive, cleaning up the previous one.
@@ -363,20 +455,20 @@ class Predictor:
 
     def cleanup(self) -> None:
         """
-        Clean up temporary files and drop the loaded predictor.
+        Clean up temporary files and drop the loaded ensemble.
         """
         if self._tmpdir:
-            Log.i("Cleaning up temp directory and predictor")
+            Log.i("Cleaning up temp directory and ensemble")
             try:
                 self._tmpdir.cleanup()
             except Exception as ex:
                 Log.w(f"Issue during cleanup: {ex}")
             finally:
                 self._tmpdir = None
-                self.predictor = None
+                self.ensemble = None
 
     def __enter__(self) -> 'Predictor':
-        """Enter context manager, returning the PackagedPredictor instance."""
+        """Enter context manager, returning the Predictor instance."""
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
@@ -414,7 +506,7 @@ if __name__ == "__main__":
     })
 
     # Load packaged predictor
-    with Predictor("packages/visq2x.zip") as predictor:
+    with Predictor("packages/visq3x.zip") as predictor:
         # Get metadata
         metadata = predictor.get_metadata()
         print("Metadata:", metadata)
