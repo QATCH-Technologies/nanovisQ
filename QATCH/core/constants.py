@@ -310,14 +310,8 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v2",
-                           "QModel v3",
-                           "QModel v3 + Partial Fills",
                            "QModel v4 (Fusion)"]
     QModel4_predict = True
-    PF_predict = False
-    QModel3_predict = False
-    QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
