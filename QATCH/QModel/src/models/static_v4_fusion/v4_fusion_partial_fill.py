@@ -136,6 +136,7 @@ class PartialFillDetector:
                              fixed_positions: Dict[int, Tuple[int, float]],
                              original_positions: Dict[int, Tuple[int, float]],
                              poi2_idx: int) -> Optional[Tuple[int, float]]:
+
         min_idx = 0
         max_idx = len(df) - 1
 
