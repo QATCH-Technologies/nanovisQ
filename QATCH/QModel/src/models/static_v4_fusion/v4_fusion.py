@@ -16,6 +16,7 @@ try:
     from QATCH.common.logger import Logger as Log
     from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_dataprocessor import FusionDataprocessor
     from QATCH.models.ModelData import ModelData
+    from QATCH.QModel.src.models.static_v4_fusion.v4_fusion_partial_fill import PartialFillDetector
 except (ImportError, ModuleNotFoundError):
     from v4_fusion_dataprocessor import FusionDataprocessor
     from ModelData import ModelData
@@ -915,7 +916,7 @@ class QModelV4Fusion:
         return df
 
     def predict(self, progress_signal: Any = None, file_buffer: Any = None,
-                df: pd.DataFrame = None, visualize: bool = False):
+                df: pd.DataFrame = None, visualize: bool = False, use_partial_fills: bool = True):
         """
         Predict all POI locations from input data.
 
@@ -928,6 +929,7 @@ class QModelV4Fusion:
         Returns:
             Dictionary with POI predictions
         """
+
         if progress_signal:
             total_progress_steps = 7
             this_progress_step = 0
@@ -996,6 +998,7 @@ class QModelV4Fusion:
 
         try:
             clf_results = self.poi_345_model.predict(df)
+
             for poi_num, (idx, conf) in clf_results.items():
                 final_positions[poi_num] = idx
                 confidence_scores[poi_num] = conf
@@ -1014,6 +1017,31 @@ class QModelV4Fusion:
                 int(100 * this_progress_step / total_progress_steps),
                 "Step 7/7: Formatting results..."
             )
+        if use_partial_fills:
+            # Use partial fill detectors
+            detector = PartialFillDetector()
+            pf = detector.process_predictions(
+                df=df, clf_results=clf_results, poi2_idx=poi2_idx)
+
+            # Update positions with partial fills (only keep if confidence >= 0.02)
+            for k, v in pf.items():
+                if k in final_positions and v[1] >= 0.05:
+                    final_positions[k] = v[0]
+                    confidence_scores[k] = v[1]
+                elif k in final_positions:
+                    del final_positions[k]
+                    del confidence_scores[k]
+
+            # Collapse to lowest available keys
+            for target, sources in [(4, [5, 6]), (5, [6])]:
+                if target not in final_positions:
+                    for source in sources:
+                        if source in final_positions:
+                            final_positions[target] = final_positions.pop(
+                                source)
+                            confidence_scores[target] = confidence_scores.pop(
+                                source)
+                            break
 
         output = self._format_output(final_positions, confidence_scores)
         self._last_predictions = output

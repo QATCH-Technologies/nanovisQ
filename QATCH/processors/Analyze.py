@@ -890,7 +890,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Add the checkbox and call-backs for using the curve-optimizer utility.
         self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
             "Auto-Calculate \"Difference Factor\"")
-
         self.difference_factor_optimizer_checkbox.setChecked(False)
         self.difference_factor_optimizer_checkbox.clicked.connect(
             self.use_difference_factor_optimizer)
@@ -905,6 +904,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(
             self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
 
+        self.partial_fills_checkbox = QtWidgets.QCheckBox(
+            "Enable Partial-Fills")
+        self.partial_fills_checkbox.setChecked(False)
+        self.gridLayout.addWidget(
+            self.partial_fills_checkbox, 5, 5, 1, 3)
+
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
         self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
@@ -913,7 +918,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.l3.setFixedHeight(50)
         # else:
         #    self.l3.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l3, 5, 5, 1, 3)
+        self.gridLayout.addWidget(self.l3, 6, 5, 1, 3)
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
@@ -923,7 +928,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(
             self.set_new_prediction_model)
-        self.gridLayout.addWidget(self.cBox_Models, 6, 5, 1, 3)
+        self.gridLayout.addWidget(self.cBox_Models, 7, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -3004,7 +3009,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
-                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3259,7 +3264,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
@@ -4551,7 +4556,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
