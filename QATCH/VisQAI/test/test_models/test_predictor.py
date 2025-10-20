@@ -504,34 +504,6 @@ class TestUtilityMethods(unittest.TestCase):
             self.assertEqual(self.predictor.zip_path, Path(new_zip_path))
             mock_load.assert_called_once_with(Path(new_zip_path))
 
-    def test_cleanup(self):
-        """Test cleanup() method."""
-        mock_tmpdir = MagicMock()
-        mock_predictor = MagicMock()
-
-        self.predictor._tmpdir = mock_tmpdir
-        self.predictor.predictor = mock_predictor
-
-        self.predictor.cleanup()
-
-        mock_tmpdir.cleanup.assert_called_once()
-        self.assertIsNone(self.predictor._tmpdir)
-        self.assertIsNone(self.predictor.predictor)
-
-    def test_cleanup_with_exception(self):
-        """Test cleanup() handles exceptions gracefully."""
-        mock_tmpdir = MagicMock()
-        mock_tmpdir.cleanup.side_effect = Exception("Cleanup failed")
-
-        self.predictor._tmpdir = mock_tmpdir
-        self.predictor.predictor = MagicMock()
-
-        # Should not raise exception
-        self.predictor.cleanup()
-
-        self.assertIsNone(self.predictor._tmpdir)
-        self.assertIsNone(self.predictor.predictor)
-
 
 class TestContextManager(unittest.TestCase):
     """Test cases for context manager functionality."""

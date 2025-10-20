@@ -2,7 +2,7 @@
 test_database.py
 
 Integration tests for the Database class, verifying:
-    - CRUD operations for each ingredient subclass (Protein, Buffer, Stabilizer, Surfactant, Salt)
+    - CRUD operations for each ingredient subclass (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient)
     - CRUD operations for formulations, including component linking and viscosity profile persistence
     - Deletion and retrieval of ingredients and formulations
     - Integrity of component-to-ingredient foreign keys
@@ -14,10 +14,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-10-20
 
 Version:
-    1.1
+    1.3
 """
 
 import os
@@ -26,7 +26,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
+from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
 from src.models.formulation import Formulation, ViscosityProfile
 from src.db.db import Database
 
@@ -81,7 +81,7 @@ class BaseTestDatabase(unittest.TestCase):
         """
         Test that adding and retrieving each subclass of Ingredient works correctly.
 
-        - Add one instance of Protein, Buffer, Stabilizer, Surfactant, and Salt
+        - Add one instance of Protein, Buffer, Stabilizer, Surfactant, Salt, and Excipient
         - Verify that get_ingredient returns correct subclass instance with matching fields
         """
         p = Protein(enc_id=10, name="ProtA", molecular_weight=50.0,
@@ -90,9 +90,10 @@ class BaseTestDatabase(unittest.TestCase):
         s1 = Stabilizer(enc_id=30, name="StabC")
         s2 = Surfactant(enc_id=40, name="SurfD")
         salt = Salt(enc_id=50, name="SaltE")
+        excip = Excipient(enc_id=60, name="ExcipF")
 
         ids = {}
-        for ing in (p, b, s1, s2, salt):
+        for ing in (p, b, s1, s2, salt, excip):
             iid = self.db.add_ingredient(ing)
             ids[type(ing).__name__] = iid
 
@@ -110,6 +111,8 @@ class BaseTestDatabase(unittest.TestCase):
         self.assertIsInstance(self.db.get_ingredient(
             ids['Surfactant']), Surfactant)
         self.assertIsInstance(self.db.get_ingredient(ids['Salt']), Salt)
+        self.assertIsInstance(self.db.get_ingredient(
+            ids['Excipient']), Excipient)
 
     def test_get_all_and_delete_ingredient(self):
         """
@@ -121,27 +124,41 @@ class BaseTestDatabase(unittest.TestCase):
         - Verify only one row remains
         - Delete all ingredients and verify empty list returned
         """
-        all_ings = self.db.get_all_ingredients()
-        start_count = len(all_ings)
+        # Claen up any existing formulations first (they reference ingredients)
+        self.db.delete_all_formulations()
+        # Clean up any existing ingredients to start fresh
+        self.db.delete_all_ingredients()
+
+        # Now start the actual test
         x = Protein(enc_id=1, name="X", molecular_weight=10,
                     pI_mean=5, pI_range=0.1, class_type=ProteinClass.NONE)
         id1 = self.db.add_ingredient(x)
         y = Protein(enc_id=2, name="Y", molecular_weight=10,
                     pI_mean=5, pI_range=0.1, class_type=ProteinClass.OTHER)
         id2 = self.db.add_ingredient(y)
+
         all_ings = self.db.get_all_ingredients()
-        self.assertEqual(len(all_ings)-start_count, 2,
+        self.assertEqual(len(all_ings), 2,
                          "Expected two ingredient entries")
-        self.assertTrue(self.db.delete_ingredient(
-            id1), "Deletion by ID should return True")
+
+        self.assertTrue(self.db.delete_ingredient(id1),
+                        "Deletion by ID should return True")
+
         remaining = self.db.get_all_ingredients()
-        rem_p = [i for i in remaining if isinstance(i, Protein)][0]
-        self.assertIn(rem_p.class_type, ProteinClass.all())
-        self.assertEqual(len(remaining)-start_count, 1,
+        self.assertEqual(len(remaining), 1,
                          "One ingredient should remain after deletion")
+
+        rem_p = [i for i in remaining if isinstance(i, Protein)]
+        self.assertEqual(
+            len(rem_p), 1, "Should have exactly one Protein remaining")
+        self.assertIn(rem_p[0].class_type, ProteinClass.all(),
+                      "Remaining protein should have valid class_type")
+        self.assertEqual(rem_p[0].enc_id, 2,
+                         "Remaining protein should be Y (enc_id=2)")
+
         self.db.delete_all_ingredients()
         self.assertEqual(self.db.get_all_ingredients(), [],
-                         "Expected empty ingredient list")
+                         "Expected empty ingredient list after delete_all")
 
     def test_update_ingredient(self):
         """
@@ -166,7 +183,7 @@ class BaseTestDatabase(unittest.TestCase):
 
     def _make_formulation(self):
         """
-        Construct a sample Formulation instance with one Protein, one Buffer, a ViscosityProfile, and temperature.
+        Construct a sample Formulation instance with Protein, Buffer, Excipient, ViscosityProfile, and temperature.
 
         Returns:
             Formulation: The newly created formulation with components and viscosity profile.
@@ -177,6 +194,8 @@ class BaseTestDatabase(unittest.TestCase):
         f.set_protein(p, concentration=1.5, units="mg/mL")
         b = Buffer(enc_id=2, name="BuffB", pH=7.0)
         f.set_buffer(b, concentration=2.0, units="mM")
+        ex = Excipient(enc_id=3, name="ExcipC")
+        f.set_excipient(ex, concentration=5.0, units="mg/mL")
         vp = ViscosityProfile([1, 10], [0.1, 0.05], units="Pa·s")
         vp.is_measured = True
         f.set_viscosity_profile(vp)
@@ -191,7 +210,7 @@ class BaseTestDatabase(unittest.TestCase):
         - Insert it into the database
         - Retrieve by ID and verify:
             - Temperature matches
-            - Protein and Buffer concentrations and ingredient types match
+            - Protein, Buffer, and Excipient concentrations and ingredient types match
             - ViscosityProfile is_measured flag and shear_rates match
         """
         form = self._make_formulation()
@@ -208,6 +227,10 @@ class BaseTestDatabase(unittest.TestCase):
         self.assertEqual(buf_comp.concentration, 2.0)
         self.assertIsInstance(buf_comp.ingredient, Buffer)
 
+        excip_comp = got._components['excipient']
+        self.assertEqual(excip_comp.concentration, 5.0)
+        self.assertIsInstance(excip_comp.ingredient, Excipient)
+
         self.assertTrue(got.viscosity_profile.is_measured)
         self.assertListEqual(got.viscosity_profile.shear_rates, [1, 10])
 
@@ -220,6 +243,7 @@ class BaseTestDatabase(unittest.TestCase):
         - Delete one by ID; verify count decremented
         - Delete all; verify no formulations remain
         """
+        self.db.delete_all_formulations()
         self.db.add_formulation(self._make_formulation())
         self.db.add_formulation(self._make_formulation())
         all_forms = self.db.get_all_formulations()
@@ -310,6 +334,10 @@ class BaseTestDatabase(unittest.TestCase):
         buf_comp = got._components['buffer']
         self.assertEqual(buf_comp.concentration, 2.0)
         self.assertIsInstance(buf_comp.ingredient, Buffer)
+
+        excip_comp = got._components['excipient']
+        self.assertEqual(excip_comp.concentration, 5.0)
+        self.assertIsInstance(excip_comp.ingredient, Excipient)
 
         self.assertTrue(got.viscosity_profile.is_measured)
         self.assertListEqual(got.viscosity_profile.shear_rates, [1, 10])

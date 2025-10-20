@@ -24,12 +24,12 @@ try:
     from src.db.db import Database
     from src.controller.ingredient_controller import IngredientController
     from src.models.formulation import Formulation, Component, ViscosityProfile
-    from src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass
+    from src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass, Excipient
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass
+    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass, Excipient
 
 
 class FormulationController:
@@ -134,6 +134,10 @@ class FormulationController:
         formulation.stabilizer.ingredient = self.ingredient_controller.add(
             stabilizer_ing)
 
+        excpient_ing = formulation.excipient.ingredient
+        formulation.excipient.ingredient = self.ingredient_controller.add(
+            excpient_ing)
+
         # If an identical formulation already exists, return it
         existing = self.get_all_formulations()
         for f in existing:
@@ -206,6 +210,7 @@ class FormulationController:
             - Salt_type, Salt_conc
             - Stabilizer_type, Stabilizer_conc
             - Surfactant_type, Surfactant_conc
+            - Excipient_type, Excipient_conc
             - Viscosity_100, Viscosity_1000, Viscosity_10000, Viscosity_100000, Viscosity_15000000
 
         Args:
@@ -227,7 +232,8 @@ class FormulationController:
             "Salt_type", "Salt_conc",
             "Stabilizer_type", "Stabilizer_conc",
             "Surfactant_type", "Surfactant_conc",
-            *{f"Viscosity_{r}" for r in shear_rates},
+            "Excipient_type", "Excipient_conc",
+            * {f"Viscosity_{r}" for r in shear_rates},
         }
         missing = expected - set(df.columns)
         if missing:
@@ -268,6 +274,9 @@ class FormulationController:
             )
             salt = self.ingredient_controller.add_salt(
                 Salt(enc_id=0, name=str(row["Salt_type"]))
+            )
+            excipient = self.ingredient_controller.add_excipient(
+                Salt(enc_id=0, name=str(row["Excipient_type"]))
             )
 
             vis_values = [row[f"Viscosity_{r}"] for r in shear_rates]
@@ -310,6 +319,11 @@ class FormulationController:
                 concentration=row["Surfactant_conc"],
                 units="%w"
             )
+            form.set_excipient(
+                excipient=excipient,
+                concentration=row["Excipient_conc"],
+                units="<UNK>"
+            )
             form.set_temperature(temp=row["Temperature"])
             form.set_viscosity_profile(profile=vp)
 
@@ -337,6 +351,7 @@ class FormulationController:
             - Salt_type, Salt_conc
             - Stabilizer_type, Stabilizer_conc
             - Surfactant_type, Surfactant_conc
+            - Excipient_type, Excipient_conc
             - Viscosity_100, Viscosity_1000, Viscosity_10000, Viscosity_100000, Viscosity_15000000
 
         Missing viscosity values default to NaN.
@@ -352,6 +367,7 @@ class FormulationController:
             "Salt_type", "Salt_conc",
             "Stabilizer_type", "Stabilizer_conc",
             "Surfactant_type", "Surfactant_conc",
+            "Excipient_type", "Excipient_conc",
             "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
             "Viscosity_100000", "Viscosity_15000000"
         ]

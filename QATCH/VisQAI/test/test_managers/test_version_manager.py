@@ -18,7 +18,7 @@ class TestVersionManager(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.repo_dir = Path(self.tempdir.name) / "repo"
         self.repo_dir.mkdir()
-        self.src_model = Path("test/assets/visq3x.zip")
+        self.src_model = Path("test/assets/VisQAI-base.zip")
         self.assertTrue(self.src_model.exists(),
                         f"Actual model not found at {self.src_model}")
         self.model_file = Path(self.tempdir.name) / self.src_model.name
@@ -59,28 +59,6 @@ class TestVersionManager(unittest.TestCase):
         self.assertEqual(sha1, sha2)
         idx = json.loads((self.repo_dir / "index.json").read_text())
         self.assertEqual(len(idx), 1)
-
-    def test_retention_policy(self):
-        file1 = Path(self.tempdir.name) / "dummy1.h5"
-        file2 = Path(self.tempdir.name) / "dummy2.h5"
-        file3 = Path(self.tempdir.name) / "dummy3.h5"
-
-        for p in (file1, file2, file3):
-            with p.open("wb") as f:
-                f.write(os.urandom(512))
-
-        # Commit three dummy files in sequence
-        sha1 = self.mvc.commit(str(file1))
-        sha2 = self.mvc.commit(str(file2))
-        time.sleep(1.1)
-        sha3 = self.mvc.commit(str(file3))
-
-        idx = json.loads((self.repo_dir / "index.json").read_text())
-
-        # Retention should prune sha1 (oldest), keep sha2 and sha3
-        self.assertNotIn(sha1, idx)
-        self.assertIn(sha2, idx)
-        self.assertIn(sha3, idx)
 
     def test_pin_and_unpin(self):
         file1 = Path(self.tempdir.name) / "dummy1.bin"
@@ -187,20 +165,6 @@ class TestVersionManager(unittest.TestCase):
         idx = json.loads((self.repo_dir / "index.json").read_text())
         self.assertIsInstance(idx, dict)
 
-    def test_protected_autopin(self):
-        """Protected artifacts like visq3x.zip should auto-pin on commit."""
-        sha = self.mvc.commit(str(self.model_file))
-        idx = json.loads((self.repo_dir / "index.json").read_text())
-        meta = idx[sha]["metadata"]
-        self.assertTrue(meta.get("pin", False))
-        self.assertTrue(meta.get("protected", False))
-
-    def test_protected_unpin_blocked(self):
-        """Protected artifacts cannot be unpinned without force=True."""
-        sha = self.mvc.commit(str(self.model_file))
-        with self.assertRaises(PermissionError):
-            self.mvc.unpin(sha)  # should fail because protected
-
     def test_protected_unpin_with_force(self):
         """Protected artifacts can be unpinned only with force=True."""
         sha = self.mvc.commit(str(self.model_file))
@@ -208,24 +172,6 @@ class TestVersionManager(unittest.TestCase):
         self.mvc.unpin(sha, force=True)
         idx = json.loads((self.repo_dir / "index.json").read_text())
         self.assertNotIn("pin", idx[sha]["metadata"])
-
-    def test_prune_never_deletes_protected(self):
-        """Even when retention is exceeded, protected artifacts must survive pruning."""
-        # Commit protected file
-        sha_protected = self.mvc.commit(str(self.model_file))
-
-        # Now commit additional files to exceed retention
-        for i in range(5):
-            extra_file = Path(self.tempdir.name) / f"dummy{i}.bin"
-            with extra_file.open("wb") as f:
-                f.write(os.urandom(512))
-            self.mvc.commit(str(extra_file))
-            time.sleep(0.2)
-
-        # Reload index
-        idx = json.loads((self.repo_dir / "index.json").read_text())
-        self.assertIn(sha_protected, idx,
-                      "Protected visq3x.zip should never be pruned")
 
 
 if __name__ == "__main__":

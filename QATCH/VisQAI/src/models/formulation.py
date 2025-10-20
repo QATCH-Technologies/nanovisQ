@@ -30,10 +30,10 @@ import pandas as pd
 from typing import Optional, Dict, Any, List
 try:
     from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt)
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
 
 TAG = "[Formulation]"
 
@@ -265,6 +265,7 @@ class Formulation:
             "stabilizer": None,
             "surfactant": None,
             "salt":       None,
+            "excipient":  None,
         }
         self._temperature: Optional[float] = None
         self._viscosity_profile: Optional[ViscosityProfile] = None
@@ -364,6 +365,21 @@ class Formulation:
         """
         self._components["salt"] = Component(salt, concentration, units)
 
+    def set_excipient(self, excipient: Excipient, concentration: float, units: str) -> None:
+        """Assign a excpient component to the formulation.
+
+        Args:
+            salt (Salt): An instance of `Excipient` to include.
+            excpient (float): Concentration of the excpient (must be ≥ 0).
+            units (str): Units for the concentration (non-empty string).
+
+        Raises:
+            TypeError: If `salt` is not a `Excipient`, or if concentration is not numeric.
+            ValueError: If concentration is negative, or if `units` is an empty string.
+        """
+        self._components["excipient"] = Component(
+            excipient, concentration, units)
+
     @property
     def protein(self) -> Optional[Component]:
         """Get the protein component of the formulation.
@@ -408,6 +424,15 @@ class Formulation:
             Optional[Component]: The salt `Component` if set, otherwise None.
         """
         return self._components["salt"]
+
+    @property
+    def excipient(self) -> Optional[Component]:
+        """Get the excipient component of the formulation.
+
+        Returns:
+            Optional[Component]: The salt `Component` if set, otherwise None.
+        """
+        return self._components["excipient"]
 
     @property
     def temperature(self) -> Optional[float]:
@@ -501,6 +526,8 @@ class Formulation:
                     - "Buffer_conc"
                     - "Salt_type"
                     - "Salt_conc"
+                    - "Excipient_type"
+                    - "Excipient_conc
                     - "Stabilizer_type"
                     - "Stabilizer_conc"
                     - "Surfactant_type"
@@ -526,6 +553,8 @@ class Formulation:
                 "Buffer_conc":     self.buffer.concentration,
                 "Salt_type":       self.salt.ingredient.enc_id,
                 "Salt_conc":       self.salt.concentration,
+                "Excipient_type":  self.excipient.ingredient.enc_id,
+                "Excipient_conc":  self.excipient.concentration,
                 "Stabilizer_type": self.stabilizer.ingredient.enc_id,
                 "Stabilizer_conc": self.stabilizer.concentration,
                 "Surfactant_type": self.surfactant.ingredient.enc_id,
@@ -546,6 +575,8 @@ class Formulation:
                 "Buffer_conc":     self.buffer.concentration,
                 "Salt_type":       self.salt.ingredient.name,
                 "Salt_conc":       self.salt.concentration,
+                "Excipient_type":  self.excipient.ingredient.name,
+                "Excipient_conc":  self.excipient.concentration,
                 "Stabilizer_type": self.stabilizer.ingredient.name,
                 "Stabilizer_conc": self.stabilizer.concentration,
                 "Surfactant_type": self.surfactant.ingredient.name,
@@ -567,6 +598,7 @@ class Formulation:
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
+            "Excipient_type", "Excipient_conc",
             "Stabilizer_type", "Stabilizer_conc",
             "Surfactant_type", "Surfactant_conc"]
         if training:

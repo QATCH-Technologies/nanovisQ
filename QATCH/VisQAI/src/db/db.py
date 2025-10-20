@@ -32,7 +32,7 @@ import random
 
 try:
     from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
     )
     from src.models.formulation import Formulation, Component, ViscosityProfile
 
@@ -42,7 +42,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
     )
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
     from QATCH.common.logger import Logger as Log
@@ -180,6 +180,12 @@ class Database:
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
+        c.execute(rf"""
+            CREATE TABLE IF NOT EXISTS excipient (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """)
         # Formulation and components
         c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
@@ -196,7 +202,7 @@ class Database:
                 units TEXT NOT NULL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
-                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
         c.execute(rf"""
@@ -326,6 +332,9 @@ class Database:
         elif typ == "Salt":
             ing = Salt(enc_id, name)
 
+        elif typ == "Excipient":
+            ing = Excipient(enc_id, name)
+
         else:
             return None
 
@@ -395,6 +404,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (id,))
 
         self.conn.commit()
         return True

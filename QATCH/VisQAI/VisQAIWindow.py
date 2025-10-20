@@ -782,7 +782,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
             if step == 1:
-                predictor_path = "QATCH/VisQAI/assets/visq3x.zip"
+                predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
                 if os.path.exists(predictor_path):
                     self.model_selected(path=predictor_path)
             select_model_layout.addWidget(self.select_model_btn)

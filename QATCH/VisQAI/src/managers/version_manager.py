@@ -15,7 +15,7 @@ _OBJECTS_DIR = "objects"
 _DEFAULT_RETENTION = 50
 _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
-# NOTE: visq3x.zip is treated as a protected artifact by VersionManager.
+# NOTE: VisQAI-base.zip is treated as a protected artifact by VersionManager.
 #       It is auto-pinned on commit and marked as protected; prune will never remove it.
 #       Unpinning it requires force=True, but the 'protected' flag remains to guard against pruning.
 

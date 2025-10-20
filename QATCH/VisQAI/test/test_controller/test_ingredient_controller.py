@@ -2,7 +2,7 @@
 test_ingredient_controller.py
 
 Integration tests for the IngredientController, verifying CRUD operations on:
-    - Adding and fetching each ingredient subclass (Protein, Buffer, Salt, Surfactant, Stabilizer)
+    - Adding and fetching each ingredient subclass (Protein, Buffer, Salt, Surfactant, Stabilizer, Excipient)
     - Auto-assignment of developer and user enc_id values
     - Name trimming and duplicate name handling
     - Deleting by ID, name, and deleting all for each type, including error conditions
@@ -13,16 +13,16 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-10-20
 
 Version:
-    1.0
+    1.2
 """
 
 import unittest
 from pathlib import Path
 
-from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
+from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
 from src.db.db import Database
 from src.controller.ingredient_controller import IngredientController
 
@@ -188,12 +188,28 @@ class TestIngredientController(unittest.TestCase):
         self.ctrl.delete_stabilizer_by_id(fetched.id)
         self.assertIsNone(self.ctrl.get_stabilizer_by_name("StabW"))
 
+    def test_add_and_get_excipient(self):
+        """
+        Test that adding an Excipient persists correctly and can be fetched, then deleted by ID.
+
+        Verifies:
+            - _roundtrip successfully adds and returns an Excipient.
+            - delete_excipient_by_id removes the excipient, so get_excipient_by_name returns None.
+        """
+        ex = Excipient(enc_id=6, name="ExcipA")
+        ex.is_user = False
+        fetched = self._roundtrip(ex)
+        self.assertIsInstance(fetched, Excipient)
+
+        self.ctrl.delete_excipient_by_id(fetched.id)
+        self.assertIsNone(self.ctrl.get_excipient_by_name("ExcipA"))
+
     def test_get_all_ingredients_and_delete_all(self):
         """
         Test that multiple ingredient types can be added, all retrieved, and then deleted.
 
         Verifies:
-            - get_all_ingredients returns all five types.
+            - get_all_ingredients returns all six types.
             - delete_all_ingredients clears the database.
         """
         types = [
@@ -203,6 +219,7 @@ class TestIngredientController(unittest.TestCase):
             Salt(enc_id=12, name="S1"),
             Surfactant(enc_id=13, name="SF1"),
             Stabilizer(enc_id=14, name="ST1"),
+            Excipient(enc_id=15, name="EX1"),
         ]
         for ing in types:
             ing.is_user = False
@@ -286,6 +303,7 @@ class TestIngredientController(unittest.TestCase):
         self.assertIsNone(self.ctrl.get_salt_by_id(999))
         self.assertIsNone(self.ctrl.get_surfactant_by_id(999))
         self.assertIsNone(self.ctrl.get_stabilizer_by_id(999))
+        self.assertIsNone(self.ctrl.get_excipient_by_id(999))
 
     def test_delete_nonexistent_raises(self):
         """
@@ -301,6 +319,8 @@ class TestIngredientController(unittest.TestCase):
             self.ctrl.delete_surfactant_by_id(999)
         with self.assertRaises(ValueError):
             self.ctrl.delete_stabilizer_by_id(999)
+        with self.assertRaises(ValueError):
+            self.ctrl.delete_excipient_by_id(999)
 
     def test_cross_type_same_name_allowed(self):
         """
@@ -417,6 +437,8 @@ class TestIngredientController(unittest.TestCase):
             - User Surfactant -> enc_id = USER_START_ID
             - Developer Stabilizer -> enc_id = 1
             - User Stabilizer -> enc_id = USER_START_ID
+            - Developer Excipient -> enc_id = 1
+            - User Excipient -> enc_id = USER_START_ID
         """
         s_dev = Salt(enc_id=-1, name="DevSalt")
         s_dev.is_user = False
@@ -442,6 +464,19 @@ class TestIngredientController(unittest.TestCase):
         self.ctrl.add_stabilizer(stab_user)
         fetched_stab_user = self.ctrl.get_stabilizer_by_name("UserStab")
         self.assertEqual(fetched_stab_user.enc_id,
+                         IngredientController.USER_START_ID)
+
+        excip_dev = Excipient(enc_id=-1, name="DevExcip")
+        excip_dev.is_user = False
+        self.ctrl.add_excipient(excip_dev)
+        fetched_excip = self.ctrl.get_excipient_by_name("DevExcip")
+        self.assertEqual(fetched_excip.enc_id, 1)
+
+        excip_user = Excipient(enc_id=-1, name="UserExcip")
+        excip_user.is_user = True
+        self.ctrl.add_excipient(excip_user)
+        fetched_excip_user = self.ctrl.get_excipient_by_name("UserExcip")
+        self.assertEqual(fetched_excip_user.enc_id,
                          IngredientController.USER_START_ID)
 
     def test_dev_id_exhaustion_raises(self):
@@ -549,6 +584,21 @@ class TestIngredientController(unittest.TestCase):
         sf = Surfactant(enc_id=-1, name=name)
         sf.is_user = is_user
         return sf
+
+    def _make_excipient(self, name="excip1", is_user=True):
+        """
+        Helper to create an Excipient with default values.
+
+        Args:
+            name (str): Name of the excipient.
+            is_user (bool): Whether to assign user-created enc_id range.
+
+        Returns:
+            Excipient: A new Excipient instance with those attributes.
+        """
+        ex = Excipient(enc_id=-1, name=name)
+        ex.is_user = is_user
+        return ex
 
     def test_delete_protein_by_id_and_name(self):
         """
@@ -796,6 +846,54 @@ class TestIngredientController(unittest.TestCase):
         self.ctrl.delete_all_stabilizers()
         self.assertEqual(len(self.ctrl.get_all_stabilizers()), 0)
 
+    def test_delete_excipient_by_id_and_name(self):
+        """
+        Test deleting an Excipient by ID and by name, ensuring removal in both cases.
+        """
+        ex = self._make_excipient(name="EX_A")
+        added = self.ctrl.add(ex)
+        exid = added.id
+        self.ctrl.delete_excipient_by_id(exid)
+        self.assertIsNone(self.ctrl.get_excipient_by_id(exid))
+
+        ex2 = self._make_excipient(name="EX_B")
+        added2 = self.ctrl.add(ex2)
+        self.ctrl.delete_excipient_by_name("EX_B")
+        self.assertIsNone(self.ctrl.get_excipient_by_name("EX_B"))
+
+    def test_delete_excipient_not_exist_errors(self):
+        """
+        Test that deleting non-existent Excipient by ID or name raises ValueError.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            self.ctrl.delete_excipient_by_id(5555)
+        self.assertIn("Excipient with id 5555 does not exist",
+                      str(ctx.exception))
+
+        with self.assertRaises(ValueError) as ctx2:
+            self.ctrl.delete_excipient_by_name("NO_EXCIP")
+        self.assertIn(
+            "Excipient with name 'NO_EXCIP' does not exist", str(ctx2.exception))
+
+    def test_delete_all_excipients_empty_errors(self):
+        """
+        Test that delete_all_excipients on an empty database raises ValueError.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            self.ctrl.delete_all_excipients()
+        self.assertIn("No items of type 'Excipient' found",
+                      str(ctx.exception))
+
+    def test_delete_all_excipients_success(self):
+        """
+        Test that delete_all_excipients removes all Excipient entries when present.
+        """
+        ex1 = self.ctrl.add(self._make_excipient(name="EX1"))
+        ex2 = self.ctrl.add(self._make_excipient(name="EX2"))
+        self.assertEqual(len(self.ctrl.get_all_excipients()), 2)
+        self.ctrl.delete_all_excipients()
+        self.assertEqual(len(self.ctrl.get_all_excipients()), 0)
+
     def test_update_protein_successful(self):
         """
         Test that update_protein replaces existing record, preserves enc_id and is_user, and renames.
@@ -988,6 +1086,45 @@ class TestIngredientController(unittest.TestCase):
             self.ctrl.update_stabilizer(
                 55555, self._make_stabilizer(name="NoStab"))
         self.assertIn("Stabilizer with id '55555' does not exist",
+                      str(ctx.exception))
+
+    def test_update_excipient_successful(self):
+        """
+        Test that update_excipient replaces existing record, preserves enc_id and is_user, and renames.
+        """
+        orig = self.ctrl.add(self._make_excipient(name="OrigExcip"))
+        orig_id = orig.id
+        orig_enc = orig.enc_id
+        orig_is_user = orig.is_user
+
+        newex = self._make_excipient(name="UpdatedExcip", is_user=False)
+        updated = self.ctrl.update_excipient(orig_id, newex)
+        self.assertEqual(updated.enc_id, orig_enc)
+        self.assertEqual(updated.is_user, orig_is_user)
+        self.assertIsNone(self.ctrl.get_excipient_by_name("OrigExcip"))
+        self.assertIsNotNone(self.ctrl.get_excipient_by_name("UpdatedExcip"))
+
+    def test_update_excipient_identical_returns_same(self):
+        """
+        Test that update_excipient returns the same instance when input equals existing record.
+        """
+        orig = self.ctrl.add(self._make_excipient(name="SameExcip"))
+        orig_id = orig.id
+        clone = self._make_excipient(name="SameExcip", is_user=orig.is_user)
+        clone.enc_id = orig.enc_id
+        clone.id = orig.id
+
+        result = self.ctrl.update_excipient(orig_id, clone)
+        self.assertIs(result, clone)
+
+    def test_update_excipient_nonexistent_raises(self):
+        """
+        Test that update_excipient on a non-existent ID raises ValueError.
+        """
+        with self.assertRaises(ValueError) as ctx:
+            self.ctrl.update_excipient(
+                44444, self._make_excipient(name="NoExcip"))
+        self.assertIn("Excipient with id '44444' does not exist",
                       str(ctx.exception))
 
 

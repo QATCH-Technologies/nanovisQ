@@ -65,7 +65,7 @@ except (ImportError, ModuleNotFoundError):
 
 class Predictor:
     """
-    Predictor for loading a packaged visq3x model and performing
+    Predictor for loading a packaged VisQAI-base model and performing
     predictions and updates.
 
     This class extracts a zip archive containing source files and model checkpoint,
@@ -171,7 +171,7 @@ class Predictor:
         # Import the Predictor class and visq3xConfig
         try:
             from inference import Predictor
-            from config import VisQ2xConfig
+            from config import visq3xConfig
         except ImportError as e:
             Log.e(f"Failed to import required classes: {e}")
             raise RuntimeError(f"Could not import Predictor or visq3xConfig. "
@@ -184,7 +184,7 @@ class Predictor:
 
         # Instantiate the predictor and load the model
         Log.i("Instantiating Predictor...")
-        config = VisQ2xConfig()
+        config = visq3xConfig()
         self.predictor = Predictor(config)
 
         Log.i(f"Loading model from {checkpoint_path}...")
@@ -506,7 +506,7 @@ if __name__ == "__main__":
     })
 
     # Load packaged predictor
-    with Predictor("packages/visq3x.zip") as predictor:
+    with Predictor("packages/VisQAI-base.zip") as predictor:
         # Get metadata
         metadata = predictor.get_metadata()
         print("Metadata:", metadata)

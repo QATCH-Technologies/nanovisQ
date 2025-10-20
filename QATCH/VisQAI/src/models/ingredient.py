@@ -577,3 +577,8 @@ class Surfactant(Ingredient):
 class Salt(Ingredient):
     """Represents a salt ingredient without additional properties beyond Ingredient."""
     pass
+
+
+class Excipient(Ingredient):
+    """Represents a Excipient ingredient without additional properties beyond Ingredient."""
+    pass
