@@ -106,7 +106,7 @@ class AVN_Database:
                 return license_data
 
         except pymysql.err.Error as e:
-            Log.e(f"AVN ERROR: {e}")
+            self.log_mysqlerror(e)
 
         finally:
             self.close()
@@ -141,7 +141,7 @@ class AVN_Database:
                      license_data['device_info']['disk_serial'], license_data['device_info']['system_uuid'], None,))
 
         except pymysql.err.Error as e:
-            Log.e(f"AVN ERROR: {e}")
+            self.log_mysqlerror(e)
 
         finally:
             self.close()
@@ -156,10 +156,44 @@ class AVN_Database:
                     (license_data['status'], license_data['expiration'], license_data['trial_days'], license_data['license_key'],))
 
         except pymysql.err.Error as e:
-            Log.e(f"AVN ERROR: {e}")
+            self.log_mysqlerror(e)
 
         finally:
             self.close()
+
+    def log_mysqlerror(self, e: pymysql.err.MySQLError):
+        from pymysql.constants import CR, ER
+        # Defensive extraction of errno/message
+        errno = -1
+        errmsg = str(e)
+        if getattr(e, "args", None):
+            if len(e.args) > 0:
+                errno = e.args[0]
+            if len(e.args) > 1 and isinstance(e.args[1], str):
+                errmsg = e.args[1]
+        error_map = {}
+        all_errors = []
+        all_errors.extend(dir(CR))
+        all_errors.extend(dir(ER))
+        for _err in all_errors:
+            _errname = str(_err)
+            _errno = getattr(
+                CR if _errname.startswith("CR_") else ER, _errname, -1)
+            if (_errname.startswith("__") and _errname.endswith("__")) or \
+                not isinstance(_errno, int):
+                # internal object or variable value is not an integer
+                continue  # skip it
+            error_map[_errno] = _errname
+            # print(f"{_err} = {_errno}")
+        errname = error_map.get(errno, type(e).__name__)
+        sqlhost = str(getattr(self.conn, "host", None))
+        if sqlhost and sqlhost in errmsg:  # supress full URL of AVN database host
+            errmsg = str(errmsg).replace(sqlhost,sqlhost[:sqlhost.find('.')])
+        Log.e(f"AVN ERROR: [{errno}] {errname} - {errmsg}")
+        if getattr(e, "traceback", None) and isinstance(e.traceback, str):
+            for tb_line in str(e.traceback).splitlines():
+                if len(tb_line.replace("^", "").strip()):
+                    Log.d(tb_line)
 
     def close(self):
         try:
@@ -445,7 +479,11 @@ class LicenseManager:
                 self.avn.close()
                 return True
             except Exception as e:
-                Log.e(TAG, f"Failed to connect to AVN database for license checking: {e}")
+                Log.e(TAG, "Failed to connect to AVN database for license checking.")
+                if isinstance(e, pymysql.err.MySQLError):
+                    self.avn.log_mysqlerror(e)
+                else:
+                    Log.e(TAG, f"ERROR: {e}")
 
         if DB_SERVER == LicenseServer.DROPBOX:
             try:
@@ -505,8 +543,9 @@ class LicenseManager:
 
             return license_data
 
-        except pymysql.err.Error:
+        except pymysql.err.Error as e:
             Log.e("Failed to download license from remote DB.")
+            self.avn.log_mysqlerror(e)
             return None
 
         except ApiError as e:
@@ -628,8 +667,9 @@ class LicenseManager:
 
             return True
 
-        except pymysql.err.Error:
+        except pymysql.err.Error as e:
             Log.e("Failed to upload license to remote DB.")
+            self.avn.log_mysqlerror(e)
             return False
 
         except ApiError as e:
