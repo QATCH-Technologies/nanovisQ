@@ -490,7 +490,7 @@ class Formulation:
                 columns in this order:
                     - "ID"
                     - "Protein_type"
-                    - "Protein_class"
+                    - "Protein_class_type"
                     - "MW"
                     - "PI_mean"
                     - "PI_range"
@@ -515,7 +515,7 @@ class Formulation:
             row = {
                 "ID":              self.id,
                 "Protein_type":    self.protein.ingredient.enc_id,
-                "Protein_class":   self.protein.ingredient.class_type,
+                "Protein_class_type":   self.protein.ingredient.class_type,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -535,7 +535,7 @@ class Formulation:
             row = {
                 "ID":              self.id,
                 "Protein_type":    self.protein.ingredient.name,
-                "Protein_class":   self.protein.ingredient.class_type,
+                "Protein_class_type":   self.protein.ingredient.class_type,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -563,7 +563,7 @@ class Formulation:
 
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

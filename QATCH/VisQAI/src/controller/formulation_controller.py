@@ -200,7 +200,7 @@ class FormulationController:
         row corresponds to a single formulation.
 
         Expected columns:
-            - Protein_type, Protein_class, MW, PI_mean, PI_range, Protein_conc
+            - Protein_type, Protein_class_type, MW, PI_mean, PI_range, Protein_conc
             - Temperature
             - Buffer_type, Buffer_pH, Buffer_conc
             - Salt_type, Salt_conc
@@ -221,7 +221,7 @@ class FormulationController:
         added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
         expected = {
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
@@ -251,7 +251,7 @@ class FormulationController:
                     molecular_weight=float(row["MW"]),
                     pI_mean=float(row["PI_mean"]),
                     pI_range=float(row["PI_range"]),
-                    class_type=ProteinClass.from_value(row["Protein_class"]))
+                    class_type=ProteinClass.from_value(row["Protein_class_type"]))
             )
             buffer = self.ingredient_controller.add_buffer(
                 Buffer(
@@ -346,7 +346,7 @@ class FormulationController:
         """
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
