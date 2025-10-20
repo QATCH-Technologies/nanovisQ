@@ -171,7 +171,7 @@ class Predictor:
         # Import the Predictor class and visq3xConfig
         try:
             from inference import Predictor
-            from config import visq3xConfig
+            from config import Visq2xConfig
         except ImportError as e:
             Log.e(f"Failed to import required classes: {e}")
             raise RuntimeError(f"Could not import Predictor or visq3xConfig. "
