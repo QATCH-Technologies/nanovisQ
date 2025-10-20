@@ -163,8 +163,14 @@ class AVN_Database:
 
     def log_mysqlerror(self, e: pymysql.err.MySQLError):
         from pymysql.constants import CR, ER
-        errno = e.args[0]
-        errmsg = e.args[1]
+        # Defensive extraction of errno/message
+        errno = -1
+        errmsg = str(e)
+        if getattr(e, "args", None):
+            if len(e.args) > 0:
+                errno = e.args[0]
+            if len(e.args) > 1 and isinstance(e.args[1], str):
+                errmsg = e.args[1]
         error_map = {}
         all_errors = []
         all_errors.extend(dir(CR))
@@ -177,16 +183,17 @@ class AVN_Database:
                 not isinstance(_errno, int):
                 # internal object or variable value is not an integer
                 continue  # skip it
-            error_map[_errno] = _err
+            error_map[_errno] = _errname
             # print(f"{_err} = {_errno}")
-        errname = error_map[errno] if errno in error_map else type(e).__name__
-        sqlhost = str(self.conn.host)
-        if sqlhost in errmsg:  # supress full URL of AVN database host
+        errname = error_map.get(errno, type(e).__name__)
+        sqlhost = str(getattr(self.conn, "host", None))
+        if sqlhost and sqlhost in errmsg:  # supress full URL of AVN database host
             errmsg = str(errmsg).replace(sqlhost,sqlhost[:sqlhost.find('.')])
         Log.e(f"AVN ERROR: [{errno}] {errname} - {errmsg}")
-        for tb_line in str(e.traceback).splitlines():
-            if len(tb_line.replace("^", "").strip()):
-                Log.d(tb_line)
+        if getattr(e, "traceback", None) and isinstance(e.traceback, str):
+            for tb_line in str(e.traceback).splitlines():
+                if len(tb_line.replace("^", "").strip()):
+                    Log.d(tb_line)
 
     def close(self):
         try:
@@ -472,7 +479,7 @@ class LicenseManager:
                 self.avn.close()
                 return True
             except Exception as e:
-                Log.e(TAG, f"Failed to connect to AVN database for license checking")
+                Log.e(TAG, "Failed to connect to AVN database for license checking.")
                 if isinstance(e, pymysql.err.MySQLError):
                     self.avn.log_mysqlerror(e)
                 else:
@@ -536,8 +543,9 @@ class LicenseManager:
 
             return license_data
 
-        except pymysql.err.Error:
+        except pymysql.err.Error as e:
             Log.e("Failed to download license from remote DB.")
+            self.avn.log_mysqlerror(e)
             return None
 
         except ApiError as e:
@@ -659,8 +667,9 @@ class LicenseManager:
 
             return True
 
-        except pymysql.err.Error:
+        except pymysql.err.Error as e:
             Log.e("Failed to upload license to remote DB.")
+            self.avn.log_mysqlerror(e)
             return False
 
         except ApiError as e:
