@@ -289,8 +289,34 @@ class FrameStep1(QtWidgets.QDialog):
             step_verb = "Predicted"
         right_header = QtWidgets.QGroupBox(f"{step_verb} Features")
         right_group = QtWidgets.QVBoxLayout(right_header)
+        if step == 5:
+            ci_widget = QtWidgets.QWidget()
+            ci_layout = QtWidgets.QVBoxLayout(ci_widget)
+            ci_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Features table
+            # Label and value display
+            ci_header_layout = QtWidgets.QHBoxLayout()
+            ci_label = QtWidgets.QLabel("Confidence Interval:")
+            ci_header_layout.addWidget(ci_label)
+
+            self.ci_value_label = QtWidgets.QLabel("95%")
+            self.ci_value_label.setStyleSheet("font-weight: bold;")
+            ci_header_layout.addWidget(self.ci_value_label)
+            ci_header_layout.addStretch()
+            ci_layout.addLayout(ci_header_layout)
+
+            # Slider
+            self.ci_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            self.ci_slider.setMinimum(50)  # 50%
+            self.ci_slider.setMaximum(99)  # 99%
+            self.ci_slider.setValue(95)     # Default 95%
+            self.ci_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+            self.ci_slider.setTickInterval(10)
+            self.ci_slider.valueChanged.connect(self.update_ci_label)
+            ci_layout.addWidget(self.ci_slider)
+
+            right_group.addWidget(ci_widget)
+            # Features table
         self.load_all_excipient_types()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
                                              "Protein Class", "Protein Molecular Weight",  # not in Run Info
@@ -547,6 +573,22 @@ class FrameStep1(QtWidgets.QDialog):
             hide_rows.append(15)
         for row in hide_rows:
             self.feature_table.hideRow(row)
+
+    def update_ci_label(self, value):
+        """Update the confidence interval label when slider changes."""
+        self.ci_value_label.setText(f"{value}%")
+
+    def get_ci_range(self):
+        """Convert CI percentage to (lower, upper) threshold tuple.
+
+        For example, 95% confidence means:
+        - Lower threshold = (100% - 95%) / 2 = 2.5% = 0.025
+        - Upper threshold = 100% - 2.5% = 97.5% = 0.975
+        """
+        ci_percent = self.ci_slider.value()
+        lower = (100.0 - ci_percent) / 2
+        upper = 100.0 - lower
+        return (lower, upper)
 
     def save_formulation(self, cancel: bool = False) -> bool:
         if not self.feature_table.allSet():
@@ -935,6 +977,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.predictor,
                 method_name="predict_uncertainty",
                 df=predict_df,
+                ci_range=self.get_ci_range(),
                 callback=get_prediction_result)
 
         def get_prediction_result(record: Optional[ExecutionRecord] = None):
@@ -1121,7 +1164,7 @@ class FrameStep1(QtWidgets.QDialog):
             # Updated function call
             make_plot("Viscosity Profile", self.profile_shears,
                       predicted_mean_vp[0], uncertainty_dict,
-                      "Viscosity Profile Prediction", "blue")
+                      "Estimated Viscosity Profile", "blue")
             # Cleanup temp files
             self.predictor.cleanup()
 

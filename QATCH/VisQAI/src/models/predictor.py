@@ -286,6 +286,7 @@ class Predictor:
     def predict_uncertainty(
         self,
         df: pd.DataFrame,
+        ci_range: tuple = (0.05, 0.95),
         n_samples: int = None,
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """
@@ -294,6 +295,7 @@ class Predictor:
         Args:
             df: Input DataFrame with feature columns.
             n_samples: Number of Monte Carlo samples (default: self.mc_samples).
+            ci_range: the confidence interval to report (default: tuple(0.05, 0.95))
 
         Returns:
             Tuple of (mean predictions, uncertainty dict with std/lower_95/upper_95/cv).
@@ -311,7 +313,7 @@ class Predictor:
         try:
             Log.d(f"Predictor.predict_uncertainty() with {len(df)} samples, "
                   f"n_samples={n_samples}")
-            return self.predictor.predict(df, return_uncertainty=True, n_samples=n_samples)
+            return self.predictor.predict(df, return_uncertainty=True, ci_range=ci_range, n_samples=n_samples)
         except Exception as ex:
             Log.e(f"Error in predict_uncertainty(): {ex}")
             raise
