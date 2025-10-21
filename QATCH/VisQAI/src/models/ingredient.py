@@ -478,6 +478,7 @@ class Protein(Ingredient):
             return NotImplemented
         return (
             type(self) is type(other)
+            and self.name == other.name
             and self.molecular_weight == other.molecular_weight
             and self.pI_mean == other.pI_mean
             and self.pI_range == other.pI_range

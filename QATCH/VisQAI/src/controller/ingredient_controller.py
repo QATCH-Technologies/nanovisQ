@@ -881,7 +881,7 @@ class IngredientController:
         if p_fetch is None:
             raise ValueError(f"Protein with id '{id}' does not exist.")
         if p_fetch == p_new:
-            return p_new
+            return p_fetch
 
         # Preserve enc_id and is_user
         p_new.enc_id = p_fetch.enc_id
@@ -1028,7 +1028,7 @@ class IngredientController:
     def fuzzy_fetch(self,
                     name: str,
                     max_results: int = 5,
-                    score_cutoff: int = 75) -> list[str]:
+                    score_cutoff: int = 90) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names

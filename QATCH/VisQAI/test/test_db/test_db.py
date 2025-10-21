@@ -195,7 +195,7 @@ class BaseTestDatabase(unittest.TestCase):
         b = Buffer(enc_id=2, name="BuffB", pH=7.0)
         f.set_buffer(b, concentration=2.0, units="mM")
         ex = Excipient(enc_id=3, name="ExcipC")
-        f.set_excipient(ex, concentration=5.0, units="mg/mL")
+        f.set_excipient(ex, concentration=5.0, units="mM")
         vp = ViscosityProfile([1, 10], [0.1, 0.05], units="Pa·s")
         vp.is_measured = True
         f.set_viscosity_profile(vp)
