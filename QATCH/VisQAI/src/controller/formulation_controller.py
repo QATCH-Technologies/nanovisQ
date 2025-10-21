@@ -322,7 +322,7 @@ class FormulationController:
             form.set_excipient(
                 excipient=excipient,
                 concentration=row["Excipient_conc"],
-                units="<UNK>"
+                units="mM"
             )
             form.set_temperature(temp=row["Temperature"])
             form.set_viscosity_profile(profile=vp)

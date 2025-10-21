@@ -79,7 +79,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         formulation.set_salt(s, concentration=0.5, units="mM")
         formulation.set_surfactant(sf, concentration=0.05, units="%w")
         formulation.set_stabilizer(st, concentration=0.1, units="M")
-        formulation.set_excipient(ex, concentration=5.0, units="mg/mL")
+        formulation.set_excipient(ex, concentration=5.0, units="mM")
         formulation.set_temperature(25.0)
         formulation.set_viscosity_profile(vp)
         return formulation

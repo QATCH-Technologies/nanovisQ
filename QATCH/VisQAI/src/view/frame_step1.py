@@ -732,7 +732,7 @@ class FrameStep1(QtWidgets.QDialog):
                             concentration=float(stabilizer_conc), units='M')
         form.set_salt(salt, concentration=float(salt_conc), units='mM')
         form.set_excipient(excipient=excipient, concentration=float(
-            excipient_conc), units="<UNK>")
+            excipient_conc), units="mM")
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
