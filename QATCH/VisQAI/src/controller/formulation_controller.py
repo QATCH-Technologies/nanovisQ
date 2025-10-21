@@ -134,9 +134,9 @@ class FormulationController:
         formulation.stabilizer.ingredient = self.ingredient_controller.add(
             stabilizer_ing)
 
-        excpient_ing = formulation.excipient.ingredient
+        excipient_ing = formulation.excipient.ingredient
         formulation.excipient.ingredient = self.ingredient_controller.add(
-            excpient_ing)
+            excipient_ing)
 
         # If an identical formulation already exists, return it
         existing = self.get_all_formulations()

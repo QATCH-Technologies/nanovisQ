@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING
 try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass
+    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
     from src.models.predictor import Predictor
     from src.db.db import Database
     from src.processors.sampler import Sampler
@@ -48,7 +48,7 @@ try:
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
@@ -138,7 +138,7 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label.setReadOnly(True)
             if step == 1:
                 predictor_path = os.path.join(model_path,
-                                              "visq3x.zip")
+                                              "VisQAI-base.zip")
                 if os.path.exists(predictor_path):
                     # working or bundled predictor, if exists
                     self.model_selected(path=predictor_path)
@@ -573,6 +573,10 @@ class FrameStep1(QtWidgets.QDialog):
         salt_conc = self.feature_table.item(14, 1).text()
         temp = self.feature_table.item(15, 1).text()
 
+        # TODO: Once table is expanded for these params, add these as well
+        excipient_type = "none"
+        excipient_conc = 0.0
+
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
             self.parent.save_run_info(self.run_file_xml, [
@@ -617,35 +621,44 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][13]["selected"] = salt_type
             feature["Value"][14] = salt_conc
             feature["Value"][15] = temp
+            # TODO: Expand combo boxes to support an excipient
+            # feature["Value"][16]["selected"] = excipient_type
+            # feature["Value"][17] = excipient_conc
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
         protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
-        if protein == None:
+        if protein is None:
             protein = self.parent.ing_ctrl.add_protein(
                 Protein(enc_id=-1, name=protein_type))
 
         buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
-        if buffer == None:
+        if buffer is None:
             buffer = self.parent.ing_ctrl.add_buffer(
                 Buffer(enc_id=-1, name=buffer_type))
 
         surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
             name=surfactant_type)
-        if surfactant == None:
+        if surfactant is None:
             surfactant = self.parent.ing_ctrl.add_surfactant(
                 Surfactant(enc_id=-1, name=surfactant_type))
 
         stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
             name=stabilizer_type)
-        if stabilizer == None:
+        if stabilizer is None:
             stabilizer = self.parent.ing_ctrl.add_stabilizer(
                 Stabilizer(enc_id=-1, name=stabilizer_type))
 
         salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
-        if salt == None:
+        if salt is None:
             salt = self.parent.ing_ctrl.add_salt(
                 Salt(enc_id=-1, name=salt_type))
+
+        excipient = self.parent.ing_ctrl.get_excipient_by_name(
+            name=excipient_type)
+        if excipient is None:
+            excipient = self.parent.ing_ctrl.add_excipient(
+                excipient=Excipient(enc_id=-1, name=excipient_type))
 
         def is_number(s: str):
             try:
@@ -718,6 +731,8 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_stabilizer(stabilizer=stabilizer,
                             concentration=float(stabilizer_conc), units='M')
         form.set_salt(salt, concentration=float(salt_conc), units='mM')
+        form.set_excipient(excipient=excipient, concentration=float(
+            excipient_conc), units="<UNK>")
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
@@ -750,7 +765,7 @@ class FrameStep1(QtWidgets.QDialog):
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
             return
-        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+        if len(self.select_model_label.text()) == 0 or self.model_path is None:
             Log.e("No model selected. Cannot load suggestions.")
             return
         if not self.parent.database.is_open:
@@ -860,7 +875,7 @@ class FrameStep1(QtWidgets.QDialog):
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
             return
-        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+        if len(self.select_model_label.text()) == 0 or self.model_path is None:
             Log.e("No model selected. Cannot make predictions.")
             return
         if not self.parent.database.is_open:
@@ -1588,11 +1603,11 @@ class FrameStep1(QtWidgets.QDialog):
                     max_index = this_index
                 self.run_file_analyze = os.path.join(folder,
                                                      f.replace(str(this_index), str(max_index)))
-        if self.run_file_xml == None:
+        if self.run_file_xml is None:
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText("ERROR: Cannot find XML file for this run!")
             return
-        if self.run_file_analyze == None:
+        if self.run_file_analyze is None:
             self.run_notes.setTextBackgroundColor(Color.light_yellow)
             self.run_notes.setText("This run has not been analyzed yet.\n" +
                                    "Please Analyze and try again!")

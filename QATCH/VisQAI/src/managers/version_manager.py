@@ -22,7 +22,7 @@ _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
 class VersionManager:
     """ Protected file names to prevent pruning seed model. """
-    _PROTECTED_FILENAMES = {"visq3x.zip"}
+    _PROTECTED_FILENAMES = {"VisQAI-base.zip"}
 
     def __init__(self, repo_dir: str, retention: int = _DEFAULT_RETENTION) -> None:
         """Initializes a content-addressed snapshot repository.

@@ -171,10 +171,10 @@ class Predictor:
         # Import the Predictor class and visq3xConfig
         try:
             from inference import Predictor
-            from config import Visq3xConfig
+            from config import VisQ2xConfig
         except ImportError as e:
             Log.e(f"Failed to import required classes: {e}")
-            raise RuntimeError(f"Could not import Predictor or visq3xConfig. "
+            raise RuntimeError(f"Could not import Predictor or visq2xConfig. "
                                f"Ensure inference.py and config.py are in the src/ directory. Error: {e}")
 
         # Find the checkpoint file
@@ -184,7 +184,7 @@ class Predictor:
 
         # Instantiate the predictor and load the model
         Log.i("Instantiating Predictor...")
-        config = Visq3xConfig()
+        config = VisQ2xConfig()
         self.predictor = Predictor(config)
 
         Log.i(f"Loading model from {checkpoint_path}...")
