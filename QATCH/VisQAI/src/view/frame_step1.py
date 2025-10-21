@@ -307,9 +307,9 @@ class FrameStep1(QtWidgets.QDialog):
 
             # Slider
             self.ci_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-            self.ci_slider.setMinimum(50)  # 50%
-            self.ci_slider.setMaximum(99)  # 99%
-            self.ci_slider.setValue(95)     # Default 95%
+            self.ci_slider.setMinimum(50)
+            self.ci_slider.setMaximum(99)
+            self.ci_slider.setValue(95)
             self.ci_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
             self.ci_slider.setTickInterval(10)
             self.ci_slider.valueChanged.connect(self.update_ci_label)
@@ -575,16 +575,9 @@ class FrameStep1(QtWidgets.QDialog):
             self.feature_table.hideRow(row)
 
     def update_ci_label(self, value):
-        """Update the confidence interval label when slider changes."""
         self.ci_value_label.setText(f"{value}%")
 
     def get_ci_range(self):
-        """Convert CI percentage to (lower, upper) threshold tuple.
-
-        For example, 95% confidence means:
-        - Lower threshold = (100% - 95%) / 2 = 2.5% = 0.025
-        - Upper threshold = 100% - 2.5% = 97.5% = 0.975
-        """
         ci_percent = self.ci_slider.value()
         lower = (100.0 - ci_percent) / 2
         upper = 100.0 - lower
@@ -1019,114 +1012,72 @@ class FrameStep1(QtWidgets.QDialog):
                 return xs, ys
 
             def make_plot(name, shear, mean_arr, uncertainty_dict, title, color):
-                """Create a sleek, modern viscosity vs shear rate plot with 95% CI."""
-                # Clear existing plot before making a new one
                 self.run_figure_valid = False
                 self.run_figure.clear()
                 self.run_canvas.draw()
-
-                # Convert inputs to numpy arrays if needed
                 shear = np.asarray(shear)
                 mean_arr = np.asarray(mean_arr)
-
-                # Extract 95% confidence bounds from uncertainty dict
                 lower_95 = uncertainty_dict['lower_95']
                 upper_95 = uncertainty_dict['upper_95']
-
-                # Flatten if needed (in case they're 2D arrays like [[values]])
                 if lower_95.ndim > 1:
                     lower_95 = lower_95.flatten()
                 if upper_95.ndim > 1:
                     upper_95 = upper_95.flatten()
-
-                # Create main plot with modern styling
                 ax = self.run_figure.add_subplot(111)
                 ax.set_facecolor('#ffffff')
                 self.run_figure.patch.set_facecolor('#ffffff')
-
-                # Smooth interpolation for mean and bounds
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
                 xs_up, ys_up = smooth_log_interpolate(shear, upper_95)
                 xs_dn, ys_dn = smooth_log_interpolate(shear, lower_95)
 
-                # Modern color palette - using deeper, more sophisticated colors
-                main_color = '#2C5F8D'  # Deep blue
-                ci_color = '#7EB6D9'     # Light blue for CI
-
-                # Plot confidence interval with subtle gradient
+                main_color = '#2C5F8D'
+                ci_color = '#7EB6D9'
                 ax.fill_between(xs_up, ys_dn, ys_up, alpha=0.15, color=ci_color,
-                                linewidth=0, label='95% CI')
-
-                # Plot mean line - sleek and bold
+                                linewidth=0, label=f'{self.ci_value_label.text()} CI')
                 ax.plot(xs, ys, '-', lw=2.5, color=main_color,
-                        label='Predicted Viscosity', zorder=3, alpha=0.95)
-
-                # Plot upper and lower bounds as thin subtle lines
+                        label='Estimated Viscosity', zorder=3, alpha=0.95)
                 ax.plot(xs_up, ys_up, '-', lw=1,
                         color=ci_color, alpha=0.7, zorder=2)
                 ax.plot(xs_dn, ys_dn, '-', lw=1,
                         color=ci_color, alpha=0.7, zorder=2)
-
-                # Scatter plot with modern styling
                 ax.scatter(shear, mean_arr, s=80, color=main_color, zorder=5,
                            edgecolors='white', linewidths=2.5, alpha=1)
-
-                # Set scales and limits
                 ax.set_xscale("log")
                 ax.set_yscale("log")
                 ax.set_xlim(xs.min() * 0.8, xs.max() * 1.2)
                 ax.set_ylim(self.calc_limits(
                     yall=np.concatenate((ys_dn, ys_up))))
-
-                # Modern, clean labels
                 ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
                               color='#2d3436')
                 ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
                               color='#2d3436')
                 ax.set_title(title, fontsize=13, fontweight='600', pad=15,
                              color='#2d3436')
-
-                # Minimal, elegant grid
                 ax.grid(True, which="major", ls='-',
                         alpha=0.15, color='#636e72', lw=0.8)
                 ax.grid(True, which="minor", ls='-',
                         alpha=0.07, color='#b2bec3', lw=0.5)
-
-                # Clean axis formatting
                 ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
                 ax.tick_params(axis='both', which='major', labelsize=9,
                                colors='#2d3436', width=1)
                 ax.tick_params(axis='both', which='minor', labelsize=8,
                                colors='#636e72', width=0.5)
-
-                # Remove top and right spines for cleaner look
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
                 ax.spines['left'].set_color('#dfe6e9')
                 ax.spines['bottom'].set_color('#dfe6e9')
                 ax.spines['left'].set_linewidth(1.5)
                 ax.spines['bottom'].set_linewidth(1.5)
-
-                # Modern legend - minimal and clean
                 legend = ax.legend(loc='best', frameon=True, fancybox=False,
                                    shadow=False, fontsize=9, framealpha=1,
                                    edgecolor='#dfe6e9', borderpad=1)
                 legend.get_frame().set_facecolor('#ffffff')
                 legend.get_frame().set_linewidth(1)
-
-                # Calculate offset for annotations
                 ylim = ax.get_ylim()
                 y_range = np.log10(ylim[1]) - np.log10(ylim[0])
-
-                # Simplified, sleek annotations
                 for i in range(len(mean_arr)):
-                    # Simple annotation with just the essential info
                     annotation = f'{mean_arr[i]:.1f}\n[{lower_95[i]:.1f}–{upper_95[i]:.1f}]'
-
-                    # Position annotation above point (in log space)
                     y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
-
-                    # Sleek, minimal annotation box
                     ax.annotate(annotation,
                                 xy=(shear[i], mean_arr[i]),
                                 xytext=(shear[i], y_offset),
@@ -1144,28 +1095,21 @@ class FrameStep1(QtWidgets.QDialog):
                                                 color=main_color,
                                                 alpha=0.4,
                                                 lw=1.2))
-
-                # Subtle timestamp in corner
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                 ax.text(0.98, 0.02, timestamp,
                         transform=ax.transAxes, fontsize=7,
                         verticalalignment='bottom', horizontalalignment='right',
                         alpha=0.4, style='italic', color='#636e72')
-
-                # Adjust layout to prevent label cutoff
                 self.run_figure.tight_layout()
 
                 self.run_figure_valid = True
                 self.run_canvas.draw()
 
             Log.d(f"VP={predicted_mean_vp}, {uncertainty_dict}")
-
-            # Updated function call
             make_plot("Viscosity Profile", self.profile_shears,
                       predicted_mean_vp[0], uncertainty_dict,
                       "Estimated Viscosity Profile", "blue")
-            # Cleanup temp files
             self.predictor.cleanup()
 
         self.executor = Executor()
