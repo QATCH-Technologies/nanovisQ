@@ -72,6 +72,12 @@ class Predictor:
     loads required modules dynamically, and instantiates a Predictor for inference
     and incremental updates.
     """
+    VISC_100 = "Viscosity_100"
+    VISC_1000 = "Viscosity_1000"
+    VISC_10000 = "Viscosity_10000"
+    VISC_100000 = "Viscosity_100000"
+    VISC_15000000 = "Viscosity_15000000"
+    ALL_SHEARS = [VISC_100, VISC_1000, VISC_10000, VISC_100000, VISC_15000000]
 
     def __init__(
         self,
@@ -309,6 +315,107 @@ class Predictor:
         except Exception as ex:
             Log.e(f"Error in predict_uncertainty(): {ex}")
             raise
+
+    def evaluate(
+        self,
+        eval_data: pd.DataFrame,
+        targets: list = ALL_SHEARS,
+        n_samples: int = None,
+    ) -> Dict:
+        """Evaluate model predictions against actual values with uncertainty metrics.
+
+        This method generates predictions with uncertainty estimates for the evaluation
+        data and computes detailed error metrics for each sample and shear rate
+        combination. It creates a comprehensive results DataFrame containing actual
+        values, predictions, uncertainty bounds, and various error measures.
+
+        Args:
+            eval_data (pd.DataFrame): DataFrame containing evaluation data with
+                feature columns and target viscosity columns.
+            targets (list, optional): List of target shear rate column names to
+                evaluate. Only columns present in both targets and eval_data will
+                be used. Defaults to ALL_SHEARS.
+            n_samples (int, optional): Number of samples to use for uncertainty
+                estimation in Monte Carlo predictions. If None, uses the default
+                from predict_uncertainty. Defaults to None.
+
+        Returns:
+            pd.DataFrame: DataFrame with one row per (sample, shear_rate) combination,
+                containing the following columns:
+                - sample_idx: Index of the sample in eval_data
+                - shear_rate: Name of the viscosity column (shear rate)
+                - actual: Actual viscosity value
+                - predicted: Predicted mean viscosity value
+                - std: Standard deviation of predictions
+                - lower_95: Lower bound of 95% confidence interval
+                - upper_95: Upper bound of 95% confidence interval
+                - cv: Coefficient of variation
+                - residual: Prediction residual (actual - predicted)
+                - abs_error: Absolute error
+                - pct_error: Percentage error (0 if actual is 0)
+                - within_ci: Boolean indicating if actual falls within 95% CI
+
+        Raises:
+            RuntimeError: If no predictor has been loaded (self.predictor is None).
+            ValueError: If no target columns are found in eval_data.
+            Exception: Re-raises any exceptions that occur during predict_uncertainty.
+
+        Note:
+            If the number of predicted outputs doesn't match the number of target
+            columns, the method adjusts by truncating the viscosity columns to
+            match the prediction output shape and logs a warning.
+        """
+
+        if self.predictor is None:
+            Log.e("evaluate() called but predictor is not loaded")
+            raise RuntimeError("No predictor loaded")
+
+        viscosity_cols = [
+            col for col in eval_data.columns if col in targets]
+
+        if not viscosity_cols:
+            raise ValueError(
+                f"No columns starting with targets found in eval_data.")
+        viscosity_cols = sorted(viscosity_cols)
+        n_outputs = len(viscosity_cols)
+        Log.i(
+            f"Evaluating on {len(eval_data)} samples with {n_outputs} shear rates output.")
+        y_actual = eval_data[viscosity_cols].values
+        try:
+            y_pred_mean, uncertainty = self.predict_uncertainty(
+                eval_data, n_samples=n_samples
+            )
+        except Exception as ex:
+            Log.e(f"Error during evaluation prediction: {ex}")
+            raise
+        if y_pred_mean.shape[1] != n_outputs:
+            Log.w(f"Expected {n_outputs} outputs but got {y_pred_mean.shape[1]}. "
+                  f"Adjusting viscosity columns to match.")
+            viscosity_cols = viscosity_cols[:y_pred_mean.shape[1]]
+            y_actual = y_actual[:, :y_pred_mean.shape[1]]
+            n_outputs = y_pred_mean.shape[1]
+        results_data = []
+
+        for i in range(len(eval_data)):
+            for j, visc_col in enumerate(viscosity_cols):
+                results_data.append({
+                    'sample_idx': i,
+                    'shear_rate': visc_col,
+                    'actual': y_actual[i, j],
+                    'predicted': y_pred_mean[i, j],
+                    'std': uncertainty['std'][i, j],
+                    'lower_95': uncertainty['lower_95'][i, j],
+                    'upper_95': uncertainty['upper_95'][i, j],
+                    'cv': uncertainty['cv'][i, j],
+                    'residual': y_actual[i, j] - y_pred_mean[i, j],
+                    'abs_error': np.abs(y_actual[i, j] - y_pred_mean[i, j]),
+                    'pct_error': np.abs((y_actual[i, j] - y_pred_mean[i, j]) / y_actual[i, j]) * 100 if y_actual[i, j] != 0 else 0,
+                    'within_ci': (y_actual[i, j] >= uncertainty['lower_95'][i, j]) and (y_actual[i, j] <= uncertainty['upper_95'][i, j])
+                })
+
+        results_df = pd.DataFrame(results_data)
+
+        return results_df
 
     def learn(
         self,
