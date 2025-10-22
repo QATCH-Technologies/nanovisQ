@@ -11,10 +11,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-09
+    2025-10-22
 
 Version:
-    1.0
+    1.1
 """
 
 from typing import Dict, Any, List
@@ -153,6 +153,11 @@ class Optimizer:
             concentration=feat_dict["Surfactant_conc"],
             units="%w"
         )
+        form.set_excipient(
+            excipient=feat_dict["Excipient_type"],
+            concentration=feat_dict["Excipient_conc"],
+            units="mM"
+        )
         form.set_temperature(
             temp=feat_dict["Temperature"]
         )
@@ -184,7 +189,8 @@ class Optimizer:
         """
         feat_dict = self._decode(x)
         formulation = self._build_formulation(feat_dict)
-        pred = self.predictor.predict(df=formulation.to_dataframe())
+        pred = self.predictor.predict(
+            df=formulation.to_dataframe(training=False))
         pred_vp = ViscosityProfile(
             shear_rates=[100, 1000, 10000, 100000, 15000000],
             viscosities=pred.flatten().tolist()

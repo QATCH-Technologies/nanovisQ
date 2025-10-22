@@ -843,8 +843,10 @@ class FrameStep1(QtWidgets.QDialog):
                 return
 
             exception = record.exception
+            traceback = record.traceback
             if exception:
-                Log.e(f"ERROR: Failed to suggest: {str(exception)}")
+                Log.e(
+                    f"ERROR: Failed to suggest: {str(exception)}, {str(traceback)}")
                 return
 
             form = record.result

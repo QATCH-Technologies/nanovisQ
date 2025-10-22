@@ -2,9 +2,9 @@ import os
 import pandas as pd
 from db import Database
 try:
-    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
-except (ImportError, ModuleNotFoundError):
     from src.controller.formulation_controller import FormulationController
+except (ImportError, ModuleNotFoundError):
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 
 
 class DBBuilder:
@@ -36,6 +36,6 @@ class DBBuilder:
 
 if __name__ == "__main__":
     csv_path = os.path.join(
-        "VisQAI", "assets", "formulation_data_05302025.csv")
+        "VisQAI", "assets", "formulation_data_10212025.csv")
     builder = DBBuilder()
     builder.init_database(csv_path=csv_path)

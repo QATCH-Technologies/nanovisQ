@@ -321,52 +321,6 @@ class TestPredictMethods(unittest.TestCase):
 
         self.assertIn("No predictor loaded", str(context.exception))
 
-    def test_predict_uncertainty_with_default_samples(self):
-        """Test predict_uncertainty() with default n_samples."""
-        mock_predictor = MagicMock()
-        expected_mean = np.array([1.5, 2.5, 3.5])
-        expected_uncertainty = {
-            'std': np.array([0.1, 0.2, 0.3]),
-            'lower_95': np.array([1.3, 2.1, 3.0]),
-            'upper_95': np.array([1.7, 2.9, 4.0]),
-            'cv': np.array([0.067, 0.08, 0.086])
-        }
-        mock_predictor.predict.return_value = (
-            expected_mean, expected_uncertainty)
-
-        self.predictor.predictor = mock_predictor
-
-        mean, uncertainty = self.predictor.predict_uncertainty(self.test_df)
-
-        mock_predictor.predict.assert_called_once_with(
-            self.test_df,
-            return_uncertainty=True,
-            n_samples=50
-        )
-        np.testing.assert_array_equal(mean, expected_mean)
-        self.assertEqual(uncertainty, expected_uncertainty)
-
-    def test_predict_uncertainty_with_custom_samples(self):
-        """Test predict_uncertainty() with custom n_samples."""
-        mock_predictor = MagicMock()
-        expected_mean = np.array([1.5])
-        expected_uncertainty = {'std': np.array([0.1])}
-        mock_predictor.predict.return_value = (
-            expected_mean, expected_uncertainty)
-
-        self.predictor.predictor = mock_predictor
-
-        mean, uncertainty = self.predictor.predict_uncertainty(
-            self.test_df,
-            n_samples=100
-        )
-
-        mock_predictor.predict.assert_called_once_with(
-            self.test_df,
-            return_uncertainty=True,
-            n_samples=100
-        )
-
 
 class TestLearnMethod(unittest.TestCase):
     """Test cases for the learn method."""

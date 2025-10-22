@@ -31,10 +31,10 @@ import os
 import random
 
 try:
+    from src.models.formulation import Formulation, Component, ViscosityProfile
     from src.models.ingredient import (
         Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
     )
-    from src.models.formulation import Formulation, Component, ViscosityProfile
 
     class Log:
         @staticmethod

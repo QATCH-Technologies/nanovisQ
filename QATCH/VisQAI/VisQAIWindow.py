@@ -1659,7 +1659,7 @@ class FrameStep1(QtWidgets.QDialog):
                 self.predictor,
                 method_name="learn",
                 new_df=select_df,
-                n_epochs=10,
+                n_epochs=20,
                 save=True,
                 callback=run_prediction_result)
 

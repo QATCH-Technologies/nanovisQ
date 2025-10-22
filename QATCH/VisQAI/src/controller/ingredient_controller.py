@@ -10,10 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-10-22
 
 Version:
-    1.6
+    1.7
 """
 
 from typing import List, Optional
@@ -70,8 +70,10 @@ class IngredientController:
             List[str]: A list of all stored ingredient names.
         """
 
-        return [ing.name for ing in self.get_all_ingredients()
-                if self._user_mode and ing.is_user or not self._user_mode]
+        names = [ing.name for ing in self.get_all_ingredients()
+                 if self._user_mode and ing.is_user or not self._user_mode]
+
+        return list(set(names))
 
     def delete_all_ingredients(self) -> None:
         """Delete all ingredients from the database."""
@@ -1046,7 +1048,7 @@ class IngredientController:
         """
         all_names = self.get_all_ingredient_names()
         matches = process.extract(
-            query=name,
+            query=name.lower(),
             choices=all_names,
             scorer=fuzz.WRatio,
             limit=max_results,
@@ -1080,7 +1082,7 @@ class IngredientController:
         """
         ingredients = self.db.get_all_ingredients()
         # Perform a fuzzy matching search on the name.
-        fuzzy_name = self.fuzzy_fetch(name=name, max_results=1)
+        fuzzy_name = self.fuzzy_fetch(name=str(name), max_results=1)
         if fuzzy_name:
             name = fuzzy_name[0]
         for ing in ingredients:

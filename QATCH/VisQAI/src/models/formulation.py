@@ -200,7 +200,8 @@ class Component:
             ValueError: If `concentration` is negative, or if `units` is not a non-empty string.
         """
         if not isinstance(ingredient, Ingredient):
-            raise TypeError("ingredient must be an Ingredient")
+            raise TypeError(
+                f"ingredient must be an Ingredient object found {ingredient}")
         if not isinstance(concentration, (int, float)):
             raise TypeError("concentration must be numeric")
         if concentration < 0:
