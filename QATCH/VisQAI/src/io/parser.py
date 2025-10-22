@@ -39,6 +39,7 @@ try:
     from src.models.formulation import ViscosityProfile, Formulation
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.io.file_storage import SecureOpen
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
@@ -48,7 +49,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-
+    from QATCH.VisQAI.src.io.file_storage import SecureOpen
 TAG = "[Parser]"
 
 
@@ -72,11 +73,11 @@ class Parser:
             ET.ParseError: If the XML is malformed and cannot be parsed.
         """
         xml_path = Path(xml_path)
-        base_path = xml_path.parent
-        capture_path = next(base_path.glob("capture.zip"), None)
-        if not os.path.exists(capture_path):
+        self.base_path = xml_path.parent
+        self.capture_path = next(self.base_path.glob("capture.zip"), None)
+        if not os.path.exists(self.capture_path):
             raise FileNotFoundError(
-                f"capture.zip not found at path `{capture_path}`.")
+                f"capture.zip not found at path `{self.capture_path}`.")
         if not os.path.exists(xml_path):
             raise FileNotFoundError(f"XML not found at path `{xml_path}`.")
 
@@ -329,9 +330,17 @@ class Parser:
     def get_excipient(self) -> Excipient:
         """Construct and return a `Excipient` object with concentration and units from `<params>`.
         """
-        name = self.get_param("excipient_type", str)
-        conc = self.get_param("excipient_concentration", float)
-        units = self.get_param_attr("excipient_concentration", "units")
+        name = self.get_param("excipient_type", str, required=False)
+        conc = self.get_param("excipient_concentration", float, required=False)
+        units = self.get_param_attr(
+            "excipient_concentration", "units", required=False)
+
+        if name is None:
+            name = "None"
+        if conc is None:
+            conc = 0.0
+        if units is None:
+            units = 'mM'
 
         return {
             "excipient": Excipient(enc_id=-1, name=name),
@@ -363,15 +372,13 @@ class Parser:
                 "temperature": np.ndarray
             }
         """
-        base_dir = Path(self.root.base) if hasattr(
-            self.root, 'base') else Path(self.root.tag).parent
-        capture_zip = next(base_dir.glob("capture.zip"), None)
-        if not capture_zip or not capture_zip.exists():
-            raise FileNotFoundError(f"capture.zip not found in {base_dir}")
+        if not self.capture_path or not self.capture_path.exists():
+            raise FileNotFoundError(
+                f"capture.zip not found in {self.capture_path}")
 
         # Unzip capture.zip to inspect analyze zips
-        with zipfile.ZipFile(capture_zip, "r") as capture:
-            analyze_zips = [name for name in capture.namelist()
+        with SecureOpen(self.base_path, "r") as analyze:
+            analyze_zips = [name for name in analyze.namelist()
                             if re.match(r".*analyze-\d+\.zip$", name)]
 
             if not analyze_zips:
@@ -383,10 +390,12 @@ class Parser:
                 analyze_zips, key=lambda n: int(
                     re.search(r"analyze-(\d+)\.zip", n).group(1))
             )
+            Log.i(largest_zip_name)
 
             # Extract the analyze zip in memory
-            with capture.open(largest_zip_name) as inner_zip_file:
-                with zipfile.ZipFile(inner_zip_file) as analyze_zip:
+            with analyze.open(largest_zip_name) as inner_zip_file:
+                Log.i(inner_zip_file)
+                with SecureOpen(inner_zip_file) as analyze_zip:
                     csv_file_name = [n for n in analyze_zip.namelist()
                                      if n.endswith("_analyze_out.csv")]
                     if not csv_file_name:
