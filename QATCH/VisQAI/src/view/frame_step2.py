@@ -220,8 +220,8 @@ class FrameStep2(QtWidgets.QDialog):
             suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
             import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-            predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+            predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
+            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
             all_model_paths = [select_tab.model_path,
                                suggest_tab.model_path,
                                import_tab.model_path,
