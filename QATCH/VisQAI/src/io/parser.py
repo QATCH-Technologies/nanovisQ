@@ -420,7 +420,6 @@ class Parser:
             raise FileNotFoundError(
                 f"Base path not found: {self.base_path}")
 
-        # List all files in base_path and find analyze-*.zip files
         all_files = os.listdir(self.base_path)
         analyze_zips = [f for f in all_files
                         if re.match(r"analyze-\d+\.zip$", f)]
@@ -428,21 +427,16 @@ class Parser:
         if not analyze_zips:
             raise FileNotFoundError(
                 f"No analyze-*.zip files found in {self.base_path}")
-
-        # Select the one with the largest integer
         largest_zip_name = max(
             analyze_zips,
             key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1))
         )
-
-        # Get the base name without extension for zipname parameter
-        zip_base_name = largest_zip_name[:-4]  # Remove .zip extension
+        zip_base_name = largest_zip_name[:-4]
 
         # Get namelist from the analyze zip
         dummy_path = os.path.join(self.base_path, 'dummy')
         namelist = SecureOpen.get_namelist(dummy_path, zip_name=zip_base_name)
 
-        # Find the CSV file
         csv_files = [n for n in namelist
                      if n.endswith("_analyze_out.csv")]
         if not csv_files:
@@ -450,9 +444,6 @@ class Parser:
                 f"No *_analyze_out.csv found inside {largest_zip_name}")
 
         csv_file_name = csv_files[0]
-
-        # Open and read the CSV from within the analyze zip
-        # Use insecure=True to bypass CRC validation
         csv_path = os.path.join(self.base_path, csv_file_name)
         with SecureOpen(csv_path, 'r', zipname=zip_base_name, insecure=True) as csv_f:
             csv_data = np.loadtxt(
@@ -464,24 +455,16 @@ class Parser:
             shear_rate = csv_data[:, 0]
             viscosity = csv_data[:, 1]
             temperature = csv_data[:, 2]
-
-        # Convert numpy arrays to lists for ViscosityProfile
         shear_rates_list = shear_rate.tolist()
         viscosities_list = viscosity.tolist()
-
-        # Create temporary ViscosityProfile with all measured data
         temp_profile = ViscosityProfile(
             shear_rates=shear_rates_list,
             viscosities=viscosities_list,
             units="cP"
         )
-
-        # Interpolate at the desired shear rates
         interpolated_viscosities = [
             temp_profile.get_viscosity(sr) for sr in self.profile_shears
         ]
-
-        # Create final ViscosityProfile with interpolated values
         profile = ViscosityProfile(
             shear_rates=self.profile_shears,
             viscosities=interpolated_viscosities,

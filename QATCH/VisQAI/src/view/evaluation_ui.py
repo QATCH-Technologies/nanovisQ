@@ -234,7 +234,7 @@ class EvaluationUI(QtWidgets.QDialog):
         self.shear_rate_list.setMaximumHeight(120)
 
         for shear_name, shear_value in self.shear_rates.items():
-            item = QtWidgets.QListWidgetItem(f"{shear_value:.0e} s⁻¹")
+            item = QtWidgets.QListWidgetItem(f"{shear_value} s⁻¹")
             item.setData(Qt.UserRole, shear_name)
             self.shear_rate_list.addItem(item)
             item.setSelected(True)  # Select all by default
@@ -693,8 +693,6 @@ class EvaluationUI(QtWidgets.QDialog):
             form_parser = Parser(xml_path=xml_file)
             f = form_parser.get_formulation()
             forms.append(f)
-        for f in forms:
-            Log.i(f.to_dataframe())
         return forms
 
     def run_evaluation(self):
@@ -709,6 +707,7 @@ class EvaluationUI(QtWidgets.QDialog):
             if self.predictor is None:
                 raise ValueError("No model loaded")
             forms = self.make_formulations()
+            self.selected_formulations = forms
             # Get formulations from parent or prepare from runs
             if len(forms) == 0:
                 self.selected_formulations = copy.copy(forms)
@@ -772,25 +771,19 @@ class EvaluationUI(QtWidgets.QDialog):
         Returns:
             DataFrame with formulation data and actual viscosity values.
         """
-        data = []
+        dfs = []
 
         for formulation in self.selected_formulations:
-            row = formulation.to_dataframe(training=True, encoded=False)
+            df = formulation.to_dataframe(training=True, encoded=False)
+            dfs.append(df)
 
-            # Add actual viscosity values for selected shear rates
-            for shear_name in self.selected_shear_rates:
-                if hasattr(formulation, 'viscosity_profile'):
-                    # Get actual viscosity value at this shear rate
-                    shear_value = self.shear_rates[shear_name]
-                    actual_visc = formulation.viscosity_profile.get_viscosity_at_shear(
-                        shear_value)
-                    row[shear_name] = actual_visc if actual_visc else np.nan
-                else:
-                    row[shear_name] = np.nan
+        # Concatenate all formulation DataFrames into one unified DataFrame
+        if dfs:
+            result_df = pd.concat(dfs, ignore_index=True)
+        else:
+            result_df = pd.DataFrame()
 
-            data.append(row)
-
-        return pd.DataFrame(data)
+        return result_df
 
     def display_overall_metrics(self, metrics: Dict[str, float]):
         """Display overall metrics in the table.
@@ -849,7 +842,7 @@ class EvaluationUI(QtWidgets.QDialog):
                 value = metrics_df.iloc[i, j]
 
                 if col == 'shear_rate':
-                    value_str = f"{value:.0e}"
+                    value_str = f"{value}"
                 elif col in ['coverage', 'mape']:
                     value_str = f"{value:.2f}%"
                 elif col == 'count':
@@ -888,7 +881,7 @@ class EvaluationUI(QtWidgets.QDialog):
                     value_str = "Yes" if value else "No"
                 elif isinstance(value, (int, float)):
                     if col in ['shear_rate']:
-                        value_str = f"{value:.0e}"
+                        value_str = f"{value}"
                     elif col in ['pct_error']:
                         value_str = f"{value:.2f}%"
                     else:
@@ -951,7 +944,7 @@ class EvaluationUI(QtWidgets.QDialog):
         for shear, color in zip(shear_rates, colors):
             mask = df['shear_rate'] == shear
             ax.scatter(df[mask]['actual'], df[mask]['predicted'],
-                       alpha=0.6, c=[color], label=f'{shear:.0e} s⁻¹',
+                       alpha=0.6, c=[color], label=f'{shear} s⁻¹',
                        edgecolors='black', linewidth=0.5)
 
         # Add perfect prediction line
@@ -985,7 +978,7 @@ class EvaluationUI(QtWidgets.QDialog):
         for shear, color in zip(shear_rates, colors):
             mask = df['shear_rate'] == shear
             ax.scatter(df[mask]['predicted'], df[mask]['residual'],
-                       alpha=0.6, c=[color], label=f'{shear:.0e} s⁻¹',
+                       alpha=0.6, c=[color], label=f'{shear} s⁻¹',
                        edgecolors='black', linewidth=0.5)
 
         ax.axhline(y=0, color='r', linestyle='--', alpha=0.5)
@@ -1102,7 +1095,7 @@ class EvaluationUI(QtWidgets.QDialog):
         errors_by_shear = [df[df['shear_rate'] == s]
                            ['abs_error'].values for s in shear_rates]
 
-        bp = ax.boxplot(errors_by_shear, labels=[f'{s:.0e}' for s in shear_rates],
+        bp = ax.boxplot(errors_by_shear, labels=[f'{s}' for s in shear_rates],
                         patch_artist=True)
 
         # Color the boxes
