@@ -72,19 +72,17 @@ class Parser:
             FileNotFoundError: If the file does not exist at `xml_path`.
             ET.ParseError: If the XML is malformed and cannot be parsed.
         """
-        self.xml_path = Path(xml_path)
-        self.base_path = xml_path.parent
-        self.capture_path = next(self.base_path.glob("capture.zip"), None)
-        Log.i(f'Base path: {self.base_path}')
-        Log.i(f'XML Path: {self.xml_path}')
-        Log.i(f'Capture path: {self.capture_path}')
+        self.capture_path = Path(xml_path)
+        self.base_path = self.capture_path.parent
+        self.xml_path = next(self.base_path.glob("*.xml"), None)
         if not os.path.exists(self.capture_path):
             raise FileNotFoundError(
                 f"capture.zip not found at path `{self.capture_path}`.")
-        if not os.path.exists(xml_path):
-            raise FileNotFoundError(f"XML not found at path `{xml_path}`.")
+        if not os.path.exists(self.xml_path):
+            raise FileNotFoundError(
+                f"XML not found at path `{self.xml_path}`.")
 
-        tree = ET.parse(xml_path)
+        tree = ET.parse(self.xml_path)
         self.root = tree.getroot()
         self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
         params_list = self.root.findall("params")

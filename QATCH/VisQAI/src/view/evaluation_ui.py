@@ -12,13 +12,17 @@ Date:
     2025-10-22
 
 Version:
-    1.0
+    2.0 - Improved with zip export, per-run investigation, better formulation loading
 """
 
 import os
 import copy
+import zipfile
+import traceback
 from typing import Optional, List, Dict, TYPE_CHECKING
 from pathlib import Path
+import tempfile
+import shutil
 
 try:
     from QATCH.common.logger import Logger as Log
@@ -82,7 +86,20 @@ class EvaluationUI(QtWidgets.QDialog):
     - Configuring evaluation metrics and shear rates
     - Displaying results in tables and plots
     - Comparing predictions vs actual values
+    - Investigating individual run performance
     """
+
+    # Metric descriptions
+    METRIC_DESCRIPTIONS = {
+        'mae': 'Mean Absolute Error - Average absolute difference between predicted and actual values',
+        'rmse': 'Root Mean Square Error - Square root of average squared differences',
+        'mape': 'Mean Absolute Percentage Error - Average percentage error',
+        'r2': 'R² Score - Coefficient of determination (1.0 = perfect fit)',
+        'coverage': 'Prediction Interval Coverage - % of actual values within confidence intervals',
+        'max_error': 'Maximum Error - Largest absolute error in predictions',
+        'median_ae': 'Median Absolute Error - Middle value of absolute errors',
+        'explained_variance': 'Explained Variance - Proportion of variance explained by model'
+    }
 
     def __init__(self, parent=None):
         """Initialize the EvaluationUI.
@@ -101,6 +118,10 @@ class EvaluationUI(QtWidgets.QDialog):
         self.current_results_df: Optional[pd.DataFrame] = None
         self.selected_formulations: List[Formulation] = []
         self.available_metrics = self.metrics_calculator.get_available_metrics()
+
+        # Store formulations by run for per-run investigation
+        self.formulations_by_run: Dict[str, List[Formulation]] = {}
+        self.run_results: Dict[str, pd.DataFrame] = {}
 
         # File tracking for runs (like in frame_step1.py)
         self.all_files = {}
@@ -123,6 +144,9 @@ class EvaluationUI(QtWidgets.QDialog):
         # Selected shear rates for evaluation
         self.selected_shear_rates = list(self.shear_rates.keys())
 
+        # Initialize file dialogs (same pattern as frame_step1.py)
+        self._init_file_dialogs()
+
         self.init_ui()
 
     def init_ui(self):
@@ -130,14 +154,68 @@ class EvaluationUI(QtWidgets.QDialog):
         # Main layout
         main_layout = QtWidgets.QVBoxLayout(self)
 
+        # Create tab widget for main sections
+        self.tab_widget = QtWidgets.QTabWidget()
+        main_layout.addWidget(self.tab_widget)
+
+        # Tab 1: Overall Evaluation
+        overall_widget = self.create_overall_evaluation_tab()
+        self.tab_widget.addTab(overall_widget, "Overall Evaluation")
+
+        # Tab 2: Per-Run Investigation
+        per_run_widget = self.create_per_run_investigation_tab()
+        self.tab_widget.addTab(per_run_widget, "Per-Run Investigation")
+
+        # Status bar at the bottom
+        self.status_label = QtWidgets.QLabel("Ready")
+        self.status_label.setStyleSheet(
+            "QLabel { background-color: #f0f0f0; padding: 5px; }")
+        main_layout.addWidget(self.status_label)
+
+        # Set window properties
+        self.resize(1400, 800)
+
+    def _init_file_dialogs(self):
+        """Initialize file dialogs with settings matching frame_step1.py."""
+        # Model dialog setup (matching frame_step1.py lines 117-130)
+        self.model_dialog = QtWidgets.QFileDialog()
+        self.model_dialog.setOption(
+            QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        model_path = os.path.join(Architecture.get_path(),
+                                  "QATCH/VisQAI/assets")
+        if os.path.exists(model_path):
+            # working or bundled directory, if exists
+            self.model_dialog.setDirectory(model_path)
+        else:
+            # fallback to their local logged data folder
+            self.model_dialog.setDirectory(Constants.log_prefer_path)
+        self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+
+        # Run file dialog setup (matching frame_step1.py lines 154-160)
+        self.file_dialog = QtWidgets.QFileDialog()
+        self.file_dialog.setOption(
+            QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
+        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
+        self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
+
+    def create_overall_evaluation_tab(self):
+        """Create the overall evaluation tab."""
+        widget = QtWidgets.QWidget()
+
         # Create splitter for horizontal layout
         splitter = QtWidgets.QSplitter(Qt.Horizontal)
+        layout = QtWidgets.QVBoxLayout(widget)
+        layout.addWidget(splitter)
 
         # Left panel - Configuration
         left_widget = QtWidgets.QWidget()
         left_layout = QtWidgets.QVBoxLayout(left_widget)
 
-        # Model selection group (similar to frame_step1.py and frame_step2.py)
+        # Model selection group
         self.select_model_group = QtWidgets.QGroupBox("Select Model")
         select_model_layout = QtWidgets.QHBoxLayout(self.select_model_group)
         self.select_model_btn = QtWidgets.QPushButton("Browse...")
@@ -151,11 +229,11 @@ class EvaluationUI(QtWidgets.QDialog):
 
         left_layout.addWidget(self.select_model_group)
 
-        # Data selection group (similar to frame_step1.py step 3)
+        # Data selection group
         data_group = QtWidgets.QGroupBox("Import Experiments")
         data_layout = QtWidgets.QVBoxLayout(data_group)
 
-        # Browse run button and list (same as frame_step1.py)
+        # Browse run button and list
         form_layout = QtWidgets.QFormLayout()
 
         self.select_run = QtWidgets.QPushButton("Add Run...")
@@ -163,7 +241,7 @@ class EvaluationUI(QtWidgets.QDialog):
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
 
-        # List view for runs (same as frame_step1.py)
+        # List view for runs
         self.list_view = QtWidgets.QListView()
         self.list_view.setEditTriggers(
             QtWidgets.QAbstractItemView.NoEditTriggers)
@@ -193,7 +271,9 @@ class EvaluationUI(QtWidgets.QDialog):
         # Formulation info
         self.formulation_info = QtWidgets.QTextEdit()
         self.formulation_info.setReadOnly(True)
-        self.formulation_info.setMaximumHeight(60)
+        self.formulation_info.setMaximumHeight(80)
+        self.formulation_info.setPlaceholderText(
+            "Formulation information will appear here...")
         data_layout.addWidget(self.formulation_info)
 
         left_layout.addWidget(data_group)
@@ -209,19 +289,17 @@ class EvaluationUI(QtWidgets.QDialog):
         self.metrics_list = QtWidgets.QListWidget()
         self.metrics_list.setSelectionMode(
             QtWidgets.QAbstractItemView.MultiSelection)
-        self.metrics_list.setMaximumHeight(150)
 
-        # Add all available metrics
         for metric in self.available_metrics:
             item = QtWidgets.QListWidgetItem(self.format_metric_name(metric))
             item.setData(Qt.UserRole, metric)
             self.metrics_list.addItem(item)
-            # Select default metrics
             if metric in self.selected_metrics:
                 item.setSelected(True)
 
         self.metrics_list.itemSelectionChanged.connect(
-            self.on_metrics_selection_changed)
+            self.on_metric_selection_changed)
+        self.metrics_list.setMaximumHeight(150)
         settings_layout.addWidget(self.metrics_list)
 
         # Shear rate selection
@@ -231,699 +309,633 @@ class EvaluationUI(QtWidgets.QDialog):
         self.shear_rate_list = QtWidgets.QListWidget()
         self.shear_rate_list.setSelectionMode(
             QtWidgets.QAbstractItemView.MultiSelection)
-        self.shear_rate_list.setMaximumHeight(120)
 
         for shear_name, shear_value in self.shear_rates.items():
-            item = QtWidgets.QListWidgetItem(f"{shear_value} s⁻¹")
+            item = QtWidgets.QListWidgetItem(
+                f"{shear_name} ({shear_value} s⁻¹)")
             item.setData(Qt.UserRole, shear_name)
             self.shear_rate_list.addItem(item)
-            item.setSelected(True)  # Select all by default
+            if shear_name in self.selected_shear_rates:
+                item.setSelected(True)
 
         self.shear_rate_list.itemSelectionChanged.connect(
-            self.on_shear_selection_changed)
+            self.on_shear_rate_selection_changed)
+        self.shear_rate_list.setMaximumHeight(120)
         settings_layout.addWidget(self.shear_rate_list)
 
-        # Evaluation mode
-        mode_label = QtWidgets.QLabel("Evaluation Mode:")
-        settings_layout.addWidget(mode_label)
+        # Evaluation type radio buttons
+        eval_type_label = QtWidgets.QLabel("Evaluation Type:")
+        settings_layout.addWidget(eval_type_label)
 
-        mode_layout = QtWidgets.QHBoxLayout()
-        self.overall_radio = QtWidgets.QRadioButton("Overall")
-        self.per_shear_radio = QtWidgets.QRadioButton("Per Shear Rate")
+        self.overall_radio = QtWidgets.QRadioButton("Overall Metrics")
+        self.per_shear_radio = QtWidgets.QRadioButton(
+            "Per-Shear Rate Metrics")
         self.both_radio = QtWidgets.QRadioButton("Both")
         self.both_radio.setChecked(True)
 
-        mode_layout.addWidget(self.overall_radio)
-        mode_layout.addWidget(self.per_shear_radio)
-        mode_layout.addWidget(self.both_radio)
-        settings_layout.addLayout(mode_layout)
+        eval_type_layout = QtWidgets.QHBoxLayout()
+        eval_type_layout.addWidget(self.overall_radio)
+        eval_type_layout.addWidget(self.per_shear_radio)
+        eval_type_layout.addWidget(self.both_radio)
+        settings_layout.addLayout(eval_type_layout)
 
         left_layout.addWidget(settings_group)
 
-        # Control buttons
-        control_layout = QtWidgets.QHBoxLayout()
+        # Action buttons
+        action_layout = QtWidgets.QHBoxLayout()
 
-        self.evaluate_btn = QtWidgets.QPushButton("Evaluate")
-        self.evaluate_btn.clicked.connect(self.run_evaluation)
-        self.evaluate_btn.setEnabled(False)
-        self.evaluate_btn.setStyleSheet("""
-            QPushButton:enabled {
-                background-color: #4CAF50;
-                color: white;
-                font-weight: bold;
-            }
-        """)
+        self.evaluate_btn = QtWidgets.QPushButton("Evaluate Model")
+        self.evaluate_btn.setStyleSheet(
+            "QPushButton { background-color: #4CAF50; color: white; font-weight: bold; padding: 8px; }")
+        self.evaluate_btn.clicked.connect(self.evaluate_model)
 
-        self.export_btn = QtWidgets.QPushButton("Export Results")
-        self.export_btn.clicked.connect(self.export_results)
+        self.export_btn = QtWidgets.QPushButton("Export Results (ZIP)")
         self.export_btn.setEnabled(False)
+        self.export_btn.clicked.connect(self.export_results_as_zip)
 
-        control_layout.addWidget(self.evaluate_btn)
-        control_layout.addWidget(self.export_btn)
+        action_layout.addWidget(self.evaluate_btn)
+        action_layout.addWidget(self.export_btn)
 
-        left_layout.addLayout(control_layout)
+        left_layout.addLayout(action_layout)
         left_layout.addStretch()
 
-        # Right panel - Results
+        # Right panel - Results display
         right_widget = QtWidgets.QWidget()
         right_layout = QtWidgets.QVBoxLayout(right_widget)
 
         # Results tabs
         self.results_tabs = QtWidgets.QTabWidget()
 
-        # Overall metrics tab
-        overall_widget = QtWidgets.QWidget()
-        overall_layout = QtWidgets.QVBoxLayout(overall_widget)
+        # Metrics table tab
+        self.metrics_table = QtWidgets.QTableWidget()
+        self.results_tabs.addTab(self.metrics_table, "Metrics")
 
-        self.overall_table = QtWidgets.QTableWidget()
-        self.overall_table.setSortingEnabled(True)
-        overall_layout.addWidget(self.overall_table)
-
-        self.results_tabs.addTab(overall_widget, "Overall Metrics")
-
-        # Per shear rate metrics tab
-        per_shear_widget = QtWidgets.QWidget()
-        per_shear_layout = QtWidgets.QVBoxLayout(per_shear_widget)
-
-        self.per_shear_table = QtWidgets.QTableWidget()
-        self.per_shear_table.setSortingEnabled(True)
-        per_shear_layout.addWidget(self.per_shear_table)
-
-        self.results_tabs.addTab(per_shear_widget, "Per Shear Rate Metrics")
-
-        # Plots tab
-        plots_widget = QtWidgets.QWidget()
-        plots_layout = QtWidgets.QVBoxLayout(plots_widget)
+        # Plot tab
+        plot_widget = QtWidgets.QWidget()
+        plot_layout = QtWidgets.QVBoxLayout(plot_widget)
 
         # Plot controls
         plot_controls = QtWidgets.QHBoxLayout()
-
         plot_type_label = QtWidgets.QLabel("Plot Type:")
-        plot_controls.addWidget(plot_type_label)
-
         self.plot_type_combo = QtWidgets.QComboBox()
         self.plot_type_combo.addItems([
             "Predicted vs Actual",
-            "Residuals",
             "Residuals Distribution",
             "Q-Q Plot",
-            "Metrics Comparison",
-            "Shear Rate Performance",
+            "Overall Metrics",
+            "Metrics vs Shear Rate",
             "Error vs Shear Rate",
             "Confidence Intervals"
         ])
         self.plot_type_combo.currentTextChanged.connect(self.update_plot)
-        plot_controls.addWidget(self.plot_type_combo)
 
+        plot_controls.addWidget(plot_type_label)
+        plot_controls.addWidget(self.plot_type_combo)
         plot_controls.addStretch()
-        plots_layout.addLayout(plot_controls)
+        plot_layout.addLayout(plot_controls)
 
         # Plot canvas
         self.figure = Figure(figsize=(8, 6))
         self.canvas = FigureCanvas(self.figure)
-        plots_layout.addWidget(self.canvas)
+        plot_layout.addWidget(self.canvas)
 
-        self.results_tabs.addTab(plots_widget, "Plots")
+        self.results_tabs.addTab(plot_widget, "Plots")
 
         # Detailed results tab
-        details_widget = QtWidgets.QWidget()
-        details_layout = QtWidgets.QVBoxLayout(details_widget)
-
         self.details_table = QtWidgets.QTableWidget()
-        self.details_table.setSortingEnabled(True)
-        details_layout.addWidget(self.details_table)
-
-        self.results_tabs.addTab(details_widget, "Detailed Results")
+        self.results_tabs.addTab(self.details_table, "Detailed Results")
 
         right_layout.addWidget(self.results_tabs)
-
-        # Progress bar
-        self.progress_bar = QtWidgets.QProgressBar()
-        self.progress_bar.setVisible(False)
-        right_layout.addWidget(self.progress_bar)
-
-        # Status label
-        self.status_label = QtWidgets.QLabel("Ready")
-        self.status_label.setStyleSheet("color: gray;")
-        right_layout.addWidget(self.status_label)
 
         # Add panels to splitter
         splitter.addWidget(left_widget)
         splitter.addWidget(right_widget)
-        splitter.setSizes([400, 600])
+        splitter.setSizes([500, 900])
 
-        main_layout.addWidget(splitter)
-        # Initialize file dialogs (same as frame_step1.py)
-        self.init_file_dialogs()
         # Connect signals
-        self.select_model_btn.clicked.connect(self.model_dialog.show)
-        global_handler = getattr(self.parent, 'set_global_model_path', None)
-        self.model_dialog.fileSelected.connect(
-            global_handler if callable(global_handler) else self.model_selected)
+        self.select_model_btn.clicked.connect(self.select_model)
+        self.select_run.clicked.connect(self.user_run_browse)
 
-        self.select_run.clicked.connect(self.file_dialog_show)
-        self.file_dialog.fileSelected.connect(self.file_selected)
+        return widget
 
-    def init_file_dialogs(self):
-        """Initialize file dialogs for model and run selection (same as frame_step1.py)."""
-        # Browse model dialog
-        self.model_dialog = QtWidgets.QFileDialog()
-        self.model_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(
-            Architecture.get_path(), "QATCH/VisQAI/assets")
-        if os.path.exists(model_path):
-            self.model_dialog.setDirectory(model_path)
-        else:
-            self.model_dialog.setDirectory(Constants.log_prefer_path)
-        self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
-        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+    def create_per_run_investigation_tab(self):
+        """Create the per-run investigation tab."""
+        widget = QtWidgets.QWidget()
+        layout = QtWidgets.QHBoxLayout(widget)
 
-        # Check for default model
-        predictor_path = os.path.join(model_path, "VisQAI-base.zip")
-        if os.path.exists(predictor_path):
-            self.model_selected(path=predictor_path)
+        # Left panel - Run selection
+        left_panel = QtWidgets.QWidget()
+        left_layout = QtWidgets.QVBoxLayout(left_panel)
 
-        # Browse run dialog
-        self.file_dialog = QtWidgets.QFileDialog()
-        self.file_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
-        self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
+        # Run selection group
+        run_group = QtWidgets.QGroupBox("Select Run to Investigate")
+        run_layout = QtWidgets.QVBoxLayout(run_group)
+
+        self.run_combo = QtWidgets.QComboBox()
+        self.run_combo.currentTextChanged.connect(
+            self.on_run_selected_for_investigation)
+        run_layout.addWidget(self.run_combo)
+
+        # Run info
+        self.run_info_text = QtWidgets.QTextEdit()
+        self.run_info_text.setReadOnly(True)
+        self.run_info_text.setMaximumHeight(150)
+        run_layout.addWidget(QtWidgets.QLabel("Run Information:"))
+        run_layout.addWidget(self.run_info_text)
+
+        # Metrics for selected run
+        self.run_metrics_table = QtWidgets.QTableWidget()
+        run_layout.addWidget(QtWidgets.QLabel("Run Metrics:"))
+        run_layout.addWidget(self.run_metrics_table)
+
+        left_layout.addWidget(run_group)
+        left_layout.addStretch()
+
+        # Right panel - Visualization
+        right_panel = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout(right_panel)
+
+        # Plot controls
+        plot_controls = QtWidgets.QHBoxLayout()
+        plot_controls.addWidget(QtWidgets.QLabel("Visualization:"))
+
+        self.run_plot_type = QtWidgets.QComboBox()
+        self.run_plot_type.addItems([
+            "Viscosity Profile Comparison",
+            "Relative Error by Shear Rate",
+            "Residuals Analysis",
+            "Component Contributions"
+        ])
+        self.run_plot_type.currentTextChanged.connect(self.update_run_plot)
+        plot_controls.addWidget(self.run_plot_type)
+        plot_controls.addStretch()
+
+        right_layout.addLayout(plot_controls)
+
+        # Plot canvas for per-run analysis
+        self.run_figure = Figure(figsize=(10, 7))
+        self.run_canvas = FigureCanvas(self.run_figure)
+        right_layout.addWidget(self.run_canvas)
+
+        # Details table for selected run
+        self.run_details_table = QtWidgets.QTableWidget()
+        self.run_details_table.setMaximumHeight(200)
+        right_layout.addWidget(QtWidgets.QLabel("Detailed Predictions:"))
+        right_layout.addWidget(self.run_details_table)
+
+        layout.addWidget(left_panel, 1)
+        layout.addWidget(right_panel, 2)
+
+        return widget
 
     def list_view_addPlaceholderText(self):
-        """Add placeholder text to list view when empty."""
-        if self.model.rowCount() == 0:
-            no_item = QtGui.QStandardItem("No experiments selected")
-            no_item.setEnabled(False)
-            no_item.setSelectable(False)
-            self.model.appendRow(no_item)
+        """Add placeholder text to the list view."""
+        placeholder_item = QtGui.QStandardItem("No runs imported")
+        placeholder_item.setEnabled(False)
+        placeholder_item.setSelectable(False)
+        font = placeholder_item.font()
+        font.setItalic(True)
+        placeholder_item.setFont(font)
+        placeholder_item.setForeground(QtGui.QBrush(Qt.gray))
+        self.model.appendRow(placeholder_item)
 
-    def file_dialog_show(self):
-        """Show file dialog for run selection (same logic as frame_step1.py)."""
-        selected_files = self.file_dialog.selectedFiles()
-        inside = True
-        if selected_files:
-            prefer_abs = os.path.abspath(Constants.log_prefer_path)
-            path_abs = os.path.abspath(selected_files[0])
-            try:
-                inside = os.path.commonpath(
-                    [prefer_abs, path_abs]) == prefer_abs
-            except ValueError:
-                inside = False
+    def select_model(self):
+        """Handle model selection using persistent dialog (matching frame_step1.py pattern)."""
+        if self.model_dialog.exec_():
+            selected_files = self.model_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+                try:
+                    self.model_path = file_path
+                    self.predictor = Predictor(file_path)
+                    # Extract filename without path and extension (matching frame_step1.py line 2018-2019)
+                    display_name = file_path.split(
+                        '\\')[-1].split('/')[-1].split('.')[0]
+                    self.select_model_label.setText(display_name)
+                    self.status_label.setText(
+                        f"Model loaded: {display_name}")
+                    Log.i("EvaluationUI", f"Model loaded: {file_path}")
+                    self.check_ready_to_evaluate()
+                except Exception as e:
+                    Log.e("EvaluationUI", f"Failed to load model: {e}")
+                    QtWidgets.QMessageBox.critical(
+                        self,
+                        "Model Loading Error",
+                        f"Failed to load model: {str(e)}"
+                    )
+                    self.model_path = None
+                    self.predictor = None
+                    self.select_model_label.setText("Failed to load model")
 
-        if not selected_files or not inside:
-            self.file_dialog.setDirectory(Constants.log_prefer_path)
-        else:
-            set_directory, select_file = os.path.split(
-                os.path.dirname(path_abs))
-            self.file_dialog.setDirectory(set_directory)
-            self.file_dialog.selectFile(select_file)
+    def user_run_browse(self):
+        """Handle run file selection using persistent dialog (matching frame_step1.py pattern)."""
+        if self.file_dialog.exec_():
+            selected_files = self.file_dialog.selectedFiles()
+            if selected_files:
+                file_path = selected_files[0]
+                self.add_run_file(file_path)
 
-        self.file_dialog.show()
-
-    def file_selected(self, path: str | None):
-        """Handle file selection (similar to frame_step1.py)."""
-        if path is None:
-            self.select_label.clear()
-            self.list_view.clearSelection()
-            return
-
-        # Check if file is in working directory
-        prefer_abs = os.path.abspath(Constants.log_prefer_path)
-        path_abs = os.path.abspath(path)
+    def add_run_file(self, file_path: str):
+        """Add a run file and load its formulation."""
         try:
-            inside = os.path.commonpath([prefer_abs, path_abs]) == prefer_abs
-        except ValueError:
-            inside = False
+            # Parse the run file - create Parser with file_path and get single formulation
+            parser = Parser(file_path)
+            formulation = parser.get_formulation()
 
-        if not inside:
-            Log.e("EvaluationUI", "Selected run is not in working directory")
-            QtWidgets.QMessageBox.warning(
-                self,
-                Constants.app_title,
-                "The selected run is not in your working directory and cannot be used."
-            )
-            return
+            if not formulation:
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "No Formulation",
+                    "No valid formulation found in the selected file."
+                )
+                return
 
-        # Get CSV file from zip if needed
-        self.run_file_run = path
-        namelist = SecureOpen.get_namelist(self.run_file_run)
-        for file in namelist:
-            if file.endswith(".csv"):
-                self.run_file_run = os.path.join(
-                    os.path.dirname(self.run_file_run), file)
-                break
+            # Get run name
+            run_name = os.path.basename(file_path)
 
-        self.select_label.setText(os.path.basename(
-            os.path.dirname(self.run_file_run)))
+            # Store formulation by run (as a list with single item for consistency)
+            self.formulations_by_run[run_name] = [formulation]
 
-        # Add to list view
-        item = QtGui.QStandardItem(self.select_label.text())
-        found = self.model.findItems(item.text())
+            # Add formulation to the selected list
+            self.selected_formulations.append(formulation)
 
-        if len(found) == 0:
-            if len(self.all_files) == 0:
-                self.model.removeRow(0)  # Remove placeholder
-            self.model.appendRow(item)
-            new_index = self.model.indexFromItem(item)
-            self.list_view.setCurrentIndex(new_index)
-            self.all_files[item.text()] = path
+            # Update the list view
+            if self.model.rowCount() == 1 and not self.model.item(0).isEnabled():
+                self.model.clear()
+
+            run_item = QtGui.QStandardItem(run_name)
+            run_item.setData(file_path, Qt.UserRole)
+            self.model.appendRow(run_item)
+
+            # Update run combo for per-run investigation
+            self.run_combo.addItem(run_name)
 
             # Update formulation info
             self.update_formulation_info()
 
-    def user_run_clicked(self):
-        """Handle click on run in list view."""
-        try:
-            selected = self.list_view.selectedIndexes()
-            if selected:
-                run_name = self.model.itemFromIndex(selected[0]).text()
-                if run_name in self.all_files:
-                    # Could load run details here if needed
-                    pass
-        except IndexError:
-            pass
-
-    def user_run_removed(self):
-        """Remove selected run from list."""
-        try:
-            selected = self.list_view.selectedIndexes()
-            if len(selected) == 0:
-                return
-            file_name = self.model.itemFromIndex(selected[0]).text()
-            self.all_files.pop(file_name, None)
-            self.model.removeRow(selected[0].row())
-            self.list_view_addPlaceholderText()
-            self.select_label.clear()
-            self.update_formulation_info()
-        except IndexError:
-            pass
-
-    def user_all_runs_removed(self):
-        """Remove all runs from list."""
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "Confirm Remove All",
-            "Are you sure you want to remove all runs?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No
-        )
-
-        if reply == QtWidgets.QMessageBox.Yes:
-            try:
-                self.all_files.clear()
-                self.model.clear()
-                self.list_view_addPlaceholderText()
-                self.select_label.clear()
-                self.update_formulation_info()
-            except Exception as e:
-                Log.e("EvaluationUI", f"Failed to remove all runs: {e}")
-
-    def update_formulation_info(self):
-        """Update formulation info display."""
-        num_runs = len(self.all_files)
-        if num_runs == 0:
-            self.formulation_info.setText("No runs selected")
-        else:
-            self.formulation_info.setText(f"Runs selected: {num_runs}")
-            # Load formulations from parent if available
-            if hasattr(self.parent, 'import_formulations'):
-                num_forms = len(self.parent.import_formulations)
-                self.formulation_info.append(
-                    f"Formulations available: {num_forms}")
-
-    def model_selected(self, path: Optional[str] = None):
-        """Handle model selection (same as frame_step1.py)."""
-        self.model_path = path
-
-        if path is None:
-            self.select_model_label.clear()
-            self.predictor = None
+            self.status_label.setText(
+                f"Added formulation from {run_name}")
             self.check_ready_to_evaluate()
-            return
 
-        self.select_model_label.setText(
-            path.split('\\')[-1].split('/')[-1].split('.')[0])
-
-        # Load predictor
-        try:
-            self.predictor = Predictor(self.model_path)
-            self.status_label.setText("Model loaded successfully")
-            self.check_ready_to_evaluate()
         except Exception as e:
-            Log.e("EvaluationUI", f"Failed to load model: {e}")
-            self.status_label.setText("Failed to load model")
-            QtWidgets.QMessageBox.warning(
+            Log.e("EvaluationUI", f"Failed to load run: {e}")
+            QtWidgets.QMessageBox.critical(
                 self,
-                Constants.app_title,
-                f"Failed to load model: {str(e)}"
+                "Run Loading Error",
+                f"Failed to load run file: {str(e)}"
             )
 
-    def format_metric_name(self, metric: str) -> str:
-        """Format metric name for display.
+    def update_formulation_info(self):
+        """Update the formulation information display."""
+        if not self.selected_formulations:
+            self.formulation_info.setText("No formulations loaded")
+            return
 
-        Args:
-            metric: Raw metric name.
+        info_text = f"Total Formulations: {len(self.selected_formulations)}\n"
+        info_text += f"Runs Loaded: {len(self.formulations_by_run)}\n"
 
-        Returns:
-            Formatted metric name.
-        """
-        names = {
-            'mae': 'Mean Absolute Error (MAE)',
-            'rmse': 'Root Mean Squared Error (RMSE)',
-            'mse': 'Mean Squared Error (MSE)',
-            'mape': 'Mean Absolute Percentage Error (MAPE)',
-            'median_ae': 'Median Absolute Error',
-            'r2': 'R-squared (R²)',
-            'coverage': 'Confidence Interval Coverage (%)',
-            'mean_cv': 'Mean Coefficient of Variation',
-            'median_cv': 'Median Coefficient of Variation',
-            'max_error': 'Maximum Error',
-            'std_error': 'Standard Deviation of Error',
-            'mean_std': 'Mean Standard Deviation',
-            'count': 'Number of Observations'
-        }
-        return names.get(metric, metric.replace('_', ' ').title())
+        # Count formulations per run
+        for run_name, forms in self.formulations_by_run.items():
+            info_text += f"  • {run_name}: {len(forms)} formulations\n"
 
-    def on_tab_selected(self):
-        """Called when this tab is selected."""
-        Log.i("EvaluationUI", "Evaluate tab selected")
-        self.refresh_data_from_parent()
-
-        # Check if model selected elsewhere
-        if not self.model_path:
-            # Try to get model from other tabs (same as frame_step1.py)
-            if hasattr(self.parent, 'tab_widget'):
-                all_model_paths = []
-                for i in range(self.parent.tab_widget.count()):
-                    widget = self.parent.tab_widget.widget(i)
-                    if hasattr(widget, 'model_path'):
-                        all_model_paths.append(widget.model_path)
-
-                found_model_path = next(
-                    (x for x in all_model_paths if x is not None), None)
-                if found_model_path:
-                    self.model_selected(found_model_path)
-
-    def refresh_data_from_parent(self):
-        """Refresh data from parent window."""
-        # Check for imported formulations
-        if hasattr(self.parent, 'import_formulations') and self.parent.import_formulations:
-            self.selected_formulations = copy.copy(
-                self.parent.import_formulations)
-
-            # Update run list if we have run names
-            if hasattr(self.parent, 'import_run_names') and self.parent.import_run_names:
-                # Clear and repopulate list
-                self.model.clear()
-                self.all_files.clear()
-
-                for run_name in self.parent.import_run_names:
-                    item = QtGui.QStandardItem(run_name)
-                    self.model.appendRow(item)
-                    # Store dummy path for now (actual path would come from parent)
-                    self.all_files[run_name] = f"run_{run_name}"
-
-                if self.model.rowCount() == 0:
-                    self.list_view_addPlaceholderText()
-
-            self.update_formulation_info()
-            self.check_ready_to_evaluate()
+        self.formulation_info.setText(info_text)
 
     def check_ready_to_evaluate(self):
-        """Check if we have everything needed to run evaluation."""
-        ready = (
-            self.predictor is not None and
-            len(self.all_files) > 0 and
-            len(self.selected_metrics) > 0 and
-            len(self.selected_shear_rates) > 0
-        )
+        """Check if ready to evaluate and update UI accordingly."""
+        ready = (self.predictor is not None and
+                 len(self.selected_formulations) > 0 and
+                 len(self.selected_metrics) > 0)
+
         self.evaluate_btn.setEnabled(ready)
 
-        if not self.predictor:
-            self.status_label.setText("No model loaded")
-        elif len(self.all_files) == 0:
-            self.status_label.setText("No runs selected")
-        elif ready:
+        if ready:
             self.status_label.setText("Ready to evaluate")
+        elif not self.predictor:
+            self.status_label.setText("Please select a model")
+        elif not self.selected_formulations:
+            self.status_label.setText("Please add run files with formulations")
+        else:
+            self.status_label.setText("Please select metrics")
 
-    def on_metrics_selection_changed(self):
-        """Handle metric selection changes."""
-        selected_items = self.metrics_list.selectedItems()
-        self.selected_metrics = [
-            item.data(Qt.UserRole) for item in selected_items]
+    def user_run_clicked(self, index):
+        """Handle run item click in list view."""
+        item = self.model.itemFromIndex(index)
+        if item and item.isEnabled():
+            file_path = item.data(Qt.UserRole)
+            if file_path:
+                self.select_label.setText(os.path.basename(file_path))
+
+    def user_run_removed(self):
+        """Remove selected run from the list."""
+        selected_indexes = self.list_view.selectedIndexes()
+        if not selected_indexes:
+            return
+
+        for index in reversed(selected_indexes):
+            item = self.model.itemFromIndex(index)
+            if item and item.isEnabled():
+                run_name = item.text()
+
+                # Remove formulations for this run
+                if run_name in self.formulations_by_run:
+                    forms_to_remove = self.formulations_by_run[run_name]
+                    for form in forms_to_remove:
+                        if form in self.selected_formulations:
+                            self.selected_formulations.remove(form)
+                    del self.formulations_by_run[run_name]
+
+                    # Remove from per-run combo
+                    idx = self.run_combo.findText(run_name)
+                    if idx >= 0:
+                        self.run_combo.removeItem(idx)
+
+                self.model.removeRow(index.row())
+
+        if self.model.rowCount() == 0:
+            self.list_view_addPlaceholderText()
+            self.select_label.clear()
+
+        self.update_formulation_info()
         self.check_ready_to_evaluate()
 
-    def on_shear_selection_changed(self):
-        """Handle shear rate selection changes."""
-        selected_items = self.shear_rate_list.selectedItems()
-        self.selected_shear_rates = [
-            item.data(Qt.UserRole) for item in selected_items]
+    def user_all_runs_removed(self):
+        """Remove all runs from the list."""
+        self.model.clear()
+        self.selected_formulations.clear()
+        self.formulations_by_run.clear()
+        self.run_combo.clear()
+        self.list_view_addPlaceholderText()
+        self.select_label.clear()
+        self.update_formulation_info()
         self.check_ready_to_evaluate()
 
-    def make_formulations(self):
-        forms: List[Formulation] = []
-        for k, v in self.all_files.items():
-            path = Path(v)
-            base_path = path.parent
-            xml_file = next(base_path.glob(f"*{k}*.xml"), None)
-            form_parser = Parser(xml_path=xml_file)
-            f = form_parser.get_formulation()
-            forms.append(f)
-        return forms
+    def on_metric_selection_changed(self):
+        """Handle metric selection change."""
+        self.selected_metrics = []
+        for i in range(self.metrics_list.count()):
+            item = self.metrics_list.item(i)
+            if item.isSelected():
+                self.selected_metrics.append(item.data(Qt.UserRole))
 
-    def run_evaluation(self):
-        """Execute the evaluation process."""
+        self.check_ready_to_evaluate()
+
+    def on_shear_rate_selection_changed(self):
+        """Handle shear rate selection change."""
+        self.selected_shear_rates = []
+        for i in range(self.shear_rate_list.count()):
+            item = self.shear_rate_list.item(i)
+            if item.isSelected():
+                self.selected_shear_rates.append(item.data(Qt.UserRole))
+
+    def format_metric_name(self, metric: str) -> str:
+        """Format metric name for display."""
+        names = {
+            'mae': 'MAE (Mean Absolute Error)',
+            'rmse': 'RMSE (Root Mean Square Error)',
+            'mape': 'MAPE (Mean Absolute Percentage Error)',
+            'r2': 'R² Score',
+            'coverage': 'Coverage (95% CI)',
+            'max_error': 'Maximum Error',
+            'median_ae': 'Median Absolute Error',
+            'explained_variance': 'Explained Variance'
+        }
+        return names.get(metric, metric.upper())
+
+    def evaluate_model(self):
+        """Perform model evaluation using Predictor's evaluate() method."""
+        if not self.predictor or not self.selected_formulations:
+            return
+
         try:
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
-            self.status_label.setText("Running evaluation...")
-            self.evaluate_btn.setEnabled(False)
+            QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.status_label.setText("Evaluating model...")
 
-            # Make sure we have predictor
-            if self.predictor is None:
-                raise ValueError("No model loaded")
-            forms = self.make_formulations()
-            self.selected_formulations = forms
-            # Get formulations from parent or prepare from runs
-            if len(forms) == 0:
-                self.selected_formulations = copy.copy(forms)
-                if len(self.selected_formulations) == 0:
-                    raise ValueError(
-                        "No formulations available for evaluation")
+            # Store results by run for per-run investigation
+            self.run_results.clear()
+            all_results_list = []
 
-            # Prepare data for evaluation
-            formulations_df = self.prepare_formulations_dataframe()
+            # Process each run separately to maintain run association
+            for run_name, formulations in self.formulations_by_run.items():
+                Log.i(
+                    f"Evaluating run: {run_name} with {len(formulations)} formulations")
 
-            self.progress_bar.setValue(30)
+                # Convert formulations to DataFrame for predictor.evaluate()
+                # Note: Each formulation is already a single formulation object
+                eval_dfs = []
+                for form in formulations:
+                    try:
+                        # Convert formulation to DataFrame (encoded=False, training=True)
+                        form_df = form.to_dataframe(
+                            encoded=False, training=True)
+                        eval_dfs.append(form_df)
+                    except Exception as e:
+                        Log.w(
+                            f"Failed to convert formulation to DataFrame: {e}")
+                        continue
 
-            # Run evaluation
-            self.current_results_df = self.predictor.evaluate(formulations_df)
+                if not eval_dfs:
+                    Log.w(
+                        f"No valid formulations to evaluate in run: {run_name}")
+                    continue
 
-            self.progress_bar.setValue(60)
+                # Combine all formulations for this run
+                eval_data = pd.concat(eval_dfs, ignore_index=True)
 
-            # Compute metrics
-            if self.overall_radio.isChecked() or self.both_radio.isChecked():
-                overall_metrics = self.metrics_calculator.compute_overall(
-                    self.current_results_df,
-                    self.selected_metrics
+                # Get target shear rate columns (matching selected shear rates)
+                target_cols = [f"Viscosity_{rate}" for rate in
+                               [self.shear_rates[name] for name in self.selected_shear_rates]]
+
+                Log.i(
+                    f"Evaluating {len(eval_data)} samples with targets: {target_cols}")
+
+                # Use predictor's evaluate method for efficient batch evaluation
+                results_df = self.predictor.evaluate(
+                    eval_data=eval_data,
+                    targets=target_cols,
+                    n_samples=None  # Use default uncertainty sampling
                 )
-                self.display_overall_metrics(overall_metrics)
 
-            self.progress_bar.setValue(80)
+                # Add run name and formulation info to results
+                results_df['run'] = run_name
 
-            if self.per_shear_radio.isChecked() or self.both_radio.isChecked():
-                per_shear_metrics = self.metrics_calculator.compute_per_shear_rate(
-                    self.current_results_df,
-                    self.selected_metrics
-                )
-                self.display_per_shear_metrics(per_shear_metrics)
+                # Map sample indices back to formulation IDs
+                formulation_ids = []
+                for idx in results_df['sample_idx']:
+                    if idx < len(formulations):
+                        formulation_ids.append(formulations[idx].id)
+                    else:
+                        formulation_ids.append(f"sample_{idx}")
+                results_df['formulation_id'] = formulation_ids
 
-            # Display detailed results
-            self.display_detailed_results()
+                # Rename columns to match expected format
+                results_df = results_df.rename(columns={
+                    'pct_error': 'percentage_error'
+                })
 
-            # Update plot
-            self.update_plot()
+                # Extract numeric shear rate from column name (e.g., "Viscosity_100" -> 100)
+                # The 'shear_rate' column contains the column name like "Viscosity_100"
+                def extract_numeric_shear_rate(shear_col_name):
+                    try:
+                        # Extract number from "Viscosity_XXX" format
+                        if isinstance(shear_col_name, str) and shear_col_name.startswith("Viscosity_"):
+                            return int(shear_col_name.split("_")[1])
+                        # If already numeric, return as is
+                        return float(shear_col_name)
+                    except (ValueError, IndexError):
+                        return shear_col_name
 
-            self.progress_bar.setValue(100)
-            self.status_label.setText("Evaluation completed successfully")
-            self.export_btn.setEnabled(True)
+                # Keep the original column name for reference, but also add numeric version
+                results_df['shear_rate_name'] = results_df['shear_rate']
+                results_df['shear_rate'] = results_df['shear_rate_name'].apply(
+                    extract_numeric_shear_rate)
+
+                # Store per-run results
+                self.run_results[run_name] = results_df.copy()
+
+                # Add to overall results
+                all_results_list.append(results_df)
+
+            # Combine all results
+            if all_results_list:
+                self.current_results_df = pd.concat(
+                    all_results_list, ignore_index=True)
+
+                Log.i(
+                    f"Evaluation complete: {len(self.current_results_df)} predictions")
+
+                # Display results
+                self.display_results()
+
+                # Enable export
+                self.export_btn.setEnabled(True)
+
+                self.status_label.setText(
+                    f"Evaluation complete: {len(self.current_results_df)} predictions")
+            else:
+                raise ValueError("No valid evaluation results generated")
 
         except Exception as e:
             Log.e("EvaluationUI", f"Evaluation failed: {e}")
+            Log.e("EvaluationUI", traceback.format_exc())
             QtWidgets.QMessageBox.critical(
                 self,
-                Constants.app_title,
-                f"Failed to run evaluation: {str(e)}"
+                "Evaluation Error",
+                f"Failed to evaluate model: {str(e)}"
             )
             self.status_label.setText("Evaluation failed")
 
         finally:
-            self.progress_bar.setVisible(False)
-            self.evaluate_btn.setEnabled(True)
+            QtWidgets.QApplication.restoreOverrideCursor()
 
-    def prepare_formulations_dataframe(self) -> pd.DataFrame:
-        """Prepare formulations data for evaluation.
-
-        Returns:
-            DataFrame with formulation data and actual viscosity values.
-        """
-        dfs = []
-
-        for formulation in self.selected_formulations:
-            df = formulation.to_dataframe(training=True, encoded=False)
-            dfs.append(df)
-
-        # Concatenate all formulation DataFrames into one unified DataFrame
-        if dfs:
-            result_df = pd.concat(dfs, ignore_index=True)
-        else:
-            result_df = pd.DataFrame()
-
-        return result_df
-
-    def display_overall_metrics(self, metrics: Dict[str, float]):
-        """Display overall metrics in the table.
-
-        Args:
-            metrics: Dictionary of metric names and values.
-        """
-        self.overall_table.setRowCount(len(metrics))
-        self.overall_table.setColumnCount(2)
-        self.overall_table.setHorizontalHeaderLabels(['Metric', 'Value'])
-
-        for i, (metric_name, value) in enumerate(metrics.items()):
-            # Metric name
-            name_item = QtWidgets.QTableWidgetItem(
-                self.format_metric_name(metric_name))
-            self.overall_table.setItem(i, 0, name_item)
-
-            # Metric value
-            if metric_name in ['coverage', 'mape']:
-                value_str = f"{value:.2f}%"
-            elif metric_name == 'count':
-                value_str = f"{int(value)}"
-            else:
-                value_str = f"{value:.4f}"
-
-            value_item = QtWidgets.QTableWidgetItem(value_str)
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.overall_table.setItem(i, 1, value_item)
-
-        self.overall_table.resizeColumnsToContents()
-
-    def display_per_shear_metrics(self, metrics_df: pd.DataFrame):
-        """Display per-shear-rate metrics in the table.
-
-        Args:
-            metrics_df: DataFrame with per-shear-rate metrics.
-        """
-        rows = len(metrics_df)
-        cols = len(metrics_df.columns)
-
-        self.per_shear_table.setRowCount(rows)
-        self.per_shear_table.setColumnCount(cols)
-
-        # Set headers
-        headers = []
-        for col in metrics_df.columns:
-            if col == 'shear_rate':
-                headers.append('Shear Rate (s⁻¹)')
-            else:
-                headers.append(self.format_metric_name(col))
-        self.per_shear_table.setHorizontalHeaderLabels(headers)
-
-        # Populate table
-        for i in range(rows):
-            for j, col in enumerate(metrics_df.columns):
-                value = metrics_df.iloc[i, j]
-
-                if col == 'shear_rate':
-                    value_str = f"{value}"
-                elif col in ['coverage', 'mape']:
-                    value_str = f"{value:.2f}%"
-                elif col == 'count':
-                    value_str = f"{int(value)}"
-                else:
-                    value_str = f"{value:.4f}"
-
-                item = QtWidgets.QTableWidgetItem(value_str)
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-                self.per_shear_table.setItem(i, j, item)
-
-        self.per_shear_table.resizeColumnsToContents()
-
-    def display_detailed_results(self):
-        """Display detailed prediction results."""
-        if self.current_results_df is None:
+    def display_results(self):
+        """Display evaluation results in tables and plots."""
+        if self.current_results_df is None or self.current_results_df.empty:
             return
 
-        df = self.current_results_df
-        rows = len(df)
-        cols = len(df.columns)
+        # Display metrics
+        self.display_metrics_table()
 
-        self.details_table.setRowCount(rows)
-        self.details_table.setColumnCount(cols)
+        # Display detailed results
+        self.display_details_table()
 
-        # Set headers
-        headers = [col.replace('_', ' ').title() for col in df.columns]
-        self.details_table.setHorizontalHeaderLabels(headers)
+        # Update plot
+        self.update_plot()
+
+    def display_metrics_table(self):
+        """Display metrics in the metrics table."""
+        metrics_data = []
+
+        # Overall metrics
+        if self.overall_radio.isChecked() or self.both_radio.isChecked():
+            overall_metrics = self.metrics_calculator.compute_overall(
+                self.current_results_df,
+                self.selected_metrics
+            )
+
+            for metric, value in overall_metrics.items():
+                metrics_data.append({
+                    'Type': 'Overall',
+                    'Metric': self.format_metric_name(metric),
+                    'Value': f"{value:.4f}",
+                    'Description': self.METRIC_DESCRIPTIONS.get(metric, '')
+                })
+
+        # Per-shear rate metrics
+        if self.per_shear_radio.isChecked() or self.both_radio.isChecked():
+            per_shear_metrics = self.metrics_calculator.compute_per_shear_rate(
+                self.current_results_df,
+                self.selected_metrics
+            )
+
+            for _, row in per_shear_metrics.iterrows():
+                for metric in self.selected_metrics:
+                    if metric in row:
+                        metrics_data.append({
+                            'Type': f"Shear Rate {row['shear_rate']:.0f}",
+                            'Metric': self.format_metric_name(metric),
+                            'Value': f"{row[metric]:.4f}",
+                            'Description': self.METRIC_DESCRIPTIONS.get(metric, '')
+                        })
 
         # Populate table
-        for i in range(rows):
-            for j, col in enumerate(df.columns):
-                value = df.iloc[i, j]
+        df = pd.DataFrame(metrics_data)
+        self.metrics_table.setRowCount(len(df))
+        self.metrics_table.setColumnCount(len(df.columns))
+        self.metrics_table.setHorizontalHeaderLabels(df.columns.tolist())
 
-                if isinstance(value, bool):
-                    value_str = "Yes" if value else "No"
-                elif isinstance(value, (int, float)):
-                    if col in ['shear_rate']:
-                        value_str = f"{value}"
-                    elif col in ['pct_error']:
-                        value_str = f"{value:.2f}%"
-                    else:
-                        value_str = f"{value:.4f}"
+        for i, row in df.iterrows():
+            for j, value in enumerate(row):
+                item = QtWidgets.QTableWidgetItem(str(value))
+                self.metrics_table.setItem(i, j, item)
+
+        self.metrics_table.resizeColumnsToContents()
+        self.metrics_table.horizontalHeader().setStretchLastSection(True)
+
+    def display_details_table(self):
+        """Display detailed results in the details table."""
+        df = self.current_results_df.copy()
+
+        # Format columns for display
+        display_columns = ['run', 'formulation_id', 'shear_rate', 'actual',
+                           'predicted', 'abs_error', 'percentage_error',
+                           'lower_95', 'upper_95']
+
+        df = df[display_columns]
+
+        # Set up table
+        self.details_table.setRowCount(len(df))
+        self.details_table.setColumnCount(len(df.columns))
+        self.details_table.setHorizontalHeaderLabels(df.columns.tolist())
+
+        # Populate table
+        for i, row in df.iterrows():
+            for j, value in enumerate(row):
+                if isinstance(value, float):
+                    item = QtWidgets.QTableWidgetItem(f"{value:.4f}")
                 else:
-                    value_str = str(value)
-
-                item = QtWidgets.QTableWidgetItem(value_str)
-
-                # Color coding for within_ci column
-                if col == 'within_ci':
-                    if value:
-                        item.setBackground(QtGui.QColor(
-                            200, 255, 200))  # Light green
-                    else:
-                        item.setBackground(QtGui.QColor(
-                            255, 200, 200))  # Light red
-
-                item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                    item = QtWidgets.QTableWidgetItem(str(value))
                 self.details_table.setItem(i, j, item)
 
         self.details_table.resizeColumnsToContents()
 
     def update_plot(self):
         """Update the plot based on selected plot type."""
-        if self.current_results_df is None:
+        if self.current_results_df is None or self.current_results_df.empty:
             return
 
         self.figure.clear()
+
         plot_type = self.plot_type_combo.currentText()
 
         if plot_type == "Predicted vs Actual":
             self.plot_predicted_vs_actual()
-        elif plot_type == "Residuals":
-            self.plot_residuals()
         elif plot_type == "Residuals Distribution":
             self.plot_residuals_distribution()
         elif plot_type == "Q-Q Plot":
             self.plot_qq()
-        elif plot_type == "Metrics Comparison":
-            self.plot_metrics_comparison()
-        elif plot_type == "Shear Rate Performance":
+        elif plot_type == "Overall Metrics":
+            self.plot_metrics_comparison_with_descriptions()
+        elif plot_type == "Metrics vs Shear Rate":
             self.plot_shear_rate_performance()
         elif plot_type == "Error vs Shear Rate":
             self.plot_error_vs_shear_rate()
@@ -937,64 +949,58 @@ class EvaluationUI(QtWidgets.QDialog):
         ax = self.figure.add_subplot(111)
         df = self.current_results_df
 
-        # Color by shear rate
-        shear_rates = df['shear_rate'].unique()
-        colors = plt.cm.viridis(np.linspace(0, 1, len(shear_rates)))
-
-        for shear, color in zip(shear_rates, colors):
-            mask = df['shear_rate'] == shear
-            ax.scatter(df[mask]['actual'], df[mask]['predicted'],
-                       alpha=0.6, c=[color], label=f'{shear} s⁻¹',
-                       edgecolors='black', linewidth=0.5)
+        # Create scatter plot
+        scatter = ax.scatter(df['actual'], df['predicted'],
+                             c=df['percentage_error'], cmap='coolwarm',
+                             s=50, alpha=0.6, edgecolors='black', linewidth=0.5)
 
         # Add perfect prediction line
         min_val = min(df['actual'].min(), df['predicted'].min())
         max_val = max(df['actual'].max(), df['predicted'].max())
         ax.plot([min_val, max_val], [min_val, max_val],
-                'r--', alpha=0.5, label='Perfect Prediction')
+                'k--', alpha=0.5, label='Perfect Prediction')
+
+        # Add ±10% error bands
+        ax.fill_between([min_val, max_val],
+                        [min_val*0.9, max_val*0.9],
+                        [min_val*1.1, max_val*1.1],
+                        alpha=0.2, color='gray', label='±10% Error')
 
         ax.set_xlabel('Actual Viscosity (cP)', fontsize=12)
         ax.set_ylabel('Predicted Viscosity (cP)', fontsize=12)
         ax.set_title('Predicted vs Actual Viscosity',
                      fontsize=14, fontweight='bold')
-        ax.legend(loc='best', fontsize=9)
+        ax.legend(loc='best')
         ax.grid(True, alpha=0.3)
 
+        # Add colorbar
+        cbar = self.figure.colorbar(scatter, ax=ax)
+        cbar.set_label('Percentage Error (%)', rotation=270, labelpad=20)
+
         # Add R² annotation
-        r2 = self.metrics_calculator._r2(df)
+        from sklearn.metrics import r2_score
+        r2 = r2_score(df['actual'], df['predicted'])
         ax.text(0.05, 0.95, f'R² = {r2:.4f}',
                 transform=ax.transAxes, fontsize=11,
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-    def plot_residuals(self):
-        """Create residuals plot."""
-        ax = self.figure.add_subplot(111)
-        df = self.current_results_df
-
-        # Color by shear rate
-        shear_rates = df['shear_rate'].unique()
-        colors = plt.cm.viridis(np.linspace(0, 1, len(shear_rates)))
-
-        for shear, color in zip(shear_rates, colors):
-            mask = df['shear_rate'] == shear
-            ax.scatter(df[mask]['predicted'], df[mask]['residual'],
-                       alpha=0.6, c=[color], label=f'{shear} s⁻¹',
-                       edgecolors='black', linewidth=0.5)
-
-        ax.axhline(y=0, color='r', linestyle='--', alpha=0.5)
-        ax.set_xlabel('Predicted Viscosity (cP)', fontsize=12)
-        ax.set_ylabel('Residuals (cP)', fontsize=12)
-        ax.set_title('Residuals vs Predicted Values',
-                     fontsize=14, fontweight='bold')
-        ax.legend(loc='best', fontsize=9)
-        ax.grid(True, alpha=0.3)
-
     def plot_residuals_distribution(self):
-        """Create histogram of residuals."""
+        """Create residuals distribution histogram."""
         ax = self.figure.add_subplot(111)
         df = self.current_results_df
 
-        ax.hist(df['residual'], bins=30, edgecolor='black', alpha=0.7)
+        # Create histogram
+        n, bins, patches = ax.hist(df['residual'], bins=30,
+                                   edgecolor='black', alpha=0.7)
+
+        # Color bars by distance from zero
+        for i, patch in enumerate(patches):
+            if bins[i] < 0:
+                patch.set_facecolor('#ff7f0e')
+            else:
+                patch.set_facecolor('#1f77b4')
+
+        # Add zero line
         ax.axvline(x=0, color='r', linestyle='--', alpha=0.5, label='Zero')
 
         # Add normal distribution overlay
@@ -1027,37 +1033,53 @@ class EvaluationUI(QtWidgets.QDialog):
         ax.set_title('Q-Q Plot of Residuals', fontsize=14, fontweight='bold')
         ax.grid(True, alpha=0.3)
 
-    def plot_metrics_comparison(self):
-        """Create bar chart comparing metrics."""
-        ax = self.figure.add_subplot(111)
+    def plot_metrics_comparison_with_descriptions(self):
+        """Create bar chart comparing metrics with descriptions."""
+        # Create subplot layout for metrics and descriptions
+        gs = self.figure.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.3)
+        ax_bars = self.figure.add_subplot(gs[0])
+        ax_text = self.figure.add_subplot(gs[1])
+        ax_text.axis('off')
 
         # Get overall metrics
         overall_metrics = self.metrics_calculator.compute_overall(
             self.current_results_df,
-            ['mae', 'rmse', 'mape']
+            self.selected_metrics[:5]  # Limit to 5 metrics for clarity
         )
 
         metrics_names = list(overall_metrics.keys())
         metrics_values = list(overall_metrics.values())
 
         x = np.arange(len(metrics_names))
-        bars = ax.bar(x, metrics_values, color=[
-                      '#1f77b4', '#ff7f0e', '#2ca02c'])
+        bars = ax_bars.bar(x, metrics_values, color=plt.cm.Set3(
+            np.linspace(0, 1, len(metrics_names))))
 
-        ax.set_xlabel('Metrics', fontsize=12)
-        ax.set_ylabel('Value', fontsize=12)
-        ax.set_title('Overall Performance Metrics',
-                     fontsize=14, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels([self.format_metric_name(m) for m in metrics_names])
+        ax_bars.set_xlabel('Metrics', fontsize=12)
+        ax_bars.set_ylabel('Value', fontsize=12)
+        ax_bars.set_title('Overall Performance Metrics',
+                          fontsize=14, fontweight='bold')
+        ax_bars.set_xticks(x)
+        ax_bars.set_xticklabels([self.format_metric_name(m).split('(')[0].strip()
+                                 for m in metrics_names])
 
         # Add value labels on bars
         for bar, value in zip(bars, metrics_values):
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{value:.3f}', ha='center', va='bottom')
+            ax_bars.text(bar.get_x() + bar.get_width()/2., height,
+                         f'{value:.3f}', ha='center', va='bottom')
 
-        ax.grid(True, alpha=0.3, axis='y')
+        ax_bars.grid(True, alpha=0.3, axis='y')
+
+        # Add metric descriptions as text
+        descriptions_text = "Metric Descriptions:\n"
+        for metric in metrics_names:
+            desc = self.METRIC_DESCRIPTIONS.get(metric, '')
+            short_name = self.format_metric_name(metric).split('(')[0].strip()
+            descriptions_text += f"• {short_name}: {desc}\n"
+
+        ax_text.text(0.05, 0.95, descriptions_text, transform=ax_text.transAxes,
+                     fontsize=9, verticalalignment='top',
+                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
 
     def plot_shear_rate_performance(self):
         """Create line plot of metrics vs shear rate."""
@@ -1137,8 +1159,226 @@ class EvaluationUI(QtWidgets.QDialog):
                 transform=ax.transAxes, fontsize=11,
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
 
-    def export_results(self):
-        """Export evaluation results to files."""
+    def on_run_selected_for_investigation(self, run_name: str):
+        """Handle run selection for per-run investigation."""
+        if not run_name or run_name not in self.run_results:
+            return
+
+        # Get run data
+        run_df = self.run_results[run_name]
+        run_formulations = self.formulations_by_run.get(run_name, [])
+
+        # Update run info
+        info_text = f"Run: {run_name}\n"
+        info_text += f"Formulations: {len(run_formulations)}\n"
+        info_text += f"Predictions: {len(run_df)}\n"
+        info_text += f"Shear Rates Evaluated: {run_df['shear_rate'].nunique()}\n"
+        self.run_info_text.setText(info_text)
+
+        # Update metrics table for this run
+        self.display_run_metrics(run_df)
+
+        # Update details table for this run
+        self.display_run_details(run_df)
+
+        # Update plot
+        self.update_run_plot()
+
+    def display_run_metrics(self, run_df: pd.DataFrame):
+        """Display metrics for a specific run."""
+        metrics_data = []
+
+        # Compute overall metrics for this run
+        overall_metrics = self.metrics_calculator.compute_overall(
+            run_df, self.selected_metrics
+        )
+
+        for metric, value in overall_metrics.items():
+            metrics_data.append({
+                'Metric': self.format_metric_name(metric),
+                'Value': f"{value:.4f}"
+            })
+
+        # Populate table
+        df = pd.DataFrame(metrics_data)
+        self.run_metrics_table.setRowCount(len(df))
+        self.run_metrics_table.setColumnCount(len(df.columns))
+        self.run_metrics_table.setHorizontalHeaderLabels(df.columns.tolist())
+
+        for i, row in df.iterrows():
+            for j, value in enumerate(row):
+                item = QtWidgets.QTableWidgetItem(str(value))
+                self.run_metrics_table.setItem(i, j, item)
+
+        self.run_metrics_table.resizeColumnsToContents()
+
+    def display_run_details(self, run_df: pd.DataFrame):
+        """Display detailed predictions for a specific run."""
+        # Select relevant columns
+        display_columns = ['formulation_id', 'shear_rate', 'actual',
+                           'predicted', 'abs_error', 'percentage_error']
+
+        df = run_df[display_columns].copy()
+
+        # Set up table
+        self.run_details_table.setRowCount(len(df))
+        self.run_details_table.setColumnCount(len(df.columns))
+        self.run_details_table.setHorizontalHeaderLabels(df.columns.tolist())
+
+        # Populate table
+        for i, row in df.iterrows():
+            for j, value in enumerate(row):
+                if isinstance(value, float):
+                    item = QtWidgets.QTableWidgetItem(f"{value:.4f}")
+                else:
+                    item = QtWidgets.QTableWidgetItem(str(value))
+                self.run_details_table.setItem(i, j, item)
+
+        self.run_details_table.resizeColumnsToContents()
+
+    def update_run_plot(self):
+        """Update the per-run investigation plot."""
+        run_name = self.run_combo.currentText()
+        if not run_name or run_name not in self.run_results:
+            return
+
+        self.run_figure.clear()
+        run_df = self.run_results[run_name]
+
+        plot_type = self.run_plot_type.currentText()
+
+        if plot_type == "Viscosity Profile Comparison":
+            self.plot_viscosity_profile_comparison(run_df)
+        elif plot_type == "Relative Error by Shear Rate":
+            self.plot_relative_error_by_shear(run_df)
+        elif plot_type == "Residuals Analysis":
+            self.plot_run_residuals_analysis(run_df)
+        elif plot_type == "Component Contributions":
+            self.plot_component_contributions(run_df)
+
+        self.run_canvas.draw()
+
+    def plot_viscosity_profile_comparison(self, run_df: pd.DataFrame):
+        """Plot predicted vs actual viscosity profiles for the selected run."""
+        ax = self.run_figure.add_subplot(111)
+
+        # Group by formulation
+        for form_id in run_df['formulation_id'].unique():
+            form_data = run_df[run_df['formulation_id']
+                               == form_id].sort_values('shear_rate')
+
+            # Plot actual and predicted
+            ax.plot(form_data['shear_rate'], form_data['actual'],
+                    'o-', alpha=0.6, label=f'Actual - {form_id}')
+            ax.plot(form_data['shear_rate'], form_data['predicted'],
+                    's--', alpha=0.6, label=f'Predicted - {form_id}')
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=12)
+        ax.set_ylabel('Viscosity (cP)', fontsize=12)
+        ax.set_title('Viscosity Profile: Predicted vs Actual',
+                     fontsize=14, fontweight='bold')
+        ax.legend(loc='best', fontsize=8)
+        ax.grid(True, alpha=0.3, which='both')
+
+    def plot_relative_error_by_shear(self, run_df: pd.DataFrame):
+        """Plot relative error by shear rate for the selected run."""
+        ax = self.run_figure.add_subplot(111)
+
+        # Calculate relative error
+        run_df['rel_error'] = (run_df['predicted'] -
+                               run_df['actual']) / run_df['actual'] * 100
+
+        # Group by shear rate
+        shear_rates = sorted(run_df['shear_rate'].unique())
+
+        for shear in shear_rates:
+            shear_data = run_df[run_df['shear_rate'] == shear]
+            ax.scatter([shear] * len(shear_data), shear_data['rel_error'],
+                       alpha=0.6, s=50)
+
+        # Add zero line
+        ax.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+
+        # Add ±10% bands
+        ax.axhline(y=10, color='gray', linestyle=':', alpha=0.5)
+        ax.axhline(y=-10, color='gray', linestyle=':', alpha=0.5)
+
+        ax.set_xscale('log')
+        ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=12)
+        ax.set_ylabel('Relative Error (%)', fontsize=12)
+        ax.set_title('Relative Error Distribution by Shear Rate',
+                     fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3)
+
+    def plot_run_residuals_analysis(self, run_df: pd.DataFrame):
+        """Plot residuals analysis for the selected run."""
+        # Create 2x2 subplot
+        gs = self.run_figure.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+
+        # Residuals vs Predicted
+        ax1 = self.run_figure.add_subplot(gs[0, 0])
+        ax1.scatter(run_df['predicted'], run_df['residual'], alpha=0.6)
+        ax1.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        ax1.set_xlabel('Predicted', fontsize=10)
+        ax1.set_ylabel('Residuals', fontsize=10)
+        ax1.set_title('Residuals vs Predicted', fontsize=11)
+        ax1.grid(True, alpha=0.3)
+
+        # Residuals histogram
+        ax2 = self.run_figure.add_subplot(gs[0, 1])
+        ax2.hist(run_df['residual'], bins=20, edgecolor='black', alpha=0.7)
+        ax2.set_xlabel('Residuals', fontsize=10)
+        ax2.set_ylabel('Frequency', fontsize=10)
+        ax2.set_title('Residuals Distribution', fontsize=11)
+        ax2.grid(True, alpha=0.3)
+
+        # Q-Q plot
+        from scipy import stats
+        ax3 = self.run_figure.add_subplot(gs[1, 0])
+        stats.probplot(run_df['residual'], dist="norm", plot=ax3)
+        ax3.set_title('Q-Q Plot', fontsize=11)
+        ax3.grid(True, alpha=0.3)
+
+        # Residuals vs Shear Rate
+        ax4 = self.run_figure.add_subplot(gs[1, 1])
+        for shear in sorted(run_df['shear_rate'].unique()):
+            shear_data = run_df[run_df['shear_rate'] == shear]
+            ax4.scatter([shear] * len(shear_data), shear_data['residual'],
+                        alpha=0.6, label=f'{shear:.0e}')
+        ax4.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+        ax4.set_xscale('log')
+        ax4.set_xlabel('Shear Rate', fontsize=10)
+        ax4.set_ylabel('Residuals', fontsize=10)
+        ax4.set_title('Residuals vs Shear Rate', fontsize=11)
+        ax4.grid(True, alpha=0.3)
+
+        self.run_figure.suptitle('Residuals Analysis',
+                                 fontsize=14, fontweight='bold')
+
+    def plot_component_contributions(self, run_df: pd.DataFrame):
+        """Plot component contributions (placeholder for feature importance)."""
+        ax = self.run_figure.add_subplot(111)
+
+        # This is a placeholder - would need actual feature importance from model
+        # For now, create a simple bar chart of error by formulation
+        form_errors = run_df.groupby('formulation_id')[
+            'abs_error'].mean().sort_values()
+
+        y_pos = np.arange(len(form_errors))
+        ax.barh(y_pos, form_errors.values, color=plt.cm.RdYlGn_r(
+            form_errors.values / form_errors.max()))
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels(form_errors.index)
+        ax.set_xlabel('Mean Absolute Error (cP)', fontsize=12)
+        ax.set_ylabel('Formulation ID', fontsize=12)
+        ax.set_title('Average Error by Formulation',
+                     fontsize=14, fontweight='bold')
+        ax.grid(True, alpha=0.3, axis='x')
+
+    def export_results_as_zip(self):
+        """Export all evaluation results and plots as a ZIP file."""
         if self.current_results_df is None:
             QtWidgets.QMessageBox.warning(
                 self,
@@ -1147,60 +1387,187 @@ class EvaluationUI(QtWidgets.QDialog):
             )
             return
 
-        # Get save directory
-        dir_path = QtWidgets.QFileDialog.getExistingDirectory(
+        # Get save location for ZIP file
+        zip_path, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
-            "Select Export Directory"
+            "Save Evaluation Results as ZIP",
+            "evaluation_results.zip",
+            "ZIP Files (*.zip)"
         )
 
-        if not dir_path:
+        if not zip_path:
             return
 
         try:
-            # Export detailed results
-            details_file = os.path.join(
-                dir_path, "evaluation_detailed_results.csv")
-            self.current_results_df.to_csv(details_file, index=False)
+            QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.status_label.setText("Exporting results to ZIP...")
 
-            # Export overall metrics
-            if self.overall_radio.isChecked() or self.both_radio.isChecked():
-                overall_metrics = self.metrics_calculator.compute_overall(
-                    self.current_results_df,
-                    self.selected_metrics
-                )
-                overall_df = pd.DataFrame(list(overall_metrics.items()),
-                                          columns=['Metric', 'Value'])
-                overall_file = os.path.join(
-                    dir_path, "evaluation_overall_metrics.csv")
-                overall_df.to_csv(overall_file, index=False)
+            # Create temporary directory for files
+            with tempfile.TemporaryDirectory() as temp_dir:
 
-            # Export per-shear metrics
-            if self.per_shear_radio.isChecked() or self.both_radio.isChecked():
-                per_shear_metrics = self.metrics_calculator.compute_per_shear_rate(
-                    self.current_results_df,
-                    self.selected_metrics
-                )
-                per_shear_file = os.path.join(
-                    dir_path, "evaluation_per_shear_metrics.csv")
-                per_shear_metrics.to_csv(per_shear_file, index=False)
+                # Export CSV files
+                # 1. Detailed results
+                details_file = os.path.join(temp_dir, "detailed_results.csv")
+                self.current_results_df.to_csv(details_file, index=False)
 
-            # Export current plot
-            plot_file = os.path.join(
-                dir_path, f"evaluation_{self.plot_type_combo.currentText().replace(' ', '_').lower()}.png")
-            self.figure.savefig(plot_file, dpi=300, bbox_inches='tight')
+                # 2. Overall metrics
+                if self.overall_radio.isChecked() or self.both_radio.isChecked():
+                    overall_metrics = self.metrics_calculator.compute_overall(
+                        self.current_results_df,
+                        self.selected_metrics
+                    )
+                    overall_df = pd.DataFrame(list(overall_metrics.items()),
+                                              columns=['Metric', 'Value'])
+                    overall_file = os.path.join(
+                        temp_dir, "overall_metrics.csv")
+                    overall_df.to_csv(overall_file, index=False)
+
+                # 3. Per-shear metrics
+                if self.per_shear_radio.isChecked() or self.both_radio.isChecked():
+                    per_shear_metrics = self.metrics_calculator.compute_per_shear_rate(
+                        self.current_results_df,
+                        self.selected_metrics
+                    )
+                    per_shear_file = os.path.join(
+                        temp_dir, "per_shear_metrics.csv")
+                    per_shear_metrics.to_csv(per_shear_file, index=False)
+
+                # 4. Per-run results
+                for run_name, run_df in self.run_results.items():
+                    run_file = os.path.join(
+                        temp_dir, f"run_{run_name.replace('.', '_')}_results.csv")
+                    run_df.to_csv(run_file, index=False)
+
+                # Export all plot types
+                plot_types = [
+                    "Predicted vs Actual",
+                    "Residuals Distribution",
+                    "Q-Q Plot",
+                    "Overall Metrics",
+                    "Metrics vs Shear Rate",
+                    "Error vs Shear Rate",
+                    "Confidence Intervals"
+                ]
+
+                # Save current plot type to restore later
+                current_plot_type = self.plot_type_combo.currentText()
+
+                # Generate and save each plot type
+                plots_dir = os.path.join(temp_dir, "plots")
+                os.makedirs(plots_dir, exist_ok=True)
+
+                for plot_type in plot_types:
+                    self.plot_type_combo.setCurrentText(plot_type)
+                    QtWidgets.QApplication.processEvents()  # Update the plot
+
+                    plot_file = os.path.join(
+                        plots_dir,
+                        f"{plot_type.replace(' ', '_').lower()}.png"
+                    )
+                    self.figure.savefig(plot_file, dpi=300,
+                                        bbox_inches='tight')
+
+                # Export per-run plots if we have run results
+                if self.run_results:
+                    run_plots_dir = os.path.join(temp_dir, "per_run_plots")
+                    os.makedirs(run_plots_dir, exist_ok=True)
+
+                    current_run = self.run_combo.currentText()
+                    current_run_plot_type = self.run_plot_type.currentText()
+
+                    run_plot_types = [
+                        "Viscosity Profile Comparison",
+                        "Relative Error by Shear Rate",
+                        "Residuals Analysis",
+                        "Component Contributions"
+                    ]
+
+                    for run_name in self.run_results.keys():
+                        self.run_combo.setCurrentText(run_name)
+                        QtWidgets.QApplication.processEvents()
+
+                        for plot_type in run_plot_types:
+                            self.run_plot_type.setCurrentText(plot_type)
+                            QtWidgets.QApplication.processEvents()
+
+                            plot_file = os.path.join(
+                                run_plots_dir,
+                                f"{run_name.replace('.', '_')}_{plot_type.replace(' ', '_').lower()}.png"
+                            )
+                            self.run_figure.savefig(
+                                plot_file, dpi=300, bbox_inches='tight')
+
+                    # Restore selections
+                    self.run_combo.setCurrentText(current_run)
+                    self.run_plot_type.setCurrentText(current_run_plot_type)
+
+                # Restore original plot type
+                self.plot_type_combo.setCurrentText(current_plot_type)
+
+                # Create summary report
+                summary_file = os.path.join(temp_dir, "evaluation_summary.txt")
+                with open(summary_file, 'w') as f:
+                    f.write("=" * 60 + "\n")
+                    f.write("VISQAI MODEL EVALUATION REPORT\n")
+                    f.write("=" * 60 + "\n\n")
+
+                    f.write(f"Model: {self.select_model_label.text()}\n")
+                    f.write(
+                        f"Date: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(
+                        f"Total Formulations: {len(self.selected_formulations)}\n")
+                    f.write(
+                        f"Total Predictions: {len(self.current_results_df)}\n")
+                    f.write(
+                        f"Runs Evaluated: {len(self.formulations_by_run)}\n\n")
+
+                    f.write("OVERALL METRICS:\n")
+                    f.write("-" * 40 + "\n")
+                    overall_metrics = self.metrics_calculator.compute_overall(
+                        self.current_results_df,
+                        self.selected_metrics
+                    )
+                    for metric, value in overall_metrics.items():
+                        f.write(
+                            f"{self.format_metric_name(metric)}: {value:.4f}\n")
+                        f.write(
+                            f"  {self.METRIC_DESCRIPTIONS.get(metric, '')}\n\n")
+
+                    f.write("\nPER-RUN SUMMARY:\n")
+                    f.write("-" * 40 + "\n")
+                    for run_name, run_df in self.run_results.items():
+                        f.write(f"\n{run_name}:\n")
+                        run_metrics = self.metrics_calculator.compute_overall(
+                            run_df, ['mae', 'rmse', 'r2']
+                        )
+                        for metric, value in run_metrics.items():
+                            f.write(
+                                f"  {self.format_metric_name(metric)}: {value:.4f}\n")
+
+                # Create ZIP file
+                with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                    for root, dirs, files in os.walk(temp_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            arcname = os.path.relpath(file_path, temp_dir)
+                            zipf.write(file_path, arcname)
 
             QtWidgets.QMessageBox.information(
                 self,
                 "Export Complete",
-                f"Results exported successfully to:\n{dir_path}"
+                f"Results exported successfully to:\n{zip_path}"
             )
 
-            self.status_label.setText(f"Results exported to {dir_path}")
+            self.status_label.setText(
+                f"Results exported to {os.path.basename(zip_path)}")
 
         except Exception as e:
-            Log.e("EvaluationUI", f"Export failed: {e}")
+            Log.e("EvaluationUI", f"ZIP export failed: {e}")
             QtWidgets.QMessageBox.critical(
                 self,
                 "Export Error",
                 f"Failed to export results: {str(e)}"
             )
+
+        finally:
+            QtWidgets.QApplication.restoreOverrideCursor()
