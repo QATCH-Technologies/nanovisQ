@@ -72,9 +72,12 @@ class Parser:
             FileNotFoundError: If the file does not exist at `xml_path`.
             ET.ParseError: If the XML is malformed and cannot be parsed.
         """
-        xml_path = Path(xml_path)
+        self.xml_path = Path(xml_path)
         self.base_path = xml_path.parent
         self.capture_path = next(self.base_path.glob("capture.zip"), None)
+        Log.i(f'Base path: {self.base_path}')
+        Log.i(f'XML Path: {self.xml_path}')
+        Log.i(f'Capture path: {self.capture_path}')
         if not os.path.exists(self.capture_path):
             raise FileNotFoundError(
                 f"capture.zip not found at path `{self.capture_path}`.")
@@ -210,7 +213,23 @@ class Parser:
         Raises:
             ValueError: If any required parameter is missing or cannot be cast.
         """
-        name = self.get_param("protein_type", str)
+
+        try:
+            name = self.get_param("protein_type", str, required=True)
+        except:
+            Log.w(
+                TAG, f"<protein_type> param could not be found in run XML; returning default.")
+            return {
+                "protein": Protein(
+                    enc_id=-1,
+                    name="None",
+                    molecular_weight=0.0,
+                    pI_mean=0.0,
+                    pI_range=0.0
+                ),
+                "concentration": 0.0,
+                "units": "mg/ml"
+            }
         conc = self.get_param("protein_concentration", float)
         protein_obj = self.ing_ctrl.get_protein_by_name(name)
         if protein_obj is None:
@@ -221,7 +240,6 @@ class Parser:
         pI_range = protein_obj.pI_range
         units = self.get_param_attr(
             "protein_concentration", "units", required=True)
-
         return {
             "protein": Protein(
                 enc_id=-1,
@@ -254,15 +272,25 @@ class Parser:
         Raises:
             ValueError: If any required parameter is missing or cannot be cast.
         """
-        name = self.get_param("buffer_type", str)
-        conc = self.get_param("buffer_concentration", float)
-        units = self.get_param_attr("buffer_concentration", "units")
+        try:
+            name = self.get_param("buffer_type", str, required=True)
+        except:
+            Log.w(
+                TAG, f"<buffer_type> param could not be found in XML; returning defualt.")
+            return {
+                "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
+                "concentration": 0.0,
+                "units": units,
+            }
+
         buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
         if buffer_obj is None:
             raise ValueError(
-                "Buffer could not be fetched from persistent store.")
-        else:
-            buffer_ph = buffer_obj.pH
+                f"Buffer {name} has not been added to DB.")
+        conc = self.get_param("buffer_concentration", float)
+        units = self.get_param_attr("buffer_concentration", "units")
+
+        buffer_ph = buffer_obj.pH
         return {
             "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),
             "concentration": conc,
@@ -288,10 +316,17 @@ class Parser:
         Raises:
             ValueError: If any required parameter is missing or cannot be cast.
         """
-        name = self.get_param("stabilizer_type", str)
-        conc = self.get_param("stabilizer_concentration", float)
-        units = self.get_param_attr("stabilizer_concentration", "units")
-
+        name = self.get_param("stabilizer_type", str, required=False)
+        conc = self.get_param("stabilizer_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "stabilizer_concentration", "units", required=False)
+        if name is None:
+            name = "None"
+        if conc is None:
+            conc = 0.0
+        if units is None:
+            units = 'mM'
         return {
             "stabilizer": Stabilizer(enc_id=-1, name=name),
             "concentration": conc,
@@ -317,10 +352,17 @@ class Parser:
         Raises:
             ValueError: If any required parameter is missing or cannot be cast.
         """
-        name = self.get_param("surfactant_type", str)
-        conc = self.get_param("surfactant_concentration", float)
-        units = self.get_param_attr("surfactant_concentration", "units")
-
+        name = self.get_param("surfactant_type", str, required=False)
+        conc = self.get_param("surfactant_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "surfactant_concentration", "units", required=False)
+        if name is None:
+            name = "None"
+        if conc is None:
+            conc = 0.0
+        if units is None:
+            units = '%w'
         return {
             "surfactant": Surfactant(enc_id=-1, name=name),
             "concentration": conc,
@@ -354,70 +396,102 @@ class Parser:
         name = self.get_param("salt_type", str)
         conc = self.get_param("salt_concentration", float)
         units = self.get_param_attr("salt_concentration", "units")
-
+        if name is None:
+            name = "None"
+        if conc is None:
+            conc = 0.0
+        if units is None:
+            units = 'mg/ml'
         return {
             "salt": Salt(enc_id=-1, name=name),
             "concentration": conc,
             "units": units
         }
 
-    def get_viscosity_profile(self) -> dict:
+    def get_viscosity_profile(self) -> ViscosityProfile:
         """
-        Locate and extract viscosity data from the largest analyze-[INT].zip file.
+        Locate and extract viscosity data from the largest analyze-[INT].zip file,
+        then interpolate at the standard shear rates.
 
         Returns:
-            dict: {
-                "shear_rate": np.ndarray,
-                "viscosity": np.ndarray,
-                "temperature": np.ndarray
-            }
+            ViscosityProfile: The viscosity profile interpolated at self.profile_shears
         """
-        if not self.capture_path or not self.capture_path.exists():
+        if not self.base_path or not os.path.isdir(self.base_path):
             raise FileNotFoundError(
-                f"capture.zip not found in {self.capture_path}")
+                f"Base path not found: {self.base_path}")
 
-        # Unzip capture.zip to inspect analyze zips
-        with SecureOpen(self.base_path, "r") as analyze:
-            analyze_zips = [name for name in analyze.namelist()
-                            if re.match(r".*analyze-\d+\.zip$", name)]
+        # List all files in base_path and find analyze-*.zip files
+        all_files = os.listdir(self.base_path)
+        analyze_zips = [f for f in all_files
+                        if re.match(r"analyze-\d+\.zip$", f)]
 
-            if not analyze_zips:
-                raise FileNotFoundError(
-                    "No analyze.zip files found inside capture.zip")
+        if not analyze_zips:
+            raise FileNotFoundError(
+                f"No analyze-*.zip files found in {self.base_path}")
 
-            # Select the one with the largest integer
-            largest_zip_name = max(
-                analyze_zips, key=lambda n: int(
-                    re.search(r"analyze-(\d+)\.zip", n).group(1))
+        # Select the one with the largest integer
+        largest_zip_name = max(
+            analyze_zips,
+            key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1))
+        )
+
+        # Get the base name without extension for zipname parameter
+        zip_base_name = largest_zip_name[:-4]  # Remove .zip extension
+
+        # Get namelist from the analyze zip
+        dummy_path = os.path.join(self.base_path, 'dummy')
+        namelist = SecureOpen.get_namelist(dummy_path, zip_name=zip_base_name)
+
+        # Find the CSV file
+        csv_files = [n for n in namelist
+                     if n.endswith("_analyze_out.csv")]
+        if not csv_files:
+            raise FileNotFoundError(
+                f"No *_analyze_out.csv found inside {largest_zip_name}")
+
+        csv_file_name = csv_files[0]
+
+        # Open and read the CSV from within the analyze zip
+        # Use insecure=True to bypass CRC validation
+        csv_path = os.path.join(self.base_path, csv_file_name)
+        with SecureOpen(csv_path, 'r', zipname=zip_base_name, insecure=True) as csv_f:
+            csv_data = np.loadtxt(
+                csv_f,
+                delimiter=",",
+                skiprows=1,
+                usecols=(0, 2, 4)
             )
-            Log.i(largest_zip_name)
+            shear_rate = csv_data[:, 0]
+            viscosity = csv_data[:, 1]
+            temperature = csv_data[:, 2]
 
-            # Extract the analyze zip in memory
-            with analyze.open(largest_zip_name) as inner_zip_file:
-                Log.i(inner_zip_file)
-                with SecureOpen(inner_zip_file) as analyze_zip:
-                    csv_file_name = [n for n in analyze_zip.namelist()
-                                     if n.endswith("_analyze_out.csv")]
-                    if not csv_file_name:
-                        raise FileNotFoundError(
-                            "No *_analyze_out.csv found inside analyze zip")
+        # Convert numpy arrays to lists for ViscosityProfile
+        shear_rates_list = shear_rate.tolist()
+        viscosities_list = viscosity.tolist()
 
-                    with analyze_zip.open(csv_file_name[0]) as csv_f:
-                        csv_data = np.loadtxt(
-                            (line.decode("utf-8") for line in csv_f),
-                            delimiter=",",
-                            skiprows=1,
-                            usecols=(0, 2, 4)
-                        )
-                        shear_rate = csv_data[:, 0]
-                        viscosity = csv_data[:, 1]
-                        temperature = csv_data[:, 2]
+        # Create temporary ViscosityProfile with all measured data
+        temp_profile = ViscosityProfile(
+            shear_rates=shear_rates_list,
+            viscosities=viscosities_list,
+            units="cP"
+        )
 
-        return {
-            "shear_rate": shear_rate,
-            "viscosity": viscosity,
-            "temperature": temperature
-        }
+        # Interpolate at the desired shear rates
+        interpolated_viscosities = [
+            temp_profile.get_viscosity(sr) for sr in self.profile_shears
+        ]
+
+        # Create final ViscosityProfile with interpolated values
+        profile = ViscosityProfile(
+            shear_rates=self.profile_shears,
+            viscosities=interpolated_viscosities,
+            units="cP"
+        )
+
+        # Mark as measured data
+        profile.is_measured = True
+
+        return profile, np.average(temperature)
 
     def get_formulation(self,) -> Formulation:
         """Construct a `Formulation` object using parsed parameters and provided arguments.
@@ -436,7 +510,7 @@ class Parser:
         stabilizer_data = self.get_stabilizer()
         excipient_data = self.get_excipient()
         salt_data = self.get_salt()
-        vp_data = self.get_viscosity_profile()
+        vp, temp = self.get_viscosity_profile()
 
         formulation.set_buffer(
             buffer=buffer_data["buffer"],
@@ -468,12 +542,7 @@ class Parser:
             concentration=salt_data["concentration"],
             units=salt_data["units"]
         )
-        formulation.set_temperature(temp=vp_data["temperature"])
-        viscosity_profile = ViscosityProfile(
-            shear_rates=vp_data["shear_rate"],
-            viscosities=vp_data["viscosity"],
-            units="cP"
-        )
-        formulation.set_viscosity_profile(profile=viscosity_profile)
+        formulation.set_temperature(temp=temp)
+        formulation.set_viscosity_profile(profile=vp)
 
         return formulation

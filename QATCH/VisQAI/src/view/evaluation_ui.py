@@ -695,6 +695,7 @@ class EvaluationUI(QtWidgets.QDialog):
             forms.append(f)
         for f in forms:
             Log.i(f.to_dataframe())
+        return forms
 
     def run_evaluation(self):
         """Execute the evaluation process."""
@@ -707,14 +708,10 @@ class EvaluationUI(QtWidgets.QDialog):
             # Make sure we have predictor
             if self.predictor is None:
                 raise ValueError("No model loaded")
-            self.make_formulations()
+            forms = self.make_formulations()
             # Get formulations from parent or prepare from runs
-            if len(self.selected_formulations) == 0:
-                # Try to get from parent again
-                if hasattr(self.parent, 'import_formulations'):
-                    self.selected_formulations = copy.copy(
-                        self.parent.import_formulations)
-
+            if len(forms) == 0:
+                self.selected_formulations = copy.copy(forms)
                 if len(self.selected_formulations) == 0:
                     raise ValueError(
                         "No formulations available for evaluation")
@@ -778,23 +775,7 @@ class EvaluationUI(QtWidgets.QDialog):
         data = []
 
         for formulation in self.selected_formulations:
-            row = {
-                'Run_Name': formulation.run_name if hasattr(formulation, 'run_name') else 'Unknown',
-                'Protein_type': formulation.protein.name if formulation.protein else 'none',
-                'MW': formulation.protein.mw if formulation.protein else 0,
-                'Protein_conc': formulation.protein.concentration if formulation.protein else 0,
-                'Temperature': formulation.temperature,
-                'Buffer_type': formulation.buffer.name if formulation.buffer else 'none',
-                'Buffer_pH': formulation.buffer.ph if formulation.buffer else 7.0,
-                'Buffer_conc': formulation.buffer.concentration if formulation.buffer else 0,
-                'Salt_type': formulation.salt.name if formulation.salt else 'none',
-                'Salt_conc': formulation.salt.concentration if formulation.salt else 0,
-                'Stabilizer_type': formulation.stabilizer.name if formulation.stabilizer else 'none',
-                'Stabilizer_conc': formulation.stabilizer.concentration if formulation.stabilizer else 0,
-                'Surfactant_type': formulation.surfactant.name if formulation.surfactant else 'none',
-                'Surfactant_conc': formulation.surfactant.concentration if formulation.surfactant else 0,
-                'Protein_class_type': formulation.protein.protein_class if formulation.protein and hasattr(formulation.protein, 'protein_class') else 'mAb'
-            }
+            row = formulation.to_dataframe(training=True, encoded=False)
 
             # Add actual viscosity values for selected shear rates
             for shear_name in self.selected_shear_rates:
