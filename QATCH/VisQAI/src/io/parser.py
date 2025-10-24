@@ -474,6 +474,35 @@ class Parser:
 
         return profile, np.average(temperature)
 
+    def get_run_name(self) -> Optional[str]:
+        """Retrieve the run name from the <run_info> tag.
+
+        Returns:
+            Optional[str]: The value of the 'name' attribute from the <run_info> root element,
+                or None if the attribute is not found.
+        """
+        # Check if root element is run_info
+        if self.root.tag == "run_info":
+            run_name = self.root.get("name")
+            if run_name is None:
+                Log.w(
+                    TAG, "<run_info> root element found but 'name' attribute is missing")
+                return None
+            return run_name
+
+        # Fallback: search for run_info as a child element
+        run_info = self.root.find("run_info")
+        if run_info is None:
+            Log.w(TAG, "No <run_info> element found in XML")
+            return None
+
+        run_name = run_info.get("name")
+        if run_name is None:
+            Log.w(TAG, "<run_info> element found but 'name' attribute is missing")
+            return None
+
+        return run_name
+
     def get_formulation(self,) -> Formulation:
         """Construct a `Formulation` object using parsed parameters and provided arguments.
         Returns:
