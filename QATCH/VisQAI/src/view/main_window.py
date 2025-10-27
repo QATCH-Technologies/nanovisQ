@@ -413,7 +413,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget.addTab(FrameStep1(self, 5),
                                "\u2465 Predict")  # unicode circled 6
         self.tab_widget.addTab(FrameStep2(self, 6),
-                               "\u2467 Optimize")  # unicode circled 7
+                               "\u2466 Optimize")  # unicode circled 7
 
         # Disable database objects after initial UI load.
         self.enable(False)
