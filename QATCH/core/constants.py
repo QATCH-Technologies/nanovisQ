@@ -220,6 +220,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = '-- Select Tag --'
