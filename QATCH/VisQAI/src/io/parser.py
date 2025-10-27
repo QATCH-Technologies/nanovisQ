@@ -274,7 +274,9 @@ class Parser:
             name = self.get_param("buffer_type", str, required=True)
         except:
             Log.w(
-                TAG, f"<buffer_type> param could not be found in XML; returning defualt.")
+                TAG, f"<buffer_type> param could not be found in XML; returning default.")
+            if units is None:
+                units = "pH"
             return {
                 "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
                 "concentration": 0.0,
@@ -287,7 +289,8 @@ class Parser:
                 f"Buffer {name} has not been added to DB.")
         conc = self.get_param("buffer_concentration", float)
         units = self.get_param_attr("buffer_concentration", "units")
-
+        if units is None:
+            units = "pH"
         buffer_ph = buffer_obj.pH
         return {
             "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),

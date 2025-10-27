@@ -538,7 +538,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                         self.tab_widget.currentWidget().btn_next.click()
                         return True  # ignore click, let "Next" btn decide
                 # Block tab change based on some condition
-                if tab_step in [3, 4, 6]:
+                if tab_step in [3, 4, 7]:
                     if not widget.run_file_run:
                         QtWidgets.QMessageBox.information(
                             None, Constants.app_title,
