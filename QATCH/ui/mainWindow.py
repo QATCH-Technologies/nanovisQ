@@ -618,6 +618,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def check_for_updates(self):
         if hasattr(self.parent, "url_download"):
             delattr(self.parent, "url_download")
+        if hasattr(self.parent, "_license_manager"):
+            lm: LicenseManager = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
         color, status = self.parent.start_download(True)
         if color == "#ff0000":
             if status == "ERROR":
