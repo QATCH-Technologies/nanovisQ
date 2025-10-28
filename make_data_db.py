@@ -50,7 +50,7 @@ ing_ctrl = IngredientController(db=database)
 print(f"Adding core training samples to newly created app.db...")
 form_ctrl = FormulationController(db=database)
 csv_path = os.path.join(QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
-                        "VisQAI", "assets", "formulation_data_10212025.csv")
+                        "VisQAI", "assets", "formulation_data_10282025.csv")
 if not os.path.isfile(csv_path):
     raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
@@ -154,4 +154,9 @@ with open(DB_PATH, "rb") as f:
 # Re-open database, and confirm metadata can be loaded properly
 database = Database(path=DB_PATH, parse_file_key=True)
 print("Loaded metadata:", database.metadata)
+form_ctrl = FormulationController(db=database)
+df = form_ctrl.get_all_as_dataframe(encoded=False)
+print(df.columns)
+print(df["Salt_type"].unique())
+print(df["Excipient_type"].unique())
 database.close()

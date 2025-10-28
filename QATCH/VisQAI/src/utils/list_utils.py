@@ -9,11 +9,12 @@ except (ModuleNotFoundError, ImportError):
 class ListUtils:
 
     @staticmethod
-    def load_all_excipient_types(ing_ctrl: IngredientController):
+    def load_all_ingredient_types(ing_ctrl: IngredientController):
         proteins: list[str] = []
         buffers: list[str] = []
         surfactants: list[str] = []
         stabilizers: list[str] = []
+        excipients: list[str] = []
         salts: list[str] = []
         class_types: list[str] = []
         proteins_by_class: dict[str, str] = {}
@@ -55,6 +56,8 @@ class ListUtils:
                 stabilizers.append(i.name)
             elif i.type == "Salt":
                 salts.append(i.name)
+            elif i.type == "Excipient":
+                excipients.append(i.name)
 
         # use unique, case-insensitive sorting method:
         proteins = ListUtils.unique_case_insensitive_sort(proteins)
@@ -64,8 +67,9 @@ class ListUtils:
         stabilizers = ListUtils.unique_case_insensitive_sort(
             stabilizers)
         salts = ListUtils.unique_case_insensitive_sort(salts)
+        excipients = ListUtils.unique_case_insensitive_sort(excipients)
 
-        return proteins, buffers, surfactants, stabilizers, salts, class_types, proteins_by_class
+        return proteins, buffers, surfactants, stabilizers, salts, excipients, class_types, proteins_by_class
 
     @staticmethod
     def unique_case_insensitive_sort(list):

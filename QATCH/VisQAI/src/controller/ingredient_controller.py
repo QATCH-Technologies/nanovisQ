@@ -397,18 +397,18 @@ class IngredientController:
             id (int): The primary key of the surfactant to fetch.
 
         Returns:
-            Optional[i]: The `Surfactant` instance if found, otherwise None.
+            Optional[i]: The `Excipient` instance if found, otherwise None.
         """
         return self.db.get_ingredient(id)
 
     def get_excipient_by_name(self, name: str) -> Optional[Excipient]:
-        """Retrieve a `Surfactant` by its name.
+        """Retrieve a `Excipient` by its name.
 
         Args:
             name (str): Name of the surfactant to fetch.
 
         Returns:
-            Optional[Surfactant]: The `Surfactant` instance if found, otherwise None.
+            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
         """
         return self._fetch_by_name(name, type="Excipient")
 

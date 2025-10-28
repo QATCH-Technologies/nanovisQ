@@ -553,7 +553,7 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.proteins, self.buffers, self.surfactants, \
             self.stabilizers, self.salts, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
+            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
