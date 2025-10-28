@@ -925,6 +925,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         lay.addWidget(self.groupBuffer)
         lay.addWidget(self.groupSurfactant)
         lay.addWidget(self.groupSalt)
+        lay.addWidget(self.groupExcipient)
         self.collapsibleBox.setContentLayout(lay)
         self.collapsibleBox.toggle_button.pressed.connect(
             self.resize_on_collapse_change)
@@ -1447,6 +1448,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                         self.c15.setCurrentText(value)
                     if name == "salt_concentration":
                         self.t16.setText(value)
+                    # TODO: Add Excipient recall
 
                     # Set the fill type to the recalled number of channels from the XML
                     # file.
@@ -2167,6 +2169,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == True)  # stabilizer group
             self.groupSalt.setVisible(
                 is_bioformulation == True)  # salt group
+            # TODO: Add excipient info
             self.collapsibleBox.setVisible(
                 is_bioformulation == True)  # advanced information
 
@@ -2428,6 +2431,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+            # TODO: Add excipient info
         if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
             Log.e(msg)
@@ -2462,6 +2466,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
+            # TODO: Add excipient info
 
         # User Warning Popup Dialog when Advanced Information has missing fields
         if input_warning and not input_error:

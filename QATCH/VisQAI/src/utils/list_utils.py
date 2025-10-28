@@ -14,8 +14,8 @@ class ListUtils:
         buffers: list[str] = []
         surfactants: list[str] = []
         stabilizers: list[str] = []
-        excipients: list[str] = []
         salts: list[str] = []
+        excipients: list[str] = []
         class_types: list[str] = []
         proteins_by_class: dict[str, str] = {}
 

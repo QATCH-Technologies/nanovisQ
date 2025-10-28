@@ -107,7 +107,7 @@ class FormulationController:
 
         Args:
             formulation (Formulation): The `Formulation` instance to add. Its
-                `buffer`, `protein`, `salt`, `surfactant`, and `stabilizer`, `excipient`
+                `buffer`, `protein`, `salt`, `surfactant`, `stabilizer`, and `excipient`
                 attributes must be set to `Component` objects.
 
         Returns:
