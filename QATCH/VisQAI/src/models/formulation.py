@@ -28,6 +28,9 @@ Version:
 import math
 import pandas as pd
 from typing import Optional, Dict, Any, List
+import numpy as np
+from scipy.optimize import curve_fit
+import bisect
 try:
     from src.models.ingredient import (
         Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
@@ -104,43 +107,60 @@ class ViscosityProfile:
         """
         self._is_measured = value
 
-    def get_viscosity(self, shear_rate: float) -> float:
-        """Retrieve viscosity at a given shear rate using linear interpolation.
+    def get_viscosity(self, shear_rate: float, std_tol: float = 0.0) -> float:
+        """Retrieve viscosity at a given shear rate using logarithmic interpolation,
+        enforcing a monotonic (non-increasing) relationship with tolerance.
 
-        If the exact shear rate exists in the profile, returns the corresponding viscosity.
-        Otherwise, performs linear interpolation between the two nearest data points.
-        If the requested shear rate is outside the measured range, interpolates between
-        the two closest endpoints.
+        The logarithmic model is fitted to (shear_rate, viscosity) data as:
+            η = a * log10(y - c) + b
 
         Args:
-            shear_rate (float): The shear rate at which to compute viscosity.
+            shear_rate (float): Shear rate at which to compute viscosity.
+            std_tol (float): Allowed standard deviation tolerance for monotonic deviation.
 
         Returns:
-            float: The interpolated (or exact) viscosity value at the specified shear rate.
-
-        Raises:
-            TypeError: If `shear_rate` is not an int or float.
+            float: The estimated viscosity at the specified shear rate.
         """
         if not isinstance(shear_rate, (int, float)):
             raise TypeError("shear_rate must be numeric")
-        sr = float(shear_rate)
-        srs = self.shear_rates
-        vs = self.viscosities
 
-        import bisect
-        idx = bisect.bisect_left(srs, sr)
-        if idx < len(srs) and srs[idx] == sr:
-            return vs[idx]
-        if idx == 0:
-            x0, x1 = srs[0], srs[1]
-            y0, y1 = vs[0], vs[1]
-        elif idx == len(srs):
-            x0, x1 = srs[-2], srs[-1]
-            y0, y1 = vs[-2], vs[-1]
-        else:
-            x0, x1 = srs[idx-1], srs[idx]
-            y0, y1 = vs[idx-1], vs[idx]
-        return y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
+        sr = float(shear_rate)
+        srs = np.asarray(self.shear_rates, dtype=float)
+        vs = np.asarray(self.viscosities, dtype=float)
+        vs_monotonic = vs.copy()
+        for i in range(1, len(vs_monotonic)):
+            if vs_monotonic[i] > vs_monotonic[i - 1] + std_tol:
+                vs_monotonic[i] = vs_monotonic[i - 1] + std_tol
+
+        def log_func(x, a, b, c):
+            return a * np.log10(np.maximum(x - c, 1e-8)) + b  # avoid log(0)
+
+        try:
+            # Reasonable bounds: prevent weird large offsets
+            bounds = ([-np.inf, -np.inf, -np.inf],
+                      [np.inf, np.inf, np.min(srs) * 0.9])
+            popt, _ = curve_fit(log_func, srs, vs_monotonic,
+                                p0=(2, 1, 0.1), bounds=bounds)
+            a_fit, b_fit, c_fit = popt
+            fitted_viscosity = log_func(sr, a_fit, b_fit, c_fit)
+        except Exception:
+
+            idx = bisect.bisect_left(srs, sr)
+            if idx == 0:
+                x0, x1, y0, y1 = srs[0], srs[1], vs_monotonic[0], vs_monotonic[1]
+            elif idx == len(srs):
+                x0, x1, y0, y1 = srs[-2], srs[-1], vs_monotonic[-2], vs_monotonic[-1]
+            else:
+                x0, x1, y0, y1 = srs[idx -
+                                     1], srs[idx], vs_monotonic[idx - 1], vs_monotonic[idx]
+            fitted_viscosity = y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
+        fitted_viscosity = max(fitted_viscosity, 0.0)
+        if sr <= srs[0]:
+            fitted_viscosity = vs_monotonic[0]
+        elif sr >= srs[-1]:
+            fitted_viscosity = vs_monotonic[-1]
+
+        return fitted_viscosity
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the viscosity profile to a dictionary representation.
