@@ -1024,7 +1024,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 self._add_result_row(f"Std Dev ({sr})", f"{value:.2f} cP")
 
         # Update details text
-        self.details_text.clear()
         details_html = "<b>Formulation:</b><br>"
         for ingredient, data in self.current_formulation.items():
             value = data['value']
@@ -1061,8 +1060,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             hypothesis_text = "Unknown hypothesis type"
 
         details_html += f"<br><b>Hypothesis:</b><br>{hypothesis_text}"
-
-        self.details_text.setHtml(details_html)
 
     def _add_result_row(self, metric: str, value: str) -> None:
         """Add a row to the results table."""
@@ -1310,7 +1307,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self.outcome_frame.setStyleSheet("")
             self.probability_label.setText("")
             self.results_table.setRowCount(0)
-            self.details_text.clear()
 
             self.profile_figure.clear()
             self.profile_canvas.draw()
