@@ -50,6 +50,7 @@ TRIAL_LABEL_TEXT = (
     "Please subscribe to retain access on this system.<br/><br/>"
 )
 
+
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
         """BASE CLASS DEFINITION"""
@@ -130,7 +131,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def setCentralWidget(self, widget):
         if hasattr(self, '_super_widget') and widget is self._super_widget:
             return super().setCentralWidget(widget)
-        
+
         # Only show the set widget (hide all others)
         # This is required to prevent garbage collection of unused layout widgets
         is_widget_in_layout = False
@@ -140,7 +141,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 is_widget_in_layout = True
         if not is_widget_in_layout:
             self._super_layout.addWidget(widget)
-        widget.setVisible(True)            
+        widget.setVisible(True)
 
     def check_license(self, license_manager: Optional[LicenseManager]) -> bool:
         free_preview_period = 90  # days
@@ -234,8 +235,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                             "Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
-                status_text = status.value if isinstance(status, LicenseStatus) else str(status)
-                self._update_status_bar(f"Licensed: {status_text}", permanent=True)
+                status_text = status.value if isinstance(
+                    status, LicenseStatus) else str(status)
+                self._update_status_bar(
+                    f"Licensed: {status_text}", permanent=True)
 
             return True
 
@@ -248,7 +251,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         try:
             creation_ts = os.stat(DB_PATH).st_ctime
             creation_dt = dt.datetime.fromtimestamp(creation_ts)
-            time_ago_seconds = (dt.datetime.now() - creation_dt).total_seconds()
+            time_ago_seconds = (dt.datetime.now() -
+                                creation_dt).total_seconds()
             time_allowed_secs = dt.timedelta(
                 days=free_preview_period).total_seconds()
 
@@ -287,7 +291,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 else:
                     self._update_status_bar(f"Preview: {self.trial_left} days remaining",
                                             permanent=True)
-                    
+
                 if hasattr(self, 'trial_label'):
                     if '{}' in TRIAL_LABEL_TEXT:
                         self.trial_label.setText(
@@ -326,7 +330,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         def check_callback():
             try:
                 # Update UI in main thread
-                QtCore.QTimer.singleShot(0, lambda lm=license_manager: self.check_license(lm))
+                QtCore.QTimer.singleShot(
+                    0, lambda lm=license_manager: self.check_license(lm))
 
             except Exception as e:
                 Log.e(f"Background license refresh failed: {e}")
@@ -352,7 +357,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def hasUnsavedChanges(self):
         """BASE CLASS DEFINITION"""
         return False
-    
+
     def isBusy(self):
         """BASE CLASS DEFINITION"""
         return False
@@ -518,7 +523,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         ):
             # Disallow tab change if learning in-progress
             if self.isBusy():
-                PopUp.warning(self, "Learning In-Progress...", "Tab change is not allowed while learning.")
+                PopUp.warning(self, "Learning In-Progress...",
+                              "Tab change is not allowed while learning.")
                 return True  # ignore click
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
@@ -667,8 +673,8 @@ class VisQAIWindow(BaseVisQAIWindow):
 
     def isBusy(self) -> bool:
         return hasattr(self.tab_widget.currentWidget(), "timer") and \
-                       self.tab_widget.currentWidget().timer.isActive()
-    
+            self.tab_widget.currentWidget().timer.isActive()
+
     def reset(self) -> None:
         self.check_user_info()
         self.signedInAs.setText(self.username)
@@ -738,7 +744,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                      'buffer_type', 'buffer_concentration',
                      'surfactant_type', 'surfactant_concentration',
                      'stabilizer_type', 'stabilizer_concentration',
-                     'salt_type', 'salt_concentration']
+                     'salt_type', 'salt_concentration',
+                     'excipient_type', 'excipient_concentration']
         required_len = len(info_tags)
         if len(run_info) != required_len:
             Log.e(

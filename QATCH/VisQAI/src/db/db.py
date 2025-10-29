@@ -125,7 +125,7 @@ class Database:
 
         The tables include:
             - ingredient: core table with common fields (id, enc_id, name, type, is_user).
-            - protein, buffer, stabilizer, surfactant, salt: subclass tables referencing ingredient.
+            - protein, buffer, stabilizer, surfactant, salt, excipient: subclass tables referencing ingredient.
             - formulation: core formulation table (id, temperature).
             - formulation_component: linking table between formulations and ingredient components.
             - viscosity_profile: table storing JSON-serialized shear_rates and viscosities.
@@ -221,7 +221,7 @@ class Database:
         """Insert a new ingredient and its subclass-specific details into the database.
 
         Args:
-            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt).
+            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient).
                 The `enc_id` and `name` fields must be set, and subclass-specific attributes populated.
 
         Returns:
@@ -268,6 +268,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (db_id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (db_id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
 
         self.conn.commit()
         ing.id = db_id
@@ -329,11 +331,11 @@ class Database:
         elif typ == "Surfactant":
             ing = Surfactant(enc_id, name)
 
-        elif typ == "Salt":
-            ing = Salt(enc_id, name)
-
         elif typ == "Excipient":
             ing = Excipient(enc_id, name)
+
+        elif typ == "Salt":
+            ing = Salt(enc_id, name)
 
         else:
             return None
@@ -380,7 +382,7 @@ class Database:
         c.execute("DELETE FROM stabilizer WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM surfactant WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM salt WHERE ingredient_id = ?", (id,))
-
+        c.execute("DELETE FROM excipient WHERE ingredient_id = ?", (id,))
         # Re-insert appropriate subclass row
         if isinstance(ing, Protein):
             class_val = (
@@ -435,7 +437,7 @@ class Database:
 
         Args:
             form (Formulation): A `Formulation` instance with its `_components` dictionary
-                populated (Protein, Buffer, Stabilizer, Surfactant, Salt as `Component`),
+                populated (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient as `Component`),
                 and `viscosity_profile` optionally set.
 
         Returns:
