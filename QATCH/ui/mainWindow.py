@@ -62,6 +62,29 @@ class _MainWindow(QtWidgets.QMainWindow):
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
 
+        # Get the application instance safely and connect the signal
+        app_instance = QtWidgets.QApplication.instance()
+        if app_instance:
+            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
+        
+    def focusWindowChanged(self, event):
+        # The focus has moved to another application, so hide the widget
+        self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Update the floating widget's position whenever the main window moves
+        self.ui0.set_floating_widget_position()
+        super().moveEvent(event)
+
+    def changeEvent(self, event):
+        # Handle window state changes (e.g., minimize/restore)
+        if event.type() == event.WindowStateChange:
+            if self.isMinimized():
+                self.ui0.floating_widget.hide()
+            # else:
+            #     self.ui0.floating_widget.show()
+        super().changeEvent(event)
+
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
         res = PopUp.question(self, Constants.app_title,
