@@ -614,7 +614,7 @@ class FrameStep1(QtWidgets.QDialog):
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
         excipient_type = self.feature_table.cellWidget(15, 1).currentText()
-        excipient_conc = self.feature_table.cellWidget(16, 1).currentText()
+        excipient_conc = self.feature_table.item(16, 1).text()
         temp = self.feature_table.item(17, 1).text()
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import

@@ -1454,9 +1454,9 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 and value.casefold() != "none":
                             Log.w(
                                 f"Adding new Excipient Type: \"{value}\"")
-                            self.salts.append(value)
-                            self.salts = sorted(
-                                self.salts, key=str.casefold)
+                            self.excipients.append(value)
+                            self.excipients = sorted(
+                                self.excipients, key=str.casefold)
                             self.populate_excipients()
                             self.ing_ctrl.add(Excipient(enc_id=-1, name=value))
                             self.detect_change()
@@ -1840,8 +1840,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
             self.c17.setCurrentIndex(self.c17.count()-2)
-            self.add_excipient_Type = QtWidgets.QWidget()
-            self.add_excipient_Type.setWindowTitle("Excipient Types")
+            self.add_excipient_type = QtWidgets.QWidget()
+            self.add_excipient_type.setWindowTitle("Excipient Types")
             layout = QtWidgets.QVBoxLayout()
             label = QtWidgets.QLabel("Available Excipients Types:")
             self.excipient_types_multiline = QtWidgets.QPlainTextEdit()
@@ -1852,8 +1852,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             layout.addWidget(label)
             layout.addWidget(self.excipient_types_multiline)
             layout.addWidget(save)
-            self.add_excipient_Type.setLayout(layout)
-            self.add_excipient_Type.show()
+            self.add_excipient_type.setLayout(layout)
+            self.add_excipient_type.show()
             self.excipient_types_multiline.setFocus()
             self.excipient_types_multiline.moveCursor(
                 QtGui.QTextCursor.MoveOperation.End)
@@ -1988,18 +1988,6 @@ class QueryRunInfo(QtWidgets.QWidget):
         list against the previously stored excipients to determine which entries
         were added or removed, then performs the corresponding database or in-memory
         updates.
-
-        Side Effects:
-            - Updates the internal list `self.excipients`.
-            - Calls `add_excipient()` and `delete_excipient_by_name()` on `self.ing_ctrl`.
-            - Refreshes the excipient combo box UI.
-            - Closes the excipient editing window (`add_salt_type`).
-
-        Notes:
-            - Each new excipient is created with a temporary `enc_id` of `-1`.
-            - The UI assumes that `add_salt_type` refers to the active excipient
-            type editor window; if renamed, this reference should be updated.
-
         """
         old_excipients = self.excipients.copy()
         new_excipients_raw = self.excipient_types_multiline.toPlainText().splitlines()
@@ -2016,7 +2004,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.excipients = sorted(
             self.excipients, key=str.casefold)
         self.populate_excipients()
-        self.add_salt_type.close()
+        self.add_excipient_type.close()
 
     def populate_proteins(self):
         try:
