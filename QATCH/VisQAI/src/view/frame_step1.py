@@ -469,9 +469,9 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(
                 global_handler if callable(global_handler) else self.model_selected)
 
-    def reload_excipient_choices(self):
+    def reload_all_ingredient_choices(self):
 
-        # Reload all excipients from DB
+        # Reload all ingredients from DB
         self.load_all_ingredients()
 
         # Update choices lists in default features for dropdown items
@@ -488,8 +488,8 @@ class FrameStep1(QtWidgets.QDialog):
 
     def on_tab_selected(self):
 
-        # Reload excipients from DB and update default choices
-        self.reload_excipient_choices()
+        # Reload ingredients from DB and update default choices
+        self.reload_all_ingredient_choices()
 
         if self.step == 2:  # Suggest
             # self.load_suggestion()
@@ -667,12 +667,14 @@ class FrameStep1(QtWidgets.QDialog):
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
-        protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
+        protein = self.parent.ing_ctrl.get_protein_by_name(
+            name=protein_type)
         if protein is None:
             protein = self.parent.ing_ctrl.add_protein(
                 Protein(enc_id=-1, name=protein_type))
 
-        buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
+        buffer = self.parent.ing_ctrl.get_buffer_by_name(
+            name=buffer_type)
         if buffer is None:
             buffer = self.parent.ing_ctrl.add_buffer(
                 Buffer(enc_id=-1, name=buffer_type))
@@ -689,7 +691,8 @@ class FrameStep1(QtWidgets.QDialog):
             stabilizer = self.parent.ing_ctrl.add_stabilizer(
                 Stabilizer(enc_id=-1, name=stabilizer_type))
 
-        salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
+        salt = self.parent.ing_ctrl.get_salt_by_name(
+            name=salt_type)
         if salt is None:
             salt = self.parent.ing_ctrl.add_salt(
                 Salt(enc_id=-1, name=salt_type))
@@ -698,7 +701,7 @@ class FrameStep1(QtWidgets.QDialog):
             name=excipient_type)
         if excipient is None:
             excipient = self.parent.ing_ctrl.add_excipient(
-                excipient=Excipient(enc_id=-1, name=excipient_type))
+                Excipient(enc_id=-1, name=excipient_type))
 
         def is_number(s: str):
             try:
@@ -1764,14 +1767,14 @@ class FrameStep1(QtWidgets.QDialog):
             # Check for new and/or missing features
             # NOTE: Unknown Class_Types (idx 2) will not be added to the DB.
             # Instead, only a warning will be displayed (and a reload will still occur).
-            reload_excipients = False
-            for idx in [0, 2, 6, 9, 11, 13]:
+            reload_ingredients = False
+            for idx in [0, 2, 6, 9, 11, 13, 15]:
                 item = run_features["Value"][idx]
                 choices, selected = list(dict(item).values())
                 value = str(selected).strip()
                 if value.casefold() not in [str(c).casefold() for c in choices] and value.casefold() != "none" \
                         and len(value) != 0:  # NOTE: Only protein uses blank value default
-                    reload_excipients = True
+                    reload_ingredients = True
                     if idx == 0:  # Protein Type
                         Log.w(
                             f"Adding new Protein Type: \"{value}\"")
@@ -1783,7 +1786,8 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 6:  # Buffer Type
                         Log.w(
                             f"Adding new Buffer Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Buffer(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Buffer(enc_id=-1, name=value))
                     if idx == 9:  # Surfactant Type
                         Log.w(
                             f"Adding new Surfactant Type: \"{value}\"")
@@ -1797,7 +1801,8 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 13:  # Salt Type
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Salt(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Salt(enc_id=-1, name=value))
                     if idx == 15:  # Excipient Type
                         Log.w(
                             f"Adding new Excipient Type: \"{value}\"")
@@ -1805,9 +1810,9 @@ class FrameStep1(QtWidgets.QDialog):
                             Excipient(enc_id=-1, name=value))
 
             # Reload excipient choices (only if needed)
-            if reload_excipients:
-                # Reload excipients from DB and update default choices
-                self.reload_excipient_choices()
+            if reload_ingredients:
+                # Reload ingredients from DB and update default choices
+                self.reload_all_ingredient_choices()
 
                 # Copy the updated default choices to the run features
                 run_features["Value"][0]["choices"] = self.proteins

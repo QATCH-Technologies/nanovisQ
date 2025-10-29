@@ -1117,7 +1117,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         tb_elems = [self.t_runname, self.t_batch, self.t0,
                     self.t1, self.t2, self.t3, self.t4, self.t5,
-                    self.t6, self.t8, self.t12, self.t14, self.t16]
+                    self.t6, self.t8, self.t12, self.t14, self.t16, self.t18]
         self.reset_actions = []
         for tb in tb_elems:
             tb.textChanged.connect(self.detect_change)
@@ -1141,7 +1141,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.notes.textChanged.connect(self.detect_change)
         self.t_channels.valueChanged.connect(self.detect_change)
 
-        cb_elems = [self.c9, self.c10, self.c11, self.c13, self.c15]
+        cb_elems = [self.c9, self.c10, self.c11, self.c13, self.c15, self.c17]
         for cb in cb_elems:
             self._init_combobox_menu(cb)
             cb.currentTextChanged.connect(self.detect_change)
@@ -1809,7 +1809,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t16.setEnabled(False)
         else:
             self.t16.setEnabled(True)
-            pass  # do nothing if any other value was selected'
+            pass  # do nothing if any other value was selected
 
     def new_excipient_type(self, text: str) -> None:
         """Handle user selection changes for the excipient type combo box.
@@ -2919,6 +2919,17 @@ class QueryRunInfo(QtWidgets.QWidget):
             param17.setAttribute('value', self.t16.text())
             param17.setAttribute('units', 'mM')
             params.appendChild(param17)
+
+            param18 = run.createElement('param')
+            param18.setAttribute('name', 'excipient_type')
+            param18.setAttribute('value', self.c17.currentText())
+            params.appendChild(param18)
+
+            param19 = run.createElement('param')
+            param19.setAttribute('name', 'excipient_concentration')
+            param19.setAttribute('value', self.t18.text())
+            param19.setAttribute('units', 'mM')
+            params.appendChild(param19)
 
         param5 = run.createElement('param')
         param5.setAttribute('name', 'surface_tension')

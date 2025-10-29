@@ -371,11 +371,11 @@ class Formulation:
 
         Args:
             excipient (Excipient): An instance of `Excipient` to include.
-            excpient (float): Concentration of the excpient (must be ≥ 0).
+            concentration (float): Concentration of the excipient (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
 
         Raises:
-            TypeError: If `excipient` is not a `Excipient`, or if concentration is not numeric.
+            TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
         self._components["excipient"] = Component(

@@ -17,13 +17,13 @@ class ListUtils:
         salts: list[str] = []
         excipients: list[str] = []
         class_types: list[str] = []
-        proteins_by_class: dict[str, str] = {}
+        proteins_by_class: dict[str, list[str]] = {}
 
         # fixed list of supported protein class types:
         class_types = list(ProteinClass.all_strings())
 
-        for type in class_types:
-            proteins_by_class[type] = []
+        for class_name in class_types:
+            proteins_by_class[class_name] = []
 
         ingredients = ing_ctrl.get_all_ingredients()
 
