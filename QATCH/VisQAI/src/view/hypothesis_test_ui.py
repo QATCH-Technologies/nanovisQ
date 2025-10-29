@@ -48,21 +48,18 @@ except (ModuleNotFoundError, ImportError):
         def get_path():
             return os.path.dirname(os.path.abspath(__file__))
 
-from PyQt5 import QtGui, QtWidgets, QtCore
+from PyQt5 import QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from matplotlib.colors import LinearSegmentedColormap
 
 try:
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
@@ -70,6 +67,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -776,11 +774,20 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 if ingredient and hasattr(ingredient, 'name') and ingredient.name.lower() != 'none':
                     concentration = self.current_formulation[ingredient.name]['value']
                     units = self.current_formulation[ingredient.name]['unit']
-                    set_method(ingredient=ingredient,
+                    set_method(ingredient,
                                concentration=concentration, units=units)
                 else:
                     # Set with None for 'none' ingredients
-                    set_method(None, concentration=0.0,
+                    type_map = {
+                        "Buffer": Buffer(enc_id=-1, name="None"),
+                        "Protein": Protein(enc_id=-1, name="None"),
+                        "Surfactant": Surfactant(enc_id=-1, name="None"),
+                        "Stabilizer": Stabilizer(enc_id=-1, name="None"),
+                        "Salt": Salt(enc_id=-1, name="None"),
+                        "Excipient": Excipient(enc_id=-1, name="None"),
+                    }
+                    obj = self.ing_ctrl.get_by_name("none", type_map[ing_type])
+                    set_method(obj, concentration=0.0,
                                units=self.INGREDIENT_UNITS[ing_type])
 
             protein = self.ingredient_combos["Protein"].currentData()
