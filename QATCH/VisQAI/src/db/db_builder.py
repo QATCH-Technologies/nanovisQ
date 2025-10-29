@@ -36,6 +36,6 @@ class DBBuilder:
 
 if __name__ == "__main__":
     csv_path = os.path.join(
-        "VisQAI", "assets", "formulation_data_10212025.csv")
+        "VisQAI", "assets", "formulation_data_10282025.csv")
     builder = DBBuilder()
     builder.init_database(csv_path=csv_path)

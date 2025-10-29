@@ -618,6 +618,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def check_for_updates(self):
         if hasattr(self.parent, "url_download"):
             delattr(self.parent, "url_download")
+        if hasattr(self.parent, "_license_manager"):
+            lm: LicenseManager = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
         color, status = self.parent.start_download(True)
         if color == "#ff0000":
             if status == "ERROR":
@@ -2431,6 +2435,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
                 Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
@@ -2500,6 +2505,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "Skipping migration check: could not create temp decrypted DB.")
                     finally:
                         machine_database.cleanup_temp_decrypt()
+
+                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
+                # update machine db with changes from bundled db.
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2508,6 +2516,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
+                # TODO: Think of a better way to do this!
+                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                #     shutil.copy(bundled_database_path, machine_database_path)
+                #     Log.w(
+                #         "Operating in development mode, copying bundled db into log data.")
             else:
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
