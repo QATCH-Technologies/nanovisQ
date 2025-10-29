@@ -255,10 +255,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         main_layout.addWidget(splitter)
 
-        # Status bar
-        self.status_bar = QtWidgets.QStatusBar()
-        main_layout.addWidget(self.status_bar)
-
         self.resize(1400, 900)
 
     def create_configuration_panel(self) -> QtWidgets.QWidget:
@@ -377,7 +373,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             spin.setSuffix(f" {unit}")
             spin.setMinimumWidth(120)
 
-            combo.currentIndexChanged.connect(self.update_formulation)
+            combo.currentIndexChanged.connect(
+                lambda idx, t=ing_type: self.on_ingredient_changed(t, idx))
             spin.valueChanged.connect(self.update_formulation)
 
             self.ingredient_combos[ing_type] = combo
@@ -658,9 +655,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                         '\\')[-1].split('/')[-1].split('.')[0]
                     self.model_label.setText(f"Model: {display_name}")
                     Log.i(TAG, f"Model loaded: {file_path}")
-
-                    self.status_bar.showMessage(
-                        f"Model loaded: {display_name}", 5000)
                     self.check_run_button_state()
 
                 except Exception as e:
@@ -700,6 +694,18 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Check if run button should be enabled
         self.check_run_button_state()
+
+    def on_ingredient_changed(self, ing_type: str, index: int) -> None:
+        """Handle ingredient combo box changes and auto-set concentration to 0 if 'none' is selected."""
+        combo = self.ingredient_combos[ing_type]
+        spin = self.concentration_spins[ing_type]
+
+        # If the selected item has None as data (the "Select" option), set concentration to 0
+        if combo.currentData() is None:
+            spin.setValue(0.0)
+
+        # Update formulation
+        self.update_formulation()
 
     def on_hypothesis_type_changed(self, index: int) -> None:
         """Handle hypothesis type selection change."""
@@ -787,8 +793,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Switch to results tab
             self.viz_tabs.setCurrentIndex(0)
-
-            self.status_bar.showMessage("Hypothesis test completed", 5000)
 
         except Exception as e:
             Log.e(TAG, f"Hypothesis test failed: {e}")
@@ -976,19 +980,19 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         if passed:
             self.outcome_frame.setStyleSheet(
-                "QFrame { background-color: #d4edda; border: 2px solid #28a745; }"
+                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E8F8F7, stop:1 #D4F1EF); border: 2px solid #69EAC5; border-radius: 8px; }"
             )
-            self.outcome_label.setText("✓ HYPOTHESIS SUPPORTED")
+            self.outcome_label.setText("Hypothesis Supported")
             self.outcome_label.setStyleSheet(
-                "font-size: 18pt; font-weight: bold; color: #155724; padding: 20px;"
+                "font-size: 16pt; font-weight: 500; color: #00695C; padding: 20px; background: transparent;"
             )
         else:
             self.outcome_frame.setStyleSheet(
-                "QFrame { background-color: #f8d7da; border: 2px solid #dc3545; }"
+                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FFF3E0, stop:1 #FFE0B2); border: 2px solid #FF9800; border-radius: 8px; }"
             )
-            self.outcome_label.setText("✗ HYPOTHESIS NOT SUPPORTED")
+            self.outcome_label.setText("Hypothesis Not Supported")
             self.outcome_label.setStyleSheet(
-                "font-size: 18pt; font-weight: bold; color: #721c24; padding: 20px;"
+                "font-size: 16pt; font-weight: 500; color: #E65100; padding: 20px; background: transparent;"
             )
 
         self.probability_label.setText(
@@ -1117,7 +1121,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Plot prediction line
         ax.plot(shear_rates, predictions, 'o-', linewidth=2, markersize=8,
-                label='Predicted Viscosity', color='#2E86DE')
+                label='Predicted Viscosity', color='#00A3DA')
 
         # Show confidence intervals if enabled
         if self.show_confidence_check.isChecked():
@@ -1129,7 +1133,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             upper = [p + z_score * u for p,
                      u in zip(predictions, uncertainties)]
 
-            ax.fill_between(shear_rates, lower, upper, alpha=0.3, color='#2E86DE',
+            ax.fill_between(shear_rates, lower, upper, alpha=0.3, color='#00A3DA',
                             label=f'{confidence:.0f}% Confidence Interval')
 
         # Show hypothesis threshold if enabled
@@ -1204,9 +1208,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         y = stats.norm.pdf(x, mean, std)
 
         # --- Plot distribution ---
-        ax.plot(x, y, linewidth=2, color='#2E86DE',
+        ax.plot(x, y, linewidth=2, color='#00A3DA',
                 label='Probability Distribution')
-        ax.fill_between(x, y, alpha=0.3, color='#2E86DE')
+        ax.fill_between(x, y, alpha=0.3, color='#00A3DA')
 
         # --- Mark mean ---
         ax.axvline(
@@ -1228,7 +1232,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Shade region
             mask = x <= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         elif hypothesis_type == 'greater_than':
@@ -1237,7 +1241,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                        label=f'Threshold ({threshold:.1f} cP)')
 
             mask = x >= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         elif hypothesis_type in ['between', 'within_range']:
@@ -1252,7 +1256,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             ax.axvline(x=max_val, color='red', linestyle='--', linewidth=2)
 
             mask = (x >= min_val) & (x <= max_val)
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         # Get probability for this shear rate
@@ -1316,8 +1320,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             self.save_btn.setEnabled(False)
             self.check_run_button_state()
-
-            self.status_bar.showMessage("All cleared", 3000)
 
     def save_results(self) -> None:
         """Save hypothesis test results."""
@@ -1388,9 +1390,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     f"Results saved successfully to:\n{file_path}"
                 )
 
-                self.status_bar.showMessage(
-                    f"Results saved to {file_path}", 5000)
-
             except Exception as e:
                 Log.e(TAG, f"Failed to save results: {e}")
                 QtWidgets.QMessageBox.critical(
@@ -1412,7 +1411,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             try:
                 self.profile_figure.savefig(
                     file_path, dpi=300, bbox_inches='tight')
-                self.status_bar.showMessage(f"Plot saved to {file_path}", 5000)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
                     self,
@@ -1433,7 +1431,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             try:
                 self.probability_figure.savefig(
                     file_path, dpi=300, bbox_inches='tight')
-                self.status_bar.showMessage(f"Plot saved to {file_path}", 5000)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
                     self,
