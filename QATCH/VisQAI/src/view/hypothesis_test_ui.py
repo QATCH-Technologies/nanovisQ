@@ -20,6 +20,7 @@ import os
 import traceback
 from typing import Optional, List, Dict, Tuple, TYPE_CHECKING
 import json
+from scipy import stats
 
 try:
     from QATCH.common.logger import Logger as Log
@@ -814,11 +815,59 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             formulation.set_temperature(self.temperature)
 
-            # Run prediction
-            self.prediction_results = self.predictor.predict_uncertainty(
-                formulation.to_dataframe(encoded=False, training=False))
+            # Run predictions for CI levels from 50% to 100% in 1% steps
+            self.prediction_results = {}
+            formulation_df = formulation.to_dataframe(
+                encoded=False, training=False)
 
-            # Evaluate hypothesis
+            for confidence_level in range(50, 101):
+                ci_lower = (100 - confidence_level) / 2
+                ci_upper = 100 - ci_lower
+                ci_range = (ci_lower, ci_upper)
+
+                pred_means, pred_stats = self.predictor.predict_uncertainty(
+                    formulation_df,
+                    ci_range=ci_range)
+
+                # Extract the bounds - the keys might be 'lower_95', 'upper_95' or similar
+                # We need to find the actual keys being returned
+                # Typically they will be named based on the CI range or have generic names
+
+                # Store with standardized keys for this confidence level
+                standardized_stats = {
+                    'std': pred_stats['std'],
+                    'coefficient_of_variation': pred_stats['coefficient_of_variation'],
+                }
+
+                # Find the lower and upper bound keys (they might vary)
+                # Common patterns: 'lower_95', 'upper_95', 'lower', 'upper', 'lower_ci', 'upper_ci'
+                lower_key = None
+                upper_key = None
+
+                for key in pred_stats.keys():
+                    if 'lower' in key.lower():
+                        lower_key = key
+                    if 'upper' in key.lower():
+                        upper_key = key
+
+                if lower_key and upper_key:
+                    standardized_stats[f'lower_{confidence_level}'] = pred_stats[lower_key]
+                    standardized_stats[f'upper_{confidence_level}'] = pred_stats[upper_key]
+                else:
+                    # Fallback: calculate from mean and std using normal distribution
+                    # This should match what predict_uncertainty does internally
+                    z_score = stats.norm.ppf(ci_upper / 100)
+                    standardized_stats[f'lower_{confidence_level}'] = pred_means - \
+                        z_score * pred_stats['std']
+                    standardized_stats[f'upper_{confidence_level}'] = pred_means + \
+                        z_score * pred_stats['std']
+
+                self.prediction_results[confidence_level] = {
+                    'means': pred_means,
+                    'stats': standardized_stats
+                }
+
+            # Evaluate hypothesis across all confidence levels
             self.hypothesis_result = self.evaluate_hypothesis()
 
             # Update visualizations
@@ -845,17 +894,15 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             QtWidgets.QApplication.restoreOverrideCursor()
 
     def evaluate_hypothesis(self) -> Dict:
-        """Evaluate the hypothesis based on predictions."""
+        """Evaluate the hypothesis based on predictions using CI bounds across all confidence levels."""
         hypothesis_type = self.hypothesis_type_combo.currentData()
         shear_rate_data = self.shear_rate_combo.currentData()
-        confidence_level = self.confidence_spin.value()
 
         result = {
             'hypothesis_type': hypothesis_type,
             'shear_rate': shear_rate_data,
-            'confidence_level': confidence_level,
-            'passed': False,
-            'probability': 0.0,
+            'max_confidence_level': 0,  # Maximum confidence level at which hypothesis passes
+            'predictions_by_ci': {},
             'details': {}
         }
 
@@ -865,44 +912,26 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         else:
             shear_rates = [shear_rate_data]
 
-        # Extract predictions and uncertainties
-        predictions = {}
-        pred_means, pred_stats = self.prediction_results
-        mean_values = pred_means.flatten()
-        std_values = pred_stats["std"].flatten()
-        lower_values = pred_stats["lower_95"].flatten()
-        upper_values = pred_stats["upper_95"].flatten()
-        cv_values = pred_stats["coefficient_of_variation"].flatten()
-
-        for i, sr in enumerate(shear_rates):
-            predictions[sr] = {
-                "mean": float(mean_values[i]),
-                "std": float(std_values[i]),
-                "lower_95": float(lower_values[i]),
-                "upper_95": float(upper_values[i]),
-                "coefficient_of_variation": float(cv_values[i]),
-            }
-
         # Evaluate based on hypothesis type
         if hypothesis_type == 'less_than':
             threshold = self.threshold_spin.value()
             result['details']['threshold'] = threshold
-            result = self._evaluate_less_than(
-                predictions, threshold, confidence_level, result)
+            result = self._evaluate_less_than_ci_profile(
+                shear_rates, threshold, result)
 
         elif hypothesis_type == 'greater_than':
             threshold = self.threshold_spin.value()
             result['details']['threshold'] = threshold
-            result = self._evaluate_greater_than(
-                predictions, threshold, confidence_level, result)
+            result = self._evaluate_greater_than_ci_profile(
+                shear_rates, threshold, result)
 
         elif hypothesis_type == 'between':
             min_val = self.min_spin.value()
             max_val = self.max_spin.value()
             result['details']['min'] = min_val
             result['details']['max'] = max_val
-            result = self._evaluate_between(
-                predictions, min_val, max_val, confidence_level, result)
+            result = self._evaluate_between_ci_profile(
+                shear_rates, min_val, max_val, result)
 
         elif hypothesis_type == 'within_range':
             target = self.target_spin.value()
@@ -913,195 +942,230 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             result['details']['range_pct'] = range_pct
             result['details']['lower'] = lower
             result['details']['upper'] = upper
-            result = self._evaluate_between(
-                predictions, lower, upper, confidence_level, result)
+            result = self._evaluate_between_ci_profile(
+                shear_rates, lower, upper, result)
 
         return result
 
-    def _evaluate_less_than(self, predictions: Dict, threshold: float,
-                            confidence: float, result: Dict) -> Dict:
-        """Evaluate 'less than' hypothesis."""
-        probabilities = []
+    def _evaluate_less_than_ci_profile(self, shear_rates: List[str], threshold: float,
+                                       result: Dict) -> Dict:
+        """Evaluate 'less than' hypothesis at the selected CI level.
 
-        for sr, pred in predictions.items():
-            mean = pred['mean']
-            std = pred['std']
+        Returns percentage of CI interval that falls below the threshold for each shear rate.
+        """
+        # Get the selected confidence level from the spin box
+        confidence_level = self.confidence_spin.value()
 
-            # Calculate probability using normal CDF
-            if std > 0:
-                from scipy import stats
-                z_score = (threshold - mean) / std
-                prob = stats.norm.cdf(z_score)
+        pred_data = self.prediction_results[confidence_level]
+        pred_means = pred_data['means']
+        pred_stats = pred_data['stats']
+
+        mean_values = pred_means.flatten()
+        std_values = pred_stats["std"].flatten()
+        upper_values = pred_stats[f"upper_{int(confidence_level)}"].flatten()
+        lower_values = pred_stats[f"lower_{int(confidence_level)}"].flatten()
+
+        predictions_at_ci = {}
+        percentages = []
+
+        for i, sr in enumerate(shear_rates):
+            mean = float(mean_values[i])
+            std = float(std_values[i])
+            upper_ci = float(upper_values[i])
+            lower_ci = float(lower_values[i])
+
+            # Calculate percentage of CI interval below threshold
+            if upper_ci < threshold:
+                # Entire CI is below threshold -> 100%
+                percentage = 100.0
+                passes = True
+            elif lower_ci >= threshold:
+                # Entire CI is above threshold -> 0%
+                percentage = 0.0
+                passes = False
             else:
-                prob = 1.0 if mean < threshold else 0.0
+                # Threshold bisects the CI interval
+                # Calculate what fraction of CI is below threshold
+                ci_width = upper_ci - lower_ci
+                if ci_width > 0:
+                    below_threshold = threshold - lower_ci
+                    percentage = (below_threshold / ci_width) * 100.0
+                else:
+                    percentage = 50.0  # Edge case: CI has zero width
+                passes = percentage >= 50.0
 
-            probabilities.append(prob)
-            result['details'][f'{sr}_probability'] = prob
-            result['details'][f'{sr}_mean'] = mean
-            result['details'][f'{sr}_std'] = std
+            percentages.append(percentage)
 
-        # Overall probability (all must pass)
-        avg_prob = np.mean(probabilities) * 100
-        result['probability'] = avg_prob
-        result['passed'] = avg_prob >= confidence
+            predictions_at_ci[sr] = {
+                'mean': mean,
+                'std': std,
+                'lower_ci': lower_ci,
+                'upper_ci': upper_ci,
+                'passes': passes,
+                'percentage': percentage
+            }
+
+        # Store results
+        result['confidence_level'] = confidence_level
+        result['predictions_by_ci'][confidence_level] = predictions_at_ci
+        result['percentages_by_shear_rate'] = {
+            sr: pct for sr, pct in zip(shear_rates, percentages)}
+
+        # Overall percentage is the average across all shear rates
+        result['average_percentage'] = sum(
+            percentages) / len(percentages) if percentages else 0.0
+        result['max_confidence_level'] = result['average_percentage']
+        result['passed'] = result['average_percentage'] >= 50.0
 
         return result
 
-    def _evaluate_greater_than(self, predictions: Dict, threshold: float,
-                               confidence: float, result: Dict) -> Dict:
-        """Evaluate 'greater than' hypothesis."""
-        probabilities = []
+    def _evaluate_greater_than_ci_profile(self, shear_rates: List[str], threshold: float,
+                                          result: Dict) -> Dict:
+        """Evaluate 'greater than' hypothesis at the selected CI level.
 
-        for sr, pred in predictions.items():
-            mean = pred['mean']
-            std = pred['std']
+        Returns percentage of CI interval that falls above the threshold for each shear rate.
+        """
+        # Get the selected confidence level from the spin box
+        confidence_level = self.confidence_spin.value()
 
-            # Calculate probability using normal CDF
-            if std > 0:
-                from scipy import stats
-                z_score = (threshold - mean) / std
-                prob = 1 - stats.norm.cdf(z_score)
+        pred_data = self.prediction_results[confidence_level]
+        pred_means = pred_data['means']
+        pred_stats = pred_data['stats']
+
+        mean_values = pred_means.flatten()
+        std_values = pred_stats["std"].flatten()
+        upper_values = pred_stats[f"upper_{int(confidence_level)}"].flatten()
+        lower_values = pred_stats[f"lower_{int(confidence_level)}"].flatten()
+
+        predictions_at_ci = {}
+        percentages = []
+
+        for i, sr in enumerate(shear_rates):
+            mean = float(mean_values[i])
+            std = float(std_values[i])
+            upper_ci = float(upper_values[i])
+            lower_ci = float(lower_values[i])
+
+            # Calculate percentage of CI interval above threshold
+            if lower_ci > threshold:
+                # Entire CI is above threshold -> 100%
+                percentage = 100.0
+                passes = True
+            elif upper_ci <= threshold:
+                # Entire CI is below threshold -> 0%
+                percentage = 0.0
+                passes = False
             else:
-                prob = 1.0 if mean > threshold else 0.0
+                # Threshold bisects the CI interval
+                # Calculate what fraction of CI is above threshold
+                ci_width = upper_ci - lower_ci
+                if ci_width > 0:
+                    above_threshold = upper_ci - threshold
+                    percentage = (above_threshold / ci_width) * 100.0
+                else:
+                    percentage = 50.0  # Edge case: CI has zero width
+                passes = percentage >= 50.0
 
-            probabilities.append(prob)
-            result['details'][f'{sr}_probability'] = prob
-            result['details'][f'{sr}_mean'] = mean
-            result['details'][f'{sr}_std'] = std
+            percentages.append(percentage)
 
-        # Overall probability
-        avg_prob = np.mean(probabilities) * 100
-        result['probability'] = avg_prob
-        result['passed'] = avg_prob >= confidence
+            predictions_at_ci[sr] = {
+                'mean': mean,
+                'std': std,
+                'lower_ci': lower_ci,
+                'upper_ci': upper_ci,
+                'passes': passes,
+                'percentage': percentage
+            }
+
+        # Store results
+        result['confidence_level'] = confidence_level
+        result['predictions_by_ci'][confidence_level] = predictions_at_ci
+        result['percentages_by_shear_rate'] = {
+            sr: pct for sr, pct in zip(shear_rates, percentages)}
+
+        # Overall percentage is the average across all shear rates
+        result['average_percentage'] = sum(
+            percentages) / len(percentages) if percentages else 0.0
+        result['max_confidence_level'] = result['average_percentage']
+        result['passed'] = result['average_percentage'] >= 50.0
 
         return result
 
-    def _evaluate_between(self, predictions: Dict, min_val: float, max_val: float,
-                          confidence: float, result: Dict) -> Dict:
-        """Evaluate 'between' or 'within range' hypothesis."""
-        probabilities = []
+    def _evaluate_between_ci_profile(self, shear_rates: List[str], min_val: float,
+                                     max_val: float, result: Dict) -> Dict:
+        """Evaluate 'between' or 'within range' hypothesis at the selected CI level.
 
-        for sr, pred in predictions.items():
-            mean = pred['mean']
-            std = pred['std']
+        Returns percentage of CI interval that falls within [min_val, max_val] for each shear rate.
+        """
+        # Get the selected confidence level from the spin box
+        confidence_level = self.confidence_spin.value()
 
-            # Calculate probability using normal CDF
-            if std > 0:
-                from scipy import stats
-                z_lower = (min_val - mean) / std
-                z_upper = (max_val - mean) / std
-                prob = stats.norm.cdf(z_upper) - stats.norm.cdf(z_lower)
+        pred_data = self.prediction_results[confidence_level]
+        pred_means = pred_data['means']
+        pred_stats = pred_data['stats']
+
+        mean_values = pred_means.flatten()
+        std_values = pred_stats["std"].flatten()
+        upper_values = pred_stats[f"upper_{int(confidence_level)}"].flatten()
+        lower_values = pred_stats[f"lower_{int(confidence_level)}"].flatten()
+
+        predictions_at_ci = {}
+        percentages = []
+
+        for i, sr in enumerate(shear_rates):
+            mean = float(mean_values[i])
+            std = float(std_values[i])
+            upper_ci = float(upper_values[i])
+            lower_ci = float(lower_values[i])
+
+            # Calculate percentage of CI interval within [min_val, max_val]
+            if lower_ci >= min_val and upper_ci <= max_val:
+                # Entire CI is within range -> 100%
+                percentage = 100.0
+                passes = True
+            elif upper_ci < min_val or lower_ci > max_val:
+                # Entire CI is outside range -> 0%
+                percentage = 0.0
+                passes = False
             else:
-                prob = 1.0 if min_val <= mean <= max_val else 0.0
+                # Range bisects the CI interval
+                # Calculate what fraction of CI is within [min_val, max_val]
+                ci_width = upper_ci - lower_ci
+                if ci_width > 0:
+                    # Find the overlap between CI interval and target range
+                    overlap_lower = max(lower_ci, min_val)
+                    overlap_upper = min(upper_ci, max_val)
+                    overlap_width = max(0, overlap_upper - overlap_lower)
+                    percentage = (overlap_width / ci_width) * 100.0
+                else:
+                    # Edge case: CI has zero width, check if it's in range
+                    percentage = 100.0 if (min_val <= mean <= max_val) else 0.0
+                passes = percentage >= 50.0
 
-            probabilities.append(prob)
-            result['details'][f'{sr}_probability'] = prob
-            result['details'][f'{sr}_mean'] = mean
-            result['details'][f'{sr}_std'] = std
+            percentages.append(percentage)
 
-        # Overall probability
-        avg_prob = np.mean(probabilities) * 100
-        result['probability'] = avg_prob
-        result['passed'] = avg_prob >= confidence
+            predictions_at_ci[sr] = {
+                'mean': mean,
+                'std': std,
+                'lower_ci': lower_ci,
+                'upper_ci': upper_ci,
+                'passes': passes,
+                'percentage': percentage
+            }
+
+        # Store results
+        result['confidence_level'] = confidence_level
+        result['predictions_by_ci'][confidence_level] = predictions_at_ci
+        result['percentages_by_shear_rate'] = {
+            sr: pct for sr, pct in zip(shear_rates, percentages)}
+
+        # Overall percentage is the average across all shear rates
+        result['average_percentage'] = sum(
+            percentages) / len(percentages) if percentages else 0.0
+        result['max_confidence_level'] = result['average_percentage']
+        result['passed'] = result['average_percentage'] >= 50.0
 
         return result
-
-    def update_results_summary(self) -> None:
-        """Update the results summary display."""
-        if not self.hypothesis_result:
-            return
-
-        # Update outcome label
-        passed = self.hypothesis_result['passed']
-        probability = self.hypothesis_result['probability']
-        confidence = self.hypothesis_result['confidence_level']
-
-        if passed:
-            self.outcome_frame.setStyleSheet(
-                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E8F8F7, stop:1 #D4F1EF); border: 2px solid #69EAC5; border-radius: 8px; }"
-            )
-            self.outcome_label.setText("Hypothesis Supported")
-            self.outcome_label.setStyleSheet(
-                "font-size: 16pt; font-weight: 500; color: #00695C; padding: 20px; background: transparent;"
-            )
-        else:
-            self.outcome_frame.setStyleSheet(
-                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FFF3E0, stop:1 #FFE0B2); border: 2px solid #FF9800; border-radius: 8px; }"
-            )
-            self.outcome_label.setText("Hypothesis Not Supported")
-            self.outcome_label.setStyleSheet(
-                "font-size: 16pt; font-weight: 500; color: #E65100; padding: 20px; background: transparent;"
-            )
-
-        self.probability_label.setText(
-            f"Probability: {probability:.1f}% (Required: {confidence:.0f}%)"
-        )
-
-        # Update results table
-        self.results_table.setRowCount(0)
-
-        # Add hypothesis details
-        hypothesis_type = self.HYPOTHESIS_TYPES[self.hypothesis_result['hypothesis_type']]
-        self._add_result_row("Hypothesis Type", hypothesis_type)
-
-        shear_data = self.hypothesis_result['shear_rate']
-        if shear_data == "all":
-            shear_text = "All Shear Rates"
-        else:
-            shear_text = f"{self.SHEAR_RATES[shear_data]:,} 1/s"
-        self._add_result_row("Shear Rate", shear_text)
-
-        self._add_result_row("Confidence Level", f"{confidence:.0f}%")
-        self._add_result_row("Calculated Probability", f"{probability:.1f}%")
-        self._add_result_row("Result", "PASS" if passed else "FAIL")
-
-        # Add prediction details
-        details = self.hypothesis_result['details']
-        for key, value in details.items():
-            if '_mean' in key:
-                sr = key.replace('_mean', '')
-                self._add_result_row(f"Predicted ({sr})", f"{value:.2f} cP")
-            elif '_std' in key:
-                sr = key.replace('_std', '')
-                self._add_result_row(f"Std Dev ({sr})", f"{value:.2f} cP")
-
-        # Update details text
-        details_html = "<b>Formulation:</b><br>"
-        for ingredient, data in self.current_formulation.items():
-            value = data['value']
-            unit = data['unit']
-            details_html += f"• {ingredient}: {value:.2f} {unit}<br>"
-
-        details_html += f"• Temperature: {self.temperature:.1f} °C<br>"
-
-        # Build hypothesis statement
-        hypothesis_type = self.hypothesis_result['hypothesis_type']
-        shear_rate_data = self.hypothesis_result['shear_rate']
-
-        if shear_rate_data == "all":
-            shear_text = "all shear rates"
-        else:
-            shear_rate_value = self.SHEAR_RATES[shear_rate_data]
-            shear_text = f"shear rate of {shear_rate_value:,} 1/s"
-
-        if hypothesis_type == 'less_than':
-            threshold = self.hypothesis_result['details']['threshold']
-            hypothesis_text = f"Viscosity at {shear_text} &lt; {threshold:.2f} cP"
-        elif hypothesis_type == 'greater_than':
-            threshold = self.hypothesis_result['details']['threshold']
-            hypothesis_text = f"Viscosity at {shear_text} &gt; {threshold:.2f} cP"
-        elif hypothesis_type == 'between':
-            min_val = self.hypothesis_result['details']['min']
-            max_val = self.hypothesis_result['details']['max']
-            hypothesis_text = f"Viscosity at {shear_text} between {min_val:.2f} and {max_val:.2f} cP"
-        elif hypothesis_type == 'within_range':
-            target = self.hypothesis_result['details']['target']
-            range_pct = self.hypothesis_result['details']['range_pct']
-            hypothesis_text = f"Viscosity at {shear_text} within ±{range_pct:.1f}% of {target:.2f} cP"
-        else:
-            hypothesis_text = "Unknown hypothesis type"
-
-        details_html += f"<br><b>Hypothesis:</b><br>{hypothesis_text}"
 
     def _add_result_row(self, metric: str, value: str) -> None:
         """Add a row to the results table."""
@@ -1118,201 +1182,400 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.results_table.setItem(row, 0, metric_item)
         self.results_table.setItem(row, 1, value_item)
 
-    def update_profile_plot(self) -> None:
-        """Update the viscosity profile plot."""
-        if not self.prediction_results:
+    def update_results_summary(self) -> None:
+        """Update the results summary display with hypothesis test outcomes."""
+        if not self.hypothesis_result:
             return
 
+        # Clear existing results
+        self.results_table.setRowCount(0)
+
+        # Get hypothesis information
+        hypothesis_type = self.hypothesis_result['hypothesis_type']
+        shear_rate_data = self.hypothesis_result['shear_rate']
+        max_confidence_level = self.hypothesis_result['max_confidence_level']
+        passed = self.hypothesis_result['passed']
+        details = self.hypothesis_result['details']
+
+        # Update outcome label with confidence level
+        # Update outcome label with average percentage
+        if passed:
+            self.outcome_label.setText(
+                f"✓ HYPOTHESIS PASSED\n({max_confidence_level:.1f}% average confidence)")
+            self.outcome_frame.setStyleSheet(
+                "QFrame { background-color: #d4edda; border: 2px solid #28a745; border-radius: 5px; }"
+            )
+            self.outcome_label.setStyleSheet(
+                "font-size: 16pt; font-weight: bold; padding: 20px; color: #155724;"
+            )
+        else:
+            self.outcome_label.setText(
+                f"✗ HYPOTHESIS FAILED\n({max_confidence_level:.1f}% average confidence)")
+            self.outcome_frame.setStyleSheet(
+                "QFrame { background-color: #f8d7da; border: 2px solid #dc3545; border-radius: 5px; }"
+            )
+            self.outcome_label.setStyleSheet(
+                "font-size: 16pt; font-weight: bold; padding: 20px; color: #721c24;"
+            )
+
+        # Update probability label
+        confidence_level = self.hypothesis_result.get('confidence_level', 95)
+        self.probability_label.setText(
+            f"Evaluated at {confidence_level}% CI | Average: {max_confidence_level:.1f}%")
+        # Build hypothesis statement
+        if shear_rate_data == "all":
+            shear_text = "all shear rates"
+        else:
+            shear_rate_value = self.SHEAR_RATES[shear_rate_data]
+            shear_text = f"shear rate of {shear_rate_value:,} 1/s"
+
+        # Add hypothesis statement to table
+        if hypothesis_type == 'less_than':
+            threshold = details['threshold']
+            statement = f"Viscosity at {shear_text} < {threshold:.2f} cP"
+        elif hypothesis_type == 'greater_than':
+            threshold = details['threshold']
+            statement = f"Viscosity at {shear_text} > {threshold:.2f} cP"
+        elif hypothesis_type == 'between':
+            min_val = details['min']
+            max_val = details['max']
+            statement = f"Viscosity at {shear_text} between {min_val:.2f} and {max_val:.2f} cP"
+        elif hypothesis_type == 'within_range':
+            target = details['target']
+            range_pct = details['range_pct']
+            lower = details['lower']
+            upper = details['upper']
+            statement = f"Viscosity at {shear_text} within ±{range_pct:.1f}% of {target:.2f} cP ({lower:.2f}-{upper:.2f} cP)"
+        else:
+            statement = "Unknown hypothesis type"
+
+        self._add_result_row("Hypothesis", statement)
+        self._add_result_row("Maximum Confidence Level",
+                             f"{max_confidence_level}%")
+        self._add_result_row(
+            "Overall Result", "PASSED" if passed else "FAILED")
+
+        # Add separator
+        separator_row = self.results_table.rowCount()
+        self.results_table.insertRow(separator_row)
+        separator_item = QtWidgets.QTableWidgetItem("─" * 50)
+        separator_item.setFlags(separator_item.flags() & ~Qt.ItemIsEditable)
+        self.results_table.setItem(separator_row, 0, separator_item)
+        self.results_table.setSpan(separator_row, 0, 1, 2)
+
+        # Add per-shear-rate results at the confidence level used for evaluation
+        if shear_rate_data == "all":
+            shear_rates = list(self.SHEAR_RATES.keys())
+        else:
+            shear_rates = [shear_rate_data]
+
+        # Use the actual confidence level that was used for evaluation
+        display_ci = self.hypothesis_result['confidence_level']
+        predictions_at_ci = self.hypothesis_result['predictions_by_ci'].get(
+            display_ci, {})
+
+        for sr in shear_rates:
+            shear_rate_value = self.SHEAR_RATES[sr]
+
+            # Add shear rate header
+            header_row = self.results_table.rowCount()
+            self.results_table.insertRow(header_row)
+            header_item = QtWidgets.QTableWidgetItem(
+                f"Shear Rate: {shear_rate_value:,} 1/s")
+            header_item.setFlags(header_item.flags() & ~Qt.ItemIsEditable)
+            header_item.setFont(QtGui.QFont("", -1, QtGui.QFont.Bold))
+            header_item.setBackground(QtGui.QColor(240, 240, 240))
+            self.results_table.setItem(header_row, 0, header_item)
+            self.results_table.setSpan(header_row, 0, 1, 2)
+
+            # Get metrics at display CI level
+            pred = predictions_at_ci.get(sr, {})
+            mean = pred.get('mean', 0)
+            std = pred.get('std', 0)
+            lower_ci = pred.get('lower_ci', 0)
+            upper_ci = pred.get('upper_ci', 0)
+            passes = pred.get('passes', False)
+            percentage = pred.get('percentage', 0.0)
+
+            self._add_result_row("  Predicted Mean", f"{mean:.2f} cP")
+            self._add_result_row("  Standard Deviation", f"{std:.2f} cP")
+            self._add_result_row(f"  {display_ci}% Confidence Interval",
+                                 f"[{lower_ci:.2f}, {upper_ci:.2f}] cP")
+            self._add_result_row("  CI Satisfaction", f"{percentage:.1f}%")
+            self._add_result_row("  Result",
+                                 "PASS" if passes else "FAIL")
+        # Resize columns to content
+        self.results_table.resizeColumnsToContents()
+
+    def update_profile_plot(self) -> None:
+        """Update the viscosity profile plot showing predictions across shear rates."""
+        if not self.prediction_results or not self.hypothesis_result:
+            return
+
+        # Clear the figure
         self.profile_figure.clear()
         ax = self.profile_figure.add_subplot(111)
 
-        # Extract data
-        shear_rates = [100, 1000, 10000, 100000, 15000000]
-        predictions = []
-        uncertainties = []
-        prediction_dict = {}
+        # Get the confidence level from hypothesis result
+        confidence_level = self.hypothesis_result['confidence_level']
+        pred_data = self.prediction_results[confidence_level]
 
-        pred_means, pred_stats = self.prediction_results
-        mean_values = pred_means.flatten()
-        std_values = pred_stats.get("std", [0] * len(mean_values)).flatten()
+        # Get predictions at the selected confidence level
+        pred_means = pred_data['means'].flatten()
+        pred_stats = pred_data['stats']
 
-        # Optional keys
-        lower_values = pred_stats.get("lower_95", [None] * len(mean_values))
-        upper_values = pred_stats.get("upper_95", [None] * len(mean_values))
-        cv_values = pred_stats.get("coefficient_of_variation", [
-                                   None] * len(mean_values))
+        # Get shear rate values and corresponding predictions
+        shear_rate_keys = list(self.SHEAR_RATES.keys())
+        shear_rate_values = [self.SHEAR_RATES[key] for key in shear_rate_keys]
 
-        # Build prediction lists and dict
-        for i, sr in enumerate(shear_rates):
-            mean = float(mean_values[i])
-            std = float(std_values[i])
-            predictions.append(mean)
-            uncertainties.append(std)
+        # Extract mean and CI bounds
+        means = pred_means
+        lower_bounds = pred_stats[f'lower_{int(confidence_level)}'].flatten()
+        upper_bounds = pred_stats[f'upper_{int(confidence_level)}'].flatten()
 
-            prediction_dict[sr] = {
-                "mean": mean,
-                "std": std,
-                # "lower_95": float(lower_values[i]) if lower_values is not None else None,
-                # "upper_95": float(upper_values[i]) if upper_values is not None else None,
-                # "coefficient_of_variation": float(cv_values[i]) if cv_values is not None else None,
-            }
+        # Plot the mean predictions
+        ax.plot(shear_rate_values, means, 'o-', linewidth=2, markersize=8,
+                label='Predicted Mean', color='#2E86AB', zorder=3)
 
-        # Plot prediction line
-        ax.plot(shear_rates, predictions, 'o-', linewidth=2, markersize=8,
-                label='Predicted Viscosity', color='#00A3DA')
-
-        # Show confidence intervals if enabled
+        # Plot confidence intervals if checkbox is checked
         if self.show_confidence_check.isChecked():
-            confidence = self.confidence_spin.value()
-            z_score = 1.96 if confidence >= 95 else 1.645  # 95% or 90%
+            ax.fill_between(shear_rate_values, lower_bounds, upper_bounds,
+                            alpha=0.3, color='#2E86AB',
+                            label=f'{int(confidence_level)}% Confidence Interval')
+            ax.plot(shear_rate_values, lower_bounds, '--', linewidth=1,
+                    color='#2E86AB', alpha=0.6)
+            ax.plot(shear_rate_values, upper_bounds, '--', linewidth=1,
+                    color='#2E86AB', alpha=0.6)
 
-            lower = [p - z_score * u for p,
-                     u in zip(predictions, uncertainties)]
-            upper = [p + z_score * u for p,
-                     u in zip(predictions, uncertainties)]
-
-            ax.fill_between(shear_rates, lower, upper, alpha=0.3, color='#00A3DA',
-                            label=f'{confidence:.0f}% Confidence Interval')
-
-        # Show hypothesis threshold if enabled
-        if self.show_threshold_check.isChecked() and self.hypothesis_result:
+        # Plot hypothesis threshold(s) if checkbox is checked
+        if self.show_threshold_check.isChecked():
             hypothesis_type = self.hypothesis_result['hypothesis_type']
             details = self.hypothesis_result['details']
 
-            if hypothesis_type in ['less_than', 'greater_than']:
-                threshold = details.get('threshold')
-                if threshold:
-                    ax.axhline(y=threshold, color='red', linestyle='--',
-                               linewidth=2, label=f'Threshold ({threshold:.0f} cP)')
+            if hypothesis_type == 'less_than':
+                threshold = details['threshold']
+                ax.axhline(y=threshold, color='#A23B72', linestyle='--',
+                           linewidth=2, label=f'Threshold: {threshold:.2f} cP')
+                ax.fill_between(shear_rate_values, 0, threshold,
+                                alpha=0.1, color='#A23B72')
 
-            elif hypothesis_type in ['between', 'within_range']:
-                if 'min' in details:
-                    min_val = details['min']
-                    max_val = details['max']
-                else:
-                    min_val = details['lower']
-                    max_val = details['upper']
+            elif hypothesis_type == 'greater_than':
+                threshold = details['threshold']
+                ax.axhline(y=threshold, color='#A23B72', linestyle='--',
+                           linewidth=2, label=f'Threshold: {threshold:.2f} cP')
+                y_max = ax.get_ylim()[1]
+                ax.fill_between(shear_rate_values, threshold, y_max * 1.2,
+                                alpha=0.1, color='#A23B72')
 
-                ax.axhline(y=min_val, color='red', linestyle='--', linewidth=2)
-                ax.axhline(y=max_val, color='red', linestyle='--', linewidth=2)
-                ax.axhspan(min_val, max_val, alpha=0.2, color='red',
-                           label='Acceptable Range')
+            elif hypothesis_type == 'between':
+                min_val = details['min']
+                max_val = details['max']
+                ax.axhline(y=min_val, color='#A23B72', linestyle='--',
+                           linewidth=2, alpha=0.7)
+                ax.axhline(y=max_val, color='#A23B72', linestyle='--',
+                           linewidth=2, alpha=0.7)
+                ax.fill_between(shear_rate_values, min_val, max_val,
+                                alpha=0.1, color='#A23B72',
+                                label=f'Target Range: {min_val:.2f}-{max_val:.2f} cP')
+
+            elif hypothesis_type == 'within_range':
+                target = details['target']
+                lower = details['lower']
+                upper = details['upper']
+                range_pct = details['range_pct']
+                ax.axhline(y=target, color='#F18F01', linestyle='-',
+                           linewidth=2, label=f'Target: {target:.2f} cP')
+                ax.axhline(y=lower, color='#A23B72', linestyle='--',
+                           linewidth=1.5, alpha=0.7)
+                ax.axhline(y=upper, color='#A23B72', linestyle='--',
+                           linewidth=1.5, alpha=0.7)
+                ax.fill_between(shear_rate_values, lower, upper,
+                                alpha=0.1, color='#A23B72',
+                                label=f'±{range_pct:.1f}% Range')
 
         # Formatting
         ax.set_xlabel('Shear Rate (1/s)', fontsize=12, fontweight='bold')
         ax.set_ylabel('Viscosity (cP)', fontsize=12, fontweight='bold')
-        ax.set_title('Predicted Viscosity Profile',
-                     fontsize=14, fontweight='bold')
+        ax.set_title('Viscosity Profile with Hypothesis Test',
+                     fontsize=14, fontweight='bold', pad=15)
 
+        # Set log scale if checkbox is checked
         if self.log_scale_check.isChecked():
             ax.set_xscale('log')
             ax.set_yscale('log')
 
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc='best')
+        # Add grid
+        ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
 
+        # Add legend
+        ax.legend(loc='best', frameon=True, shadow=True, fontsize=9)
+
+        # Adjust layout to prevent label cutoff
         self.profile_figure.tight_layout()
+
+        # Redraw the canvas
         self.profile_canvas.draw()
 
     def update_probability_plot(self) -> None:
-        """Update the probability distribution plot."""
+        """Update the probability distribution plot for the selected shear rate."""
         if not self.prediction_results or not self.hypothesis_result:
             return
 
+        # Clear the figure
         self.probability_figure.clear()
         ax = self.probability_figure.add_subplot(111)
 
-        # Get selected shear rate
-        visc_label = self.prob_shear_combo.currentData()
-        shear_rate = self.SHEAR_RATES[visc_label]
-
-        # --- Extract prediction data from new tuple format ---
-        pred_means, pred_stats = self.prediction_results
-        mean_values = pred_means.flatten()
-        std_values = pred_stats["std"].flatten()
-
-        # Match shear rate index to label position
-        shear_labels = list(self.SHEAR_RATES.keys())
-        if visc_label not in shear_labels:
+        # Get selected shear rate from combo box
+        selected_shear_key = self.prob_shear_combo.currentData()
+        if not selected_shear_key:
             return
-        i = shear_labels.index(visc_label)
 
-        mean = float(mean_values[i])
-        std = float(std_values[i])
+        shear_rate_value = self.SHEAR_RATES[selected_shear_key]
+        shear_rate_keys = list(self.SHEAR_RATES.keys())
+        shear_rate_index = shear_rate_keys.index(selected_shear_key)
 
-        # --- Generate normal distribution ---
-        from scipy import stats
-        x = np.linspace(max(0, mean - 4 * std), mean + 4 * std, 1000)
-        y = stats.norm.pdf(x, mean, std)
+        # Get the confidence level from hypothesis result
+        confidence_level = self.hypothesis_result['confidence_level']
+        pred_data = self.prediction_results[confidence_level]
 
-        # --- Plot distribution ---
-        ax.plot(x, y, linewidth=2, color='#00A3DA',
+        # Get mean and std for the selected shear rate
+        mean = float(pred_data['means'].flatten()[shear_rate_index])
+        std = float(pred_data['stats']['std'].flatten()[shear_rate_index])
+        lower_ci = float(pred_data['stats'][f'lower_{int(confidence_level)}'].flatten()[
+                         shear_rate_index])
+        upper_ci = float(pred_data['stats'][f'upper_{int(confidence_level)}'].flatten()[
+                         shear_rate_index])
+
+        # Create x values for the normal distribution curve
+        x_min = max(0, mean - 4 * std)  # Don't go below 0 for viscosity
+        x_max = mean + 4 * std
+        x = np.linspace(x_min, x_max, 500)
+
+        # Calculate the normal distribution PDF
+        pdf = stats.norm.pdf(x, mean, std)
+
+        # Plot the probability distribution
+        ax.plot(x, pdf, linewidth=2, color='#2E86AB',
                 label='Probability Distribution')
-        ax.fill_between(x, y, alpha=0.3, color='#00A3DA')
+        ax.fill_between(x, 0, pdf, alpha=0.2, color='#2E86AB')
 
-        # --- Mark mean ---
-        ax.axvline(
-            x=mean,
-            color='blue',
-            linestyle='--',
-            linewidth=2,
-            label=f'Predicted Mean ({mean:.1f} cP)'
-        )
+        # Highlight the confidence interval
+        ci_mask = (x >= lower_ci) & (x <= upper_ci)
+        ax.fill_between(x[ci_mask], 0, pdf[ci_mask], alpha=0.4, color='#2E86AB',
+                        label=f'{int(confidence_level)}% Confidence Interval')
 
-        # --- Show hypothesis region ---
+        # Add vertical lines for mean and CI bounds
+        ax.axvline(mean, color='#F18F01', linestyle='-', linewidth=2,
+                   label=f'Mean: {mean:.2f} cP')
+        ax.axvline(lower_ci, color='#2E86AB',
+                   linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.axvline(upper_ci, color='#2E86AB',
+                   linestyle='--', linewidth=1.5, alpha=0.7)
+
+        # Highlight hypothesis regions
         hypothesis_type = self.hypothesis_result['hypothesis_type']
         details = self.hypothesis_result['details']
 
         if hypothesis_type == 'less_than':
             threshold = details['threshold']
-            ax.axvline(x=threshold, color='red', linestyle='--', linewidth=2,
-                       label=f'Threshold ({threshold:.1f} cP)')
+            ax.axvline(threshold, color='#A23B72', linestyle='--', linewidth=2,
+                       label=f'Threshold: {threshold:.2f} cP')
 
-            # Shade region
-            mask = x <= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
+            # Shade region below threshold
+            threshold_mask = x <= threshold
+            ax.fill_between(x[threshold_mask], 0, pdf[threshold_mask],
+                            alpha=0.15, color='#A23B72',
                             label='Hypothesis Region')
+
+            # Calculate probability of being below threshold
+            prob = stats.norm.cdf(threshold, mean, std)
+            ax.text(0.05, 0.95, f'P(viscosity < {threshold:.2f}) = {prob:.3f}',
+                    transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
         elif hypothesis_type == 'greater_than':
             threshold = details['threshold']
-            ax.axvline(x=threshold, color='red', linestyle='--', linewidth=2,
-                       label=f'Threshold ({threshold:.1f} cP)')
+            ax.axvline(threshold, color='#A23B72', linestyle='--', linewidth=2,
+                       label=f'Threshold: {threshold:.2f} cP')
 
-            mask = x >= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
+            # Shade region above threshold
+            threshold_mask = x >= threshold
+            ax.fill_between(x[threshold_mask], 0, pdf[threshold_mask],
+                            alpha=0.15, color='#A23B72',
                             label='Hypothesis Region')
 
-        elif hypothesis_type in ['between', 'within_range']:
-            if 'min' in details:
-                min_val = details['min']
-                max_val = details['max']
-            else:
-                min_val = details['lower']
-                max_val = details['upper']
+            # Calculate probability of being above threshold
+            prob = 1 - stats.norm.cdf(threshold, mean, std)
+            ax.text(0.05, 0.95, f'P(viscosity > {threshold:.2f}) = {prob:.3f}',
+                    transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
-            ax.axvline(x=min_val, color='red', linestyle='--', linewidth=2)
-            ax.axvline(x=max_val, color='red', linestyle='--', linewidth=2)
+        elif hypothesis_type == 'between':
+            min_val = details['min']
+            max_val = details['max']
+            ax.axvline(min_val, color='#A23B72',
+                       linestyle='--', linewidth=1.5, alpha=0.7)
+            ax.axvline(max_val, color='#A23B72',
+                       linestyle='--', linewidth=1.5, alpha=0.7)
 
-            mask = (x >= min_val) & (x <= max_val)
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
-                            label='Hypothesis Region')
+            # Shade region between min and max
+            between_mask = (x >= min_val) & (x <= max_val)
+            ax.fill_between(x[between_mask], 0, pdf[between_mask],
+                            alpha=0.15, color='#A23B72',
+                            label=f'Target Range: {min_val:.2f}-{max_val:.2f} cP')
 
-        # Get probability for this shear rate
-        prob_key = f'{visc_label}_probability'
-        prob = details.get(prob_key, 0) * 100
+            # Calculate probability of being in range
+            prob = stats.norm.cdf(max_val, mean, std) - \
+                stats.norm.cdf(min_val, mean, std)
+            ax.text(0.05, 0.95, f'P({min_val:.2f} < viscosity < {max_val:.2f}) = {prob:.3f}',
+                    transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        elif hypothesis_type == 'within_range':
+            target = details['target']
+            lower = details['lower']
+            upper = details['upper']
+            range_pct = details['range_pct']
+
+            ax.axvline(target, color='#F18F01', linestyle='-', linewidth=2,
+                       label=f'Target: {target:.2f} cP', alpha=0.7)
+            ax.axvline(lower, color='#A23B72', linestyle='--',
+                       linewidth=1.5, alpha=0.7)
+            ax.axvline(upper, color='#A23B72', linestyle='--',
+                       linewidth=1.5, alpha=0.7)
+
+            # Shade region within range
+            range_mask = (x >= lower) & (x <= upper)
+            ax.fill_between(x[range_mask], 0, pdf[range_mask],
+                            alpha=0.15, color='#A23B72',
+                            label=f'±{range_pct:.1f}% Range')
+
+            # Calculate probability of being in range
+            prob = stats.norm.cdf(upper, mean, std) - \
+                stats.norm.cdf(lower, mean, std)
+            ax.text(0.05, 0.95, f'P(within ±{range_pct:.1f}% of {target:.2f}) = {prob:.3f}',
+                    transform=ax.transAxes, fontsize=10, verticalalignment='top',
+                    bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
 
         # Formatting
         ax.set_xlabel('Viscosity (cP)', fontsize=12, fontweight='bold')
         ax.set_ylabel('Probability Density', fontsize=12, fontweight='bold')
-        ax.set_title(
-            f'Probability Distribution at {shear_rate:,} 1/s\n'
-            f'P(Hypothesis) = {prob:.1f}%',
-            fontsize=14, fontweight='bold'
-        )
-        ax.legend(loc='best')
-        ax.grid(True, alpha=0.3)
+        ax.set_title(f'Probability Distribution at Shear Rate {shear_rate_value:,} 1/s',
+                     fontsize=14, fontweight='bold', pad=15)
 
+        # Add grid
+        ax.grid(True, alpha=0.3, linestyle=':', linewidth=0.5)
+
+        # Add legend
+        ax.legend(loc='best', frameon=True, shadow=True, fontsize=9)
+
+        # Set y-axis to start at 0
+        ax.set_ylim(bottom=0)
+
+        # Adjust layout to prevent label cutoff
         self.probability_figure.tight_layout()
+
+        # Redraw the canvas
         self.probability_canvas.draw()
 
     def clear_all(self) -> None:
