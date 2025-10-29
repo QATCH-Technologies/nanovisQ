@@ -25,18 +25,11 @@ Version:
     1.6
 """
 
-import traceback
-import logging
 from enum import StrEnum, unique
 from abc import ABC
 from typing import Any, Dict, Type, TypeVar, Union, Optional, Tuple
 TAG = "[Ingredient]"
 T = TypeVar("T", bound="Ingredient")
-logging.basicConfig(
-    filename='debug_trace.log',
-    level=logging.DEBUG,
-    format='%(asctime)s [%(levelname)s] %(message)s'
-)
 
 
 class Ingredient(ABC):
@@ -586,23 +579,9 @@ class Surfactant(Ingredient):
 
 class Salt(Ingredient):
     """Represents a salt ingredient without additional properties beyond Ingredient."""
-
-    def __init__(self, enc_id, name, id=None):
-        super().__init__(enc_id=enc_id, name=name, id=id)
-        if self.name == 'Lysiene':
-            logging.debug(
-                "=== DEBUG BREAKPOINT: Found ingredient 'Lysiene' ===")
-            stack_trace = ''.join(traceback.format_stack())
-            logging.debug(stack_trace)
+    pass
 
 
 class Excipient(Ingredient):
     """Represents a Excipient ingredient without additional properties beyond Ingredient."""
-
-    def __init__(self, enc_id, name, id=None):
-        super().__init__(enc_id=enc_id, name=name, id=id)
-        if self.name == 'Lysiene':
-            logging.debug(
-                "=== DEBUG BREAKPOINT: Found ingredient 'Lysiene' ===")
-            stack_trace = ''.join(traceback.format_stack())
-            logging.debug(stack_trace)
+    pass
