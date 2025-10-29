@@ -17,6 +17,85 @@ import os
 # import threading
 
 
+class FloatingMenuWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(
+            parent.parent if hasattr(parent, "parent") else parent)
+        self.parent = parent
+        
+        # Make the widget frameless, transparent, and always on top
+        self.setWindowFlags(
+            QtCore.Qt.FramelessWindowHint |
+            QtCore.Qt.WindowStaysOnTopHint |
+            QtCore.Qt.Tool
+        )
+        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+        
+        # Set a fixed size for the floating widget
+        # NOTE: Size will auto-fit to label size
+        self.setFixedSize(100, 700)
+
+        # Set text color for all child widgets
+        self.setStyleSheet("color: #333333;")
+
+        self.vbox = QtWidgets.QVBoxLayout(self)
+        self.items = QtWidgets.QVBoxLayout()
+
+        # Remove margins around widgets
+        self.setContentsMargins(0, 0, 0, 0)
+        self.vbox.setContentsMargins(0, 0, 0, 0)
+        self.items.setContentsMargins(0, 0, 0, 0)
+
+        # Add a label to display text
+        self.title = QtWidgets.QLabel("VisQ.AI<sup>TM</sup> Toolkit")
+        self.title.setStyleSheet("font-weight: bold; font-size: 12px; padding: 10px; padding-left: 15px;")
+
+        self.vbox.addSpacing(25)
+        self.vbox.addWidget(self.title)
+        self.vbox.addLayout(self.items)
+        self.vbox.addSpacing(15)
+        self.vbox.addStretch()
+
+    def addItems(self, items: list):
+        for idx, item in enumerate(items):
+            label = QtWidgets.QLabel(item)
+            label = self._setStyleSheet(label, False)
+            label.mousePressEvent = lambda evt, i=idx: self.viewToolkitItem(i)
+            self.items.addWidget(label)
+        self.setFixedSize(self.sizeHint())
+            
+    def removeItems(self):
+        for idx in range(self.items.count()):
+            label = self.items.takeAt(idx).widget()
+            label.deleteLater()
+
+    def viewToolkitItem(self, index: int):
+        if 0 <= index < self.items.count():
+            self.parent.setLearnMode(tab_index=index)
+            for idx in range(self.items.count()):
+                label = self.items.itemAt(idx).widget()
+                self._setStyleSheet(label, True if idx == index else False)
+        else:
+            raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
+        
+    def _setStyleSheet(self, label: QtWidgets.QLabel, selected: bool) -> QtWidgets.QLabel:
+        if selected:
+            label.setStyleSheet(
+                "padding: 10px; padding-left: 15px; background: #B7D3DC;")
+        else:
+            label.setStyleSheet(
+                "padding: 10px; padding-left: 15px;")
+        return label
+    
+    # Override paintEvent to create a custom background shape
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.setBrush(QtGui.QColor(221, 221, 221, 255))  # Opaque dark gray
+        painter.setPen(QtCore.Qt.NoPen)
+        painter.drawRoundedRect(self.rect(), 10, 10)  # Rounded rectangle
+
+
 class Ui_Main(object):
 
     def setupUi(self, MainWindow0, parent):
@@ -30,7 +109,7 @@ class Ui_Main(object):
         self.centralwidget.setContentsMargins(0, 0, 0, 0)
         layout_h = QtWidgets.QHBoxLayout()
 
-        # mode menu add here: Run / Analyze
+        # mode menu add here: Run / Analyze / VisQ.AI
         modewidget = QtWidgets.QWidget()
         modelayout = QtWidgets.QVBoxLayout()
         icon_path = os.path.join(
@@ -45,8 +124,17 @@ class Ui_Main(object):
         self.mode_run.mousePressEvent = self.setRunMode
         self.mode_analyze = QtWidgets.QLabel("Analyze")
         self.mode_analyze.mousePressEvent = self.setAnalyzeMode
-        self.mode_learn = QtWidgets.QLabel("VisQ.AI<sup>TM</sup>")
-        self.mode_learn.mousePressEvent = self.setLearnMode
+        self.mode_learn = QtWidgets.QWidget()
+        self.mode_learn_layout = QtWidgets.QHBoxLayout()
+        self.mode_learn_text = QtWidgets.QLabel("VisQ.AI<sup>TM</sup>")
+        self.mode_learn_arrow = QtWidgets.QLabel("<b>></b>")
+        self.mode_learn_arrow.setStyleSheet("font-family: 'Arial';")
+        self.mode_learn_layout.setContentsMargins(18, 10, 10, 10)
+        self.mode_learn_layout.addWidget(self.mode_learn_text)
+        self.mode_learn_layout.addStretch()
+        self.mode_learn_layout.addWidget(self.mode_learn_arrow)
+        self.mode_learn.setLayout(self.mode_learn_layout)
+        self.mode_learn.mousePressEvent = self.showLearnTools
         modelayout.setContentsMargins(0, 0, 0, 0)
         modelayout.addWidget(self.logolabel)
         modelayout.addWidget(self.mode_mode)
@@ -65,6 +153,10 @@ class Ui_Main(object):
         self.modemenu.setWidgetResizable(True)
         self.modemenu.setMinimumSize(QtCore.QSize(100, 700))
         self.modemenu.setWidget(modewidget)
+
+        # Create floating menu widget for VisQ.AI Toolkit
+        self.floating_widget = FloatingMenuWidget(self)
+        self.floating_widget.addItems(self.parent.VisQAIWin.getToolNames())
 
         # user sign-in view frame: TODO
         self.userview = QtWidgets.QScrollArea()
@@ -251,11 +343,12 @@ class Ui_Main(object):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
             self.parent.ControlsWin.ui_preferences.hide()
-            self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+            self.mode_run.setStyleSheet(
+                "padding: 10px; padding-left: 15px;")
             self.mode_analyze.setStyleSheet(
                 "padding: 10px; padding-left: 15px;")
             self.mode_learn.setStyleSheet(
-                "padding: 10px; padding-left: 15px;")
+                "")
             self.splitter.replaceWidget(0, self.userview)
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
             self.parent.viewTutorialPage([1, 2, 0])
@@ -310,7 +403,7 @@ class Ui_Main(object):
                 self.mode_analyze.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_learn.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
+                    "")
                 self.splitter.replaceWidget(0, self.runview)
                 if UserProfiles.count() == 0:
                     # measure, next steps, create accounts (must match pages in _configure_tutorials() too)
@@ -368,7 +461,7 @@ class Ui_Main(object):
                 self.mode_analyze.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;")
                 self.mode_learn.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
+                    "")
                 self.splitter.replaceWidget(0, self.analyze)
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj == None:
@@ -386,10 +479,15 @@ class Ui_Main(object):
         if obj == None:
             return False
 
-    def setLearnMode(self, obj):
+    def setLearnMode(self, obj = None, tab_index = 0):
         if self.splitter.widget(0) == self.learn_ui and not self._force_splitter_mode_set:
-            Log.d(
-                "VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request.")
+            if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
+                Log.d(
+                    "VisQ.AI<sup>TM</sup> showing toolkit at index {}.".format(tab_index))
+                self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
+            else:
+                Log.d(
+                    "VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request.")
             if obj == None:
                 return True
             return
@@ -418,12 +516,14 @@ class Ui_Main(object):
                 self.parent.VisQAIWin.enable(True)
                 self.parent.VisQAIWin.check_license(
                     getattr(self.parent, "_license_manager", None))
+                self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
+                self.parent.VisQAIWin.tab_widget.tabBar().hide()
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_learn.setStyleSheet(
-                    "padding: 10px; padding-left: 15px; background: #B7D3DC;")
+                    "background: #B7D3DC;")
                 self.splitter.replaceWidget(0, self.learn_ui)
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj == None:
@@ -440,6 +540,26 @@ class Ui_Main(object):
                     "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
         if obj == None:
             return False
+        
+    def showLearnTools(self, obj):
+        if not self.floating_widget.isVisible():
+            # Position and show the floating widget
+            self.set_floating_widget_position()
+            self.floating_widget.show()
+        else:
+            # Hide floating widget
+            self.floating_widget.hide()
+
+    def set_floating_widget_position(self):
+        # Calculate the desired position (e.g., top-right corner)
+        menu_widget_pos = + self.modemenu.mapToGlobal(self.modemenu.pos())
+        menu_widget_width = self.modemenu.width()
+        offset = (4, -2)
+        
+        x = menu_widget_pos.x() + menu_widget_width + offset[0]
+        y = menu_widget_pos.y() + offset[1]
+        
+        self.floating_widget.move(x, y)
 
     def retranslateUi(self, MainWindow0):
         _translate = QtCore.QCoreApplication.translate
