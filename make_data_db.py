@@ -154,9 +154,4 @@ with open(DB_PATH, "rb") as f:
 # Re-open database, and confirm metadata can be loaded properly
 database = Database(path=DB_PATH, parse_file_key=True)
 print("Loaded metadata:", database.metadata)
-form_ctrl = FormulationController(db=database)
-df = form_ctrl.get_all_as_dataframe(encoded=False)
-print(df.columns)
-print(df["Salt_type"].unique())
-print(df["Excipient_type"].unique())
 database.close()

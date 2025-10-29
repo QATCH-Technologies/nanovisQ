@@ -212,7 +212,7 @@ class FrameStep2(QtWidgets.QDialog):
     def on_tab_selected(self):
 
         # Reload all excipients from DB
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
 
         # Select a pre-selected model, if none selected here
         if not self.model_path:
@@ -249,17 +249,18 @@ class FrameStep2(QtWidgets.QDialog):
         self.run_figure_valid = False
         self.run_canvas.draw()
 
-    def load_all_excipient_types(self):
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
         self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
+            self.stabilizers, self.salts, self.excipients, \
             self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
@@ -268,6 +269,7 @@ class FrameStep2(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
