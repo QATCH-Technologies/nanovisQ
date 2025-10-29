@@ -1843,7 +1843,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.add_excipient_type = QtWidgets.QWidget()
             self.add_excipient_type.setWindowTitle("Excipient Types")
             layout = QtWidgets.QVBoxLayout()
-            label = QtWidgets.QLabel("Available Excipients Types:")
+            label = QtWidgets.QLabel("Available Excipient Types:")
             self.excipient_types_multiline = QtWidgets.QPlainTextEdit()
             self.excipient_types_multiline.setPlainText(
                 "\n".join(self.excipients))

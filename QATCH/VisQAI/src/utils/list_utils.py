@@ -79,11 +79,11 @@ class ListUtils:
         seen = set()
         result = []
         for item in list:
-            lower_item = item.lower()
+            lower_item = item.casefold()
             if lower_item not in seen:
                 seen.add(lower_item)
                 result.append(item)
 
         # Sort case-insensitive
-        result.sort(key=str.lower)
+        result.sort(key=str.casefold)
         return result

@@ -555,7 +555,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.salts: list[str] = []
         self.excipients: list[str] = []
         self.class_types: list[str] = []
-        self.proteins_by_class: dict[str, str] = {}
+        self.proteins_by_class: dict[str, list[str]] = {}
 
         self.proteins, self.buffers, self.surfactants, \
             self.stabilizers, self.salts, self.excipients, \
