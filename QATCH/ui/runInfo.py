@@ -804,9 +804,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l17 = QtWidgets.QLabel()
         self.q17 = QtWidgets.QHBoxLayout()
         self.l17.setText("Type\t\t=")
-        self.q17.addWidget(self.l15)
+        self.q17.addWidget(self.l17)
         self.c17 = QtWidgets.QComboBox()
-        self.q17.addWidget(self.c15, 1)
+        self.q17.addWidget(self.c17, 1)
         self.h17 = QtWidgets.QLabel()
         self.h17.setText("<u>?</u>")
         self.h17.setToolTip(
@@ -820,11 +820,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.l18.setText("Concentration\t=")
         self.q18.addWidget(self.l18)
         self.t18 = QtWidgets.QLineEdit()
-        self.validSaltConcentration = QtGui.QDoubleValidator(0, 1000, 3)
-        self.validSaltConcentration.setNotation(
+        self.validExcipientConcentration = QtGui.QDoubleValidator(0, 1000, 3)
+        self.validExcipientConcentration.setNotation(
             QtGui.QDoubleValidator.StandardNotation)
-        self.t18.setValidator(self.validSaltConcentration)
-        self.q18.addWidget(self.t16)
+        self.t18.setValidator(self.validExcipientConcentration)
+        self.q18.addWidget(self.t18)
         self.h18 = QtWidgets.QLabel()
         self.h18.setText("<u>mM</u>")
         self.h18.setToolTip("<b>Hint:</b> For 100mM enter \"100\".")
@@ -1448,7 +1448,21 @@ class QueryRunInfo(QtWidgets.QWidget):
                         self.c15.setCurrentText(value)
                     if name == "salt_concentration":
                         self.t16.setText(value)
-                    # TODO: Add Excipient recall
+
+                    if name == "excipient_type":
+                        if value.casefold() not in [s.casefold() for s in self.excipients] \
+                                and value.casefold() != "none":
+                            Log.w(
+                                f"Adding new Excipient Type: \"{value}\"")
+                            self.salts.append(value)
+                            self.salts = sorted(
+                                self.salts, key=str.casefold)
+                            self.populate_excipients()
+                            self.ing_ctrl.add(Excipient(enc_id=-1, name=value))
+                            self.detect_change()
+                        self.c17.setCurrentText(value)
+                    if name == "excipient_concentration":
+                        self.t18.setText(value)
 
                     # Set the fill type to the recalled number of channels from the XML
                     # file.
@@ -1797,7 +1811,32 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t16.setEnabled(True)
             pass  # do nothing if any other value was selected'
 
-    def new_excipient_type(self, text: str):
+    def new_excipient_type(self, text: str) -> None:
+        """Handle user selection changes for the excipient type combo box.
+
+        This method is triggered when the user selects an item from the excipient
+        type combo box (`c17`). It performs different actions depending on the
+        selected text:
+
+        - **"Add new..."**: Opens a new window that allows the user to view and edit
+        the list of available excipient types. The window includes a multi-line
+        text editor (`QPlainTextEdit`) for modifying existing types and a "Save"
+        button that triggers `save_excipients()`. The combo box reverts to the
+        previously selected excipient if the dialog is closed without saving.
+        - **"None" or empty string**: Disables and clears the excipient concentration
+        input field (`t18`), effectively indicating that no excipient is selected.
+        - **Any other value**: Enables the excipient concentration field (`t18`) and
+        makes no further changes.
+
+        Args:
+            text (str): The selected text from the excipient type combo box.
+
+        Side Effects:
+            - Updates the enabled state and contents of `t18`.
+            - May open a modal widget for adding/editing excipient types.
+            - Connects the "Save" button to the `save_excipients` method.
+
+        """
         if text.casefold() == "add new...":
             # set current text if window is closed, not saved
             self.c17.setCurrentIndex(self.c17.count()-2)
@@ -1940,7 +1979,28 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.populate_salts()
         self.add_salt_type.close()
 
-    def save_excipients(self):
+    def save_excipients(self) -> None:
+        """Save updated excipient types entered by the user.
+
+        This method processes the edited list of excipient types from the multiline
+        text editor (`excipient_types_multiline`) and synchronizes the changes with
+        the application's excipient controller (`ing_ctrl`). It compares the updated
+        list against the previously stored excipients to determine which entries
+        were added or removed, then performs the corresponding database or in-memory
+        updates.
+
+        Side Effects:
+            - Updates the internal list `self.excipients`.
+            - Calls `add_excipient()` and `delete_excipient_by_name()` on `self.ing_ctrl`.
+            - Refreshes the excipient combo box UI.
+            - Closes the excipient editing window (`add_salt_type`).
+
+        Notes:
+            - Each new excipient is created with a temporary `enc_id` of `-1`.
+            - The UI assumes that `add_salt_type` refers to the active excipient
+            type editor window; if renamed, this reference should be updated.
+
+        """
         old_excipients = self.excipients.copy()
         new_excipients_raw = self.excipient_types_multiline.toPlainText().splitlines()
         new_excipients = [n.strip() for n in new_excipients_raw if n.strip()]
@@ -2038,7 +2098,25 @@ class QueryRunInfo(QtWidgets.QWidget):
         except:
             Log.e("Failed to update salts list after saving.")
 
-    def populate_excipients(self):
+    def populate_excipients(self) -> None:
+        """Populate the excipient selection combo box with available options.
+
+        This method refreshes the contents of the `c17` combo box to reflect the
+        current list of available excipients. It clears any existing items, then adds
+        a default "None" entry, all excipient names from `self.excipients`, and a final
+        "Add new..." option for creating a new excipient. If excipients already exist
+        prior to this update, the combo box will attempt to select the most recently
+        added excipient. Otherwise, it defaults to selecting "None".
+
+        Notes:
+            Since the `self.excipients` list is sorted, the newest entry may not
+            necessarily appear last in the list. The selection logic may need to be
+            updated accordingly.
+
+        Exceptions:
+            Logs an error if the combo box update process fails for any reason.
+
+        """
         try:
             num_items = self.c17.count()
             self.c17.clear()
@@ -2169,7 +2247,8 @@ class QueryRunInfo(QtWidgets.QWidget):
                 is_bioformulation == True)  # stabilizer group
             self.groupSalt.setVisible(
                 is_bioformulation == True)  # salt group
-            # TODO: Add excipient info
+            self.groupExcipient.setVisible(
+                is_bioformulation == True)  # Excipient Group
             self.collapsibleBox.setVisible(
                 is_bioformulation == True)  # advanced information
 
@@ -2431,7 +2510,14 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
-            # TODO: Add excipient info
+            if self.t18.isVisible() and not self.t18.hasAcceptableInput():
+                msg = "Input Error: Excipient Concentration must be between {} and {}." \
+                    .format(
+                        self.validExcipientConcentration.bottom(),
+                        self.validExcipientConcentration.top())
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
         if len(self.c10.currentText()) == 0 and self.c10.isEnabled() and self.c10.isVisible():
             msg = "Input Error: You must provide a Protein Type if this is a bioformulation."
             Log.e(msg)
@@ -2466,8 +2552,11 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(msg)
                 error_details += msg + "\n"
                 input_warning = True
-            # TODO: Add excipient info
-
+            if self.t18.text() == "0" and self.t18.isEnabled() and self.t18.isVisible():
+                msg = "Input Error: Excipient Concentration should be non-zero when Excipient Type is not \"none\"."
+                Log.e(msg)
+                error_details += msg + "\n"
+                input_warning = True
         # User Warning Popup Dialog when Advanced Information has missing fields
         if input_warning and not input_error:
             if PopUp.critical(

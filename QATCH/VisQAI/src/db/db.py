@@ -119,6 +119,12 @@ class Database:
         self.init_changes = self.conn.total_changes
         self._create_tables()
         self.is_open = True
+        with open("log.txt", 'w') as f:
+            f.write(f"{self.db_path}")
+            f.write("\n\n\n")
+            for obj in self.conn.iterdump():
+                f.write(obj)
+                f.write('\n')
 
     def _create_tables(self) -> None:
         """Create all necessary tables if they do not already exist.
@@ -331,11 +337,11 @@ class Database:
         elif typ == "Surfactant":
             ing = Surfactant(enc_id, name)
 
-        elif typ == "Salt":
-            ing = Salt(enc_id, name)
-
         elif typ == "Excipient":
             ing = Excipient(enc_id, name)
+
+        elif typ == "Salt":
+            ing = Salt(enc_id, name)
 
         else:
             return None

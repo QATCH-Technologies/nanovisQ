@@ -326,6 +326,7 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration",
+                                             "Excipient Type", "Excipient Concentration",
                                              "Temperature"],  # only displayed on Predict tab (for now)
                                  "Value": [{"choices": self.proteins, "selected": ""}, "",
                                            # class, molecular weight, pI mean, pI range
@@ -340,6 +341,8 @@ class FrameStep1(QtWidgets.QDialog):
                                                "selected": ""}, "",
                                            {"choices": self.salts,
                                                "selected": ""}, "",
+                                           {"choices": self.excipients,
+                                               "selected": ""}, "",
                                            ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
@@ -347,6 +350,7 @@ class FrameStep1(QtWidgets.QDialog):
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
+                                           "", "mM",
                                            "", "mM",
                                            "\u00b0C"]}  # degrees Celsius
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
@@ -477,6 +481,7 @@ class FrameStep1(QtWidgets.QDialog):
         self.default_features["Value"][9]["choices"] = self.surfactants
         self.default_features["Value"][11]["choices"] = self.stabilizers
         self.default_features["Value"][13]["choices"] = self.salts
+        self.default_features["Value"][15]["choices"] = self.excipients
 
         # Update proteins by class for table view auto-selection
         self.feature_table.setProteinsByClass(self.proteins_by_class)
@@ -572,7 +577,7 @@ class FrameStep1(QtWidgets.QDialog):
             hide_rows.extend([2, 3, 4, 5, 8])
         if self.step != 5:
             # Hide Temperature everywhere other than Predict
-            hide_rows.append(15)
+            hide_rows.append(17)
         for row in hide_rows:
             self.feature_table.hideRow(row)
 
@@ -608,12 +613,9 @@ class FrameStep1(QtWidgets.QDialog):
         stabilizer_conc = self.feature_table.item(12, 1).text()
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
-        temp = self.feature_table.item(15, 1).text()
-
-        # TODO: Once table is expanded for these params, add these as well
-        excipient_type = "none"
-        excipient_conc = 0.0
-
+        excipient_type = self.feature_table.cellWidget(15, 1).currentText()
+        excipient_conc = self.feature_table.cellWidget(16, 1).currentText()
+        temp = self.feature_table.item(17, 1).text()
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
             self.parent.save_run_info(self.run_file_xml, [
@@ -621,7 +623,8 @@ class FrameStep1(QtWidgets.QDialog):
                 buffer_type, buffer_conc,
                 surfactant_type, surfactant_conc,
                 stabilizer_type, stabilizer_conc,
-                salt_type, salt_conc], cancel)
+                salt_type, salt_conc,
+                excipient_type, excipient_conc], cancel)
             if self.parent.hasUnsavedChanges():
                 if cancel:
                     Log.w("Unsaved changes lost, per user discretion.")
@@ -657,10 +660,10 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = stabilizer_conc
             feature["Value"][13]["selected"] = salt_type
             feature["Value"][14] = salt_conc
-            feature["Value"][15] = temp
-            # TODO: Expand combo boxes to support an excipient
-            # feature["Value"][16]["selected"] = excipient_type
-            # feature["Value"][17] = excipient_conc
+            feature["Value"][15]["selected"] = excipient_type
+            feature["Value"][16] = excipient_conc
+            feature["Value"][17] = temp
+
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
@@ -894,7 +897,9 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = form.stabilizer.concentration
             feature["Value"][13]["selected"] = form.salt.ingredient.name
             feature["Value"][14] = form.salt.concentration
-            feature["Value"][15] = form.temperature
+            feature["Value"][15]["selected"] = form.excipient.ingredient.name
+            feature["Value"][16] = form.excipient.concentration
+            feature["Value"][17] = form.temperature
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -1707,6 +1712,7 @@ class FrameStep1(QtWidgets.QDialog):
                       "surfactant_type", "surfactant_concentration",
                       "stabilizer_type", "stabilizer_concentration",
                       "salt_type", "salt_concentration",
+                      "excipient_type", "excipient_concentration",
                       "temperature"]
         for x, y in enumerate(value_tags):
             try:
@@ -1792,6 +1798,11 @@ class FrameStep1(QtWidgets.QDialog):
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")
                         self.parent.ing_ctrl.add(Salt(enc_id=-1, name=value))
+                    if idx == 15:  # Excipient Type
+                        Log.w(
+                            f"Adding new Excipient Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(
+                            Excipient(enc_id=-1, name=value))
 
             # Reload excipient choices (only if needed)
             if reload_excipients:
@@ -1805,6 +1816,7 @@ class FrameStep1(QtWidgets.QDialog):
                 run_features["Value"][9]["choices"] = self.surfactants
                 run_features["Value"][11]["choices"] = self.stabilizers
                 run_features["Value"][13]["choices"] = self.salts
+                run_features["Value"][15]["choices"] = self.excipients
 
         # Import most recent analysis
         in_shear_rate = []
@@ -1965,10 +1977,10 @@ class FrameStep1(QtWidgets.QDialog):
             in_temperature) else np.nan
         if np.isnan(avg_temp):
             self.run_temperature.setText("(Unknown)")
-            run_features["Value"][15] = ""
+            run_features["Value"][17] = ""
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
-            run_features["Value"][15] = f"{avg_temp:0.2f}"
+            run_features["Value"][17] = f"{avg_temp:0.2f}"
 
         self.feature_table.setData(run_features)
         self.hide_extended_features()
