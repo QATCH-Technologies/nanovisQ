@@ -236,62 +236,41 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             Log.e(TAG, traceback.format_exc())
 
     def init_ui(self) -> None:
-        """Initialize and configure the main user interface."""
         main_layout = QtWidgets.QVBoxLayout(self)
-
-        # Create main splitter for left panel and right visualization
         splitter = QtWidgets.QSplitter(Qt.Horizontal)
-
-        # Left panel - Configuration
         left_panel = self.create_configuration_panel()
         splitter.addWidget(left_panel)
-
-        # Right panel - Visualization
         right_panel = self.create_visualization_panel()
         splitter.addWidget(right_panel)
-
-        # Set initial splitter sizes (40% left, 60% right)
         splitter.setSizes([560, 840])
-
         main_layout.addWidget(splitter)
-
         self.resize(1400, 900)
 
     def create_configuration_panel(self) -> QtWidgets.QWidget:
-        """Create the left configuration panel with all controls."""
         panel = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(panel)
-
         # Model Selection Section
         model_group = self.create_model_selection_group()
         layout.addWidget(model_group)
-
         # Formulation Builder Section
         formulation_group = self.create_formulation_builder_group()
         layout.addWidget(formulation_group)
-
         # Hypothesis Configuration Section
         hypothesis_group = self.create_hypothesis_configuration_group()
         layout.addWidget(hypothesis_group)
-
         # Action Buttons
         button_layout = QtWidgets.QHBoxLayout()
-
         self.run_test_btn = QtWidgets.QPushButton("Run Hypothesis Test")
         self.run_test_btn.setEnabled(True)
         self.run_test_btn.clicked.connect(self.run_hypothesis_test)
-
         self.clear_btn = QtWidgets.QPushButton("Clear All")
         self.clear_btn.clicked.connect(self.clear_all)
-
         self.save_btn = QtWidgets.QPushButton("Save Results")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_results)
-
         button_layout.addWidget(self.run_test_btn)
         button_layout.addWidget(self.clear_btn)
         button_layout.addWidget(self.save_btn)
-
         layout.addLayout(button_layout)
         layout.addStretch()
 
@@ -342,7 +321,15 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             ingredients = self.ingredients_by_type.get(ing_type, [])
             if ingredients:
                 combo.addItem(f"-- Select {ing_type} --", None)
-                for ingredient in ingredients:
+
+                # Sort ingredients: 'none' first, then alphabetically
+                sorted_ingredients = sorted(
+                    ingredients,
+                    key=lambda ing: (ing.name.lower() !=
+                                     'none', ing.name.lower())
+                )
+
+                for ingredient in sorted_ingredients:
                     combo.addItem(ingredient.name, ingredient)
             else:
                 combo.addItem(f"No {ing_type}s available", None)
@@ -445,25 +432,25 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Create all possible input widgets
         self.threshold_spin = QtWidgets.QDoubleSpinBox()
         self.threshold_spin.setRange(0.0, 1000000.0)
-        self.threshold_spin.setValue(1000.0)
+        self.threshold_spin.setValue(0.0)
         self.threshold_spin.setSuffix(" cP")
         self.threshold_spin.setDecimals(2)
 
         self.min_spin = QtWidgets.QDoubleSpinBox()
         self.min_spin.setRange(0.0, 1000000.0)
-        self.min_spin.setValue(500.0)
+        self.min_spin.setValue(0.0)
         self.min_spin.setSuffix(" cP")
         self.min_spin.setDecimals(2)
 
         self.max_spin = QtWidgets.QDoubleSpinBox()
         self.max_spin.setRange(0.0, 1000000.0)
-        self.max_spin.setValue(1500.0)
+        self.max_spin.setValue(0.0)
         self.max_spin.setSuffix(" cP")
         self.max_spin.setDecimals(2)
 
         self.range_spin = QtWidgets.QDoubleSpinBox()
         self.range_spin.setRange(0.0, 100.0)
-        self.range_spin.setValue(10.0)
+        self.range_spin.setValue(0.0)
         self.range_spin.setSuffix(" %")
         self.range_spin.setDecimals(1)
 
@@ -700,9 +687,23 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         combo = self.ingredient_combos[ing_type]
         spin = self.concentration_spins[ing_type]
 
-        # If the selected item has None as data (the "Select" option), set concentration to 0
-        if combo.currentData() is None:
+        # Get the current ingredient
+        current_ingredient = combo.currentData()
+
+        # Check if 'none' or placeholder is selected
+        is_none_or_placeholder = (
+            current_ingredient is None or
+            (hasattr(current_ingredient, 'name')
+             and current_ingredient.name.lower() == 'none')
+        )
+
+        # If the selected item has None as data (the "Select" option)
+        # or if ingredient name is 'none', set concentration to 0 and disable spin box
+        if is_none_or_placeholder:
             spin.setValue(0.0)
+            spin.setEnabled(False)
+        else:
+            spin.setEnabled(True)
 
         # Update formulation
         self.update_formulation()
@@ -736,11 +737,23 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         has_model = self.predictor is not None
 
         # Check that all required ingredient types are selected with non-zero concentration
+        # (unless 'none' is selected, which can have zero concentration)
         all_types_selected = True
         for ing_type in self.INGREDIENT_TYPES:
             ingredient = self.ingredient_combos[ing_type].currentData()
             concentration = self.concentration_spins[ing_type].value()
-            if ingredient is None or concentration <= 0:
+
+            # No ingredient selected (placeholder)
+            if ingredient is None:
+                all_types_selected = False
+                break
+
+            # Check if ingredient is 'none'
+            is_none_ingredient = (hasattr(ingredient, 'name') and
+                                  ingredient.name.lower() == 'none')
+
+            # If not 'none' ingredient, concentration must be > 0
+            if not is_none_ingredient and concentration <= 0:
                 all_types_selected = False
                 break
 
@@ -757,25 +770,43 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Create formulation object
             formulation = Formulation()
+
+            # Helper function to set ingredient only if not 'none'
+            def set_ingredient_if_valid(set_method, ingredient, ing_type):
+                if ingredient and hasattr(ingredient, 'name') and ingredient.name.lower() != 'none':
+                    concentration = self.current_formulation[ingredient.name]['value']
+                    units = self.current_formulation[ingredient.name]['unit']
+                    set_method(ingredient=ingredient,
+                               concentration=concentration, units=units)
+                else:
+                    # Set with None for 'none' ingredients
+                    set_method(None, concentration=0.0,
+                               units=self.INGREDIENT_UNITS[ing_type])
+
             protein = self.ingredient_combos["Protein"].currentData()
-            formulation.set_protein(
-                protein=protein, concentration=self.current_formulation[protein.name]['value'], units=self.current_formulation[protein.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_protein, protein, "Protein")
+
             buffer = self.ingredient_combos["Buffer"].currentData()
-            formulation.set_buffer(
-                buffer=buffer, concentration=self.current_formulation[buffer.name]['value'], units=self.current_formulation[buffer.name]['unit'])
+            set_ingredient_if_valid(formulation.set_buffer, buffer, "Buffer")
+
             surfactant = self.ingredient_combos["Surfactant"].currentData()
-            formulation.set_surfactant(
-                surfactant=surfactant, concentration=self.current_formulation[surfactant.name]['value'], units=self.current_formulation[surfactant.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_surfactant, surfactant, "Surfactant")
+
             stabilizer = self.ingredient_combos["Stabilizer"].currentData()
-            formulation.set_stabilizer(
-                stabilizer=stabilizer, concentration=self.current_formulation[stabilizer.name]['value'], units=self.current_formulation[stabilizer.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_stabilizer, stabilizer, "Stabilizer")
+
             excipient = self.ingredient_combos["Excipient"].currentData()
-            formulation.set_excipient(
-                excipient=excipient, concentration=self.current_formulation[excipient.name]['value'], units=self.current_formulation[excipient.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_excipient, excipient, "Excipient")
+
             salt = self.ingredient_combos["Salt"].currentData()
-            formulation.set_salt(
-                salt=salt, concentration=self.current_formulation[salt.name]['value'], units=self.current_formulation[salt.name]['unit'])
+            set_ingredient_if_valid(formulation.set_salt, salt, "Salt")
+
             formulation.set_temperature(self.temperature)
+
             # Run prediction
             self.prediction_results = self.predictor.predict_uncertainty(
                 formulation.to_dataframe(encoded=False, training=False))
