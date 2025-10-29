@@ -48,21 +48,18 @@ except (ModuleNotFoundError, ImportError):
         def get_path():
             return os.path.dirname(os.path.abspath(__file__))
 
-from PyQt5 import QtGui, QtWidgets, QtCore
+from PyQt5 import QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-import pandas as pd
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-from matplotlib.colors import LinearSegmentedColormap
 
 try:
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
@@ -70,6 +67,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -236,66 +234,41 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             Log.e(TAG, traceback.format_exc())
 
     def init_ui(self) -> None:
-        """Initialize and configure the main user interface."""
         main_layout = QtWidgets.QVBoxLayout(self)
-
-        # Create main splitter for left panel and right visualization
         splitter = QtWidgets.QSplitter(Qt.Horizontal)
-
-        # Left panel - Configuration
         left_panel = self.create_configuration_panel()
         splitter.addWidget(left_panel)
-
-        # Right panel - Visualization
         right_panel = self.create_visualization_panel()
         splitter.addWidget(right_panel)
-
-        # Set initial splitter sizes (40% left, 60% right)
         splitter.setSizes([560, 840])
-
         main_layout.addWidget(splitter)
-
-        # Status bar
-        self.status_bar = QtWidgets.QStatusBar()
-        main_layout.addWidget(self.status_bar)
-
         self.resize(1400, 900)
 
     def create_configuration_panel(self) -> QtWidgets.QWidget:
-        """Create the left configuration panel with all controls."""
         panel = QtWidgets.QWidget()
         layout = QtWidgets.QVBoxLayout(panel)
-
         # Model Selection Section
         model_group = self.create_model_selection_group()
         layout.addWidget(model_group)
-
         # Formulation Builder Section
         formulation_group = self.create_formulation_builder_group()
         layout.addWidget(formulation_group)
-
         # Hypothesis Configuration Section
         hypothesis_group = self.create_hypothesis_configuration_group()
         layout.addWidget(hypothesis_group)
-
         # Action Buttons
         button_layout = QtWidgets.QHBoxLayout()
-
         self.run_test_btn = QtWidgets.QPushButton("Run Hypothesis Test")
         self.run_test_btn.setEnabled(True)
         self.run_test_btn.clicked.connect(self.run_hypothesis_test)
-
         self.clear_btn = QtWidgets.QPushButton("Clear All")
         self.clear_btn.clicked.connect(self.clear_all)
-
         self.save_btn = QtWidgets.QPushButton("Save Results")
         self.save_btn.setEnabled(False)
         self.save_btn.clicked.connect(self.save_results)
-
         button_layout.addWidget(self.run_test_btn)
         button_layout.addWidget(self.clear_btn)
         button_layout.addWidget(self.save_btn)
-
         layout.addLayout(button_layout)
         layout.addStretch()
 
@@ -346,7 +319,15 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             ingredients = self.ingredients_by_type.get(ing_type, [])
             if ingredients:
                 combo.addItem(f"-- Select {ing_type} --", None)
-                for ingredient in ingredients:
+
+                # Sort ingredients: 'none' first, then alphabetically
+                sorted_ingredients = sorted(
+                    ingredients,
+                    key=lambda ing: (ing.name.lower() !=
+                                     'none', ing.name.lower())
+                )
+
+                for ingredient in sorted_ingredients:
                     combo.addItem(ingredient.name, ingredient)
             else:
                 combo.addItem(f"No {ing_type}s available", None)
@@ -377,7 +358,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             spin.setSuffix(f" {unit}")
             spin.setMinimumWidth(120)
 
-            combo.currentIndexChanged.connect(self.update_formulation)
+            combo.currentIndexChanged.connect(
+                lambda idx, t=ing_type: self.on_ingredient_changed(t, idx))
             spin.valueChanged.connect(self.update_formulation)
 
             self.ingredient_combos[ing_type] = combo
@@ -448,25 +430,25 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Create all possible input widgets
         self.threshold_spin = QtWidgets.QDoubleSpinBox()
         self.threshold_spin.setRange(0.0, 1000000.0)
-        self.threshold_spin.setValue(1000.0)
+        self.threshold_spin.setValue(0.0)
         self.threshold_spin.setSuffix(" cP")
         self.threshold_spin.setDecimals(2)
 
         self.min_spin = QtWidgets.QDoubleSpinBox()
         self.min_spin.setRange(0.0, 1000000.0)
-        self.min_spin.setValue(500.0)
+        self.min_spin.setValue(0.0)
         self.min_spin.setSuffix(" cP")
         self.min_spin.setDecimals(2)
 
         self.max_spin = QtWidgets.QDoubleSpinBox()
         self.max_spin.setRange(0.0, 1000000.0)
-        self.max_spin.setValue(1500.0)
+        self.max_spin.setValue(0.0)
         self.max_spin.setSuffix(" cP")
         self.max_spin.setDecimals(2)
 
         self.range_spin = QtWidgets.QDoubleSpinBox()
         self.range_spin.setRange(0.0, 100.0)
-        self.range_spin.setValue(10.0)
+        self.range_spin.setValue(0.0)
         self.range_spin.setSuffix(" %")
         self.range_spin.setDecimals(1)
 
@@ -658,9 +640,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                         '\\')[-1].split('/')[-1].split('.')[0]
                     self.model_label.setText(f"Model: {display_name}")
                     Log.i(TAG, f"Model loaded: {file_path}")
-
-                    self.status_bar.showMessage(
-                        f"Model loaded: {display_name}", 5000)
                     self.check_run_button_state()
 
                 except Exception as e:
@@ -701,6 +680,32 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Check if run button should be enabled
         self.check_run_button_state()
 
+    def on_ingredient_changed(self, ing_type: str, index: int) -> None:
+        """Handle ingredient combo box changes and auto-set concentration to 0 if 'none' is selected."""
+        combo = self.ingredient_combos[ing_type]
+        spin = self.concentration_spins[ing_type]
+
+        # Get the current ingredient
+        current_ingredient = combo.currentData()
+
+        # Check if 'none' or placeholder is selected
+        is_none_or_placeholder = (
+            current_ingredient is None or
+            (hasattr(current_ingredient, 'name')
+             and current_ingredient.name.lower() == 'none')
+        )
+
+        # If the selected item has None as data (the "Select" option)
+        # or if ingredient name is 'none', set concentration to 0 and disable spin box
+        if is_none_or_placeholder:
+            spin.setValue(0.0)
+            spin.setEnabled(False)
+        else:
+            spin.setEnabled(True)
+
+        # Update formulation
+        self.update_formulation()
+
     def on_hypothesis_type_changed(self, index: int) -> None:
         """Handle hypothesis type selection change."""
         # Clear existing layout
@@ -730,11 +735,23 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         has_model = self.predictor is not None
 
         # Check that all required ingredient types are selected with non-zero concentration
+        # (unless 'none' is selected, which can have zero concentration)
         all_types_selected = True
         for ing_type in self.INGREDIENT_TYPES:
             ingredient = self.ingredient_combos[ing_type].currentData()
             concentration = self.concentration_spins[ing_type].value()
-            if ingredient is None or concentration <= 0:
+
+            # No ingredient selected (placeholder)
+            if ingredient is None:
+                all_types_selected = False
+                break
+
+            # Check if ingredient is 'none'
+            is_none_ingredient = (hasattr(ingredient, 'name') and
+                                  ingredient.name.lower() == 'none')
+
+            # If not 'none' ingredient, concentration must be > 0
+            if not is_none_ingredient and concentration <= 0:
                 all_types_selected = False
                 break
 
@@ -751,25 +768,52 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Create formulation object
             formulation = Formulation()
+
+            # Helper function to set ingredient only if not 'none'
+            def set_ingredient_if_valid(set_method, ingredient, ing_type):
+                if ingredient and hasattr(ingredient, 'name') and ingredient.name.lower() != 'none':
+                    concentration = self.current_formulation[ingredient.name]['value']
+                    units = self.current_formulation[ingredient.name]['unit']
+                    set_method(ingredient,
+                               concentration=concentration, units=units)
+                else:
+                    # Set with None for 'none' ingredients
+                    type_map = {
+                        "Buffer": Buffer(enc_id=-1, name="None"),
+                        "Protein": Protein(enc_id=-1, name="None"),
+                        "Surfactant": Surfactant(enc_id=-1, name="None"),
+                        "Stabilizer": Stabilizer(enc_id=-1, name="None"),
+                        "Salt": Salt(enc_id=-1, name="None"),
+                        "Excipient": Excipient(enc_id=-1, name="None"),
+                    }
+                    obj = self.ing_ctrl.get_by_name("none", type_map[ing_type])
+                    set_method(obj, concentration=0.0,
+                               units=self.INGREDIENT_UNITS[ing_type])
+
             protein = self.ingredient_combos["Protein"].currentData()
-            formulation.set_protein(
-                protein=protein, concentration=self.current_formulation[protein.name]['value'], units=self.current_formulation[protein.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_protein, protein, "Protein")
+
             buffer = self.ingredient_combos["Buffer"].currentData()
-            formulation.set_buffer(
-                buffer=buffer, concentration=self.current_formulation[buffer.name]['value'], units=self.current_formulation[buffer.name]['unit'])
+            set_ingredient_if_valid(formulation.set_buffer, buffer, "Buffer")
+
             surfactant = self.ingredient_combos["Surfactant"].currentData()
-            formulation.set_surfactant(
-                surfactant=surfactant, concentration=self.current_formulation[surfactant.name]['value'], units=self.current_formulation[surfactant.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_surfactant, surfactant, "Surfactant")
+
             stabilizer = self.ingredient_combos["Stabilizer"].currentData()
-            formulation.set_stabilizer(
-                stabilizer=stabilizer, concentration=self.current_formulation[stabilizer.name]['value'], units=self.current_formulation[stabilizer.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_stabilizer, stabilizer, "Stabilizer")
+
             excipient = self.ingredient_combos["Excipient"].currentData()
-            formulation.set_excipient(
-                excipient=excipient, concentration=self.current_formulation[excipient.name]['value'], units=self.current_formulation[excipient.name]['unit'])
+            set_ingredient_if_valid(
+                formulation.set_excipient, excipient, "Excipient")
+
             salt = self.ingredient_combos["Salt"].currentData()
-            formulation.set_salt(
-                salt=salt, concentration=self.current_formulation[salt.name]['value'], units=self.current_formulation[salt.name]['unit'])
+            set_ingredient_if_valid(formulation.set_salt, salt, "Salt")
+
             formulation.set_temperature(self.temperature)
+
             # Run prediction
             self.prediction_results = self.predictor.predict_uncertainty(
                 formulation.to_dataframe(encoded=False, training=False))
@@ -787,8 +831,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Switch to results tab
             self.viz_tabs.setCurrentIndex(0)
-
-            self.status_bar.showMessage("Hypothesis test completed", 5000)
 
         except Exception as e:
             Log.e(TAG, f"Hypothesis test failed: {e}")
@@ -976,19 +1018,19 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         if passed:
             self.outcome_frame.setStyleSheet(
-                "QFrame { background-color: #d4edda; border: 2px solid #28a745; }"
+                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #E8F8F7, stop:1 #D4F1EF); border: 2px solid #69EAC5; border-radius: 8px; }"
             )
-            self.outcome_label.setText("✓ HYPOTHESIS SUPPORTED")
+            self.outcome_label.setText("Hypothesis Supported")
             self.outcome_label.setStyleSheet(
-                "font-size: 18pt; font-weight: bold; color: #155724; padding: 20px;"
+                "font-size: 16pt; font-weight: 500; color: #00695C; padding: 20px; background: transparent;"
             )
         else:
             self.outcome_frame.setStyleSheet(
-                "QFrame { background-color: #f8d7da; border: 2px solid #dc3545; }"
+                "QFrame { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #FFF3E0, stop:1 #FFE0B2); border: 2px solid #FF9800; border-radius: 8px; }"
             )
-            self.outcome_label.setText("✗ HYPOTHESIS NOT SUPPORTED")
+            self.outcome_label.setText("Hypothesis Not Supported")
             self.outcome_label.setStyleSheet(
-                "font-size: 18pt; font-weight: bold; color: #721c24; padding: 20px;"
+                "font-size: 16pt; font-weight: 500; color: #E65100; padding: 20px; background: transparent;"
             )
 
         self.probability_label.setText(
@@ -1117,7 +1159,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Plot prediction line
         ax.plot(shear_rates, predictions, 'o-', linewidth=2, markersize=8,
-                label='Predicted Viscosity', color='#2E86DE')
+                label='Predicted Viscosity', color='#00A3DA')
 
         # Show confidence intervals if enabled
         if self.show_confidence_check.isChecked():
@@ -1129,7 +1171,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             upper = [p + z_score * u for p,
                      u in zip(predictions, uncertainties)]
 
-            ax.fill_between(shear_rates, lower, upper, alpha=0.3, color='#2E86DE',
+            ax.fill_between(shear_rates, lower, upper, alpha=0.3, color='#00A3DA',
                             label=f'{confidence:.0f}% Confidence Interval')
 
         # Show hypothesis threshold if enabled
@@ -1204,9 +1246,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         y = stats.norm.pdf(x, mean, std)
 
         # --- Plot distribution ---
-        ax.plot(x, y, linewidth=2, color='#2E86DE',
+        ax.plot(x, y, linewidth=2, color='#00A3DA',
                 label='Probability Distribution')
-        ax.fill_between(x, y, alpha=0.3, color='#2E86DE')
+        ax.fill_between(x, y, alpha=0.3, color='#00A3DA')
 
         # --- Mark mean ---
         ax.axvline(
@@ -1228,7 +1270,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             # Shade region
             mask = x <= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         elif hypothesis_type == 'greater_than':
@@ -1237,7 +1279,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                        label=f'Threshold ({threshold:.1f} cP)')
 
             mask = x >= threshold
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         elif hypothesis_type in ['between', 'within_range']:
@@ -1252,7 +1294,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             ax.axvline(x=max_val, color='red', linestyle='--', linewidth=2)
 
             mask = (x >= min_val) & (x <= max_val)
-            ax.fill_between(x[mask], y[mask], alpha=0.5, color='green',
+            ax.fill_between(x[mask], y[mask], alpha=0.5, color='#69EAC5',
                             label='Hypothesis Region')
 
         # Get probability for this shear rate
@@ -1316,8 +1358,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
             self.save_btn.setEnabled(False)
             self.check_run_button_state()
-
-            self.status_bar.showMessage("All cleared", 3000)
 
     def save_results(self) -> None:
         """Save hypothesis test results."""
@@ -1388,9 +1428,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     f"Results saved successfully to:\n{file_path}"
                 )
 
-                self.status_bar.showMessage(
-                    f"Results saved to {file_path}", 5000)
-
             except Exception as e:
                 Log.e(TAG, f"Failed to save results: {e}")
                 QtWidgets.QMessageBox.critical(
@@ -1412,7 +1449,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             try:
                 self.profile_figure.savefig(
                     file_path, dpi=300, bbox_inches='tight')
-                self.status_bar.showMessage(f"Plot saved to {file_path}", 5000)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
                     self,
@@ -1433,7 +1469,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             try:
                 self.probability_figure.savefig(
                     file_path, dpi=300, bbox_inches='tight')
-                self.status_bar.showMessage(f"Plot saved to {file_path}", 5000)
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
                     self,

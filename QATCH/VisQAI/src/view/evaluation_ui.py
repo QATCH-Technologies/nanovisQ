@@ -16,11 +16,9 @@ Version:
 """
 
 import os
-import copy
 import zipfile
 import traceback
 from typing import Optional, List, Dict, TYPE_CHECKING
-import json
 import tempfile
 try:
     from QATCH.common.logger import Logger as Log
@@ -693,7 +691,7 @@ class EvaluationUI(QtWidgets.QDialog):
                 file_path = selected_files[0]
                 try:
                     self.model_path = file_path
-                    self.predictor = Predictor(file_path)
+                    self.predictor = Predictor(file_path, mc_samples=300)
                     display_name = file_path.split(
                         '\\')[-1].split('/')[-1].split('.')[0]
                     self.select_model_label.setText(display_name)
