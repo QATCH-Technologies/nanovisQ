@@ -317,7 +317,7 @@ class FrameStep1(QtWidgets.QDialog):
 
             right_group.addWidget(ci_widget)
             # Features table
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
                                              "Protein Class", "Protein Molecular Weight",  # not in Run Info
                                              "Protein pI Mean", "Protein pI Range",  # not in Run Info
@@ -468,7 +468,7 @@ class FrameStep1(QtWidgets.QDialog):
     def reload_excipient_choices(self):
 
         # Reload all excipients from DB
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
 
         # Update choices lists in default features for dropdown items
         self.default_features["Value"][0]["choices"] = self.proteins
@@ -542,17 +542,18 @@ class FrameStep1(QtWidgets.QDialog):
             no_item.setSelectable(False)
             self.model.appendRow(no_item)
 
-    def load_all_excipient_types(self):
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
         self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
+            self.stabilizers, self.salts, self.excipients, \
             self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
@@ -561,6 +562,7 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
