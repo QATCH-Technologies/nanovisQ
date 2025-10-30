@@ -309,6 +309,8 @@ class ProteinClass(StrEnum):
     MAB_IGG1 = "mAb_IgG1"
     MAB_IGG4 = "mAb_IgG4"
     POLYCLONAL = "Polyclonal"
+    BISPECIFIC = "Bispecific"
+    TRISPECIFIC = "Trispecific"
     OTHER = "Other"
 
     @classmethod

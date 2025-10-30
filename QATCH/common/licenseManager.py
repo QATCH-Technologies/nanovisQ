@@ -31,8 +31,10 @@ try:
     from QATCH.common.logger import Logger as Log
     from QATCH.common.deviceFingerprint import DeviceFingerprint
     from QATCH.common.architecture import Architecture
+    from QATCH.core.constants import Constants
 except (ModuleNotFoundError, ImportError):
     print("Running standalone, or import of main app logging and/or other modules failed.")
+
     class Log:
         @staticmethod
         def d(tag, msg=""): print("DEBUG:", tag, msg)
@@ -42,16 +44,22 @@ except (ModuleNotFoundError, ImportError):
         def w(tag, msg=""): print("WARNING:", tag, msg)
         @staticmethod
         def e(tag, msg=""): print("ERROR:", tag, msg)
+
     class DeviceFingerprint:  # minimal fallback
         @staticmethod
         def generate_key() -> str: return "THIS-IS-AN-UNKNOWN-KEY"
+
         @staticmethod
         def get_device_summary() -> dict: return {
-            "license_key": "THIS-IS-AN-UNKNOWN-KEY", 
+            "license_key": "THIS-IS-AN-UNKNOWN-KEY",
             "reason": "standalone minimal fallback class"}
+
     class Architecture:  # minimal fallback
         @staticmethod
-        def get_path()-> str: return os.getcwd()
+        def get_path() -> str: return os.getcwd()
+
+    class Constants:  # minimal fallback
+        license_cache_path = None
 
 TAG = "[LicenseManager]"
 
@@ -180,7 +188,7 @@ class AVN_Database:
             _errno = getattr(
                 CR if _errname.startswith("CR_") else ER, _errname, -1)
             if (_errname.startswith("__") and _errname.endswith("__")) or \
-                not isinstance(_errno, int):
+                    not isinstance(_errno, int):
                 # internal object or variable value is not an integer
                 continue  # skip it
             error_map[_errno] = _errname
@@ -188,7 +196,7 @@ class AVN_Database:
         errname = error_map.get(errno, type(e).__name__)
         sqlhost = str(getattr(self.conn, "host", None))
         if sqlhost and sqlhost in errmsg:  # supress full URL of AVN database host
-            errmsg = str(errmsg).replace(sqlhost,sqlhost[:sqlhost.find('.')])
+            errmsg = str(errmsg).replace(sqlhost, sqlhost[:sqlhost.find('.')])
         Log.e(f"AVN ERROR: [{errno}] {errname} - {errmsg}")
         if getattr(e, "traceback", None) and isinstance(e.traceback, str):
             for tb_line in str(e.traceback).splitlines():
@@ -213,11 +221,11 @@ class AVN_Database:
         PATH_TO_AVN_KEY = "QATCH/resources/avn_key_store.zip"
 
         # by default: try looking for it in the working directory
-        keystore = os.path.join(os.getcwd(), 
+        keystore = os.path.join(os.getcwd(),
                                 PATH_TO_AVN_KEY)
         if not os.path.exists(keystore):
             # as fallback: try looking for it bundled with the app
-            keystore = os.path.join(Architecture.get_path(), 
+            keystore = os.path.join(Architecture.get_path(),
                                     PATH_TO_AVN_KEY)
         if os.path.exists(keystore):
             with zipfile.ZipFile(keystore, 'r') as zip_key:
@@ -226,7 +234,8 @@ class AVN_Database:
                 pem_file[-1] = b""  # remove end line
                 pem_file[1] = pem_file[1][4:]  # remove "AVN_"
                 pem_file = b"".join(pem_file)
-                DB_CONFIG = json.loads(base64.b64decode(pem_file).decode()[::2])
+                DB_CONFIG = json.loads(
+                    base64.b64decode(pem_file).decode()[::2])
                 DB_CONFIG['cursorclass'] = pymysql.cursors.DictCursor
                 DB_CONFIG['defer_connect'] = True
 
@@ -250,7 +259,12 @@ class LicenseCache:
                 Defaults to 24.
         """
         if cache_dir is None:
+            # Prefer using the folder path provided in Constants class
+            cache_dir = getattr(Constants, "license_cache_path", None)
+
+        if cache_dir is None:
             # Use system temp directory with app-specific subdirectory
+            # only as a fallback (when None was provided by Constants)
             import tempfile
             cache_dir = os.path.join(
                 tempfile.gettempdir(), 'qatch_license_cache')
@@ -290,7 +304,8 @@ class LicenseCache:
                 'cache_version': '1.0'
             }
             cache_string = json.dumps(cache_data, indent=2)
-            cache_data['signature'] = hashlib.sha256(cache_string.encode()).hexdigest()
+            cache_data['signature'] = hashlib.sha256(
+                cache_string.encode()).hexdigest()
 
             with open(cache_filepath, 'w') as f:
                 json.dump(cache_data, f, indent=2)
@@ -438,8 +453,8 @@ class LicenseManager:
                 Defaults to True.
         """
         # Compute device identity first; used by both backends
-        self.device_key = DeviceFingerprint.generate_key()
-        self.device_summary = DeviceFingerprint.get_device_summary()
+        self.device_key = DeviceFingerprint.get_key()
+        # self.device_summary = DeviceFingerprint.get_device_summary()
 
         if DB_SERVER == LicenseServer.AIVENIO:
             self.avn = AVN_Database()
@@ -700,7 +715,7 @@ class LicenseManager:
             'expiration': expiration_date.isoformat(),
             'trial_days': self.trial_duration_days,
             'auto_generated': True,
-            'device_info': self.device_summary
+            'device_info': DeviceFingerprint.get_device_summary()
         }
         if additional_info:
             license_data['additional_info'] = additional_info
@@ -848,7 +863,8 @@ class LicenseManager:
 
         raw_status = license_data.get('status', LicenseStatus.INACTIVE)
         try:
-            status = LicenseStatus(raw_status) if isinstance(raw_status, str) else raw_status
+            status = LicenseStatus(raw_status) if isinstance(
+                raw_status, str) else raw_status
         except ValueError:
             status = LicenseStatus.INACTIVE
         if status not in [LicenseStatus.TRIAL, LicenseStatus.ACTIVE]:

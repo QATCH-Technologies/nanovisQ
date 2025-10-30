@@ -13,16 +13,19 @@ Date:
     2025-09-02
 """
 
+import datetime
 import hashlib
-import subprocess
-import platform
 import json
+import platform
+import subprocess
+import time
 import winreg
 from typing import Dict, Union, Optional
 
 
 try:
     from QATCH.common.logger import Logger as Log
+    from QATCH.core.constants import Constants
 except (ModuleNotFoundError, ImportError):
     class Log:
         """Fallback logger implementation when QATCH logger is not available."""
@@ -63,6 +66,11 @@ except (ModuleNotFoundError, ImportError):
                 msg: The debug message to log.
             """
             print(msg)
+
+    class Constants:
+        """Minimal fallback"""
+        app_publisher = "QATCH"
+        app_name = "nanovisQ"
 
 
 class DeviceFingerprint:
@@ -173,6 +181,26 @@ class DeviceFingerprint:
             Log.w(
                 f"Registry query failed: {key_path}\\{value_name}, Error: {e}")
             return None
+        
+    @staticmethod
+    def write_reg_sz_value(root_key, subkey_path, value_name, value_data):
+        try:
+            # Open or create the key with write access
+            try:
+                key = winreg.OpenKey(root_key, subkey_path, 0, winreg.KEY_SET_VALUE)
+            except FileNotFoundError:
+                key = winreg.CreateKey(root_key, subkey_path)
+                key = winreg.OpenKey(root_key, subkey_path, 0, winreg.KEY_SET_VALUE)
+
+            # Set the REG_SZ value
+            winreg.SetValueEx(key, value_name, 0, winreg.REG_SZ, value_data)
+            Log.d(f"Successfully wrote REG_SZ value '{value_name}' to '{subkey_path}'")
+
+        except Exception as e:
+            Log.e(f"Error writing registry value: {e}")
+        finally:
+            if 'key' in locals() and key:
+                winreg.CloseKey(key)
 
     @staticmethod
     def get_registry_hardware_id() -> str:
@@ -455,8 +483,42 @@ class DeviceFingerprint:
         full_hash = hash_obj.hexdigest().upper()
         key_parts = [full_hash[i:i+4] for i in range(0, 20, 4)]
         license_key = '-'.join(key_parts)
+        license_created = str(int(time.time()))
+        license_hash = DeviceFingerprint.get_license_hash(license_key, license_created)
+        
+        # Write generated key info to AppSettings using direct registry access:
+        DeviceFingerprint.write_reg_sz_value(
+            root_key=winreg.HKEY_CURRENT_USER, 
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
+            value_name="License_Key", 
+            value_data=license_key)
+        DeviceFingerprint.write_reg_sz_value(
+            root_key=winreg.HKEY_CURRENT_USER, 
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
+            value_name="License_Created", 
+            value_data=license_created)
+        DeviceFingerprint.write_reg_sz_value(
+            root_key=winreg.HKEY_CURRENT_USER, 
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
+            value_name="License_Hash", 
+            value_data=license_hash)
 
         return license_key
+    
+    @staticmethod
+    def get_license_hash(key: str, created: str) -> str:
+        if isinstance(key, str) and isinstance(created, str) and created.isnumeric():
+            try:
+                license_bytes = f"{key}@{datetime.datetime.fromtimestamp(int(created)).isoformat()}Z".encode('utf-8')
+                hash_str = hashlib.sha256(license_bytes).hexdigest()
+                return hash_str
+            
+            except ValueError:
+                return "ValueError"
+            except Exception:
+                return "Exception"
+        else:
+            return "TypeError"
 
     @staticmethod
     def get_device_summary() -> Dict:
@@ -515,8 +577,48 @@ class DeviceFingerprint:
             The generated license key string, or None if generation fails.
         """
         try:
-            summary = DeviceFingerprint.get_device_summary()
-            key = summary.get("license_key", None)
+            license_key = DeviceFingerprint.query_registry(
+                hive=winreg.HKEY_CURRENT_USER,
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
+                value_name="License_Key")
+            license_created = DeviceFingerprint.query_registry(
+                hive=winreg.HKEY_CURRENT_USER,
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
+                value_name="License_Created")
+            license_hash = DeviceFingerprint.query_registry(
+                hive=winreg.HKEY_CURRENT_USER,
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
+                value_name="License_Hash")
+            
+            if license_key and license_created and license_hash:
+                calculated_hash = DeviceFingerprint.get_license_hash(license_key, license_created)
+            else:
+                # indicate missing (or partial) key info
+                calculated_hash = "Missing"  # NOTE: Do NOT use `None` here!
+                if license_hash == calculated_hash:
+                    # This could occur if user sets "License_Hash"="Missing" 
+                    # without specifying "License_Created" in AppSettings...
+                    # The result, if allowed to proceed, would be a manually
+                    # set "License_Key" being used resulting in a spoof hack
+                    license_hash = "Invalid"  # Prevent hack attempt
+                    license_key = None  # Invalidate key
+            
+            key = None  # assume failure by default
+            if license_hash == calculated_hash:
+                Log.d(f"Pulled a VALID license key \"{license_key}\" from AppSettings")
+                key = license_key  # success
+            elif not license_key:
+                Log.w("No valid license key found in AppSettings")
+                Log.w("Generating a license key for this device...")
+            else:
+                Log.e("Pulled an INVALID license key from AppSettings")
+                Log.e("Generating a license key for this device...")
+
+            if not key:
+                # Key not available in registry, generate a new one (with timestamp and signature)
+                summary = DeviceFingerprint.get_device_summary()
+                key = summary.get("license_key", None)
+
             return key
         except Exception as e:
             Log.e(f"Device fingerprint could not be generated: {e}")

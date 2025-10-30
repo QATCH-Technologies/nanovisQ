@@ -325,14 +325,12 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 timeout = 5000
                 status_bar.showMessage(message, timeout)
 
-    def refresh_license_async(self, license_manager: Optional[LicenseManager]):
+    def check_license_async(self, license_manager: Optional[LicenseManager]):
         if license_manager is None:
             return
 
-        def refresh_callback():
+        def check_callback():
             try:
-                is_valid, message, data = license_manager.refresh_license()
-
                 # Update UI in main thread
                 QtCore.QTimer.singleShot(
                     0, lambda lm=license_manager: self.check_license(lm))
@@ -342,8 +340,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         # Start background thread
         import threading
-        thread = threading.Thread(target=refresh_callback, daemon=True)
-        Log.i("Refreshing VisQAI license lease")
+        thread = threading.Thread(target=check_callback, daemon=True)
+        Log.d("Checking VisQAI license lease")
         thread.start()
 
     def clear(self):
@@ -389,10 +387,13 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.check_license(
             self.parent._license_manager)
         self.timer = QtCore.QTimer()
+        self.timer.setSingleShot(False)  # repeat until stopped
+        self.timer.setInterval(1000*60*60)  # once an hour
         self.timer.timeout.connect(
-            lambda: self.refresh_license_async(self.parent._license_manager)
+            lambda: self.check_license_async(self.parent._license_manager)
         )
-        self.timer.start(3600000)
+        if self.timer.isActive():  # only start on mode `enable` (focus)
+            self.timer.stop()
         self._unsaved_changes = False
 
     def init_ui(self):
@@ -682,15 +683,6 @@ class VisQAIWindow(BaseVisQAIWindow):
     def isBusy(self) -> bool:
         return hasattr(self.tab_widget.currentWidget(), "timer") and \
             self.tab_widget.currentWidget().timer.isActive()
-    
-    def getToolNames(self):
-        tab_names = []
-        for i in range(self.tab_widget.count()):
-            tab_name = self.tab_widget.tabText(i)
-            # drop the leading number in a circle, remove leading space
-            tab_name = tab_name.encode('ascii', 'ignore').decode().strip()
-            tab_names.append(tab_name)
-        return tab_names
 
     def reset(self) -> None:
         self.check_user_info()
@@ -736,7 +728,7 @@ class VisQAIWindow(BaseVisQAIWindow):
 
             # Enable hourly license check timer.
             if hasattr(self, "timer") and not self.timer.isActive():
-                self.timer.start(3600000)
+                self.timer.start()
 
             # Create database objects, and open DB from file.
             self.database = Database(parse_file_key=True)
@@ -761,7 +753,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                      'buffer_type', 'buffer_concentration',
                      'surfactant_type', 'surfactant_concentration',
                      'stabilizer_type', 'stabilizer_concentration',
-                     'salt_type', 'salt_concentration']
+                     'salt_type', 'salt_concentration',
+                     'excipient_type', 'excipient_concentration']
         required_len = len(info_tags)
         if len(run_info) != required_len:
             Log.e(

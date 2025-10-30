@@ -257,7 +257,7 @@ class Component:
 class Formulation:
     """Represents a complete formulation consisting of various components, temperature, and viscosity profile.
 
-    Each formulation can include a protein, buffer, stabilizer, surfactant, and salt as `Component` objects,
+    Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
     along with an optional temperature and viscosity profile.
 
     Attributes:
@@ -390,12 +390,12 @@ class Formulation:
         """Assign a excpient component to the formulation.
 
         Args:
-            salt (Salt): An instance of `Excipient` to include.
-            excpient (float): Concentration of the excpient (must be ≥ 0).
+            excipient (Excipient): An instance of `Excipient` to include.
+            concentration (float): Concentration of the excipient (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
 
         Raises:
-            TypeError: If `salt` is not a `Excipient`, or if concentration is not numeric.
+            TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
         self._components["excipient"] = Component(
@@ -451,7 +451,7 @@ class Formulation:
         """Get the excipient component of the formulation.
 
         Returns:
-            Optional[Component]: The salt `Component` if set, otherwise None.
+            Optional[Component]: The excipient `Component` if set, otherwise None.
         """
         return self._components["excipient"]
 
