@@ -35,7 +35,7 @@ try:
     from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
     from src.view.evaluation_ui import EvaluationUI
-    from src.view.hypothesis_test_ui import HypothesisTestingUI
+    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
@@ -46,7 +46,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
     from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
-    from QATCH.VisQAI.src.view.hypothesis_test_ui import HypothesisTestingUI
+    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
 TRIAL_LABEL_TEXT = (
     "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
     "Please subscribe to retain access on this system.<br/><br/>"
@@ -363,7 +363,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def isBusy(self):
         """BASE CLASS DEFINITION"""
         return False
-    
+
     def getToolNames(self):
         """BASE CLASS DEFINITION"""
         return []
