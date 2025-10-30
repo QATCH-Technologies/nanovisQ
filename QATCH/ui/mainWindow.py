@@ -25,7 +25,7 @@ from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 from QATCH.VisQAI.src.db.db import Database
-from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from time import time, mktime, strftime, strptime, localtime
 from dateutil import parser
 import threading
@@ -62,28 +62,37 @@ class _MainWindow(QtWidgets.QMainWindow):
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
 
-        # Get the application instance safely and connect the signal
+        # Get the application instance safely and connect the signals
         app_instance = QtWidgets.QApplication.instance()
         if app_instance:
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-        
-    def focusWindowChanged(self, event):
-        # The focus has moved to another application, so hide the widget
-        self.ui0.floating_widget.hide()
-
-    def moveEvent(self, event):
-        # Update the floating widget's position whenever the main window moves
-        self.ui0.set_floating_widget_position()
-        super().moveEvent(event)
+            # capture clicks anywhere on gui
+            app_instance.installEventFilter(self)
 
     def changeEvent(self, event):
-        # Handle window state changes (e.g., minimize/restore)
+        # Handle window state changes (e.g. hide on minimize)
         if event.type() == event.WindowStateChange:
             if self.isMinimized():
                 self.ui0.floating_widget.hide()
-            # else:
-            #     self.ui0.floating_widget.show()
         super().changeEvent(event)
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            if self.ui0.floating_widget.isVisible():
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, event):
+        # The focus has moved to another application, so hide the widget
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
@@ -2456,11 +2465,13 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             machine_database_path = os.path.join(
                 Constants.local_app_data_path, "database/app.db")
+
             bundled_database_path = os.path.join(
                 Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
 
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
+
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
                 os.makedirs(os.path.dirname(
@@ -2487,9 +2498,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
                     path=bundled_database_path, parse_file_key=True)
+                bundled_ctrl = IngredientController(db=bundled_database)
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
-
+                machine_ctrl = IngredientController(db=machine_database)
                 if exec_migrations:
                     from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
                     tmp_path = machine_database.create_temp_decrypt()
@@ -2531,12 +2543,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
                 # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
                 # update machine db with changes from bundled db.
-                for ing in bundled_database.get_all_ingredients():
-                    if machine_database.get_ingredient(ing.id) is None:
-                        # We must use the same `enc_id`, do not use `ingctrl.add()`
-                        machine_database.add_ingredient(ing)
-                        Log.w(
-                            f"Added missing core ingredient to database: {ing.name}")
+                bundled_ings = bundled_ctrl.get_all_ingredient_names()
+                machine_ings = machine_ctrl.get_all_ingredient_names()
+                Log.i(f"{len(bundled_ings)}, {len(machine_ings)}")
+                if len(bundled_ings) != len(machine_ings):
+                    for b_ing in bundled_ings:
+                        if machine_ctrl.get_by_name(name=b_ing.name, ingredient=b_ing) is None:
+                            b_ing.id = -1
+                            b_ing.enc_id = -1
+                            machine_ctrl.add(ingredient=b_ing)
+                            Log.w(
+                                f"Added missing core ingredient to database: {b_ing.name}")
                 bundled_database.close()
                 machine_database.close()
                 # TODO: Think of a better way to do this!
