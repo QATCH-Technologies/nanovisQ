@@ -78,7 +78,15 @@ class _MainWindow(QtWidgets.QMainWindow):
     def eventFilter(self, obj, event):
         # Handle mouse click events (e.g. hide on click)
         if event.type() == QtCore.QEvent.MouseButtonPress:
-            if self.ui0.floating_widget.isVisible():
+            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
+            allow_hide = True
+            if widget_clicked is self.ui0.mode_learn:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_text:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_arrow:
+                allow_hide = False
+            if self.ui0.floating_widget.isVisible() and allow_hide:
                 self.ui0.floating_widget.hide()
         return super().eventFilter(obj, event)
 

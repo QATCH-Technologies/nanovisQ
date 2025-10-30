@@ -22,6 +22,9 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         super().__init__(
             parent.parent if hasattr(parent, "parent") else parent)
         self.parent = parent
+
+        # Internal state tracking of the active tab index
+        self._active = -1
         
         # Make the widget frameless, transparent, and always on top
         self.setWindowFlags(
@@ -30,19 +33,47 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             QtCore.Qt.Tool
         )
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
+
+        # Reserve space for the shadow effect
+        self.setContentsMargins(0, 0, 10, 10)
         
+        # Main layout for the entire window
+        container_layout = QtWidgets.QVBoxLayout(self)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Child widget where content and shadow are applied
+        self.content_widget = QtWidgets.QWidget(self)
+        self.content_widget.setObjectName("content_widget")
+        container_layout.addWidget(self.content_widget)
+
+        # Style the content widget
+        self.content_widget.setStyleSheet(
+            """
+            #content_widget {
+                background-color: #DDDDDD;
+                border-radius: 10px;
+            }
+            """
+        )
+
+        # Style text color of all child widgets
+        self.setStyleSheet("color: #333333;")
+
+        # Apply shadow effect
+        shadow_effect = QtWidgets.QGraphicsDropShadowEffect(self)
+        shadow_effect.setColor(QtGui.QColor(69, 69, 69, 180))  # Semi-transparent dark gray
+        shadow_effect.setOffset(2, 2)
+        shadow_effect.setBlurRadius(5)
+        self.content_widget.setGraphicsEffect(shadow_effect)
+
         # Set a fixed size for the floating widget
         # NOTE: Size will auto-fit to label size
         self.setFixedSize(100, 700)
 
-        # Set text color for all child widgets
-        self.setStyleSheet("color: #333333;")
-
-        self.vbox = QtWidgets.QVBoxLayout(self)
+        self.vbox = QtWidgets.QVBoxLayout(self.content_widget)
         self.items = QtWidgets.QVBoxLayout()
 
         # Remove margins around widgets
-        self.setContentsMargins(0, 0, 0, 0)
         self.vbox.setContentsMargins(0, 0, 0, 0)
         self.items.setContentsMargins(0, 0, 0, 0)
 
@@ -53,16 +84,22 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         self.vbox.addSpacing(25)
         self.vbox.addWidget(self.title)
         self.vbox.addLayout(self.items)
-        self.vbox.addSpacing(15)
+        # self.vbox.addSpacing(15)
         self.vbox.addStretch()
 
     def addItems(self, items: list):
         for idx, item in enumerate(items):
             label = QtWidgets.QLabel(item)
+            # Style the label (padding and background)
             label = self._setStyleSheet(label, False)
+            # Connect the mouse press event handler
             label.mousePressEvent = lambda evt, i=idx: self._viewToolkitItem(i)
+            # Install the event filter to detect mouseover events
+            label.installEventFilter(self)
             self.items.addWidget(label)
-        self.setFixedSize(self.sizeHint())
+        self.setFixedSize(
+            self.sizeHint().width() + self.contentsMargins().right(),
+            self.sizeHint().height() + self.contentsMargins().bottom())
 
     def removeItems(self):
         for idx in range(self.items.count()):
@@ -73,6 +110,14 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         for idx in range(self.items.count()):
             label = self.items.itemAt(idx).widget()
             self._setStyleSheet(label, True if idx == index else False)
+        self._active = index
+
+    def _setHoverItem(self, index: int):
+        for idx in range(self.items.count()):
+            label = self.items.itemAt(idx).widget()
+            self._setStyleSheet(label, 
+                                selected = True if idx == self._active else False, 
+                                hover = True if idx == index else False)
 
     def _viewToolkitItem(self, index: int):
         if 0 <= index < self.items.count():
@@ -81,8 +126,14 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         else:
             raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
         
-    def _setStyleSheet(self, label: QtWidgets.QLabel, selected: bool) -> QtWidgets.QLabel:
-        if selected:
+    def _setStyleSheet(self, label: QtWidgets.QLabel, selected: bool, hover: bool = False) -> QtWidgets.QLabel:
+        if hover and selected:
+            label.setStyleSheet(
+                "padding: 10px; padding-left: 15px; background: #A9E1FA;")
+        elif hover:
+            label.setStyleSheet(
+                "padding: 10px; padding-left: 15px; background: #E5E5E5;")
+        elif selected:
             label.setStyleSheet(
                 "padding: 10px; padding-left: 15px; background: #B7D3DC;")
         else:
@@ -90,13 +141,23 @@ class FloatingMenuWidget(QtWidgets.QWidget):
                 "padding: 10px; padding-left: 15px;")
         return label
     
-    # Override paintEvent to create a custom background shape
-    def paintEvent(self, event):
-        painter = QtGui.QPainter(self)
-        painter.setRenderHint(QtGui.QPainter.Antialiasing)
-        painter.setBrush(QtGui.QColor(221, 221, 221, 255))  # Opaque dark gray
-        painter.setPen(QtCore.Qt.NoPen)
-        painter.drawRoundedRect(self.rect(), 10, 10)  # Rounded rectangle
+    def eventFilter(self, obj, event):
+        if event.type() in [QtCore.QEvent.Enter, QtCore.QEvent.Leave]:
+            found = False
+            for idx in range(self.items.count()):
+                label = self.items.itemAt(idx).widget()
+                if obj is label:
+                    found = True
+                    break
+        if event.type() == QtCore.QEvent.Enter:
+            # print(f"Enter {obj.__class__.__name__} {obj.text() if hasattr(obj, 'text') else ''}")
+            if found:
+                self._setHoverItem(idx)
+        if event.type() == QtCore.QEvent.Leave:
+            # print(f"Leave {obj.__class__.__name__} {obj.text() if hasattr(obj, 'text') else ''}")
+            if found:
+                self._setHoverItem(-1)
+        return super().eventFilter(obj, event)
 
 
 class Ui_Main(object):
