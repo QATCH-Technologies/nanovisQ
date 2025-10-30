@@ -102,9 +102,11 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             self.sizeHint().height() + self.contentsMargins().bottom())
 
     def removeItems(self):
-        for idx in range(self.items.count()):
-            label = self.items.takeAt(idx).widget()
-            label.deleteLater()
+        while self.items.count():
+            item = self.items.takeAt(0)
+            widget = item.widget() if item else None
+            if widget is not None:
+                widget.deleteLater()
 
     def setActiveItem(self, index: int):
         for idx in range(self.items.count()):
@@ -617,9 +619,9 @@ class Ui_Main(object):
 
     def set_floating_widget_position(self):
         # Calculate the desired position (e.g., top-right corner)
-        menu_widget_pos = + self.modemenu.mapToGlobal(self.modemenu.pos())
+        menu_widget_pos = + self.modemenu.mapToGlobal(QtCore.QPoint(0, 0))
         menu_widget_width = self.modemenu.width()
-        offset = (4, -2)
+        offset = (14, 8)
         
         x = menu_widget_pos.x() + menu_widget_width + offset[0]
         y = menu_widget_pos.y() + offset[1]

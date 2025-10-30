@@ -1559,7 +1559,7 @@ class FrameStep1(QtWidgets.QDialog):
                     if file.lower() == filename.lower():
                         capture_files.append(os.path.join(root, file))
         except Exception as e:
-            Log.e(TAG, f"Error searching directory {directory}: {e}")
+            Log.e(f"Error searching directory {directory}: {e}")
 
         return capture_files
 

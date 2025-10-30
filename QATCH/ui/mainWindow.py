@@ -68,13 +68,6 @@ class _MainWindow(QtWidgets.QMainWindow):
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
             app_instance.installEventFilter(self)  # capture clicks anywhere on gui
 
-    def changeEvent(self, event):
-        # Handle window state changes (e.g. hide on minimize)
-        if event.type() == event.WindowStateChange:
-            if self.isMinimized():
-                self.ui0.floating_widget.hide()
-        super().changeEvent(event)
-
     def eventFilter(self, obj, event):
         # Handle mouse click events (e.g. hide on click)
         if event.type() == QtCore.QEvent.MouseButtonPress:
@@ -90,10 +83,11 @@ class _MainWindow(QtWidgets.QMainWindow):
                 self.ui0.floating_widget.hide()
         return super().eventFilter(obj, event)
 
-    def focusWindowChanged(self, event):
-        # The focus has moved to another application, so hide the widget
+    def focusWindowChanged(self, focus_window):
+        # Hide the floating widget only when the focus leaves this window
         # NOTE: This is a signal slot event firing, there is no `super()`
-        self.ui0.floating_widget.hide()
+        if focus_window is None or focus_window != self.windowHandle():
+            self.ui0.floating_widget.hide()
 
     def moveEvent(self, event):
         # Hide the floating widget whenever the main window moves

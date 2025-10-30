@@ -226,7 +226,7 @@ class Parser:
                     pI_range=0.0
                 ),
                 "concentration": 0.0,
-                "units": "mg/ml"
+                "units": "mg/mL"
             }
         conc = self.get_param("protein_concentration", float)
         protein_obj = self.ing_ctrl.get_protein_by_name(name)
@@ -275,12 +275,10 @@ class Parser:
         except:
             Log.w(
                 TAG, f"<buffer_type> param could not be found in XML; returning default.")
-            if units is None:
-                units = "pH"
             return {
                 "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
                 "concentration": 0.0,
-                "units": units,
+                "units": "mM",
             }
 
         buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
@@ -394,15 +392,15 @@ class Parser:
     def get_salt(self) -> Salt:
         """Construct and return a `Salt` object with concentration and units from `<params>`.
         """
-        name = self.get_param("salt_type", str)
-        conc = self.get_param("salt_concentration", float)
-        units = self.get_param_attr("salt_concentration", "units")
+        name = self.get_param("salt_type", str, required=False)
+        conc = self.get_param("salt_concentration", float, required=False)
+        units = self.get_param_attr("salt_concentration", "units", required=False)
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
-            units = 'mg/ml'
+            units = 'mM'
         return {
             "salt": Salt(enc_id=-1, name=name),
             "concentration": conc,

@@ -105,7 +105,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
     }
 
     INGREDIENT_UNITS = {
-        'Protein': 'mg/ml',
+        'Protein': 'mg/mL',
         'Buffer': 'mM',
         'Surfactant': '%w',
         'Stabilizer': 'M',
@@ -354,7 +354,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 spin.setRange(0.0, 1000.0)
                 spin.setDecimals(2)
                 spin.setSingleStep(0.1)
-            elif unit == 'mg/ml':
+            elif unit == 'mg/mL':
                 spin.setRange(0.0, 500.0)
                 spin.setDecimals(2)
                 spin.setSingleStep(0.5)
@@ -576,13 +576,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
     def select_model(self) -> None:
         """Open a file dialog to select a VisQAI model and initialize the predictor."""
         if self.model_dialog.exec_():
-            model_path = os.path.join(
-                Architecture.get_path(), "QATCH/VisQAI/assets")
-            if os.path.exists(model_path):
-                self.model_dialog.setDirectory(model_path)
-            else:
-                self.model_dialog.setDirectory(Constants.log_prefer_path)
-
             selected_files = self.model_dialog.selectedFiles()
             if selected_files:
                 file_path = selected_files[0]
