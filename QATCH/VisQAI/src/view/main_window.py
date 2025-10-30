@@ -18,6 +18,7 @@ from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+import inspect
 import os
 import hashlib
 from scipy.optimize import curve_fit
@@ -401,6 +402,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
         self.tab_widget.tabBar().installEventFilter(self)
+        self.tab_widget.tabBar().hide() # Prefer Toolkit floating menu
 
         # Enable database objects for initial UI load.
         self.enable(True)
@@ -669,6 +671,14 @@ class VisQAIWindow(BaseVisQAIWindow):
         elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
+        try:
+            # Highlight the selected toolkit item in the floating menu
+            self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+
+        except Exception as e:
+            Log.e("Failed to set active item in VisQ.AI Toolkit menu")
+            Log.e(f"ERROR: {e}")
+
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
         if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
@@ -731,6 +741,24 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
             Log.d("Database objects disabled on VisQ.AI not enabled.")
 
+            try:
+                # Remove highlighted tool item from floating menu widget
+                self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
+
+            except AttributeError as e:
+                # This exception handler needs to know who called it
+                # to determine whether or not to suppress the error.
+                caller_frame = inspect.stack()[1]
+                caller_name = caller_frame.function
+                if caller_name == "init_ui":
+                    Log.d("VisQ.AI Toolkit menu widget not found yet (normal once on init)")
+                else:
+                    raise e # Throw error, this is not an expected exception
+
+            except Exception as e:
+                Log.e("Failed to set active item in VisQ.AI Toolkit menu")
+                Log.e(f"ERROR: {e}")
+
         else:
             # VisQ.AI UI is now in foreground, Mode is selected
             # Do things here to initialize resources and enable:
@@ -746,6 +774,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.d("Database objects created on VisQ.AI enable.")
 
             # Emit tab selected code for the currently active tab frame.
+            # NOTE: This also calls `setActiveItem()` for the floating widget
             self.tab_widget.currentChanged.emit(self.tab_widget.currentIndex())
 
             # # Create default user preferences object
