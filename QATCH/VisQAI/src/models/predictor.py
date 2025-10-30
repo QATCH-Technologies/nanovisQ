@@ -286,7 +286,7 @@ class Predictor:
     def predict_uncertainty(
         self,
         df: pd.DataFrame,
-        ci_range: tuple = (0.05, 0.95),
+        ci_range: tuple = (2.5, 97.5),
         n_samples: int = None,
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """
@@ -408,7 +408,7 @@ class Predictor:
                     'std': uncertainty['std'][i, j],
                     'lower_95': uncertainty['lower_95'][i, j],
                     'upper_95': uncertainty['upper_95'][i, j],
-                    'cv': uncertainty['cv'][i, j],
+                    'cv': uncertainty['coefficient_of_variation'][i, j],
                     'residual': y_actual[i, j] - y_pred_mean[i, j],
                     'abs_error': np.abs(y_actual[i, j] - y_pred_mean[i, j]),
                     'pct_error': np.abs((y_actual[i, j] - y_pred_mean[i, j]) / y_actual[i, j]) * 100 if y_actual[i, j] != 0 else 0,

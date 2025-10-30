@@ -34,7 +34,8 @@ try:
     from src.view.frame_step1 import FrameStep1
     from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
-
+    from src.view.evaluation_ui import EvaluationUI
+    from src.view.hypothesis_test_ui import HypothesisTestingUI
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
@@ -44,7 +45,8 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
     from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
-
+    from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
+    from QATCH.VisQAI.src.view.hypothesis_test_ui import HypothesisTestingUI
 TRIAL_LABEL_TEXT = (
     "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
     "Please subscribe to retain access on this system.<br/><br/>"
@@ -361,6 +363,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def isBusy(self):
         """BASE CLASS DEFINITION"""
         return False
+    
+    def getToolNames(self):
+        """BASE CLASS DEFINITION"""
+        return []
 
 
 class VisQAIWindow(BaseVisQAIWindow):
@@ -372,6 +378,10 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI")
         self.setMinimumSize(900, 600)
+        self.select_formulation: Formulation = Formulation()
+        self.import_formulations: list[Formulation] = []
+        self.import_run_names: list[str] = []
+        self.predict_formulation: Formulation = Formulation()
         self.init_ui()
         self.init_sign()
         self.check_license(
@@ -385,11 +395,6 @@ class VisQAIWindow(BaseVisQAIWindow):
         if self.timer.isActive():  # only start on mode `enable` (focus)
             self.timer.stop()
         self._unsaved_changes = False
-
-        self.select_formulation: Formulation = Formulation()
-        self.import_formulations: list[Formulation] = []
-        self.import_run_names: list[str] = []
-        self.predict_formulation: Formulation = Formulation()
 
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
@@ -408,10 +413,14 @@ class VisQAIWindow(BaseVisQAIWindow):
                                "\u2462 Import Experiments")  # unicode circled 3
         self.tab_widget.addTab(FrameStep2(self, 4),
                                "\u2463 Learn")  # unicode circled 4
+        self.tab_widget.addTab(EvaluationUI(self),
+                               "\u2464 Evaluate")  # unicode circled 5
         self.tab_widget.addTab(FrameStep1(self, 5),
-                               "\u2464 Predict")  # unicode circled 5
+                               "\u2465 Predict")  # unicode circled 6
         self.tab_widget.addTab(FrameStep2(self, 6),
-                               "\u2465 Optimize")  # unicode circled 6
+                               "\u2466 Optimize")  # unicode circled 7
+        self.tab_widget.addTab(HypothesisTestingUI(self, ),
+                               "\u2467 Hypothesis Testing")  # unicode circled 8
 
         # Disable database objects after initial UI load.
         self.enable(False)
@@ -536,7 +545,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                         self.tab_widget.currentWidget().btn_next.click()
                         return True  # ignore click, let "Next" btn decide
                 # Block tab change based on some condition
-                if tab_step in [3, 4, 6]:
+                if tab_step in [3, 4, 7]:
                     if not widget.run_file_run:
                         QtWidgets.QMessageBox.information(
                             None, Constants.app_title,

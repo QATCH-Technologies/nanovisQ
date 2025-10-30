@@ -45,6 +45,7 @@ database = Database(
     path=DB_PATH,
     encryption_key=metadata.get("app_key", None))
 ing_ctrl = IngredientController(db=database)
+ing_ctrl._user_mode = False
 
 # Populate DB with core training samples
 print(f"Adding core training samples to newly created app.db...")
