@@ -684,7 +684,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         return hasattr(self.tab_widget.currentWidget(), "timer") and \
             self.tab_widget.currentWidget().timer.isActive()
 
-        def getToolNames(self):
+    def getToolNames(self):
         tab_names = []
         for i in range(self.tab_widget.count()):
             tab_name = self.tab_widget.tabText(i)
