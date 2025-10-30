@@ -748,19 +748,20 @@ class EvaluationUI(QtWidgets.QDialog):
             capture_files = self.find_capture_files(directory)
             all_capture_files.extend(capture_files)
 
+        directory_ies = f"director{'y' if len(directories) == 1 else 'ies'}"
         if not all_capture_files:
             QtWidgets.QMessageBox.information(
                 self,
                 "No Capture Files Found",
-                f"No capture.zip files found in {len(directories)} selected director{'y' if len(directories) == 1 else 'ies'}."
+                f"No capture.zip files found in {len(directories)} selected {directory_ies}."
             )
             return
-        dir_summary = f"{len(directories)} director{'y' if len(directories) == 1 else 'ies'}"
+        dir_summary = f"{len(directories)} {directory_ies}"
         reply = QtWidgets.QMessageBox.question(
             self,
             "Batch Load Runs",
             f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
-            f"Do you want to load all of them?",
+            f"Do you want to load {'all of them' if len(all_capture_files) > 1 else 'it'}?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
             QtWidgets.QMessageBox.Yes
         )
@@ -804,8 +805,9 @@ class EvaluationUI(QtWidgets.QDialog):
             return
 
         # Show progress dialog for batch loading
+        file_s = f"file{'s' if len(file_paths) > 1 else ''}"
         progress = QtWidgets.QProgressDialog(
-            "Loading run files...",
+            f"Loading run {file_s}...",
             "Cancel",
             0,
             len(file_paths),
@@ -822,7 +824,7 @@ class EvaluationUI(QtWidgets.QDialog):
                 break
 
             progress.setValue(i)
-            progress.setLabelText(f"Loading: {os.path.basename(file_path)}")
+            progress.setLabelText(f"Loading: {os.path.basename(os.path.dirname(file_path))}")
             QtWidgets.QApplication.processEvents()
 
             success = self.add_run_file(file_path, show_errors=False)
@@ -838,7 +840,7 @@ class EvaluationUI(QtWidgets.QDialog):
         if failed_files:
             summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
             for failed in failed_files[:5]:  # Show first 5 failures
-                summary_msg += f"\n  • {os.path.basename(failed)}"
+                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"  # bullet point (U+2022)
             if len(failed_files) > 5:
                 summary_msg += f"\n  ... and {len(failed_files) - 5} more"
 

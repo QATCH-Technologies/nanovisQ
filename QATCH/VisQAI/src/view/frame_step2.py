@@ -288,9 +288,8 @@ class FrameStep2(QtWidgets.QDialog):
 
         if self.step == 4:  # learn
             select_run_tab: FrameStep1 = self.parent.tab_widget.widget(0)
-            experiments_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             changes.append(select_run_tab.select_label.text())
-            changes.extend(experiments_tab.all_files.keys())
+            changes.extend(self.parent.import_run_names)
 
         if self.step == 6:  # optimize
             self.constraints_ui.add_suggestion_dialog()
