@@ -14,7 +14,7 @@ Date:
 Version:
    1.3
 """
-
+import re
 import os
 import zipfile
 import traceback
@@ -139,7 +139,7 @@ class EvaluationUI(QtWidgets.QDialog):
             'Viscosity_100000': 100000,
             'Viscosity_15000000': 15000000
         }
-        self.selected_shear_rates = list(self.shear_rates.keys())
+        self.selected_shear_rates = []
         self._init_file_dialogs()
         self.init_ui()
 
@@ -346,7 +346,7 @@ class EvaluationUI(QtWidgets.QDialog):
             QtWidgets.QAbstractItemView.MultiSelection)
         for shear_name, shear_value in self.shear_rates.items():
             item = QtWidgets.QListWidgetItem(
-                f"{shear_name} ({shear_value} s⁻¹)")
+                f"{shear_value} s⁻¹")
             item.setData(Qt.UserRole, shear_name)
             self.shear_rate_list.addItem(item)
             if shear_name in self.selected_shear_rates:
@@ -420,13 +420,13 @@ class EvaluationUI(QtWidgets.QDialog):
         self.current_shear_index = 0
         shear_nav_layout = QtWidgets.QHBoxLayout()
         shear_nav_layout.addStretch()
-        self.prev_shear_btn = QtWidgets.QPushButton("◀ Previous")
+        self.prev_shear_btn = QtWidgets.QPushButton("\u25C0 Previous")
         self.prev_shear_btn.clicked.connect(self.navigate_shear_rate_prev)
         self.prev_shear_btn.setEnabled(False)
         self.shear_rate_label = QtWidgets.QLabel("All Shear Rates")
         self.shear_rate_label.setAlignment(Qt.AlignCenter)
         self.shear_rate_label.setMinimumWidth(200)
-        self.next_shear_btn = QtWidgets.QPushButton("Next ▶")
+        self.next_shear_btn = QtWidgets.QPushButton("Next \u25B6")
         self.next_shear_btn.clicked.connect(self.navigate_shear_rate_next)
         self.next_shear_btn.setEnabled(False)
         shear_nav_layout.addWidget(self.prev_shear_btn)
@@ -506,7 +506,7 @@ class EvaluationUI(QtWidgets.QDialog):
             shear_name = list(self.selected_shear_rates)[
                 self.current_shear_index - 1]
             shear_value = self.shear_rates[shear_name]
-            self.shear_rate_label.setText(f"{shear_name} ({shear_value} s⁻¹)")
+            self.shear_rate_label.setText(f"{shear_value} s⁻¹")
 
     def get_current_shear_filter(self) -> None:
         """Retrieve the currently selected shear rate filter for plotting.
@@ -1028,13 +1028,25 @@ class EvaluationUI(QtWidgets.QDialog):
         evaluation results are available.
         """
         selected_items = self.shear_rate_list.selectedItems()
-        self.selected_shear_rates = [
-            item.data(Qt.UserRole) for item in selected_items
-        ]
+
+        # Helper to extract the numeric part from strings like "Viscosity_1000"
+        def extract_shear_rate(value: str) -> float:
+            match = re.search(r'(\d+(?:\.\d+)?)$', str(value))
+            return float(match.group(1)) if match else float('inf')
+
+        # Sort by numeric suffix
+        self.selected_shear_rates = sorted(
+            (item.data(Qt.UserRole) for item in selected_items),
+            key=extract_shear_rate
+        )
+
         self.current_shear_index = 0
         self.update_shear_navigation()
+
         if hasattr(self, 'evaluation_results') and self.evaluation_results is not None:
             self.update_plot()
+            self.display_details_table()
+            self.display_metrics_table()
 
     def format_metric_name(self, metric: str) -> str:
         """Format metric name for display."""
@@ -1302,6 +1314,15 @@ class EvaluationUI(QtWidgets.QDialog):
         filtered by the currently selected shear rates. It includes actual and
         predicted values, errors, confidence intervals, and run information.
         """
+        # Clear the table first
+        self.details_table.clearContents()
+        self.details_table.setRowCount(0)
+        self.details_table.setSortingEnabled(False)
+
+        # Disable editing
+        self.details_table.setEditTriggers(
+            QtWidgets.QAbstractItemView.NoEditTriggers)
+
         df = self.current_results_df.copy()
         selected_shear_rate_values = [self.shear_rates[name]
                                       for name in self.selected_shear_rates]
@@ -1311,6 +1332,10 @@ class EvaluationUI(QtWidgets.QDialog):
                            'predicted', 'abs_error', 'percentage_error',
                            'lower_ci', 'upper_ci']
         df = df[display_columns]
+
+        # Reset index to ensure sequential row numbering
+        df = df.reset_index(drop=True)
+
         column_display_names = {
             'run': 'Run',
             'shear_rate': 'Shear Rate (s⁻¹)',
@@ -1327,11 +1352,16 @@ class EvaluationUI(QtWidgets.QDialog):
         self.details_table.setColumnCount(len(df.columns))
         self.details_table.setHorizontalHeaderLabels(display_labels)
         self.details_table.verticalHeader().setVisible(False)
-        header_font = self.details_table.horizontalHeader().font()
+
+        # Configure header for sorting
+        header = self.details_table.horizontalHeader()
+        header.setSectionsClickable(True)
+        header.setSortIndicatorShown(True)
+        header_font = header.font()
         header_font.setBold(True)
         header_font.setPointSize(10)
-        self.details_table.horizontalHeader().setFont(header_font)
-        self.details_table.horizontalHeader().setStyleSheet("""
+        header.setFont(header_font)
+        header.setStyleSheet("""
             QHeaderView::section {
                 background-color: #E8F4F8;
                 color: #1a1a1a;
@@ -1339,7 +1369,25 @@ class EvaluationUI(QtWidgets.QDialog):
                 border: 1px solid #B8D4E0;
                 font-weight: bold;
             }
+            QHeaderView::section:hover {
+                background-color: #D0E8F0;
+            }
+            QHeaderView::up-arrow {
+                width: 12px;
+                height: 12px;
+                image: url(none);
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+            }
+            QHeaderView::down-arrow {
+                width: 12px;
+                height: 12px;
+                image: url(none);
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+            }
         """)
+
         self.details_table.setAlternatingRowColors(True)
         self.details_table.setStyleSheet("""
             QTableWidget {
@@ -1352,34 +1400,41 @@ class EvaluationUI(QtWidgets.QDialog):
                 padding: 4px;
             }
         """)
+
         for i, row in df.iterrows():
             for j, value in enumerate(row):
                 col_name = df.columns[j]
                 if isinstance(value, float):
                     if col_name == 'percentage_error':
-                        item = QtWidgets.QTableWidgetItem(f"{value:.2f}%")
+                        item = QtWidgets.QTableWidgetItem()
+                        item.setData(Qt.DisplayRole, f"{value:.2f}%")
+                        # Store numeric value for sorting
+                        item.setData(Qt.UserRole, value)
                     elif col_name == 'shear_rate':
-                        item = QtWidgets.QTableWidgetItem(f"{value:.0f}")
+                        item = QtWidgets.QTableWidgetItem()
+                        item.setData(Qt.DisplayRole, f"{value:.0f}")
+                        item.setData(Qt.UserRole, value)
                     else:
-                        item = QtWidgets.QTableWidgetItem(f"{value:.4f}")
+                        item = QtWidgets.QTableWidgetItem()
+                        item.setData(Qt.DisplayRole, f"{value:.4f}")
+                        item.setData(Qt.UserRole, value)
                 else:
                     item = QtWidgets.QTableWidgetItem(str(value))
+
                 if col_name == 'run':
                     item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
                 else:
                     item.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+
                 if col_name in ['abs_error', 'percentage_error']:
                     if isinstance(value, float):
                         if col_name == 'percentage_error':
                             if value < 5.0:
-                                item.setBackground(QtGui.QColor(
-                                    220, 255, 220))
+                                item.setBackground(QtGui.QColor(220, 255, 220))
                             elif value < 15.0:
-                                item.setBackground(QtGui.QColor(
-                                    255, 255, 200))
+                                item.setBackground(QtGui.QColor(255, 255, 200))
                             else:
-                                item.setBackground(QtGui.QColor(
-                                    255, 220, 220))
+                                item.setBackground(QtGui.QColor(255, 220, 220))
                         elif col_name == 'abs_error':
                             if value < 0.1:
                                 item.setBackground(QtGui.QColor(220, 255, 220))
@@ -1389,6 +1444,7 @@ class EvaluationUI(QtWidgets.QDialog):
                                 item.setBackground(QtGui.QColor(255, 220, 220))
 
                 self.details_table.setItem(i, j, item)
+
         self.details_table.resizeColumnsToContents()
 
         min_widths = {
@@ -1407,8 +1463,17 @@ class EvaluationUI(QtWidgets.QDialog):
                 current_width = self.details_table.columnWidth(col)
                 self.details_table.setColumnWidth(
                     col, max(min_width, current_width))
+
+        # Stretch Run column to fill horizontal space, keep others interactive
+        header.setStretchLastSection(False)
+        header.setSectionResizeMode(
+            0, QtWidgets.QHeaderView.Stretch)  # Run column stretches
+        for col in range(1, self.details_table.columnCount()):
+            header.setSectionResizeMode(col, QtWidgets.QHeaderView.Interactive)
+
         for i in range(self.details_table.rowCount()):
             self.details_table.setRowHeight(i, 26)
+
         self.details_table.setSortingEnabled(True)
 
     def update_plot(self) -> None:
