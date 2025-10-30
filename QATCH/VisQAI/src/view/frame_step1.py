@@ -150,17 +150,8 @@ class FrameStep1(QtWidgets.QDialog):
 
         left_layout.addWidget(left_group)
 
-        # Browse run
-        self.file_dialog = QtWidgets.QFileDialog()
-        self.file_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
-        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
-        self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
-
         self.select_run = QtWidgets.QPushButton(
-            "Add Run..." if step == 3 else "Browse...")
+            "Add Run(s)..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
@@ -212,12 +203,12 @@ class FrameStep1(QtWidgets.QDialog):
                 add_remove_export_layout.addWidget(self.btn_add)
 
             # Remove Selected Run
-            self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
+            self.btn_remove = QtWidgets.QPushButton("Remove Selected")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
 
             # Remove All Runs
-            self.btn_remove_all = QtWidgets.QPushButton("Remove All Runs")
+            self.btn_remove_all = QtWidgets.QPushButton("Remove All")
             self.btn_remove_all.clicked.connect(
                 self.user_all_runs_removed)
             add_remove_export_layout.addWidget(self.btn_remove_all)
@@ -460,8 +451,7 @@ class FrameStep1(QtWidgets.QDialog):
             lambda: self.file_selected(None, cancel=True))
         self.btn_next.clicked.connect(
             getattr(self, f"proceed_to_step_{self.step+1}"))
-        self.select_run.clicked.connect(self.file_dialog_show)
-        self.file_dialog.fileSelected.connect(self.file_selected)
+        self.select_run.clicked.connect(self.user_run_browse)
         if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
             global_handler = getattr(
@@ -1232,7 +1222,7 @@ class FrameStep1(QtWidgets.QDialog):
                     self.progressBarDiag.close()  # close it
                     return
 
-                self.file_selected(file_path)  # load each run
+                self.file_selected(file_path, loading=True)  # load each run
                 QtCore.QCoreApplication.processEvents()  # redraw plot now
                 if (len(self.run_captured.text()) and
                     len(self.run_updated.text()) and
@@ -1467,35 +1457,182 @@ class FrameStep1(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.critical(
                     None, "Error", f"Failed to export PDF: {str(e)}")
 
-    def file_dialog_show(self):
-        selected_files = self.file_dialog.selectedFiles()
-        inside = True  # assume it is until proven otherwise
-        if selected_files:
-            prefer_abs = os.path.abspath(Constants.log_prefer_path)
-            path_abs = os.path.abspath(selected_files[0])
-            try:
-                inside = os.path.commonpath(
-                    [prefer_abs, path_abs]) == prefer_abs
-            except ValueError:
-                inside = False
+    def user_run_browse(self) -> None:
+        """Open a dialog to browse and add run capture files or directories.
 
-        if not selected_files or not inside:
-            # Set run directory from User Preferences.
-            self.file_dialog.setDirectory(Constants.log_prefer_path)
-        else:
-            # File selected previously, reference parent directory
-            set_directory, select_file = os.path.split(
-                os.path.dirname(path_abs))
-            # e.g "full/path/to/capture.zip" will yield:
-            # (set_directory = "full/path", select_file = "to")
-            self.file_dialog.setDirectory(set_directory)
-            self.file_dialog.selectFile(select_file)
+        This method allows the user to select one or more directories containing
+        run files. It will search each selected directory for `capture.zip` files
+        and load them all in batch.
+        """
+        # Use a custom directory dialog that supports multi-selection
+        dir_dialog = QtWidgets.QFileDialog(self)
+        dir_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dir_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        dir_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
+        file_view = dir_dialog.findChild(QtWidgets.QListView, 'listView')
+        if file_view:
+            file_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
 
-        self.file_dialog.show()
+        tree_view = dir_dialog.findChild(QtWidgets.QTreeView)
+        if tree_view:
+            tree_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        dir_dialog.setDirectory(prefer_abs)
 
-    def file_selected(self, path: str | None, cancel: bool = False):
+        if dir_dialog.exec_():
+            selected_dirs = dir_dialog.selectedFiles()
+            if selected_dirs:
+                self.load_runs_from_directories(selected_dirs)
+
+    def load_runs_from_directories(self, directories: list) -> None:
+        """Search multiple directories for capture files and load them.
+
+        Args:
+            directories (list): List of directory paths to search.
+        """
+        all_capture_files = []
+        for directory in directories:
+            capture_files = self.find_capture_files(directory)
+            all_capture_files.extend(capture_files)
+
+        directory_ies = f"director{'y' if len(directories) == 1 else 'ies'}"
+        if not all_capture_files:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Capture Files Found",
+                f"No capture.zip files found in {len(directories)} selected {directory_ies}."
+            )
+            return
+        dir_summary = f"{len(directories)} {directory_ies}"
+        
+        # NOTE: This block is unique to `frame_step1.py` (not in evaluation_ui.py)
+        if len(all_capture_files) > 1 and not self.step == 3: # 3: Imported Experiments
+            # User selected multiple runs on a step that only support a single run
+            reply = QtWidgets.QMessageBox.warning(
+                self,
+                "Multiple Runs Selected",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"However, this step only supports loading a single run.\n"
+                f"Please select a directory containing only one run.",
+                QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Retry
+            )
+            if reply == QtWidgets.QMessageBox.Retry:
+                # Try again, using a timer, to prevent stack overflow.
+                QtCore.QTimer.singleShot(0, self.user_run_browse)
+            return
+
+        # NOTE: This block is modified from `evaluation_ui.py` to return on "No" reply
+        # Also, this block is only executed when on the Imported Experiments tab step.
+        if self.step == 3:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Batch Load Runs",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"Do you want to load {'all of them' if len(all_capture_files) > 1 else 'it'}?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes
+            )
+            if reply == QtWidgets.QMessageBox.No:
+                return
+        
+        # If we haven't bailed at a `return` yet, proceed to loading run files.
+        self.batch_add_run_files(all_capture_files)
+
+    def find_capture_files(self, directory: str, filename: str = "capture.zip") -> list:
+        """Recursively search a directory for capture files.
+
+        Args:
+            directory (str): The root directory to search.
+            filename (str): The filename to search for (default: "capture.zip").
+
+        Returns:
+            list: A list of absolute paths to found capture files.
+        """
+        capture_files = []
+
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.lower() == filename.lower():
+                        capture_files.append(os.path.join(root, file))
+        except Exception as e:
+            Log.e(TAG, f"Error searching directory {directory}: {e}")
+
+        return capture_files
+
+    def batch_add_run_files(self, file_paths: list) -> None:
+        """Load multiple run files in batch and update the UI.
+
+        This method processes a list of run files, attempting to load each one.
+        It provides feedback on the batch loading process, including success
+        and failure counts.
+
+        Args:
+            file_paths (list): List of file paths to be loaded.
+        """
+        if not file_paths:
+            return
+
+        # Show progress dialog for batch loading
+        file_s = f"file{'s' if len(file_paths) > 1 else ''}"
+        progress = QtWidgets.QProgressDialog(
+            f"Loading run {file_s}...",
+            "Cancel",
+            0,
+            len(file_paths),
+            self
+        )
+        progress.setWindowModality(QtCore.Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        loaded_count = 0
+        failed_files = []
+
+        for i, file_path in enumerate(file_paths):
+            if progress.wasCanceled():
+                break
+
+            progress.setValue(i)
+            progress.setLabelText(f"Loading: {os.path.basename(os.path.dirname(file_path))}")
+            QtWidgets.QApplication.processEvents()
+
+            self.file_selected(file_path, loading=True)
+            success = self.run_figure_valid  # True on successful load
+            if success:
+                loaded_count += 1
+            else:
+                failed_files.append(file_path)
+
+        progress.setValue(len(file_paths))
+
+        # Show summary
+        summary_msg = f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        if failed_files:
+            summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
+            for failed in failed_files[:5]:  # Show first 5 failures
+                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"  # bullet point (U+2022)
+            if len(failed_files) > 5:
+                summary_msg += f"\n  ... and {len(failed_files) - 5} more"
+
+        if failed_files:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+        elif loaded_count > 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+
+    def file_selected(self, path: str | None, cancel: bool = False, loading: bool = False):
         # If run already loaded, try saving formulation to write any changed Run Info to XML
-        if self.run_file_xml and self.step in [1, 3]:
+        if self.run_file_xml and self.step in [1, 3] and not loading:
             if not self.feature_table.allSet():
                 result = QtWidgets.QMessageBox.question(
                     None,
