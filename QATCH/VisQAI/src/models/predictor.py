@@ -298,7 +298,7 @@ class Predictor:
             ci_range: the confidence interval to report (default: tuple(0.05, 0.95))
 
         Returns:
-            Tuple of (mean predictions, uncertainty dict with std/lower_95/upper_95/cv).
+            Tuple of (mean predictions, uncertainty dict with std/lower_ci/upper_ci/cv).
 
         Raises:
             RuntimeError: If the predictor is not loaded.
@@ -349,8 +349,8 @@ class Predictor:
                 - actual: Actual viscosity value
                 - predicted: Predicted mean viscosity value
                 - std: Standard deviation of predictions
-                - lower_95: Lower bound of 95% confidence interval
-                - upper_95: Upper bound of 95% confidence interval
+                - lower_ci: Lower bound of 95% confidence interval
+                - upper_ci: Upper bound of 95% confidence interval
                 - cv: Coefficient of variation
                 - residual: Prediction residual (actual - predicted)
                 - abs_error: Absolute error
@@ -406,13 +406,13 @@ class Predictor:
                     'actual': y_actual[i, j],
                     'predicted': y_pred_mean[i, j],
                     'std': uncertainty['std'][i, j],
-                    'lower_95': uncertainty['lower_95'][i, j],
-                    'upper_95': uncertainty['upper_95'][i, j],
+                    'lower_ci': uncertainty['lower_ci'][i, j],
+                    'upper_ci': uncertainty['upper_ci'][i, j],
                     'cv': uncertainty['coefficient_of_variation'][i, j],
                     'residual': y_actual[i, j] - y_pred_mean[i, j],
                     'abs_error': np.abs(y_actual[i, j] - y_pred_mean[i, j]),
                     'pct_error': np.abs((y_actual[i, j] - y_pred_mean[i, j]) / y_actual[i, j]) * 100 if y_actual[i, j] != 0 else 0,
-                    'within_ci': (y_actual[i, j] >= uncertainty['lower_95'][i, j]) and (y_actual[i, j] <= uncertainty['upper_95'][i, j])
+                    'within_ci': (y_actual[i, j] >= uncertainty['lower_ci'][i, j]) and (y_actual[i, j] <= uncertainty['upper_ci'][i, j])
                 })
 
         results_df = pd.DataFrame(results_data)
@@ -628,5 +628,5 @@ if __name__ == "__main__":
         mean_pred, uncertainty = predictor.predict_uncertainty(sample_data)
         print("\nMean predictions:", mean_pred)
         print("Uncertainty (std):", uncertainty['std'])
-        print("95% CI:", uncertainty['lower_95'],
-              "to", uncertainty['upper_95'])
+        print("95% CI:", uncertainty['lower_ci'],
+              "to", uncertainty['upper_ci'])

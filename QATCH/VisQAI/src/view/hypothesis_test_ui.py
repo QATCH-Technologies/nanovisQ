@@ -829,7 +829,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     formulation_df,
                     ci_range=ci_range)
 
-                # Extract the bounds - the keys might be 'lower_95', 'upper_95' or similar
+                # Extract the bounds - the keys might be 'lower_ci', 'upper_ci' or similar
                 # We need to find the actual keys being returned
                 # Typically they will be named based on the CI range or have generic names
 
@@ -840,7 +840,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 }
 
                 # Find the lower and upper bound keys (they might vary)
-                # Common patterns: 'lower_95', 'upper_95', 'lower', 'upper', 'lower_ci', 'upper_ci'
+                # Common patterns: 'lower_ci', 'upper_ci', 'lower', 'upper', 'lower_ci', 'upper_ci'
                 lower_key = None
                 upper_key = None
 
