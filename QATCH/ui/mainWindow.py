@@ -62,28 +62,36 @@ class _MainWindow(QtWidgets.QMainWindow):
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
 
-        # Get the application instance safely and connect the signal
+        # Get the application instance safely and connect the signals
         app_instance = QtWidgets.QApplication.instance()
         if app_instance:
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-        
-    def focusWindowChanged(self, event):
-        # The focus has moved to another application, so hide the widget
-        self.ui0.floating_widget.hide()
-
-    def moveEvent(self, event):
-        # Update the floating widget's position whenever the main window moves
-        self.ui0.set_floating_widget_position()
-        super().moveEvent(event)
+            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
 
     def changeEvent(self, event):
-        # Handle window state changes (e.g., minimize/restore)
+        # Handle window state changes (e.g. hide on minimize)
         if event.type() == event.WindowStateChange:
             if self.isMinimized():
                 self.ui0.floating_widget.hide()
-            # else:
-            #     self.ui0.floating_widget.show()
         super().changeEvent(event)
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            if self.ui0.floating_widget.isVisible():
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, event):
+        # The focus has moved to another application, so hide the widget
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")

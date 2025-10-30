@@ -60,21 +60,24 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         for idx, item in enumerate(items):
             label = QtWidgets.QLabel(item)
             label = self._setStyleSheet(label, False)
-            label.mousePressEvent = lambda evt, i=idx: self.viewToolkitItem(i)
+            label.mousePressEvent = lambda evt, i=idx: self._viewToolkitItem(i)
             self.items.addWidget(label)
         self.setFixedSize(self.sizeHint())
-            
+
     def removeItems(self):
         for idx in range(self.items.count()):
             label = self.items.takeAt(idx).widget()
             label.deleteLater()
 
-    def viewToolkitItem(self, index: int):
+    def setActiveItem(self, index: int):
+        for idx in range(self.items.count()):
+            label = self.items.itemAt(idx).widget()
+            self._setStyleSheet(label, True if idx == index else False)
+
+    def _viewToolkitItem(self, index: int):
         if 0 <= index < self.items.count():
             self.parent.setLearnMode(tab_index=index)
-            for idx in range(self.items.count()):
-                label = self.items.itemAt(idx).widget()
-                self._setStyleSheet(label, True if idx == index else False)
+            # self.setActiveItem(index) # Handled by VisQAIWindow.on_tab_change()
         else:
             raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
         
@@ -484,6 +487,7 @@ class Ui_Main(object):
             if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
                 Log.d(
                     "VisQ.AI<sup>TM</sup> showing toolkit at index {}.".format(tab_index))
+                # Calling `setCurrentIndex()` will trigger `on_tab_changed()` to set active toolkit item
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
             else:
                 Log.d(
@@ -516,8 +520,8 @@ class Ui_Main(object):
                 self.parent.VisQAIWin.enable(True)
                 self.parent.VisQAIWin.check_license(
                     getattr(self.parent, "_license_manager", None))
+                # Calling `setCurrentIndex()` will trigger `on_tab_changed()` to set active toolkit item
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
-                self.parent.VisQAIWin.tab_widget.tabBar().hide()
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
