@@ -1019,18 +1019,18 @@ class FrameStep1(QtWidgets.QDialog):
                 self.run_canvas.draw()
                 shear = np.asarray(shear)
                 mean_arr = np.asarray(mean_arr)
-                lower_95 = uncertainty_dict['lower_95']
-                upper_95 = uncertainty_dict['upper_95']
-                if lower_95.ndim > 1:
-                    lower_95 = lower_95.flatten()
-                if upper_95.ndim > 1:
-                    upper_95 = upper_95.flatten()
+                lower_ci = uncertainty_dict['lower_ci']
+                upper_ci = uncertainty_dict['upper_ci']
+                if lower_ci.ndim > 1:
+                    lower_ci = lower_ci.flatten()
+                if upper_ci.ndim > 1:
+                    upper_ci = upper_ci.flatten()
                 ax = self.run_figure.add_subplot(111)
                 ax.set_facecolor('#ffffff')
                 self.run_figure.patch.set_facecolor('#ffffff')
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
-                xs_up, ys_up = smooth_log_interpolate(shear, upper_95)
-                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_95)
+                xs_up, ys_up = smooth_log_interpolate(shear, upper_ci)
+                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_ci)
 
                 main_color = '#2C5F8D'
                 ci_color = '#7EB6D9'
@@ -1078,7 +1078,7 @@ class FrameStep1(QtWidgets.QDialog):
                 ylim = ax.get_ylim()
                 y_range = np.log10(ylim[1]) - np.log10(ylim[0])
                 for i in range(len(mean_arr)):
-                    annotation = f'{mean_arr[i]:.1f}\n[{lower_95[i]:.1f}–{upper_95[i]:.1f}]'
+                    annotation = f'{mean_arr[i]:.1f}\n[{lower_ci[i]:.1f}–{upper_ci[i]:.1f}]'
                     y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
                     ax.annotate(annotation,
                                 xy=(shear[i], mean_arr[i]),

@@ -299,7 +299,7 @@ class EvaluationUI(QtWidgets.QDialog):
         data_group = QtWidgets.QGroupBox("Import Experiments")
         data_layout = QtWidgets.QVBoxLayout(data_group)
         form_layout = QtWidgets.QFormLayout()
-        self.select_run = QtWidgets.QPushButton("Add Run...")
+        self.select_run = QtWidgets.QPushButton("Add Run(s)...")
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
@@ -1311,7 +1311,7 @@ class EvaluationUI(QtWidgets.QDialog):
 
         display_columns = ['run', 'shear_rate', 'actual',
                            'predicted', 'abs_error', 'percentage_error',
-                           'lower_95', 'upper_95']
+                           'lower_ci', 'upper_ci']
         df = df[display_columns]
         column_display_names = {
             'run': 'Run',
@@ -1320,8 +1320,8 @@ class EvaluationUI(QtWidgets.QDialog):
             'predicted': 'Predicted',
             'abs_error': 'Abs Error',
             'percentage_error': 'Error %',
-            'lower_95': 'CI Lower',
-            'upper_95': 'CI Upper'
+            'lower_ci': 'CI Lower',
+            'upper_ci': 'CI Upper'
         }
         display_labels = [column_display_names.get(
             col, col) for col in df.columns]
@@ -2103,7 +2103,7 @@ class EvaluationUI(QtWidgets.QDialog):
         ax = self.current_overall_figure.add_subplot(111)
         df = self.current_results_df.sort_values('actual')
         x = np.arange(len(df))
-        ax.fill_between(x, df['lower_95'].values, df['upper_95'].values,
+        ax.fill_between(x, df['lower_ci'].values, df['upper_ci'].values,
                         alpha=0.3, color='blue', label='95% CI')
         ax.plot(x, df['predicted'].values, 'b-',
                 label='Predicted', linewidth=2)
@@ -2429,15 +2429,15 @@ class EvaluationUI(QtWidgets.QDialog):
         """Plot the actual vs predicted viscosity profile for a single run.
 
         The plot uses a log-log scale for both shear rate and viscosity, and optionally
-        includes the 95% confidence interval if `lower_95` and `upper_95` columns are present.
+        includes the 95% confidence interval if `lower_ci` and `upper_ci` columns are present.
 
         Args:
             run_df (pd.DataFrame): DataFrame containing the run data with the following columns:
                 - 'shear_rate': Shear rate values (x-axis)
                 - 'actual': Measured viscosity values
                 - 'predicted': Predicted viscosity values
-                - 'lower_95' (optional): Lower bound of 95% confidence interval
-                - 'upper_95' (optional): Upper bound of 95% confidence interval
+                - 'lower_ci' (optional): Lower bound of 95% confidence interval
+                - 'upper_ci' (optional): Upper bound of 95% confidence interval
 
         Behavior:
             - Clears the existing per-run figure before plotting.
@@ -2456,11 +2456,11 @@ class EvaluationUI(QtWidgets.QDialog):
         color_actual = "#00A3DA"
         color_predicted = "#32E2DF"
         color_ci = "#69EAC5"
-        if {"lower_95", "upper_95"}.issubset(run_df.columns):
+        if {"lower_ci", "upper_ci"}.issubset(run_df.columns):
             ax.fill_between(
                 run_df["shear_rate"],
-                run_df["lower_95"],
-                run_df["upper_95"],
+                run_df["lower_ci"],
+                run_df["upper_ci"],
                 color=color_ci,
                 alpha=0.15,
                 label="95% CI",
