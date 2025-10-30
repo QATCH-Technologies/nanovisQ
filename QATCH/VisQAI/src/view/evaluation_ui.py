@@ -709,38 +709,153 @@ class EvaluationUI(QtWidgets.QDialog):
                     self.select_model_label.setText("Failed to load model")
 
     def user_run_browse(self) -> None:
-        """Open a file dialog to browse and add run capture files.
+        """Open a dialog to browse and add run capture files or directories.
 
-        This method allows the user to select one or more run files (e.g., `capture.zip`)
-        for evaluation. It ensures the file dialog opens in a preferred directory and
-        updates its state based on previously selected paths.
+        This method allows the user to select one or more directories containing
+        run files. It will search each selected directory for `capture.zip` files
+        and load them all in batch.
         """
-        selected_files = self.file_dialog.selectedFiles()
-        inside = True
-        if selected_files:
-            prefer_abs = os.path.abspath(Constants.log_prefer_path)
-            path_abs = os.path.abspath(selected_files[0])
-            try:
-                inside = os.path.commonpath(
-                    [prefer_abs, path_abs]) == prefer_abs
-            except ValueError:
-                inside = False
+        # Use a custom directory dialog that supports multi-selection
+        dir_dialog = QtWidgets.QFileDialog(self)
+        dir_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dir_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        dir_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
+        file_view = dir_dialog.findChild(QtWidgets.QListView, 'listView')
+        if file_view:
+            file_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
 
-        if not selected_files or not inside:
-            self.file_dialog.setDirectory(Constants.log_prefer_path)
-        else:
-            set_directory, select_file = os.path.split(
-                os.path.dirname(path_abs))
-            self.file_dialog.setDirectory(set_directory)
-            self.file_dialog.selectFile(select_file)
+        tree_view = dir_dialog.findChild(QtWidgets.QTreeView)
+        if tree_view:
+            tree_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        dir_dialog.setDirectory(prefer_abs)
 
-        if self.file_dialog.exec_():
-            selected_files = self.file_dialog.selectedFiles()
-            if selected_files:
-                for file_path in selected_files:
-                    self.add_run_file(file_path)
+        if dir_dialog.exec_():
+            selected_dirs = dir_dialog.selectedFiles()
+            if selected_dirs:
+                self.load_runs_from_directories(selected_dirs)
 
-    def add_run_file(self, file_path: str):
+    def load_runs_from_directories(self, directories: list) -> None:
+        """Search multiple directories for capture files and load them.
+
+        Args:
+            directories (list): List of directory paths to search.
+        """
+        all_capture_files = []
+        for directory in directories:
+            capture_files = self.find_capture_files(directory)
+            all_capture_files.extend(capture_files)
+
+        if not all_capture_files:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Capture Files Found",
+                f"No capture.zip files found in {len(directories)} selected director{'y' if len(directories) == 1 else 'ies'}."
+            )
+            return
+        dir_summary = f"{len(directories)} director{'y' if len(directories) == 1 else 'ies'}"
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Batch Load Runs",
+            f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+            f"Do you want to load all of them?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.Yes
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.batch_add_run_files(all_capture_files)
+
+    def find_capture_files(self, directory: str, filename: str = "capture.zip") -> list:
+        """Recursively search a directory for capture files.
+
+        Args:
+            directory (str): The root directory to search.
+            filename (str): The filename to search for (default: "capture.zip").
+
+        Returns:
+            list: A list of absolute paths to found capture files.
+        """
+        capture_files = []
+
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.lower() == filename.lower():
+                        capture_files.append(os.path.join(root, file))
+        except Exception as e:
+            Log.e(TAG, f"Error searching directory {directory}: {e}")
+
+        return capture_files
+
+    def batch_add_run_files(self, file_paths: list) -> None:
+        """Load multiple run files in batch and update the UI.
+
+        This method processes a list of run files, attempting to load each one.
+        It provides feedback on the batch loading process, including success
+        and failure counts.
+
+        Args:
+            file_paths (list): List of file paths to be loaded.
+        """
+        if not file_paths:
+            return
+
+        # Show progress dialog for batch loading
+        progress = QtWidgets.QProgressDialog(
+            "Loading run files...",
+            "Cancel",
+            0,
+            len(file_paths),
+            self
+        )
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        loaded_count = 0
+        failed_files = []
+
+        for i, file_path in enumerate(file_paths):
+            if progress.wasCanceled():
+                break
+
+            progress.setValue(i)
+            progress.setLabelText(f"Loading: {os.path.basename(file_path)}")
+            QtWidgets.QApplication.processEvents()
+
+            success = self.add_run_file(file_path, show_errors=False)
+            if success:
+                loaded_count += 1
+            else:
+                failed_files.append(file_path)
+
+        progress.setValue(len(file_paths))
+
+        # Show summary
+        summary_msg = f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        if failed_files:
+            summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
+            for failed in failed_files[:5]:  # Show first 5 failures
+                summary_msg += f"\n  • {os.path.basename(failed)}"
+            if len(failed_files) > 5:
+                summary_msg += f"\n  ... and {len(failed_files) - 5} more"
+
+        if failed_files:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+        elif loaded_count > 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+
+    def add_run_file(self, file_path: str, show_errors: bool = True) -> bool:
         """Load a run file, extract formulation data, and update the UI.
 
         This method parses a selected run file (e.g., `capture.zip`) using the
@@ -749,36 +864,63 @@ class EvaluationUI(QtWidgets.QDialog):
 
         Args:
             file_path (str): Path to the run file to be loaded.
+            show_errors (bool): Whether to show error dialogs (default: True).
+
+        Returns:
+            bool: True if the file was loaded successfully, False otherwise.
         """
         try:
             parser = Parser(file_path)
             formulation = parser.get_formulation()
             run_name = parser.get_run_name()
+
             if not formulation:
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "No Formulation",
-                    "No valid formulation found in the selected file."
-                )
-                return
+                if show_errors:
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        "No Formulation",
+                        "No valid formulation found in the selected file."
+                    )
+                Log.w(TAG, f"No formulation found in: {file_path}")
+                return False
+
+            # Check for duplicate run names
+            if run_name in self.formulations_by_run:
+                Log.w(
+                    TAG, f"Duplicate run name '{run_name}', skipping: {file_path}")
+                if show_errors:
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        "Duplicate Run",
+                        f"Run '{run_name}' is already loaded."
+                    )
+                return False
+
             self.formulations_by_run[run_name] = [formulation]
             self.selected_formulations.append(formulation)
+
             if self.model.rowCount() == 1 and not self.model.item(0).isEnabled():
                 self.model.clear()
+
             run_item = QtGui.QStandardItem(run_name)
             run_item.setData(file_path, Qt.UserRole)
             self.model.appendRow(run_item)
             self.run_combo.addItem(run_name)
+
             self.update_formulation_info()
             self.check_ready_to_evaluate()
 
+            return True
+
         except Exception as e:
             Log.e(TAG, f"Failed to load run: {e}")
-            QtWidgets.QMessageBox.critical(
-                self,
-                "Run Loading Error",
-                f"Failed to load run file: {str(e)}"
-            )
+            if show_errors:
+                QtWidgets.QMessageBox.critical(
+                    self,
+                    "Run Loading Error",
+                    f"Failed to load run file: {str(e)}"
+                )
+            return False
 
     def update_formulation_info(self) -> None:
         """Update and log information about currently loaded formulations."""
