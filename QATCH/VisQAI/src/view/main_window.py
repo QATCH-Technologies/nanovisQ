@@ -684,6 +684,15 @@ class VisQAIWindow(BaseVisQAIWindow):
         return hasattr(self.tab_widget.currentWidget(), "timer") and \
             self.tab_widget.currentWidget().timer.isActive()
 
+        def getToolNames(self):
+        tab_names = []
+        for i in range(self.tab_widget.count()):
+            tab_name = self.tab_widget.tabText(i)
+            # drop the leading number in a circle, remove leading space
+            tab_name = tab_name.encode('ascii', 'ignore').decode().strip()
+            tab_names.append(tab_name)
+        return tab_names
+
     def reset(self) -> None:
         self.check_user_info()
         self.signedInAs.setText(self.username)
