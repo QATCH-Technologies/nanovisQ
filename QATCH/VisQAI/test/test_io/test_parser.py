@@ -50,12 +50,12 @@ class TestParser(unittest.TestCase):
     <param name="protein_mw" value="100.0" />
     <param name="protein_pI_mean" value="7.4" />
     <param name="protein_pI_range" value="1.2" />
-    <param name="protein_concentration" value="10.0" units="mg/ml" />
+    <param name="protein_concentration" value="10.0" units="mg/mL" />
     <param name="buffer_type" value="PBS" />
     <param name="buffer_pH" value="7.4" />
-    <param name="buffer_concentration" value="20.0" units="M" />
+    <param name="buffer_concentration" value="20.0" units="mM" />
     <param name="surfactant_type" value="Tween20" />
-    <param name="surfactant_concentration" value="0.1" units="%" />
+    <param name="surfactant_concentration" value="0.1" units="%w" />
     <param name="stabilizer_type" value="None" />
     <param name="stabilizer_concentration" value="0.0" units="M" />
   </params>
@@ -168,13 +168,13 @@ class TestParser(unittest.TestCase):
         """
         Test that get_param_attr returns the attribute value when it exists and is required.
 
-        - 'protein_concentration' has units="mg/ml"
-        - Call get_param_attr('protein_concentration', 'units', required=True), expect "mg/ml"
+        - 'protein_concentration' has units="mg/mL"
+        - Call get_param_attr('protein_concentration', 'units', required=True), expect "mg/mL"
         """
         units = self.parser.get_param_attr(
             "protein_concentration", "units", required=True
         )
-        self.assertEqual(units, "mg/ml")
+        self.assertEqual(units, "mg/mL")
 
     def test_get_param_attr_missing_not_required(self):
         """
@@ -222,7 +222,7 @@ class TestParser(unittest.TestCase):
 
         - Call get_protein() on the initial parser
         - Verify returned dict has keys: 'protein', 'concentration', 'units'
-        - Confirm 'protein' is a Protein with name "BSA", concentration ~10.0, units "mg/ml"
+        - Confirm 'protein' is a Protein with name "BSA", concentration ~10.0, units "mg/mL"
         """
         prot = self.parser.get_protein()
         self.assertIsInstance(prot, dict)
@@ -230,7 +230,7 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(protein_obj, Protein)
         self.assertEqual(protein_obj.name, "BSA")
         self.assertAlmostEqual(prot["concentration"], 10.0)
-        self.assertEqual(prot["units"], "mg/ml")
+        self.assertEqual(prot["units"], "mg/mL")
 
     def test_get_buffer(self):
         """
