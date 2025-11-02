@@ -31,6 +31,9 @@ from scipy.optimize import curve_fit
 import numpy as np
 import bisect
 from typing import Optional, Dict, Any, List
+import numpy as np
+from scipy.optimize import curve_fit
+import bisect
 try:
     from src.models.ingredient import (
         Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
