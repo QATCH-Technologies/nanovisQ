@@ -34,7 +34,7 @@ try:
         @staticmethod
         def e(tag, msg=""): print("ERROR:", tag, msg)
     from src.models.ingredient import (
-        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient
+        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
     )
     from src.models.formulation import ViscosityProfile, Formulation
     from src.controller.ingredient_controller import IngredientController
@@ -43,7 +43,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient
+        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
     )
     from QATCH.VisQAI.src.models.formulation import ViscosityProfile, Formulation
     from QATCH.common.logger import Logger as Log
@@ -244,7 +244,8 @@ class Parser:
                 name=name,
                 molecular_weight=molecular_weight,
                 pI_mean=pI_mean,
-                pI_range=pI_range
+                pI_range=pI_range,
+                class_type=protein_obj.class_type
             ),
             "concentration": conc,
             "units": units
@@ -394,7 +395,8 @@ class Parser:
         """
         name = self.get_param("salt_type", str, required=False)
         conc = self.get_param("salt_concentration", float, required=False)
-        units = self.get_param_attr("salt_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "salt_concentration", "units", required=False)
         if name is None:
             name = "None"
         if conc is None:

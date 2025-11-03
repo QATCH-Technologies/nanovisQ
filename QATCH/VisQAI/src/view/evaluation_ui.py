@@ -83,7 +83,34 @@ class EvaluationUI(QtWidgets.QDialog):
         'coverage': '% of actual values within confidence intervals',
         'max_error': 'Largest absolute error in predictions',
         'median_ae': 'Middle value of absolute errors',
-        'explained_variance': 'Proportion of variance explained by model'
+        'explained_variance': 'Proportion of variance explained by model',
+        'mean_cv': 'Average coefficient of variation across predictions',
+        'median_cv': 'Middle value of coefficient of variation',
+        'std_error': 'Standard deviation of prediction errors',
+        'mean_std': 'Average standard deviation of predictions',
+        'count': 'Number of observations/predictions',
+        'adjusted_r2': 'R² adjusted for number of predictors',
+        'smape': 'Symmetric percentage error (bounded 0-200%)',
+        'msle': 'Mean squared error of log-transformed values',
+        'bias': 'Average difference (predicted - actual)',
+        'relative_bias': 'Bias expressed as percentage of actual values',
+        'iqr_error': 'Interquartile range of absolute errors',
+        'p90_error': '90th percentile of absolute errors',
+        'p95_error': '95th percentile of absolute errors',
+        'normalized_rmse': 'RMSE divided by range of actual values',
+        'cv_rmse': 'RMSE expressed as % of mean actual value',
+        'accuracy_within_10pct': '% of predictions within ±10% of actual',
+        'accuracy_within_20pct': '% of predictions within ±20% of actual',
+        'theil_u': 'Forecast accuracy metric (0 = perfect, >1 = poor)',
+        'log_accuracy_ratio': 'Geometric mean of prediction/actual ratios',
+        'skewness': 'Asymmetry of error distribution (0 = symmetric)',
+        'kurtosis': 'Tailedness of error distribution (3 = normal)',
+        'durbin_watson': 'Test for autocorrelation in residuals (2 = none)',
+        'shapiro_wilk_p': 'P-value for normality test (>0.05 = normal)',
+        'anderson_darling_stat': 'Goodness-of-fit test statistic for normality',
+        'pearson_correlation': 'Linear correlation between predicted and actual',
+        'spearman_correlation': 'Rank-based correlation (robust to outliers)',
+        'kendall_correlation': 'Ordinal correlation measure (tau coefficient)'
     }
 
     def __init__(self, parent=None):
@@ -824,7 +851,8 @@ class EvaluationUI(QtWidgets.QDialog):
                 break
 
             progress.setValue(i)
-            progress.setLabelText(f"Loading: {os.path.basename(os.path.dirname(file_path))}")
+            progress.setLabelText(
+                f"Loading: {os.path.basename(os.path.dirname(file_path))}")
             QtWidgets.QApplication.processEvents()
 
             success = self.add_run_file(file_path, show_errors=False)
@@ -840,7 +868,8 @@ class EvaluationUI(QtWidgets.QDialog):
         if failed_files:
             summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
             for failed in failed_files[:5]:  # Show first 5 failures
-                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"  # bullet point (U+2022)
+                # bullet point (U+2022)
+                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"
             if len(failed_files) > 5:
                 summary_msg += f"\n  ... and {len(failed_files) - 5} more"
 
@@ -1060,9 +1089,36 @@ class EvaluationUI(QtWidgets.QDialog):
             'coverage': 'Coverage (95% CI)',
             'max_error': 'Maximum Error',
             'median_ae': 'Median Absolute Error',
-            'explained_variance': 'Explained Variance'
+            'explained_variance': 'Explained Variance',
+            'mean_cv': 'Mean CV (Coefficient of Variation)',
+            'median_cv': 'Median CV (Coefficient of Variation)',
+            'std_error': 'Standard Error',
+            'mean_std': 'Mean Standard Deviation',
+            'count': 'Count',
+            'adjusted_r2': 'Adjusted R²',
+            'smape': 'SMAPE (Symmetric Mean Absolute Percentage Error)',
+            'msle': 'MSLE (Mean Squared Logarithmic Error)',
+            'bias': 'Bias',
+            'relative_bias': 'Relative Bias (%)',
+            'iqr_error': 'IQR Error (Interquartile Range)',
+            'p90_error': 'P90 Error (90th Percentile)',
+            'p95_error': 'P95 Error (95th Percentile)',
+            'normalized_rmse': 'Normalized RMSE (NRMSE)',
+            'cv_rmse': 'CV-RMSE (Coefficient of Variation RMSE)',
+            'accuracy_within_10pct': 'Accuracy within ±10%',
+            'accuracy_within_20pct': 'Accuracy within ±20%',
+            'theil_u': "Theil's U Statistic",
+            'log_accuracy_ratio': 'Log Accuracy Ratio (LAR)',
+            'skewness': 'Skewness',
+            'kurtosis': 'Kurtosis',
+            'durbin_watson': 'Durbin-Watson Statistic',
+            'shapiro_wilk_p': 'Shapiro-Wilk P-Value',
+            'anderson_darling_stat': 'Anderson-Darling Statistic',
+            'pearson_correlation': 'Pearson Correlation',
+            'spearman_correlation': 'Spearman Correlation',
+            'kendall_correlation': 'Kendall Tau Correlation'
         }
-        return names.get(metric, metric.upper())
+        return names.get(metric, metric.replace('_', ' ').title())
 
     def evaluate_model(self) -> None:
         """Evaluate the selected model on imported formulations.

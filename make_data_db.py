@@ -51,7 +51,7 @@ ing_ctrl._user_mode = False
 print(f"Adding core training samples to newly created app.db...")
 form_ctrl = FormulationController(db=database)
 csv_path = os.path.join(QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
-                        "VisQAI", "assets", "formulation_data_10292025.csv")
+                        "VisQAI", "assets", "formulation_data_11032025.csv")
 if not os.path.isfile(csv_path):
     raise FileNotFoundError(f"CSV file not found: {csv_path}")
 

@@ -53,7 +53,6 @@ from PyQt5 import QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
-from matplotlib.patches import Polygon as MplPolygon
 
 try:
     from src.models.formulation import Formulation
@@ -407,15 +406,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         group = QtWidgets.QGroupBox("Hypothesis Configuration")
         layout = QtWidgets.QVBoxLayout()
 
-        # Info label
-        info_label = QtWidgets.QLabel(
-            "Note: Area-based testing evaluates the entire CI polygon across all shear rates"
-        )
-        info_label.setStyleSheet(
-            "color: #0066cc; font-style: italic; padding: 5px;")
-        info_label.setWordWrap(True)
-        layout.addWidget(info_label)
-
         # Hypothesis type selection
         type_layout = QtWidgets.QHBoxLayout()
         type_layout.addWidget(QtWidgets.QLabel("Hypothesis Type:"))
@@ -436,19 +426,19 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Create all possible input widgets
         self.threshold_spin = QtWidgets.QDoubleSpinBox()
         self.threshold_spin.setRange(0.0, 1000000.0)
-        self.threshold_spin.setValue(280.0)
+        self.threshold_spin.setValue(0.0)
         self.threshold_spin.setSuffix(" cP")
         self.threshold_spin.setDecimals(2)
 
         self.min_spin = QtWidgets.QDoubleSpinBox()
         self.min_spin.setRange(0.0, 1000000.0)
-        self.min_spin.setValue(150.0)
+        self.min_spin.setValue(0.0)
         self.min_spin.setSuffix(" cP")
         self.min_spin.setDecimals(2)
 
         self.max_spin = QtWidgets.QDoubleSpinBox()
         self.max_spin.setRange(0.0, 1000000.0)
-        self.max_spin.setValue(280.0)
+        self.max_spin.setValue(0.0)
         self.max_spin.setSuffix(" cP")
         self.max_spin.setDecimals(2)
 
@@ -462,7 +452,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         confidence_layout.addWidget(QtWidgets.QLabel("Confidence Level:"))
 
         self.confidence_spin = QtWidgets.QDoubleSpinBox()
-        self.confidence_spin.setRange(80.0, 99.0)
+        self.confidence_spin.setRange(50.0, 99.0)
         self.confidence_spin.setValue(95.0)
         self.confidence_spin.setSuffix(" %")
         self.confidence_spin.setDecimals(1)
@@ -545,7 +535,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         controls_layout = QtWidgets.QHBoxLayout()
 
         self.show_confidence_check = QtWidgets.QCheckBox(
-            "Show CI Polygon")
+            "Show CI")
         self.show_confidence_check.setChecked(True)
         self.show_confidence_check.stateChanged.connect(
             self.update_profile_plot)
@@ -866,7 +856,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.outcome_frame.setStyleSheet(
             f"background-color: {color}; border-radius: 10px;")
         self.probability_label.setText(
-            f"{pct_contained:.1f}% of CI polygon within bounds\n{interpretation}")
+            f"{pct_contained:.1f}% of CI within bounds\n{interpretation}")
 
         # Build hypothesis statement
         if hypothesis_type == 'upper':
@@ -900,16 +890,52 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             rows.append((f"  @ {sr:,} 1/s", f"{pred:.2f} cP"))
 
         self.results_table.setRowCount(len(rows))
+
+        # Define colors for alternating rows
+        color_row_even = "#F8F9FA"  # Light gray
+        color_row_odd = "#FFFFFF"   # White
+        color_separator = "#E5E9F0"  # Slightly darker for separators
+        color_header = "#D8DEE9"     # Header row color
+
         for i, (metric, value) in enumerate(rows):
             metric_item = QtWidgets.QTableWidgetItem(metric)
             value_item = QtWidgets.QTableWidgetItem(value)
 
-            # Make separators and headers bold
-            if metric == "" or metric == "Mean Predictions:":
+            # Make cells non-editable
+            metric_item.setFlags(metric_item.flags() & ~
+                                 Qt.ItemIsEditable)
+            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+
+            # Determine row color and styling
+            is_separator = (metric == "")
+            is_header = (metric == "Mean Predictions:")
+
+            if is_separator:
+                # Separator rows
+                bg_color = QtGui.QColor(color_separator)
+                metric_item.setBackground(bg_color)
+                value_item.setBackground(bg_color)
+            elif is_header:
+                # Header rows
+                bg_color = QtGui.QColor(color_header)
+                metric_item.setBackground(bg_color)
+                value_item.setBackground(bg_color)
+                font = metric_item.font()
+                font.setBold(True)
+                font.setPointSize(font.pointSize() + 1)
+                metric_item.setFont(font)
+                value_item.setFont(font)
+            else:
+                # Regular data rows - alternating colors
+                bg_color = QtGui.QColor(
+                    color_row_even if i % 2 == 0 else color_row_odd)
+                metric_item.setBackground(bg_color)
+                value_item.setBackground(bg_color)
+
+                # Make metric column bold
                 font = metric_item.font()
                 font.setBold(True)
                 metric_item.setFont(font)
-                value_item.setFont(font)
 
             self.results_table.setItem(i, 0, metric_item)
             self.results_table.setItem(i, 1, value_item)
@@ -927,6 +953,12 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         result = self.hypothesis_result['result']
         mean_preds = result['mean_predictions']
         bounds = self.hypothesis_result['bounds']
+
+        # Color scheme
+        color_actual = "#00A3DA"
+        color_predicted = "#32E2DF"
+        color_ci = "#69EAC5"
+        color_hypothesis = "#BF616A"  # Muted red for hypothesis bounds
 
         # Get CI bounds from predictor
         try:
@@ -947,46 +979,96 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         shear_rates = self.SHEAR_RATES
         mean_values = [mean_preds[sr] for sr in shear_rates]
 
+        # Show CI filled region
+        if self.show_confidence_check.isChecked():
+            ax.fill_between(
+                shear_rates,
+                lower_ci,
+                upper_ci,
+                color=color_ci,
+                alpha=0.15,
+                label=f'{ci_range}% CI',
+                linewidth=0,
+                zorder=2
+            )
+
         # Plot mean prediction
         if self.log_scale_check.isChecked():
-            ax.semilogx(shear_rates, mean_values, 'bo-', linewidth=2,
-                        markersize=8, label='Mean Prediction', zorder=5)
-        else:
-            ax.plot(shear_rates, mean_values, 'bo-', linewidth=2,
-                    markersize=8, label='Mean Prediction', zorder=5)
+            ax.set_xscale('log')
 
-        # Show CI polygon
-        if self.show_confidence_check.isChecked():
-            if self.log_scale_check.isChecked():
-                polygon_points = []
+        ax.plot(
+            shear_rates,
+            mean_values,
+            '-',
+            color=color_predicted,
+            alpha=0.85,
+            linewidth=2.5,
+            marker='o',
+            markersize=6,
+            markerfacecolor=color_predicted,
+            markeredgewidth=0,
+            label='Mean Prediction',
+            zorder=5
+        )
 
-                # Upper boundary (left to right)
-                for i, sr in enumerate(shear_rates):
-                    # [x, y] not (x, y)
-                    polygon_points.append([sr, upper_ci[i]])
-
-                # Lower boundary (right to left)
-                for i in range(len(shear_rates) - 1, -1, -1):
-                    polygon_points.append([shear_rates[i], lower_ci[i]])
-
-                # Explicitly convert to numpy array with float type
-                polygon_points = np.array(polygon_points, dtype=np.float64)
-        # Show hypothesis threshold
+        # Show hypothesis threshold bounds
         if self.show_threshold_check.isChecked():
             if bounds[0] > -np.inf:
-                ax.axhline(y=bounds[0], color='red', linestyle='--',
-                           linewidth=2, label=f'Lower Bound ({bounds[0]:.1f} cP)', zorder=3)
+                ax.axhline(
+                    y=bounds[0],
+                    color=color_hypothesis,
+                    linestyle='--',
+                    linewidth=2,
+                    alpha=0.8,
+                    dashes=(8, 4),
+                    label=f'Lower Bound ({bounds[0]:.1f} cP)',
+                    zorder=3
+                )
             if bounds[1] < np.inf:
-                ax.axhline(y=bounds[1], color='red', linestyle='--',
-                           linewidth=2, label=f'Upper Bound ({bounds[1]:.1f} cP)', zorder=3)
+                ax.axhline(
+                    y=bounds[1],
+                    color=color_hypothesis,
+                    linestyle='--',
+                    linewidth=2,
+                    alpha=0.8,
+                    dashes=(8, 4),
+                    label=f'Upper Bound ({bounds[1]:.1f} cP)',
+                    zorder=3
+                )
 
-        ax.set_xlabel('Shear Rate (1/s)', fontsize=12, fontweight='bold')
-        ax.set_ylabel('Viscosity (cP)', fontsize=12, fontweight='bold')
-        ax.set_title('Viscosity Profile with CI Polygon',
-                     fontsize=14, fontweight='bold')
-        ax.grid(True, alpha=0.3)
-        ax.legend(loc='best')
+        ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
+        ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
+        ax.set_title(
+            'Viscosity Profile with Confidence Interval',
+            fontsize=13,
+            fontweight=600,
+            color="#2E3440",
+            pad=15
+        )
 
+        ax.legend(
+            loc='best',
+            fontsize=9,
+            frameon=True,
+            framealpha=0.95,
+            edgecolor="#E5E9F0",
+            fancybox=False
+        )
+
+        ax.grid(True, alpha=0.2, which="major",
+                linestyle="-", linewidth=0.5, color="#D8DEE9")
+        ax.grid(True, alpha=0.1, which="minor",
+                linestyle="-", linewidth=0.3, color="#D8DEE9")
+
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['left'].set_color("#E5E9F0")
+        ax.spines['bottom'].set_color("#E5E9F0")
+        ax.spines['left'].set_linewidth(1)
+        ax.spines['bottom'].set_linewidth(1)
+        ax.tick_params(colors="#4C566A", which="both", labelsize=9)
+
+        self.profile_figure.tight_layout()
         self.profile_canvas.draw()
 
     def clear_all(self) -> None:

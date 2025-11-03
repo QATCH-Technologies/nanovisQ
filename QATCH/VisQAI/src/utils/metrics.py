@@ -42,7 +42,7 @@ class Metrics:
     @staticmethod
     def _mape(df: pd.DataFrame) -> float:
         """Calculate Mean Absolute Percentage Error."""
-        return df['pct_error'].mean()
+        return df['percentage_error'].mean()
 
     @staticmethod
     def _median_ae(df: pd.DataFrame) -> float:

@@ -127,6 +127,12 @@ class ViscosityProfile:
         sr = float(shear_rate)
         srs = np.asarray(self.shear_rates, dtype=float)
         vs = np.asarray(self.viscosities, dtype=float)
+
+        # Check for exact match first
+        exact_match = np.where(np.isclose(srs, sr))[0]
+        if len(exact_match) > 0:
+            return float(vs[exact_match[0]])
+
         vs_monotonic = vs.copy()
         for i in range(1, len(vs_monotonic)):
             if vs_monotonic[i] > vs_monotonic[i - 1] + std_tol:
@@ -564,6 +570,7 @@ class Formulation:
                 "ID":              self.id,
                 "Protein_type":    self.protein.ingredient.enc_id,
                 "Protein_class_type":   self.protein.ingredient.class_type,
+                "kP":              self.protein.ingredient.class_type.kP,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -586,6 +593,7 @@ class Formulation:
                 "ID":              self.id,
                 "Protein_type":    self.protein.ingredient.name,
                 "Protein_class_type":   self.protein.ingredient.class_type,
+                "kP":              self.protein.ingredient.class_type.kP,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -615,7 +623,7 @@ class Formulation:
 
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

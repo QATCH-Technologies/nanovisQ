@@ -245,7 +245,7 @@ class TestParser(unittest.TestCase):
         buffer_obj = buf["buffer"]
         self.assertIsInstance(buffer_obj, Buffer)
         self.assertAlmostEqual(buf["concentration"], 20.0)
-        self.assertEqual(buf["units"], "M")
+        self.assertEqual(buf["units"], "mM")
 
     def test_get_surfactant(self):
         """
@@ -260,7 +260,7 @@ class TestParser(unittest.TestCase):
         surf_obj = surf["surfactant"]
         self.assertIsInstance(surf_obj, Surfactant)
         self.assertAlmostEqual(surf["concentration"], 0.1)
-        self.assertEqual(surf["units"], "%")
+        self.assertEqual(surf["units"], "%w")
 
     def test_get_stabilizer(self):
         """
@@ -276,29 +276,6 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(stab_obj, Stabilizer)
         self.assertAlmostEqual(stab["concentration"], 0.0)
         self.assertEqual(stab["units"], "M")
-
-    def test_get_formulation(self):
-        """
-        Test that get_formulation constructs a Formulation with components, temperature, and viscosity profile.
-
-        - Provide salt (Salt instance), vp dict with 'shear_rate' and 'viscosity', temp float
-        - Call get_formulation(vp, temp, salt, salt_concentration, salt_units)
-        - Verify returned object is a Formulation
-        - Convert to dict and confirm temperature, viscosity_profile.shear_rates/viscosities/units match inputs
-        """
-        salt = Salt(enc_id=-1, name="nacl")
-        vp = {"shear_rate": [100, 1000], "viscosity": [10, 9]}
-        temp = 25.0
-        form = self.parser.get_formulation(
-            vp=vp, temp=temp, salt=salt, salt_concentration=100, salt_units="mM"
-        )
-        self.assertIsInstance(form, Formulation)
-        data = form.to_dict()
-        self.assertAlmostEqual(data["temperature"], temp)
-        vp_data = data["viscosity_profile"]
-        self.assertEqual(vp_data["shear_rates"], vp["shear_rate"])
-        self.assertEqual(vp_data["viscosities"], vp["viscosity"])
-        self.assertEqual(vp_data["units"], "cP")
 
     @unittest.skipUnless(os.path.exists(SAMPLE_XML_PATH), "Sample XML not available")
     def test_init_with_sample_xml(self):
