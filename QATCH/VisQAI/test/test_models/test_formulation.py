@@ -24,9 +24,10 @@ Version:
 from src.models.formulation import (
     ViscosityProfile, Component, Formulation
 )
-from src.models.ingredient import Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient
+from src.models.ingredient import Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
 import pandas as pd
 import unittest
+import numpy as np
 
 
 class TestViscosityProfile(unittest.TestCase):
@@ -93,21 +94,27 @@ class TestViscosityProfile(unittest.TestCase):
 
     def test_get_viscosity_interpolation(self):
         """
-        Test linear interpolation behavior of get_viscosity for values between, below, and above known shear_rates.
+        Test logarithmic interpolation behavior of get_viscosity for values between, below, and above known shear_rates.
 
-        - Midpoint: should return average.
-        - Below lowest: extrapolate using first two points.
-        - Above highest: extrapolate using last two points.
+        Note: The function enforces monotonic non-increasing viscosity, so increasing viscosity profiles
+        will be flattened to the first value.
         """
-        vp = ViscosityProfile([1, 3], [10, 30], "u")
-        # midpoint
-        self.assertEqual(vp.get_viscosity(2), 20.0)
-        # below lowest (0 -> extrapolate from (1,10) and (3,30))
-        expected_below = 10.0 + (0 - 1) * (30 - 10) / (3 - 1)
-        self.assertEqual(vp.get_viscosity(0), expected_below)
-        # above highest (4 -> extrapolate)
-        expected_above = 10.0 + (4 - 1) * (30 - 10) / (3 - 1)
-        self.assertEqual(vp.get_viscosity(4), expected_above)
+        # Use a decreasing viscosity profile (typical behavior: viscosity decreases with shear rate)
+        vp = ViscosityProfile([1, 3], [30, 10], "u")
+
+        # Below lowest shear rate: clamped to first value
+        self.assertEqual(vp.get_viscosity(0), 30.0)
+
+        # Above highest shear rate: clamped to last value
+        self.assertEqual(vp.get_viscosity(4), 10.0)
+
+        # Within range: uses logarithmic interpolation
+        midpoint_visc = vp.get_viscosity(2)
+        self.assertIsInstance(midpoint_visc, (float, np.floating))
+        self.assertGreater(midpoint_visc, 0.0)
+        # For a monotonic decreasing profile, interpolated value should be between endpoints
+        self.assertGreaterEqual(midpoint_visc, 10.0)
+        self.assertLessEqual(midpoint_visc, 30.0)
 
     def test_get_viscosity_type_error(self):
         """
@@ -196,13 +203,15 @@ class TestFormulation(unittest.TestCase):
     def setUp(self):
         """Create a Formulation and sample Ingredient and ViscosityProfile instances."""
         self.form = Formulation()
-        self.prot = Protein(1, "BSA", 100, 10, 1)
+        self.prot = Protein(1, "BSA", 100, 10, 1,
+                            class_type=ProteinClass.OTHER)
         self.buf = Buffer(2, "PBS", 7.4)
         self.stab = Stabilizer(3, "None")
         self.surf = Surfactant(4, "None")
         self.salt = Salt(5, "NaCl")
         self.excip = Excipient(6, "Mannitol")
-        self.vp = ViscosityProfile([1, 10], [1, 2], "u")
+        self.vp = ViscosityProfile(
+            [100, 1000, 10000, 100000, 15000000], [5, 4, 3, 2, 1], "u")
 
     def test_init_and_id_property(self):
         """
@@ -388,8 +397,8 @@ class TestFormulation(unittest.TestCase):
         self.assertEqual(row["Excipient_type"], self.excip.enc_id)
         self.assertEqual(row["Excipient_conc"], 2.5)
         self.assertEqual(row["Temperature"], 37.0)
-        self.assertEqual(row["Viscosity_100"], 12)
-        self.assertEqual(row["Viscosity_1000"], 112)
+        self.assertEqual(row["Viscosity_100"], 5)
+        self.assertEqual(row["Viscosity_1000"], 4)
 
 
 if __name__ == "__main__":

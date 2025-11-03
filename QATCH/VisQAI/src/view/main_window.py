@@ -18,6 +18,7 @@ from xml.dom import minidom
 from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+import inspect
 import os
 import hashlib
 from scipy.optimize import curve_fit
@@ -34,7 +35,8 @@ try:
     from src.view.frame_step1 import FrameStep1
     from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
-
+    from src.view.evaluation_ui import EvaluationUI
+    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
@@ -44,11 +46,13 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
     from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
-
+    from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
+    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
 TRIAL_LABEL_TEXT = (
     "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
     "Please subscribe to retain access on this system.<br/><br/>"
 )
+
 
 class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def __init__(self, parent=None):
@@ -130,7 +134,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def setCentralWidget(self, widget):
         if hasattr(self, '_super_widget') and widget is self._super_widget:
             return super().setCentralWidget(widget)
-        
+
         # Only show the set widget (hide all others)
         # This is required to prevent garbage collection of unused layout widgets
         is_widget_in_layout = False
@@ -140,7 +144,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 is_widget_in_layout = True
         if not is_widget_in_layout:
             self._super_layout.addWidget(widget)
-        widget.setVisible(True)            
+        widget.setVisible(True)
 
     def check_license(self, license_manager: Optional[LicenseManager]) -> bool:
         free_preview_period = 90  # days
@@ -234,8 +238,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                             "Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
-                status_text = status.value if isinstance(status, LicenseStatus) else str(status)
-                self._update_status_bar(f"Licensed: {status_text}", permanent=True)
+                status_text = status.value if isinstance(
+                    status, LicenseStatus) else str(status)
+                self._update_status_bar(
+                    f"Licensed: {status_text}", permanent=True)
 
             return True
 
@@ -248,7 +254,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         try:
             creation_ts = os.stat(DB_PATH).st_ctime
             creation_dt = dt.datetime.fromtimestamp(creation_ts)
-            time_ago_seconds = (dt.datetime.now() - creation_dt).total_seconds()
+            time_ago_seconds = (dt.datetime.now() -
+                                creation_dt).total_seconds()
             time_allowed_secs = dt.timedelta(
                 days=free_preview_period).total_seconds()
 
@@ -287,7 +294,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 else:
                     self._update_status_bar(f"Preview: {self.trial_left} days remaining",
                                             permanent=True)
-                    
+
                 if hasattr(self, 'trial_label'):
                     if '{}' in TRIAL_LABEL_TEXT:
                         self.trial_label.setText(
@@ -326,7 +333,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         def check_callback():
             try:
                 # Update UI in main thread
-                QtCore.QTimer.singleShot(0, lambda lm=license_manager: self.check_license(lm))
+                QtCore.QTimer.singleShot(
+                    0, lambda lm=license_manager: self.check_license(lm))
 
             except Exception as e:
                 Log.e(f"Background license refresh failed: {e}")
@@ -352,10 +360,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
     def hasUnsavedChanges(self):
         """BASE CLASS DEFINITION"""
         return False
-    
+
     def isBusy(self):
         """BASE CLASS DEFINITION"""
         return False
+
+    def getToolNames(self):
+        """BASE CLASS DEFINITION"""
+        return []
 
 
 class VisQAIWindow(BaseVisQAIWindow):
@@ -367,6 +379,10 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI")
         self.setMinimumSize(900, 600)
+        self.select_formulation: Formulation = Formulation()
+        self.import_formulations: list[Formulation] = []
+        self.import_run_names: list[str] = []
+        self.predict_formulation: Formulation = Formulation()
         self.init_ui()
         self.init_sign()
         self.check_license(
@@ -381,16 +397,12 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.timer.stop()
         self._unsaved_changes = False
 
-        self.select_formulation: Formulation = Formulation()
-        self.import_formulations: list[Formulation] = []
-        self.import_run_names: list[str] = []
-        self.predict_formulation: Formulation = Formulation()
-
     def init_ui(self):
         self.tab_widget = QtWidgets.QTabWidget()
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
         self.tab_widget.tabBar().installEventFilter(self)
+        self.tab_widget.tabBar().hide() # Prefer Toolkit floating menu
 
         # Enable database objects for initial UI load.
         self.enable(True)
@@ -403,10 +415,14 @@ class VisQAIWindow(BaseVisQAIWindow):
                                "\u2462 Import Experiments")  # unicode circled 3
         self.tab_widget.addTab(FrameStep2(self, 4),
                                "\u2463 Learn")  # unicode circled 4
+        self.tab_widget.addTab(EvaluationUI(self),
+                               "\u2464 Evaluate")  # unicode circled 5
         self.tab_widget.addTab(FrameStep1(self, 5),
-                               "\u2464 Predict")  # unicode circled 5
+                               "\u2465 Predict")  # unicode circled 6
         self.tab_widget.addTab(FrameStep2(self, 6),
-                               "\u2465 Optimize")  # unicode circled 6
+                               "\u2466 Optimize")  # unicode circled 7
+        self.tab_widget.addTab(HypothesisTestingUI(self, ),
+                               "\u2467 Hypothesis Testing")  # unicode circled 8
 
         # Disable database objects after initial UI load.
         self.enable(False)
@@ -518,7 +534,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         ):
             # Disallow tab change if learning in-progress
             if self.isBusy():
-                PopUp.warning(self, "Learning In-Progress...", "Tab change is not allowed while learning.")
+                PopUp.warning(self, "Learning In-Progress...",
+                              "Tab change is not allowed while learning.")
                 return True  # ignore click
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
@@ -530,7 +547,7 @@ class VisQAIWindow(BaseVisQAIWindow):
                         self.tab_widget.currentWidget().btn_next.click()
                         return True  # ignore click, let "Next" btn decide
                 # Block tab change based on some condition
-                if tab_step in [3, 4, 6]:
+                if tab_step in [3, 4, 7]:
                     if not widget.run_file_run:
                         QtWidgets.QMessageBox.information(
                             None, Constants.app_title,
@@ -654,6 +671,14 @@ class VisQAIWindow(BaseVisQAIWindow):
         elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
+        try:
+            # Highlight the selected toolkit item in the floating menu
+            self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+
+        except Exception as e:
+            Log.e("Failed to set active item in VisQ.AI Toolkit menu")
+            Log.e(f"ERROR: {e}")
+
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
         if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
@@ -667,8 +692,17 @@ class VisQAIWindow(BaseVisQAIWindow):
 
     def isBusy(self) -> bool:
         return hasattr(self.tab_widget.currentWidget(), "timer") and \
-                       self.tab_widget.currentWidget().timer.isActive()
-    
+            self.tab_widget.currentWidget().timer.isActive()
+
+    def getToolNames(self):
+        tab_names = []
+        for i in range(self.tab_widget.count()):
+            tab_name = self.tab_widget.tabText(i)
+            # drop the leading number in a circle, remove leading space
+            tab_name = tab_name.encode('ascii', 'ignore').decode().strip()
+            tab_names.append(tab_name)
+        return tab_names
+
     def reset(self) -> None:
         self.check_user_info()
         self.signedInAs.setText(self.username)
@@ -707,6 +741,24 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
             Log.d("Database objects disabled on VisQ.AI not enabled.")
 
+            try:
+                # Remove highlighted tool item from floating menu widget
+                self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
+
+            except AttributeError as e:
+                # This exception handler needs to know who called it
+                # to determine whether or not to suppress the error.
+                caller_frame = inspect.stack()[1]
+                caller_name = caller_frame.function
+                if caller_name == "init_ui":
+                    Log.d("VisQ.AI Toolkit menu widget not found yet (normal once on init)")
+                else:
+                    raise e # Throw error, this is not an expected exception
+
+            except Exception as e:
+                Log.e("Failed to set active item in VisQ.AI Toolkit menu")
+                Log.e(f"ERROR: {e}")
+
         else:
             # VisQ.AI UI is now in foreground, Mode is selected
             # Do things here to initialize resources and enable:
@@ -722,6 +774,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             Log.d("Database objects created on VisQ.AI enable.")
 
             # Emit tab selected code for the currently active tab frame.
+            # NOTE: This also calls `setActiveItem()` for the floating widget
             self.tab_widget.currentChanged.emit(self.tab_widget.currentIndex())
 
             # # Create default user preferences object
@@ -738,7 +791,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                      'buffer_type', 'buffer_concentration',
                      'surfactant_type', 'surfactant_concentration',
                      'stabilizer_type', 'stabilizer_concentration',
-                     'salt_type', 'salt_concentration']
+                     'salt_type', 'salt_concentration',
+                     'excipient_type', 'excipient_concentration']
         required_len = len(info_tags)
         if len(run_info) != required_len:
             Log.e(

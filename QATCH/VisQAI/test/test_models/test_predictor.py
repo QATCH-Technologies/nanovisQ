@@ -580,8 +580,8 @@ class TestPredictorIntegration(unittest.TestCase):
             self.assertIsInstance(mean, np.ndarray)
             self.assertIsInstance(uncertainty, dict)
             self.assertIn('std', uncertainty)
-            self.assertIn('lower_95', uncertainty)
-            self.assertIn('upper_95', uncertainty)
+            self.assertIn('lower_ci', uncertainty)
+            self.assertIn('upper_ci', uncertainty)
 
             predictor.cleanup()
         except Exception as e:

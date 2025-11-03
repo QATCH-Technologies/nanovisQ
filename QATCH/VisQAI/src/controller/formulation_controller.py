@@ -107,7 +107,7 @@ class FormulationController:
 
         Args:
             formulation (Formulation): The `Formulation` instance to add. Its
-                `buffer`, `protein`, `salt`, `surfactant`, and `stabilizer`
+                `buffer`, `protein`, `salt`, `surfactant`, `stabilizer`, and `excipient`
                 attributes must be set to `Component` objects.
 
         Returns:
@@ -276,7 +276,7 @@ class FormulationController:
                 Salt(enc_id=0, name=str(row["Salt_type"]))
             )
             excipient = self.ingredient_controller.add_excipient(
-                Salt(enc_id=0, name=str(row["Excipient_type"]))
+                Excipient(enc_id=0, name=str(row["Excipient_type"]))
             )
 
             vis_values = [row[f"Viscosity_{r}"] for r in shear_rates]
@@ -361,7 +361,7 @@ class FormulationController:
         """
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

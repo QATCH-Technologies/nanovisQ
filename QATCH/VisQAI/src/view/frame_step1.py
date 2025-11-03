@@ -150,17 +150,8 @@ class FrameStep1(QtWidgets.QDialog):
 
         left_layout.addWidget(left_group)
 
-        # Browse run
-        self.file_dialog = QtWidgets.QFileDialog()
-        self.file_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
-        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
-        self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
-
         self.select_run = QtWidgets.QPushButton(
-            "Add Run..." if step == 3 else "Browse...")
+            "Add Run(s)..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
@@ -212,12 +203,12 @@ class FrameStep1(QtWidgets.QDialog):
                 add_remove_export_layout.addWidget(self.btn_add)
 
             # Remove Selected Run
-            self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
+            self.btn_remove = QtWidgets.QPushButton("Remove Selected")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
 
             # Remove All Runs
-            self.btn_remove_all = QtWidgets.QPushButton("Remove All Runs")
+            self.btn_remove_all = QtWidgets.QPushButton("Remove All")
             self.btn_remove_all.clicked.connect(
                 self.user_all_runs_removed)
             add_remove_export_layout.addWidget(self.btn_remove_all)
@@ -317,7 +308,7 @@ class FrameStep1(QtWidgets.QDialog):
 
             right_group.addWidget(ci_widget)
             # Features table
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
                                              "Protein Class", "Protein Molecular Weight",  # not in Run Info
                                              "Protein pI Mean", "Protein pI Range",  # not in Run Info
@@ -326,6 +317,7 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
                                              "Salt Type", "Salt Concentration",
+                                             "Excipient Type", "Excipient Concentration",
                                              "Temperature"],  # only displayed on Predict tab (for now)
                                  "Value": [{"choices": self.proteins, "selected": ""}, "",
                                            # class, molecular weight, pI mean, pI range
@@ -340,6 +332,8 @@ class FrameStep1(QtWidgets.QDialog):
                                                "selected": ""}, "",
                                            {"choices": self.salts,
                                                "selected": ""}, "",
+                                           {"choices": self.excipients,
+                                               "selected": ""}, "",
                                            ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
@@ -347,6 +341,7 @@ class FrameStep1(QtWidgets.QDialog):
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
+                                           "", "mM",
                                            "", "mM",
                                            "\u00b0C"]}  # degrees Celsius
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
@@ -456,8 +451,7 @@ class FrameStep1(QtWidgets.QDialog):
             lambda: self.file_selected(None, cancel=True))
         self.btn_next.clicked.connect(
             getattr(self, f"proceed_to_step_{self.step+1}"))
-        self.select_run.clicked.connect(self.file_dialog_show)
-        self.file_dialog.fileSelected.connect(self.file_selected)
+        self.select_run.clicked.connect(self.user_run_browse)
         if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
             global_handler = getattr(
@@ -465,10 +459,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.fileSelected.connect(
                 global_handler if callable(global_handler) else self.model_selected)
 
-    def reload_excipient_choices(self):
+    def reload_all_ingredient_choices(self):
 
-        # Reload all excipients from DB
-        self.load_all_excipient_types()
+        # Reload all ingredients from DB
+        self.load_all_ingredients()
 
         # Update choices lists in default features for dropdown items
         self.default_features["Value"][0]["choices"] = self.proteins
@@ -477,14 +471,15 @@ class FrameStep1(QtWidgets.QDialog):
         self.default_features["Value"][9]["choices"] = self.surfactants
         self.default_features["Value"][11]["choices"] = self.stabilizers
         self.default_features["Value"][13]["choices"] = self.salts
+        self.default_features["Value"][15]["choices"] = self.excipients
 
         # Update proteins by class for table view auto-selection
         self.feature_table.setProteinsByClass(self.proteins_by_class)
 
     def on_tab_selected(self):
 
-        # Reload excipients from DB and update default choices
-        self.reload_excipient_choices()
+        # Reload ingredients from DB and update default choices
+        self.reload_all_ingredient_choices()
 
         if self.step == 2:  # Suggest
             # self.load_suggestion()
@@ -500,8 +495,8 @@ class FrameStep1(QtWidgets.QDialog):
                 suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
                 import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
                 learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-                predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-                optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+                predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
+                optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
                 all_model_paths = [select_tab.model_path,
                                    suggest_tab.model_path,
                                    import_tab.model_path,
@@ -542,18 +537,19 @@ class FrameStep1(QtWidgets.QDialog):
             no_item.setSelectable(False)
             self.model.appendRow(no_item)
 
-    def load_all_excipient_types(self):
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
-        self.proteins_by_class: dict[str, str] = {}
+        self.proteins_by_class: dict[str, list[str]] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, self.excipients, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
@@ -561,6 +557,7 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
@@ -570,7 +567,7 @@ class FrameStep1(QtWidgets.QDialog):
             hide_rows.extend([2, 3, 4, 5, 8])
         if self.step != 5:
             # Hide Temperature everywhere other than Predict
-            hide_rows.append(15)
+            hide_rows.append(17)
         for row in hide_rows:
             self.feature_table.hideRow(row)
 
@@ -606,12 +603,9 @@ class FrameStep1(QtWidgets.QDialog):
         stabilizer_conc = self.feature_table.item(12, 1).text()
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
-        temp = self.feature_table.item(15, 1).text()
-
-        # TODO: Once table is expanded for these params, add these as well
-        excipient_type = "none"
-        excipient_conc = 0.0
-
+        excipient_type = self.feature_table.cellWidget(15, 1).currentText()
+        excipient_conc = self.feature_table.item(16, 1).text()
+        temp = self.feature_table.item(17, 1).text()
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
             self.parent.save_run_info(self.run_file_xml, [
@@ -619,7 +613,8 @@ class FrameStep1(QtWidgets.QDialog):
                 buffer_type, buffer_conc,
                 surfactant_type, surfactant_conc,
                 stabilizer_type, stabilizer_conc,
-                salt_type, salt_conc], cancel)
+                salt_type, salt_conc,
+                excipient_type, excipient_conc], cancel)
             if self.parent.hasUnsavedChanges():
                 if cancel:
                     Log.w("Unsaved changes lost, per user discretion.")
@@ -655,19 +650,21 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = stabilizer_conc
             feature["Value"][13]["selected"] = salt_type
             feature["Value"][14] = salt_conc
-            feature["Value"][15] = temp
-            # TODO: Expand combo boxes to support an excipient
-            # feature["Value"][16]["selected"] = excipient_type
-            # feature["Value"][17] = excipient_conc
+            feature["Value"][15]["selected"] = excipient_type
+            feature["Value"][16] = excipient_conc
+            feature["Value"][17] = temp
+
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
-        protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
+        protein = self.parent.ing_ctrl.get_protein_by_name(
+            name=protein_type)
         if protein is None:
             protein = self.parent.ing_ctrl.add_protein(
                 Protein(enc_id=-1, name=protein_type))
 
-        buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
+        buffer = self.parent.ing_ctrl.get_buffer_by_name(
+            name=buffer_type)
         if buffer is None:
             buffer = self.parent.ing_ctrl.add_buffer(
                 Buffer(enc_id=-1, name=buffer_type))
@@ -684,7 +681,8 @@ class FrameStep1(QtWidgets.QDialog):
             stabilizer = self.parent.ing_ctrl.add_stabilizer(
                 Stabilizer(enc_id=-1, name=stabilizer_type))
 
-        salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
+        salt = self.parent.ing_ctrl.get_salt_by_name(
+            name=salt_type)
         if salt is None:
             salt = self.parent.ing_ctrl.add_salt(
                 Salt(enc_id=-1, name=salt_type))
@@ -693,7 +691,7 @@ class FrameStep1(QtWidgets.QDialog):
             name=excipient_type)
         if excipient is None:
             excipient = self.parent.ing_ctrl.add_excipient(
-                excipient=Excipient(enc_id=-1, name=excipient_type))
+                Excipient(enc_id=-1, name=excipient_type))
 
         def is_number(s: str):
             try:
@@ -892,7 +890,9 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][12] = form.stabilizer.concentration
             feature["Value"][13]["selected"] = form.salt.ingredient.name
             feature["Value"][14] = form.salt.concentration
-            feature["Value"][15] = form.temperature
+            feature["Value"][15]["selected"] = form.excipient.ingredient.name
+            feature["Value"][16] = form.excipient.concentration
+            feature["Value"][17] = form.temperature
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -1019,18 +1019,18 @@ class FrameStep1(QtWidgets.QDialog):
                 self.run_canvas.draw()
                 shear = np.asarray(shear)
                 mean_arr = np.asarray(mean_arr)
-                lower_95 = uncertainty_dict['lower_95']
-                upper_95 = uncertainty_dict['upper_95']
-                if lower_95.ndim > 1:
-                    lower_95 = lower_95.flatten()
-                if upper_95.ndim > 1:
-                    upper_95 = upper_95.flatten()
+                lower_ci = uncertainty_dict['lower_ci']
+                upper_ci = uncertainty_dict['upper_ci']
+                if lower_ci.ndim > 1:
+                    lower_ci = lower_ci.flatten()
+                if upper_ci.ndim > 1:
+                    upper_ci = upper_ci.flatten()
                 ax = self.run_figure.add_subplot(111)
                 ax.set_facecolor('#ffffff')
                 self.run_figure.patch.set_facecolor('#ffffff')
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
-                xs_up, ys_up = smooth_log_interpolate(shear, upper_95)
-                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_95)
+                xs_up, ys_up = smooth_log_interpolate(shear, upper_ci)
+                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_ci)
 
                 main_color = '#2C5F8D'
                 ci_color = '#7EB6D9'
@@ -1078,7 +1078,7 @@ class FrameStep1(QtWidgets.QDialog):
                 ylim = ax.get_ylim()
                 y_range = np.log10(ylim[1]) - np.log10(ylim[0])
                 for i in range(len(mean_arr)):
-                    annotation = f'{mean_arr[i]:.1f}\n[{lower_95[i]:.1f}–{upper_95[i]:.1f}]'
+                    annotation = f'{mean_arr[i]:.1f}\n[{lower_ci[i]:.1f}–{upper_ci[i]:.1f}]'
                     y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
                     ax.annotate(annotation,
                                 xy=(shear[i], mean_arr[i]),
@@ -1222,7 +1222,7 @@ class FrameStep1(QtWidgets.QDialog):
                     self.progressBarDiag.close()  # close it
                     return
 
-                self.file_selected(file_path)  # load each run
+                self.file_selected(file_path, loading=True)  # load each run
                 QtCore.QCoreApplication.processEvents()  # redraw plot now
                 if (len(self.run_captured.text()) and
                     len(self.run_updated.text()) and
@@ -1457,35 +1457,182 @@ class FrameStep1(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.critical(
                     None, "Error", f"Failed to export PDF: {str(e)}")
 
-    def file_dialog_show(self):
-        selected_files = self.file_dialog.selectedFiles()
-        inside = True  # assume it is until proven otherwise
-        if selected_files:
-            prefer_abs = os.path.abspath(Constants.log_prefer_path)
-            path_abs = os.path.abspath(selected_files[0])
-            try:
-                inside = os.path.commonpath(
-                    [prefer_abs, path_abs]) == prefer_abs
-            except ValueError:
-                inside = False
+    def user_run_browse(self) -> None:
+        """Open a dialog to browse and add run capture files or directories.
 
-        if not selected_files or not inside:
-            # Set run directory from User Preferences.
-            self.file_dialog.setDirectory(Constants.log_prefer_path)
-        else:
-            # File selected previously, reference parent directory
-            set_directory, select_file = os.path.split(
-                os.path.dirname(path_abs))
-            # e.g "full/path/to/capture.zip" will yield:
-            # (set_directory = "full/path", select_file = "to")
-            self.file_dialog.setDirectory(set_directory)
-            self.file_dialog.selectFile(select_file)
+        This method allows the user to select one or more directories containing
+        run files. It will search each selected directory for `capture.zip` files
+        and load them all in batch.
+        """
+        # Use a custom directory dialog that supports multi-selection
+        dir_dialog = QtWidgets.QFileDialog(self)
+        dir_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dir_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        dir_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
+        file_view = dir_dialog.findChild(QtWidgets.QListView, 'listView')
+        if file_view:
+            file_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
 
-        self.file_dialog.show()
+        tree_view = dir_dialog.findChild(QtWidgets.QTreeView)
+        if tree_view:
+            tree_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        dir_dialog.setDirectory(prefer_abs)
 
-    def file_selected(self, path: str | None, cancel: bool = False):
+        if dir_dialog.exec_():
+            selected_dirs = dir_dialog.selectedFiles()
+            if selected_dirs:
+                self.load_runs_from_directories(selected_dirs)
+
+    def load_runs_from_directories(self, directories: list) -> None:
+        """Search multiple directories for capture files and load them.
+
+        Args:
+            directories (list): List of directory paths to search.
+        """
+        all_capture_files = []
+        for directory in directories:
+            capture_files = self.find_capture_files(directory)
+            all_capture_files.extend(capture_files)
+
+        directory_ies = f"director{'y' if len(directories) == 1 else 'ies'}"
+        if not all_capture_files:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Capture Files Found",
+                f"No capture.zip files found in {len(directories)} selected {directory_ies}."
+            )
+            return
+        dir_summary = f"{len(directories)} {directory_ies}"
+        
+        # NOTE: This block is unique to `frame_step1.py` (not in evaluation_ui.py)
+        if len(all_capture_files) > 1 and not self.step == 3: # 3: Imported Experiments
+            # User selected multiple runs on a step that only support a single run
+            reply = QtWidgets.QMessageBox.warning(
+                self,
+                "Multiple Runs Selected",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"However, this step only supports loading a single run.\n"
+                f"Please select a directory containing only one run.",
+                QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Retry
+            )
+            if reply == QtWidgets.QMessageBox.Retry:
+                # Try again, using a timer, to prevent stack overflow.
+                QtCore.QTimer.singleShot(0, self.user_run_browse)
+            return
+
+        # NOTE: This block is modified from `evaluation_ui.py` to return on "No" reply
+        # Also, this block is only executed when on the Imported Experiments tab step.
+        if self.step == 3:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Batch Load Runs",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"Do you want to load {'all of them' if len(all_capture_files) > 1 else 'it'}?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes
+            )
+            if reply == QtWidgets.QMessageBox.No:
+                return
+        
+        # If we haven't bailed at a `return` yet, proceed to loading run files.
+        self.batch_add_run_files(all_capture_files)
+
+    def find_capture_files(self, directory: str, filename: str = "capture.zip") -> list:
+        """Recursively search a directory for capture files.
+
+        Args:
+            directory (str): The root directory to search.
+            filename (str): The filename to search for (default: "capture.zip").
+
+        Returns:
+            list: A list of absolute paths to found capture files.
+        """
+        capture_files = []
+
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.lower() == filename.lower():
+                        capture_files.append(os.path.join(root, file))
+        except Exception as e:
+            Log.e(f"Error searching directory {directory}: {e}")
+
+        return capture_files
+
+    def batch_add_run_files(self, file_paths: list) -> None:
+        """Load multiple run files in batch and update the UI.
+
+        This method processes a list of run files, attempting to load each one.
+        It provides feedback on the batch loading process, including success
+        and failure counts.
+
+        Args:
+            file_paths (list): List of file paths to be loaded.
+        """
+        if not file_paths:
+            return
+
+        # Show progress dialog for batch loading
+        file_s = f"file{'s' if len(file_paths) > 1 else ''}"
+        progress = QtWidgets.QProgressDialog(
+            f"Loading run {file_s}...",
+            "Cancel",
+            0,
+            len(file_paths),
+            self
+        )
+        progress.setWindowModality(QtCore.Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        loaded_count = 0
+        failed_files = []
+
+        for i, file_path in enumerate(file_paths):
+            if progress.wasCanceled():
+                break
+
+            progress.setValue(i)
+            progress.setLabelText(f"Loading: {os.path.basename(os.path.dirname(file_path))}")
+            QtWidgets.QApplication.processEvents()
+
+            self.file_selected(file_path, loading=True)
+            success = self.run_figure_valid  # True on successful load
+            if success:
+                loaded_count += 1
+            else:
+                failed_files.append(file_path)
+
+        progress.setValue(len(file_paths))
+
+        # Show summary
+        summary_msg = f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        if failed_files:
+            summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
+            for failed in failed_files[:5]:  # Show first 5 failures
+                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"  # bullet point (U+2022)
+            if len(failed_files) > 5:
+                summary_msg += f"\n  ... and {len(failed_files) - 5} more"
+
+        if failed_files:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+        elif loaded_count > 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+
+    def file_selected(self, path: str | None, cancel: bool = False, loading: bool = False):
         # If run already loaded, try saving formulation to write any changed Run Info to XML
-        if self.run_file_xml and self.step in [1, 3]:
+        if self.run_file_xml and self.step in [1, 3] and not loading:
             if not self.feature_table.allSet():
                 result = QtWidgets.QMessageBox.question(
                     None,
@@ -1705,6 +1852,7 @@ class FrameStep1(QtWidgets.QDialog):
                       "surfactant_type", "surfactant_concentration",
                       "stabilizer_type", "stabilizer_concentration",
                       "salt_type", "salt_concentration",
+                      "excipient_type", "excipient_concentration",
                       "temperature"]
         for x, y in enumerate(value_tags):
             try:
@@ -1756,14 +1904,14 @@ class FrameStep1(QtWidgets.QDialog):
             # Check for new and/or missing features
             # NOTE: Unknown Class_Types (idx 2) will not be added to the DB.
             # Instead, only a warning will be displayed (and a reload will still occur).
-            reload_excipients = False
-            for idx in [0, 2, 6, 9, 11, 13]:
+            reload_ingredients = False
+            for idx in [0, 2, 6, 9, 11, 13, 15]:
                 item = run_features["Value"][idx]
                 choices, selected = list(dict(item).values())
                 value = str(selected).strip()
                 if value.casefold() not in [str(c).casefold() for c in choices] and value.casefold() != "none" \
                         and len(value) != 0:  # NOTE: Only protein uses blank value default
-                    reload_excipients = True
+                    reload_ingredients = True
                     if idx == 0:  # Protein Type
                         Log.w(
                             f"Adding new Protein Type: \"{value}\"")
@@ -1775,7 +1923,8 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 6:  # Buffer Type
                         Log.w(
                             f"Adding new Buffer Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Buffer(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Buffer(enc_id=-1, name=value))
                     if idx == 9:  # Surfactant Type
                         Log.w(
                             f"Adding new Surfactant Type: \"{value}\"")
@@ -1789,12 +1938,18 @@ class FrameStep1(QtWidgets.QDialog):
                     if idx == 13:  # Salt Type
                         Log.w(
                             f"Adding new Salt Type: \"{value}\"")
-                        self.parent.ing_ctrl.add(Salt(enc_id=-1, name=value))
+                        self.parent.ing_ctrl.add(
+                            Salt(enc_id=-1, name=value))
+                    if idx == 15:  # Excipient Type
+                        Log.w(
+                            f"Adding new Excipient Type: \"{value}\"")
+                        self.parent.ing_ctrl.add(
+                            Excipient(enc_id=-1, name=value))
 
             # Reload excipient choices (only if needed)
-            if reload_excipients:
-                # Reload excipients from DB and update default choices
-                self.reload_excipient_choices()
+            if reload_ingredients:
+                # Reload ingredients from DB and update default choices
+                self.reload_all_ingredient_choices()
 
                 # Copy the updated default choices to the run features
                 run_features["Value"][0]["choices"] = self.proteins
@@ -1803,6 +1958,7 @@ class FrameStep1(QtWidgets.QDialog):
                 run_features["Value"][9]["choices"] = self.surfactants
                 run_features["Value"][11]["choices"] = self.stabilizers
                 run_features["Value"][13]["choices"] = self.salts
+                run_features["Value"][15]["choices"] = self.excipients
 
         # Import most recent analysis
         in_shear_rate = []
@@ -1963,10 +2119,10 @@ class FrameStep1(QtWidgets.QDialog):
             in_temperature) else np.nan
         if np.isnan(avg_temp):
             self.run_temperature.setText("(Unknown)")
-            run_features["Value"][15] = ""
+            run_features["Value"][17] = ""
         else:
             self.run_temperature.setText(f"{avg_temp:2.2f}C")
-            run_features["Value"][15] = f"{avg_temp:0.2f}"
+            run_features["Value"][17] = f"{avg_temp:0.2f}"
 
         self.feature_table.setData(run_features)
         self.hide_extended_features()

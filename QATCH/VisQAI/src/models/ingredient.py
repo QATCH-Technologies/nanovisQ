@@ -309,6 +309,8 @@ class ProteinClass(StrEnum):
     MAB_IGG1 = "mAb_IgG1"
     MAB_IGG4 = "mAb_IgG4"
     POLYCLONAL = "Polyclonal"
+    BISPECIFIC = "Bispecific"
+    TRISPECIFIC = "Trispecific"
     OTHER = "Other"
 
     @classmethod
@@ -322,6 +324,25 @@ class ProteinClass(StrEnum):
     @classmethod
     def from_value(cls, value: str) -> "ProteinClass":
         return cls(value)
+
+    @property
+    def kP(self) -> float:
+        kP_mapping = {
+            self.POLYCLONAL: 3.0,
+            self.MAB_IGG1: 3.0,
+            self.MAB_IGG4: 3.5,
+            self.FC_FUSION: 4.5,
+            self.BISPECIFIC: 5.0,
+            self.TRISPECIFIC: 5.5,
+            self.NONE: 2.0,
+            self.ADC: 2.5,
+            self.OTHER: 2.0,
+        }
+        return kP_mapping[self]
+
+    @classmethod
+    def get_kP_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.kP for pc in cls}
 
 
 class Protein(Ingredient):

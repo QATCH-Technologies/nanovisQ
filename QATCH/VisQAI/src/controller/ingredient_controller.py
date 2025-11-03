@@ -397,18 +397,18 @@ class IngredientController:
             id (int): The primary key of the surfactant to fetch.
 
         Returns:
-            Optional[i]: The `Surfactant` instance if found, otherwise None.
+            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
         """
         return self.db.get_ingredient(id)
 
     def get_excipient_by_name(self, name: str) -> Optional[Excipient]:
-        """Retrieve a `Surfactant` by its name.
+        """Retrieve a `Excipient` by its name.
 
         Args:
-            name (str): Name of the surfactant to fetch.
+            name (str): Name of the excipient to fetch.
 
         Returns:
-            Optional[Surfactant]: The `Surfactant` instance if found, otherwise None.
+            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
         """
         return self._fetch_by_name(name, type="Excipient")
 
@@ -416,7 +416,7 @@ class IngredientController:
         """Retrieve all `Excipients` instances from the database.
 
         Returns:
-            List[Excipient]: A list of all surfactants in the database.
+            List[Excipient]: A list of all excipients in the database.
         """
         return self._fetch_by_type("Excipient")
 
@@ -1047,14 +1047,15 @@ class IngredientController:
             if no matches are found.
         """
         all_names = self.get_all_ingredient_names()
+        name_mapping = {n.lower(): n for n in all_names}
         matches = process.extract(
             query=name.lower(),
-            choices=all_names,
+            choices=list(name_mapping.keys()),
             scorer=fuzz.WRatio,
             limit=max_results,
             score_cutoff=score_cutoff
         )
-        return [match_name for match_name, score, idx in matches]
+        return [name_mapping[match_name] for match_name, score, idx in matches]
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.
