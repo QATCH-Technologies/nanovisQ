@@ -7,17 +7,20 @@ This module defines the `Optimizer` class, which uses differential evolution to
 search the formulation feature space under specified constraints, minimizing
 the mean squared error between predicted and target viscosity profiles.
 
+Enhanced with real-time progress visualization support.
+
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
+    Enhanced by: Claude
 
 Date:
-    2025-10-22
+    2025-11-04
 
 Version:
-    1.1
+    1.2
 """
-
-from typing import Dict, Any, List
+import multiprocessing
+from typing import Dict, Any, List, Optional, Callable
 import numpy as np
 from scipy.optimize import differential_evolution
 
@@ -31,6 +34,86 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.utils.constraints import Constraints
+
+
+class OptimizationStatus:
+    """Data class to hold optimization status information."""
+
+    def __init__(self, iteration: int, num_iterations: int, best_value: float,
+                 population_size: int, convergence: float):
+        self.iteration = iteration
+        self.num_iterations = num_iterations
+        self.best_value = best_value
+        self.population_size = population_size
+        self.convergence = convergence
+        self.progress_percent = (
+            iteration / num_iterations * 100) if num_iterations > 0 else 0
+
+    def __repr__(self) -> str:
+        return (f"OptimizationStatus(iteration={self.iteration}, "
+                f"best_value={self.best_value:.6f}, "
+                f"progress={self.progress_percent:.1f}%)")
+
+
+class OptimizationProgressTracker:
+    """Track and manage optimization progress with history."""
+
+    def __init__(self):
+        self.history = []
+        self.start_value = None
+        self.best_value = None
+        self.iterations = []
+        self.best_values = []
+
+    def __call__(self, status: OptimizationStatus):
+        """Track optimization progress."""
+        self.history.append(status)
+        self.iterations.append(status.iteration)
+        self.best_values.append(status.best_value)
+
+        if self.start_value is None:
+            self.start_value = status.best_value
+
+        if self.best_value is None or status.best_value < self.best_value:
+            self.best_value = status.best_value
+
+        # Print progress
+        improvement = self.start_value - status.best_value if self.start_value else 0
+        print(f"[{status.iteration:3d}/{status.num_iterations}] "
+              f"Best: {status.best_value:10.6f} | "
+              f"Improvement: {improvement:10.6f} | "
+              f"Progress: {status.progress_percent:6.1f}%")
+
+    def get_improvement_rate(self) -> float:
+        """Calculate average improvement per iteration."""
+        if len(self.history) < 2 or self.start_value is None:
+            return 0.0
+        return (self.start_value - self.best_value) / len(self.history)
+
+    def get_stagnation_iterations(self, threshold: int = 10) -> int:
+        """Count iterations without improvement in last 'threshold' iterations."""
+        if len(self.history) < threshold:
+            return 0
+
+        recent = self.history[-threshold:]
+        best_recent = min(s.best_value for s in recent)
+
+        stagnant_count = 0
+        for status in reversed(recent):
+            if status.best_value == best_recent:
+                stagnant_count += 1
+            else:
+                break
+
+        return stagnant_count
+
+    def get_plot_data(self) -> tuple:
+        """Get data for plotting optimization progress.
+
+        Returns:
+            tuple: (iterations, best_values) for plotting
+        """
+        return (self.iterations.copy(), self.best_values.copy())
 
 
 class Optimizer:
@@ -197,13 +280,49 @@ class Optimizer:
         )
         return self._mse_loss(pred_vp, self.target)
 
-    def optimize(self) -> Formulation:
+    def optimize(self, strategy: str = 'best1bin', mutation: tuple = (0.5, 1),
+                 recombination: float = 0.7, init: str = 'latinhypercube',
+                 atol: int = 0, workers: int = 1,
+                 progress_callback: Optional[Callable[[OptimizationStatus], None]] = None) -> Formulation:
         """
         Executes the differential evolution solver to find the best formulation.
+
+        Args:
+            strategy (str): DE strategy to use. Defaults to 'best1bin'.
+            mutation (tuple): Mutation rate range. Defaults to (0.5, 1).
+            recombination (float): Recombination rate. Defaults to 0.7.
+            init (str): Initialization method. Defaults to 'latinhypercube'.
+            atol (int): Absolute tolerance. Defaults to 0.
+            workers (int): Number of workers. Defaults to 1.
+            progress_callback (Optional[Callable]): Callback function to report progress.
+                                                     Receives OptimizationStatus objects.
 
         Returns:
             Formulation: Best formulation found by optimization.
         """
+        # Create progress tracker
+        tracker = OptimizationProgressTracker()
+
+        # Create callback wrapper for differential_evolution
+        def callback_wrapper(xk, convergence=0):
+            # Calculate best value from current solution
+            best_value = self._objective(xk)
+
+            # Create status with actual objective value
+            status = OptimizationStatus(
+                iteration=len(tracker.history) + 1,
+                num_iterations=self.maxiter,
+                best_value=best_value,
+                population_size=self.popsize,
+                convergence=convergence
+            )
+
+            # Track progress
+            tracker(status)
+
+            # Call user's progress callback if provided
+            if progress_callback:
+                progress_callback(status)
         result = differential_evolution(
             func=self._objective,
             bounds=self.bounds,
@@ -212,6 +331,15 @@ class Optimizer:
             tol=self.tol,
             seed=self.seed,
             polish=True,
+            disp=False,
+            workers=int(workers),
+            atol=atol,
+            recombination=recombination,
+            mutation=mutation,
+            strategy=strategy,
+            init=init,
+            callback=callback_wrapper,
         )
+
         best_feats = self._decode(result.x)
         return self._build_formulation(best_feats)

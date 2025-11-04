@@ -3,16 +3,16 @@ hypothesis_testing_ui.py
 
 This module provides the HypothesisTestingUI class for the Hypothesis Testing tab in VisQAI.
 It supports creating custom formulations, defining hypotheses about viscosity behavior,
-and visualizing prediction results with hypothesis outcomes using area-based CI polygon containment.
+and visualizing prediction results with hypothesis outcomes using area-based CI containment.
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-30
+    2025-10-31
 
 Version:
-   2.0 - Adapted for area-based CI polygon containment
+   2.0
 """
 
 import sys
@@ -83,7 +83,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
     This interface allows users to:
     - Build custom formulations from available ingredients
     - Define hypotheses about viscosity behavior
-    - Run model predictions with area-based CI polygon containment
+    - Run model predictions with area-based CI containment
     - Visualize results with hypothesis outcomes
     """
 
@@ -695,7 +695,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             has_model and all_types_selected and has_temperature)
 
     def run_hypothesis_test(self) -> None:
-        """Run the hypothesis test using the area-based CI polygon containment approach."""
+        """Run the hypothesis test using the area-based CI containment approach."""
         try:
             # Build formulation object
             self.formulation_obj = self._build_formulation_object()
@@ -943,7 +943,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.results_table.resizeColumnsToContents()
 
     def update_profile_plot(self) -> None:
-        """Update the viscosity profile plot showing the CI polygon and bounds."""
+        """Update the viscosity profile plot showing the CI and bounds."""
         if self.hypothesis_result is None:
             return
 

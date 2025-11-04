@@ -1083,6 +1083,7 @@ class EvaluationUI(QtWidgets.QDialog):
         """Format metric name for display."""
         names = {
             'mae': 'MAE (Mean Absolute Error)',
+            'mse': 'MSE (Mean Squared Error)',
             'rmse': 'RMSE (Root Mean Square Error)',
             'mape': 'MAPE (Mean Absolute Percentage Error)',
             'r2': 'R² Score',
@@ -1889,7 +1890,7 @@ class EvaluationUI(QtWidgets.QDialog):
         Args:
             shear_data: DataFrame with shear rate data
             metric: The metric key
-            run_names: List of run names or None
+            run_names: List or array of run names, or None
 
         Returns:
             list: List of arrays with error data per run, or None if not applicable
@@ -1897,16 +1898,20 @@ class EvaluationUI(QtWidgets.QDialog):
         if metric not in ['mae', 'rmse', 'max_error', 'median_ae'] or 'abs_error' not in shear_data.columns:
             return None
 
-        if run_names is None or len(run_names) <= 1:
+        # Avoid ambiguous truth values if run_names is a numpy array
+        if run_names is None or len(np.atleast_1d(run_names)) <= 1:
             return None
 
         data_per_run = []
         for run_name in run_names:
             run_data = shear_data[shear_data['run'] == run_name]
+            if run_data.empty:
+                continue
+
             if metric == 'mae':
                 data_per_run.append(run_data['abs_error'].values)
             elif metric == 'rmse':
-                data_per_run.append(np.sqrt(run_data['abs_error'].values,  2))
+                data_per_run.append(np.sqrt(run_data['abs_error'].values))
             else:
                 data_per_run.append(run_data['abs_error'].values)
 
