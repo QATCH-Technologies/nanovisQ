@@ -1047,14 +1047,15 @@ class IngredientController:
             if no matches are found.
         """
         all_names = self.get_all_ingredient_names()
+        name_mapping = {n.lower(): n for n in all_names}
         matches = process.extract(
             query=name.lower(),
-            choices=all_names,
+            choices=list(name_mapping.keys()),
             scorer=fuzz.WRatio,
             limit=max_results,
             score_cutoff=score_cutoff
         )
-        return [match_name for match_name, score, idx in matches]
+        return [name_mapping[match_name] for match_name, score, idx in matches]
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.

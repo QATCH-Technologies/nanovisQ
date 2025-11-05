@@ -166,6 +166,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         data = {
             "Protein_type": ["Lysozyme"],
             "Protein_class_type": ["Polyclonal"],
+            "kP": [2.0],
             "MW": [14300.0],
             "PI_mean": [11.35],
             "PI_range": [0.2],
@@ -252,7 +253,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         out_df = self.ctrl.get_all_as_dataframe(encoded=False)
         expected_columns = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
