@@ -1133,17 +1133,33 @@ class EvaluationUI(QtWidgets.QDialog):
             return
 
         try:
-            QtWidgets.QApplication.setOverrideCursor(Qt.WaitCursor)
+            QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
             self.run_results.clear()
             all_results_list = []
+
+            # Count total formulations for progress tracking
+            total_forms = sum(len(forms)
+                              for forms in self.formulations_by_run.values())
+            progress_dialog = QtWidgets.QProgressDialog(
+                "Evaluating formulations...", "Cancel", 0, total_forms, self)
+            progress_dialog.setWindowTitle("Evaluating Model")
+            progress_dialog.setWindowModality(QtCore.Qt.WindowModal)
+            progress_dialog.setMinimumDuration(0)
+            progress_dialog.setValue(0)
+
+            progress_count = 0
+
             for run_name, formulations in self.formulations_by_run.items():
                 Log.i(
                     f"Evaluating run: {run_name} with {len(formulations)} formulations")
 
                 eval_dfs = []
                 for form in formulations:
-                    try:
+                    if progress_dialog.wasCanceled():
+                        Log.w("Evaluation canceled by user.")
+                        return
 
+                    try:
                         form_df = form.to_dataframe(
                             encoded=False, training=True)
                         eval_dfs.append(form_df)
@@ -1151,11 +1167,17 @@ class EvaluationUI(QtWidgets.QDialog):
                         Log.w(
                             f"Failed to convert formulation to DataFrame: {e}")
                         continue
+                    finally:
+                        # Update progress bar
+                        progress_count += 1
+                        progress_dialog.setValue(progress_count)
+                        QtWidgets.QApplication.processEvents()
 
                 if not eval_dfs:
                     Log.w(
                         f"No valid formulations to evaluate in run: {run_name}")
                     continue
+
                 eval_data = pd.concat(eval_dfs, ignore_index=True)
                 target_cols = [f"Viscosity_{rate}" for rate in
                                [self.shear_rates[name] for name in self.shear_rates.keys()]]
@@ -1174,9 +1196,8 @@ class EvaluationUI(QtWidgets.QDialog):
                     else:
                         formulation_ids.append(f"sample_{idx}")
                 results_df['formulation_id'] = formulation_ids
-                results_df = results_df.rename(columns={
-                    'pct_error': 'percentage_error'
-                })
+                results_df = results_df.rename(
+                    columns={'pct_error': 'percentage_error'})
 
                 def extract_numeric_shear_rate(shear_col_name):
                     try:
@@ -1185,12 +1206,16 @@ class EvaluationUI(QtWidgets.QDialog):
                         return float(shear_col_name)
                     except (ValueError, IndexError):
                         return shear_col_name
+
                 results_df['shear_rate_name'] = results_df['shear_rate']
                 results_df['shear_rate'] = results_df['shear_rate_name'].apply(
                     extract_numeric_shear_rate)
                 self.run_results[run_name] = results_df.copy()
 
                 all_results_list.append(results_df)
+
+            progress_dialog.setValue(total_forms)
+
             if all_results_list:
                 self.current_results_df = pd.concat(
                     all_results_list, ignore_index=True)
@@ -1488,16 +1513,16 @@ class EvaluationUI(QtWidgets.QDialog):
                 if col_name in ['abs_error', 'percentage_error']:
                     if isinstance(value, float):
                         if col_name == 'percentage_error':
-                            if value < 5.0:
+                            if value < 10.0:
                                 item.setBackground(QtGui.QColor(220, 255, 220))
-                            elif value < 15.0:
+                            elif value < 25.0:
                                 item.setBackground(QtGui.QColor(255, 255, 200))
                             else:
                                 item.setBackground(QtGui.QColor(255, 220, 220))
                         elif col_name == 'abs_error':
-                            if value < 0.1:
+                            if value < 1.0:
                                 item.setBackground(QtGui.QColor(220, 255, 220))
-                            elif value < 0.3:
+                            elif value < 5.0:
                                 item.setBackground(QtGui.QColor(255, 255, 200))
                             else:
                                 item.setBackground(QtGui.QColor(255, 220, 220))
@@ -1948,6 +1973,12 @@ class EvaluationUI(QtWidgets.QDialog):
         ax.spines['left'].set_linewidth(1)
         ax.spines['bottom'].set_linewidth(1)
         ax.tick_params(colors="#4C566A", which="both", labelsize=9)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ax.text(0.98, 0.02, timestamp,
+                transform=ax.transAxes, fontsize=7,
+                verticalalignment='bottom', horizontalalignment='right',
+                alpha=0.4, style='italic', color='#636e72')
 
     def _plot_bar_chart(self, ax, metric_values: list, labels: list, metric: str,
                         color_scheme: str = 'primary', shear_value: float = None):

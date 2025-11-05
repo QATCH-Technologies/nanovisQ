@@ -1011,30 +1011,25 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             zorder=5
         )
 
-        # Show hypothesis threshold bounds
         if self.show_threshold_check.isChecked():
-            if bounds[0] > -np.inf:
-                ax.axhline(
-                    y=bounds[0],
-                    color=color_hypothesis,
-                    linestyle='--',
-                    linewidth=2,
-                    alpha=0.8,
-                    dashes=(8, 4),
-                    label=f'Lower Bound ({bounds[0]:.1f} cP)',
-                    zorder=3
-                )
-            if bounds[1] < np.inf:
-                ax.axhline(
-                    y=bounds[1],
-                    color=color_hypothesis,
-                    linestyle='--',
-                    linewidth=2,
-                    alpha=0.8,
-                    dashes=(8, 4),
-                    label=f'Upper Bound ({bounds[1]:.1f} cP)',
-                    zorder=3
-                )
+            lower, upper = bounds
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+            if not np.isfinite(lower):
+                lower = y_min
+            if not np.isfinite(upper):
+                upper = y_max
+            ax.fill_between(
+                [x_min, x_max],
+                y1=lower,
+                y2=upper,
+                color=color_hypothesis,
+                alpha=0.2,  # translucent so the main curve stays visible
+                label=f'Hypothesis Range ({bounds[0]:.1f}-{bounds[1]:.1f} cP)'
+                if np.isfinite(bounds).all()
+                else "Hypothesis Range",
+                zorder=2
+            )
 
         ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
         ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
@@ -1067,7 +1062,12 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         ax.spines['left'].set_linewidth(1)
         ax.spines['bottom'].set_linewidth(1)
         ax.tick_params(colors="#4C566A", which="both", labelsize=9)
-
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ax.text(0.98, 0.02, timestamp,
+                transform=ax.transAxes, fontsize=7,
+                verticalalignment='bottom', horizontalalignment='right',
+                alpha=0.4, style='italic', color='#636e72')
         self.profile_figure.tight_layout()
         self.profile_canvas.draw()
 
@@ -1098,7 +1098,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self.hypothesis_result = None
 
             # Reset visualizations
-            self.outcome_label.setText("Run a hypothesis test to see results")
+            self.outcome_label.setText("Create a query...")
             self.outcome_label.setStyleSheet(
                 "font-size: 18pt; font-weight: bold; padding: 20px;"
             )

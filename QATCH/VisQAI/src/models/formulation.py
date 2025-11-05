@@ -107,7 +107,7 @@ class ViscosityProfile:
         """
         self._is_measured = value
 
-    def get_viscosity(self, shear_rate: float, std_tol: float = 0.0) -> float:
+    def get_viscosity(self, shear_rate: float, std_tol: float = 0.1) -> float:
         """Retrieve viscosity at a given shear rate using logarithmic interpolation,
         enforcing a monotonic (non-increasing) relationship with tolerance.
 
@@ -117,6 +117,7 @@ class ViscosityProfile:
         Args:
             shear_rate (float): Shear rate at which to compute viscosity.
             std_tol (float): Allowed standard deviation tolerance for monotonic deviation.
+                            e.g., 1.0 allows deviations up to 1 std dev of viscosity differences.
 
         Returns:
             float: The estimated viscosity at the specified shear rate.
@@ -128,21 +129,30 @@ class ViscosityProfile:
         srs = np.asarray(self.shear_rates, dtype=float)
         vs = np.asarray(self.viscosities, dtype=float)
 
-        # Check for exact match first
         exact_match = np.where(np.isclose(srs, sr))[0]
         if len(exact_match) > 0:
             return float(vs[exact_match[0]])
 
         vs_monotonic = vs.copy()
+
+        # Calculate tolerance based on standard deviation of viscosity differences
+        if len(vs) > 1:
+            visc_diffs = np.diff(vs)
+            std_dev = np.std(visc_diffs) if len(visc_diffs) > 0 else 0.0
+            tolerance = std_tol * std_dev
+        else:
+            tolerance = 0.0
+
+        # Apply monotonic constraint with tolerance
+        # Allow increases up to 'tolerance' to account for measurement noise
         for i in range(1, len(vs_monotonic)):
-            if vs_monotonic[i] > vs_monotonic[i - 1] + std_tol:
-                vs_monotonic[i] = vs_monotonic[i - 1] + std_tol
+            if vs_monotonic[i] > vs_monotonic[i - 1] + tolerance:
+                vs_monotonic[i] = vs_monotonic[i - 1] + tolerance
 
         def log_func(x, a, b, c):
-            return a * np.log10(np.maximum(x - c, 1e-8)) + b  # avoid log(0)
+            return a * np.log10(np.maximum(x - c, 1e-8)) + b
 
         try:
-            # Reasonable bounds: prevent weird large offsets
             bounds = ([-np.inf, -np.inf, -np.inf],
                       [np.inf, np.inf, np.min(srs) * 0.9])
             popt, _ = curve_fit(log_func, srs, vs_monotonic,
@@ -150,7 +160,6 @@ class ViscosityProfile:
             a_fit, b_fit, c_fit = popt
             fitted_viscosity = log_func(sr, a_fit, b_fit, c_fit)
         except Exception:
-
             idx = bisect.bisect_left(srs, sr)
             if idx == 0:
                 x0, x1, y0, y1 = srs[0], srs[1], vs_monotonic[0], vs_monotonic[1]
@@ -159,8 +168,11 @@ class ViscosityProfile:
             else:
                 x0, x1, y0, y1 = srs[idx -
                                      1], srs[idx], vs_monotonic[idx - 1], vs_monotonic[idx]
+
             fitted_viscosity = y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
+
         fitted_viscosity = max(fitted_viscosity, 0.0)
+
         if sr <= srs[0]:
             fitted_viscosity = vs_monotonic[0]
         elif sr >= srs[-1]:
