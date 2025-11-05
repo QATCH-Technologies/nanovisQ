@@ -304,15 +304,20 @@ class Optimizer:
         tracker = OptimizationProgressTracker()
 
         # Create callback wrapper for differential_evolution
-        def callback_wrapper(xk, convergence=0):
-            # Calculate best value from current solution
-            best_value = self._objective(xk)
+        best_obj_value = [float('inf')]
 
-            # Create status with actual objective value
+        def callback_wrapper(xk, convergence=0):
+            # Get current objective value (DE already computed this)
+            current_value = self._objective(xk)
+
+            # Update best if better
+            if current_value < best_obj_value[0]:
+                best_obj_value[0] = current_value
+
             status = OptimizationStatus(
                 iteration=len(tracker.history) + 1,
                 num_iterations=self.maxiter,
-                best_value=best_value,
+                best_value=best_obj_value[0],  # Use tracked best
                 population_size=self.popsize,
                 convergence=convergence
             )

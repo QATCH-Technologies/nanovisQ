@@ -633,26 +633,6 @@ class Ui_Main(object):
 
         self.floating_widget.move(x, y)
 
-    def showLearnTools(self, obj):
-        if not self.floating_widget.isVisible():
-            # Position and show the floating widget
-            self.set_floating_widget_position()
-            self.floating_widget.show()
-        else:
-            # Hide floating widget
-            self.floating_widget.hide()
-
-    def set_floating_widget_position(self):
-        # Calculate the desired position (e.g., top-right corner)
-        menu_widget_pos = + self.modemenu.mapToGlobal(QtCore.QPoint(0, 0))
-        menu_widget_width = self.modemenu.width()
-        offset = (14, 8)
-
-        x = menu_widget_pos.x() + menu_widget_width + offset[0]
-        y = menu_widget_pos.y() + offset[1]
-
-        self.floating_widget.move(x, y)
-
     def retranslateUi(self, MainWindow0):
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(

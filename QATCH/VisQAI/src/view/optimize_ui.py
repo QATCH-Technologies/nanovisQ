@@ -274,12 +274,12 @@ class OptimizationUI(QtWidgets.QDialog):
             self.class_types = []
             self.proteins_by_class = {}
             for protein in self.ingredients_by_type['Protein']:
-                if hasattr(protein, 'protein_class') and protein.protein_class:
-                    if protein.protein_class not in self.class_types:
-                        self.class_types.append(protein.protein_class)
-                    if protein.protein_class not in self.proteins_by_class:
-                        self.proteins_by_class[protein.protein_class] = []
-                    self.proteins_by_class[protein.protein_class].append(
+                if hasattr(protein, 'class_type') and protein.class_type:
+                    if protein.class_type not in self.class_types:
+                        self.class_types.append(protein.class_type)
+                    if protein.class_type not in self.proteins_by_class:
+                        self.proteins_by_class[protein.class_type] = []
+                    self.proteins_by_class[protein.class_type].append(
                         protein.name)
 
             Log.i(

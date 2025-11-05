@@ -955,7 +955,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         bounds = self.hypothesis_result['bounds']
 
         # Color scheme
-        color_actual = "#00A3DA"
         color_predicted = "#32E2DF"
         color_ci = "#69EAC5"
         color_hypothesis = "#BF616A"  # Muted red for hypothesis bounds

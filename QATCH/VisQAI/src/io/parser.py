@@ -305,7 +305,7 @@ class Parser:
         units = self.get_param_attr("buffer_concentration", "units")
         if units is None:
             units = "pH"
-        buffer_ph = buffer_obj.pH
+        buffer_ph = buffer_obj.pH if buffer_obj is not None else 0.0
         found = {
             "name": name is not None,
             "conc": conc is not None,
