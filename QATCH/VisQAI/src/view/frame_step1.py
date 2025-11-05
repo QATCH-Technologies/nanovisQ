@@ -1291,10 +1291,10 @@ class FrameStep1(QtWidgets.QDialog):
     def user_all_runs_removed(self) -> None:
         """Prompt the user to confirm and remove all runs.
 
-        Displays a confirmation dialog asking the user if they want to 
-        remove all runs. If confirmed, clears all internal data 
-        structures (`all_files` and `loaded_features`), removes all 
-        items from the list view model, resets the placeholder text, 
+        Displays a confirmation dialog asking the user if they want to
+        remove all runs. If confirmed, clears all internal data
+        structures (`all_files` and `loaded_features`), removes all
+        items from the list view model, resets the placeholder text,
         and clears any active file selections, suppressing prompts.
 
         Any errors encountered will be logged to `Log.e`.
@@ -1541,7 +1541,6 @@ class FrameStep1(QtWidgets.QDialog):
             )
             if reply == QtWidgets.QMessageBox.No:
                 return
-
         # If we haven't bailed at a `return` yet, proceed to loading run files.
         self.batch_add_run_files(all_capture_files)
 

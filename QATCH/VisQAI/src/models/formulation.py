@@ -21,12 +21,17 @@ Author:
 
 Date:
     2025-10-28
+    2025-10-28
 
 Version:
+    1.5
     1.5
 """
 import math
 import pandas as pd
+from scipy.optimize import curve_fit
+import numpy as np
+import bisect
 from scipy.optimize import curve_fit
 import numpy as np
 import bisect
@@ -120,6 +125,7 @@ class ViscosityProfile:
                             e.g., 1.0 allows deviations up to 1 std dev of viscosity differences.
 
         Returns:
+            float: The estimated viscosity at the specified shear rate.
             float: The estimated viscosity at the specified shear rate.
         """
         if not isinstance(shear_rate, (int, float)):
@@ -276,6 +282,7 @@ class Formulation:
     """Represents a complete formulation consisting of various components, temperature, and viscosity profile.
 
     Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
+    Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
     along with an optional temperature and viscosity profile.
 
     Attributes:
@@ -410,9 +417,12 @@ class Formulation:
         Args:
             excipient (Excipient): An instance of `Excipient` to include.
             concentration (float): Concentration of the excipient (must be ≥ 0).
+            excipient (Excipient): An instance of `Excipient` to include.
+            concentration (float): Concentration of the excipient (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
 
         Raises:
+            TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
@@ -469,6 +479,7 @@ class Formulation:
         """Get the excipient component of the formulation.
 
         Returns:
+            Optional[Component]: The excipient `Component` if set, otherwise None.
             Optional[Component]: The excipient `Component` if set, otherwise None.
         """
         return self._components["excipient"]

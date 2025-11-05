@@ -62,6 +62,39 @@ class _MainWindow(QtWidgets.QMainWindow):
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
 
+        # Get the application instance safely and connect the signals
+        app_instance = QtWidgets.QApplication.instance()
+        if app_instance:
+            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
+            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
+            allow_hide = True
+            if widget_clicked is self.ui0.mode_learn:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_text:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_arrow:
+                allow_hide = False
+            if self.ui0.floating_widget.isVisible() and allow_hide:
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, focus_window):
+        # Hide the floating widget only when the focus leaves this window
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        if focus_window is None or focus_window != self.windowHandle():
+            self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
+
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
         res = PopUp.question(self, Constants.app_title,
@@ -2435,6 +2468,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
                 Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
@@ -2504,6 +2538,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "Skipping migration check: could not create temp decrypted DB.")
                     finally:
                         machine_database.cleanup_temp_decrypt()
+
+                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
+                # update machine db with changes from bundled db.
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2512,6 +2549,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
+                # TODO: Think of a better way to do this!
+                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                #     shutil.copy(bundled_database_path, machine_database_path)
+                #     Log.w(
+                #         "Operating in development mode, copying bundled db into log data.")
             else:
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
