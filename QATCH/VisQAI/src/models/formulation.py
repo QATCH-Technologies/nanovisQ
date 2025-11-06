@@ -13,7 +13,7 @@ It includes:
 
 The classes provide validation for input parameters, conversion to dictionary
 representations, and comparison logic for equality checks. Utility methods ensure
-that temperature defaults to 25°C if not provided or if NaN, and that viscosity
+that temperature defaults to 25C if not provided or if NaN, and that viscosity
 profiles are properly typed.
 
 Author:
@@ -24,7 +24,6 @@ Date:
     2025-10-28
 
 Version:
-    1.5
     1.5
 """
 import math
@@ -112,7 +111,7 @@ class ViscosityProfile:
         """
         self._is_measured = value
 
-    def get_viscosity(self, shear_rate: float, std_tol: float = 0.1) -> float:
+    def get_viscosity(self, shear_rate: float, std_tol: float = 0.0) -> float:
         """Retrieve viscosity at a given shear rate using logarithmic interpolation,
         enforcing a monotonic (non-increasing) relationship with tolerance.
 

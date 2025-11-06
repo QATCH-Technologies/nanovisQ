@@ -79,10 +79,6 @@ class OptimizationProgressTracker:
 
         # Print progress
         improvement = self.start_value - status.best_value if self.start_value else 0
-        print(f"[{status.iteration:3d}/{status.num_iterations}] "
-              f"Best: {status.best_value:10.6f} | "
-              f"Improvement: {improvement:10.6f} | "
-              f"Progress: {status.progress_percent:6.1f}%")
 
     def get_improvement_rate(self) -> float:
         """Calculate average improvement per iteration."""
@@ -163,6 +159,9 @@ class Optimizer:
         self.tol = tol
         self.seed = seed
 
+        # Stop flag for graceful termination
+        self._stop_requested = False
+
         # Build numeric bounds and encoding metadata
         self.bounds, self.encoding = self.constraints.build()
 
@@ -177,6 +176,10 @@ class Optimizer:
                     cls = self.constraints._FEATURE_CLASS[feat]
                     choices = [ing for ing in all_ings if isinstance(ing, cls)]
                 self.cat_choices[feat] = choices
+
+    def stop(self) -> None:
+        """Request optimization to stop gracefully."""
+        self._stop_requested = True
 
     def _decode(self, x: np.ndarray) -> Dict[str, Any]:
         """
@@ -270,6 +273,10 @@ class Optimizer:
         Returns:
             float: Loss value (MSE) for this candidate.
         """
+        # Check if stop was requested
+        if self._stop_requested:
+            raise StopIteration("Optimization stopped by user request")
+
         feat_dict = self._decode(x)
         formulation = self._build_formulation(feat_dict)
         pred = self.predictor.predict(
@@ -299,25 +306,50 @@ class Optimizer:
 
         Returns:
             Formulation: Best formulation found by optimization.
+
+        Raises:
+            StopIteration: If optimization is stopped via stop() method.
         """
+        # Reset stop flag
+        self._stop_requested = False
+
         # Create progress tracker
         tracker = OptimizationProgressTracker()
 
-        # Create callback wrapper for differential_evolution
+        # Track best objective value efficiently using a wrapper
         best_obj_value = [float('inf')]
+        best_x = [None]
 
+        # Wrap objective to track best value without extra evaluations
+        def tracked_objective(x: np.ndarray) -> float:
+            """Wrapper that tracks the best objective value."""
+            value = self._objective(x)
+
+            # Update best if this is better
+            if value < best_obj_value[0]:
+                best_obj_value[0] = value
+                best_x[0] = x.copy()
+
+            return value
+
+        # Create callback for differential_evolution
         def callback_wrapper(xk, convergence=0):
-            # Get current objective value (DE already computed this)
-            current_value = self._objective(xk)
+            """
+            Callback called by differential_evolution after each iteration.
 
-            # Update best if better
-            if current_value < best_obj_value[0]:
-                best_obj_value[0] = current_value
+            Args:
+                xk: Current best solution vector
+                convergence: Convergence metric value
+            """
+            # Check if stop was requested
+            if self._stop_requested:
+                return True  # Returning True stops the optimization
 
+            # Create status object with tracked best value
             status = OptimizationStatus(
                 iteration=len(tracker.history) + 1,
                 num_iterations=self.maxiter,
-                best_value=best_obj_value[0],  # Use tracked best
+                best_value=best_obj_value[0],  # Use tracked best value
                 population_size=self.popsize,
                 convergence=convergence
             )
@@ -327,24 +359,50 @@ class Optimizer:
 
             # Call user's progress callback if provided
             if progress_callback:
-                progress_callback(status)
-        result = differential_evolution(
-            func=self._objective,
-            bounds=self.bounds,
-            maxiter=self.maxiter,
-            popsize=self.popsize,
-            tol=self.tol,
-            seed=self.seed,
-            polish=True,
-            disp=False,
-            workers=int(workers),
-            atol=atol,
-            recombination=recombination,
-            mutation=mutation,
-            strategy=strategy,
-            init=init,
-            callback=callback_wrapper,
-        )
+                try:
+                    progress_callback(status)
+                except Exception as e:
+                    # Log but don't stop optimization for callback errors
+                    print(f"Warning: Progress callback raised exception: {e}")
 
-        best_feats = self._decode(result.x)
-        return self._build_formulation(best_feats)
+            return False  # Continue optimization
+
+        try:
+            result = differential_evolution(
+                func=tracked_objective,  # Use tracked wrapper
+                bounds=self.bounds,
+                maxiter=self.maxiter,
+                popsize=self.popsize,
+                tol=self.tol,
+                seed=self.seed,
+                polish=True,
+                disp=False,
+                workers=int(workers),
+                atol=atol,
+                recombination=recombination,
+                mutation=mutation,
+                strategy=strategy,
+                init=init,
+                callback=callback_wrapper,
+            )
+
+            # Build formulation from result
+            best_feats = self._decode(result.x)
+            return self._build_formulation(best_feats)
+
+        except StopIteration as e:
+            # Optimization was stopped - return best solution found so far
+            if best_x[0] is not None:
+                best_feats = self._decode(best_x[0])
+                formulation = self._build_formulation(best_feats)
+
+                # Attach metadata about early termination
+                formulation._optimization_stopped = True
+                formulation._final_objective_value = best_obj_value[0]
+                formulation._iterations_completed = len(tracker.history)
+
+                return formulation
+            else:
+                # No solution found yet
+                raise RuntimeError(
+                    "Optimization stopped before any solution was found") from e

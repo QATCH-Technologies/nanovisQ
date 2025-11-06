@@ -384,7 +384,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.temperature_spin = QtWidgets.QDoubleSpinBox()
         self.temperature_spin.setRange(0.0, 100.0)
         self.temperature_spin.setValue(25.0)
-        self.temperature_spin.setSuffix(" °C")
+        self.temperature_spin.setSuffix(" \u00B0C")
         self.temperature_spin.setDecimals(1)
         self.temperature_spin.setSingleStep(0.5)
         self.temperature_spin.setMinimumWidth(120)
@@ -393,7 +393,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         temp_layout.addWidget(self.temperature_spin)
         temp_layout.addStretch()
 
-        temp_label = QtWidgets.QLabel("Temperature (°C):")
+        temp_label = QtWidgets.QLabel("Temperature (\u00B0C):")
         temp_label.setStyleSheet("font-weight: bold;")
         form_layout.addRow(temp_label, temp_layout)
 
