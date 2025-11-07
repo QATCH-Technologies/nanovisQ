@@ -392,7 +392,7 @@ class OptimizationUI(QtWidgets.QDialog):
 
         # Constraints UI
         self.constraints_ui: Optional[ConstraintsUI] = None
-
+        self.current_constraints = None
         # Initialize file dialogs
         self._init_file_dialogs()
 
@@ -607,6 +607,31 @@ class OptimizationUI(QtWidgets.QDialog):
 
         return group
 
+    def open_constraints_dialog(self) -> None:
+        """Open the constraints configuration dialog."""
+        if not self.database or not self.ing_ctrl:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Database Error",
+                "Database not initialized. Cannot configure constraints."
+            )
+            return
+
+        # Create constraints UI only once
+        if self.constraints_ui is None:
+            self.constraints_ui = ConstraintsUI(self, step=6)
+
+        # Show the existing dialog (preserves all UI state)
+        self.constraints_ui.add_suggestion_dialog()
+
+    def set_constraints(self, constraints: Constraints) -> None:
+        """Store the constraints (called from ConstraintsUI.accept_suggestions)."""
+        self.current_constraints = constraints
+        # Update your status label
+        num_constraints = len(constraints._ranges) + len(constraints._choices)
+        self.constraints_status_label.setText(
+            f"{num_constraints} constraint(s) defined")
+
     def _create_optimization_settings_group(self) -> QtWidgets.QGroupBox:
         """Create optimization settings group with improved UI/UX."""
         group = QtWidgets.QGroupBox("Optimization Settings")
@@ -615,7 +640,7 @@ class OptimizationUI(QtWidgets.QDialog):
         # Add info button at the top
         header_layout = QtWidgets.QHBoxLayout()
         info_label = QtWidgets.QLabel(
-            "Configure differential evolution optimization parameters")
+            "Configure optimization parameters")
         info_label.setStyleSheet(
             "color: #666; font-style: italic; font-size: 10px;")
         header_layout.addWidget(info_label)
@@ -635,17 +660,22 @@ class OptimizationUI(QtWidgets.QDialog):
         form_layout.setFieldGrowthPolicy(
             QtWidgets.QFormLayout.ExpandingFieldsGrow)
         form_layout.setLabelAlignment(QtCore.Qt.AlignRight)
-        form_layout.setVerticalSpacing(8)
+        form_layout.setVerticalSpacing(10)
+
+        # Consistent widget width
+        widget_width = 200
 
         # Basic Settings Label
         basic_label = QtWidgets.QLabel("Basic Settings")
-        basic_label.setStyleSheet("font-weight: bold; color: #333;")
+        basic_label.setStyleSheet(
+            "font-weight: bold; color: #333; font-size: 11px;")
         form_layout.addRow(basic_label)
 
         # Max iterations
         self.maxiter_spin = QtWidgets.QSpinBox()
         self.maxiter_spin.setRange(10, 1000)
         self.maxiter_spin.setValue(100)
+        self.maxiter_spin.setMaximumWidth(widget_width)
         self.maxiter_spin.setToolTip(
             "Maximum number of optimization iterations.\n"
             "Increase if optimization hasn't converged.\n"
@@ -656,6 +686,7 @@ class OptimizationUI(QtWidgets.QDialog):
         self.popsize_spin = QtWidgets.QSpinBox()
         self.popsize_spin.setRange(5, 50)
         self.popsize_spin.setValue(15)
+        self.popsize_spin.setMaximumWidth(widget_width)
         self.popsize_spin.setToolTip(
             "Number of candidate solutions per iteration.\n"
             "Rule of thumb: 15 × (number of parameters)\n"
@@ -667,6 +698,7 @@ class OptimizationUI(QtWidgets.QDialog):
         self.tolerance_spin.setRange(1e-9, 1e-3)
         self.tolerance_spin.setValue(1e-6)
         self.tolerance_spin.setDecimals(9)
+        self.tolerance_spin.setMaximumWidth(widget_width)
         self.tolerance_spin.setStepType(
             QtWidgets.QAbstractSpinBox.AdaptiveDecimalStepType)
         self.tolerance_spin.setToolTip(
@@ -683,6 +715,7 @@ class OptimizationUI(QtWidgets.QDialog):
             "randtobest1bin", "randtobest1exp"
         ])
         self.strategy_combo.setCurrentText("best1bin")
+        self.strategy_combo.setMaximumWidth(widget_width)
         self.strategy_combo.setToolTip(
             "DE strategy: [base]/[#vectors]/[crossover]\n"
             "best1bin (default) - Fast, good for most problems\n"
@@ -690,80 +723,48 @@ class OptimizationUI(QtWidgets.QDialog):
             "Click Help for detailed strategy guide")
         form_layout.addRow("Strategy:", self.strategy_combo)
 
-        # Spacer
-        form_layout.addRow(" ", QtWidgets.QWidget())
+        # Section separator
+        separator1 = QtWidgets.QFrame()
+        separator1.setFrameShape(QtWidgets.QFrame.HLine)
+        separator1.setFrameShadow(QtWidgets.QFrame.Sunken)
+        separator1.setStyleSheet("QFrame { color: #CCC; }")
+        form_layout.addRow(separator1)
 
         # Advanced Settings Label
         advanced_label = QtWidgets.QLabel("Advanced Settings")
-        advanced_label.setStyleSheet("font-weight: bold; color: #333;")
+        advanced_label.setStyleSheet(
+            "font-weight: bold; color: #333; font-size: 11px;")
         form_layout.addRow(advanced_label)
 
-        # Absolute tolerance
-        self.atol_spin = QtWidgets.QSpinBox()
-        self.atol_spin.setRange(0, 10)
-        self.atol_spin.setValue(0)
-        self.atol_spin.setToolTip(
-            "Absolute convergence threshold.\n"
-            "Usually left at 0 (disabled).\n"
-            "Use relative tolerance instead")
-        form_layout.addRow("Absolute Tolerance:", self.atol_spin)
-
-        # Random seed
-        seed_widget = QtWidgets.QWidget()
-        seed_layout = QtWidgets.QHBoxLayout(seed_widget)
-        seed_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.use_seed_check = QtWidgets.QCheckBox()
-        self.use_seed_check.setToolTip(
-            "Enable for reproducible results.\n"
-            "Useful for debugging and comparisons")
-        seed_layout.addWidget(self.use_seed_check)
-
-        self.seed_spin = QtWidgets.QSpinBox()
-        self.seed_spin.setRange(0, 999999)
-        self.seed_spin.setValue(42)
-        self.seed_spin.setEnabled(False)
-        self.seed_spin.setToolTip("Random seed value (0-999999)")
-        self.use_seed_check.toggled.connect(self.seed_spin.setEnabled)
-        seed_layout.addWidget(self.seed_spin)
-        seed_layout.addStretch()
-
-        form_layout.addRow("Use Random Seed:", seed_widget)
-
-        # Mutation
-        mutation_widget = QtWidgets.QWidget()
-        mutation_layout = QtWidgets.QHBoxLayout(mutation_widget)
-        mutation_layout.setContentsMargins(0, 0, 0, 0)
-
-        mutation_layout.addWidget(QtWidgets.QLabel("Min:"))
+        # Mutation Min
         self.mutation_min_spin = QtWidgets.QDoubleSpinBox()
         self.mutation_min_spin.setRange(0.0, 2.0)
         self.mutation_min_spin.setValue(0.5)
         self.mutation_min_spin.setSingleStep(0.1)
+        self.mutation_min_spin.setMaximumWidth(widget_width)
         self.mutation_min_spin.setToolTip(
             "Minimum mutation factor F.\n"
             "0.5 = conservative, 1.0 = aggressive\n"
             "Use [0.5, 1.0] for dithering")
-        mutation_layout.addWidget(self.mutation_min_spin)
+        form_layout.addRow("Mutation Min (F):", self.mutation_min_spin)
 
-        mutation_layout.addWidget(QtWidgets.QLabel("Max:"))
+        # Mutation Max
         self.mutation_max_spin = QtWidgets.QDoubleSpinBox()
         self.mutation_max_spin.setRange(0.0, 2.0)
         self.mutation_max_spin.setValue(1.0)
         self.mutation_max_spin.setSingleStep(0.1)
+        self.mutation_max_spin.setMaximumWidth(widget_width)
         self.mutation_max_spin.setToolTip(
             "Maximum mutation factor F.\n"
             "Set equal to min for constant F")
-        mutation_layout.addWidget(self.mutation_max_spin)
-        mutation_layout.addStretch()
-
-        form_layout.addRow("Mutation (F):", mutation_widget)
+        form_layout.addRow("Mutation Max (F):", self.mutation_max_spin)
 
         # Recombination
         self.recombination_spin = QtWidgets.QDoubleSpinBox()
         self.recombination_spin.setRange(0.0, 1.0)
         self.recombination_spin.setValue(0.7)
         self.recombination_spin.setSingleStep(0.1)
+        self.recombination_spin.setMaximumWidth(widget_width)
         self.recombination_spin.setToolTip(
             "Crossover probability (CR).\n"
             "0.7 is standard for most problems.\n"
@@ -775,12 +776,49 @@ class OptimizationUI(QtWidgets.QDialog):
         self.init_combo.addItems(
             ['latinhypercube', 'sobol', 'halton', 'random'])
         self.init_combo.setCurrentText("latinhypercube")
+        self.init_combo.setMaximumWidth(widget_width)
         self.init_combo.setToolTip(
             "Initial population generation method.\n"
             "latinhypercube (default) - Good coverage\n"
             "sobol/halton - Low-discrepancy sequences\n"
             "random - Standard random")
         form_layout.addRow("Initialization:", self.init_combo)
+
+        # Absolute tolerance
+        self.atol_spin = QtWidgets.QSpinBox()
+        self.atol_spin.setRange(0, 10)
+        self.atol_spin.setValue(0)
+        self.atol_spin.setMaximumWidth(widget_width)
+        self.atol_spin.setToolTip(
+            "Absolute convergence threshold.\n"
+            "Usually left at 0 (disabled).\n"
+            "Use relative tolerance instead")
+        form_layout.addRow("Absolute Tolerance:", self.atol_spin)
+
+        # Random seed
+        seed_widget = QtWidgets.QWidget()
+        seed_layout = QtWidgets.QHBoxLayout(seed_widget)
+        seed_layout.setContentsMargins(0, 0, 0, 0)
+        seed_layout.setSpacing(8)
+
+        self.seed_spin = QtWidgets.QSpinBox()
+        self.seed_spin.setRange(0, 999999)
+        self.seed_spin.setValue(42)
+        self.seed_spin.setEnabled(False)
+        self.seed_spin.setMaximumWidth(120)
+        self.seed_spin.setToolTip("Random seed value (0-999999)")
+        seed_layout.addWidget(self.seed_spin)
+
+        self.use_seed_check = QtWidgets.QCheckBox("Use seed")
+        self.use_seed_check.setToolTip(
+            "Enable for reproducible results.\n"
+            "Useful for debugging and comparisons")
+        self.use_seed_check.toggled.connect(self.seed_spin.setEnabled)
+        seed_layout.addWidget(self.use_seed_check)
+
+        seed_layout.addStretch()
+
+        form_layout.addRow("Random Seed:", seed_widget)
 
         main_layout.addLayout(form_layout)
 
@@ -1050,42 +1088,6 @@ class OptimizationUI(QtWidgets.QDialog):
                     "Save Error",
                     f"Failed to save target profile:\n{str(e)}"
                 )
-
-    def open_constraints_dialog(self) -> None:
-        """Open the constraints configuration dialog."""
-        if not self.database or not self.ing_ctrl:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Database Error",
-                "Database not initialized. Cannot configure constraints."
-            )
-            return
-
-        # Create constraints UI (step 6 for optimization)
-        self.constraints_ui = ConstraintsUI(self, step=6)
-        self.constraints_ui.add_suggestion_dialog()
-
-    def set_constraints(self, constraints: Constraints) -> None:
-        """Set the constraints object from the constraints dialog."""
-        self.constraints = constraints
-
-        # Update status label
-        if constraints:
-            # Count the number of constraints
-            bounds, encoding = constraints.build()
-            num_constraints = len(
-                [enc for enc in encoding if enc.get('choices') or enc.get('range')])
-
-            if num_constraints > 0:
-                self.constraints_status_label.setText(
-                    f"{num_constraints} constraint(s) defined")
-            else:
-                self.constraints_status_label.setText(
-                    "No specific constraints (using defaults)")
-        else:
-            self.constraints_status_label.setText("No constraints defined")
-
-        self._check_ready_state()
 
     def _build_constraints(self) -> Constraints:
         """Build constraints object from UI inputs."""

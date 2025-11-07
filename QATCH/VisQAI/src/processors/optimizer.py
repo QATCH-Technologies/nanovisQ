@@ -7,17 +7,18 @@ This module defines the `Optimizer` class, which uses differential evolution to
 search the formulation feature space under specified constraints, minimizing
 the mean squared error between predicted and target viscosity profiles.
 
-Enhanced with real-time progress visualization support.
+Enhanced with real-time progress visualization support and constraint enforcement
+for None/none ingredient categories (ensuring 0.0 concentration when ingredient is None).
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
     Enhanced by: Claude
 
 Date:
-    2025-11-04
+    2025-11-07
 
 Version:
-    1.2
+    1.3
 """
 import multiprocessing
 from typing import Dict, Any, List, Optional, Callable
@@ -181,9 +182,27 @@ class Optimizer:
         """Request optimization to stop gracefully."""
         self._stop_requested = True
 
+    def _is_none_ingredient(self, ingredient: Ingredient) -> bool:
+        """
+        Check if an ingredient represents a 'None' or empty choice.
+
+        Args:
+            ingredient (Ingredient): The ingredient to check.
+
+        Returns:
+            bool: True if the ingredient is None or has a name indicating no ingredient.
+        """
+        if ingredient is None:
+            return True
+        if hasattr(ingredient, 'name'):
+            name_lower = str(ingredient.name).lower()
+            return name_lower in ['none', 'null', 'empty', 'n/a', '']
+        return False
+
     def _decode(self, x: np.ndarray) -> Dict[str, Any]:
         """
         Decodes a numeric vector into a feature-to-value mapping.
+        Enforces constraint that None ingredients must have 0.0 concentration.
 
         Args:
             x (np.ndarray): Array of optimization variables.
@@ -192,6 +211,18 @@ class Optimizer:
             Dict[str, Any]: Mapping from feature names to decoded values (floats or Ingredients).
         """
         out: Dict[str, Any] = {}
+
+        # Mapping of ingredient types to their concentration features
+        ingredient_to_conc = {
+            "Buffer_type": "Buffer_conc",
+            "Protein_type": "Protein_conc",
+            "Stabilizer_type": "Stabilizer_conc",
+            "Salt_type": "Salt_conc",
+            "Surfactant_type": "Surfactant_conc",
+            "Excipient_type": "Excipient_conc"
+        }
+
+        # First pass: decode all features
         for xi, enc in zip(x, self.encoding):
             feat = enc["feature"]
             if enc["type"] == "cat":
@@ -201,6 +232,13 @@ class Optimizer:
                 out[feat] = self.cat_choices[feat][idx]
             else:
                 out[feat] = float(xi)
+
+        # Second pass: enforce None ingredient -> 0.0 concentration constraint
+        for ing_type, conc_feat in ingredient_to_conc.items():
+            if ing_type in out and conc_feat in out:
+                if self._is_none_ingredient(out[ing_type]):
+                    out[conc_feat] = 0.0
+
         return out
 
     def _build_formulation(self, feat_dict: Dict[str, Any]) -> Formulation:
@@ -266,18 +304,44 @@ class Optimizer:
     def _objective(self, x: np.ndarray) -> float:
         """
         Objective function for the optimizer: MSE between predicted and target profiles.
+        Includes penalty for invalid None ingredient + non-zero concentration combinations.
 
         Args:
             x (np.ndarray): Candidate variable vector.
 
         Returns:
-            float: Loss value (MSE) for this candidate.
+            float: Loss value (MSE) for this candidate, plus penalty for constraint violations.
         """
         # Check if stop was requested
         if self._stop_requested:
             raise StopIteration("Optimization stopped by user request")
 
         feat_dict = self._decode(x)
+
+        # Calculate penalty for invalid combinations (before decoding enforces them)
+        # This helps guide the optimizer away from these regions
+        penalty = 0.0
+        ingredient_to_conc = {
+            "Buffer_type": "Buffer_conc",
+            "Protein_type": "Protein_conc",
+            "Stabilizer_type": "Stabilizer_conc",
+            "Salt_type": "Salt_conc",
+            "Surfactant_type": "Surfactant_conc",
+            "Excipient_type": "Excipient_conc"
+        }
+
+        for ing_type, conc_feat in ingredient_to_conc.items():
+            if ing_type in feat_dict and conc_feat in feat_dict:
+                # Check the raw x value to see what the optimizer was trying to suggest
+                # Find the index of the concentration feature
+                for i, enc in enumerate(self.encoding):
+                    if enc["feature"] == conc_feat:
+                        raw_conc = x[i]
+                        if self._is_none_ingredient(feat_dict[ing_type]) and raw_conc > 0.01:
+                            # Add penalty proportional to how far from 0 the concentration was
+                            penalty += 1000.0 * abs(raw_conc)
+                        break
+
         formulation = self._build_formulation(feat_dict)
         pred = self.predictor.predict(
             df=formulation.to_dataframe(training=False))
@@ -285,7 +349,9 @@ class Optimizer:
             shear_rates=[100, 1000, 10000, 100000, 15000000],
             viscosities=pred.flatten().tolist()
         )
-        return self._mse_loss(pred_vp, self.target)
+        mse = self._mse_loss(pred_vp, self.target)
+
+        return mse + penalty
 
     def optimize(self, strategy: str = 'best1bin', mutation: tuple = (0.5, 1),
                  recombination: float = 0.7, init: str = 'latinhypercube',
