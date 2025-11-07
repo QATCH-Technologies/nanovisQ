@@ -61,6 +61,7 @@ try:
     from src.models.predictor import Predictor
     from src.utils.metrics import Metrics
     from src.io.parser import Parser
+    from src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
@@ -68,6 +69,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.utils.metrics import Metrics
     from QATCH.VisQAI.src.io.parser import Parser
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -206,7 +208,7 @@ class EvaluationUI(QtWidgets.QDialog):
             model_dialog (QtWidgets.QFileDialog): Dialog for selecting VisQ.AI model ZIP files.
             file_dialog (QtWidgets.QFileDialog): Dialog for selecting captured run ZIP files.
         """
-        self.model_dialog = QtWidgets.QFileDialog()
+        self.model_dialog = ModelSelectionDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
         model_path = os.path.join(Architecture.get_path(),
@@ -678,14 +680,19 @@ class EvaluationUI(QtWidgets.QDialog):
         archive (ZIP file). Upon selection, it attempts to initialize a `Predictor`
         instance with the chosen model and updates the UI to reflect the loaded model.
         """
-        if self.model_dialog.exec_():
-
+        if hasattr(self, 'model_dialog') and callable(getattr(self.model_dialog, 'exec_', None)):
             model_path = os.path.join(Architecture.get_path(),
-                                      "QATCH/VisQAI/assets")
+                                        "QATCH/VisQAI/assets")
             if os.path.exists(model_path):
                 self.model_dialog.setDirectory(model_path)
             else:
                 self.model_dialog.setDirectory(Constants.log_prefer_path)
+        else:
+            Log.e(TAG, "Model dialog is not properly initialized.")
+            return
+        
+        if self.model_dialog.exec_():
+
             selected_files = self.model_dialog.selectedFiles()
             if selected_files:
                 file_path = selected_files[0]

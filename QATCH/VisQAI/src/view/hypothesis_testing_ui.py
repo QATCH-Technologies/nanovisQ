@@ -62,6 +62,7 @@ try:
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
     from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
+    from src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
@@ -71,6 +72,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -174,7 +176,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
     def _init_file_dialogs(self) -> None:
         """Initialize file dialog for model selection."""
-        self.model_dialog = QtWidgets.QFileDialog()
+        self.model_dialog = ModelSelectionDialog()
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.model_dialog.setNameFilter(
             "VisQAI Model Files (*.zip);;All Files (*)")

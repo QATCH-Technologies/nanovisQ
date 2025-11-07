@@ -35,6 +35,7 @@ try:
     from src.view.constraints_ui import ConstraintsUI
     from src.managers.version_manager import VersionManager
     from src.utils.progress_tracker import Lite_QProgressDialog
+    from src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from src.view.frame_step1 import FrameStep1
         from src.view.main_window import VisQAIWindow
@@ -49,6 +50,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
     from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.utils.progress_tracker import Lite_QProgressDialog
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -83,7 +85,7 @@ class FrameStep2(QtWidgets.QDialog):
         left_menu_layout = QtWidgets.QVBoxLayout(left_menu_widget)
 
         # Browse model layout
-        self.model_dialog = QtWidgets.QFileDialog()
+        self.model_dialog = ModelSelectionDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
         model_path = os.path.join(Architecture.get_path(),
@@ -337,10 +339,10 @@ class FrameStep2(QtWidgets.QDialog):
 
     def proceed_to_next_step(self):
         if self.step == 4:
-            # proceed to step 5
+            # proceed to step 6: Learn -> Predict
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
-                self.parent.tab_widget.setCurrentIndex(i+1)
+                self.parent.tab_widget.setCurrentIndex(i+2)
         else:
             # show final report
             raise NotImplementedError(
