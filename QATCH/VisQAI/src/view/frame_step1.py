@@ -39,6 +39,7 @@ try:
     from src.utils.icon_utils import IconUtils
     from src.utils.list_utils import ListUtils
     from src.view.checkable_combo_box import CheckableComboBox
+    from src.view.model_selection_dialog import ModelSelectionDialog
     from src.view.table_view import TableView, Color
     from src.view.constraints_ui import ConstraintsUI
     from src.io.parser import Parser
@@ -58,6 +59,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.utils.icon_utils import IconUtils
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
     from QATCH.VisQAI.src.view.table_view import TableView, Color
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
     from QATCH.VisQAI.src.io.parser import Parser
@@ -116,7 +118,7 @@ class FrameStep1(QtWidgets.QDialog):
         # Select model (for step 5: Predict)
         if True:  # step == 5:
             # Browse model layout
-            self.model_dialog = QtWidgets.QFileDialog()
+            self.model_dialog = ModelSelectionDialog()
             self.model_dialog.setOption(
                 QtWidgets.QFileDialog.DontUseNativeDialog, True)
             model_path = os.path.join(Architecture.get_path(),
