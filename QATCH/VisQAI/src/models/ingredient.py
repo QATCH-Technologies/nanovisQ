@@ -334,15 +334,53 @@ class ProteinClass(StrEnum):
             self.FC_FUSION: 4.5,
             self.BISPECIFIC: 5.0,
             self.TRISPECIFIC: 5.5,
-            self.NONE: 2.0,
+            self.NONE: 0.0,
             self.ADC: 2.5,
             self.OTHER: 2.0,
         }
         return kP_mapping[self]
 
+    @property
+    def hci(self) -> float:
+        hci_mapping = {
+            self.POLYCLONAL: 0.90,
+            self.MAB_IGG1: 1.00,
+            self.MAB_IGG4: 1.10,
+            self.FC_FUSION: 1.50,
+            self.BISPECIFIC: 1.30,
+            self.TRISPECIFIC: 1.45,
+            self.NONE: 0.00,
+            self.ADC: 1.30,
+            self.OTHER: 0.90,
+        }
+        return hci_mapping[self]
+
+    @property
+    def c_class(self) -> float:
+        c_class_mapping = {
+            self.POLYCLONAL: 0.90,
+            self.MAB_IGG1: 1.00,
+            self.MAB_IGG4: 1.30,
+            self.FC_FUSION: 1.40,
+            self.BISPECIFIC: 1.50,
+            self.TRISPECIFIC: 1.70,
+            self.NONE: 0.00,
+            self.ADC: 1.50,
+            self.OTHER: 0.85,
+        }
+        return c_class_mapping[self]
+
     @classmethod
     def get_kP_mapping(cls) -> Dict[str, float]:
         return {pc.value: pc.kP for pc in cls}
+
+    @classmethod
+    def get_hci_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.hci for pc in cls}
+
+    @classmethod
+    def get_c_class_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.c_lass for pc in cls}
 
 
 class Protein(Ingredient):

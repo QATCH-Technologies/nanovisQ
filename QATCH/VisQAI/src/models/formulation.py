@@ -279,6 +279,7 @@ class Component:
 
 
 class Formulation:
+    TAU = 1.5
     """Represents a complete formulation consisting of various components, temperature, and viscosity profile.
 
     Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
@@ -553,7 +554,7 @@ class Formulation:
         return data
 
     def to_dataframe(self, encoded: bool = True, training: bool = True) -> pd.DataFrame:
-        """Convert this Formulation into a one‐row pandas DataFrame.
+        """Convert this Formulation into a one-row pandas DataFrame.
 
         Args:
             encoded (bool): If endocded is set to true, the enc_id's are returned
@@ -594,6 +595,8 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.enc_id,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
+                "HCI":              self.protein.ingredient.class_type.hci,
+                "CCI":              self.protein.ingredient.class_type.c_class,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -617,6 +620,8 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.name,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
+                "HCI":              self.protein.ingredient.class_type.hci,
+                "CCI":              self.protein.ingredient.class_type.c_class,
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
