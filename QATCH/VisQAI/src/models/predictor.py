@@ -4,14 +4,17 @@ Module: predictor.py
 Provides the Predictor class for loading a packaged viscosity model
 and performing inference, uncertainty estimation, and incremental updates.
 
+Now includes integrated cryptographic signature verification to prevent
+code injection attacks.
+
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-15
+    2025-11-12
 
 Version:
-    3.1
+    4.0
 """
 import os
 import zipfile
@@ -28,11 +31,27 @@ import numpy as np
 import pandas as pd
 import importlib.util
 
+# Security imports
+try:
+    from QATCH.VisQAI.src.io.secure_loader import (
+        create_secure_loader_for_extracted_package,
+        SecureModuleLoader,
+        SecurityError
+    )
+    SECURITY_AVAILABLE = True
+except ImportError:
+    SECURITY_AVAILABLE = False
+    SecurityError = Exception  # Fallback
+
 try:
     from QATCH.common.logger import Logger as Log
 except (ImportError, ModuleNotFoundError):
     import logging
-
+    from src.io.secure_loader import (
+        create_secure_loader_for_extracted_package,
+        SecureModuleLoader,
+        SecurityError
+    )
     logging.basicConfig(
         level=logging.INFO,
         format="[%(asctime)s] %(levelname)s: %(message)s"
@@ -71,6 +90,10 @@ class Predictor:
     This class extracts a zip archive containing source files and model checkpoint,
     loads required modules dynamically, and instantiates a Predictor for inference
     and incremental updates.
+
+    Security: By default, this class verifies cryptographic signatures of all source
+    files before loading them, preventing code injection attacks. This can be disabled
+    for debugging by setting verify_signatures=False.
     """
     VISC_100 = "Viscosity_100"
     VISC_1000 = "Viscosity_1000"
@@ -83,6 +106,7 @@ class Predictor:
         self,
         zip_path: str,
         mc_samples: int = 50,
+        verify_signatures: bool = True,
     ):
         """
         Initialize the Predictor by unpacking the archive and loading the model.
@@ -90,31 +114,54 @@ class Predictor:
         Args:
             zip_path: Path to the zip archive containing model/ and src/ directories.
             mc_samples: Number of Monte Carlo samples for uncertainty estimation.
+            verify_signatures: Whether to verify cryptographic signatures of source files.
+                             Set to False ONLY for debugging! Production should be True.
 
         Raises:
             FileNotFoundError: If the archive does not exist.
+            SecurityError: If signature verification fails (when verify_signatures=True).
             RuntimeError: If expected folders or files are missing inside the archive.
         """
         self.zip_path = Path(zip_path)
         self.mc_samples = mc_samples
+        self.verify_signatures = verify_signatures
         self._saved = False
         self._tmpdir = None
         self.predictor = None
         self.metadata = None
+        self.secure_loader = None
+        self.verification_report = None
+        self.scaler_feature_names = None
+
+        # Check if security module is available
+        if self.verify_signatures and not SECURITY_AVAILABLE:
+            Log.e("Security verification requested but secure_loader module not found!")
+            Log.e("   Install: Place secure_loader.py in the same directory")
+            Log.e(
+                "   Or disable: set verify_signatures=False (NOT recommended for production)")
+            raise RuntimeError(
+                "secure_loader module not available. Cannot verify signatures."
+            )
+
+        if not self.verify_signatures:
+            Log.w(" ========== WARNING =========== ")
+            Log.w("Signature verification DISABLED!")
 
         Log.i(
-            f"Predictor.__init__: archive={self.zip_path!r}, mc_samples={mc_samples}")
+            f"Predictor.__init__: archive={self.zip_path!r}, mc_samples={mc_samples}, "
+            f"verify_signatures={verify_signatures}")
         self._load_zip(self.zip_path)
 
     def _load_zip(self, zip_path: Path) -> None:
         """
         Unpack the zip file, load source modules, and instantiate the predictor.
 
-        Args: 
+        Args:
             zip_path: Path object pointing to the zip archive.
 
         Raises:
             FileNotFoundError: If the zip_path is not a file.
+            SecurityError: If signature verification fails.
             RuntimeError: If required folders or modules are missing.
         """
         # Clean up previous temp directory if exists
@@ -161,17 +208,48 @@ class Predictor:
         if not src_dir.is_dir():
             raise RuntimeError("'src/' folder missing in archive")
 
+        # Initialize security verification if enabled
+        if self.verify_signatures:
+            Log.i("Initializing security verification...")
+            try:
+                self.secure_loader = create_secure_loader_for_extracted_package(
+                    extracted_dir=extract_dir,
+                    enforce_signatures=True,
+                    require_all_signed=True
+                )
+                Log.i("Security system initialized")
+            except SecurityError as e:
+                Log.e(f"SECURITY INITIALIZATION FAILED: {e}")
+                self.cleanup()
+                raise
+
         # Load metadata
         metadata_path = model_dir / "metadata.json"
         if metadata_path.exists():
+            # Verify metadata signature if security is enabled
+            if self.verify_signatures and self.secure_loader:
+                try:
+                    self.secure_loader.verify_metadata(metadata_path)
+                    Log.d("Metadata signature verified")
+                except SecurityError as e:
+                    Log.e(f"Metadata verification failed: {e}")
+                    self.cleanup()
+                    raise
+
             with open(metadata_path, 'r') as f:
                 self.metadata = json.load(f)
-            Log.i(f"Loaded metadata: client={self.metadata.get('client')}, "
-                  f"author={self.metadata.get('author')}")
+
+            # Log signing status
+            if self.metadata.get('cryptographically_signed'):
+                Log.i(f"Loaded signed package: client={self.metadata.get('client')}, "
+                      f"author={self.metadata.get('author')}")
+            else:
+                Log.i(f"Loaded metadata: client={self.metadata.get('client')}, "
+                      f"author={self.metadata.get('author')}")
         else:
             Log.w("No metadata.json found in package")
 
-        # Load source modules dynamically
+        # Load source modules dynamically (with security verification)
         self._load_source_modules(src_dir)
 
         # Import the Predictor class and visq3xConfig
@@ -196,16 +274,36 @@ class Predictor:
         Log.i(f"Loading model from {checkpoint_path}...")
         self.predictor.load(str(checkpoint_path))
 
+        self.scaler_feature_names = getattr(
+            self.predictor, 'scaler_feature_names', None)
+        if self.scaler_feature_names is not None:
+            Log.d(
+                f"Loaded scaler feature names: {len(self.scaler_feature_names)} features")
+        else:
+            Log.w("Scaler feature names not available from checkpoint")
+
+        # Generate security report if verification was enabled
+        if self.verify_signatures and self.secure_loader:
+            self.verification_report = self.secure_loader.get_verification_report()
+            Log.i("Security verification complete")
+            Log.i(
+                f"  Files verified: {self.verification_report['files_verified']}")
+            Log.i(
+                f"  Total signatures: {self.verification_report['total_signatures']}")
+
         Log.i("Predictor ready for inference")
 
     def _load_source_modules(self, src_dir: Path) -> None:
         """
         Load all Python source modules from the src/ directory into sys.modules.
 
+        If verify_signatures is True, verifies cryptographic signatures before loading.
+
         Args:
             src_dir: Directory containing the source .py files.
 
         Raises:
+            SecurityError: If signature verification fails for any module.
             RuntimeError: If no Python files are found.
         """
         Log.d(f"Loading source modules from {src_dir}")
@@ -223,38 +321,113 @@ class Predictor:
         priority_order = ['config', 'encoding', 'common',
                           'model', 'losses', 'continual_learning', 'inference']
 
-        # Create a sorted list: priority modules first, then others
-        sorted_files = []
-        remaining_files = []
+        # Get list of actual modules present
+        available_modules = [f.stem for f in py_files]
 
-        for py_file in py_files:
-            module_name = py_file.stem
-            if module_name in priority_order:
-                sorted_files.append(
-                    (priority_order.index(module_name), py_file))
-            else:
-                remaining_files.append(py_file)
+        # Filter priority order to only include available modules
+        modules_to_load = [m for m in priority_order if m in available_modules]
 
-        # Sort priority files by their order
-        sorted_files.sort(key=lambda x: x[0])
-        final_files = [f[1] for f in sorted_files] + sorted(remaining_files)
+        # Add any additional modules not in priority order
+        additional_modules = [
+            m for m in available_modules if m not in priority_order]
+        modules_to_load.extend(additional_modules)
 
-        # Load each module
-        for py_file in final_files:
-            module_name = py_file.stem
+        # Use secure module loader if verification enabled
+        if self.verify_signatures and self.secure_loader:
+            Log.i("Verifying and loading modules securely...")
 
             try:
-                # Load the module
+                # Create secure module loader
+                module_loader = SecureModuleLoader(self.secure_loader, src_dir)
+
+                # Load all modules with batch verification
+                module_loader.load_all_modules_secure(
+                    modules_to_load,
+                    verify_batch=True
+                )
+
+                Log.i(
+                    f"All {len(modules_to_load)} modules verified and loaded")
+
+            except SecurityError as e:
+                Log.e(f"SECURITY VIOLATION DETECTED: {e}")
+                Log.e("Module loading aborted for safety")
+                raise
+            except Exception as e:
+                Log.e(f"Error during secure module loading: {e}")
+                raise RuntimeError(f"Failed to load modules securely: {e}")
+        else:
+            # Original unsecured loading (for backward compatibility or debugging)
+            if not self.verify_signatures:
+                Log.w(" Loading modules WITHOUT signature verification")
+
+            for module_name in modules_to_load:
+                module_file = src_dir / f"{module_name}.py"
+
+                if not module_file.exists():
+                    Log.w(f"Module {module_name}.py not found, skipping")
+                    continue
+
+                # Load module using importlib
                 spec = importlib.util.spec_from_file_location(
-                    module_name, py_file)
+                    module_name, str(module_file))
+
+                if spec is None:
+                    Log.w(f"Could not load spec for {module_name}")
+                    continue
+
                 module = importlib.util.module_from_spec(spec)
                 sys.modules[module_name] = module
                 spec.loader.exec_module(module)
 
-                Log.d(f"Loaded {py_file.name}")
-            except Exception as e:
-                Log.e(f"Failed to load {py_file.name}: {e}")
-                raise RuntimeError(f"Failed to load module {module_name}: {e}")
+                Log.d(f"Loaded: {module_name}")
+
+            Log.i(f"Loaded {len(modules_to_load)} modules")
+
+    def _validate_features(self, df: pd.DataFrame) -> None:
+        """
+        Validate that input DataFrame has the expected features.
+
+        Args:
+            df: Input DataFrame to validate.
+
+        Raises:
+            ValueError: If features don't match expected scaler features.
+        """
+        if self.scaler_feature_names is None:
+            Log.w("No scaler_feature_names stored; skipping feature validation")
+            return
+
+        input_features = set(df.columns)
+        expected_features = set(self.scaler_feature_names)
+
+        missing_features = expected_features - input_features
+        extra_features = input_features - expected_features
+
+        if missing_features or extra_features:
+            error_parts = ["Feature mismatch detected:"]
+
+            if missing_features:
+                error_parts.append(
+                    f"  Missing features: {sorted(missing_features)}")
+
+            if extra_features:
+                error_parts.append(
+                    f"  Extra features: {sorted(extra_features)}")
+
+            error_parts.append(
+                f"  Expected features: {sorted(expected_features)}")
+            error_parts.append(
+                f"  Provided features: {sorted(input_features)}")
+
+            error_msg = "\n".join(error_parts)
+            Log.e(error_msg)
+            raise ValueError(error_msg)
+
+        # Check feature order (optional but helpful)
+        if list(df.columns) != list(self.scaler_feature_names):
+            Log.w(f"Feature order mismatch. Expected: {self.scaler_feature_names}, "
+                  f"Got: {list(df.columns)}. Reordering internally.")
 
     def predict(
         self,
@@ -275,7 +448,7 @@ class Predictor:
         if self.predictor is None:
             Log.e("predict() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-
+        self._validate_features(df)
         try:
             Log.d(f"Predictor.predict() with {len(df)} samples")
             return self.predictor.predict(df, return_uncertainty=False)
@@ -306,7 +479,7 @@ class Predictor:
         if self.predictor is None:
             Log.e("predict_uncertainty() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-
+        self._validate_features(df)
         if n_samples is None:
             n_samples = self.mc_samples
 
@@ -371,7 +544,7 @@ class Predictor:
         if self.predictor is None:
             Log.e("evaluate() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-
+        self._validate_features(eval_data)
         viscosity_cols = [
             col for col in eval_data.columns if col in targets]
 
@@ -465,6 +638,36 @@ class Predictor:
             Dictionary containing metadata or None if not available.
         """
         return self.metadata
+
+    def get_metadata(self) -> Optional[Dict]:
+        """
+        Get the package metadata.
+
+        Returns:
+            Dictionary containing metadata or None if not available.
+        """
+        return self.metadata
+
+    def get_verification_report(self) -> Optional[Dict]:
+        """
+        Get detailed security verification report.
+
+        Returns:
+            Dictionary containing:
+                - enforcement_enabled: Whether signature verification was enforced
+                - require_all_signed: Whether all files were required to be signed
+                - total_signatures: Total number of signatures in manifest
+                - files_verified: Number of files successfully verified
+                - verified_files: List of verified file paths
+                - unverified_signed_files: Files that have signatures but weren't checked
+
+            Returns None if signature verification was disabled.
+        """
+        if not self.verify_signatures or self.verification_report is None:
+            Log.w("Security report not available (verification may be disabled)")
+            return None
+
+        return self.verification_report
 
     def save_path(self) -> Optional[str]:
         """Path to the temporary directory associated with this Predictor session if a save occurred; otherwise None."""
@@ -574,7 +777,10 @@ class Predictor:
                 Log.w(f"Issue during cleanup: {ex}")
             finally:
                 self._tmpdir = None
-                self.ensemble = None
+                self.predictor = None
+                self.secure_loader = None
+                self.verification_report = None
+                self.scaler_feature_names = None
 
     def __enter__(self) -> 'Predictor':
         """Enter context manager, returning the Predictor instance."""
@@ -590,43 +796,3 @@ class Predictor:
             self.cleanup()
         except Exception:
             pass
-
-
-if __name__ == "__main__":
-    # Example usage
-    import pandas as pd
-
-    # Create sample data
-    sample_data = pd.DataFrame({
-        'Protein_type': ['IgG1'],
-        'MW': [150000],
-        'Protein_conc': [145],
-        'Temperature': [25],
-        'Buffer_type': ['PBS'],
-        'Buffer_pH': [7.4],
-        'Buffer_conc': [10],
-        'Salt_type': ['NaCl'],
-        'Salt_conc': [140],
-        'Stabilizer_type': ['Sucrose'],
-        'Stabilizer_conc': [1],
-        'Surfactant_type': ['none'],
-        'Surfactant_conc': [0],
-        'Protein_class_type': ['mAb'],
-    })
-
-    # Load packaged predictor
-    with Predictor("packages/VisQAI-base.zip") as predictor:
-        # Get metadata
-        metadata = predictor.get_metadata()
-        print("Metadata:", metadata)
-
-        # Make predictions
-        predictions = predictor.predict(sample_data)
-        print("\nPredictions:", predictions)
-
-        # Make predictions with uncertainty
-        mean_pred, uncertainty = predictor.predict_uncertainty(sample_data)
-        print("\nMean predictions:", mean_pred)
-        print("Uncertainty (std):", uncertainty['std'])
-        print("95% CI:", uncertainty['lower_ci'],
-              "to", uncertainty['upper_ci'])
