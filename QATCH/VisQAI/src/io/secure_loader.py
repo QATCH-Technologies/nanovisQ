@@ -1,11 +1,12 @@
 """
-Module: secure_loader.py
+secure_loader.py
 
 Provides cryptographic signature verification for packaged predictor modules.
 Works alongside predictor.py to add an additional security layer.
 
-This module verifies that all source files in a package have valid cryptographic
-signatures before allowing them to be loaded, preventing code injection attacks.
+# TODO: This system does not protect against inauthentic keypairs only against 
+# direct injection into the current model system.  I need to add an official certificate
+# to sign the public key with to protect  against inauthentic key-pair packages.
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
@@ -378,7 +379,7 @@ class SecureModuleLoader:
         Load a module with signature verification.
 
         Args:
-            module_name: Name of the module (without .py extension)
+            module_name: Name of the module
             verify_first: Whether to verify signature before loading
 
         Returns:
@@ -394,21 +395,14 @@ class SecureModuleLoader:
         if not filepath.exists():
             raise RuntimeError(f"Module file not found: {filepath}")
 
-        # Verify signature before loading
         if verify_first and self.secure_loader.enforce_signatures:
             self.secure_loader.verify_source_file(filepath, filename)
 
-        # Load the module using importlib
         spec = importlib.util.spec_from_file_location(
             module_name, str(filepath))
         module = importlib.util.module_from_spec(spec)
-
-        # Add to sys.modules before executing to handle circular imports
         sys.modules[module_name] = module
-
-        # Execute the module
         spec.loader.exec_module(module)
-
         self.loaded_modules[module_name] = module
         Log.d(f"Loaded module: {module_name}")
 
@@ -427,19 +421,15 @@ class SecureModuleLoader:
             verify_batch: Whether to verify all signatures first
 
         Returns:
-            Dictionary mapping module names to loaded modules
+            Dict mapping module names to loaded modules
 
         Raises:
             SecurityError if any verification fails
         """
-        # Verify all modules first if requested
         if verify_batch and self.secure_loader.enforce_signatures:
             filenames = [f"{name}.py" for name in module_names]
             self.secure_loader.verify_all_sources(self.src_dir, filenames)
-
-        # Load all modules
         for module_name in module_names:
-            # Skip verification if we just did batch verification
             verify = not verify_batch
             self.load_module_secure(module_name, verify_first=verify)
 
@@ -454,8 +444,6 @@ def create_secure_loader_for_extracted_package(
     """
     Factory function to create a secure loader for an already-extracted package.
 
-    This is the main entry point for integrating with predictor.py.
-
     Args:
         extracted_dir: Path to extracted package directory
         enforce_signatures: Whether to enforce signature verification
@@ -463,18 +451,6 @@ def create_secure_loader_for_extracted_package(
 
     Returns:
         SecurePackageLoader instance
-
-    Example:
-        >>> extracted_dir = Path(tmpdir.name)
-        >>> secure_loader = create_secure_loader_for_extracted_package(
-        ...     extracted_dir,
-        ...     enforce_signatures=True
-        ... )
-        >>> # Verify metadata
-        >>> secure_loader.verify_metadata(extracted_dir / 'model' / 'metadata.json')
-        >>> # Verify source files before loading
-        >>> src_dir = extracted_dir / 'src'
-        >>> secure_loader.verify_all_sources(src_dir, ['inference.py', 'config.py'])
     """
     return SecurePackageLoader(
         extracted_dir=Path(extracted_dir),
