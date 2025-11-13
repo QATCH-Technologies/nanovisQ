@@ -541,15 +541,6 @@ class Predictor:
         """
         return self.metadata
 
-    def get_metadata(self) -> Optional[Dict]:
-        """
-        Get the package metadata.
-
-        Returns:
-            Dictionary containing metadata or None if not available.
-        """
-        return self.metadata
-
     def get_verification_report(self) -> Optional[Dict]:
         """
         Get detailed security verification report.
