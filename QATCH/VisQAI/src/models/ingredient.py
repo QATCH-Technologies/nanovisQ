@@ -380,7 +380,7 @@ class ProteinClass(StrEnum):
 
     @classmethod
     def get_c_class_mapping(cls) -> Dict[str, float]:
-        return {pc.value: pc.c_lass for pc in cls}
+        return {pc.value: pc.c_class for pc in cls}
 
 
 class Protein(Ingredient):
