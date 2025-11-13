@@ -384,51 +384,6 @@ class Predictor:
 
             Log.i(f"Loaded {len(modules_to_load)} modules")
 
-    def _validate_features(self, df: pd.DataFrame) -> None:
-        """
-        Validate that input DataFrame has the expected features.
-
-        Args:
-            df: Input DataFrame to validate.
-
-        Raises:
-            ValueError: If features don't match expected scaler features.
-        """
-        if self.scaler_feature_names is None:
-            Log.w("No scaler_feature_names stored; skipping feature validation")
-            return
-
-        input_features = set(df.columns)
-        expected_features = set(self.scaler_feature_names)
-
-        missing_features = expected_features - input_features
-        extra_features = input_features - expected_features
-
-        if missing_features or extra_features:
-            error_parts = ["Feature mismatch detected:"]
-
-            if missing_features:
-                error_parts.append(
-                    f"  Missing features: {sorted(missing_features)}")
-
-            if extra_features:
-                error_parts.append(
-                    f"  Extra features: {sorted(extra_features)}")
-
-            error_parts.append(
-                f"  Expected features: {sorted(expected_features)}")
-            error_parts.append(
-                f"  Provided features: {sorted(input_features)}")
-
-            error_msg = "\n".join(error_parts)
-            Log.e(error_msg)
-            raise ValueError(error_msg)
-
-        # Check feature order (optional but helpful)
-        if list(df.columns) != list(self.scaler_feature_names):
-            Log.w(f"Feature order mismatch. Expected: {self.scaler_feature_names}, "
-                  f"Got: {list(df.columns)}. Reordering internally.")
-
     def predict(
         self,
         df: pd.DataFrame,
@@ -448,7 +403,6 @@ class Predictor:
         if self.predictor is None:
             Log.e("predict() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-        self._validate_features(df)
         try:
             Log.d(f"Predictor.predict() with {len(df)} samples")
             return self.predictor.predict(df, return_uncertainty=False)
@@ -479,7 +433,6 @@ class Predictor:
         if self.predictor is None:
             Log.e("predict_uncertainty() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-        self._validate_features(df)
         if n_samples is None:
             n_samples = self.mc_samples
 
@@ -544,7 +497,6 @@ class Predictor:
         if self.predictor is None:
             Log.e("evaluate() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-        self._validate_features(eval_data)
         viscosity_cols = [
             col for col in eval_data.columns if col in targets]
 
