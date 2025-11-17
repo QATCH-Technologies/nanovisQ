@@ -519,9 +519,8 @@ class FrameStep2(QtWidgets.QDialog):
                     sha = self.mvc.commit(
                         model_file=saved_model,
                         metadata={
-                            "base_model": os.path.basename(self.model_path),
-                            "learned_runs": self.summary_text.toPlainText().splitlines(),
-                            "pinned_name": None  # TODO: Set friendly-name when pinned
+                            "parent_model": os.path.basename(self.model_path),
+                            "learned_runs": self.summary_text.toPlainText().splitlines()
                         }
                     )
                     os.remove(saved_model)  # delete temporary ZIP

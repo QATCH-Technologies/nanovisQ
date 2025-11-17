@@ -316,6 +316,17 @@ class ModelSelectionDialog(QDialog):
                 self.detail_panel.setText(detail_text)
                 break
 
+    def select_model_by_name(self, model_name):
+        """Select model by name."""
+        if model_name is None or model_name == "Base Model":
+            model_name = 'VisQAI-base'
+        for model in self.all_models:
+            if self.pinned_names.get(model['filename'], model['filename']) == model_name:
+                self.selected_model = model['filepath']
+                self.fileSelected.emit(self.selected_model)
+                self.accept()
+                break
+
     def toggle_pin(self):
         """Toggle pin status of selected model."""
         # Implementation for pinning/unpinning within `index.json`
@@ -325,7 +336,7 @@ class ModelSelectionDialog(QDialog):
         """Show rename dialog for selected model."""
         # Implementation for renaming within `index.json`
         pass
-    
+
     def show_detailed_view(self):
         """Show detailed view panel with full model information."""
         # Implementation for detailed view from `index.json`
@@ -393,8 +404,8 @@ class ModelSelectionDialog(QDialog):
 
         training_tree = dict(sorted(training_tree.items()))
 
-        tree = QTreeWidget()
-        tree.setHeaderLabels(["Name"])
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["Name"])
 
         # detail_text = "Training Tree:\n"
         first_i = None
@@ -403,12 +414,12 @@ class ModelSelectionDialog(QDialog):
                 # detail_text += "Base Model\n"
                 first_i = i
                 base_tree = QTreeWidgetItem([pair[0][0]])
-                tree.addTopLevelItem(base_tree)
+                self.tree.addTopLevelItem(base_tree)
             for parent, child in pair:
                 # detail_text += "    " * (i - first_i) + f"{child}\n"
-                items = tree.findItems(parent, Qt.MatchRecursive | Qt.MatchExactly, 0)
+                items = self.tree.findItems(parent, Qt.MatchRecursive | Qt.MatchExactly, 0)
                 if items:
-                    if tree.findItems(child, Qt.MatchRecursive | Qt.MatchExactly, 0):
+                    if self.tree.findItems(child, Qt.MatchRecursive | Qt.MatchExactly, 0):
                         continue  # already added
                     parent_item = items[0]
                     child_item = QTreeWidgetItem([child])
@@ -416,10 +427,10 @@ class ModelSelectionDialog(QDialog):
                 else:
                     Log.w(TAG, f"Parent item \"{parent}\" not found in tree")
         if selected_model_name:
-            items = tree.findItems(selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0)
+            items = self.tree.findItems(selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0)
             if items:
                 items[0].setText(0, f"{selected_model_name}\t⬅️")
-                tree.setCurrentItem(items[0])
+                self.tree.setCurrentItem(items[0])
         else:
             Log.w(TAG, "Selected model not found in training tree")
         
@@ -431,9 +442,23 @@ class ModelSelectionDialog(QDialog):
         details_layout = QVBoxLayout()
         self.details_win.setLayout(details_layout)
 
-        tree.expandAll()   # optional
+        self.tree.expandAll()   # optional
 
-        details_layout.addWidget(tree)
+        switch_btn = QPushButton("Switch to Selected")
+        switch_btn.setDefault(True)
+        close_btn = QPushButton("Close")
+
+        switch_btn.clicked.connect(lambda: self.select_model_by_name(self.tree.currentItem().text(0).split('\t')[0]))
+        switch_btn.clicked.connect(self.details_win.close)
+        close_btn.clicked.connect(self.details_win.close)
+
+        buttons_layout = QHBoxLayout()
+        buttons_layout.addWidget(switch_btn)
+        buttons_layout.addWidget(close_btn)
+
+        details_layout.addWidget(self.tree)
+        details_layout.addLayout(buttons_layout)
+
         self.details_win.setWindowTitle("Model Training Tree")
         self.details_win.show()
 

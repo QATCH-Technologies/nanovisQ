@@ -7693,7 +7693,13 @@ class AnalyzerWorker(QtCore.QObject):
             if initial_fill[-1] >= 90 and not hide_initial_fill:
                 # Truncate the initial fill region to just a few evenly spaced points
                 # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                num_fill_pts = 5
+                # See issue #256 for details on why use dynamic number of fill points
+                min_fill_pts = 3
+                max_fill_pts = 8
+                target_num_pts = 10
+                num_fill_pts = max(min_fill_pts, 
+                                   min(max_fill_pts, 
+                                       target_num_pts - len(distances)))
                 shear_at_fill_start = in_shear_rate[0]
                 shear_at_fill_end = in_shear_rate[-len(distances)-1]
                 shear_points = np.geomspace(  # like `linspace` but for log10
