@@ -7637,7 +7637,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+            # NOTE: This is only enabled for production builds, not dev/nightly builds
             enable_bandaid_3 = True
+            if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                enable_bandaid_3 = False
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
             point_factor_limit = 0.25
