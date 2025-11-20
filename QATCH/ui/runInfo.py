@@ -2119,7 +2119,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         try:
             surfactant = float(self.t3.text()) if len(self.t3.text()) else 0
-            concentration = float(self.t4.text()) if len(self.t4.text()) else 0
+            # concentration = float(self.t4.text()) if len(self.t4.text()) else 0
             protein_concentration = float(
                 self.t12.text()) if len(self.t12.text()) else 0
             stabilizer_type = self.c11.currentText().casefold()  # i.e. "sucrose"
@@ -2168,9 +2168,10 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         try:
             # Log.d(f"passing in {surfactant} and {concentration}")
-            surface_tension = AnalyzeProcess.Lookup_ST(
-                surfactant, concentration)
-            contact_angle = AnalyzeProcess.Lookup_CA(surfactant, concentration)
+            surface_tension = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
+                                                       concentration=protein_concentration)
+            contact_angle = AnalyzeProcess.Lookup_CA(surfactant=surfactant, 
+                                                     concentration=protein_concentration)
             density = AnalyzeProcess.Lookup_DN(surfactant=surfactant,
                                                concentration=protein_concentration,
                                                stabilizer_type=stabilizer_type,
@@ -2220,7 +2221,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         # Parameter initialization
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
-        st = AnalyzeProcess.Lookup_ST(surfactant, concentration)
+        protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
+        st = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
+                                      concentration=protein_concentration)
         ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
 
