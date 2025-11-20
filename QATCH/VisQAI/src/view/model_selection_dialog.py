@@ -1,4 +1,4 @@
-from PyQt5.QtWidgets import QDialog, QFileDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QTreeWidget, QTreeWidgetItem, QWidget
+from PyQt5.QtWidgets import QDialog, QFileDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton, QLabel, QScrollArea, QTreeWidget, QTreeWidgetItem, QWidget, QMessageBox, QInputDialog
 from PyQt5.QtCore import Qt, QFileInfo, QDir, pyqtSignal
 # import zipfile
 import json
@@ -9,6 +9,7 @@ TAG = "[ModelSelectionDialog]"
 
 try:
     from QATCH.common.logger import Logger as Log
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
 
 except ImportError:
 
@@ -21,8 +22,6 @@ except ImportError:
         def w(tag, msg=""): print("WARNING:", tag, msg)
         @staticmethod
         def e(tag, msg=""): print("ERROR:", tag, msg)
-
-## TODO: Implement pinning, renaming, detailed view features using VersionManager's index.json
 
 class QFancyListWidget(QListWidget):
     def mousePressEvent(self, event):
@@ -132,9 +131,10 @@ class ModelSelectionDialog(QDialog):
         self.recent_list.itemClicked.connect(self.on_model_selected)
         self.pinned_list.currentItemChanged.connect(self.on_model_selected)
         self.recent_list.currentItemChanged.connect(self.on_model_selected)
-        self.pin_btn.clicked.connect(self.toggle_pin)
-        self.rename_btn.clicked.connect(self.rename_model)
         self.view_details_btn.clicked.connect(self.show_detailed_view)
+        self.rename_btn.clicked.connect(self.rename_model)
+        self.pin_btn.clicked.connect(self.toggle_pin)
+        self.delete_btn.clicked.connect(self.delete_model)
         self.pinned_list.itemDoubleClicked.connect(self.accept)
         self.recent_list.itemDoubleClicked.connect(self.accept)
         self.select_btn.clicked.connect(self.accept)
@@ -242,7 +242,21 @@ class ModelSelectionDialog(QDialog):
             try:
                 # Parse metadata from model ZIP
                 metadata, sha = self.parse_model_metadata(index_data, filepath)
-                
+
+                if metadata.get('deleted', False):
+                    Log.d("Skipping deleted model:", filename)
+                    continue  # Skip deleted models
+
+                if filename == 'VisQAI-base.zip':
+                    if not metadata.get('protected', None):
+                        metadata['protected'] = True  # internal flag
+                    if not metadata.get('pin', None):
+                        metadata['pin'] = True  # Always pin base model
+                        self.pinned_models.append(filename)
+                    if not metadata.get('pinned_name', None):
+                        metadata['pinned_name'] = 'Base Model'
+                        self.pinned_names[filename] = metadata['pinned_name']
+
                 models.append({
                     'filename': filename,
                     'filepath': filepath,
@@ -319,9 +333,11 @@ class ModelSelectionDialog(QDialog):
     def select_model_by_name(self, model_name):
         """Select model by name."""
         if model_name is None or model_name == "Base Model":
-            model_name = 'VisQAI-base'
+            model_names = ['VisQAI-base', "Base Model"]
+        else:
+            model_names = [model_name]
         for model in self.all_models:
-            if self.pinned_names.get(model['filename'], model['filename']) == model_name:
+            if self.pinned_names.get(model['filename'], model['filename']) in model_names:
                 self.selected_model = model['filepath']
                 self.fileSelected.emit(self.selected_model)
                 self.accept()
@@ -329,13 +345,144 @@ class ModelSelectionDialog(QDialog):
 
     def toggle_pin(self):
         """Toggle pin status of selected model."""
+        if not self.selected_model:
+            Log.w(TAG, "No model selected to pin/unpin")
+            return
+
         # Implementation for pinning/unpinning within `index.json`
-        pass
+        mvc = VersionManager(
+            self.models_directory, retention=255)
+        
+        # Get the sha of the selected model
+        model_name = os.path.basename(self.selected_model)
+        model_info = next((m for m in self.all_models if m['filename'] == model_name), None)
+        if not model_info:
+            Log.e(TAG, f"Selected model \"{model_name}\" not found in model list")
+            return
+        sha = model_info['sha']
+
+        if model_info['metadata'].get('protected', False):
+            QMessageBox.warning(self, "Protected Model", "This model is protected and cannot be unpinned.")
+            return
+
+        if model_info['metadata'].get('pin', False):
+            mvc.unpin(sha)
+        else:
+            mvc.pin(sha)
+
+        if self.pinned_list.currentItem():
+            search_list = "recent"
+        else:
+            search_list = "pinned"
+        
+        self.populate_models()  # Refresh lists
+
+        if search_list == "pinned":
+            search_list = self.pinned_list
+        else:
+            search_list = self.recent_list
+
+        # Find index of the selected model in the new list
+        select_index = 0
+        current_name = self.pinned_names.get(model_info['filename'], model_info['filename'])
+        for i in range(search_list.count()):
+            item = search_list.item(i)
+            if item.text().splitlines()[0].split('\t')[0].strip() == current_name:
+                select_index = i
+                break
+
+        search_list.setCurrentRow(select_index)  # Restore selection
+        self.on_model_selected(item=search_list.currentItem())  # Refresh the detail panel
     
     def rename_model(self):
         """Show rename dialog for selected model."""
+        if not self.selected_model:
+            Log.w(TAG, "No model selected to pin/unpin")
+            return
+
         # Implementation for renaming within `index.json`
-        pass
+        mvc = VersionManager(
+            self.models_directory, retention=255)
+        
+        # Get the sha of the selected model
+        model_name = os.path.basename(self.selected_model)
+        model_info = next((m for m in self.all_models if m['filename'] == model_name), None)
+        if not model_info:
+            Log.e(TAG, f"Selected model \"{model_name}\" not found in model list")
+            return
+        sha = model_info['sha']
+
+        if model_info['metadata'].get('protected', False):
+            QMessageBox.warning(self, "Protected Model", "This model is protected and cannot be renamed.")
+            return
+
+        current_name = self.pinned_names.get(model_info['filename'], model_info['filename'])
+        new_name, ok = QInputDialog.getText(self, "Rename Model", "Enter new name:", text=current_name)
+
+        if new_name == current_name or not ok:
+            return
+        else:
+            new_name = new_name.strip()
+
+        if new_name == "":
+            if QMessageBox.question(self, "Empty Name", 
+                    "Would you like to rename this model to its filename?\nFilename: {}".format(model_info['filename']), 
+                    QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+                new_name = model_info['filename']
+            else:
+                return
+        else:
+            if new_name.casefold() in [v.casefold() for v in self.pinned_names.values()]:
+                QMessageBox.warning(self, "Duplicate Name", "A model with this name already exists.")
+                return
+            if new_name.casefold() in [m['filename'].casefold() for m in self.all_models]:
+                QMessageBox.warning(self, "Duplicate Name", "A model with this filename already exists.")
+                return
+        
+        mvc.rename(sha, new_name)
+
+        if self.pinned_list.currentItem():
+            select_index = self.pinned_list.currentRow()
+            select_list = self.pinned_list
+        else:
+            select_index = self.recent_list.currentRow()
+            select_list = self.recent_list
+
+        self.populate_models()  # Refresh lists
+        select_list.setCurrentRow(select_index)  # Restore selection
+        self.on_model_selected(item=select_list.currentItem())  # Refresh the detail panel
+
+    def delete_model(self):
+        """Delete selected model."""
+        if not self.selected_model:
+            Log.w(TAG, "No model selected to pin/unpin")
+            return
+
+        # Implementation for deletion within `index.json`
+        mvc = VersionManager(
+            self.models_directory, retention=255)
+        
+        # Get the sha of the selected model
+        model_name = os.path.basename(self.selected_model)
+        model_info = next((m for m in self.all_models if m['filename'] == model_name), None)
+        if not model_info:
+            Log.e(TAG, f"Selected model \"{model_name}\" not found in model list")
+            return
+        sha = model_info['sha']
+
+        if model_info['metadata'].get('protected', False):
+            QMessageBox.warning(self, "Protected Model", "This model is protected and cannot be deleted.")
+            return
+
+        confirm = QMessageBox.question(self, "Delete Model", 
+                    f"Are you sure you want to delete \"{model_name}\"?\nWARNING: This operation cannot be undone!", 
+                    QMessageBox.Yes | QMessageBox.No)
+        if confirm == QMessageBox.Yes:
+            mvc.delete(sha)
+
+        # NOTE: On item delete, no selection to restore; but lists and detail panel need to be refreshed
+        self.populate_models()  # Refresh lists
+        self.on_model_selected()  # Refresh detail panel
 
     def show_detailed_view(self):
         """Show detailed view panel with full model information."""

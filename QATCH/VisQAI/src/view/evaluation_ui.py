@@ -220,6 +220,7 @@ class EvaluationUI(QtWidgets.QDialog):
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
         self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+        self.model_dialog.fileSelected.connect(self.model_selected)
 
         self.file_dialog = QtWidgets.QFileDialog()
         self.file_dialog.setOption(
@@ -687,33 +688,32 @@ class EvaluationUI(QtWidgets.QDialog):
                 self.model_dialog.setDirectory(model_path)
             else:
                 self.model_dialog.setDirectory(Constants.log_prefer_path)
+            self.model_dialog.show()
         else:
             Log.e(TAG, "Model dialog is not properly initialized.")
             return
-        
-        if self.model_dialog.exec_():
 
-            selected_files = self.model_dialog.selectedFiles()
-            if selected_files:
-                file_path = selected_files[0]
-                try:
-                    self.model_path = file_path
-                    self.predictor = Predictor(file_path, mc_samples=300)
-                    display_name = file_path.split(
-                        '\\')[-1].split('/')[-1].split('.')[0]
-                    self.select_model_label.setText(display_name)
-                    Log.i(TAG, f"Model loaded: {file_path}")
-                    self.check_ready_to_evaluate()
-                except Exception as e:
-                    Log.e(TAG, f"Failed to load model: {e}")
-                    QtWidgets.QMessageBox.critical(
-                        self,
-                        "Model Loading Error",
-                        f"Failed to load model: {str(e)}"
-                    )
-                    self.model_path = None
-                    self.predictor = None
-                    self.select_model_label.setText("Failed to load model")
+    def model_selected(self, path: Optional[str] = None) -> None:
+        """Handle the event when a model is selected from the file dialog."""
+        try:
+            file_path = path
+            self.model_path = file_path
+            self.predictor = Predictor(file_path, mc_samples=300)
+            display_name = file_path.split(
+                '\\')[-1].split('/')[-1].split('.')[0]
+            self.select_model_label.setText(display_name)
+            Log.i(TAG, f"Model loaded: {file_path}")
+            self.check_ready_to_evaluate()
+        except Exception as e:
+            Log.e(TAG, f"Failed to load model: {e}")
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Model Loading Error",
+                f"Failed to load model: {str(e)}"
+            )
+            self.model_path = None
+            self.predictor = None
+            self.select_model_label.setText("Failed to load model")
 
     def user_run_browse(self) -> None:
         """Open a dialog to browse and add run capture files or directories.

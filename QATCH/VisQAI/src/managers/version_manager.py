@@ -218,8 +218,12 @@ class VersionManager:
         sha = self._hash_file(model_path)
         obj_dir = self._object_path(sha)
         metadata = metadata or {}
-        # Disallow caller-supplied 'protected'; only VersionManager sets it.
+
+        # Disallow caller-supplied fields; only VersionManager can set these.
         metadata.pop("protected", None)
+        metadata.pop("pin", None)
+        metadata.pop("pinned_name", None)
+
         committed_at = datetime.now().astimezone().replace(
             microsecond=0).isoformat()
         meta = {
@@ -231,6 +235,33 @@ class VersionManager:
         if model_path.name in self._PROTECTED_FILENAMES:
             meta["metadata"]["pin"] = True
             meta["metadata"]["protected"] = True  # internal flag
+
+        # Add "parent" sha if given a "parent_model" in metadata
+        #       (e.g. for fine-tuning, the parent would be the base model's sha)
+        parent_model = metadata.get("parent_model")
+        if parent_model:
+            # Look up parent model's SHA in index
+            index = self._load_index()
+            parent_sha = None
+            for item in index.values():
+                if item["filename"] == parent_model:
+                    parent_sha = item["sha"]
+                    break
+            if parent_sha:
+                meta["metadata"]["parent"] = parent_sha
+            else:
+                raise ValueError(
+                    f"Parent model '{parent_model}' not found in index")
+            
+        # Add this sha to the list of children of the parent model's metadata
+        #       (e.g. for fine-tuning, the child would be the fine-tuned model)
+        if parent_model:
+            index = self._load_index()
+            for item in index.values():
+                if item["filename"] == parent_model:
+                    item.setdefault("metadata", {}).setdefault("children", []).append(sha)
+                    self._write_index(index)
+                    break
 
         # Ensure only one thread writes this SHA at once
         with self._lock:
@@ -421,3 +452,51 @@ class VersionManager:
         if "pin" in meta:
             meta.pop("pin")
             self._write_index(index)
+
+    def rename(self, sha: str, new_name: str) -> None:
+        """Assign a friendly name to a snapshot for easier identification.
+
+        Args:
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot.
+            new_name (str): The new friendly name to assign.
+        """
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
+            raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
+        if not isinstance(new_name, str) or not new_name.strip():
+            raise ValueError("new_name must be a non-empty string")
+
+        index = self._load_index()
+        if sha not in index:
+            raise KeyError(f"No such snapshot to rename: {sha}")
+
+        meta = index[sha].setdefault("metadata", {})
+        if meta.get("protected", False):
+            raise PermissionError(
+                f"Cannot rename protected artifact {meta.get('filename')}"
+            )
+        meta["pinned_name"] = new_name.strip()
+        self._write_index(index)
+
+    def delete(self, sha: str, force: bool = False) -> None:
+        """Delete a snapshot from the repository.
+
+        Args:
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot.
+        """
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
+            raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
+
+        index = self._load_index()
+        if sha not in index:
+            raise KeyError(f"No such snapshot to delete: {sha}")
+
+        meta = index[sha]
+        is_protected = meta.get("metadata", {}).get("protected", False)
+        if is_protected and not force:
+            raise PermissionError(
+                f"Cannot delete protected artifact {meta.get('filename')}"
+            )
+
+        meta = index[sha].setdefault("metadata", {})
+        meta["deleted"] = True
+        self._write_index(index)
