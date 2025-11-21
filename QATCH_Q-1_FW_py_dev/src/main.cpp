@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b60"
-#define RELEASE_DATE "2025-05-16"
+#define CODE_VERSION "v2.6r65+POGOv2"
+#define RELEASE_DATE "2025-11-21"
 
 /************************** LIBRARIES **************************/
 
@@ -495,7 +495,8 @@ bool hw_error = false;
 bool tft_error = false;
 
 bool tft_msgbox = false;
-byte msgbox_icon = 0; // error, fail, pass
+bool msgbox_visible = false; // only used in tft_tempcontrol
+byte msgbox_icon = 0; // error, fail, pass, info
 char msgbox_title[32] = "QATCH nanovisQ";
 char msgbox_text[32] = "No message provided.";
 
@@ -1498,6 +1499,8 @@ void QATCH_loop()
               msgbox_icon = 1; // fail
             else if (msg_cmd.startsWith("PASS"))
               msgbox_icon = 2; // pass
+            else if (msg_cmd.startsWith("INFO"))
+              msgbox_icon = 3; // info
             else
               msgbox_icon = 0; // error
             msg_cmd = msg_cmd.substring(msg_cmd.indexOf(":") + 1);
@@ -3168,6 +3171,18 @@ void QATCH_loop()
     if (!is_running) pogo_button_pressed(false);
     pogo_pressed_flag = false; // Clear flag
   }
+
+  if (pogo_lid_opened && (!tft_msgbox || msgbox_icon != 3)) {
+    tft_msgbox = true;
+    msgbox_icon = 3; // info
+    sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
+    sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
+    tft_idle();
+  }
+  if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
+    tft_msgbox = false; // hide unlocked message
+    tft_idle();
+  }
 }
 
 /************************** FUNCTION ***************************/
@@ -3841,8 +3856,10 @@ void tft_idle()
   bool transient_error = (max31855.error() != "OK[NONE]");
   if (hw_error || tft_error || transient_error || tft_msgbox || PID_IS_SECONDARY(NVMEM.pid))
   {
-    if (tft_msgbox && msgbox_icon == 2)
+    if (tft_msgbox && msgbox_icon == 2) // pass
       tft.setTextColor(ILI9341_GREEN);
+    else if (tft_msgbox && msgbox_icon == 3) // info
+      tft.setTextColor(QATCH_BLUE_FG);
     else
       tft.setTextColor(ILI9341_RED);
 
@@ -3864,7 +3881,7 @@ void tft_idle()
     x = ICON_X;
     y = ICON_Y;
 
-    if (!tft_msgbox || (tft_msgbox && msgbox_icon == 0))
+    if (!tft_msgbox || (tft_msgbox && msgbox_icon == 0)) // error
     {
       // Exclamation mark icon:
       tft.fillTriangle(x + 50, y,      // peak
@@ -3878,7 +3895,7 @@ void tft_idle()
       tft.print("!");
     }
 
-    if (tft_msgbox && msgbox_icon == 1)
+    if (tft_msgbox && msgbox_icon == 1) // fail
     {
       // Failure circle icon:
       tft.fillCircle(x + 50, y + 35, 35, ILI9341_RED);
@@ -3910,8 +3927,10 @@ void tft_idle()
       // tft.drawPixel(x + 50, y + 35, ILI9341_BLACK);
     }
 
-    if (tft_msgbox && msgbox_icon == 2)
+    if (tft_msgbox && msgbox_icon == 2) // pass
       tft.setTextColor(ILI9341_GREEN);
+    else if (tft_msgbox && msgbox_icon == 3) // info
+      tft.setTextColor(QATCH_BLUE_FG);
     else
       tft.setTextColor(ILI9341_RED);
 
@@ -3974,7 +3993,7 @@ void tft_idle()
   tft.setCursor(x, y);
   tft.print(buff2);
 
-  if (tft_msgbox && msgbox_icon == 2)
+  if (tft_msgbox && msgbox_icon == 2) // pass
   {
     x = ICON_X;
     y = ICON_Y;
@@ -4002,6 +4021,37 @@ void tft_idle()
         tft.drawPixel(w + 3, h + 3, QATCH_GREY_BG);
       }
     }
+  }
+
+  if (tft_msgbox && msgbox_icon == 3) // info
+  {
+    x = ICON_X;
+    y = ICON_Y;
+
+    // Cartridge circle icon:
+    tft.fillCircle(x + 50, y + 35, 35, QATCH_BLUE_FG);
+
+    // Calculate cartridge top-left position and size:
+    pad = 15;
+    x = x + 50 - pad;
+    y = y + 35 - 1.5*pad;
+    w = 2*pad;
+    h = 3*pad;
+
+    // Draw cartridge icon in parts
+    tft.fillRect(x, y, w+1, h, ILI9341_BLACK); // base rectangle
+    tft.fillTriangle(x+w-5, y, x+w, y+5, x+w, y, QATCH_BLUE_FG); // top-right corner notch
+    tft.fillRect(x+9, y+14, 13, 13, QATCH_GREY_BG); // metal block, middle
+    tft.fillRect(x+12, y+8, 7, 6, QATCH_GREY_BG); // metal block, top
+    tft.fillRect(x+7, y+20, 17, 3, QATCH_GREY_BG); // metal block, left and right notches
+    tft.fillCircle(x+15, y+20, 5, QATCH_BLUE_FG); // sensor circle, inside metal block
+    tft.drawCircle(x+15, y+h-7, 3, ILI9341_DARKGREY); // handle circle, bottom
+    tft.drawRect(x+4, y+34, 3, 6, ILI9341_DARKGREY); // left arrow
+    tft.drawTriangle(x+3, y+34, x+5, y+32, x+7, y+34, ILI9341_DARKGREY); // left arrowhead
+    tft.drawRect(x+w-6, y+34, 3, 6, ILI9341_DARKGREY); // right arrow
+    tft.drawTriangle(x+w-3, y+34, x+w-5, y+32, x+w-7, y+34, ILI9341_DARKGREY); // right arrowhead
+    tft.drawFastVLine(x+12, y, 8, ILI9341_DARKGREY); // left top slide line
+    tft.drawFastVLine(x+18, y, 8, ILI9341_DARKGREY); // right top slide line
   }
 }
 
@@ -4771,6 +4821,45 @@ void tft_tempcontrol()
     //    tft.drawFastVLine(rect_x - 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x + 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
+  }
+
+  if (tft_msgbox && !msgbox_visible) {
+    msgbox_visible = true;
+
+    if (tft_msgbox && msgbox_icon == 2) // pass
+      tft.setTextColor(ILI9341_GREEN);
+    else if (tft_msgbox && msgbox_icon == 3) // info
+      tft.setTextColor(QATCH_BLUE_FG);
+    else
+      tft.setTextColor(ILI9341_RED);
+
+    tft.setFont(Poppins_16_Bold);
+
+    String line1 = String(msgbox_title);
+    char buff1[line1.length() + 1]; // trailing NULL
+    line1.toCharArray(buff1, sizeof(buff1));
+
+    int msg_pad = 10;
+    int msg_w = tft.measureTextWidth(buff1);
+    //  msg_h = tft.measureTextHeight(buff1);
+    int msg_x = (TFT_WIDTH - msg_w) / 2;
+    int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+    tft.setCursor(msg_x, msg_y);
+    tft.print(line1);
+
+    // restore font and color to original values:
+    tft.setFont(Poppins_10_Bold);
+    tft.setTextColor(QATCH_BLUE_FG);
+  }
+  else if (msgbox_visible)
+  {
+    // This will make the message title flash while in this mode
+    // which is required to prevent a new message from overdrawing 
+    // a prior message (i.e. "INITIALIZE SUCCESS" -> "CARTRIDGE UNLOCKED")
+    msgbox_visible = false;
+
+    // clear out MSGBOX area at top (without requiring a full redraw)
+    tft.fillRect(0, 0, TFT_WIDTH, 42, ILI9341_BLACK); 
   }
 
   short pct;
