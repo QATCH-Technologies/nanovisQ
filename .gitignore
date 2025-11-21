@@ -1,3 +1,4 @@
+/.testenv
 /.venv
 /.vscode
 /bat2exe.bat
@@ -7,3 +8,10 @@
 /logged_data_test
 /QATCH_Q-1_FW_py_v*
 **/__pycache__
+
+# Ignore all files in "assets" folder
+**/assets/**
+
+# But explicitly include "VisQAI-base.zip" and "app.db" assets
+!**/assets/VisQAI-base.zip
+!**/assets/app.db
