@@ -347,9 +347,7 @@ class Predictor:
 
         Log.i(f"Found {len(py_files)} Python modules to load")
 
-        # Updated priority order - removed config, added core first
-        priority_order = ['core', 'encoding', 'common',
-                          'model', 'losses', 'continual_learning', 'inference']
+        priority_order = ['core', 'inference']
         available_modules = [f.stem for f in py_files]
         modules_to_load = [m for m in priority_order if m in available_modules]
         additional_modules = [
@@ -600,11 +598,6 @@ class Predictor:
         """
         Incrementally update the model with new data.
 
-        The new ViscosityPredictor.learn() method handles the entire adaptation pipeline:
-        1. Identifies and expands new categories (Smart Expansion)
-        2. Initializes and trains a Gated Residual Adapter (Zero Forgetting)
-        3. Attaches the adapter for immediate use
-
         Args:
             new_df: DataFrame with both features and target columns.
                     Must contain the target viscosity columns (Viscosity_100, etc.)
@@ -625,8 +618,6 @@ class Predictor:
         if self.predictor is None:
             Log.e("learn() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
-
-        # Check for target columns in the dataframe
         available_targets = [
             col for col in self.ALL_SHEARS if col in new_df.columns]
         if not available_targets:
@@ -635,18 +626,14 @@ class Predictor:
                 f"found columns: {list(new_df.columns)}"
             )
 
-        # Extract target values
         y_new = new_df[available_targets].values
-
-        # Default epochs
         if n_epochs is None:
-            n_epochs = 500
+            n_epochs = 100
 
         Log.i(f"Predictor.learn(): data.shape={new_df.shape}, "
               f"n_epochs={n_epochs}, verbose={verbose}")
 
         try:
-            # Call the new ViscosityPredictor.learn() method
             self.predictor.learn(
                 df_new=new_df,
                 y_new=y_new,
