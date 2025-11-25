@@ -8,18 +8,26 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-11-13
+    2025-11-25
 
 Version:
-    4.0
+    5.0
+
+Changes in 5.0:
+    - Updated to work with new ViscosityPredictor from inference.py
+    - Removed dependency on config.py / VisQ2xConfig
+    - Updated learn() to match new signature (df_new, y_new)
+    - Updated uncertainty estimation to use predict_with_uncertainty()
+    - Added ensemble checkpoint detection from package structure
 """
 import os
 import zipfile
 import tempfile
 import sys
 import json
+import glob
 from pathlib import Path
-from typing import Dict, Tuple, Optional
+from typing import Dict, Tuple, Optional, List
 import hashlib
 import pyzipper
 import zipfile
@@ -85,8 +93,8 @@ class Predictor:
     predictions and updates.
 
     This class extracts a zip archive containing source files and model checkpoint,
-    loads required modules dynamically, and instantiates a Predictor for inference
-    and incremental updates.
+    loads required modules dynamically, and instantiates a ViscosityPredictor for 
+    inference and incremental updates.
 
     Security: By default, this class verifies cryptographic signatures of all source
     files before loading them, preventing code injection attacks. This can be disabled
@@ -228,31 +236,49 @@ class Predictor:
             Log.w("No metadata.json found in package")
         self._load_source_modules(src_dir)
 
-        # Import the Predictor class and visq3xConfig
+        # Import the ViscosityPredictor class from the new inference module
         try:
-            from inference import Predictor
-            from config import VisQ2xConfig
+            from inference import ViscosityPredictor
         except ImportError as e:
-            Log.e(f"Failed to import required classes: {e}")
-            raise RuntimeError(f"Could not import Predictor or visq2xConfig. "
-                               f"Ensure inference.py and config.py are in the src/ directory. Error: {e}")
+            Log.e(f"Failed to import ViscosityPredictor: {e}")
+            raise RuntimeError(f"Could not import ViscosityPredictor. "
+                               f"Ensure inference.py is in the src/ directory. Error: {e}")
 
-        checkpoint_path = model_dir / "checkpoint.pt"
-        if not checkpoint_path.exists():
-            raise RuntimeError(f"checkpoint.pt not found in model/ directory")
-        Log.i("Instantiating Predictor...")
-        config = VisQ2xConfig()
-        self.predictor = Predictor(config)
+        # Determine checkpoint path(s) - support both single and ensemble
+        checkpoint_paths = self._discover_checkpoints(model_dir)
+        is_ensemble = len(checkpoint_paths) > 1
 
-        Log.i(f"Loading model from {checkpoint_path}...")
-        self.predictor.load(str(checkpoint_path))
+        # Also check metadata for ensemble info
+        if self.metadata and self.metadata.get('model_type') == 'ensemble':
+            is_ensemble = True
 
-        self.scaler_feature_names = getattr(
-            self.predictor, 'scaler_feature_names', None)
-        if self.scaler_feature_names is not None:
-            Log.d(
-                f"Loaded scaler feature names: {len(self.scaler_feature_names)} features")
+        Log.i(
+            f"Discovered {len(checkpoint_paths)} checkpoint(s), ensemble={is_ensemble}")
+        Log.i("Instantiating ViscosityPredictor...")
+
+        # Instantiate ViscosityPredictor with appropriate parameters
+        if is_ensemble:
+            self.predictor = ViscosityPredictor(
+                checkpoint_path=checkpoint_paths,
+                device='cpu',
+                is_ensemble=True
+            )
         else:
+            self.predictor = ViscosityPredictor(
+                checkpoint_path=checkpoint_paths[0],
+                device='cpu',
+                is_ensemble=False
+            )
+
+        # Try to get scaler feature names from the processor
+        if hasattr(self.predictor, 'processor') and self.predictor.processor is not None:
+            processor = self.predictor.processor
+            if hasattr(processor, 'numeric_features'):
+                self.scaler_feature_names = processor.numeric_features
+                Log.d(
+                    f"Loaded scaler feature names: {len(self.scaler_feature_names)} features")
+
+        if self.scaler_feature_names is None:
             Log.w("Scaler feature names not available from checkpoint")
 
         if self.verify_signatures and self.secure_loader:
@@ -263,6 +289,42 @@ class Predictor:
                 f"Total signatures: {self.verification_report['total_signatures']}")
 
         Log.i("Predictor ready for inference")
+
+    def _discover_checkpoints(self, model_dir: Path) -> List[str]:
+        """
+        Discover checkpoint files in the model directory.
+
+        Supports both single model (checkpoint.pt) and ensemble 
+        (checkpoint_0.pt, checkpoint_1.pt, ...) formats.
+
+        Args:
+            model_dir: Path to the model directory
+
+        Returns:
+            List of checkpoint file paths
+
+        Raises:
+            RuntimeError: If no checkpoint files are found
+        """
+        # Check for single model checkpoint
+        single_checkpoint = model_dir / "checkpoint.pt"
+        if single_checkpoint.exists():
+            return [str(single_checkpoint)]
+
+        # Check for ensemble checkpoints (checkpoint_0.pt, checkpoint_1.pt, ...)
+        ensemble_pattern = str(model_dir / "checkpoint_*.pt")
+        ensemble_checkpoints = sorted(glob.glob(ensemble_pattern))
+
+        if ensemble_checkpoints:
+            return ensemble_checkpoints
+
+        # Fallback: look for any .pt files
+        any_pt_files = sorted(glob.glob(str(model_dir / "*.pt")))
+        if any_pt_files:
+            Log.w(f"Using fallback checkpoint discovery: {any_pt_files}")
+            return any_pt_files
+
+        raise RuntimeError("No checkpoint files found in model/ directory")
 
     def _load_source_modules(self, src_dir: Path) -> None:
         """
@@ -284,13 +346,16 @@ class Predictor:
             raise RuntimeError(f"No Python files found in src/ directory")
 
         Log.i(f"Found {len(py_files)} Python modules to load")
-        priority_order = ['config', 'encoding', 'common',
+
+        # Updated priority order - removed config, added core first
+        priority_order = ['core', 'encoding', 'common',
                           'model', 'losses', 'continual_learning', 'inference']
         available_modules = [f.stem for f in py_files]
         modules_to_load = [m for m in priority_order if m in available_modules]
         additional_modules = [
             m for m in available_modules if m not in priority_order]
         modules_to_load.extend(additional_modules)
+
         if self.verify_signatures and self.secure_loader:
             Log.i("Verifying and loading modules securely...")
 
@@ -301,8 +366,7 @@ class Predictor:
                     verify_batch=True
                 )
 
-                Log.i(
-                    f"All {len(modules_to_load)} modules verified and loaded")
+                Log.i(f"All {len(modules_to_load)} modules verified and loaded")
 
             except SecurityError as e:
                 Log.e("Module loading aborted for safety")
@@ -355,7 +419,7 @@ class Predictor:
             raise RuntimeError("No predictor loaded")
         try:
             Log.d(f"Predictor.predict() with {len(df)} samples")
-            return self.predictor.predict(df, return_uncertainty=False)
+            return self.predictor.predict(df, return_log_space=False)
         except Exception as ex:
             Log.e(f"Error in predict(): {ex}")
             raise
@@ -372,7 +436,7 @@ class Predictor:
         Args:
             df: Input DataFrame with feature columns.
             n_samples: Number of Monte Carlo samples (default: self.mc_samples).
-            ci_range: the confidence interval to report (default: tuple(0.05, 0.95))
+            ci_range: the confidence interval to report as percentiles (default: (2.5, 97.5) for 95% CI)
 
         Returns:
             Tuple of (mean predictions, uncertainty dict with std/lower_ci/upper_ci/cv).
@@ -387,9 +451,37 @@ class Predictor:
             n_samples = self.mc_samples
 
         try:
+            Log.i(df)
             Log.d(f"Predictor.predict_uncertainty() with {len(df)} samples, "
                   f"n_samples={n_samples}")
-            return self.predictor.predict(df, return_uncertainty=True, ci_range=ci_range, n_samples=n_samples)
+
+            # Convert ci_range percentiles to confidence_level
+            # ci_range=(2.5, 97.5) means 95% confidence
+            confidence_level = (ci_range[1] - ci_range[0]) / 100.0
+
+            # Call the new API
+            result = self.predictor.predict_with_uncertainty(
+                df,
+                n_samples=n_samples,
+                confidence_level=confidence_level
+            )
+
+            # Extract mean predictions and build uncertainty dict
+            mean_preds = result['mean']
+
+            # Calculate coefficient of variation
+            cv = np.where(mean_preds != 0,
+                          result['std'] / np.abs(mean_preds), 0)
+
+            uncertainty = {
+                'std': result['std'],
+                'lower_ci': result['lower_ci'],
+                'upper_ci': result['upper_ci'],
+                'coefficient_of_variation': cv
+            }
+
+            return mean_preds, uncertainty
+
         except Exception as ex:
             Log.e(f"Error in predict_uncertainty(): {ex}")
             raise
@@ -397,9 +489,9 @@ class Predictor:
     def evaluate(
         self,
         eval_data: pd.DataFrame,
-        targets: list = ALL_SHEARS,
+        targets: list = None,
         n_samples: int = None,
-    ) -> Dict:
+    ) -> pd.DataFrame:
         """Evaluate model predictions against actual values with uncertainty metrics.
 
         This method generates predictions with uncertainty estimates for the evaluation
@@ -443,6 +535,8 @@ class Predictor:
             columns, the method adjusts by truncating the viscosity columns to
             match the prediction output shape and logs a warning.
         """
+        if targets is None:
+            targets = self.ALL_SHEARS
 
         if self.predictor is None:
             Log.e("evaluate() called but predictor is not loaded")
@@ -500,37 +594,107 @@ class Predictor:
         n_epochs: Optional[int] = None,
         save: bool = False,
         verbose: bool = True,
+        analog_protein: Optional[str] = None,
+        lr: float = 5e-3,
     ) -> Dict:
         """
         Incrementally update the model with new data.
 
+        The new ViscosityPredictor.learn() method handles the entire adaptation pipeline:
+        1. Identifies and expands new categories (Smart Expansion)
+        2. Initializes and trains a Gated Residual Adapter (Zero Forgetting)
+        3. Attaches the adapter for immediate use
+
         Args:
             new_df: DataFrame with both features and target columns.
-            n_epochs: Number of training epochs (default: auto from config).
+                    Must contain the target viscosity columns (Viscosity_100, etc.)
+            n_epochs: Number of training epochs (default: 500).
+            save: Whether to mark this session for saving.
             verbose: Whether to print training progress.
+            analog_protein: Name of an existing protein to use for initialization 
+                           transfer (e.g., 'bsa'). Only applies to Protein_type.
+            lr: Learning rate for the adapter (default: 5e-3).
 
         Returns:
-            Dictionary with training info (avg_loss, new_categories_added, n_epochs).
+            Dictionary with training info.
 
         Raises:
             RuntimeError: If the predictor is not loaded.
+            ValueError: If target columns are missing from new_df.
         """
         if self.predictor is None:
             Log.e("learn() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
 
+        # Check for target columns in the dataframe
+        available_targets = [
+            col for col in self.ALL_SHEARS if col in new_df.columns]
+        if not available_targets:
+            raise ValueError(
+                f"new_df must contain target columns. Expected one of {self.ALL_SHEARS}, "
+                f"found columns: {list(new_df.columns)}"
+            )
+
+        # Extract target values
+        y_new = new_df[available_targets].values
+
+        # Default epochs
+        if n_epochs is None:
+            n_epochs = 500
+
         Log.i(f"Predictor.learn(): data.shape={new_df.shape}, "
               f"n_epochs={n_epochs}, verbose={verbose}")
 
         try:
-            result = self.predictor.learn(
-                new_df, n_epochs=n_epochs, verbose=verbose)
+            # Call the new ViscosityPredictor.learn() method
+            self.predictor.learn(
+                df_new=new_df,
+                y_new=y_new,
+                epochs=n_epochs,
+                lr=lr,
+                analog_protein=analog_protein
+            )
+
+            result = {
+                'n_samples': len(new_df),
+                'n_epochs': n_epochs,
+                'targets_trained': available_targets,
+                'status': 'completed'
+            }
+
             Log.i(f"Incremental learning completed successfully, {result}")
             self._saved = save
             return result
         except Exception as ex:
             Log.e(f"Error during learn(): {ex}")
             raise
+
+    def hydrate_adapter(
+        self,
+        support_df: pd.DataFrame,
+        n_epochs: int = 500,
+        lr: float = 5e-3
+    ) -> None:
+        """
+        Restore the Gated Adapter state by training on a support set.
+
+        Call this during deployment to 'awaken' the adapter for a specific protein
+        that was previously learned.
+
+        Args:
+            support_df: DataFrame containing support samples with features and targets.
+            n_epochs: Number of training epochs for hydration.
+            lr: Learning rate.
+
+        Raises:
+            RuntimeError: If the predictor is not loaded.
+        """
+        if self.predictor is None:
+            Log.e("hydrate_adapter() called but predictor is not loaded")
+            raise RuntimeError("No predictor loaded")
+
+        Log.i(f"Hydrating adapter with {len(support_df)} support samples")
+        self.predictor.hydrate_adapter(support_df, n_epochs=n_epochs, lr=lr)
 
     def get_metadata(self) -> Optional[Dict]:
         """
@@ -581,7 +745,7 @@ class Predictor:
             raise RuntimeError("No predictor loaded")
 
         Log.i(f"Saving model to {path}")
-        self.predictor.save_state(path)
+        self.predictor.save_checkpoint(path)
         Log.i("Model saved successfully")
 
     def add_security_to_zip(self, zip_path) -> bool:
