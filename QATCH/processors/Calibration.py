@@ -140,7 +140,7 @@ class CalibrationProcess(multiprocessing.Process):
             this_freq = sorted[x][0]
             this_peak = int(this_freq / 10e6)
             if this_peak in peaks_to_find:
-                allow_drift = (.5 + 1*this_peak) * 1e6
+                allow_drift = (2.5 + 1*this_peak) * 1e6
                 target_freq = (5 + 10*this_peak) * 1e6
                 actual_drift = abs(target_freq - this_freq)
                 if actual_drift < allow_drift:

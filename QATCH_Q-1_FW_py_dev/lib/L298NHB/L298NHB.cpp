@@ -174,7 +174,7 @@ float L298NHB::setTarget(float t)
 {
   is_stable = false;
   t_start = millis();
-  t_last = 0;
+  resetDeltaTime();
   ki = (signal ? kic : kih);
   PID_i = 0;
   PID_d = 0;
@@ -303,6 +303,11 @@ float L298NHB::getTimeRemaining(void)
   unsigned long ready_at = time_of_last_instability + 60 * 1000;
   unsigned long time_remain = ready_at - millis();
   return (float)(time_remain / 1000.0) + 1.0; // convert to seconds, round up
+}
+
+void L298NHB::resetDeltaTime(void)
+{
+  t_last = millis();
 }
 
 /**************************************************************************/

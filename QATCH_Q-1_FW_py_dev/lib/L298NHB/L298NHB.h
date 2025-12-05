@@ -41,6 +41,7 @@ public:
   void resetMinMax(void);
   byte getLabelState(void);
   float getTimeRemaining(void);
+  void resetDeltaTime(void);
 
 private:
   int8_t m0, e0, m1, e1, m2, e2;
