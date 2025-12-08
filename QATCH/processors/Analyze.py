@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import QCompleter
 from PyQt5.QtCore import Qt
 from typing import Optional
 from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.QModel.src.models.v5_resnet.v5_resnet import QModelV5Resnet
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
 from QATCH.common.fileManager import FileManager
@@ -385,6 +386,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
+
+        self.QModel_v5_modules_loaded = False
+        self.QModel_v5_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -2698,7 +2702,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #     self.AI_SelectTool_Frame.setVisible(
         #         False
         #     )  # require re-click to show popup tool incorrect position
+        # ---------- LOADING QMODEL V5 (ResMet) -----------#
+        try:
+            if Constants.QModel5_predict and not self.QModel_v5_modules_loaded:
+                model_path = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_model.pth")
+                scaler_path = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_scaler.pkl")
+                self.QModel_v5_predictor = QModelV5Resnet(
+                    model_path=model_path,
+                    scaler_path=scaler_path,
+                )
 
+                self.QModel_v4_modules_loaded = True
+
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'QModel v5 (ResNet)' modules at load of run.")
         # ---------- LOADING QMODEL V4 (Fusion) -----------#
         try:
             if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
@@ -2998,8 +3018,60 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
+            if Constants.QModel5_predict:
+                Log.w(
+                    "Auto-fitting points with QModel v5 (ResNet)... (may take a few seconds)")
+                QtCore.QCoreApplication.processEvents()
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        predictor = self.QModel_v5_predictor
+                        self.progressBarDiag.setRange(0, 100)  # percentage
+                        predict_result = predictor.predict(
+                            file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                        predictions = []
+                        candidates = []
+                        for i in range(5):
+                            poi_key = f"POI{i+1}"
+                            poi_indices = predict_result.get(
+                                poi_key, {}).get("indices", [])
+                            poi_confidences = predict_result.get(
+                                poi_key, {}).get("confidences", [])
+                            best_pair = (poi_indices[0], poi_confidences[0])
+                            predictions.append(best_pair[0])
+                            candidates.append((poi_indices, poi_confidences))
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = "QModel v5 (ResNet)"
+                        if (
+                            isinstance(self.model_result, list)
+                            and len(self.model_result) == 5
+                        ):
+                            poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
+                        else:
+                            self.model_result = -1  # try fallback model
+                except Exception as e:
+                    limit = None
+                    t, v, tb = sys.exc_info()
+                    from traceback import format_tb
 
-            if Constants.QModel4_predict:
+                    a_list = ["Traceback (most recent call last):"]
+                    a_list = a_list + format_tb(tb, limit)
+                    a_list.append(f"{t.__name__}: {str(v)}")
+                    for line in a_list:
+                        Log.d(line)
+                    Log.e(e)
+                    Log.e(TAG,
+                          f"Error using 'QModel v5 (ResNet)'... Using a fallback model for auto-fitting."
+                          )
+                    raise e  # debug only
+                    self.model_result = -1  # try fallback model
+            
+            if Constants.QModel4_predict and self.model_result == -1:
                 Log.w(
                     "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
@@ -3117,15 +3189,26 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                Log.i(
-                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
-                for i, pm in enumerate(self.poi_markers):
-                    pm.setValue(self.xs[poi_vals[i]])
+                Log.i(f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
+
+                # Select target markers based on the engine version
+                if self.model_engine == 'QModel v5 (ResNet)':
+                    # v5 returns 5 points. Map them to markers 0, 1, 3, 4, 5 (Skipping legacy marker 2)
+                    target_indices = [0, 1, 3, 4, 5]
+                else:
+                    # Default behavior: Expects 1:1 mapping for all 6 markers
+                    target_indices = [0, 1, 2, 3, 4, 5]
+
+                # Iterate through the target indices and assign values from model output (poi_vals)
+                for i, marker_idx in enumerate(target_indices):
+                    # check to ensure we don't exceed the actual model output
+                    if i < len(poi_vals): 
+                        self.poi_markers[marker_idx].setValue(self.xs[poi_vals[i]])
+                        
                 self._log_model_confidences()
                 self.detect_change()
             else:
-                Log.w(
-                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
+                Log.w("[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
             Log.d("Attempt to auto-fit with no run loaded. No action taken.")
@@ -3255,7 +3338,59 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel4_predict:
+                if Constants.QModel5_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel v5 (ResNet)... (may take a few seconds)")
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v5_predictor
+                            predict_result = predictor.predict(
+                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+
+                            predictions = []
+                            candidates = []
+                            for i in range(5):
+                                poi_key = f"POI{i+1}"
+                                poi_indices = predict_result.get(
+                                    poi_key, {}).get("indices", [])
+                                poi_confidences = predict_result.get(
+                                    poi_key, {}).get("confidences", [])
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(best_pair)
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = "QModel v5 (ResNet)"
+                            if (
+                                isinstance(self.model_result, list)
+                                and len(self.model_result) == 5
+                            ):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # try fallback model
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            "Error using 'QModel v5 (ResNet)'... Using a fallback model for auto-fitting."
+                        )
+                        raise e  # debug only
+                        self.model_result = -1  # try fallback model
+                if Constants.QModel4_predict and self.model_result == -1:
                     Log.w(
                         "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -4534,8 +4669,72 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.d(f"Number of channels (fill_type): {fill_type}")
             self.parent.num_channels = 3  # pulled from XML
             # --------------------------------------------------------------- #
-
             if self.model_result == -1:  # self.stateStep != 6:
+                self.model_result = -1
+                self.model_candidates = None
+                self.model_engine = "None"
+                if Constants.QModel5_predict and self.prior_points_in_xml:
+                    # skip running QModel v4 if prior points are available (it's too slow)
+                    self.model_result = poi_vals
+                    self.model_engine = "QModel v5 (ResNet) skipped (using prior points)"
+                if self.model_result == -1 and Constants.QModel5_predict:
+                    Log.w(
+                        "Auto-fitting points with QModel v5 (ResNet)... (may take a few seconds)")
+                    self._text1.setHtml(
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v5 (Fusion)... </span>"
+                    )
+                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v5_predictor
+                            predict_result = predictor.predict(
+                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+
+                            predictions = []
+                            candidates = []
+                            for i in range(5):
+                                poi_key = f"POI{i+1}"
+                                poi_indices = predict_result.get(
+                                    poi_key, {}).get("indices", [])
+                                poi_confidences = predict_result.get(
+                                    poi_key, {}).get("confidences", [])
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(best_pair)
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = "QModel v5 (Fusion)"
+                            if (
+                                isinstance(self.model_result, list)
+                                and len(self.model_result) == 5
+                            ):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1  # try fallback model
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(
+                            "Error using 'QModel v5 (ResNet)'... Using a fallback model for auto-fitting."
+                        )
+                        raise e  # debug only
+                        self.model_result = -1  # try fallback model
+            if self.model_result == -1 and Constants.QModel4_predict:  # self.stateStep != 6:
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"

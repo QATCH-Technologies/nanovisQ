@@ -66,7 +66,8 @@ class _MainWindow(QtWidgets.QMainWindow):
         app_instance = QtWidgets.QApplication.instance()
         if app_instance:
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+            # capture clicks anywhere on gui
+            app_instance.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         # Handle mouse click events (e.g. hide on click)
@@ -369,8 +370,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import __version__ as QModel4_version
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import __release__ as QModel4_release
+        from QATCH.QModel.src.models.v5_resnet.__init__ import __version__ as QModel5_version
+        from QATCH.QModel.src.models.v5_resnet.__init__ import __release__ as QModel5_release
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (2 available)')
+            'Model versions (3 available)')
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
@@ -382,7 +385,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[1]))
         self.q_version_v4.setCheckable(True)
-        if Constants.QModel4_predict:
+
+        self.q_version_v5 = self.menubar[5].addAction(
+            'QModel ResNet v{} ({})'.format(QModel5_version, QModel5_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]))
+        if Constants.QModel5_predict:
+            self.q_version_v5.setChecked(True)
+        elif Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)
         elif Constants.ModelData_predict:
             self.q_version_v1.setChecked(True)

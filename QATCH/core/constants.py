@@ -311,7 +311,9 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)"]
+                           "QModel v4 (Fusion)",
+                           "QModel V5 (ResNet)"]
+    QModel5_predict = True
     QModel4_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
