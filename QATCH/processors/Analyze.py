@@ -384,11 +384,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
 
+        # QModel v5 Fusion Constants
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
 
+        # QModel v5 ResNet Constants
         self.QModel_v5_modules_loaded = False
         self.QModel_v5_predictor = None
+
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -418,7 +421,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.cBox_Runs = QtWidgets.QComboBox()
         self.cBox_Runs.setEditable(True)
         self.cBox_Runs.setInsertPolicy(QtWidgets.QComboBox.NoInsert)
-        # Configure completer for existing/future items
+
         # Configure completer for existing/future items
         self._runs_completer = QCompleter(self.cBox_Runs.model(), self)
         self._runs_completer.setCompletionMode(QCompleter.PopupCompletion)
@@ -2705,12 +2708,16 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # ---------- LOADING QMODEL V5 (ResMet) -----------#
         try:
             if Constants.QModel5_predict and not self.QModel_v5_modules_loaded:
-                model_path = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_model.pth")
+                # model_path = os.path.join(Architecture.get_path(
+                # ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_model.pth")
+                model_pattern = os.path.join(Architecture.get_path(
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_model_fold_*.pth")
+                # scaler_path = os.path.join(Architecture.get_path(
+                # ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_scale.pkl")
                 scaler_path = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "v5_resnet_scaler.pkl")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v5_resnet", "global_scaler_v5.pkl")
                 self.QModel_v5_predictor = QModelV5Resnet(
-                    model_path=model_path,
+                    model_pattern=model_pattern,
                     scaler_path=scaler_path,
                 )
 
@@ -3027,8 +3034,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v5_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
+                        # predict_result = predictor.predict(
+                        #     file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
                         predict_result = predictor.predict(
-                            file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                            file_buffer=fh, visualize=True)
                         predictions = []
                         candidates = []
                         for i in range(5):
@@ -3070,7 +3079,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                           )
                     raise e  # debug only
                     self.model_result = -1  # try fallback model
-            
+
             if Constants.QModel4_predict and self.model_result == -1:
                 Log.w(
                     "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
@@ -3189,7 +3198,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                Log.i(f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
+                Log.i(
+                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
 
                 # Select target markers based on the engine version
                 if self.model_engine == 'QModel v5 (ResNet)':
@@ -3202,13 +3212,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 # Iterate through the target indices and assign values from model output (poi_vals)
                 for i, marker_idx in enumerate(target_indices):
                     # check to ensure we don't exceed the actual model output
-                    if i < len(poi_vals): 
-                        self.poi_markers[marker_idx].setValue(self.xs[poi_vals[i]])
-                        
+                    if i < len(poi_vals):
+                        self.poi_markers[marker_idx].setValue(
+                            self.xs[poi_vals[i]])
+
                 self._log_model_confidences()
                 self.detect_change()
             else:
-                Log.w("[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
+                Log.w(
+                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
 
         except ConnectionRefusedError:
             Log.d("Attempt to auto-fit with no run loaded. No action taken.")
@@ -3346,9 +3358,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v5_predictor
+                            # predict_result = predictor.predict(
+                            #     file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
-
+                                file_buffer=fh, visualize=True)
                             predictions = []
                             candidates = []
                             for i in range(5):
@@ -4689,8 +4702,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v5_predictor
+                            # predict_result = predictor.predict(
+                            #     file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=True, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=True)
 
                             predictions = []
                             candidates = []

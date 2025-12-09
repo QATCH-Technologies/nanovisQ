@@ -1,4 +1,5 @@
 import os
+import glob
 import numpy as np
 import pandas as pd
 import torch
@@ -15,7 +16,7 @@ import matplotlib.pyplot as plt
 warnings.filterwarnings('ignore')
 
 # ==========================================
-# LOGGING UTILS (Matching v4_fusion)
+# LOGGING UTILS
 # ==========================================
 
 
@@ -37,8 +38,9 @@ class Log:
         print(f"{tag} [ERROR] {message}")
 
 # ==========================================
-# MAIN QMODEL CLASS
+# FEATURE ENGINEERING
 # ==========================================
+
 
 class FastFeatures:
     @staticmethod
@@ -46,8 +48,7 @@ class FastFeatures:
         df = df.copy()
         n = len(df)
 
-        # 1. Aggressive Pre-Smoothing (The Fix for Barcode Noise)
-        # Sigma=5 removes high-freq electrical noise before we calculate slopes
+        # 1. Aggressive Pre-Smoothing
         for col in ["Dissipation", "Resonance_Frequency"]:
             if col in df.columns:
                 df[col] = gaussian_filter1d(df[col].values, sigma=5.0)
@@ -56,13 +57,11 @@ class FastFeatures:
         if hasattr(FastFeatures, '_compute_difference_vectorized'):
             df["Difference"] = FastFeatures._compute_difference_vectorized(df)
 
-        # 3. Compute DoG (Difference of Gaussians) features
+        # 3. DoG Features
         diss_vals = df['Dissipation'].values
         diff_vals = df['Difference'].values if "Difference" in df else np.zeros_like(
             diss_vals)
 
-        # DoG is just Gaussian(sigma2) - Gaussian(sigma1), but since we already smoothed,
-        # we can just apply another filter to get the lower frequency component
         df['Dissipation_DoG'] = gaussian_filter1d(diss_vals, sigma=2, order=1)
         df['Difference_DoG'] = gaussian_filter1d(diff_vals, sigma=2, order=1)
 
@@ -71,29 +70,25 @@ class FastFeatures:
             df['Dissipation_DoG'].values
         )
 
-        # 5. Derivatives (Slopes)
+        # 5. Derivatives
         time_vals = df['Relative_time'].values
         dt = np.diff(time_vals, prepend=time_vals[0])
-        # Prevent division by zero or tiny dt
         dt[dt <= 0] = np.nanmedian(dt) if len(dt) > 0 else 1.0
 
-        # Calculate Delta using the SMOOTHED signals
         diss_diff = np.diff(diss_vals, prepend=diss_vals[0])
         rf_diff = np.diff(df['Resonance_Frequency'].values,
                           prepend=df['Resonance_Frequency'].values[0])
 
-        # Normalized slopes
         diss_slope = diss_diff / dt
         rf_slope = rf_diff / dt
 
-        # 6. Slope Ratio (Clipped for stability)
-        # Avoid division by very small numbers
+        # 6. Slope Ratio
         rf_slope_safe = np.where(
             np.abs(rf_slope) < 1e-5, np.sign(rf_slope) * 1e-5, rf_slope)
         rf_slope_safe = np.where(rf_slope_safe == 0, 1e-5, rf_slope_safe)
         df['slope_ratio'] = np.clip(diss_slope / rf_slope_safe, -100, 100)
 
-        # 7. Rolling Standard Deviation
+        # 7. Rolling Std
         df['Diss_roll_std'] = df['Dissipation'].rolling(
             window=50, min_periods=1).std().fillna(0)
 
@@ -101,9 +96,8 @@ class FastFeatures:
         df['Dissipation_Delta'] = diss_slope
         df['Resonance_Delta'] = rf_slope
 
-        # 9. Clean up Time and Types
+        # 9. Clean up
         df['Relative_time'] = df['Relative_time'].astype(np.float32)
-
         df.fillna(0, inplace=True)
         df.replace([np.inf, -np.inf], 0, inplace=True)
 
@@ -115,7 +109,6 @@ class FastFeatures:
         res_freq = df["Resonance_Frequency"].values
         diss = df["Dissipation"].values
 
-        # Simple mask for baseline (assuming early part of file is baseline)
         mask = (xs > xs.min()) & (xs <= (xs.min() + (xs.max()-xs.min())*0.1))
         if mask.sum() < 2:
             avg_res = np.mean(res_freq[:10])
@@ -163,7 +156,7 @@ class FastFeatures:
 
 
 # ==========================================
-# 3. Model Architecture
+# MODEL ARCHITECTURE
 # ==========================================
 
 class SqueezeExcitation(nn.Module):
@@ -216,7 +209,6 @@ class ResNet1D(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool1d(kernel_size=3, stride=2, padding=1)
 
-        # Dilated convolutions included
         self.layer1 = self._make_layer(32, 2, stride=1, dilation=1)
         self.layer2 = self._make_layer(64, 2, stride=2, dilation=2)
         self.layer3 = self._make_layer(128, 2, stride=2, dilation=4)
@@ -226,14 +218,11 @@ class ResNet1D(nn.Module):
         self.rnn = nn.LSTM(input_size=256, hidden_size=128,
                            num_layers=2, batch_first=True, bidirectional=True)
 
-        # Standard Sigmoid output
         self.fc = nn.Sequential(
             nn.Dropout(0.4),
             nn.Linear(128 * 2, num_classes),
             nn.Sigmoid()
         )
-
-        # Initialize weights for stability
         self._init_weights()
 
     def _init_weights(self):
@@ -277,22 +266,22 @@ class ResNet1D(nn.Module):
         x = self.maxpool(self.relu(self.bn1(self.conv1(x))))
         x = self.layer4(self.layer3(self.layer2(self.layer1(x))))
         x = x.permute(0, 2, 1)
-
-        # LSTM is unstable in float16, force float32
         x_float = x.float()
         x_float, _ = self.rnn(x_float)
         x = x_float[:, -1, :]
-
         return self.fc(x)
+
+
+# ==========================================
+# MAIN PREDICTOR CLASS (ENSEMBLE)
+# ==========================================
 
 class QModelV5Resnet:
     """
-    QModel wrapper for ResNet1D inference system.
-    Implements sliding window voting, resampling, and peak/slope detection.
+    QModel wrapper for ResNet1D ENSEMBLE inference.
     """
-    TAG = "ResNetSystem"
+    TAG = "EnsembleSystem"
 
-    # Default Configuration from infer_2.py
     CONFIG = {
         'window_size': 1024,
         'hidden_dim': 128,
@@ -312,48 +301,51 @@ class QModelV5Resnet:
         'inference_stride': 16,
     }
 
-    def __init__(self, model_path: str, scaler_path: str = None, device_str: str = None):
-        """
-        Args:
-            model_path: Path to the .pth model file.
-            scaler_path: Path to the .pkl scaler file.
-            device_str: 'cuda' or 'cpu'. Auto-detects if None.
-        """
+    def __init__(self, model_pattern: str, scaler_path: str = None, device_str: str = None):
         self.device = torch.device(
             device_str if device_str else (
                 "cuda" if torch.cuda.is_available() else "cpu")
         )
-
         self.num_classes = len(self.CONFIG['poi_config'])
-        self._model = None
+        self._models = []
         self._scaler = None
 
-        # State for visualization
+        # State
         self._last_original_df = None
         self._last_resampled_df = None
-        self._last_probs = None
+        self._last_mean_probs = None
+        self._last_std_probs = None
         self._last_predictions = None
 
-        self._load(model_path, scaler_path)
+        self._load(model_pattern, scaler_path)
 
-    def _load(self, model_path: str, scaler_path: str):
-        """Load Model and Scaler."""
+    def _load(self, model_pattern: str, scaler_path: str):
         try:
-            # 1. Load Model
-            self._model = ResNet1D(
-                len(self.CONFIG['feature_cols']), self.num_classes).to(self.device)
-            self._model.load_state_dict(torch.load(
-                model_path, map_location=self.device))
-            self._model.eval()
-            Log.i(self.TAG, f"Model loaded from {model_path}")
+            model_files = glob.glob(model_pattern)
+            if not model_files:
+                raise FileNotFoundError(
+                    f"No models found matching: {model_pattern}")
 
-            # 2. Load Scaler
+            Log.i(self.TAG, f"Found {len(model_files)} ensemble members.")
+            for m_path in model_files:
+                try:
+                    model = ResNet1D(
+                        len(self.CONFIG['feature_cols']), self.num_classes).to(self.device)
+                    model.load_state_dict(torch.load(
+                        m_path, map_location=self.device))
+                    model.eval()
+                    self._models.append(model)
+                except Exception as e:
+                    Log.e(self.TAG, f"Failed to load member {m_path}: {e}")
+
+            if not self._models:
+                raise ValueError("No valid models could be loaded.")
+
             if scaler_path and os.path.exists(scaler_path):
                 self._scaler = joblib.load(scaler_path)
-                Log.i(self.TAG, f"Scaler loaded from {scaler_path}")
             else:
                 Log.w(
-                    self.TAG, "Scaler path invalid or not provided. Will fit temporary scaler at runtime.")
+                    self.TAG, "Scaler path invalid. Fitting temporary scaler at runtime.")
                 self._scaler = None
 
         except Exception as e:
@@ -365,15 +357,10 @@ class QModelV5Resnet:
     # ==========================================
 
     def _resample_to_constant_rate(self, df: pd.DataFrame, cols_to_interp: list):
-        """
-        Resamples dataframe to a constant sampling rate based on median dt.
-        Returns: new_df, target_dt
-        """
         times = df['Relative_time'].values
         if len(times) < 100:
             return df, 1.0
 
-        # Calculate target dt from first 100 samples
         dt_initial = np.diff(times[:100])
         target_dt = np.median(dt_initial)
 
@@ -383,7 +370,6 @@ class QModelV5Resnet:
         t_start = times[0]
         t_end = times[-1]
         new_time_grid = np.arange(t_start, t_end, target_dt)
-
         new_df = pd.DataFrame({'Relative_time': new_time_grid})
 
         for col in cols_to_interp:
@@ -393,8 +379,6 @@ class QModelV5Resnet:
         return new_df, target_dt
 
     def _preprocess(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Clean, resample and feature gen."""
-        # 1. Basic Cleaning
         cols_needed = ["Relative_time", "Dissipation", "Resonance_Frequency"]
         for c in cols_needed:
             if c in df.columns:
@@ -402,61 +386,23 @@ class QModelV5Resnet:
         df.dropna(subset=['Relative_time'], inplace=True)
         df.sort_values('Relative_time', inplace=True)
 
-        # 2. Resample (Crucial step from infer_2.py)
         resampled_df, _ = self._resample_to_constant_rate(
-            df, ["Dissipation", "Resonance_Frequency"]
-        )
-
-        # 3. Generate Features
-        if FastFeatures is None:
-            raise ImportError(
-                "FastFeatures class missing (train_2.py not found).")
-
+            df, ["Dissipation", "Resonance_Frequency"])
         final_df = FastFeatures.generate(resampled_df)
         return final_df
 
     # ==========================================
-    # CORE INFERENCE (Sliding Window Voting)
+    # ENSEMBLE INFERENCE
     # ==========================================
 
-    def _run_inference_loop(self, df_feats: pd.DataFrame) -> np.ndarray:
-        """
-        Runs the model with sliding windows and accumulates probabilities (voting).
-        """
-        # Prepare Feature Matrix
-        features = df_feats[self.CONFIG['feature_cols']].values
-
-        # Handle Scaling
-        if self._scaler:
-            features = self._scaler.transform(features)
-        else:
-            # Fallback: fit on the fly if no global scaler provided
-            temp_scaler = RobustScaler()
-            features = temp_scaler.fit_transform(features)
-
-        features = features.astype(np.float32)
-        features = np.clip(features, -10, 10)
-        features = np.nan_to_num(features, nan=0.0)
-
-        # Padding
-        w_size = self.CONFIG['window_size']
-        pad_size = w_size // 2
-        start_pad = features[:pad_size][::-1]
-        end_pad = features[-pad_size:][::-1]
-        padded_feats = np.vstack([start_pad, features, end_pad])
-
-        stride = self.CONFIG['inference_stride']
+    def _run_single_model_raw(self, model, padded_feats, total_len, stride, w_size):
         indices = range(0, len(padded_feats) - w_size, stride)
-
-        # Accumulators
-        probabilities = np.zeros((len(df_feats), self.num_classes))
-        counts = np.zeros((len(df_feats), self.num_classes))
+        probabilities = np.zeros((total_len, self.num_classes))
+        counts = np.zeros((total_len, self.num_classes))
 
         batch_size = 64
         current_batch = []
         current_map_indices = []
-
-        Log.d(self.TAG, "Running sliding window inference...")
 
         with torch.no_grad():
             for i in indices:
@@ -466,165 +412,218 @@ class QModelV5Resnet:
 
                 if len(current_batch) == batch_size:
                     self._process_batch(
-                        current_batch, current_map_indices, probabilities, counts, stride, len(df_feats))
+                        model, current_batch, current_map_indices, probabilities, counts, stride, total_len)
                     current_batch = []
                     current_map_indices = []
 
-            # Process remaining
             if current_batch:
                 self._process_batch(
-                    current_batch, current_map_indices, probabilities, counts, stride, len(df_feats))
+                    model, current_batch, current_map_indices, probabilities, counts, stride, total_len)
 
         counts[counts == 0] = 1
-        raw_probs = probabilities / counts
+        return probabilities / counts
 
-        # Post-Processing Smoothing
-        # 1. Median Filter (remove barcode noise)
-        smooth_probs = median_filter(raw_probs, size=(51, 1))
-        # 2. Gaussian Filter (smooth transitions)
-        smooth_probs = gaussian_filter1d(smooth_probs, sigma=10, axis=0)
-
-        return smooth_probs
-
-    def _process_batch(self, batch, map_indices, probs_arr, counts_arr, stride, total_len):
+    def _process_batch(self, model, batch, map_indices, probs_arr, counts_arr, stride, total_len):
         x = torch.tensor(np.array(batch), dtype=torch.float32).to(self.device)
-        out = self._model(x).cpu().numpy()
+        out = model(x).cpu().numpy()
 
         for idx, pred in zip(map_indices, out):
             start_p = max(0, idx - stride//2)
             end_p = min(total_len, idx + stride//2 + 1)
             probs_arr[start_p:end_p] += pred
             counts_arr[start_p:end_p] += 1
+
+    def _run_ensemble_inference(self, df_feats: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray]:
+        features = df_feats[self.CONFIG['feature_cols']].values
+        if self._scaler:
+            features = self._scaler.transform(features)
+        else:
+            temp_scaler = RobustScaler()
+            features = temp_scaler.fit_transform(features)
+
+        features = features.astype(np.float32)
+        features = np.clip(features, -10, 10)
+        features = np.nan_to_num(features, nan=0.0)
+
+        w_size = self.CONFIG['window_size']
+        pad_size = w_size // 2
+        start_pad = features[:pad_size][::-1]
+        end_pad = features[-pad_size:][::-1]
+        padded_feats = np.vstack([start_pad, features, end_pad])
+        stride = self.CONFIG['inference_stride']
+
+        all_probs = []
+        Log.d(self.TAG, f"Running inference on {len(self._models)} models...")
+        for model in self._models:
+            raw = self._run_single_model_raw(
+                model, padded_feats, len(df_feats), stride, w_size)
+            all_probs.append(raw)
+
+        all_probs = np.array(all_probs)
+        mean_probs = np.mean(all_probs, axis=0)
+        std_probs = np.std(all_probs, axis=0)
+
+        # Smooth Mean
+        mean_probs = median_filter(mean_probs, size=(51, 1))
+        mean_probs = gaussian_filter1d(mean_probs, sigma=10, axis=0)
+
+        return mean_probs, std_probs
+
+    # ==========================================
+    # LOGIC & CONSTRAINTS
+    # ==========================================
+
     def _enforce_sequential_constraints(self, candidates_map: Dict[str, List[Tuple[int, float]]]) -> Dict[str, Dict]:
         """
-        Post-processing to fix order.
-        Rule: If POI[i] is missing, check if POI[i+1] has multiple peaks. 
-        If so, and the earlier peak fits the sequence, reclassify it to POI[i].
+        1. Steals peaks from next class if current is missing.
+        2. Filters for temporal validity (must be after last_confirmed_idx).
+        3. Sorts by CONFIDENCE (Highest first).
         """
         final_output = {}
         poi_configs = self.CONFIG['poi_config']
-        
-        # We need a list of labels to iterate by index
         labels = [c['label'] for c in poi_configs]
-        
-        # Track the index of the previously confirmed POI to ensure time linearity
-        last_confirmed_idx = 0 
+        last_confirmed_idx = 0
 
         for i in range(len(labels)):
             current_label = labels[i]
             current_candidates = candidates_map.get(current_label, [])
-            
-            # 1. Check if current is missing or empty
+
+            # Steal peak logic
             if not current_candidates:
-                # LOOK AHEAD: Check if the NEXT label has extra peaks to spare
                 if i + 1 < len(labels):
                     next_label = labels[i+1]
                     next_candidates = candidates_map.get(next_label, [])
-                    
-                    # Heuristic: The next class has > 1 peak, or we are desperate
                     if len(next_candidates) >= 2:
-                        # Sort by time
                         next_candidates.sort(key=lambda x: x[0])
-                        
-                        earliest_next_peak = next_candidates[0] # The "First Yellow Peak"
-                        
-                        # VALIDATION: Is this stolen peak actually after the previous POI?
+                        earliest_next_peak = next_candidates[0]
                         if earliest_next_peak[0] > last_confirmed_idx:
-                            Log.i(self.TAG, f"Reclassification: Stealing {next_label} peak at {earliest_next_peak[0]} for missing {current_label}")
-                            
-                            # Assign to current
                             current_candidates = [earliest_next_peak]
-                            
-                            # Remove from next (so we don't detect it twice)
                             candidates_map[next_label].pop(0)
 
-            # 2. Select the Best Candidate for the current Class
-            # We want the highest confidence that is ALSO after last_confirmed_idx
             best_candidate = (-1, -1.0)
-            
-            # Filter candidates that are temporally valid
-            valid_candidates = [c for c in current_candidates if c[0] > last_confirmed_idx]
-            
+            valid_candidates = [
+                c for c in current_candidates if c[0] > last_confirmed_idx]
+
             if valid_candidates:
-                # Heuristic: Usually pick the highest confidence among valid ones
-                # OR pick the earliest one if we want strict left-to-right filling. 
-                # Let's pick highest confidence to be safe, or earliest if confidences are similar.
-                # Given the user issue, picking the EARLIEST valid one is safer for sequential logic.
-                valid_candidates.sort(key=lambda x: x[0]) 
+                # Pick Highest Confidence among valid
+                valid_candidates.sort(key=lambda x: x[1], reverse=True)
                 best_candidate = valid_candidates[0]
-                
-                # Update constraint for next loop
                 last_confirmed_idx = best_candidate[0]
-            
+
             final_output[current_label] = {
                 'resampled_index': best_candidate[0],
                 'confidence': best_candidate[1]
             }
-            
-        return final_output
-    # ==========================================
-    # PEAK LOGIC (Hill vs Cliff)
-    # ==========================================
-    def _get_predictions_from_probs(self, probs: np.ndarray) -> Dict[str, List[Tuple[int, float]]]:
-        """
-        Modified to return ALL candidate peaks for each class, sorted by confidence.
-        Returns: Dict { 'POI1': [(idx, conf), (idx, conf)...] }
-        """
-        candidates_map = {}
 
+        return final_output
+
+    def _apply_temporal_constraints(self, preds: Dict[str, Dict]) -> Dict[str, Dict]:
+        """
+        Applies logic to remove POIs based on interval duration.
+        Logic is applied on RESAMPLED INDICES (which correlates directly to time).
+
+        Rules:
+        1. If Delta(POI2->POI3) <= Delta(POI1->POI2): Drop POI3.
+        2. If Delta(POI3->POI4) < Delta(POI2->POI3): Drop POI4.
+        3. If Delta(POI4->POI5) < Delta(POI3->POI4): Drop POI5.
+
+        Assuming cascading failure: if a previous node is dropped, the interval logic
+        for the next node breaks, so it is also dropped.
+        """
+
+        def get_idx(label):
+            return preds[label]['resampled_index']
+
+        def drop(label, reason):
+            Log.i(self.TAG, f"Dropping {label}: {reason}")
+            preds[label]['resampled_index'] = -1
+            preds[label]['confidence'] = -1
+
+        idx1 = get_idx('POI1')
+        idx2 = get_idx('POI2')
+
+        # We can only perform checks if 1 and 2 exist
+        if idx1 != -1 and idx2 != -1:
+            delta_1_2 = idx2 - idx1
+
+            # --- Check POI 3 ---
+            idx3 = get_idx('POI3')
+            if idx3 != -1:
+                delta_2_3 = idx3 - idx2
+                if delta_2_3 <= delta_1_2:
+                    drop(
+                        'POI3', f"Delta 2->3 ({delta_2_3}) <= Delta 1->2 ({delta_1_2})")
+                    idx3 = -1  # Update for cascade
+
+            # --- Check POI 4 ---
+            # Requires valid POI2 and POI3
+            idx4 = get_idx('POI4')
+            if idx3 != -1 and idx4 != -1:
+                delta_2_3 = idx3 - idx2  # Recalculate or reuse
+                delta_3_4 = idx4 - idx3
+                if delta_3_4 < delta_2_3:
+                    drop(
+                        'POI4', f"Delta 3->4 ({delta_3_4}) < Delta 2->3 ({delta_2_3})")
+                    idx4 = -1
+            elif idx4 != -1 and idx3 == -1:
+                # Cascade: 3 is missing, so 4 is invalid
+                drop('POI4', "Cascading failure: POI3 missing")
+                idx4 = -1
+
+            # --- Check POI 5 ---
+            # Requires valid POI3 and POI4
+            idx5 = get_idx('POI5')
+            if idx3 != -1 and idx4 != -1 and idx5 != -1:
+                delta_3_4 = idx4 - idx3
+                delta_4_5 = idx5 - idx4
+                if delta_4_5 < delta_3_4:
+                    drop(
+                        'POI5', f"Delta 4->5 ({delta_4_5}) < Delta 3->4 ({delta_3_4})")
+            elif idx5 != -1 and (idx3 == -1 or idx4 == -1):
+                # Cascade
+                drop('POI5', "Cascading failure: Previous POIs missing")
+
+        return preds
+
+    def _get_predictions_from_probs(self, probs: np.ndarray) -> Dict[str, List[Tuple[int, float]]]:
+        candidates_map = {}
         for i in range(self.num_classes):
             label = self.CONFIG['poi_config'][i]['label']
             p_curve = probs[:, i]
-            
-            # Smooth lightly
             p_curve = gaussian_filter1d(p_curve, sigma=5)
 
             candidates = []
+            peaks, props = find_peaks(p_curve, height=0.1, distance=50)
 
-            # 1. Find all peaks with decent height
-            peaks, props = find_peaks(p_curve, height=0.1, distance=50) # Distance 50 prevents getting the same peak twice
-            
             if len(peaks) > 0:
                 for p_idx, p_height in zip(peaks, props['peak_heights']):
                     candidates.append((int(p_idx), float(p_height)))
             else:
-                # Fallback: Look for Cliff/Slope if no peaks found
                 slope = np.gradient(p_curve)
-                slope_peaks, slope_props = find_peaks(slope, height=0.005, distance=50)
-                for p_idx, p_height in zip(slope_peaks, slope_props['peak_heights']):
-                     # Use raw prob as confidence even if slope detected
+                slope_peaks, slope_props = find_peaks(
+                    slope, height=0.005, distance=50)
+                for p_idx in slope_peaks:
                     candidates.append((int(p_idx), float(p_curve[p_idx])))
 
-            # Sort candidates by time (index) initially
-            candidates.sort(key=lambda x: x[0]) 
+            # No sorting needed here, done in _enforce
             candidates_map[label] = candidates
 
-        return candidates_map   
+        return candidates_map
+
     # ==========================================
     # HELPERS
     # ==========================================
 
     def _map_resampled_to_original(self, resampled_idx: int, resampled_df: pd.DataFrame, original_df: pd.DataFrame) -> int:
-        """
-        Maps an index from the resampled (interpolated) dataframe back to the closest index 
-        in the original raw dataframe based on 'Relative_time'.
-        """
         if resampled_idx == -1 or resampled_idx >= len(resampled_df):
             return -1
-
         target_time = resampled_df['Relative_time'].iloc[resampled_idx]
-
-        # Find index in original_df closest to target_time
-        # searchsorted requires sorted array
         times = original_df['Relative_time'].values
         idx = np.searchsorted(times, target_time)
-
         if idx == 0:
             return 0
         if idx == len(times):
             return len(times) - 1
-
-        # Check which neighbor is closer
         if abs(times[idx] - target_time) < abs(times[idx-1] - target_time):
             return int(idx)
         else:
@@ -636,16 +635,11 @@ class QModelV5Resnet:
         if hasattr(file_buffer, "seekable") and file_buffer.seekable():
             file_buffer.seek(0)
             return file_buffer
-        else:
-            raise Exception("Cannot seek stream prior to processing.")
+        raise Exception("Cannot seek stream.")
 
     def _validate_file_buffer(self, file_buffer: Union[str, object]) -> pd.DataFrame:
-        try:
-            file_buffer = self._reset_file_buffer(file_buffer=file_buffer)
-            df = pd.read_csv(file_buffer)
-        except Exception as e:
-            raise ValueError(f"Error reading CSV: {e}")
-
+        file_buffer = self._reset_file_buffer(file_buffer=file_buffer)
+        df = pd.read_csv(file_buffer)
         required = {"Dissipation", "Resonance_Frequency", "Relative_time"}
         if not required.issubset(df.columns):
             raise ValueError(f"Missing columns. Need {required}")
@@ -658,18 +652,13 @@ class QModelV5Resnet:
         return output
 
     # ==========================================
-    # PUBLIC API (predict & visualize)
+    # PUBLIC API
     # ==========================================
 
-    def predict(self, progress_signal: Any = None, file_buffer: Any = None,
-                df: pd.DataFrame = None, visualize: bool = False):
-        """
-        Standard QModel prediction entry point.
-        """
-        if self._model is None:
-            raise ValueError("Model not loaded")
+    def predict(self, file_buffer: Any = None, df: pd.DataFrame = None, visualize: bool = False):
+        if not self._models:
+            raise ValueError("Models not loaded")
 
-        # 1. Load Data
         if df is None and file_buffer is not None:
             try:
                 df = self._validate_file_buffer(file_buffer)
@@ -681,24 +670,26 @@ class QModelV5Resnet:
 
         self._last_original_df = df.copy()
 
-        # 2. Preprocess
+        # Preprocess
         resampled_df = self._preprocess(df.copy())
         self._last_resampled_df = resampled_df
 
-        # 3. Inference
-        probs = self._run_inference_loop(resampled_df)
-        self._last_probs = probs
+        # Ensemble Inference
+        mean_probs, std_probs = self._run_ensemble_inference(resampled_df)
+        self._last_mean_probs = mean_probs
+        self._last_std_probs = std_probs
 
-        # 4. Peak Analysis (UPDATED)
-        # Step A: Get all candidates
-        candidate_map = self._get_predictions_from_probs(probs)
-        
-        # Step B: Run the sequential fixer (The "Yellow Peak" logic)
+        # 1. Get raw candidates
+        candidate_map = self._get_predictions_from_probs(mean_probs)
+
+        # 2. Sequential Fix (Left-to-Right + Highest Confidence)
         raw_preds = self._enforce_sequential_constraints(candidate_map)
 
-        # 5. Format Output (Map back to original indices)
-        final_output = {}
+        # 3. Temporal Constraints (Relative Delta Logic)
+        raw_preds = self._apply_temporal_constraints(raw_preds)
 
+        # 4. Format Output
+        final_output = {}
         for label, data in raw_preds.items():
             r_idx = data['resampled_index']
             conf = data['confidence']
@@ -706,14 +697,19 @@ class QModelV5Resnet:
             if r_idx != -1:
                 orig_idx = self._map_resampled_to_original(
                     r_idx, resampled_df, df)
+                unc = float(std_probs[r_idx, [c['label']
+                            for c in self.CONFIG['poi_config']].index(label)])
+
                 final_output[label] = {
                     'indices': [orig_idx],
-                    'confidences': [conf]
+                    'confidences': [conf],
+                    'uncertainty': [unc]
                 }
             else:
                 final_output[label] = {
                     'indices': [-1],
-                    'confidences': [-1]
+                    'confidences': [-1],
+                    'uncertainty': [-1]
                 }
 
         self._last_predictions = final_output
@@ -723,18 +719,15 @@ class QModelV5Resnet:
 
         return final_output
 
-    def visualize(self, figsize: Tuple[int, int] = (15, 10), save_path: Optional[str] = None):
-        """
-        Reproduces plot_results from infer_2.py using class state.
-        """
-        if self._last_resampled_df is None or self._last_probs is None:
+    def visualize(self, figsize: Tuple[int, int] = (15, 12), save_path: Optional[str] = None):
+        if self._last_resampled_df is None or self._last_mean_probs is None:
             print("No prediction data to visualize.")
             return
 
         df = self._last_resampled_df
-        probs = self._last_probs
+        mean_probs = self._last_mean_probs
+        std_probs = self._last_std_probs
         preds = self._last_predictions
-
         time_axis = df['Relative_time'].values
 
         plt.figure(figsize=figsize)
@@ -744,33 +737,20 @@ class QModelV5Resnet:
         ax1.plot(time_axis, df['Dissipation'],
                  color='black', alpha=0.6, label='Dissipation')
         ax1.set_ylabel('Dissipation (Resampled)')
-        ax1.set_title('ResNet System Predictions')
+        ax1.set_title(f'Ensemble Predictions ({len(self._models)} Models)')
 
         colors = ['red', 'blue', 'green', 'orange', 'purple', 'cyan']
         y_min, y_max = ax1.get_ylim()
 
-        # Plot Predictions
-        # Note: preds contains ORIGINAL indices. We need RESAMPLED indices for this plot
-        # because we are plotting against the resampled time axis/dataframe.
-        # We need to reverse map or just look up the time from original and find it here.
-        # Simpler approach for Vis: Use the stored `_last_probs` logic which operated on resampled data.
-
-        # Let's re-extract the resampled indices from logic for plotting accuracy
-        # or find the time in resampled df that matches the prediction time
-
         for i, config in enumerate(self.CONFIG['poi_config']):
             label = config['label']
             color = colors[i % len(colors)]
-
             if label in preds and preds[label]['indices'][0] != -1:
-                # Get original index
                 orig_idx = preds[label]['indices'][0]
-                # Get time from original df
                 orig_time = self._last_original_df['Relative_time'].iloc[orig_idx]
-
                 ax1.vlines(orig_time, y_min, y_max, colors=color,
                            linestyles='solid', linewidth=2)
-                ax1.plot(orig_time, df['Dissipation'].iloc[min(len(df)-1, int(orig_idx * (len(df)/len(self._last_original_df))))],  # Approx Y pos
+                ax1.plot(orig_time, df['Dissipation'].iloc[min(len(df)-1, int(orig_idx * (len(df)/len(self._last_original_df))))],
                          'o', color=color, label=f'Pred {label}')
 
         ax1.legend(loc='upper right')
@@ -780,18 +760,21 @@ class QModelV5Resnet:
         for i in range(self.num_classes):
             label = self.CONFIG["poi_config"][i]["label"]
             color = colors[i % len(colors)]
-            ax2.plot(time_axis, probs[:, i], color=color,
-                     alpha=0.8, label=f'{label} Prob')
+            mu = mean_probs[:, i]
+            sigma = std_probs[:, i]
+            ax2.plot(time_axis, mu, color=color,
+                     alpha=1.0, label=f'{label} Mean')
+            upper = np.clip(mu + sigma, 0, 1)
+            lower = np.clip(mu - sigma, 0, 1)
+            ax2.fill_between(time_axis, lower, upper, color=color, alpha=0.2)
 
-        ax2.set_ylabel('Model Probability')
+        ax2.set_ylabel('Ensemble Probability')
         ax2.set_xlabel('Relative Time')
         ax2.set_ylim(0, 1.1)
         ax2.legend(loc='upper right')
 
         plt.tight_layout()
-
         if save_path:
             plt.savefig(save_path)
             Log.i(self.TAG, f"Saved plot to {save_path}")
-
         plt.show()
