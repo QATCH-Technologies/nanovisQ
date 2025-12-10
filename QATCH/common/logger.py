@@ -2,16 +2,15 @@
 Logging module for the QATCH Nanovis system.
 
 This module provides the Logger class for configuring and managing
-logging handlers, including suppression of TensorFlow warnings,
-file rotation, and console output, as well as the LoggerLevel enum
-defining available log levels.
+logging handlers, file rotation, and console output, as well as the 
+LoggerLevel enum defining available log levels.
 
 Author:
     Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-09
+    2025-10-16
 
 Version:
     ?
@@ -43,36 +42,6 @@ class Logger:
         Returns:
             None
         """
-        # Suppress TensorFlow and FutureWarnings
-        # Suppress TensorFlow future warnings
-        # Suppress Python-level FutureWarnings from TensorFlow imports
-        warnings.filterwarnings(
-            "ignore", category=FutureWarning, module="tensorflow"
-        )
-
-        # Suppress low-level C++ backend logs
-        # 0=all, 1=INFO, 2=WARN, 3=ERROR
-        os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
-        try:
-            import tensorflow as tf
-
-            # Try TF-specific logger if available
-            if hasattr(tf, "get_logger"):
-                tf.get_logger().setLevel(logging.ERROR)
-
-            # Otherwise just use Python's root logger (works because TF uses logging too)
-            else:
-                logging.getLogger("tensorflow").setLevel(logging.ERROR)
-
-            # Suppress Autograph verbosity if available
-            if hasattr(tf, "autograph") and hasattr(tf.autograph, "set_verbosity"):
-                tf.autograph.set_verbosity(0)
-
-        except ImportError:
-            # TensorFlow not installed
-            pass
-
         try:
             from absl import logging as absl_logging
             absl_logging.set_verbosity(absl_logging.ERROR)

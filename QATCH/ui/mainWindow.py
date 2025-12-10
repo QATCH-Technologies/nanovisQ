@@ -21,7 +21,6 @@ from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
-from QATCH.QModel.src.models.live.q_forecast_predictor import FillStatus
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -62,6 +61,39 @@ class _MainWindow(QtWidgets.QMainWindow):
         parent.ControlsWin._createMenu(self)
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
+
+        # Get the application instance safely and connect the signals
+        app_instance = QtWidgets.QApplication.instance()
+        if app_instance:
+            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
+            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
+            allow_hide = True
+            if widget_clicked is self.ui0.mode_learn:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_text:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_arrow:
+                allow_hide = False
+            if self.ui0.floating_widget.isVisible() and allow_hide:
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, focus_window):
+        # Hide the floating widget only when the focus leaves this window
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        if focus_window is None or focus_window != self.windowHandle():
+            self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
@@ -335,52 +367,23 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __version__ as ModelData_version
         from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.QModel.src.models.static_v2.__init__ import __version__ as QModel2_version
-        from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
-        from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
-        from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
-        from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
-        from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import __version__ as QModel4_version
         from QATCH.QModel.src.models.static_v4_fusion.__init__ import __release__ as QModel4_release
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (5 available)')
+            'Model versions (2 available)')
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[0]))
         self.q_version_v1.setCheckable(True)
-        self.q_version_v2 = self.menubar[5].addAction(
-            'QModel v{} ({})'.format(QModel2_version, QModel2_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[1]))
-        self.q_version_v2.setCheckable(True)
-        self.q_version_v3 = self.menubar[5].addAction(
-            'QModel v{} ({})'.format(QModel3_version, QModel3_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[2]))
-        self.q_version_v3.setCheckable(True)
-        self.pf_version = self.menubar[5].addAction(
-            'Partial Fills v{} ({})'.format(PF_version, PF_release))
-        self.pf_version.triggered.connect(
-            lambda checked: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[3 if checked else 2]))
-        self.pf_version.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
             'QModel Fusion v{} ({})'.format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[4]))
+                Constants.list_predict_models[1]))
         self.q_version_v4.setCheckable(True)
         if Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)
-        elif Constants.PF_predict:
-            self.q_version_v3.setChecked(True)
-            self.pf_version.setChecked(True)
-        elif Constants.QModel3_predict:
-            self.q_version_v3.setChecked(True)
-        elif Constants.QModel2_predict:
-            self.q_version_v2.setChecked(True)
         elif Constants.ModelData_predict:
             self.q_version_v1.setChecked(True)
         else:
@@ -648,6 +651,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def check_for_updates(self):
         if hasattr(self.parent, "url_download"):
             delattr(self.parent, "url_download")
+        if hasattr(self.parent, "_license_manager"):
+            lm: LicenseManager = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
         color, status = self.parent.start_download(True)
         if color == "#ff0000":
             if status == "ERROR":
@@ -1331,7 +1338,6 @@ class MainWindow(QtWidgets.QMainWindow):
         #                                r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
         #     self._forecaster = QForecastPredictor(
         #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
-        self.forecast_status = FillStatus.NO_FILL
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
 
@@ -1893,20 +1899,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1._update_progress_text()
             self.ControlsWin.ui1.run_progress_bar.repaint()
 
-            # set variable to preload tensorflow module, if desired
-            # hide info/warning logs from tf # lazy load
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            import logging
-            logging.getLogger("tensorflow").setLevel(
-                logging.ERROR)  # suppress AutoGraph warnings
-            if Constants.preload_tensorflow and Constants.TensorFlow_predict:
-                # load tensorflow library once per session
-                Log.d(tag=TAG, msg="GUI: Force repaint events")
-                Log.w(tag=TAG, msg="Loading tensorflow modules...")
-                import tensorflow as tf  # lazy load
-                Log.d(tag=TAG, msg="Loaded tensorflow as tf")
-                Log.d(tag=TAG, msg="GUI: Normal repaint events")
-
         # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
@@ -2445,29 +2437,29 @@ class MainWindow(QtWidgets.QMainWindow):
         # check if local app data contains a database file already
         """
         Configure the local VisQAI SQLite database used by the application.
-        
+
         If a bundled database exists in the application install assets and no database
         is present in the local application data folder, this function copies the
         bundled database into the local application data path. If a local database
         already exists, it compares the bundled database and adds any missing core
         ingredients from the bundled copy into the local database.
-        
+
         When exec_migrations is True, the function attempts a non-destructive migration
         dry-run against a temporary decrypted copy of the local database to detect
         required schema/data migrations (no migrations are applied here; this is a
         safety check).
-        
+
         Parameters:
             exec_migrations (bool): If True, perform a migration dry-run check on a
                 temporary decrypted copy of the local database before merging missing
                 core data. Defaults to False.
-        
+
         Side effects:
         - May create directories and copy the bundled database file into local app
           data.
         - May add records (core ingredients) to the existing local database.
         - Logs progress and warnings.
-        
+
         Exceptions:
         - Exceptions from filesystem or database operations are propagated to the caller.
         """
@@ -2476,6 +2468,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
                 Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
@@ -2492,7 +2485,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 #     path=machine_database_path, parse_file_key=True)
                 # form_ctrl = FormulationController(db=machine_database)
                 # csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                #                         "VisQAI", "assets", "formulation_data_09112025.csv")
+                #                         "VisQAI", "assets", "formulation_data_10082025.csv")
                 # if not os.path.isfile(csv_path):
                 #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
                 # df = pd.read_csv(csv_path)
@@ -2512,7 +2505,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     tmp_path = machine_database.create_temp_decrypt()
                     try:
                         if tmp_path:
-                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            migrator = DatabaseMigrator(
+                                tmp_path, backup_dir=None)
                             current_version = migrator.get_current_version()
                             target_version = MigrationVersion(1, 1, 0)
                             if current_version < target_version:
@@ -2537,11 +2531,16 @@ class MainWindow(QtWidgets.QMainWindow):
                                 status, msgs = migrator.migrate(
                                     target_version=MigrationVersion(1, 1, 0), dry_run=True)
                                 if not status:
-                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
+                                    Log.e(
+                                        f"Database migration dry-run failed: {'; '.join(msgs)}")
                         else:
-                            Log.w("Skipping migration check: could not create temp decrypted DB.")
+                            Log.w(
+                                "Skipping migration check: could not create temp decrypted DB.")
                     finally:
-                            machine_database.cleanup_temp_decrypt()
+                        machine_database.cleanup_temp_decrypt()
+
+                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
+                # update machine db with changes from bundled db.
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2550,6 +2549,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
+                # TODO: Think of a better way to do this!
+                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                #     shutil.copy(bundled_database_path, machine_database_path)
+                #     Log.w(
+                #         "Operating in development mode, copying bundled db into log data.")
             else:
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
@@ -4488,16 +4492,15 @@ class MainWindow(QtWidgets.QMainWindow):
     ########################################################################################################
 
     def get_web_info(self, return_info):
-
         """
         Check for available software and resource updates from configured backends.
-        
+
         Performs an online update check using the configured update engine (Nightly or GitHub). Depending on
         runtime state and the return_info flag this method will:
         - run a blocking check and return a result tuple, or
         - spawn background threads to perform update/license checks and schedule periodic pings to monitor
           their progress.
-        
+
         Side effects:
         - May start background threads (self.web_thread) to fetch license information or perform update checks.
         - May change Constants.UpdateEngine on failure when probing nightly resources and/or updates.
@@ -4505,12 +4508,12 @@ class MainWindow(QtWidgets.QMainWindow):
         - May initiate a download via self.start_download().
         - May close and clear self._dbx_connection when finished.
         - Schedules periodic progress checks via QtCore.QTimer.singleShot(..., self.update_ping).
-        
+
         Parameters:
             return_info (bool): If True, perform a blocking update check and return status immediately.
                 If False, start non-blocking/background checks and return None (or return early in some
                 Nightly branches where a tuple is produced).
-        
+
         Returns:
             tuple(str, str) or None: When a synchronous result is produced, returns (color, labelweb2),
             where `color` is an HTML color string representing update status (green/orange/red) and
@@ -4532,10 +4535,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                 dbx_conn=self._dbx_connection)
                             is_valid, message, license_data = self._license_manager.validate_license(
                                 auto_create_if_missing=True)
-                            Log.d(f"License valid={is_valid}; message={message}")
+                            Log.d(
+                                f"License valid={is_valid}; message={message}")
                         except Exception as e:
                             Log.e(f"License fetch error: {e}")
-                        
+
                     self.web_thread = threading.Thread(
                         target=fetch_license)  # non-blocking
                     self.web_thread.start()
@@ -4624,12 +4628,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # periodic check for update task completion
         """
         Periodic poll for asynchronous update and resource-check tasks.
-        
+
         Checks branch/version mapping from Constants.app_version, waits for a background web_thread to finish (re-scheduling itself via Qt singleShot while the thread is alive), then determines update/resource status:
         - If a GitHub update build URL is present, delegates to update_found to produce UI labels.
         - Otherwise, optionally calls update_resources to refresh resources for the detected branch and sets an internal ask_for_update flag.
         - Closes any open Dropbox connection and triggers VisQAIWin.check_license if a license manager exists.
-        
+
         This function does not return a value. Exceptions are caught and logged; on thread-alive it re-schedules another ping after 1 second.
         """
         try:
@@ -5174,7 +5178,8 @@ class MainWindow(QtWidgets.QMainWindow):
             latest_version = self.res_latest_version
 
             if Constants.UpdateEngine not in [UpdateEngines.DropboxAPI, UpdateEngines.GitHub, UpdateEngines.Nightly]:
-                Log.e(f"Invalid UpdateEngine \"{Constants.UpdateEngine}\": Cannot update resource files.")
+                Log.e(
+                    f"Invalid UpdateEngine \"{Constants.UpdateEngine}\": Cannot update resource files.")
                 return
 
             if download_resources:

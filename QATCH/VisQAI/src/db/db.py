@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-23
+    2025-10-21
 
 Version:
-    1.6
+    1.7
 """
 
 import tempfile
@@ -31,10 +31,10 @@ import os
 import random
 
 try:
-    from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
-    )
     from src.models.formulation import Formulation, Component, ViscosityProfile
+    from src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
+    )
 
     class Log:
         @staticmethod
@@ -42,7 +42,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
     )
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
     from QATCH.common.logger import Logger as Log
@@ -125,7 +125,7 @@ class Database:
 
         The tables include:
             - ingredient: core table with common fields (id, enc_id, name, type, is_user).
-            - protein, buffer, stabilizer, surfactant, salt: subclass tables referencing ingredient.
+            - protein, buffer, stabilizer, surfactant, salt, excipient: subclass tables referencing ingredient.
             - formulation: core formulation table (id, temperature).
             - formulation_component: linking table between formulations and ingredient components.
             - viscosity_profile: table storing JSON-serialized shear_rates and viscosities.
@@ -180,6 +180,12 @@ class Database:
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
+        c.execute(rf"""
+            CREATE TABLE IF NOT EXISTS excipient (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """)
         # Formulation and components
         c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
@@ -196,7 +202,7 @@ class Database:
                 units TEXT NOT NULL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
-                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
         c.execute(rf"""
@@ -215,7 +221,7 @@ class Database:
         """Insert a new ingredient and its subclass-specific details into the database.
 
         Args:
-            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt).
+            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient).
                 The `enc_id` and `name` fields must be set, and subclass-specific attributes populated.
 
         Returns:
@@ -262,6 +268,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (db_id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (db_id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
 
         self.conn.commit()
         ing.id = db_id
@@ -323,6 +331,9 @@ class Database:
         elif typ == "Surfactant":
             ing = Surfactant(enc_id, name)
 
+        elif typ == "Excipient":
+            ing = Excipient(enc_id, name)
+
         elif typ == "Salt":
             ing = Salt(enc_id, name)
 
@@ -371,7 +382,7 @@ class Database:
         c.execute("DELETE FROM stabilizer WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM surfactant WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM salt WHERE ingredient_id = ?", (id,))
-
+        c.execute("DELETE FROM excipient WHERE ingredient_id = ?", (id,))
         # Re-insert appropriate subclass row
         if isinstance(ing, Protein):
             class_val = (
@@ -395,6 +406,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (id,))
 
         self.conn.commit()
         return True
@@ -424,7 +437,7 @@ class Database:
 
         Args:
             form (Formulation): A `Formulation` instance with its `_components` dictionary
-                populated (Protein, Buffer, Stabilizer, Surfactant, Salt as `Component`),
+                populated (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient as `Component`),
                 and `viscosity_profile` optionally set.
 
         Returns:

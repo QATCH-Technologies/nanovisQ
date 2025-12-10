@@ -438,7 +438,7 @@ class UserProfilesManager(QtWidgets.QWidget):
             with open(file, "w") as f:
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
-        except OSError as ose: # FileNotFoundError
+        except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing '{ts_type}' record: {ose}")
             # continue, no return
 
@@ -527,7 +527,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                 f.seek(-15, 2)
                 f.write(
                     f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
-        except OSError as ose: # FileNotFoundError
+        except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing '{ts_type}' record: {ose}")
             # continue, no return
 
@@ -1089,7 +1089,7 @@ class UserProfiles:
             with open(file, "w") as f:
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
-        except OSError as ose: # FileNotFoundError
+        except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing '{ts_type}' record: {ose}")
             return
         Log.w("Password changed: " + ("*" * len(pwd)))
@@ -1106,7 +1106,7 @@ class UserProfiles:
             with open(file, 'w') as f:
                 f.write(session_key)
                 Log.d("User session created.")
-        except OSError as ose: # FileNotFoundError
+        except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing session key: {ose}")
         UserProfiles.user_preferences = UserPreferences(
             UserProfiles.get_session_file())
@@ -1135,7 +1135,7 @@ class UserProfiles:
                         if file_key == session_key:
                             Log.d("User session is active.")
                             return True, infos[i]  # valid session
-            except OSError as ose: # FileNotFoundError
+            except OSError as ose:  # FileNotFoundError
                 Log.e(f"Error reading session key: {ose}")
             Log.d("User session is expired.")
             return False, None  # invalid session
@@ -1181,7 +1181,7 @@ class UserProfiles:
                             Log.d("User session is active.")
                             file = file.split(".xml")[0]
                             return file  # valid session
-            except OSError as ose: # FileNotFoundError
+            except OSError as ose:  # FileNotFoundError
                 Log.e(f"Error reading session key: {ose}")
             Log.d("User session is expired.")
             return None  # invalid session
@@ -1303,7 +1303,7 @@ class UserProfiles:
                 with open(file, "w") as f:
                     f.write(xml_str)
                     Log.d(f"Saved XML file: {file}")
-            except OSError as ose: # FileNotFoundError
+            except OSError as ose:  # FileNotFoundError
                 Log.e(f"Error writing '{ts_type}' record: {ose}")
                 return
 
@@ -1403,7 +1403,7 @@ class UserProfiles:
                             f.write(
                                 f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
                             # f.write(f'</user_profile>\r\n'.encode())
-                    except OSError as ose: # FileNotFoundError
+                    except OSError as ose:  # FileNotFoundError
                         Log.e(f"Error writing '{ts_type}' record: {ose}")
                         return False, filename, None
                     Log.d(f"User {initials} authenticated successfully.")

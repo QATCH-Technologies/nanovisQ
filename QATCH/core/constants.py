@@ -220,6 +220,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = '-- Select Tag --'
@@ -310,14 +311,8 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v2",
-                           "QModel v3",
-                           "QModel v3 + Partial Fills",
                            "QModel v4 (Fusion)"]
     QModel4_predict = True
-    PF_predict = False
-    QModel3_predict = False
-    QModel2_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run

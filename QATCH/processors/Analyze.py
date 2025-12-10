@@ -15,8 +15,6 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QCompleter
 from PyQt5.QtCore import Qt
 from typing import Optional
-from QATCH.QModel.src.models.static_v2.q_multi_model import QPredictor
-from QATCH.QModel.src.models.static_v3.q_model_predictor import QModelPredictor
 from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileStorage import FileStorage, secure_open
@@ -27,20 +25,12 @@ from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
 from QATCH.ui.runInfo import QueryRunInfo
 from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
-from QATCH.QModel.src.models.pf.pf_predictor import PFPredictor
-from QATCH.QModel.src.models.pf.q_model_predictor_ch1 import QModelPredictorCh1
-from QATCH.QModel.src.models.pf.q_model_predictor_ch2 import QModelPredictorCh2
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastPredictor, FillStatus, AvailableBoosters
 from QATCH.models.ModelData import ModelData
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
-
-# hide info/warning logs from tf # lazy load
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-
 # from scipy.interpolate import UnivariateSpline # unused
 # from scipy.optimize import curve_fit # lazy load
 # from scipy.signal import argrelextrema # lazy load
@@ -48,9 +38,6 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
 # import matplotlib.backends.backend_pdf # lazy load
 # import matplotlib.pyplot as plt # lazy load
-
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3' # hide info/warning logs from tf # lazy load
-# import tensorflow as tf # lazy load
 
 TAG = "[Analyze]"
 
@@ -67,7 +54,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
-        if concentration > 2:  # mg/ml
+        if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
 
@@ -396,27 +383,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.analyzer_task = QtCore.QThread()
         self.dataModel = ModelData()
 
-        # lazy load these modules on 'loadRun()' call (if selected)
-        self.QModel_v2_modules_loaded = False
-        self.QModel_predict_0 = (
-            None  # QPredictor(model_path=predict_model_path.format(0))
-        )
-        self.QModel_predict_1 = (
-            None  # QPredictor(model_path=predict_model_path.format(1))
-        )
-        self.QModel_predict_2 = (
-            None  # QPredictor(model_path=predict_model_path.format(2))
-        )
-
-        # lazy load these modules on 'loadRun()' call (if selected)
-        self.QModel_v3_modules_loaded = False
-        self.QModel_v3_predictor = None
-
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
-        self.PF_modules_loaded = False
-        self.PF_predictor = None
-
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -922,7 +890,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Add the checkbox and call-backs for using the curve-optimizer utility.
         self.difference_factor_optimizer_checkbox = QtWidgets.QCheckBox(
             "Auto-Calculate \"Difference Factor\"")
-
         self.difference_factor_optimizer_checkbox.setChecked(False)
         self.difference_factor_optimizer_checkbox.clicked.connect(
             self.use_difference_factor_optimizer)
@@ -937,6 +904,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.gridLayout.addWidget(
             self.drop_effect_cancelation_checkbox, 4, 5, 1, 3)
 
+        self.partial_fills_checkbox = QtWidgets.QCheckBox(
+            "Enable Partial-Fills")
+        self.partial_fills_checkbox.setChecked(False)
+        self.gridLayout.addWidget(
+            self.partial_fills_checkbox, 5, 5, 1, 3)
+
         # Predict Model ------------------------------------------------------
         self.l3 = QtWidgets.QLabel()
         self.l3.setStyleSheet("background: #008EC0; padding: 1px;")
@@ -945,23 +918,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.l3.setFixedHeight(50)
         # else:
         #    self.l3.setFixedHeight(15)
-        self.gridLayout.addWidget(self.l3, 5, 5, 1, 3)
+        self.gridLayout.addWidget(self.l3, 6, 5, 1, 3)
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
         if Constants.QModel4_predict:
-            self.cBox_Models.setCurrentIndex(4)
-        elif Constants.PF_predict:
-            self.cBox_Models.setCurrentIndex(3)
-        elif Constants.QModel3_predict:
-            self.cBox_Models.setCurrentIndex(2)
-        elif Constants.QModel2_predict:
             self.cBox_Models.setCurrentIndex(1)
         elif Constants.ModelData_predict:
             self.cBox_Models.setCurrentIndex(0)
         self.cBox_Models.currentTextChanged.connect(
             self.set_new_prediction_model)
-        self.gridLayout.addWidget(self.cBox_Models, 6, 5, 1, 3)
+        self.gridLayout.addWidget(self.cBox_Models, 7, 5, 1, 3)
 
         self.advancedwidget = QtWidgets.QWidget()
         self.advancedwidget.setWindowFlags(
@@ -1818,10 +1785,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             # these flags are set above `index` as a fallback option
             Constants.ModelData_predict = True if index >= 0 else False
-            Constants.QModel2_predict = True if index >= 1 else False
-            Constants.QModel3_predict = True if index >= 2 else False
-            Constants.PF_predict = True if index >= 3 else False
-            Constants.QModel4_predict = True if index >= 4 else False
+            Constants.QModel4_predict = True if index >= 1 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -1831,14 +1795,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
         try:
             self.parent.ControlsWin.q_version_v1.setChecked(
                 True if index == 0 else False)
-            self.parent.ControlsWin.q_version_v2.setChecked(
-                True if index == 1 else False)
-            self.parent.ControlsWin.q_version_v3.setChecked(
-                True if index in [2, 3] else False)
-            self.parent.ControlsWin.pf_version.setChecked(
-                True if index == 3 else False)
             self.parent.ControlsWin.q_version_v4.setChecked(
-                True if index == 4 else False)
+                True if index == 1 else False)
         except:
             Log.e(TAG, "Failed to check the selected prediction model in the Help menu")
 
@@ -2741,58 +2699,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         #         False
         #     )  # require re-click to show popup tool incorrect position
 
-        try:
-            if Constants.QModel2_predict and not self.QModel_v2_modules_loaded:
-
-                predict_model_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v2",
-                    "QMultiType_{}.json",
-                )
-                self.QModel_predict_0 = QPredictor(
-                    model_path=predict_model_path.format(0)
-                )
-                self.QModel_predict_1 = QPredictor(
-                    model_path=predict_model_path.format(1)
-                )
-                self.QModel_predict_2 = QPredictor(
-                    model_path=predict_model_path.format(2)
-                )
-                self.QModel_v2_modules_loaded = True
-        except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to load 'QModel v2' modules at load of run.")
-
-        try:
-            if Constants.QModel3_predict and not self.QModel_v3_modules_loaded:
-                booster_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v3",
-                    "qmodel_v3_booster.json"
-                )
-                scaler_path = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "qmodel_v3",
-                    "qmodel_v3_scaler.pkl",
-                )
-                self.QModel_v3_predictor = QModelPredictor(
-                    booster_path=booster_path,
-                    scaler_path=scaler_path)
-
-                self.QModel_v3_modules_loaded = True
-
-        except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to load 'QModel v3' modules at load of run.")
         # ---------- LOADING QMODEL V4 (Fusion) -----------#
         try:
             if Constants.QModel4_predict and not self.QModel_v4_modules_loaded:
                 reg_path_1 = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_0_1600.pth")
                 reg_path_2 = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "poi_model_mini_window_1_1600.pth")
                 clf_path = os.path.join(Architecture.get_path(
-                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch_2000.pth")
+                ), "QATCH", "QModel", "SavedModels", "qmodel_v4_fusion", "v4_model_pytorch_2100.pth")
                 self.QModel_v4_predictor = QModelV4Fusion(
                     reg_path_1=reg_path_1,
                     reg_path_2=reg_path_2,
@@ -2807,34 +2722,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
 
-        try:
-            if Constants.PF_predict and not self.PF_modules_loaded:
-                f_type_model_dir = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "pf")
-                poi_model_dir = os.path.join(
-                    Architecture.get_path(),
-                    "QATCH", "QModel", "SavedModels", "pf", "ch_{}")  # must be formatted with channel
-                start_booster_path = os.path.join(Architecture.get_path(),
-                                                  r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
-                end_booster_path = os.path.join(Architecture.get_path(),
-                                                r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
-                scaler_path = os.path.join(Architecture.get_path(),
-                                           r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
-                self.forecaster = QForecastPredictor(
-                    start_booster_path=start_booster_path,
-                    end_booster_path=end_booster_path,
-                    scaler_path=scaler_path)
-                self.PF_predictor = PFPredictor(
-                    model_dir=f_type_model_dir)
-                self.QModel_ch1_predictor = QModelPredictorCh1(
-                    poi_model_dir.format(1))
-                self.QModel_ch2_predictor = QModelPredictorCh2(
-                    poi_model_dir.format(2))
-                self.PF_modules_loaded = True
-        except Exception as e:
-            Log.e("ERROR:", e)
-            Log.e("Failed to load 'Partial Fill Model' modules at load of run.")
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -3122,7 +3009,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
-                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3163,118 +3050,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                           f"Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
                           )
                     raise e  # debug only
-                    self.model_result = -1  # try fallback model
-            if self.model_result == -1 and Constants.QModel3_predict:
-                Log.w("Auto-fitting points with QModel v3... (may take a few seconds)")
-                QtCore.QCoreApplication.processEvents()
-                try:
-                    with secure_open(self.loaded_datapath, "r", "capture") as f:
-                        fh = BytesIO(f.read())
-                        predictor = self.QModel_v3_predictor
-                        if Constants.PF_predict:
-                            if self.parent.num_channels == 2:
-                                predictor = self.QModel_ch2_predictor
-                            if self.parent.num_channels == 1:
-                                predictor = self.QModel_ch1_predictor
-                        predict_result = predictor.predict(fh)
-                        predictions = []
-                        candidates = []
-                        for i in range(6):
-                            poi_key = f"POI{i+1}"
-                            poi_indices = predict_result.get(
-                                poi_key, {}).get("indices", [])
-                            poi_confidences = predict_result.get(
-                                poi_key, {}).get("confidences", [])
-                            best_pair = (poi_indices[0], poi_confidences[0])
-                            predictions.append(best_pair[0])
-                            candidates.append((poi_indices, poi_confidences))
-                        self.model_run_this_load = True
-                        self.model_result = predictions
-                        self.model_candidates = candidates
-                        self.model_engine = "QModel v3"
-                        if (
-                            isinstance(self.model_result, list)
-                            and len(self.model_result) == 6
-                        ):
-                            poi_vals = self.model_result.copy()
-                        else:
-                            self.model_result = -1  # try fallback model
-                except Exception as e:
-                    limit = None
-                    t, v, tb = sys.exc_info()
-                    from traceback import format_tb
-
-                    a_list = ["Traceback (most recent call last):"]
-                    a_list = a_list + format_tb(tb, limit)
-                    a_list.append(f"{t.__name__}: {str(v)}")
-                    for line in a_list:
-                        Log.d(line)
-                    Log.e(e)
-                    Log.e(TAG,
-                          f"Error using 'QModel v3'... Using a fallback model for auto-fitting."
-                          )
-                    # raise e # debug only
-                    self.model_result = -1  # try fallback model
-            if self.model_result == -1 and Constants.QModel2_predict:
-                try:
-                    with secure_open(self.loaded_datapath, "r", "capture") as f:
-                        fh = BytesIO(f.read())
-                        label = 0
-                        fh.seek(0)
-                        act_poi = [None] * 6  # no initial guesses
-                        candidates = getattr(
-                            self, f"QModel_predict_{label}"
-                        ).predict(fh, run_type=label, act=act_poi)
-                        self.model_result = []
-                        for p, c in candidates:
-                            self.model_result.append(
-                                p[0]
-                            )  # assumes 1st point is best point
-                        self.model_run_this_load = True
-                        self.model_result = self.model_result
-                        self.model_candidates = candidates
-                        self.model_engine = "QModel v2"
-                    if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                        if True:  # len(poi_vals) != 6:
-                            Log.d(
-                                "Model ran, updating 'poi_vals' on re-run request")
-                            poi_vals = self.model_result.copy()
-                            out_of_order = False
-                            last_p = 0
-                            for i, p in enumerate(poi_vals):
-                                if p < last_p:
-                                    if not out_of_order:
-                                        # print this on 1st indication only
-                                        Log.e(
-                                            tag=f"[{self.model_engine}]",
-                                            msg=f"Auto-fit points are out of order! They have been corrected to prevent errors."
-                                        )
-                                    out_of_order = True
-                                    if i == 0:  # first POI
-                                        poi_vals[i] = int(poi_vals[1] / 2)
-                                    elif i == len(poi_vals) - 1:  # last POI
-                                        poi_vals[i] = int(
-                                            (poi_vals[i-1] + len(self.ys)) / 2)
-                                    else:  # any other POI, not first nor last
-                                        poi_vals[i] = int(
-                                            (poi_vals[i-1] + poi_vals[i+1]) / 2)
-                                    Log.e(
-                                        tag=f"[{self.model_engine}]",
-                                        msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
-                                    )
-                                last_p = p
-                        else:
-                            Log.d(
-                                "Model ran, but not updating 'poi_vals' since we DO have prior points")
-                    else:
-                        self.model_result = -1  # try fallback model
-
-                except Exception as e:
-                    Log.e(e)
-                    Log.e(
-                        "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
-                    )
-                    # raise e # debug only
                     self.model_result = -1  # try fallback model
 
             if self.model_result == -1 and Constants.ModelData_predict:
@@ -3489,7 +3264,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
@@ -3532,101 +3307,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         )
                         raise e  # debug only
                         self.model_result = -1  # try fallback model
-                if self.model_result == -1 and Constants.QModel3_predict:
-                    Log.w(
-                        "Auto-fitting points with QModel v3... (may take a few seconds)")
-                    QtCore.QCoreApplication.processEvents()
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            predictor = self.QModel_v3_predictor
-                            if Constants.PF_predict:
-                                if self.parent.num_channels == 2:
-                                    predictor = self.QModel_ch2_predictor
-                                if self.parent.num_channels == 1:
-                                    predictor = self.QModel_ch1_predictor
-                            predict_result = predictor.predict(fh)
-                            predictions = []
-                            candidates = []
-                            for i in range(6):
-                                poi_key = f"POI{i+1}"
-                                poi_indices = predict_result.get(
-                                    poi_key, {}).get("indices", [])
-                                poi_confidences = predict_result.get(
-                                    poi_key, {}).get("confidences", [])
-                                best_pair = (
-                                    poi_indices[0], poi_confidences[0])
-                                predictions.append(best_pair[0])
-                                candidates.append(best_pair)
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = "QModel v3"
-                            if (
-                                isinstance(self.model_result, list)
-                                and len(self.model_result) == 6
-                            ):
-                                poi_vals = self.model_result.copy()
-                            else:
-                                self.model_result = -1  # try fallback model
-                    except Exception as e:
-                        limit = None
-                        t, v, tb = sys.exc_info()
-                        from traceback import format_tb
-
-                        a_list = ["Traceback (most recent call last):"]
-                        a_list = a_list + format_tb(tb, limit)
-                        a_list.append(f"{t.__name__}: {str(v)}")
-                        for line in a_list:
-                            Log.d(line)
-                        Log.e(e)
-                        Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
-                        )
-                        # raise e # debug only
-                        self.model_result = -1  # try fallback model
-                if self.model_result == -1 and Constants.QModel2_predict:
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            label = 0
-                            fh.seek(0)
-                            act_poi = [None] * 6  # no initial guesses
-                            candidates = getattr(
-                                self, f"QModel_predict_{label}"
-                            ).predict(fh, run_type=label, act=act_poi)
-                            predictions = []
-                            for p, c in candidates:
-                                predictions.append(
-                                    p[0]
-                                )  # assumes 1st point is best point
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = "QModel v2"
-                        if (
-                            isinstance(self.model_result, list)
-                            and len(self.model_result) == 6
-                        ):
-                            poi_vals = self.model_result
-                        else:
-                            self.model_result = -1  # try fallback model
-                    except Exception as e:
-                        Log.e(e)
-                        Log.e(
-                            "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
-                        )
-                        # raise e # debug only
-                        self.model_result = -1  # try fallback model
-
-                start_time = min(
-                    self.poi_markers[0].value(), self.poi_markers[-1].value()
-                ) if len(self.poi_markers) else min(self.xs[poi_vals])
-                start_time = next(x for x, y in enumerate(
-                    self.xs) if y >= start_time)
-                stop_time = max(
-                    self.poi_markers[0].value(), self.poi_markers[-1].value()
-                ) if len(self.poi_markers) else max(self.xs[poi_vals])
-                stop_time = next(x for x, y in enumerate(
-                    self.xs) if y >= stop_time)
 
                 if self.model_result == -1 and Constants.ModelData_predict:
                     try:
@@ -4850,62 +4530,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.askForPOIs = (
                     False  # re-analyze Step 1, don't auto advance to Summary
                 )
-            if Constants.PF_predict and fill_type == -1:
-                Log.d("Running partial fill predictor...")
-                with secure_open(self.loaded_datapath, "r", "capture") as f:
-                    fh = BytesIO(f.read())
-                    raw = self.PF_predictor.predict(
-                        file_buffer=fh)
-                    try:
 
-                        if hasattr(fh, "seekable") and fh.seekable():
-                            fh.seek(0)
-                        else:
-                            raise Exception(
-                                "Cannot `seek` stream prior to passing to processing.")
-                        df = pd.read_csv(fh)
-                        df = df.iloc[::5]
-                        df.reset_index(drop=True)
-                    except pd.errors.EmptyDataError:
-                        raise ValueError("The provided data file is empty.")
-                    self.forecaster._active_booster = AvailableBoosters.START
-                    self.forecaster._fill_state = FillStatus.NO_FILL
-                    self.forecaster.no_wait()
-                    self.forecaster.update_predictions(df)
-                    start_f_type = self.forecaster.get_fill_status()
-                    self.parent.forecast_start_time = self.forecaster.get_start_time()
-                    self.forecaster._data = None
-                    self.forecaster._active_booster = AvailableBoosters.END
-                    self.forecaster._fill_state = FillStatus.FILLING
-                    self.forecaster.no_wait()
-                    self.forecaster.update_predictions(df)
-                    end_f_type = self.forecaster.get_fill_status()
-                    self.parent.forecast_end_time = self.forecaster.get_end_time()
-                    num_poi = int(raw)
-                    poi_to_channels = {
-                        0: 0,
-                        1: 0,
-                        2: 0,
-                        3: 0,
-                        4: 1,
-                        5: 2,
-                        6: 3,
-                    }
-                    num_channels = poi_to_channels.get(num_poi, 0)
-                    if end_f_type == FillStatus.FULL_FILL:
-                        num_channels = 3
-                        num_poi = 6
-                    self.parent.num_channels = num_channels
-                    if num_channels == 3:
-                        Log.i("Full Fill Detected!")
-                    else:
-                        Log.w(
-                            f"Partial Fill Detected: {num_channels} Channels")
-                    Log.d(
-                        TAG, f"Num poi: {num_poi} -> Num channels: {num_channels}")
-            else:
-                Log.d(f"Number of channels (fill_type): {fill_type}")
-                self.parent.num_channels = fill_type  # pulled from XML
+            Log.d(f"Number of channels (fill_type): {fill_type}")
+            self.parent.num_channels = 3  # pulled from XML
             # --------------------------------------------------------------- #
 
             if self.model_result == -1:  # self.stateStep != 6:
@@ -4929,7 +4556,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress)
+                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
@@ -4972,127 +4599,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             "Error using 'QModel v4 (Fusion)'... Using a fallback model for auto-fitting."
                         )
                         raise e  # debug only
-                        self.model_result = -1  # try fallback model
-                if Constants.QModel3_predict and self.prior_points_in_xml:
-                    # skip running QModel v3 if prior points are available (it's too slow)
-                    self.model_result = poi_vals
-                    self.model_engine = "QModel v3 skipped (using prior points)"
-                if self.model_result == -1 and Constants.QModel3_predict:
-                    Log.w(
-                        "Auto-fitting points with QModel v3... (may take a few seconds)")
-                    self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v3... </span>"
-                    )
-                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
-                    QtCore.QCoreApplication.processEvents()
-                    try:
-                        with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            predictor = self.QModel_v3_predictor
-                            if Constants.PF_predict:
-                                if self.parent.num_channels == 2:
-                                    predictor = self.QModel_ch2_predictor
-                                if self.parent.num_channels == 1:
-                                    predictor = self.QModel_ch1_predictor
-                            predict_result = predictor.predict(fh)
-                            predictions = []
-                            candidates = []
-                            for i in range(6):
-                                poi_key = f"POI{i+1}"
-                                poi_indices = predict_result.get(
-                                    poi_key, {}).get("indices", [])
-                                poi_confidences = predict_result.get(
-                                    poi_key, {}).get("confidences", [])
-                                best_pair = (
-                                    poi_indices[0], poi_confidences[0])
-                                predictions.append(best_pair[0])
-                                candidates.append(best_pair)
-                            self.model_run_this_load = True
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = "QModel v3"
-                            if (
-                                isinstance(self.model_result, list)
-                                and len(self.model_result) == 6
-                            ):
-                                poi_vals = self.model_result.copy()
-                            else:
-                                self.model_result = -1  # try fallback model
-                    except Exception as e:
-                        limit = None
-                        t, v, tb = sys.exc_info()
-                        from traceback import format_tb
-
-                        a_list = ["Traceback (most recent call last):"]
-                        a_list = a_list + format_tb(tb, limit)
-                        a_list.append(f"{t.__name__}: {str(v)}")
-                        for line in a_list:
-                            Log.d(line)
-                        Log.e(e)
-                        Log.e(
-                            "Error using 'QModel v3'... Using a fallback model for auto-fitting."
-                        )
-                        # raise e # debug only
-                        self.model_result = -1  # try fallback model
-                if self.model_result == -1 and Constants.QModel2_predict:
-                    try:
-                        with secure_open(data_path, "r", "capture") as f:
-                            fh = BytesIO(f.read())
-                            label = 0
-                            fh.seek(0)
-                            act_poi = [None] * 6  # no initial guesses
-                            candidates = getattr(
-                                self, f"QModel_predict_{label}"
-                            ).predict(fh, run_type=label, act=act_poi)
-                            predictions = []
-                            for p, c in candidates:
-                                predictions.append(
-                                    p[0]
-                                )  # assumes 1st point is best point
-                            self.model_run_this_load = True
-                            self.model_result = predictions
-                            self.model_candidates = candidates
-                            self.model_engine = "QModel v2"
-                        if isinstance(self.model_result, list) and len(self.model_result) == 6:
-                            if len(poi_vals) != 6:
-                                Log.d(
-                                    "Model ran, updating 'poi_vals' since we DO NOT have prior points")
-                                poi_vals = self.model_result.copy()
-                                out_of_order = False
-                                last_p = 0
-                                for i, p in enumerate(poi_vals):
-                                    if p < last_p:
-                                        if not out_of_order:
-                                            # print this on 1st indication only
-                                            Log.e(
-                                                tag=f"[{self.model_engine}]",
-                                                msg=f"Predictions are out of order! They have been corrected to prevent errors."
-                                            )
-                                        out_of_order = True
-                                        if i == 0:  # first POI
-                                            poi_vals[i] = int(poi_vals[1] / 2)
-                                        elif i == len(poi_vals) - 1:  # last POI
-                                            poi_vals[i] = int(
-                                                (poi_vals[i-1] + len(dissipation)) / 2)
-                                        else:  # any other POI, not first nor last
-                                            poi_vals[i] = int(
-                                                (poi_vals[i-1] + poi_vals[i+1]) / 2)
-                                        Log.e(
-                                            tag=f"[{self.model_engine}]",
-                                            msg=f"Corrected point {i+1}: idx {p} -> {poi_vals[i]}"
-                                        )
-                                    last_p = p
-                            else:
-                                Log.d(
-                                    "Model ran, but not updating 'poi_vals' since we DO have prior points")
-                        else:
-                            self.model_result = -1  # try fallback model
-                    except Exception as e:
-                        Log.e(e)
-                        Log.e(
-                            "Error using 'QModel v2'... Using 'ModelData' as fallback (less accurate)."
-                        )
-                        # raise e # debug only
                         self.model_result = -1  # try fallback model
                 if self.model_result == -1 and Constants.ModelData_predict:
                     try:

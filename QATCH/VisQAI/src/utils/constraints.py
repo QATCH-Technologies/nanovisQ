@@ -4,12 +4,12 @@ import copy
 
 try:
     from src.controller.ingredient_controller import IngredientController
-    from src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant
+    from src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     from src.db.db import Database
     from src.utils.list_utils import ListUtils
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
 
@@ -22,6 +22,7 @@ class Constraints:
         "Salt_conc",
         "Stabilizer_conc",
         "Surfactant_conc",
+        "Excipient_conc",
     ]
     _CATEGORICAL: List[str] = [
         "Protein_type",
@@ -29,6 +30,7 @@ class Constraints:
         "Salt_type",
         "Stabilizer_type",
         "Surfactant_type",
+        "Excipient_type",
     ]
     _FEATURE_CLASS: Dict[str, Type[Ingredient]] = {
         "Protein_type": Protein,
@@ -36,6 +38,7 @@ class Constraints:
         "Salt_type": Salt,
         "Stabilizer_type": Stabilizer,
         "Surfactant_type": Surfactant,
+        "Excipient_type": Excipient,
     }
     _DEFAULT_RANGES = {
         "Protein_conc": (0, 300),
@@ -43,7 +46,9 @@ class Constraints:
         "Buffer_conc": (0, 100),
         "Salt_conc": (0, 200),
         "Stabilizer_conc": (0, 1),
-        "Surfactant_conc": (0, 1), }
+        "Surfactant_conc": (0, 1),
+        "Excipient_conc": (0, 100),
+    }
 
     def __init__(self, db: Database):
         self._db = db

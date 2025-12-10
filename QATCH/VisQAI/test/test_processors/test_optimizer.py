@@ -9,7 +9,7 @@ from src.models.predictor import Predictor
 from src.controller.ingredient_controller import IngredientController
 from src.managers.asset_manager import AssetManager
 
-from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant
+from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
 from src.db.db import Database
 from src.processors.optimizer import Constraints, Optimizer
 
@@ -86,6 +86,7 @@ class TestConstraints(unittest.TestCase):
             Salt(enc_id=-1, name="Salt"),
             Stabilizer(enc_id=-1, name="Stab"),
             Surfactant(enc_id=-1, name="Surf"),
+            Excipient(enc_id=-1, name="ExcipA")
         ]
         for ing in ing_list:
             self.ing_ctrl.add(ing)
@@ -109,16 +110,6 @@ class TestConstraints(unittest.TestCase):
                 self.assertGreater(len(names), 0)
 
 
-class DummyPredictor(Predictor):
-    """Always returns the provided 'return_profile'."""
-
-    def __init__(self, return_profile: ViscosityProfile):
-        self.return_profile = return_profile
-
-    def predict(self, formulation: Formulation) -> ViscosityProfile:
-        return self.return_profile
-
-
 class TestOptimizer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -129,12 +120,14 @@ class TestOptimizer(unittest.TestCase):
         cls.stabilizer = Stabilizer(enc_id=-1, name="StabA")
         cls.salt = Salt(enc_id=-1, name="SaltA")
         cls.surfactant = Surfactant(enc_id=-1, name="SurfA")
+        cls.excipient = Excipient(enc_id=-1, name='ExcipA')
         cls.all_ings = [
             cls.protein,
             cls.buffer,
             cls.stabilizer,
             cls.salt,
-            cls.surfactant
+            cls.surfactant,
+            cls.excipient
         ]
 
     def setUp(self):

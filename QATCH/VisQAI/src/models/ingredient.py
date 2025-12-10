@@ -309,6 +309,8 @@ class ProteinClass(StrEnum):
     MAB_IGG1 = "mAb_IgG1"
     MAB_IGG4 = "mAb_IgG4"
     POLYCLONAL = "Polyclonal"
+    BISPECIFIC = "Bispecific"
+    TRISPECIFIC = "Trispecific"
     OTHER = "Other"
 
     @classmethod
@@ -322,6 +324,63 @@ class ProteinClass(StrEnum):
     @classmethod
     def from_value(cls, value: str) -> "ProteinClass":
         return cls(value)
+
+    @property
+    def kP(self) -> float:
+        kP_mapping = {
+            self.POLYCLONAL: 3.0,
+            self.MAB_IGG1: 3.0,
+            self.MAB_IGG4: 3.5,
+            self.FC_FUSION: 4.5,
+            self.BISPECIFIC: 5.0,
+            self.TRISPECIFIC: 5.5,
+            self.NONE: 0.0,
+            self.ADC: 2.5,
+            self.OTHER: 2.0,
+        }
+        return kP_mapping[self]
+
+    @property
+    def hci(self) -> float:
+        hci_mapping = {
+            self.POLYCLONAL: 0.90,
+            self.MAB_IGG1: 1.00,
+            self.MAB_IGG4: 1.10,
+            self.FC_FUSION: 1.50,
+            self.BISPECIFIC: 1.30,
+            self.TRISPECIFIC: 1.45,
+            self.NONE: 0.00,
+            self.ADC: 1.30,
+            self.OTHER: 0.90,
+        }
+        return hci_mapping[self]
+
+    @property
+    def c_class(self) -> float:
+        c_class_mapping = {
+            self.POLYCLONAL: 0.90,
+            self.MAB_IGG1: 1.00,
+            self.MAB_IGG4: 1.30,
+            self.FC_FUSION: 1.40,
+            self.BISPECIFIC: 1.50,
+            self.TRISPECIFIC: 1.70,
+            self.NONE: 0.00,
+            self.ADC: 1.50,
+            self.OTHER: 0.85,
+        }
+        return c_class_mapping[self]
+
+    @classmethod
+    def get_kP_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.kP for pc in cls}
+
+    @classmethod
+    def get_hci_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.hci for pc in cls}
+
+    @classmethod
+    def get_c_class_mapping(cls) -> Dict[str, float]:
+        return {pc.value: pc.c_class for pc in cls}
 
 
 class Protein(Ingredient):
@@ -478,6 +537,7 @@ class Protein(Ingredient):
             return NotImplemented
         return (
             type(self) is type(other)
+            and self.name == other.name
             and self.molecular_weight == other.molecular_weight
             and self.pI_mean == other.pI_mean
             and self.pI_range == other.pI_range
@@ -576,4 +636,9 @@ class Surfactant(Ingredient):
 
 class Salt(Ingredient):
     """Represents a salt ingredient without additional properties beyond Ingredient."""
+    pass
+
+
+class Excipient(Ingredient):
+    """Represents a Excipient ingredient without additional properties beyond Ingredient."""
     pass

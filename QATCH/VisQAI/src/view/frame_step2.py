@@ -14,6 +14,7 @@ except (ModuleNotFoundError, ImportError):
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
+import pandas as pd
 import numpy as np
 import time
 from typing import Optional
@@ -86,7 +87,7 @@ class FrameStep2(QtWidgets.QDialog):
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(Architecture.get_path(), 
+        model_path = os.path.join(Architecture.get_path(),
                                   "QATCH/VisQAI/assets")
         if os.path.exists(model_path):
             # working or bundled directory, if exists
@@ -212,7 +213,7 @@ class FrameStep2(QtWidgets.QDialog):
     def on_tab_selected(self):
 
         # Reload all excipients from DB
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
 
         # Select a pre-selected model, if none selected here
         if not self.model_path:
@@ -220,8 +221,8 @@ class FrameStep2(QtWidgets.QDialog):
             suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
             import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-            predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+            predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
+            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
             all_model_paths = [select_tab.model_path,
                                suggest_tab.model_path,
                                import_tab.model_path,
@@ -249,18 +250,19 @@ class FrameStep2(QtWidgets.QDialog):
         self.run_figure_valid = False
         self.run_canvas.draw()
 
-    def load_all_excipient_types(self):
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
         self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, self.excipients, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
@@ -268,6 +270,7 @@ class FrameStep2(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
@@ -286,9 +289,8 @@ class FrameStep2(QtWidgets.QDialog):
 
         if self.step == 4:  # learn
             select_run_tab: FrameStep1 = self.parent.tab_widget.widget(0)
-            experiments_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             changes.append(select_run_tab.select_label.text())
-            changes.extend(experiments_tab.all_files.keys())
+            changes.extend(self.parent.import_run_names)
 
         if self.step == 6:  # optimize
             self.constraints_ui.add_suggestion_dialog()
@@ -371,13 +373,16 @@ class FrameStep2(QtWidgets.QDialog):
             try:
                 form_idx = self.parent.import_run_names.index(run_label)
             except ValueError:
-                Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
+                Log.e(
+                    f"ERROR: Failed to find import formulation index for {run_label}")
                 form_idx = this_idx
 
             vf = (0 <= form_idx < len(self.parent.import_formulations))
             if not vf:
-                Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
-                form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
+                Log.e(
+                    f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                form_idx = min(max(this_idx, 0), len(
+                    self.parent.import_formulations) - 1)
 
             vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
             if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
@@ -391,28 +396,31 @@ class FrameStep2(QtWidgets.QDialog):
             self.run_canvas.draw()
 
     def learn(self):
-
         if self.model_path is None or not Path(self.model_path).exists():
             Log.e("No model selected. Please select a model to train first.")
             return
-
+        self.learn_idx = 1
+        self.run_learn_time = 0
         self.predictor = Predictor(zip_path=self.model_path)
-        select_df = self.parent.select_formulation.to_dataframe(
-            encoded=False, training=False)
+        dfs = []
+        for form in self.parent.import_formulations:
+            if getattr(form.viscosity_profile, "is_measured", True):
+                df = form.to_dataframe(encoded=False, training=True)
+                dfs.append(df)
 
-        # Progress bar has 1 interim step:
-        # value -1 = "Learning run {select_df}...""
-        # value 0 = "Learning run {import_df[0]}..."
-        # [...]
-        # value {total_steps-1} = "Learning run {import_df[-1]}..."
-        # value {total_steps} = 100% (finished)
-        total_steps = len(self.parent.import_formulations)
-        self.learn_idx = -1
+        if not dfs:
+            Log.w(
+                "No formulations with measured viscosity profiles found. Aborting learning.")
+            return
 
-        self.progressState = Lite_QProgressDialog(  # QtWidgets.QProgressDialog(
-            "Learning...", "Cancel", self.learn_idx, total_steps, self)
-        # progressState is retained for cancel state and min/max tracking
+        combined_df = pd.concat(dfs, ignore_index=True)
+        self.executor = Executor()
+        self.mvc = VersionManager(
+            self.model_dialog.directory().path(), retention=255)
+        self.new_model_path = None
 
+        self.progressState = Lite_QProgressDialog(
+            "Learning...", "Cancel", 0, 1, self)
         self.timer = QtCore.QTimer()
         self.timer.setInterval(100)
         self.timer.setSingleShot(False)
@@ -420,10 +428,8 @@ class FrameStep2(QtWidgets.QDialog):
         self.timer.start()
 
         def learn_run_result(record: Optional[ExecutionRecord] = None):
-            """NOTE: This method runs on a different thread than the main UI and cannot interact with PyQt5 objects without causing app instability."""
-
+            """Callback after learning finishes."""
             if record and record.exception:
-                # NOTE: Progress bar and timer will end on next call to `check_finished()`
                 Log.e(
                     f"Error occurred while updating the model: {record.exception}")
                 return
@@ -432,157 +438,51 @@ class FrameStep2(QtWidgets.QDialog):
                 Log.w("Learning canceled!")
                 return
 
-            # Update time tracking for learning speed
-            now = time.time()
-            self.run_learn_time = now - self.last_learn_start_time
-            self.last_learn_start_time = now
-
-            self.learn_idx += 1  # step to next run queued
-            self.progressState.setValue(self.learn_idx)
-
-            if not self.predictor.save_path():
-
-                # process next queued run
-                this_idx = self.learn_idx
-                lines = self.summary_text.toPlainText().splitlines()
-                if len(lines) > this_idx + 1:
-                    run_label = lines[this_idx + 1]
-                else:
-                    run_label = f"Import #{this_idx + 1}"
-
-                try:
-                    form_idx = self.parent.import_run_names.index(run_label)
-                except ValueError:
-                    Log.e(f"ERROR: Failed to find import formulation index for {run_label}")
-                    form_idx = this_idx
-
-                vf = (0 <= form_idx < len(self.parent.import_formulations))
-                if not vf:
-                    Log.e(f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
-                    form_idx = min(max(this_idx, 0), len(self.parent.import_formulations) - 1)
-                
-                is_final_run = (this_idx == self.progressState.maximum() - 1)
-                queued_df = self.parent.import_formulations[form_idx].to_dataframe(
-                    encoded=False, training=False)
-
-                vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
-                if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
-
-                    # Get the viscosity profile or y target to update with.
-                    vp = self._get_viscosity_list(
-                        self.parent.import_formulations[form_idx])
-
-                    # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
-                    # Also I have this set so updating does not overwrite the existing model until
-                    # we figure out how model storage works
-                    self.executor.run(
-                        self.predictor,
-                        method_name="update",
-                        new_data=queued_df,
-                        new_targets=np.array([vp]),
-                        epochs=10,
-                        batch_size=32,
-                        save=is_final_run,  # only save final learned run to disk
-                        callback=learn_run_result)
-
-                else:
-                    # Schedule next step without recursion
-                    QtCore.QTimer.singleShot(0, lambda: learn_run_result(None))
+            # Save the model
+            try:
+                save_dir = self.predictor.save_path()
+                zip_base = os.path.join(
+                    self.model_dialog.directory().path(), "VisQAI-model")
+                saved_model = make_archive(
+                    base_name=zip_base, format="zip", root_dir=save_dir, base_dir=".")
+                enc_ok = self.predictor.add_security_to_zip(saved_model)
+                if not enc_ok:
                     Log.w(
-                        f"Not learning run #{self.learn_idx+1} because it has no measured Viscosity Profile. Run skipped...")
+                        "Failed to add security to ZIP; committing unencrypted archive.")
+                sha = self.mvc.commit(
+                    model_file=saved_model,
+                    metadata={
+                        "base_model": os.path.basename(self.model_path),
+                        "learned_runs": [f"Formulation #{i+1}" for i in range(len(dfs))],
+                        "pinned_name": None
+                    }
+                )
+                os.remove(saved_model)
+                restored_path = self.mvc.get(
+                    sha, self.model_dialog.directory().path())
+                restored_path = Path(restored_path)
+                target_path = restored_path.with_name(f"VisQAI-{sha[:7]}.zip")
+                if target_path.exists():
+                    target_path.unlink()
+                restored_path.rename(target_path)
+                Log.i(f"Created new model: {target_path}")
+                self.new_model_path = str(target_path)
 
-            else:
+            except Exception as e:
+                Log.e(f"Error occurred while saving the model: {e}")
 
-                # final queued run learned, pack and commit new saved model...
-                try:
-                    save_dir = self.predictor.save_path()
-                    # Create the archive next to the chosen directory (not CWD)
-                    zip_base = os.path.join(
-                        self.model_dialog.directory().path(), "VisQAI-model")
-                    saved_model = make_archive(
-                        base_name=zip_base,
-                        format="zip",
-                        root_dir=save_dir,
-                        base_dir="."
-                    )
-                    enc_ok = self.predictor.add_security_to_zip(saved_model)
-                    if not enc_ok:
-                        Log.w(
-                            TAG, "Failed to add security to ZIP; committing unencrypted archive.")
-                    sha = self.mvc.commit(
-                        model_file=saved_model,
-                        metadata={
-                            "base_model": os.path.basename(self.model_path),
-                            "learned_runs": self.summary_text.toPlainText().splitlines(),
-                            "pinned_name": None  # TODO: Set friendly-name when pinned
-                        }
-                    )
-                    os.remove(saved_model)  # delete temporary ZIP
-                    restored_path = self.mvc.get(
-                        sha, self.model_dialog.directory().path())
-                    # Rename to VisQAI-<sha7>.zip
-                    restored_path = Path(restored_path)
-                    target_path = restored_path.with_name(
-                        f"VisQAI-{sha[:7]}.zip")
-                    if target_path.exists():
-                        target_path.unlink()
-                    restored_path.rename(target_path)
-                    Log.i(f"Created new model: {target_path}")
-                    self.new_model_path = str(target_path)
+            finally:
+                self.predictor.cleanup()
 
-                except Exception as e:
-                    # NOTE: Progress bar and timer will end on next call to `check_finished()`
-                    Log.e(f"Error occurred while saving the model: {e}")
-                    return
-
-                finally:
-                    # Cleanup temp files when finished
-                    self.predictor.cleanup()
-
-        self.executor = Executor()
-        self.mvc = VersionManager(
-            self.model_dialog.directory().path(), retention=255)
-
-        # Track success/failure of save; used to decide whether to prompt loading
-        self.new_model_path = None
-
-        self.last_learn_start_time = time.time()
-        self.run_learn_time = 20  # starting assumption
-
-        # Start from 0%, do not increment learn_idx yet
-        value_0_to_100 = ((self.learn_idx - self.progressState.minimum()) * 100 //
-                          (self.progressState.maximum() - self.progressState.minimum()))
-        self.progress_bar.setValue(value_0_to_100)
-
-        lines = self.summary_text.toPlainText().splitlines()
-        first_label = lines[0] if lines else "Initial Selection"
-        format_str = "{}% - Learning run \"{}\"...".format(
-            value_0_to_100, first_label)
-        self.progress_label.setText(format_str)
-
-        if self.parent.select_formulation.viscosity_profile.is_measured:
-
-            # Get the viscosity profile or y target to update with.
-            vp = self._get_viscosity_list(self.parent.select_formulation)
-            self.plot_figure(vp)
-
-            # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
-            # Also I have this set so updating does not overwrite the existing model until
-            # we figure out how model storage works
-            self.executor.run(
-                self.predictor,
-                method_name="update",
-                new_data=select_df,
-                new_targets=np.array([vp]),
-                epochs=10,
-                batch_size=32,
-                save=(total_steps == 0),  # only save final learned run to disk
-                callback=learn_run_result)
-
-        else:
-            Log.w(
-                f"Not learning run #{self.learn_idx+1} because it has no measured Viscosity Profile. Run skipped...")
-            learn_run_result()
+        # Start learning on the combined DataFrame
+        self.executor.run(
+            self.predictor,
+            method_name="learn",
+            new_df=combined_df,
+            n_epochs=25,
+            save=True,
+            callback=learn_run_result
+        )
 
     def calc_limits(self, yall):
         # For log scale, ymin must be > 0

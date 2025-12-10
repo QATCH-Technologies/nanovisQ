@@ -45,12 +45,13 @@ database = Database(
     path=DB_PATH,
     encryption_key=metadata.get("app_key", None))
 ing_ctrl = IngredientController(db=database)
+ing_ctrl._user_mode = False
 
 # Populate DB with core training samples
 print(f"Adding core training samples to newly created app.db...")
 form_ctrl = FormulationController(db=database)
 csv_path = os.path.join(QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
-                        "VisQAI", "assets", "formulation_data_09112025.csv")
+                        "VisQAI", "assets", "formulation_data_11112025.csv")
 if not os.path.isfile(csv_path):
     raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
@@ -72,7 +73,7 @@ def _read_and_normalize_csv(path: str) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors='coerce')
     # Step 4: Normalize protein class types to values from enum
     valid_classes = ProteinClass.all_strings()
-    given_classes = df["Protein_class"].tolist()
+    given_classes = df["Protein_class_type"].tolist()
     for i in range(len(given_classes)):
         if given_classes[i] not in valid_classes:
             matches = process.extract(
@@ -87,7 +88,7 @@ def _read_and_normalize_csv(path: str) -> pd.DataFrame:
             if best_match_class not in valid_classes:
                 best_match_class = ProteinClass.OTHER.value
             given_classes[i] = best_match_class
-    df["Protein_class"] = given_classes
+    df["Protein_class_type"] = given_classes
     return df
 
 

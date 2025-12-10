@@ -6,7 +6,6 @@ from QATCH.core.constants import Constants, OperationType
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
 from QATCH.processors.Calibration import CalibrationProcess
-from QATCH.processors.FillForecaster import FillForecasterProcess
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.ringBuffer import RingBuffer
@@ -169,13 +168,6 @@ class Worker:
                 else:
                     (self._overtone_name, self._overtone_value, self._fStep, self._readFREQ, SG_window_size,
                      spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
-
-                # Create and start live forecaster
-                # self._forecaster_process = FillForecasterProcess(
-                #     self._queueLog,
-                #     self._forecaster_in,
-                #     self._forecaster_out)
-                # self._forecaster_process.start()
 
                 # Prepopulate frequency buffer before starting
                 for i in range(len(self._data0_buffer)):
