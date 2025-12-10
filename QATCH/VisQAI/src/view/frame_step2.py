@@ -3,7 +3,7 @@ try:
     from QATCH.core.constants import Constants
     from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
-except:
+except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
@@ -14,22 +14,42 @@ except:
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 import os
+import pandas as pd
+import numpy as np
+import time
+from typing import Optional
 from typing import TYPE_CHECKING
+from shutil import make_archive
+from pathlib import Path
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
+from matplotlib.ticker import FormatStrFormatter
+from scipy.interpolate import interp1d
 
 try:
+    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.predictor import Predictor
+    from src.threads.executor import Executor, ExecutionRecord
     from src.utils.constraints import Constraints
     from src.utils.icon_utils import IconUtils
     from src.utils.list_utils import ListUtils
     from src.view.constraints_ui import ConstraintsUI
+    from src.managers.version_manager import VersionManager
+    from src.utils.progress_tracker import Lite_QProgressDialog
     if TYPE_CHECKING:
         from src.view.frame_step1 import FrameStep1
         from src.view.main_window import VisQAIWindow
 
 except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.VisQAI.src.threads.executor import Executor, ExecutionRecord
     from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.utils.icon_utils import IconUtils
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
+    from QATCH.VisQAI.src.utils.progress_tracker import Lite_QProgressDialog
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -58,18 +78,23 @@ class FrameStep2(QtWidgets.QDialog):
 
         # Main layout
         main_layout = QtWidgets.QVBoxLayout(self)
-        splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
         main_layout.addWidget(splitter)
-        top_menu_widget = QtWidgets.QWidget()
-        top_menu_layout = QtWidgets.QVBoxLayout(top_menu_widget)
+        left_menu_widget = QtWidgets.QWidget()
+        left_menu_layout = QtWidgets.QVBoxLayout(left_menu_widget)
 
         # Browse model layout
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setOption(
             QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        model_path = os.path.join(
-            os.getcwd(), "QATCH/VisQAI/assets")
-        self.model_dialog.setDirectory(model_path)
+        model_path = os.path.join(Architecture.get_path(),
+                                  "QATCH/VisQAI/assets")
+        if os.path.exists(model_path):
+            # working or bundled directory, if exists
+            self.model_dialog.setDirectory(model_path)
+        else:
+            # fallback to their local logged data folder
+            self.model_dialog.setDirectory(Constants.log_prefer_path)
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
         self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
@@ -118,52 +143,77 @@ class FrameStep2(QtWidgets.QDialog):
         self.progress_btn_layout.setContentsMargins(0, 0, 0, 0)
         self.btn_pause = QtWidgets.QPushButton("Pause")
         self.btn_resume = QtWidgets.QPushButton("Resume")
-        self.btn_cancel = QtWidgets.QPushButton("Cancel")
-        self.progress_btn_layout.addWidget(self.btn_pause)
-        self.progress_btn_layout.addWidget(self.btn_resume)
-        self.progress_btn_layout.addWidget(self.btn_cancel)
         self.progress_label = QtWidgets.QLabel()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setTextVisible(False)
         self.progress_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.progress_label.setText("0% - Not Started")
         progress_layout.addWidget(self.progress_label)
         progress_layout.addWidget(self.progress_bar)
         progress_layout.addWidget(self.progress_buttons)
 
+        # Left menu buttons
+        self.btn_start = QtWidgets.QPushButton("Start ")
+        self.btn_cancel = QtWidgets.QPushButton("Cancel")
+        self.btn_next = QtWidgets.QPushButton("Next Step: ")
+        if self.step == 4:
+            self.btn_start.setText(self.btn_start.text() + "Learning")
+            self.btn_next.setText(self.btn_next.text() + "Predict")
+        else:  # 6: Optimize
+            self.btn_start.setText(self.btn_start.text() + "Optimizing")
+            self.btn_next.setText("Final Report")
+        button_layout = QtWidgets.QHBoxLayout()
+        button_layout.addWidget(self.btn_cancel)
+        button_layout.addWidget(self.btn_next)
+
         # Top menu layout
-        top_menu_layout.addWidget(self.select_model_group)
-        top_menu_layout.addWidget(self.summary_group)
-        top_menu_layout.addWidget(self.progress_group)
-        splitter.addWidget(top_menu_widget)
+        left_menu_layout.addWidget(self.select_model_group)
+        left_menu_layout.addWidget(self.summary_group)
+        left_menu_layout.addWidget(self.btn_start)
+        left_menu_layout.addLayout(button_layout)
+
+        splitter.addWidget(left_menu_widget)
+
+        # Set fixed width for left widget
+        left_menu_widget.setMinimumWidth(450)
 
         # Bottom split view layout
-        figure = QtWidgets.QLabel("[Figure here]")
-        figure.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        splitter.addWidget(figure)
-        splitter.setSizes([1, 1000])
+        self.run_figure = Figure()
+        self.run_figure_valid = False
+        self.run_canvas = FigureCanvas(self.run_figure)
+
+        # Configure right widget and layout
+        right_widget = QtWidgets.QWidget()
+        right_layout = QtWidgets.QVBoxLayout(right_widget)
+        right_layout.addWidget(self.progress_group)
+        right_layout.addWidget(self.run_canvas, 1)
+
+        # Add to main splitter
+        splitter.addWidget(right_widget)
+        splitter.setSizes([10, 10000])
 
         # Signals
         self.select_model_btn.clicked.connect(self.model_dialog.show)
-        self.model_dialog.fileSelected.connect(self.model_selected)
+        global_handler = getattr(
+            self.parent, 'set_global_model_path', None)
+        self.model_dialog.fileSelected.connect(
+            global_handler if callable(global_handler) else self.model_selected)
         self.btn_resume.clicked.connect(
             lambda: self.progress_bar.setValue(self.progress_bar.value()+1))
-        self.btn_resume.clicked.connect(
+        self.btn_start.clicked.connect(
             getattr(self, "learn" if step == 4 else "optimize")
         )
-        self.btn_cancel.clicked.connect(
-            lambda: self.progress_bar.setValue(0))
-        self.btn_cancel.clicked.connect(
-            lambda: self.model_selected(None))
-        self.progress_bar.valueChanged.connect(
-            lambda v: self.progress_label.setText(
-                f"{v}% - " + ("Learning" if self.step == 4 else "Optimizing")))
+        # self.btn_cancel.clicked.connect(
+        #     lambda: self.model_selected(None))
+        self.btn_cancel.clicked.connect(self.action_cancel)
+        self.btn_next.clicked.connect(self.proceed_to_next_step)
 
         self.progress_bar.setValue(0)
 
     def on_tab_selected(self):
 
         # Reload all excipients from DB
-        self.load_all_excipient_types()
+        self.load_all_ingredients()
 
         # Select a pre-selected model, if none selected here
         if not self.model_path:
@@ -171,8 +221,8 @@ class FrameStep2(QtWidgets.QDialog):
             suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
             import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-            predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+            predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
+            optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
             all_model_paths = [select_tab.model_path,
                                suggest_tab.model_path,
                                import_tab.model_path,
@@ -185,20 +235,34 @@ class FrameStep2(QtWidgets.QDialog):
                 self.model_selected(found_model_path)
 
         if self.step == 4:  # learn
+            self.action_cancel()
             self.load_changes()
 
-    def load_all_excipient_types(self):
+    def action_cancel(self):
+        if hasattr(self, "progressState"):
+            self.progressState.cancel()
+        if hasattr(self, "timer") and self.timer.isActive():
+            self.progress_label.setText("% - Canceling... please wait...")
+        else:
+            self.progress_label.setText("0% - Not Started")
+            self.progress_bar.setValue(0)
+        self.run_figure.clear()
+        self.run_figure_valid = False
+        self.run_canvas.draw()
+
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
         self.proteins_by_class: dict[str, str] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, self.excipients, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
@@ -206,10 +270,11 @@ class FrameStep2(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
-    def model_selected(self, path: str | None):
+    def model_selected(self, path: Optional[str] = None):
         self.model_path = path
 
         if path is None:
@@ -224,9 +289,8 @@ class FrameStep2(QtWidgets.QDialog):
 
         if self.step == 4:  # learn
             select_run_tab: FrameStep1 = self.parent.tab_widget.widget(0)
-            experiments_tab: FrameStep1 = self.parent.tab_widget.widget(2)
             changes.append(select_run_tab.select_label.text())
-            changes.extend(experiments_tab.all_files.keys())
+            changes.extend(self.parent.import_run_names)
 
         if self.step == 6:  # optimize
             self.constraints_ui.add_suggestion_dialog()
@@ -272,8 +336,305 @@ class FrameStep2(QtWidgets.QDialog):
         self.constraints = constraints
         Log.i(TAG, "Constraints set for optimization.")
 
+    def proceed_to_next_step(self):
+        if self.step == 4:
+            # proceed to step 5
+            if self.parent is not None:
+                i = self.parent.tab_widget.currentIndex()
+                self.parent.tab_widget.setCurrentIndex(i+1)
+        else:
+            # show final report
+            raise NotImplementedError(
+                "Final report generation not implemented.")
+
+    def _get_viscosity_list(self, formulation: Formulation) -> list:
+        rate_list = []
+        vp = formulation.viscosity_profile
+        for rate in [100, 1000, 10000, 100000, 15000000]:
+            rate_list.append(vp.get_viscosity(rate))
+        return rate_list
+
+    def update_ui_next_step(self, this_idx):
+        value_0_to_100 = ((this_idx - self.progressState.minimum()) * 100 //
+                          (self.progressState.maximum() - self.progressState.minimum()))
+        self.progress_bar.setValue(value_0_to_100)
+
+        if not self.predictor.save_path():
+
+            lines = self.summary_text.toPlainText().splitlines()
+            if len(lines) > this_idx + 1:
+                run_label = lines[this_idx + 1]
+            else:
+                run_label = f"Import #{this_idx + 1}"
+            format_str = "{}% - Learning run \"{}\"...".format(
+                value_0_to_100, run_label)
+            self.progress_label.setText(format_str)
+
+            try:
+                form_idx = self.parent.import_run_names.index(run_label)
+            except ValueError:
+                Log.e(
+                    f"ERROR: Failed to find import formulation index for {run_label}")
+                form_idx = this_idx
+
+            vf = (0 <= form_idx < len(self.parent.import_formulations))
+            if not vf:
+                Log.e(
+                    f"ERROR: form_idx {form_idx} out of range; using {this_idx}")
+                form_idx = min(max(this_idx, 0), len(
+                    self.parent.import_formulations) - 1)
+
+            vp_obj = self.parent.import_formulations[form_idx].viscosity_profile if vf else None
+            if vf and vp_obj is not None and getattr(vp_obj, "is_measured", False):
+                # Get the viscosity profile or y target to update with.
+                vp = self._get_viscosity_list(
+                    self.parent.import_formulations[form_idx])
+                self.plot_figure(vp)
+        else:
+            self.run_figure.clear()
+            self.run_figure_valid = False
+            self.run_canvas.draw()
+
     def learn(self):
-        raise NotImplementedError()
+        if self.model_path is None or not Path(self.model_path).exists():
+            Log.e("No model selected. Please select a model to train first.")
+            return
+        self.learn_idx = 1
+        self.run_learn_time = 0
+        self.predictor = Predictor(zip_path=self.model_path)
+        dfs = []
+        for form in self.parent.import_formulations:
+            if getattr(form.viscosity_profile, "is_measured", True):
+                df = form.to_dataframe(encoded=False, training=True)
+                dfs.append(df)
+
+        if not dfs:
+            Log.w(
+                "No formulations with measured viscosity profiles found. Aborting learning.")
+            return
+
+        combined_df = pd.concat(dfs, ignore_index=True)
+        self.executor = Executor()
+        self.mvc = VersionManager(
+            self.model_dialog.directory().path(), retention=255)
+        self.new_model_path = None
+
+        self.progressState = Lite_QProgressDialog(
+            "Learning...", "Cancel", 0, 1, self)
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(100)
+        self.timer.setSingleShot(False)
+        self.timer.timeout.connect(self.check_finished)
+        self.timer.start()
+
+        def learn_run_result(record: Optional[ExecutionRecord] = None):
+            """Callback after learning finishes."""
+            if record and record.exception:
+                Log.e(
+                    f"Error occurred while updating the model: {record.exception}")
+                return
+
+            if self.progressState.wasCanceled():
+                Log.w("Learning canceled!")
+                return
+
+            # Save the model
+            try:
+                save_dir = self.predictor.save_path()
+                zip_base = os.path.join(
+                    self.model_dialog.directory().path(), "VisQAI-model")
+                saved_model = make_archive(
+                    base_name=zip_base, format="zip", root_dir=save_dir, base_dir=".")
+                enc_ok = self.predictor.add_security_to_zip(saved_model)
+                if not enc_ok:
+                    Log.w(
+                        "Failed to add security to ZIP; committing unencrypted archive.")
+                sha = self.mvc.commit(
+                    model_file=saved_model,
+                    metadata={
+                        "base_model": os.path.basename(self.model_path),
+                        "learned_runs": [f"Formulation #{i+1}" for i in range(len(dfs))],
+                        "pinned_name": None
+                    }
+                )
+                os.remove(saved_model)
+                restored_path = self.mvc.get(
+                    sha, self.model_dialog.directory().path())
+                restored_path = Path(restored_path)
+                target_path = restored_path.with_name(f"VisQAI-{sha[:7]}.zip")
+                if target_path.exists():
+                    target_path.unlink()
+                restored_path.rename(target_path)
+                Log.i(f"Created new model: {target_path}")
+                self.new_model_path = str(target_path)
+
+            except Exception as e:
+                Log.e(f"Error occurred while saving the model: {e}")
+
+            finally:
+                self.predictor.cleanup()
+
+        # Start learning on the combined DataFrame
+        self.executor.run(
+            self.predictor,
+            method_name="learn",
+            new_df=combined_df,
+            n_epochs=25,
+            save=True,
+            callback=learn_run_result
+        )
+
+    def calc_limits(self, yall):
+        # For log scale, ymin must be > 0
+        EPS = 1e-6
+        ymin, ymax = EPS, 1000
+        lower_limit = np.amin(yall) / 1.5
+        power = 1
+        while power > -5:
+            if lower_limit > 10**power:
+                lower_limit = 10**power
+                break
+            power -= 1
+        upper_limit = np.amax(yall) * 1.5
+        power = 0
+        while power < 5:
+            if upper_limit < 10**power:
+                upper_limit = 10**power
+                break
+            power += 1
+        if lower_limit <= EPS or lower_limit >= upper_limit:
+            Log.d(
+                f"Limits were auto-calculated but are in an invalid range! Using ylim [{EPS}, 1000]."
+            )
+        elif np.isfinite(lower_limit) and np.isfinite(upper_limit):
+            Log.d(
+                f"Auto-calculated y-range limits for figure are: [{lower_limit}, {upper_limit}]"
+            )
+            ymin = max(lower_limit, EPS)
+            ymax = upper_limit
+        else:
+            Log.d(
+                f"Limits were auto-calculated but were not finite values! Using ylim [{EPS}, 1000]."
+            )
+        return ymin, ymax
+
+    def plot_figure(self, vp: list):
+        self.profile_shears = [100, 1000, 10000, 100000, 15000000]
+        self.profile_viscos = vp
+
+        # Helper functions for plotting
+        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+            xlog = np.log10(x)
+            ylog = np.log10(y)
+            f_interp = interp1d(xlog, ylog, kind='linear',
+                                fill_value='extrapolate')
+            xlog_min, xlog_max = xlog.min(), xlog.max()
+            margin = (xlog_max - xlog_min) * expand_factor
+            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+            xs = 10**xs_log
+            ys = 10**f_interp(xs_log)
+            return xs, ys
+
+        self.run_figure.clear()
+        self.run_figure_valid = False
+        ax = self.run_figure.add_subplot(111)
+        ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
+        ax.set_ylabel("Viscosity (cP)", fontsize=10)
+        ax.grid(True, which="both", ls=":")
+        ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+
+        if len(self.profile_viscos) > 0:
+            xs, ys = smooth_log_interpolate(
+                self.profile_shears, self.profile_viscos)
+            ax.set_xlim(xs.min(), xs.max())
+            ax.set_ylim(self.calc_limits(yall=self.profile_viscos))
+            ax.plot(self.profile_shears, self.profile_viscos,
+                    lw=2.5, color="blue")
+            ax.scatter(self.profile_shears, self.profile_viscos,
+                       s=40, color="blue", zorder=5)
+
+            # Calculate offset as percentage of y-range
+            ylim = ax.get_ylim()
+            y_range = max(ylim) - min(ylim)
+            offset = y_range * 0.05  # 5% of the y-range
+            # Add labels with offset above points
+            for i in range(len(self.profile_viscos)):
+                ax.text(self.profile_shears[i], self.profile_viscos[i] + offset,
+                        f'{self.profile_viscos[i]:.02f}',
+                        ha='center', va='bottom',
+                        fontsize=10,
+                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+
+            self.run_figure_valid = True
+
+        else:
+            ax.text(0.5, 0.5, "Invalid Results",
+                    transform=ax.transAxes,
+                    ha='center', va='center',
+                    bbox=dict(facecolor='yellow', edgecolor='black'))
+        ax.set_xscale("log")
+        ax.set_yscale("log")
+        self.run_canvas.draw()
+
+    def check_finished(self):
+        # at least 1 record expected, but may be more based on task count
+        expect_record_count = max(1, self.executor.task_count())
+        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == expect_record_count:
+            self.timer.stop()
+
+            self.progress_bar.setValue(100)
+            self.progress_label.setText("100% - Finished")
+            Log.i(TAG, "Learning finished successfully.")
+
+            if not self.progressState.wasCanceled() and getattr(self, "new_model_path", None):
+                QtCore.QTimer.singleShot(1000, self.done_learning)
+            elif not self.progressState.wasCanceled():
+                Log.w(TAG, "Learning finished but no new model was created.")
+
+        else:
+            if not self.progressState.queue().empty():
+                self.update_ui_next_step(
+                    self.progressState.queue().get_nowait())
+
+            # Increment progress bar periodically to show that the thread isn't frozen solid (~20s per run)
+            pct_per_run = 100 // (self.progressState.maximum() -
+                                  self.progressState.minimum())
+            # secs per run (tracked dynamically based on real timing)
+            sec_per_run = self.run_learn_time
+            # ms per increment (min 50ms)
+            pct_period = max(
+                50, int(1000 * sec_per_run // max(1, pct_per_run)))
+            max_pct_at = (self.learn_idx + 2) * pct_per_run
+
+            now_ms = int(time.time() * 1000)
+            last_bump_ms = int(getattr(self, "last_pct_bump_time", 0))
+            if now_ms - last_bump_ms >= pct_period:
+                if self.progress_bar.value() < min(99, max(0, max_pct_at)):
+                    self.progress_bar.setValue(self.progress_bar.value() + 1)
+                    new_progress_text = self.progress_label.text()
+                    new_progress_text = new_progress_text.split("%", 1)[1]
+                    self.progress_label.setText(
+                        f"{self.progress_bar.value()}%{new_progress_text}")
+                self.last_pct_bump_time = now_ms
+
+    def done_learning(self):
+        # ask user if they want to proceed to using this model for predictions
+        reply = QtWidgets.QMessageBox.question(
+            self,  # parent
+            "Load New Model?",  # title
+            "<b>New model created!</b><br/><br/>" +
+            "Would you like to load this new model to make predictions?",  # text
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No | QtWidgets.QMessageBox.Cancel,  # buttons
+            QtWidgets.QMessageBox.Yes  # defaultButton
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            self.parent.set_global_model_path(self.new_model_path)
+            self.proceed_to_next_step()  # proceed to prediction step or update UI
+        elif reply == QtWidgets.QMessageBox.No:
+            pass  # Do nothing, user declined
+        elif reply == QtWidgets.QMessageBox.Cancel:
+            pass  # User cancelled
 
     def optimize(self):
         raise NotImplementedError()

@@ -434,9 +434,13 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         # append new secure_user_info to xml
         xml_str = doc.toxml()  # indent ="\t")
-        with open(file, "w") as f:
-            f.write(xml_str)
-            Log.d(f"Saved XML file: {file}")
+        try:
+            with open(file, "w") as f:
+                f.write(xml_str)
+                Log.d(f"Saved XML file: {file}")
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Error writing '{ts_type}' record: {ose}")
+            # continue, no return
 
         self.update_table_data()
 
@@ -518,10 +522,14 @@ class UserProfilesManager(QtWidgets.QWidget):
         hash.update(ts_type.encode())
         hash.update(ts_val.encode())
         signature = hash.hexdigest()
-        with open(file, 'rb+') as f:
-            f.seek(-15, 2)
-            f.write(
-                f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+        try:
+            with open(file, 'rb+') as f:
+                f.seek(-15, 2)
+                f.write(
+                    f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Error writing '{ts_type}' record: {ose}")
+            # continue, no return
 
         # Delete the user.
         folder_name, file_name = os.path.split(file)
@@ -1077,9 +1085,13 @@ class UserProfiles:
 
         # append new secure_user_info to xml
         xml_str = doc.toxml()  # indent ="\t")
-        with open(file, "w") as f:
-            f.write(xml_str)
-            Log.d(f"Saved XML file: {file}")
+        try:
+            with open(file, "w") as f:
+                f.write(xml_str)
+                Log.d(f"Saved XML file: {file}")
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Error writing '{ts_type}' record: {ose}")
+            return
         Log.w("Password changed: " + ("*" * len(pwd)))
 
     @staticmethod
@@ -1090,9 +1102,12 @@ class UserProfiles:
         hash.update(salt.encode())
         hash.update(today.encode())
         session_key = hash.hexdigest()
-        with open(file, 'w') as f:
-            f.write(session_key)
-            Log.d("User session created.")
+        try:
+            with open(file, 'w') as f:
+                f.write(session_key)
+                Log.d("User session created.")
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Error writing session key: {ose}")
         UserProfiles.user_preferences = UserPreferences(
             UserProfiles.get_session_file())
         UserProfiles.user_preferences.set_preferences()
@@ -1108,17 +1123,20 @@ class UserProfiles:
         today = dt.datetime.now().isoformat().split('T')[0]
         if os.path.exists(file):
             files, infos = UserProfiles.get_all_user_info()
-            with open(file, "r") as f:
-                session_key = f.read()
-                for i, file in enumerate(files):
-                    salt = file[:-4]
-                    hash = hashlib.sha256()
-                    hash.update(salt.encode())
-                    hash.update(today.encode())
-                    file_key = hash.hexdigest()
-                    if file_key == session_key:
-                        Log.d("User session is active.")
-                        return True, infos[i]  # valid session
+            try:
+                with open(file, "r") as f:
+                    session_key = f.read()
+                    for i, file in enumerate(files):
+                        salt = file[:-4]
+                        hash = hashlib.sha256()
+                        hash.update(salt.encode())
+                        hash.update(today.encode())
+                        file_key = hash.hexdigest()
+                        if file_key == session_key:
+                            Log.d("User session is active.")
+                            return True, infos[i]  # valid session
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Error reading session key: {ose}")
             Log.d("User session is expired.")
             return False, None  # invalid session
         else:
@@ -1150,18 +1168,21 @@ class UserProfiles:
         today = dt.datetime.now().isoformat().split('T')[0]
         if os.path.exists(file):
             files, infos = UserProfiles.get_all_user_info()
-            with open(file, "r") as f:
-                session_key = f.read()
-                for i, file in enumerate(files):
-                    salt = file[:-4]
-                    hash = hashlib.sha256()
-                    hash.update(salt.encode())
-                    hash.update(today.encode())
-                    file_key = hash.hexdigest()
-                    if file_key == session_key:
-                        Log.d("User session is active.")
-                        file = file.split(".xml")[0]
-                        return file  # valid session
+            try:
+                with open(file, "r") as f:
+                    session_key = f.read()
+                    for i, file in enumerate(files):
+                        salt = file[:-4]
+                        hash = hashlib.sha256()
+                        hash.update(salt.encode())
+                        hash.update(today.encode())
+                        file_key = hash.hexdigest()
+                        if file_key == session_key:
+                            Log.d("User session is active.")
+                            file = file.split(".xml")[0]
+                            return file  # valid session
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Error reading session key: {ose}")
             Log.d("User session is expired.")
             return None  # invalid session
         else:
@@ -1278,9 +1299,13 @@ class UserProfiles:
 
             # Log.d(doc)
             xml_str = doc.toxml()  # indent ="\t")
-            with open(file, "w") as f:
-                f.write(xml_str)
-                Log.d(f"Saved XML file: {file}")
+            try:
+                with open(file, "w") as f:
+                    f.write(xml_str)
+                    Log.d(f"Saved XML file: {file}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Error writing '{ts_type}' record: {ose}")
+                return
 
             if sign_in_user:
                 # create session
@@ -1372,11 +1397,15 @@ class UserProfiles:
                     hash.update(ts_type.encode())
                     hash.update(ts_val.encode())
                     signature = hash.hexdigest()
-                    with open(file, 'rb+') as f:
-                        f.seek(-15, 2)
-                        f.write(
-                            f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
-                        # f.write(f'</user_profile>\r\n'.encode())
+                    try:
+                        with open(file, 'rb+') as f:
+                            f.seek(-15, 2)
+                            f.write(
+                                f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+                            # f.write(f'</user_profile>\r\n'.encode())
+                    except OSError as ose:  # FileNotFoundError
+                        Log.e(f"Error writing '{ts_type}' record: {ose}")
+                        return False, filename, None
                     Log.d(f"User {initials} authenticated successfully.")
                     return True, filename, [name, initials, role]
                 elif p != password and s == signature:

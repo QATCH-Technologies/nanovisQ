@@ -2,16 +2,15 @@
 Logging module for the QATCH Nanovis system.
 
 This module provides the Logger class for configuring and managing
-logging handlers, including suppression of TensorFlow warnings,
-file rotation, and console output, as well as the LoggerLevel enum
-defining available log levels.
+logging handlers, file rotation, and console output, as well as the 
+LoggerLevel enum defining available log levels.
 
 Author:
     Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-09
+    2025-10-16
 
 Version:
     ?
@@ -43,19 +42,6 @@ class Logger:
         Returns:
             None
         """
-        # Suppress TensorFlow and FutureWarnings
-        warnings.filterwarnings(
-            'ignore', category=FutureWarning, module='tensorflow')
-        try:
-            import tensorflow as tf
-            tf.get_logger().setLevel('ERROR')
-            try:
-                tf.autograph.set_verbosity(0)
-            except Exception:
-                pass
-        except ImportError:
-            pass
-
         try:
             from absl import logging as absl_logging
             absl_logging.set_verbosity(absl_logging.ERROR)

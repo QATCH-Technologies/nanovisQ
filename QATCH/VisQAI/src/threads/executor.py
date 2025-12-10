@@ -1,5 +1,6 @@
 from threading import Thread, Lock
 from typing import Any, Callable, List, Optional
+import traceback
 
 
 class ExecutionRecord:
@@ -21,6 +22,7 @@ class ExecutionRecord:
 
         self.result: Any = None
         self.exception: Optional[Exception] = None
+        self.traceback: Optional[str] = None
         self._thread: Optional[Thread] = None
 
     @property
@@ -79,12 +81,14 @@ class Executor:
                 record.result = result
             except Exception as e:
                 record.exception = e
+                record.traceback = traceback.format_exc()
             finally:
                 if record.callback:
                     try:
                         record.callback(record)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        raise RuntimeError(
+                            f"ERROR occurred when calling callback method: {e}")
 
         thread = Thread(target=_wrapper, name=final_thread_name, daemon=False)
         record._thread = thread

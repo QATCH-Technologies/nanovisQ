@@ -13,10 +13,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-09
+    2025-10-22
 
 Version:
-    2.1
+    2.2
 """
 
 import os
@@ -32,6 +32,37 @@ try:
     from src.managers.asset_manager import AssetManager, AssetError
     from src.utils.constraints import Constraints
     from src.models.ingredient import Ingredient
+
+    import logging
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(asctime)s] %(levelname)s: %(message)s"
+    )
+
+    class Log:
+        """Logging utility for standardized log messages."""
+        _logger = logging.getLogger("Predictor")
+
+        @classmethod
+        def i(cls, msg: str) -> None:
+            """Log an informational message."""
+            cls._logger.info(msg)
+
+        @classmethod
+        def w(cls, msg: str) -> None:
+            """Log a warning message."""
+            cls._logger.warning(msg)
+
+        @classmethod
+        def e(cls, msg: str) -> None:
+            """Log an error message."""
+            cls._logger.error(msg)
+
+        @classmethod
+        def d(cls, msg: str) -> None:
+            """Log a debug message."""
+            cls._logger.debug(msg)
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.predictor import Predictor
@@ -41,6 +72,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.managers.asset_manager import AssetManager, AssetError
     from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.models.ingredient import Ingredient
+    from QATCH.common.logger import Logger as Log
 
 
 class Sampler:
@@ -123,8 +155,10 @@ class Sampler:
         Args:
             formulation (Formulation): The candidate formulation to evaluate.
         """
-        df = formulation.to_dataframe(encoded=False)
-        vis, unc = self.predictor.predict_uncertainty(df)
+        df = formulation.to_dataframe(encoded=False, training=False)
+        vis, unc_dict = self.predictor.predict_uncertainty(df)
+        # Extract standard deviation from uncertainty dictionary
+        unc = unc_dict['std'] if isinstance(unc_dict, dict) else unc_dict
         self._current_viscosity = self._make_viscosity_profile(vis)
         self._current_uncertainty = unc
         self._last_formulation = formulation
@@ -151,8 +185,10 @@ class Sampler:
 
         # Generate global random candidates
         for form in self._generate_random_samples(n_global):
-            vis, unc = self.predictor.predict_uncertainty(
-                form.to_dataframe(encoded=False))
+            vis, unc_dict = self.predictor.predict_uncertainty(
+                form.to_dataframe(encoded=False, training=False))
+            # Extract standard deviation from uncertainty dictionary
+            unc = unc_dict['std'] if isinstance(unc_dict, dict) else unc_dict
             score = self._acquisition_ucb(
                 vis, unc, kappa) if use_ucb else np.nanmean(unc)
             candidates.append((form, score))
@@ -160,8 +196,11 @@ class Sampler:
         # Generate local perturbations around the last formulation
         if self._last_formulation is not None:
             for form in self._perturb_formulation(self._last_formulation, base_unc):
-                vis, unc = self.predictor.predict_uncertainty(
-                    form.to_dataframe(encoded=False))
+                vis, unc_dict = self.predictor.predict_uncertainty(
+                    form.to_dataframe(encoded=False, training=False))
+                # Extract standard deviation from uncertainty dictionary
+                unc = unc_dict['std'] if isinstance(
+                    unc_dict, dict) else unc_dict
                 score = self._acquisition_ucb(
                     vis, unc, kappa) if use_ucb else np.nanmean(unc)
                 candidates.append((form, score))
@@ -212,10 +251,9 @@ class Sampler:
                 else:
                     ing_type = suggestions.get(
                         feat.replace('_conc', '_type'), None)
-                    if str(ing_type).lower() == 'none':
+                    if ing_type is not None and str(ing_type).lower() == 'none':
                         suggestions[feat] = 0.0
                     else:
-                        # Generate a random float within the bounds
                         raw = float(np.random.uniform(low, high))
                         suggestions[feat] = self._round_suggestion(feat, raw)
 
@@ -242,7 +280,7 @@ class Sampler:
             List[Formulation]: Perturbed formulations.
         """
         noise_scale = min(1.0, base_uncertainty / max_uncertainty) * 0.2
-        base_df = formulation.to_dataframe(encoded=False)
+        base_df = formulation.to_dataframe(encoded=False, training=False)
         perturbed: List[Formulation] = []
 
         for _ in range(n):
@@ -351,6 +389,14 @@ class Sampler:
                                 float(suggestions.get(
                                     "Surfactant_conc", 0.0)),
                                 "%w")
+
+        if (val := suggestions.get("Excipient_type")):
+            excip = val if isinstance(
+                val, Ingredient) else self.ing_ctrl.get_excipient_by_name(val)
+            form.set_excipient(excip,
+                               float(suggestions.get(
+                                   "Excipient_conc", 0.0)),
+                               "mM")
 
         form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form

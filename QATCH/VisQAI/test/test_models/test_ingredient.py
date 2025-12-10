@@ -5,7 +5,7 @@ Unit tests for the Ingredient model classes, verifying:
     - Base Ingredient validation (id, enc_id, name)
     - Protein subclass validation (molecular_weight, pI_mean, pI_range)
     - Buffer subclass validation (pH range and type)
-    - Behavior of simple subclasses (Stabilizer, Surfactant, Salt) for type, repr, ordering, and equality
+    - Behavior of simple subclasses (Stabilizer, Surfactant, Salt, Excipient) for type, repr, ordering, and equality
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
@@ -14,12 +14,12 @@ Date:
     2025-06-02
 
 Version:
-    1.0
+    1.1
 """
 
 import unittest
 from src.models.ingredient import (
-    Ingredient, Protein, Buffer, Stabilizer, Surfactant, Salt, ProteinClass
+    Ingredient, Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
 )
 
 
@@ -309,7 +309,7 @@ class TestBuffer(unittest.TestCase):
 
 
 class TestSimpleSubclasses(unittest.TestCase):
-    """Unit tests for Stabilizer, Surfactant, and Salt subclasses of Ingredient."""
+    """Unit tests for Stabilizer, Surfactant, Salt, and Excipient subclasses of Ingredient."""
 
     def test_stabilizer_behaves_like_ingredient(self):
         """
@@ -350,6 +350,103 @@ class TestSimpleSubclasses(unittest.TestCase):
         self.assertTrue(s == other)
         # equal -> not less-than
         self.assertFalse(s < other)
+
+    def test_excipient_behaves_like_ingredient(self):
+        """
+        Test that Excipient inherits from Ingredient correctly.
+
+        - type property returns "Excipient".
+        - repr contains class name.
+        - Equality behaves as base class.
+        """
+        e = Excipient(8, "Mannitol", id=12)
+        self.assertEqual(e.type, "Excipient")
+        self.assertEqual(repr(e).split("(")[0], "Excipient")
+        self.assertEqual(e, Excipient(8, "Mannitol", id=12))
+
+    def test_excipient_initialization_without_id(self):
+        """
+        Test that Excipient can be initialized without an id.
+
+        - id defaults to None when not provided.
+        - enc_id and name are correctly set.
+        """
+        e = Excipient(15, "Trehalose")
+        self.assertIsNone(e.id)
+        self.assertEqual(e.enc_id, 15)
+        self.assertEqual(e.name, "Trehalose")
+
+    def test_excipient_ordering(self):
+        """
+        Test that Excipient ordering behaves correctly.
+
+        - When both have ids, order by id.
+        - When both have None ids, order by enc_id.
+        """
+        e1 = Excipient(10, "A", id=1)
+        e2 = Excipient(10, "B", id=2)
+        self.assertTrue(e1 < e2)
+        self.assertFalse(e2 < e1)
+
+        e3 = Excipient(5, "X")
+        e4 = Excipient(7, "Y")
+        self.assertTrue(e3 < e4)
+        self.assertFalse(e4 < e3)
+
+    def test_excipient_inequality(self):
+        """
+        Test that Excipient inequality works correctly.
+
+        - Different enc_id yields inequality.
+        - Different name yields inequality.
+        - Different id yields inequality.
+        """
+        e1 = Excipient(10, "Glucose", id=5)
+        e2 = Excipient(11, "Glucose", id=5)
+        e3 = Excipient(10, "Fructose", id=5)
+        e4 = Excipient(10, "Glucose", id=6)
+
+        self.assertFalse(e1 == e2)
+        self.assertFalse(e1 == e3)
+        self.assertFalse(e1 == e4)
+        self.assertTrue(e1 != e2)
+        self.assertTrue(e1 != e3)
+        self.assertTrue(e1 != e4)
+
+    def test_excipient_to_dict(self):
+        """
+        Test that Excipient to_dict returns correct dictionary.
+
+        - Verify dict contains enc_id, name, type="Excipient", and user flag.
+        """
+        e = Excipient(20, "Sucrose", id=30)
+        d = e.to_dict()
+        self.assertEqual(
+            d, {"enc_id": 20, "name": "Sucrose",
+                "type": "Excipient", "user?": True}
+        )
+
+    def test_excipient_from_dict(self):
+        """
+        Test that Excipient from_dict reconstructs object correctly.
+
+        - Verify from_dict creates Excipient with matching fields.
+        - Verify id is None when not provided in dict.
+        """
+        d = {"enc_id": 25, "name": "Sorbitol"}
+        e = Excipient.from_dict(d)
+        self.assertIsNone(e.id)
+        self.assertEqual(e.enc_id, 25)
+        self.assertEqual(e.name, "Sorbitol")
+
+    def test_excipient_name_trimming(self):
+        """
+        Test that Excipient trims whitespace from name on initialization.
+
+        - Leading and trailing whitespace should be removed.
+        """
+        e = Excipient(30, "  Glycerol  ")
+        self.assertEqual(e.name, "Glycerol")
 
 
 if __name__ == "__main__":

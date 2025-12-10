@@ -24,13 +24,13 @@ from scipy.optimize import curve_fit
 import webbrowser
 from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
-from typing import Dict, Any, List, Tuple, Type
+from typing import Optional
 from typing import TYPE_CHECKING
 
 try:
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
+    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
     from src.models.predictor import Predictor
     from src.db.db import Database
     from src.processors.sampler import Sampler
@@ -41,6 +41,7 @@ try:
     from src.view.checkable_combo_box import CheckableComboBox
     from src.view.table_view import TableView, Color
     from src.view.constraints_ui import ConstraintsUI
+    from src.io.parser import Parser
     if TYPE_CHECKING:
         from src.view.frame_step2 import FrameStep2
         from src.view.main_window import VisQAIWindow
@@ -48,7 +49,7 @@ try:
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
@@ -59,6 +60,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
     from QATCH.VisQAI.src.view.table_view import TableView, Color
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
+    from QATCH.VisQAI.src.io.parser import Parser
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -117,9 +119,14 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog = QtWidgets.QFileDialog()
             self.model_dialog.setOption(
                 QtWidgets.QFileDialog.DontUseNativeDialog, True)
-            model_path = os.path.join(
-                os.getcwd(), "QATCH/VisQAI/assets")
-            self.model_dialog.setDirectory(model_path)
+            model_path = os.path.join(Architecture.get_path(),
+                                      "QATCH/VisQAI/assets")
+            if os.path.exists(model_path):
+                # working or bundled directory, if exists
+                self.model_dialog.setDirectory(model_path)
+            else:
+                # fallback to their local logged data folder
+                self.model_dialog.setDirectory(Constants.log_prefer_path)
             self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
             self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
             self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
@@ -132,8 +139,10 @@ class FrameStep1(QtWidgets.QDialog):
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
             if step == 1:
-                predictor_path = "QATCH/VisQAI/assets/VisQAI-base.zip"
+                predictor_path = os.path.join(model_path,
+                                              "VisQAI-base.zip")
                 if os.path.exists(predictor_path):
+                    # working or bundled predictor, if exists
                     self.model_selected(path=predictor_path)
             select_model_layout.addWidget(self.select_model_btn)
             select_model_layout.addWidget(self.select_model_label)
@@ -143,17 +152,8 @@ class FrameStep1(QtWidgets.QDialog):
 
         left_layout.addWidget(left_group)
 
-        # Browse run
-        self.file_dialog = QtWidgets.QFileDialog()
-        self.file_dialog.setOption(
-            QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        # NOTE: `setDirectory()` called when VisQAI mode is enabled.
-        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setNameFilter("Captured Runs (capture.zip)")
-        self.file_dialog.selectNameFilter("Captured Runs (capture.zip)")
-
         self.select_run = QtWidgets.QPushButton(
-            "Add Run..." if step == 3 else "Browse...")
+            "Add Run(s)..." if step == 3 else "Browse...")
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
@@ -197,20 +197,30 @@ class FrameStep1(QtWidgets.QDialog):
             add_remove_export_layout = QtWidgets.QHBoxLayout(
                 add_remove_export_widget)
             add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
+
             if step in [2, 5]:
                 btn_text = "Suggestion" if step == 2 else "Prediction"
                 self.btn_add = QtWidgets.QPushButton(f"Add {btn_text}")
                 self.btn_add.clicked.connect(self.add_another_item)
                 add_remove_export_layout.addWidget(self.btn_add)
-            self.btn_remove = QtWidgets.QPushButton("Remove Selected Run")
+
+            # Remove Selected Run
+            self.btn_remove = QtWidgets.QPushButton("Remove Selected")
             self.btn_remove.clicked.connect(self.user_run_removed)
             add_remove_export_layout.addWidget(self.btn_remove)
+
+            # Remove All Runs
+            self.btn_remove_all = QtWidgets.QPushButton("Remove All")
+            self.btn_remove_all.clicked.connect(
+                self.user_all_runs_removed)
+            add_remove_export_layout.addWidget(self.btn_remove_all)
+
             if step in [2, 5]:  # Suggest, Predict
                 self.btn_export = QtWidgets.QPushButton("Export as PDF")
                 self.btn_export.clicked.connect(self.export_table_data)
                 add_remove_export_layout.addWidget(self.btn_export)
-            form_layout.addRow("", add_remove_export_widget)
 
+            form_layout.addRow("", add_remove_export_widget)
         self.run_notes = QtWidgets.QTextEdit()
         self.run_notes.setPlaceholderText("None")
         self.run_notes.setReadOnly(True)
@@ -272,9 +282,35 @@ class FrameStep1(QtWidgets.QDialog):
             step_verb = "Predicted"
         right_header = QtWidgets.QGroupBox(f"{step_verb} Features")
         right_group = QtWidgets.QVBoxLayout(right_header)
+        if step == 5:
+            ci_widget = QtWidgets.QWidget()
+            ci_layout = QtWidgets.QVBoxLayout(ci_widget)
+            ci_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Features table
-        self.load_all_excipient_types()
+            # Label and value display
+            ci_header_layout = QtWidgets.QHBoxLayout()
+            ci_label = QtWidgets.QLabel("Confidence Interval:")
+            ci_header_layout.addWidget(ci_label)
+
+            self.ci_value_label = QtWidgets.QLabel("95%")
+            self.ci_value_label.setStyleSheet("font-weight: bold;")
+            ci_header_layout.addWidget(self.ci_value_label)
+            ci_header_layout.addStretch()
+            ci_layout.addLayout(ci_header_layout)
+
+            # Slider
+            self.ci_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
+            self.ci_slider.setMinimum(50)
+            self.ci_slider.setMaximum(99)
+            self.ci_slider.setValue(95)
+            self.ci_slider.setTickPosition(QtWidgets.QSlider.TicksBelow)
+            self.ci_slider.setTickInterval(10)
+            self.ci_slider.valueChanged.connect(self.update_ci_label)
+            ci_layout.addWidget(self.ci_slider)
+
+            right_group.addWidget(ci_widget)
+            # Features table
+        self.load_all_ingredients()
         self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
                                              "Protein Class", "Protein Molecular Weight",  # not in Run Info
                                              "Protein pI Mean", "Protein pI Range",  # not in Run Info
@@ -282,21 +318,34 @@ class FrameStep1(QtWidgets.QDialog):
                                              "Buffer pH",  # not in Run Info
                                              "Surfactant Type", "Surfactant Concentration",
                                              "Stabilizer Type", "Stabilizer Concentration",
-                                             "Salt Type", "Salt Concentration"],
-                                 "Value": [self.proteins, "",
-                                           self.class_types, "", "", "",  # class, molecular weight, pI mean, pI range
-                                           self.buffers, "",
+                                             "Salt Type", "Salt Concentration",
+                                             "Excipient Type", "Excipient Concentration",
+                                             "Temperature"],  # only displayed on Predict tab (for now)
+                                 "Value": [{"choices": self.proteins, "selected": ""}, "",
+                                           # class, molecular weight, pI mean, pI range
+                                           {"choices": self.class_types,
+                                               "selected": ""}, "", "", "",
+                                           {"choices": self.buffers,
+                                               "selected": ""}, "",
                                            "",  # buffer pH
-                                           self.surfactants, "",
-                                           self.stabilizers, "",
-                                           self.salts, ""],
+                                           {"choices": self.surfactants,
+                                               "selected": ""}, "",
+                                           {"choices": self.stabilizers,
+                                               "selected": ""}, "",
+                                           {"choices": self.salts,
+                                               "selected": ""}, "",
+                                           {"choices": self.excipients,
+                                               "selected": ""}, "",
+                                           ""],
                                  "Units": ["", "mg/mL",
                                            "", "kDa", "", "",  # pI
                                            "", "mM",
                                            "",  # pH
                                            "", "%w",
                                            "", "M",
-                                           "", "mM"]}
+                                           "", "mM",
+                                           "", "mM",
+                                           "\u00b0C"]}  # degrees Celsius
         self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
                                                 len(list(self.default_features.keys())))
 
@@ -304,6 +353,9 @@ class FrameStep1(QtWidgets.QDialog):
                                        self.default_rows, self.default_cols)
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
+
+        # Update proteins by class for table view auto-selection
+        self.feature_table.setProteinsByClass(self.proteins_by_class)
 
         self.btn_update = QtWidgets.QPushButton()
         self.btn_update.setEnabled(False)
@@ -371,8 +423,8 @@ class FrameStep1(QtWidgets.QDialog):
         self.h_splitter.addWidget(self.run_canvas)
 
         # Set fixed width for left widget
-        left_widget.setMinimumWidth(420)
-        right_header.setMinimumWidth(420)
+        left_widget.setMinimumWidth(450)
+        right_header.setMinimumWidth(350)
 
         # add collapse/expand icon arrows
         self.h_splitter.setHandleWidth(10)
@@ -401,19 +453,35 @@ class FrameStep1(QtWidgets.QDialog):
             lambda: self.file_selected(None, cancel=True))
         self.btn_next.clicked.connect(
             getattr(self, f"proceed_to_step_{self.step+1}"))
-        self.select_run.clicked.connect(self.file_dialog.show)
-        self.file_dialog.fileSelected.connect(self.file_selected)
+        self.select_run.clicked.connect(self.user_run_browse)
         if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
-            self.model_dialog.fileSelected.connect(self.model_selected)
+            global_handler = getattr(
+                self.parent, 'set_global_model_path', None)
+            self.model_dialog.fileSelected.connect(
+                global_handler if callable(global_handler) else self.model_selected)
+
+    def reload_all_ingredient_choices(self):
+
+        # Reload all ingredients from DB
+        self.load_all_ingredients()
+
+        # Update choices lists in default features for dropdown items
+        self.default_features["Value"][0]["choices"] = self.proteins
+        self.default_features["Value"][2]["choices"] = self.class_types
+        self.default_features["Value"][6]["choices"] = self.buffers
+        self.default_features["Value"][9]["choices"] = self.surfactants
+        self.default_features["Value"][11]["choices"] = self.stabilizers
+        self.default_features["Value"][13]["choices"] = self.salts
+        self.default_features["Value"][15]["choices"] = self.excipients
+
+        # Update proteins by class for table view auto-selection
+        self.feature_table.setProteinsByClass(self.proteins_by_class)
 
     def on_tab_selected(self):
 
-        # Set run directory from User Preferences.
-        self.file_dialog.setDirectory(Constants.log_prefer_path)
-
-        # Reload all excipients from DB
-        self.load_all_excipient_types()
+        # Reload ingredients from DB and update default choices
+        self.reload_all_ingredient_choices()
 
         if self.step == 2:  # Suggest
             # self.load_suggestion()
@@ -429,8 +497,8 @@ class FrameStep1(QtWidgets.QDialog):
                 suggest_tab: FrameStep1 = self.parent.tab_widget.widget(1)
                 import_tab: FrameStep1 = self.parent.tab_widget.widget(2)
                 learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
-                predict_tab: FrameStep1 = self.parent.tab_widget.widget(4)
-                optimize_tab: FrameStep2 = self.parent.tab_widget.widget(5)
+                predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
+                optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
                 all_model_paths = [select_tab.model_path,
                                    suggest_tab.model_path,
                                    import_tab.model_path,
@@ -471,18 +539,19 @@ class FrameStep1(QtWidgets.QDialog):
             no_item.setSelectable(False)
             self.model.appendRow(no_item)
 
-    def load_all_excipient_types(self):
+    def load_all_ingredients(self):
         self.proteins: list[str] = []
         self.buffers: list[str] = []
         self.surfactants: list[str] = []
         self.stabilizers: list[str] = []
         self.salts: list[str] = []
+        self.excipients: list[str] = []
         self.class_types: list[str] = []
-        self.proteins_by_class: dict[str, str] = {}
+        self.proteins_by_class: dict[str, list[str]] = {}
 
         self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_excipient_types(
+            self.stabilizers, self.salts, self.excipients, \
+            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
                 self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
@@ -490,20 +559,35 @@ class FrameStep1(QtWidgets.QDialog):
         Log.d("Surfactants:", self.surfactants)
         Log.d("Stabilizers:", self.stabilizers)
         Log.d("Salts:", self.salts)
+        Log.d("Excipients:", self.excipients)
         Log.d("Class Types:", self.class_types)
         Log.d("Proteins By Class:", self.proteins_by_class)
 
     def hide_extended_features(self):
-        hide_rows = [2, 3, 4, 5, 8]
+        hide_rows = []
+        if self.step in [2, 5]:
+            hide_rows.extend([2, 3, 4, 5, 8])
+        if self.step != 5:
+            # Hide Temperature everywhere other than Predict
+            hide_rows.append(17)
         for row in hide_rows:
             self.feature_table.hideRow(row)
+
+    def update_ci_label(self, value):
+        self.ci_value_label.setText(f"{value}%")
+
+    def get_ci_range(self):
+        ci_percent = self.ci_slider.value()
+        lower = (100.0 - ci_percent) / 2
+        upper = 100.0 - lower
+        return (lower, upper)
 
     def save_formulation(self, cancel: bool = False) -> bool:
         if not self.feature_table.allSet():
             Log.e("Not all features have been set. " +
                   "Cannot save formulation info. " +
                   "Enter missing values and try again.")
-            return
+            return False
 
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
         protein_conc = self.feature_table.item(1, 1).text()
@@ -521,7 +605,9 @@ class FrameStep1(QtWidgets.QDialog):
         stabilizer_conc = self.feature_table.item(12, 1).text()
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
-
+        excipient_type = self.feature_table.cellWidget(15, 1).currentText()
+        excipient_conc = self.feature_table.item(16, 1).text()
+        temp = self.feature_table.item(17, 1).text()
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
             self.parent.save_run_info(self.run_file_xml, [
@@ -529,7 +615,8 @@ class FrameStep1(QtWidgets.QDialog):
                 buffer_type, buffer_conc,
                 surfactant_type, surfactant_conc,
                 stabilizer_type, stabilizer_conc,
-                salt_type, salt_conc], cancel)
+                salt_type, salt_conc,
+                excipient_type, excipient_conc], cancel)
             if self.parent.hasUnsavedChanges():
                 if cancel:
                     Log.w("Unsaved changes lost, per user discretion.")
@@ -548,51 +635,65 @@ class FrameStep1(QtWidgets.QDialog):
 
         if self.step == 5:  # Predict
             # save table to loaded_features
+            # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             feature = copy.deepcopy(self.default_features)
-            feature["Value"][0] = protein_type
+            feature["Value"][0]["selected"] = protein_type
             feature["Value"][1] = protein_conc
-            feature["Value"][2] = protein_class
+            feature["Value"][2]["selected"] = protein_class
             feature["Value"][3] = protein_weight
             feature["Value"][4] = protein_pI_mean
             feature["Value"][5] = protein_pI_range
-            feature["Value"][6] = buffer_type
+            feature["Value"][6]["selected"] = buffer_type
             feature["Value"][7] = buffer_conc
             feature["Value"][8] = buffer_pH
-            feature["Value"][9] = surfactant_type
+            feature["Value"][9]["selected"] = surfactant_type
             feature["Value"][10] = surfactant_conc
-            feature["Value"][11] = stabilizer_type
+            feature["Value"][11]["selected"] = stabilizer_type
             feature["Value"][12] = stabilizer_conc
-            feature["Value"][13] = salt_type
+            feature["Value"][13]["selected"] = salt_type
             feature["Value"][14] = salt_conc
+            feature["Value"][15]["selected"] = excipient_type
+            feature["Value"][16] = excipient_conc
+            feature["Value"][17] = temp
+
             self.loaded_features[self.list_view.selectedIndexes()[
                 0].row()] = feature
 
-        protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
-        if protein == None:
+        protein = self.parent.ing_ctrl.get_protein_by_name(
+            name=protein_type)
+        if protein is None:
             protein = self.parent.ing_ctrl.add_protein(
                 Protein(enc_id=-1, name=protein_type))
 
-        buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
-        if buffer == None:
+        buffer = self.parent.ing_ctrl.get_buffer_by_name(
+            name=buffer_type)
+        if buffer is None:
             buffer = self.parent.ing_ctrl.add_buffer(
                 Buffer(enc_id=-1, name=buffer_type))
 
         surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
             name=surfactant_type)
-        if surfactant == None:
+        if surfactant is None:
             surfactant = self.parent.ing_ctrl.add_surfactant(
                 Surfactant(enc_id=-1, name=surfactant_type))
 
         stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
             name=stabilizer_type)
-        if stabilizer == None:
+        if stabilizer is None:
             stabilizer = self.parent.ing_ctrl.add_stabilizer(
                 Stabilizer(enc_id=-1, name=stabilizer_type))
 
-        salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
-        if salt == None:
+        salt = self.parent.ing_ctrl.get_salt_by_name(
+            name=salt_type)
+        if salt is None:
             salt = self.parent.ing_ctrl.add_salt(
                 Salt(enc_id=-1, name=salt_type))
+
+        excipient = self.parent.ing_ctrl.get_excipient_by_name(
+            name=excipient_type)
+        if excipient is None:
+            excipient = self.parent.ing_ctrl.add_excipient(
+                Excipient(enc_id=-1, name=excipient_type))
 
         def is_number(s: str):
             try:
@@ -604,30 +705,30 @@ class FrameStep1(QtWidgets.QDialog):
         # update protein and buffer characteristics
         # bail if any extended features are missing
         if protein_class in self.class_types:
-            protein.class_type = str(protein_class)
+            protein.class_type = ProteinClass.from_value(protein_class)
         elif not protein.class_type:
             Log.e("Missing protein class!")
-            return
+            return False
         if is_number(protein_weight):
             protein.molecular_weight = float(protein_weight)
         elif not protein.molecular_weight:
             Log.e("Missing protein molecular weight!")
-            return
+            return False
         if is_number(protein_pI_mean):
             protein.pI_mean = float(protein_pI_mean)
         elif not protein.pI_mean:
             Log.e("Missing protein pI mean!")
-            return
+            return False
         if is_number(protein_pI_range):
             protein.pI_range = float(protein_pI_range)
         elif not protein.pI_range:
             Log.e("Missing protein pI range!")
-            return
+            return False
         if is_number(buffer_pH):
             buffer.pH = float(buffer_pH)
         elif not buffer.pH:
             Log.e("Missing buffer pH!")
-            return
+            return False
 
         # if no changes, nothing is done on 'update' call
         self.parent.ing_ctrl.update_protein(protein.id, protein)
@@ -642,12 +743,18 @@ class FrameStep1(QtWidgets.QDialog):
                               units='cP')
         vp.is_measured = self.run_figure_valid
 
-        # pull temperaure
-        temp = self.run_temperature.text()
-        if temp.endswith('C'):
-            temp = temp[:-1]  # strip Celsius unit character
+        # pull temperaure (already pulled from feature table)
+        # temp = self.run_temperature.text()
+        # if temp.endswith('C'):
+        #     temp = temp[:-1]  # strip Celsius unit character
         if not is_number(temp):
             temp = "nan"  # not a number, casts to float as nan
+        elif self.step == 5:
+            # Predict tab can specify custom Temperature target
+            if float(temp) < 0 or float(temp) > 100:
+                Log.e(
+                    f"Temperature input {temp}\u00b0C is out-of-range! (Allowed: 0 - 100)")
+                return False
 
         form = Formulation()
         form.set_protein(
@@ -659,6 +766,8 @@ class FrameStep1(QtWidgets.QDialog):
         form.set_stabilizer(stabilizer=stabilizer,
                             concentration=float(stabilizer_conc), units='M')
         form.set_salt(salt, concentration=float(salt_conc), units='mM')
+        form.set_excipient(excipient=excipient, concentration=float(
+            excipient_conc), units="mM")
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
@@ -669,6 +778,14 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d("Saving selected formulation to parent for later")
             self.parent.select_formulation = form_saved
             # print(self.parent.form_ctrl.get_all_as_dataframe())
+        if self.step == 3 and form_saved not in self.parent.import_formulations:
+            num_forms = len(self.parent.import_formulations)
+            Log.d(
+                f"Saving imported formulation #{num_forms+1} to parent for later")
+            self.parent.import_formulations.append(form_saved)
+            # Store the same label used in the left list (select_label),
+            # so FrameStep2 can resolve indices reliably.
+            self.parent.import_run_names.append(self.select_label.text())
         if self.step == 5:
             Log.d("Saving prediction formulation to parent for later")
             self.parent.predict_formulation = form_saved
@@ -683,7 +800,7 @@ class FrameStep1(QtWidgets.QDialog):
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
             return
-        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+        if len(self.select_model_label.text()) == 0 or self.model_path is None:
             Log.e("No model selected. Cannot load suggestions.")
             return
         if not self.parent.database.is_open:
@@ -714,19 +831,25 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def add_new_suggestion(record: ExecutionRecord):
+        def add_new_suggestion(record: Optional[ExecutionRecord] = None):
             if self.progressBar.wasCanceled():
                 Log.d("User canceled suggestion. Ignoring results.")
                 return
 
             Log.d("Processing suggestion results!")
 
-            form = record.result
-            exception = record.exception
-            if exception:
-                Log.e(f"ERROR: Failed to suggest: {str(exception)}")
+            if not record:
+                Log.e("ERROR: No `record` provided to `add_new_suggestion(record)`")
                 return
 
+            exception = record.exception
+            traceback = record.traceback
+            if exception:
+                Log.e(
+                    f"ERROR: Failed to suggest: {str(exception)}, {str(traceback)}")
+                return
+
+            form = record.result
             self.add_formulation(form)
 
         Log.d("Waiting for suggestion results...")
@@ -752,21 +875,26 @@ class FrameStep1(QtWidgets.QDialog):
     def add_formulation(self, form: Formulation):
         feature = copy.deepcopy(self.default_features)
         if form.protein:  # NOT an empty Formulation() object
-            feature["Value"][0] = form.protein.ingredient.name
+            # NOTE: combobox items are `dict[choices: list[str], selected: str]`
+            feature["Value"][0]["selected"] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2] = form.protein.ingredient.class_type
+            feature["Value"][2]["selected"] = form.protein.ingredient.class_type.value \
+                if form.protein.ingredient.class_type else "None"  # class_type could be None
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
-            feature["Value"][6] = form.buffer.ingredient.name
+            feature["Value"][6]["selected"] = form.buffer.ingredient.name
             feature["Value"][7] = form.buffer.concentration
             feature["Value"][8] = form.buffer.ingredient.pH
-            feature["Value"][9] = form.surfactant.ingredient.name
+            feature["Value"][9]["selected"] = form.surfactant.ingredient.name
             feature["Value"][10] = form.surfactant.concentration
-            feature["Value"][11] = form.stabilizer.ingredient.name
+            feature["Value"][11]["selected"] = form.stabilizer.ingredient.name
             feature["Value"][12] = form.stabilizer.concentration
-            feature["Value"][13] = form.salt.ingredient.name
+            feature["Value"][13]["selected"] = form.salt.ingredient.name
             feature["Value"][14] = form.salt.concentration
+            feature["Value"][15]["selected"] = form.excipient.ingredient.name
+            feature["Value"][16] = form.excipient.concentration
+            feature["Value"][17] = form.temperature
 
         if len(self.loaded_features) == 0:
             self.model.removeRow(0)  # no_item placeholder
@@ -786,7 +914,7 @@ class FrameStep1(QtWidgets.QDialog):
         if hasattr(self, "timer") and self.timer.isActive():
             Log.w("Busy canceling... Please wait...")
             return
-        if len(self.select_model_label.text()) == 0 or self.model_path == None:
+        if len(self.select_model_label.text()) == 0 or self.model_path is None:
             Log.e("No model selected. Cannot make predictions.")
             return
         if not self.parent.database.is_open:
@@ -799,11 +927,11 @@ class FrameStep1(QtWidgets.QDialog):
                 None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
             return
 
-        self.save_formulation()
+        if not self.save_formulation():
+            Log.w("Aborting prediction. Failed to save formulation.")
+            return
 
         self.predictor = Predictor(zip_path=self.model_path)
-        select_df = self.parent.select_formulation.to_dataframe(
-            encoded=False, training=False)
         predict_df = self.parent.predict_formulation.to_dataframe(
             encoded=False, training=False)
 
@@ -831,7 +959,13 @@ class FrameStep1(QtWidgets.QDialog):
         self.timer.timeout.connect(self.check_finished)
         self.timer.start()
 
-        def run_prediction_result(record: ExecutionRecord):
+        def run_prediction_result(record: Optional[ExecutionRecord] = None):
+
+            if record and record.exception:
+                # NOTE: Progress bar and timer will end on next call to `check_finished()`
+                Log.e(
+                    f"Error occurred while updating the model: {record.exception}")
+                return
 
             Log.d("Waiting for prediction results...")
             self.progressBar.setLabelText("Predicting...")
@@ -839,10 +973,11 @@ class FrameStep1(QtWidgets.QDialog):
             self.executor.run(
                 self.predictor,
                 method_name="predict_uncertainty",
-                data=predict_df,
+                df=predict_df,
+                ci_range=self.get_ci_range(),
                 callback=get_prediction_result)
 
-        def get_prediction_result(record: ExecutionRecord):
+        def get_prediction_result(record: Optional[ExecutionRecord] = None):
 
             if self.progressBar.wasCanceled():
                 Log.d("User canceled prediction. Ignoring results.")
@@ -851,14 +986,21 @@ class FrameStep1(QtWidgets.QDialog):
             Log.d("Processing prediction results!")
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5]
-            # predicted_vp = self.parent.predictor.predict(data=form_df)
+            # predicted_vp = self.parent.predictor.predict(df=form_df)
 
             # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
             # a series of standard deviations for each predicted value.
-            predicted_mean_vp, mean_std = record.result
+
+            if not record:
+                Log.e("ERROR: No `record` provided to `get_prediction_result(record)`")
+                return
+
             exception = record.exception
             if exception:
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
+                return
+
+            predicted_mean_vp, uncertainty_dict = record.result
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
@@ -873,73 +1015,112 @@ class FrameStep1(QtWidgets.QDialog):
                 ys = 10**f_interp(xs_log)
                 return xs, ys
 
-            def make_plot(name, shear, mean_arr, std_arr, title, color):
-                # clear existing plot before making a new one
+            def make_plot(name, shear, mean_arr, uncertainty_dict, title, color):
                 self.run_figure_valid = False
                 self.run_figure.clear()
                 self.run_canvas.draw()
-
+                shear = np.asarray(shear)
+                mean_arr = np.asarray(mean_arr)
+                lower_ci = uncertainty_dict['lower_ci']
+                upper_ci = uncertainty_dict['upper_ci']
+                if lower_ci.ndim > 1:
+                    lower_ci = lower_ci.flatten()
+                if upper_ci.ndim > 1:
+                    upper_ci = upper_ci.flatten()
                 ax = self.run_figure.add_subplot(111)
+                ax.set_facecolor('#ffffff')
+                self.run_figure.patch.set_facecolor('#ffffff')
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
-                xs_up, ys_up = smooth_log_interpolate(
-                    shear, mean_arr + std_arr)
-                xs_dn, ys_dn = smooth_log_interpolate(
-                    shear, mean_arr - std_arr)
-                ax.plot(xs, ys, '-', lw=2.5, color=color)
-                ax.fill_between(xs_dn, ys_dn, ys_up, alpha=0.25, color=color)
-                ax.scatter(shear, mean_arr, s=40, color=color, zorder=5)
-                ax.set_xlim(xs.min(), xs.max())
-                ann = "\n".join(f"{x:.0e}: {m:.1f}±{s:.1f}" for x, m,
-                                s in zip(shear, mean_arr, std_arr))
+                xs_up, ys_up = smooth_log_interpolate(shear, upper_ci)
+                xs_dn, ys_dn = smooth_log_interpolate(shear, lower_ci)
+
+                # Updated color scheme - teal/cyan palette
+                main_color = '#00A3DA'  # Deep cyan
+                ci_color = '#69EAC5'    # Light teal
+
+                ax.fill_between(xs_up, ys_dn, ys_up, alpha=0.15, color=ci_color,
+                                linewidth=0, label=f'{self.ci_value_label.text()} CI')
+                ax.plot(xs, ys, '-', lw=2.5, color=main_color,
+                        label='Estimated Viscosity', zorder=3, alpha=0.95)
+                ax.plot(xs_up, ys_up, '-', lw=1,
+                        color=ci_color, alpha=0.7, zorder=2)
+                ax.plot(xs_dn, ys_dn, '-', lw=1,
+                        color=ci_color, alpha=0.7, zorder=2)
+                ax.scatter(shear, mean_arr, s=80, color=main_color, zorder=5,
+                           edgecolors='white', linewidths=2.5, alpha=1)
                 ax.set_xscale("log")
                 ax.set_yscale("log")
-                ax.set_ylim(self.calc_limits(yall=np.concat((ys_dn, ys_up))))
-                ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
-                ax.set_ylabel("Viscosity (cP)", fontsize=10)
-                ax.grid(True, which="both", ls=":")
+                ax.set_xlim(xs.min() * 0.8, xs.max() * 1.2)
+                ax.set_ylim(self.calc_limits(
+                    yall=np.concatenate((ys_dn, ys_up))))
+                ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
+                              color='#2d3436')
+                ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
+                              color='#2d3436')
+                ax.set_title(title, fontsize=13, fontweight='600', pad=15,
+                             color='#2d3436')
+                ax.grid(True, which="major", ls='-',
+                        alpha=0.15, color='#636e72', lw=0.8)
+                ax.grid(True, which="minor", ls='-',
+                        alpha=0.07, color='#b2bec3', lw=0.5)
                 ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
-
-                # Calculate offset as percentage of y-range
+                ax.tick_params(axis='both', which='major', labelsize=9,
+                               colors='#2d3436', width=1)
+                ax.tick_params(axis='both', which='minor', labelsize=8,
+                               colors='#636e72', width=0.5)
+                ax.spines['top'].set_visible(False)
+                ax.spines['right'].set_visible(False)
+                ax.spines['left'].set_color('#dfe6e9')
+                ax.spines['bottom'].set_color('#dfe6e9')
+                ax.spines['left'].set_linewidth(1.5)
+                ax.spines['bottom'].set_linewidth(1.5)
+                legend = ax.legend(loc='best', frameon=True, fancybox=False,
+                                   shadow=False, fontsize=9, framealpha=1,
+                                   edgecolor='#dfe6e9', borderpad=1)
+                legend.get_frame().set_facecolor('#ffffff')
+                legend.get_frame().set_linewidth(1)
                 ylim = ax.get_ylim()
-                y_range = max(ylim) - min(ylim)
-                offset = y_range * 0.05  # 5% of the y-range
-                # Add labels with offset above points
+                y_range = np.log10(ylim[1]) - np.log10(ylim[0])
                 for i in range(len(mean_arr)):
-                    ax.text(shear[i], mean_arr[i] + offset,
-                            f'{mean_arr[i]:.02f}±{std_arr[i]:.02f}',
-                            ha='center', va='bottom',
-                            fontsize=10,
-                            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+                    annotation = f'{mean_arr[i]:.1f}\n[{lower_ci[i]:.1f}-{upper_ci[i]:.1f}]'
+                    y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
+                    ax.annotate(annotation,
+                                xy=(shear[i], mean_arr[i]),
+                                xytext=(shear[i], y_offset),
+                                ha='center', va='bottom',
+                                fontsize=8,
+                                color='#2d3436',
+                                weight='500',
+                                bbox=dict(boxstyle='round,pad=0.4',
+                                          facecolor='white',
+                                          edgecolor=main_color,
+                                          alpha=0.95,
+                                          linewidth=1.2),
+                                arrowprops=dict(arrowstyle='-',
+                                                connectionstyle='arc3,rad=0',
+                                                color=main_color,
+                                                alpha=0.4,
+                                                lw=1.2))
+                from datetime import datetime
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                ax.text(0.98, 0.02, timestamp,
+                        transform=ax.transAxes, fontsize=7,
+                        verticalalignment='bottom', horizontalalignment='right',
+                        alpha=0.4, style='italic', color='#636e72')
+                self.run_figure.tight_layout()
 
                 self.run_figure_valid = True
                 self.run_canvas.draw()
 
-            # Plot
-            make_plot("name", self.profile_shears,
-                      predicted_mean_vp[0], mean_std[0], "title", "blue")
+            Log.d(f"VP={predicted_mean_vp}, {uncertainty_dict}")
+            make_plot("Viscosity Profile", self.profile_shears,
+                      predicted_mean_vp[0], uncertainty_dict,
+                      "Estimated Viscosity Profile", "blue")
+            self.predictor.cleanup()
 
         self.executor = Executor()
 
-        if self.parent.select_formulation.viscosity_profile.is_measured:
-
-            # Get the viscosity profile or y target to update with.
-            vp = self._get_viscosity_list(self.parent.select_formulation)
-
-            # Target needs to be form np.array([[Viscosity_100, ..., Viscosity_15000000]])
-            # Also I have this set so updating does not overwrite the existing model until
-            # we figure out how model storage works
-            self.executor.run(
-                self.predictor,
-                method_name="update",
-                new_data=select_df,
-                new_targets=np.array([vp]),
-                epochs=10,
-                batch_size=32,
-                save=True,
-                callback=run_prediction_result)
-
-        else:
-            run_prediction_result()
+        run_prediction_result()
 
     def check_finished(self):
         # at least 1 record expected, but may be more based on task count
@@ -989,31 +1170,80 @@ class FrameStep1(QtWidgets.QDialog):
             self.parent.tab_widget.setCurrentIndex(i+1)
 
     def proceed_to_step_4(self):
-        # First of all, there must be at least 1 imported experiment
+        # First of all, there must be at least 1 imported experiment (no longer a requirement)
         # For each run in list, must pass the same criteria from Step 1
         #   1. All audits contain valid values
         #   2. All initial features are set
         #   3. Analyze results are valid
         #   4. All formulations saved, and XMLs up-to-date
-        if len(self.all_files) == 0:
-            QtWidgets.QMessageBox.information(
-                None, Constants.app_title,
-                "Please import at least 1 experiment before proceeding.",
-                QtWidgets.QMessageBox.Ok)
-            return
+
+        # NOTE: No longer a requirement, but can be added back if needed
+        # if len(self.all_files) == 0:
+        #     QtWidgets.QMessageBox.information(
+        #         None, Constants.app_title,
+        #         "Please import at least 1 experiment before proceeding.",
+        #         QtWidgets.QMessageBox.Ok)
+        #     return
+
+        # Show progress bar while loading imported experiments for learning
+        self.progressBarDiag = QtWidgets.QProgressDialog(
+            "Preparing...", "Cancel", 0, len(self.all_files), self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBarDiag.setAutoReset(False)
+        self.progressBarDiag.setAutoClose(False)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/reset.png')
+        self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
+        self.progressBarDiag.setWindowTitle("Busy")
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBarDiag.setFixedSize(
+            int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
+        self.progressBarDiag.setModal(True)
+        if len(self.all_files):
+            self.progressBarDiag.show()
+        else:
+            self.progressBarDiag.reset()
+
         all_is_good = True
-        for file_name, file_path in self.all_files.items():
-            self.file_selected(file_path)  # load each run
-            if (len(self.run_captured.text()) and
-                len(self.run_updated.text()) and
-                len(self.run_analyzed.text()) and
-                    self.feature_table.allSet() and
-                    self.run_figure_valid):
-                if not self.save_formulation():
+        self.parent.import_formulations.clear()
+        self.parent.import_run_names.clear()
+
+        try:
+            for i, (_file_name, file_path) in enumerate(self.all_files.items()):
+
+                # draw progress bar immediately (it will freeze)
+                # and handle any other pending events (i.e. cancel click)
+                self.progressBarDiag.setValue(i)
+                for _ in range(2):
+                    QtCore.QCoreApplication.processEvents()
+
+                # Check for cancel and stop if true
+                if self.progressBarDiag.wasCanceled():
+                    Log.w("User canceled import preparing!")
+                    self.progressBarDiag.close()  # close it
                     return
-            else:
-                all_is_good = False
-                # break # maybe not, if we want to highlight *all* errors on "Next"
+
+                self.file_selected(file_path, loading=True)  # load each run
+                QtCore.QCoreApplication.processEvents()  # redraw plot now
+                if (len(self.run_captured.text()) and
+                    len(self.run_updated.text()) and
+                    len(self.run_analyzed.text()) and
+                        self.feature_table.allSet() and
+                        self.run_figure_valid):
+                    if not self.save_formulation():
+                        Log.w("Unable to save formulation while preparing!")
+                        self.progressBarDiag.close()  # close it
+                        return
+                else:
+                    all_is_good = False
+                    break  # highlight *first* run with errors on "Next"
+        finally:
+            # Close the active progress bar dialog window
+            self.progressBarDiag.close()
+
         if all_is_good:
             # ready to proceed
             if self.parent is not None:
@@ -1057,6 +1287,38 @@ class FrameStep1(QtWidgets.QDialog):
             self.constraints_ui.add_suggestion_dialog()
         if self.step == 5:
             self.add_formulation(Formulation())
+
+    def user_all_runs_removed(self) -> None:
+        """Prompt the user to confirm and remove all runs.
+
+        Displays a confirmation dialog asking the user if they want to
+        remove all runs. If confirmed, clears all internal data
+        structures (`all_files` and `loaded_features`), removes all
+        items from the list view model, resets the placeholder text,
+        and clears any active file selections, suppressing prompts.
+
+        Any errors encountered will be logged to `Log.e`.
+
+        """
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Confirm Remove All Runs",
+            "Are you sure you want to remove all runs?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            QtWidgets.QMessageBox.No
+        )
+
+        if reply == QtWidgets.QMessageBox.Yes:
+            try:
+                self.all_files.clear()
+                if self.step in [2, 5]:
+                    self.loaded_features.clear()
+                self.model.clear()
+                self.list_view_addPlaceholderText()
+                # Discard any pending changes and suppress save prompts when bulk-clearing.
+                self.file_selected(None, cancel=True)
+            except Exception as e:
+                Log.e("Failed to remove all runs.", str(e))
 
     def user_run_removed(self):
         try:
@@ -1141,8 +1403,9 @@ class FrameStep1(QtWidgets.QDialog):
                     # Draw page header/title
                     font.setBold(True)
                     painter.setFont(font)
-                    painter.drawText(cell_pad_left, y,
-                                     f"Suggested Experiment {i+1}")
+                    title = "Suggested Experiment" if self.step == 2 else (
+                        "Prediction" if self.step == 5 else "Formulation")
+                    painter.drawText(cell_pad_left, y, f"{title} {i+1}")
                     y += row_height
 
                     # Draw headers
@@ -1198,9 +1461,183 @@ class FrameStep1(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.critical(
                     None, "Error", f"Failed to export PDF: {str(e)}")
 
-    def file_selected(self, path: str | None, cancel: bool = False):
+    def user_run_browse(self) -> None:
+        """Open a dialog to browse and add run capture files or directories.
+
+        This method allows the user to select one or more directories containing
+        run files. It will search each selected directory for `capture.zip` files
+        and load them all in batch.
+        """
+        # Use a custom directory dialog that supports multi-selection
+        dir_dialog = QtWidgets.QFileDialog(self)
+        dir_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dir_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        dir_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
+        file_view = dir_dialog.findChild(QtWidgets.QListView, 'listView')
+        if file_view:
+            file_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
+
+        tree_view = dir_dialog.findChild(QtWidgets.QTreeView)
+        if tree_view:
+            tree_view.setSelectionMode(
+                QtWidgets.QAbstractItemView.ExtendedSelection)
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        dir_dialog.setDirectory(prefer_abs)
+
+        if dir_dialog.exec_():
+            selected_dirs = dir_dialog.selectedFiles()
+            if selected_dirs:
+                self.load_runs_from_directories(selected_dirs)
+
+    def load_runs_from_directories(self, directories: list) -> None:
+        """Search multiple directories for capture files and load them.
+
+        Args:
+            directories (list): List of directory paths to search.
+        """
+        all_capture_files = []
+        for directory in directories:
+            capture_files = self.find_capture_files(directory)
+            all_capture_files.extend(capture_files)
+
+        directory_ies = f"director{'y' if len(directories) == 1 else 'ies'}"
+        if not all_capture_files:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Capture Files Found",
+                f"No capture.zip files found in {len(directories)} selected {directory_ies}."
+            )
+            return
+        dir_summary = f"{len(directories)} {directory_ies}"
+
+        # NOTE: This block is unique to `frame_step1.py` (not in evaluation_ui.py)
+        if len(all_capture_files) > 1 and not self.step == 3:  # 3: Imported Experiments
+            # User selected multiple runs on a step that only support a single run
+            reply = QtWidgets.QMessageBox.warning(
+                self,
+                "Multiple Runs Selected",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"However, this step only supports loading a single run.\n"
+                f"Please select a directory containing only one run.",
+                QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Cancel,
+                QtWidgets.QMessageBox.Retry
+            )
+            if reply == QtWidgets.QMessageBox.Retry:
+                # Try again, using a timer, to prevent stack overflow.
+                QtCore.QTimer.singleShot(0, self.user_run_browse)
+            return
+
+        # NOTE: This block is modified from `evaluation_ui.py` to return on "No" reply
+        # Also, this block is only executed when on the Imported Experiments tab step.
+        if self.step == 3:
+            reply = QtWidgets.QMessageBox.question(
+                self,
+                "Batch Load Runs",
+                f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
+                f"Do you want to load {'all of them' if len(all_capture_files) > 1 else 'it'}?",
+                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                QtWidgets.QMessageBox.Yes
+            )
+            if reply == QtWidgets.QMessageBox.No:
+                return
+        # If we haven't bailed at a `return` yet, proceed to loading run files.
+        self.batch_add_run_files(all_capture_files)
+
+    def find_capture_files(self, directory: str, filename: str = "capture.zip") -> list:
+        """Recursively search a directory for capture files.
+
+        Args:
+            directory (str): The root directory to search.
+            filename (str): The filename to search for (default: "capture.zip").
+
+        Returns:
+            list: A list of absolute paths to found capture files.
+        """
+        capture_files = []
+
+        try:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.lower() == filename.lower():
+                        capture_files.append(os.path.join(root, file))
+        except Exception as e:
+            Log.e(f"Error searching directory {directory}: {e}")
+
+        return capture_files
+
+    def batch_add_run_files(self, file_paths: list) -> None:
+        """Load multiple run files in batch and update the UI.
+
+        This method processes a list of run files, attempting to load each one.
+        It provides feedback on the batch loading process, including success
+        and failure counts.
+
+        Args:
+            file_paths (list): List of file paths to be loaded.
+        """
+        if not file_paths:
+            return
+
+        # Show progress dialog for batch loading
+        file_s = f"file{'s' if len(file_paths) > 1 else ''}"
+        progress = QtWidgets.QProgressDialog(
+            f"Loading run {file_s}...",
+            "Cancel",
+            0,
+            len(file_paths),
+            self
+        )
+        progress.setWindowModality(QtCore.Qt.WindowModal)
+        progress.setMinimumDuration(0)
+
+        loaded_count = 0
+        failed_files = []
+
+        for i, file_path in enumerate(file_paths):
+            if progress.wasCanceled():
+                break
+
+            progress.setValue(i)
+            progress.setLabelText(
+                f"Loading: {os.path.basename(os.path.dirname(file_path))}")
+            QtWidgets.QApplication.processEvents()
+
+            self.file_selected(file_path, loading=True)
+            success = self.run_figure_valid  # True on successful load
+            if success:
+                loaded_count += 1
+            else:
+                failed_files.append(file_path)
+
+        progress.setValue(len(file_paths))
+
+        # Show summary
+        summary_msg = f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        if failed_files:
+            summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
+            for failed in failed_files[:5]:  # Show first 5 failures
+                # bullet point (U+2022)
+                summary_msg += f"\n  \u2022 {os.path.basename(os.path.dirname(failed))}"
+            if len(failed_files) > 5:
+                summary_msg += f"\n  ... and {len(failed_files) - 5} more"
+
+        if failed_files:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+        elif loaded_count > 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Batch Load Complete",
+                summary_msg
+            )
+
+    def file_selected(self, path: str | None, cancel: bool = False, loading: bool = False):
         # If run already loaded, try saving formulation to write any changed Run Info to XML
-        if self.run_file_xml and self.step in [1, 3]:
+        if self.run_file_xml and self.step in [1, 3] and not loading:
             if not self.feature_table.allSet():
                 result = QtWidgets.QMessageBox.question(
                     None,
@@ -1241,10 +1678,23 @@ class FrameStep1(QtWidgets.QDialog):
                 self.parent.select_formulation = Formulation()
             if self.step == 3:  # Import Experiments
                 self.list_view.clearSelection()
+                self.parent.import_formulations.clear()
+                self.parent.import_run_names.clear()
             if self.step == 5:  # Predict
                 self.parent.predict_formulation = Formulation()
-            if True:  # Always, all tabs
-                self.model_selected(None)
+            return
+
+        prefer_abs = os.path.abspath(Constants.log_prefer_path)
+        path_abs = os.path.abspath(path)
+        try:
+            inside = os.path.commonpath([prefer_abs, path_abs]) == prefer_abs
+        except ValueError:
+            inside = False
+        if not inside:
+            Log.e("The selected run is not in your working directory and cannot be used.")
+            Log.e("If desired, please change your working directory to use this run.")
+            # deselect file run, will show log_prefer_path next time
+            self.run_file_run = None
             return
 
         self.btn_update.setEnabled(True)
@@ -1282,333 +1732,435 @@ class FrameStep1(QtWidgets.QDialog):
 
         folder = os.path.dirname(self.run_file_run)
         files: list[str] = os.listdir(folder)
-        max_index = 0
+
+        # Find XML and analyze files
         for f in files:
             if f.endswith(".xml"):
                 self.run_file_xml = os.path.join(folder, f)
             if f.startswith("analyze") and f.endswith(".zip"):
-                this_index = int(f[f.index("-")+1:f.index(".")])
-                if this_index > max_index:
-                    max_index = this_index
-                self.run_file_analyze = os.path.join(folder,
-                                                     f.replace(str(this_index), str(max_index)))
-        if self.run_file_xml == None:
+                # Store the latest analyze file (already handled by Parser)
+                self.run_file_analyze = os.path.join(folder, f)
+
+        if self.run_file_xml is None:
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText("ERROR: Cannot find XML file for this run!")
             return
-        if self.run_file_analyze == None:
+        if self.run_file_analyze is None:
             self.run_notes.setTextBackgroundColor(Color.light_yellow)
             self.run_notes.setText("This run has not been analyzed yet.\n" +
                                    "Please Analyze and try again!")
             return
 
-        doc = minidom.parse(self.run_file_xml)
+        # Initialize Parser object
+        try:
+            xml_parser = Parser(self.run_file_xml)
+        except Exception as e:
+            self.run_notes.setTextBackgroundColor(Color.light_red)
+            self.run_notes.setText(
+                f"ERROR: Failed to parse XML file!\n{str(e)}")
+            Log.e(f"Parser initialization failed: {e}")
+            return
 
-        xml_metrics = {}
-        metrics = doc.getElementsByTagName(
-            "metrics")[-1]  # most recent element
-        for m in metrics.childNodes:
-            if m.nodeType == m.TEXT_NODE:
-                continue  # only process elements
-            name = m.getAttribute("name")
-            value = m.getAttribute("value")
-            if m.hasAttribute("units"):
-                value = f"{value} {m.getAttribute('units')}"
-            xml_metrics[name] = value
-
-        xml_audits = {}
-        audits = doc.getElementsByTagName(
-            "audits")[-1]  # most recent element
-        for a in audits.childNodes:
-            if a.nodeType == a.TEXT_NODE:
-                continue  # only process elements
-            key = a.getAttribute("action")
-            captured_by = a.getAttribute("username")
-            captured_at = a.getAttribute("recorded")
-            value = (captured_by, captured_at)
-            xml_audits[key] = value
-
-        xml_params = {}
-        params = doc.getElementsByTagName(
-            "params")[-1]  # most recent element
-        for p in params.childNodes:
-            if p.nodeType == p.TEXT_NODE:
-                continue  # only process elements
-            name = p.getAttribute("name")
-            value = p.getAttribute("value")
-            if p.hasAttribute("found"):
-                value = f"{value} ({'Valid' if eval(p.getAttribute('found')) else 'Unknown'})"
-            xml_params[name] = value
-
-        if xml_params.get("bioformulation", False) != 'True':
+        # Check if bioformulation
+        if not xml_parser.is_bioformulation():
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText("ERROR: This run is not a bioformulation!")
             return
 
+        # Get metrics, audits, and parameters from Parser
         try:
+            xml_metrics = xml_parser.get_metrics()
+            xml_audits = xml_parser.get_audits()
+
+            # Populate run info fields
             self.run_notes.setTextBackgroundColor(Color.white)
-            self.run_notes.setPlainText(
-                xml_params["notes"].replace("\\n", "\n"))
-        except:
-            self.run_notes.setPlainText(None)
-        try:
-            self.run_name.setText(xml_params["run_name"])
-        except:
-            self.run_name.setText(self.select_label.text())
-        try:
-            self.run_date_time.setText(xml_metrics["start"].replace("T", " "))
-        except:
-            self.run_date_time.setText("(Unknown)")
-        try:
-            self.run_duration.setText(xml_metrics["duration"])
-        except:
-            self.run_duration.setText("(Unknown)")
-        try:
-            self.run_batch.setText(xml_params["batch_number"])
-        except:
-            self.run_batch.setText("(Not Provided)")
-        try:
-            self.run_fill_type.setText(xml_params["fill_type"])
-        except:
-            self.run_fill_type.setText("3")
-        try:
-            audit: tuple[str, str] = xml_audits['CAPTURE']
-            captured_by, captured_at = audit
-            captured_at = captured_at.replace(
-                "T", " ")[:captured_at.index(".")]
-            self.run_captured.setText(f"{captured_by} at {captured_at}")
-        except:
-            self.run_captured.setText("(Not Performed)")
-        try:
-            audit: tuple[str, str] = xml_audits['PARAMS']
-            captured_by, captured_at = audit
-            captured_at = captured_at.replace(
-                "T", " ")[:captured_at.index(".")]
-            self.run_updated.setText(f"{captured_by} at {captured_at}")
-        except:
-            # if no PARAMS in records, then last updated is time of CAPTURE:
-            self.run_updated.setText(self.run_captured.text())
-        try:
-            audit: tuple[str, str] = xml_audits['ANALYZE']
-            captured_by, captured_at = audit
-            captured_at = captured_at.replace(
-                "T", " ")[:captured_at.index(".")]
-            self.run_analyzed.setText(f"{captured_by} at {captured_at}")
-        except:
-            self.run_analyzed.setText("(Not Performed)")
+            notes = xml_parser.get_run_notes()
+            self.run_notes.setPlainText(notes if notes else "")
 
-        run_features = copy.deepcopy(self.default_features)
-        value_tags = ["protein_type", "protein_concentration",
-                      "", "", "", "",  # class, molecular weight, pI mean, pI range
-                      "buffer_type", "buffer_concentration",
-                      "",  # pH
-                      "surfactant_type", "surfactant_concentration",
-                      "stabilizer_type", "stabilizer_concentration",
-                      "salt_type", "salt_concentration"]
-        for x, y in enumerate(value_tags):
-            try:
-                if y == "":
-                    continue
-                if y in xml_params.keys():
-                    # TODO: quick fix for demo
-                    value = xml_params[y]
-                    if value == "TWEEN80":
-                        value = "Tween-80"
-                    if value == "TWEEN20":
-                        value = "Tween-20"
-                    run_features["Value"][x] = value
-            except Exception as e:
-                print(e)
+            run_name = xml_parser.get_run_name()
+            self.run_name.setText(
+                run_name if run_name else self.select_label.text())
 
-        if False:  # self.step == 3:
-            # Hide protein and buffer characteristics
-            for values in run_features.values():
-                del values[8]  # buffer PH
-                del values[5]  # protein pI range
-                del values[4]  # protein pI mean
-                del values[3]  # protein weight
-                del values[2]  # protein class
-        else:
-            # Pull protein and buffer characteristics from database (if available)
-            protein = self.parent.ing_ctrl.get_protein_by_name(
-                name=xml_params.get("protein_type", None))
-            if protein != None:
-                if protein.class_type != None:
-                    run_features["Value"][2] = protein.class_type
-                if protein.molecular_weight != None:
-                    run_features["Value"][3] = protein.molecular_weight
-                if protein.pI_mean != None:
-                    run_features["Value"][4] = protein.pI_mean
-                if protein.pI_range != None:
-                    run_features["Value"][5] = protein.pI_range
-            buffer = self.parent.ing_ctrl.get_buffer_by_name(
-                name=xml_params.get("buffer_type", None))
-            if buffer != None:
-                if buffer.pH != None:
-                    run_features["Value"][8] = buffer.pH
+            # Set date/time
+            start_time = xml_metrics.get("start", "(Unknown)")
+            self.run_date_time.setText(start_time.replace(
+                "T", " ") if start_time != "(Unknown)" else start_time)
 
-        self.feature_table.setData(run_features)
+            # Set duration
+            duration = xml_metrics.get("duration", "(Unknown)")
+            self.run_duration.setText(duration)
 
-        # Import most recent analysis
-        in_shear_rate = []
-        in_viscosity = []
-        in_temperature = []
-        try:
-            base_run_name: str = os.path.basename(self.run_file_run)
-            base_run_name = base_run_name[:base_run_name.rfind("_")]
-            csv_file = os.path.join(os.path.dirname(
-                self.run_file_analyze), f"{base_run_name}_analyze_out.csv")
-            zip_filename = os.path.splitext(
-                os.path.basename(self.run_file_analyze))[0]
-            with SecureOpen(csv_file, "r", zip_filename, insecure=True) as f:
-                csv_headers = next(f)
-                csv_cols = (0, 2, 4)
-                data = np.loadtxt(
-                    f.readlines(), delimiter=",", skiprows=0, usecols=csv_cols
-                )
-            in_shear_rate = data[:, 0]
-            in_viscosity = data[:, 1]
-            in_temperature = data[:, 2]
+            # Set batch and fill type
+            batch = xml_parser.get_batch_number()
+            self.run_batch.setText(batch if batch else "(Not Provided)")
+
+            fill_type = xml_parser.get_fill_type()
+            self.run_fill_type.setText(fill_type)
+
+            # Set audit information
+            def format_audit(audit_tuple):
+                """Helper to format audit tuple (username, timestamp)"""
+                if audit_tuple and len(audit_tuple) == 2:
+                    username, timestamp = audit_tuple
+                    # Remove milliseconds from timestamp
+                    if "." in timestamp:
+                        timestamp = timestamp[:timestamp.index(".")]
+                    timestamp = timestamp.replace("T", " ")
+                    return f"{username} at {timestamp}"
+                return "(Not Performed)"
+
+            capture_audit = xml_audits.get('CAPTURE', None)
+            self.run_captured.setText(format_audit(capture_audit))
+
+            params_audit = xml_audits.get('PARAMS', None)
+            # If no PARAMS audit, use CAPTURE timestamp
+            self.run_updated.setText(format_audit(
+                params_audit) if params_audit else self.run_captured.text())
+
+            analyze_audit = xml_audits.get('ANALYZE', None)
+            self.run_analyzed.setText(format_audit(analyze_audit))
+
         except Exception as e:
-            print(e)
-        pass_to_models = {"shear_rate": in_shear_rate,
-                          "viscosity": in_viscosity}
+            self.run_notes.setTextBackgroundColor(Color.light_red)
+            self.run_notes.setText(
+                f"ERROR: Failed to extract run information!\n{str(e)}")
+            Log.e(f"Failed to extract run info: {e}")
+            return
 
-        # self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000] # already set
-        self.profile_viscos = []
-        has_high_shear_pt = in_shear_rate[-1] > 1e6
-        has_curve_fit_est = False
+        # Get formulation data from Parser
+        try:
+            formulation_obj = xml_parser.get_formulation()
+            vp = formulation_obj.viscosity_profile
+            temp = formulation_obj.temperature
+            found_protein = xml_parser.get_protein().get("found")
+            found_buffer = xml_parser.get_buffer().get("found")
+            found_stabilizer = xml_parser.get_stabilizer().get("found")
+            found_surfactant = xml_parser.get_surfactant().get("found")
+            found_excipient = xml_parser.get_excipient().get("found")
+            found_salt = xml_parser.get_salt().get("found")
+        except Exception as e:
+            self.run_notes.setTextBackgroundColor(Color.light_red)
+            self.run_notes.setText(
+                f"ERROR: Failed to parse formulation data!\n{str(e)}")
+            Log.e(f"Failed to parse formulation: {e}")
+            return
 
-        for shear_rate in self.profile_shears:
-            viscosity = np.interp(shear_rate, in_shear_rate, in_viscosity,
-                                  left=np.nan)
-            self.profile_viscos.append(viscosity)
+        # Build run_features dictionary from formulation
+        run_features = copy.deepcopy(self.default_features)
 
-        if np.any(np.isnan(self.profile_viscos)):
-            try:
-                # Define the logarithmic function to fit
-                def logarithmic_func(x, a, b, c):
-                    return a * np.log10(x - c) + b
+        # Helper function to normalize ingredient names
+        def normalize_name(name):
+            """Normalize ingredient names for consistent display"""
+            if name == "TWEEN80":
+                return "Tween-80"
+            elif name == "TWEEN20":
+                return "Tween-20"
+            return name
 
-                # Define bounds for parameters [a, b, c]
-                lower_bounds = [-np.inf, -np.inf, -np.inf]
-                upper_bounds = [np.inf, np.inf, 99]
-                fit_bounds = (lower_bounds, upper_bounds)
+        # Populate feature values from formulation
+        protein = formulation_obj.protein
+        buffer = formulation_obj.buffer
+        surfactant = formulation_obj.surfactant
+        stabilizer = formulation_obj.stabilizer
+        salt = formulation_obj.salt
+        excipient = formulation_obj.excipient
 
-                # Perform the curve fit (not including high-shear point)
-                initial_guess = (2, 1, 0.5)
-                popt, pcov = curve_fit(
-                    logarithmic_func,
-                    in_shear_rate[:-1] if has_high_shear_pt else in_shear_rate,
-                    in_viscosity[:-1] if has_high_shear_pt else in_viscosity,
-                    p0=initial_guess,
-                    bounds=fit_bounds)
-                a_fit, b_fit, c_fit = popt
-                has_curve_fit_est = True
+        # Protein (indices 0-5)
+        if protein and protein.ingredient.name and found_protein.get("name", True):
+            protein_name = normalize_name(protein.ingredient.name)
+            if isinstance(run_features["Value"][0], dict):
+                run_features["Value"][0]["selected"] = protein_name
+            else:
+                run_features["Value"][0] = protein_name
 
-                # Generate missing points for the profile using curve fitting
-                for i in range(len(self.profile_viscos)):
-                    if np.isnan(self.profile_viscos[i]):
-                        self.profile_viscos[i] = logarithmic_func(
-                            self.profile_shears[i], a_fit, b_fit, c_fit)
+            # Protein concentration
+            if formulation_obj.protein.concentration is not None and found_protein.get("conc", True):
+                run_features["Value"][1] = str(
+                    formulation_obj.protein.concentration)
+
+            # Protein characteristics from database
+            db_protein = self.parent.ing_ctrl.get_protein_by_name(
+                name=protein.ingredient.name)
+            if db_protein:
+                if db_protein.class_type:
+                    run_features["Value"][2]["selected"] = db_protein.class_type.value
+                if db_protein.molecular_weight:
+                    run_features["Value"][3] = db_protein.molecular_weight
+                if db_protein.pI_mean:
+                    run_features["Value"][4] = db_protein.pI_mean
+                if db_protein.pI_range:
+                    run_features["Value"][5] = db_protein.pI_range
+
+        # Buffer (indices 6-8)
+        if buffer and buffer.ingredient.name and found_buffer.get("name", True):
+            buffer_name = normalize_name(buffer.ingredient.name)
+            if isinstance(run_features["Value"][6], dict):
+                run_features["Value"][6]["selected"] = buffer_name
+            else:
+                run_features["Value"][6] = buffer_name
+
+            # Buffer concentration
+            if formulation_obj.buffer.concentration and found_buffer.get("conc", True):
+                run_features["Value"][7] = str(
+                    formulation_obj.buffer.concentration)
+
+            # Buffer pH from database
+            db_buffer = self.parent.ing_ctrl.get_buffer_by_name(
+                name=buffer.ingredient.name)
+            if db_buffer and db_buffer.pH:
+                run_features["Value"][8] = db_buffer.pH
+
+        # Surfactant (indices 9-10)
+        if surfactant and surfactant.ingredient.name and found_surfactant.get("name", True):
+            surfactant_name = normalize_name(surfactant.ingredient.name)
+            if isinstance(run_features["Value"][9], dict):
+                run_features["Value"][9]["selected"] = surfactant_name
+            else:
+                run_features["Value"][9] = surfactant_name
+
+            if formulation_obj.surfactant.concentration is not None and found_surfactant.get("conc", True):
+                run_features["Value"][10] = str(
+                    formulation_obj.surfactant.concentration)
+
+        # Stabilizer (indices 11-12)
+        if stabilizer and stabilizer.ingredient.name and found_stabilizer.get("name", True):
+            stabilizer_name = normalize_name(stabilizer.ingredient.name)
+            if isinstance(run_features["Value"][11], dict):
+                run_features["Value"][11]["selected"] = stabilizer_name
+            else:
+                run_features["Value"][11] = stabilizer_name
+
+            if formulation_obj.stabilizer.concentration is not None and found_stabilizer.get("conc", True):
+                run_features["Value"][12] = str(
+                    formulation_obj.stabilizer.concentration)
+
+        # Salt (indices 13-14)
+        if salt and salt.ingredient.name and found_salt.get("name", True):
+            salt_name = normalize_name(salt.ingredient.name)
+            if isinstance(run_features["Value"][13], dict):
+                run_features["Value"][13]["selected"] = salt_name
+            else:
+                run_features["Value"][13] = salt_name
+
+            if formulation_obj.salt.concentration is not None and found_salt.get("conc", True):
+                run_features["Value"][14] = str(
+                    formulation_obj.salt.concentration)
+
+        # Excipient (indices 15-16)
+        if excipient and excipient.ingredient.name and found_excipient.get("name", True):
+            excipient_name = normalize_name(excipient.ingredient.name)
+            if isinstance(run_features["Value"][15], dict):
+                run_features["Value"][15]["selected"] = excipient_name
+            else:
+                run_features["Value"][15] = excipient_name
+
+            if formulation_obj.excipient.concentration is not None and found_excipient.get("conc", True):
+                run_features["Value"][16] = str(
+                    formulation_obj.excipient.concentration)
+
+        # Temperature (index 17)
+        if temp and not np.isnan(temp):
+            self.run_temperature.setText(f"{temp:2.2f}C")
+            run_features["Value"][17] = f"{temp:0.2f}"
+        else:
+            self.run_temperature.setText("(Unknown)")
+            run_features["Value"][17] = ""
+
+        # Check for new and/or missing ingredients in database
+        reload_ingredients = False
+        ingredient_checks = [
+            (0, protein, "Protein Type", Protein),
+            (6, buffer, "Buffer Type", Buffer),
+            (9, surfactant, "Surfactant Type", Surfactant),
+            (11, stabilizer, "Stabilizer Type", Stabilizer),
+            (13, salt, "Salt Type", Salt),
+            (15, excipient, "Excipient Type", Excipient)
+        ]
+
+        for idx, ing, label, ingredient_class in ingredient_checks:
+            if ing and ing.ingredient.name:
+                item = run_features["Value"][idx]
+                if isinstance(item, dict):
+                    choices = item["choices"]
+                    selected = item["selected"]
+                else:
+                    # Handle simple string values
+                    selected = item
+                    choices = []
+
+                value = str(selected).strip()
+                if value.casefold() not in [str(c).casefold() for c in choices] and \
+                   value.casefold() != "none" and len(value) != 0:
+                    reload_ingredients = True
+
+                    # Skip protein class check (idx 2) as it's handled separately
+                    if idx == 2:
+                        Log.w(f"Unknown Protein Class Type: \"{value}\"")
                     else:
-                        break
+                        Log.w(f"Adding new {label}: \"{value}\"")
+                        self.parent.ing_ctrl.add(
+                            ingredient_class(enc_id=-1, name=value))
 
-            except Exception as e:
-                Log.w(
-                    "Failed to fit logarithmic curve to viscosity profile. Using entirely interpolated data instead.")
+        # Reload ingredient choices if needed
+        if reload_ingredients:
+            self.reload_all_ingredient_choices()
 
-                # Generate missing points for the profile using interpolation
-                for i in range(len(self.profile_viscos)):
-                    if np.isnan(self.profile_viscos[i]):
-                        new_value = np.interp(
-                            self.profile_shears[i], in_shear_rate, in_viscosity)
-                        self.profile_viscos[i] = new_value
-                    else:
-                        break
+            # Update run_features with new choices
+            run_features["Value"][0]["choices"] = self.proteins
+            run_features["Value"][2]["choices"] = self.class_types
+            run_features["Value"][6]["choices"] = self.buffers
+            run_features["Value"][9]["choices"] = self.surfactants
+            run_features["Value"][11]["choices"] = self.stabilizers
+            run_features["Value"][13]["choices"] = self.salts
+            run_features["Value"][15]["choices"] = self.excipients
 
-        if has_high_shear_pt:
-            self.profile_viscos[-1] = in_viscosity[-1]
-
-        expected_point_count = 13
-        if len(in_viscosity) > expected_point_count:
-            indices_to_drop = list(range(4, len(in_shear_rate)-2))
-            in_shear_rate = [item for i, item in enumerate(
-                in_shear_rate) if i not in indices_to_drop]
-            in_viscosity = [item for i, item in enumerate(
-                in_viscosity) if i not in indices_to_drop]
-
-        minidx = np.argmin(self.profile_viscos)
-        maxidx = np.argmax(self.profile_viscos)
-        Log.i(
-            f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
-
-        # Helper functions for plotting
-        def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
-            xlog = np.log10(x)
-            ylog = np.log10(y)
-            f_interp = interp1d(xlog, ylog, kind='linear',
-                                fill_value='extrapolate')
-            xlog_min, xlog_max = xlog.min(), xlog.max()
-            margin = (xlog_max - xlog_min) * expand_factor
-            xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
-            xs = 10**xs_log
-            ys = 10**f_interp(xs_log)
-            return xs, ys
-
+        # Plot viscosity profile
         self.run_figure.clear()
         self.run_figure_valid = False
-        ax = self.run_figure.add_subplot(111)
-        ax.set_xlabel("Shear rate (s⁻¹)", fontsize=10)
-        ax.set_ylabel("Viscosity (cP)", fontsize=10)
-        ax.grid(True, which="both", ls=":")
-        ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
-        if len(in_viscosity) > 0:
-            xs, ys = smooth_log_interpolate(
-                self.profile_shears, self.profile_viscos)
-            ax.set_xlim(xs.min(), xs.max())
-            ax.set_ylim(self.calc_limits(yall=in_viscosity))
-            ax.plot(self.profile_shears, self.profile_viscos,
-                    lw=2.5, color="blue")
-            ax.scatter(self.profile_shears, self.profile_viscos,
-                       s=40, color="blue", zorder=5)
 
-            # Calculate offset as percentage of y-range
+        if vp and len(vp.shear_rates) > 0:
+            # Store profile data
+            self.profile_shears = vp.shear_rates
+            self.profile_viscos = vp.viscosities
+
+            minidx = np.argmin(self.profile_viscos)
+            maxidx = np.argmax(self.profile_viscos)
+            Log.i(
+                f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+
+            # Helper function for smooth plotting
+            def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
+                xlog = np.log10(x)
+                ylog = np.log10(y)
+                f_interp = interp1d(xlog, ylog, kind='linear',
+                                    fill_value='extrapolate')
+                xlog_min, xlog_max = xlog.min(), xlog.max()
+                margin = (xlog_max - xlog_min) * expand_factor
+                xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
+                xs = 10**xs_log
+                ys = 10**f_interp(xs_log)
+                return xs, ys
+
+            # Create plot with modern styling
+            ax = self.run_figure.add_subplot(111)
+            ax.set_facecolor('#ffffff')
+            self.run_figure.patch.set_facecolor('#ffffff')
+
+            # Smooth interpolation for plotting
+            shear_arr = np.asarray(self.profile_shears)
+            viscos_arr = np.asarray(self.profile_viscos)
+            xs, ys = smooth_log_interpolate(shear_arr, viscos_arr)
+
+            # Color scheme - teal/cyan palette
+            main_color = '#00A3DA'  # Deep cyan
+
+            # Plot the viscosity profile
+            ax.plot(xs, ys, '-', lw=2.5, color=main_color,
+                    label='Measured Viscosity', zorder=3, alpha=0.95)
+            ax.scatter(shear_arr, viscos_arr, s=80, color=main_color, zorder=5,
+                       edgecolors='white', linewidths=2.5, alpha=1)
+
+            # Set scales and limits
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+            ax.set_xlim(xs.min() * 0.8, xs.max() * 1.2)
+            ax.set_ylim(self.calc_limits(yall=viscos_arr))
+
+            # Labels and title with modern styling
+            ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
+                          color='#2d3436')
+            ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
+                          color='#2d3436')
+            ax.set_title("Viscosity Profile", fontsize=13, fontweight='600', pad=15,
+                         color='#2d3436')
+
+            # Grid styling
+            ax.grid(True, which="major", ls='-',
+                    alpha=0.15, color='#636e72', lw=0.8)
+            ax.grid(True, which="minor", ls='-',
+                    alpha=0.07, color='#b2bec3', lw=0.5)
+
+            # Axis formatting
+            ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
+            ax.tick_params(axis='both', which='major', labelsize=9,
+                           colors='#2d3436', width=1)
+            ax.tick_params(axis='both', which='minor', labelsize=8,
+                           colors='#636e72', width=0.5)
+
+            # Spine styling - hide top and right, style left and bottom
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_color('#dfe6e9')
+            ax.spines['bottom'].set_color('#dfe6e9')
+            ax.spines['left'].set_linewidth(1.5)
+            ax.spines['bottom'].set_linewidth(1.5)
+
+            # Legend with modern styling
+            legend = ax.legend(loc='best', frameon=True, fancybox=False,
+                               shadow=False, fontsize=9, framealpha=1,
+                               edgecolor='#dfe6e9', borderpad=1)
+            legend.get_frame().set_facecolor('#ffffff')
+            legend.get_frame().set_linewidth(1)
+
+            # Add value annotations with modern styling
             ylim = ax.get_ylim()
-            y_range = max(ylim) - min(ylim)
-            offset = y_range * 0.05  # 5% of the y-range
-            # Add labels with offset above points
-            for i in range(len(self.profile_viscos)):
-                ax.text(self.profile_shears[i], self.profile_viscos[i] + offset,
-                        f'{self.profile_viscos[i]:.02f}',
-                        ha='center', va='bottom',
-                        fontsize=10,
-                        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
-            ax.plot(in_shear_rate, in_viscosity, "b,")
+            y_range = np.log10(ylim[1]) - np.log10(ylim[0])
 
+            for i in range(len(viscos_arr)):
+                annotation = f'{viscos_arr[i]:.1f}'
+                y_offset = viscos_arr[i] * (10 ** (y_range * 0.06))
+                ax.annotate(annotation,
+                            xy=(shear_arr[i], viscos_arr[i]),
+                            xytext=(shear_arr[i], y_offset),
+                            ha='center', va='bottom',
+                            fontsize=8,
+                            color='#2d3436',
+                            weight='500',
+                            bbox=dict(boxstyle='round,pad=0.4',
+                                      facecolor='white',
+                                      edgecolor=main_color,
+                                      alpha=0.95,
+                                      linewidth=1.2),
+                            arrowprops=dict(arrowstyle='-',
+                                            connectionstyle='arc3,rad=0',
+                                            color=main_color,
+                                            alpha=0.4,
+                                            lw=1.2))
+
+            # Add timestamp in corner
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+            ax.text(0.98, 0.02, timestamp,
+                    transform=ax.transAxes, fontsize=7,
+                    verticalalignment='bottom', horizontalalignment='right',
+                    alpha=0.4, style='italic', color='#636e72')
+
+            self.run_figure.tight_layout()
             self.run_figure_valid = True
 
-            DEBUG = False
-            if has_curve_fit_est and DEBUG:
-                x_trend = np.logspace(2, 5)
-                y_trend = logarithmic_func(
-                    x_trend, a_fit, b_fit, c_fit)
-                y_trend = [1 if np.isnan(x) else x for x in y_trend]
-                ax.plot(x_trend, y_trend, color='blue', linewidth=0.5)
         else:
+            # No valid data - show error message
+            ax = self.run_figure.add_subplot(111)
+            ax.set_facecolor('#ffffff')
+            self.run_figure.patch.set_facecolor('#ffffff')
             ax.text(0.5, 0.5, "Invalid Results",
                     transform=ax.transAxes,
                     ha='center', va='center',
-                    bbox=dict(facecolor='yellow', edgecolor='black'))
-        ax.set_xscale("log")
-        ax.set_yscale("log")
+                    fontsize=12, fontweight='600',
+                    bbox=dict(facecolor='#fff3cd', edgecolor='#856404',
+                              boxstyle='round,pad=0.8', linewidth=2))
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.spines['top'].set_visible(False)
+            ax.spines['right'].set_visible(False)
+            ax.spines['left'].set_visible(False)
+            ax.spines['bottom'].set_visible(False)
+
         self.run_canvas.draw()
 
-        avg_temp = np.average(data[:, 2])
-        if np.isnan(avg_temp):
-            self.run_temperature.setText("(Unknown)")
-        else:
-            self.run_temperature.setText(f"{avg_temp:2.2f}C")
+        # Set feature table data
+        self.feature_table.setData(run_features)
+        self.hide_extended_features()
 
         if self.feature_table.allSet():
             self.handleSplitterButton(collapse=True)
@@ -1647,7 +2199,7 @@ class FrameStep1(QtWidgets.QDialog):
             )
         return ymin, ymax
 
-    def model_selected(self, path: str | None):
+    def model_selected(self, path: Optional[str] = None):
         self.model_path = path
 
         if path is None:

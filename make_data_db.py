@@ -4,12 +4,16 @@ import json
 import time
 import random
 
+import pandas as pd
+
 from typing import List, Optional, Union
+from rapidfuzz import process, fuzz
 
 from QATCH.core.constants import Constants
+from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.db.db import Database
-from QATCH.VisQAI.src.models.ingredient import Protein, Surfactant, Salt, Buffer, Stabilizer, Ingredient
+from QATCH.VisQAI.src.models.ingredient import ProteinClass
 
 app_date = Constants.app_date
 app_encoding = Constants.app_encoding
@@ -41,30 +45,56 @@ database = Database(
     path=DB_PATH,
     encryption_key=metadata.get("app_key", None))
 ing_ctrl = IngredientController(db=database)
+ing_ctrl._user_mode = False
 
-core_ingredients = [
-    # Buffers:
-    Buffer(enc_id=1, name="Acetate", pH=5.0),
-    Buffer(enc_id=2, name="Histidine", pH=6.0),
-    Buffer(enc_id=3, name="PBS", pH=7.4),
-    # Surfactants:
-    Surfactant(enc_id=0, name="none"),
-    Surfactant(enc_id=1, name="Tween-20"),
-    Surfactant(enc_id=2, name="Tween-80"),
-    # Stabilizers:
-    Stabilizer(enc_id=0, name="none"),
-    Stabilizer(enc_id=1, name="Sucrose"),
-    Stabilizer(enc_id=2, name="Trehalose"),
-    # Salts:
-    Salt(enc_id=0, name="none"),
-    Salt(enc_id=1, name="NaCl")
-]
+# Populate DB with core training samples
+print(f"Adding core training samples to newly created app.db...")
+form_ctrl = FormulationController(db=database)
+csv_path = os.path.join(QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
+                        "VisQAI", "assets", "formulation_data_11112025.csv")
+if not os.path.isfile(csv_path):
+    raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
-# Set `is_user = False` and add each ingredient
-for core in core_ingredients:
-    ing: Ingredient = core
-    ing.is_user = False
-    ing_ctrl.add(ing)
+
+def _read_and_normalize_csv(path: str) -> pd.DataFrame:
+    """Massage dataframe to an expected parsable format by:
+        1. Removing undesired columns from the dataset
+        2. Removing any blank/partial rows at end of file
+        3. Enforcing that columns match a valid type (None vs NaN)
+        4. Normalize protein class types to values from enum
+    """
+    df = pd.read_csv(csv_path)
+    # Step 1: Removing undesired columns from the dataset
+    # Step 2: Removing any blank/partial rows at end of file
+    # Step 3: Enforcing that columns match a valid type (None vs NaN)
+    float_cols = ["MW", "PI_mean", "PI_range"]
+    for col in float_cols:
+        # Convert to numeric, invalid values become NaN
+        df[col] = pd.to_numeric(df[col], errors='coerce')
+    # Step 4: Normalize protein class types to values from enum
+    valid_classes = ProteinClass.all_strings()
+    given_classes = df["Protein_class_type"].tolist()
+    for i in range(len(given_classes)):
+        if given_classes[i] not in valid_classes:
+            matches = process.extract(
+                query=given_classes[i],
+                choices=valid_classes,
+                scorer=fuzz.WRatio,
+                limit=1,
+                score_cutoff=0.5
+            )
+            best_match_class = [
+                match_name for match_name, score, idx in matches][0]
+            if best_match_class not in valid_classes:
+                best_match_class = ProteinClass.OTHER.value
+            given_classes[i] = best_match_class
+    df["Protein_class_type"] = given_classes
+    return df
+
+
+df = _read_and_normalize_csv(csv_path)
+added_forms = form_ctrl.add_all_from_dataframe(df, verbose_print=True)
+print(f"Added {len(added_forms)} core training samples!")
 
 database.close()  # creates file
 

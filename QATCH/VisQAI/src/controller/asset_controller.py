@@ -47,7 +47,7 @@ class AssetError(Exception):
 
 class AssetController:
     """
-    Manages “named” assets on disk under a single assets directory.
+    Manages "named" assets on disk under a single assets directory.
 
     Each asset is identified by a logical name (basename without extension)
     and one or more possible file extensions (e.g. ".pkl", ".joblib", ".h5", ".json", etc.).

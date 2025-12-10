@@ -15,12 +15,14 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-23
+    2025-10-21
 
 Version:
-    1.6
+    1.7
 """
 
+import tempfile
+import shutil
 import sqlite3
 import json
 from typing import List, Optional, Union
@@ -29,10 +31,10 @@ import os
 import random
 
 try:
-    from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
-    )
     from src.models.formulation import Formulation, Component, ViscosityProfile
+    from src.models.ingredient import (
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
+    )
 
     class Log:
         @staticmethod
@@ -40,7 +42,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass
+        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, ProteinClass, Excipient
     )
     from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
     from QATCH.common.logger import Logger as Log
@@ -123,7 +125,7 @@ class Database:
 
         The tables include:
             - ingredient: core table with common fields (id, enc_id, name, type, is_user).
-            - protein, buffer, stabilizer, surfactant, salt: subclass tables referencing ingredient.
+            - protein, buffer, stabilizer, surfactant, salt, excipient: subclass tables referencing ingredient.
             - formulation: core formulation table (id, temperature).
             - formulation_component: linking table between formulations and ingredient components.
             - viscosity_profile: table storing JSON-serialized shear_rates and viscosities.
@@ -178,6 +180,12 @@ class Database:
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
+        c.execute(rf"""
+            CREATE TABLE IF NOT EXISTS excipient (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """)
         # Formulation and components
         c.execute(rf"""
             CREATE TABLE IF NOT EXISTS formulation (
@@ -194,7 +202,7 @@ class Database:
                 units TEXT NOT NULL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
-                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id)
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """)
         c.execute(rf"""
@@ -213,7 +221,7 @@ class Database:
         """Insert a new ingredient and its subclass-specific details into the database.
 
         Args:
-            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt).
+            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient).
                 The `enc_id` and `name` fields must be set, and subclass-specific attributes populated.
 
         Returns:
@@ -260,6 +268,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (db_id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (db_id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
 
         self.conn.commit()
         ing.id = db_id
@@ -321,6 +331,9 @@ class Database:
         elif typ == "Surfactant":
             ing = Surfactant(enc_id, name)
 
+        elif typ == "Excipient":
+            ing = Excipient(enc_id, name)
+
         elif typ == "Salt":
             ing = Salt(enc_id, name)
 
@@ -369,7 +382,7 @@ class Database:
         c.execute("DELETE FROM stabilizer WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM surfactant WHERE ingredient_id = ?", (id,))
         c.execute("DELETE FROM salt WHERE ingredient_id = ?", (id,))
-
+        c.execute("DELETE FROM excipient WHERE ingredient_id = ?", (id,))
         # Re-insert appropriate subclass row
         if isinstance(ing, Protein):
             class_val = (
@@ -393,6 +406,8 @@ class Database:
             c.execute("INSERT INTO surfactant VALUES (?)", (id,))
         elif isinstance(ing, Salt):
             c.execute("INSERT INTO salt VALUES (?)", (id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (id,))
 
         self.conn.commit()
         return True
@@ -422,7 +437,7 @@ class Database:
 
         Args:
             form (Formulation): A `Formulation` instance with its `_components` dictionary
-                populated (Protein, Buffer, Stabilizer, Surfactant, Salt as `Component`),
+                populated (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient as `Component`),
                 and `viscosity_profile` optionally set.
 
         Returns:
@@ -609,7 +624,7 @@ class Database:
 
         Args:
             text (str): The string to be shuffled (or unshuffled, perhaps).
-            seed (Union[int, None]): The seed for `random` to use (for repeatability). 
+            seed (Union[int, None]): The seed for `random` to use (for repeatability).
 
         Returns:
             str: The character shuffled string.
@@ -743,15 +758,127 @@ class Database:
         """
         if self.file_handle is not None:
             self.file_handle.close()
-        # If there are changes or the file does not exist, save or commit
-        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
-            if self.use_encryption:
-                self._save_cdb(self.db_path, self.encryption_key)
-            else:
-                # No additional action needed; changes have been committed inline.
+        # Only operate on an open database; nothing to do if already closed.
+        if self.is_open:
+            # If there are changes or the file does not exist, save or commit
+            if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+                if self.use_encryption:
+                    self._save_cdb(self.db_path, self.encryption_key)
+                else:
+                    # No additional action needed; changes have been committed inline.
+                    pass
+            self.conn.close()
+            self.is_open = False
+
+    def create_temp_decrypt(self) -> Optional[Path]:
+        """Create a temporary decrypted copy of the current database.
+
+        This method generates a standard SQLite database file in the system's
+        temporary directory that contains all the same data as the current
+        database, but without encryption. This is useful for operations that
+        require direct SQLite access or third-party tools.
+
+        The temporary file is tracked internally and should be removed using
+        `cleanup_temp_decrypt()` when no longer needed.
+
+        Returns:
+            Optional[Path]: Path to the temporary decrypted database file, or
+            None if the operation failed.
+
+        Notes:
+            - The temporary file will have a '.db' extension.
+            - The temporary file contains sensitive data in plaintext.
+            - The file descriptor is closed immediately after creation.
+        """
+        try:
+            temp_fd, temp_path = tempfile.mkstemp(
+                suffix='.db', prefix='app_temp_')
+            temp_path = Path(temp_path)
+            os.close(temp_fd)
+            try:
+                os.chmod(temp_path, 0o600)
+            except OSError:
+                # Best-effort; continue on platforms where chmod is a no-op
                 pass
-        self.conn.close()
-        self.is_open = False
+            temp_conn = sqlite3.connect(str(temp_path))
+            sql_script = "\n".join(self.conn.iterdump())
+            temp_conn.executescript(sql_script)
+            temp_conn.commit()
+            temp_conn.close()
+            if not hasattr(self, '_temp_db_paths'):
+                self._temp_db_paths = []
+            self._temp_db_paths.append(temp_path)
+
+            return temp_path
+
+        except Exception as e:
+            Log.e(f"Failed to create temporary decrypted database: {e}")
+            # Best-effort cleanup of partially created file
+            try:
+                if 'temp_path' in locals() and Path(temp_path).exists():
+                    Path(temp_path).unlink()
+            except OSError as oe:
+                Log.e(f"Failed to remove temp file {temp_path}: {oe}")
+            return None
+
+    def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
+        """Remove one or all temporary decrypted database files.
+
+        This method deletes temporary decrypted database files created by
+        `create_temp_decrypt()`. You can specify a particular file to remove,
+        or omit the argument to clean up all temporary files associated with
+        this instance.
+
+        Args:
+            temp_path (Optional[Path]): Path to a specific temporary database
+                to remove. If None, all temporary databases created by this
+                instance will be removed.
+
+        Returns:
+            bool: True if the cleanup operation completed successfully for all
+            targeted files, False if any deletion failed.
+
+        Notes:
+            - Attempting to delete a non-existent file will be ignored.
+            - All files tracked internally in `_temp_db_paths` are candidates
+            for removal when `temp_path` is None.
+        """
+        try:
+            if not hasattr(self, '_temp_db_paths'):
+                return True
+
+            if temp_path is not None:
+                # Remove specific temp file
+                if temp_path.exists():
+                    temp_path.unlink()
+                if temp_path in self._temp_db_paths:
+                    self._temp_db_paths.remove(temp_path)
+            else:
+                # Otherwise, remove all temp files created by this instance
+                for path in self._temp_db_paths[:]:
+                    try:
+                        if path.exists():
+                            path.unlink()
+                        self._temp_db_paths.remove(path)
+                    except Exception as e:
+                        Log.e(f"Failed to remove temp file {path}: {e}")
+
+            return True
+
+        except Exception as e:
+            Log.e(f"Failed to cleanup temporary database: {e}")
+            return False
+
+    def __del__(self):
+        """Destructor to ensure temporary decrypted files are cleaned up.
+
+        When the object is destroyed, this method automatically calls
+        `cleanup_temp_decrypt()` to remove any temporary decrypted database
+        files created during the instance's lifetime. This helps prevent
+        sensitive data from persisting on disk.
+        """
+        if hasattr(self, '_temp_db_paths'):
+            self.cleanup_temp_decrypt()
 
     def backup(self) -> None:
         """Writes database from memory to disk

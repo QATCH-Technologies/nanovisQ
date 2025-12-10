@@ -16,8 +16,11 @@ from QATCH.common.findDevices import Discovery
 from QATCH.common.fwUpdater import FW_Updater
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.tutorials import TutorialPages
+from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.licenseManager import LicenseManager
 from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
-from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor, FillStatus
+# NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
+# from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
 from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -58,6 +61,39 @@ class _MainWindow(QtWidgets.QMainWindow):
         parent.ControlsWin._createMenu(self)
         self.ui0 = Ui_Main()
         self.ui0.setupUi(self, parent)
+
+        # Get the application instance safely and connect the signals
+        app_instance = QtWidgets.QApplication.instance()
+        if app_instance:
+            app_instance.focusWindowChanged.connect(self.focusWindowChanged)
+            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+
+    def eventFilter(self, obj, event):
+        # Handle mouse click events (e.g. hide on click)
+        if event.type() == QtCore.QEvent.MouseButtonPress:
+            widget_clicked = QtWidgets.QApplication.widgetAt(event.globalPos())
+            allow_hide = True
+            if widget_clicked is self.ui0.mode_learn:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_text:
+                allow_hide = False
+            if widget_clicked is self.ui0.mode_learn_arrow:
+                allow_hide = False
+            if self.ui0.floating_widget.isVisible() and allow_hide:
+                self.ui0.floating_widget.hide()
+        return super().eventFilter(obj, event)
+
+    def focusWindowChanged(self, focus_window):
+        # Hide the floating widget only when the focus leaves this window
+        # NOTE: This is a signal slot event firing, there is no `super()`
+        if focus_window is None or focus_window != self.windowHandle():
+            self.ui0.floating_widget.hide()
+
+    def moveEvent(self, event):
+        # Hide the floating widget whenever the main window moves
+        # NOTE: Its position will be recalculated on next `show()`
+        self.ui0.floating_widget.hide()
+        super().moveEvent(event)
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
@@ -331,43 +367,23 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __version__ as ModelData_version
         from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.QModel.src.models.static_v2.__init__ import __version__ as QModel2_version
-        from QATCH.QModel.src.models.static_v2.__init__ import __release__ as QModel2_release
-        from QATCH.QModel.src.models.static_v3.__init__ import __version__ as QModel3_version
-        from QATCH.QModel.src.models.static_v3.__init__ import __release__ as QModel3_release
-        from QATCH.QModel.src.models.pf.__init__ import __version__ as PF_version
-        from QATCH.QModel.src.models.pf.__init__ import __release__ as PF_release
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __version__ as QModel4_version
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __release__ as QModel4_release
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (4 available)')
+            'Model versions (2 available)')
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[0]))
         self.q_version_v1.setCheckable(True)
-        self.q_version_v2 = self.menubar[5].addAction(
-            'QModel v{} ({})'.format(QModel2_version, QModel2_release),
+        self.q_version_v4 = self.menubar[5].addAction(
+            'QModel Fusion v{} ({})'.format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[1]))
-        self.q_version_v2.setCheckable(True)
-        self.q_version_v3 = self.menubar[5].addAction(
-            'QModel v{} ({})'.format(QModel3_version, QModel3_release),
-            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[2]))
-        self.q_version_v3.setCheckable(True)
-        self.pf_version = self.menubar[5].addAction(
-            'Partial Fills v{} ({})'.format(PF_version, PF_release))
-        self.pf_version.triggered.connect(
-            lambda checked: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[3 if checked else 2]))
-        self.pf_version.setCheckable(True)
-        if Constants.PF_predict:
-            self.q_version_v3.setChecked(True)
-            self.pf_version.setChecked(True)
-        elif Constants.QModel3_predict:
-            self.q_version_v3.setChecked(True)
-        elif Constants.QModel2_predict:
-            self.q_version_v2.setChecked(True)
+        self.q_version_v4.setCheckable(True)
+        if Constants.QModel4_predict:
+            self.q_version_v4.setChecked(True)
         elif Constants.ModelData_predict:
             self.q_version_v1.setChecked(True)
         else:
@@ -378,6 +394,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
             "exe" if getattr(sys, 'frozen', False) else "py",
             Constants.app_date))
         sw_version.setEnabled(False)
+        fingerprint_txt = DeviceFingerprint.get_key()
+        if fingerprint_txt is not None:
+            self.menubar[3].addSeparator()
+            fingerprint_action = self.menubar[3].addAction(fingerprint_txt)
+            fingerprint_action.setToolTip("Click to copy to clipboard")
+            fingerprint_action.triggered.connect(
+                lambda: QtWidgets.QApplication.clipboard().setText(fingerprint_txt)
+            )
 
         # update application UI states to reflect viewStates from AppSettings
         if not self.chk1.isChecked():
@@ -627,6 +651,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def check_for_updates(self):
         if hasattr(self.parent, "url_download"):
             delattr(self.parent, "url_download")
+        if hasattr(self.parent, "_license_manager"):
+            lm: LicenseManager = self.parent._license_manager
+            if hasattr(lm, "refresh_license") and callable(lm.refresh_license):
+                lm.refresh_license()
         color, status = self.parent.start_download(True)
         if color == "#ff0000":
             if status == "ERROR":
@@ -1155,6 +1183,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.signature_received = False
         self.signed_at = "[NEVER]"
 
+        # Uninitialized license manager object.
+        self._license_manager = None
+        self._dbx_connection = None
+
         # Check application settings global variable to get/set elsewhere
         self.AppSettings = QtCore.QSettings(
             Constants.app_publisher, Constants.app_name)
@@ -1178,7 +1210,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Configures the database file for VisQ.AI (if missing or out-of-date).
         # NOTE: This must be done before instantiating the `VisQAIWindow` class
-        self._configure_database()
+        self._configure_database(exec_migrations=False)
 
         self.VisQAIWin = VisQAIWindow(self)
 
@@ -1295,18 +1327,17 @@ class MainWindow(QtWidgets.QMainWindow):
             PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
                                                       "\n\nThis seems unintentional and may result in unreliable measurement performance.")
 
-        if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            pass
-        else:
-            start_booster_path = os.path.join(Architecture.get_path(),
-                                              r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
-            end_booster_path = os.path.join(Architecture.get_path(),
-                                            r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
-            scaler_path = os.path.join(Architecture.get_path(),
-                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
-            self._forecaster = QForecastPredictor(
-                start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
-        self.forecast_status = FillStatus.NO_FILL
+        # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+        #     pass
+        # else:
+        #     start_booster_path = os.path.join(Architecture.get_path(),
+        #                                       r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_start.json')
+        #     end_booster_path = os.path.join(Architecture.get_path(),
+        #                                     r"QATCH\QModel\SavedModels\forecaster_v2", 'bff_trained_end.json')
+        #     scaler_path = os.path.join(Architecture.get_path(),
+        #                                r"QATCH\QModel\SavedModels\forecaster_v2", 'scaler.pkl')
+        #     self._forecaster = QForecastPredictor(
+        #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
 
@@ -1868,20 +1899,6 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1._update_progress_text()
             self.ControlsWin.ui1.run_progress_bar.repaint()
 
-            # set variable to preload tensorflow module, if desired
-            # hide info/warning logs from tf # lazy load
-            os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-            import logging
-            logging.getLogger("tensorflow").setLevel(
-                logging.ERROR)  # suppress AutoGraph warnings
-            if Constants.preload_tensorflow and Constants.TensorFlow_predict:
-                # load tensorflow library once per session
-                Log.d(tag=TAG, msg="GUI: Force repaint events")
-                Log.w(tag=TAG, msg="Loading tensorflow modules...")
-                import tensorflow as tf  # lazy load
-                Log.d(tag=TAG, msg="Loaded tensorflow as tf")
-                Log.d(tag=TAG, msg="GUI: Normal repaint events")
-
         # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
@@ -2416,43 +2433,114 @@ class MainWindow(QtWidgets.QMainWindow):
     # Configures the database file for VisQ.AI (if missing or out-of-date)
     ###########################################################################
 
-    def _configure_database(self):
+    def _configure_database(self, exec_migrations: bool = False):
         # check if local app data contains a database file already
+        """
+        Configure the local VisQAI SQLite database used by the application.
+
+        If a bundled database exists in the application install assets and no database
+        is present in the local application data folder, this function copies the
+        bundled database into the local application data path. If a local database
+        already exists, it compares the bundled database and adds any missing core
+        ingredients from the bundled copy into the local database.
+
+        When exec_migrations is True, the function attempts a non-destructive migration
+        dry-run against a temporary decrypted copy of the local database to detect
+        required schema/data migrations (no migrations are applied here; this is a
+        safety check).
+
+        Parameters:
+            exec_migrations (bool): If True, perform a migration dry-run check on a
+                temporary decrypted copy of the local database before merging missing
+                core data. Defaults to False.
+
+        Side effects:
+        - May create directories and copy the bundled database file into local app
+          data.
+        - May add records (core ingredients) to the existing local database.
+        - Logs progress and warnings.
+
+        Exceptions:
+        - Exceptions from filesystem or database operations are propagated to the caller.
+        """
         try:
             machine_database_path = os.path.join(
                 Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
                 Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.basename(
+                os.makedirs(os.path.dirname(
                     machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
                 # TODO: This should be done when tagging, not here
-                Log.w(
-                    f"Adding core training samples to database (happens once; may take a bit)...")
-                machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
-                form_ctrl = FormulationController(db=machine_database)
-                csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                                        "VisQAI", "assets", "formulation_data_05302025.csv")
-                if not os.path.isfile(csv_path):
-                    raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                df = pd.read_csv(csv_path)
-                added_forms = form_ctrl.add_all_from_dataframe(df)
-                machine_database.close()
-                Log.w(f"Added {len(added_forms)} core training samples!")
-            elif bundled_exists and localapp_exists:
+                # Log.w(
+                #     f"Adding core training samples to database (happens once; may take a bit)...")
+                # machine_database = Database(
+                #     path=machine_database_path, parse_file_key=True)
+                # form_ctrl = FormulationController(db=machine_database)
+                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
+                #                         "VisQAI", "assets", "formulation_data_10082025.csv")
+                # if not os.path.isfile(csv_path):
+                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
+                # df = pd.read_csv(csv_path)
+                # added_forms = form_ctrl.add_all_from_dataframe(df)
+                # machine_database.close()
+                # Log.w(f"Added {len(added_forms)} core training samples!")
+            elif localapp_exists:
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
                     path=bundled_database_path, parse_file_key=True)
                 machine_database = Database(
                     path=machine_database_path, parse_file_key=True)
+
+                if exec_migrations:
+                    from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
+                    tmp_path = machine_database.create_temp_decrypt()
+                    try:
+                        if tmp_path:
+                            migrator = DatabaseMigrator(
+                                tmp_path, backup_dir=None)
+                            current_version = migrator.get_current_version()
+                            target_version = MigrationVersion(1, 1, 0)
+                            if current_version < target_version:
+                                new_migration = Migration(
+                                    from_version=current_version,
+                                    to_version=target_version,
+                                    up_sql=[
+                                        ""
+                                    ],
+                                    down_sql=[
+                                        ""
+                                    ],
+                                    data_transform=lambda conn: conn.execute(
+                                        ""
+                                    ),
+                                    autofill_defaults={
+                                        ""
+                                    },
+                                    description=""
+                                )
+                                migrator.register_migration(new_migration)
+                                status, msgs = migrator.migrate(
+                                    target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                                if not status:
+                                    Log.e(
+                                        f"Database migration dry-run failed: {'; '.join(msgs)}")
+                        else:
+                            Log.w(
+                                "Skipping migration check: could not create temp decrypted DB.")
+                    finally:
+                        machine_database.cleanup_temp_decrypt()
+
+                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
+                # update machine db with changes from bundled db.
                 for ing in bundled_database.get_all_ingredients():
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
@@ -2461,6 +2549,11 @@ class MainWindow(QtWidgets.QMainWindow):
                             f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
+                # TODO: Think of a better way to do this!
+                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                #     shutil.copy(bundled_database_path, machine_database_path)
+                #     Log.w(
+                #         "Operating in development mode, copying bundled db into log data.")
             else:
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
@@ -2478,6 +2571,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWidget = QtWidgets.QWidget(self)
         self.TutorialScroll = QtWidgets.QScrollArea(self)
         self.TutorialText = QtWidgets.QLabel(self)
+        # Automatically opens links
+        self.TutorialText.setOpenExternalLinks(True)
         self.TutorialCheckbox = QtWidgets.QCheckBox(
             "Show these tutorials on startup", self)
         # stylesheet applies to titlebar and all children widgets
@@ -2498,8 +2593,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialScroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.TutorialScroll.setWidgetResizable(True)
         self.TutorialScroll.setWidget(scroll_widget)
+        # CONVENIENCE COMBINATION:
+        # QtCore.Qt.TextInteractionFlag.TextBrowserInteraction = (
+        #    TextSelectableByMouse | LinksAccessibleByMouse | LinksAccessibleByKeyboard)
         self.TutorialText.setTextInteractionFlags(
-            QtCore.Qt.TextInteractionFlag.TextSelectableByMouse)
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
         self.TutorialText.setWordWrap(True)
         # apply layout to tutorials widget
         top_layout = QtWidgets.QVBoxLayout()
@@ -3059,22 +3157,22 @@ class MainWindow(QtWidgets.QMainWindow):
             vectoramb = self.worker.get_d4_buffer(0)
 
             #  Build dataframe from worker databuffer.
-            new_data = QForecastDataProcessor.convert_to_dataframe(
-                self.worker)
+            # new_data = QForecastDataProcessor.convert_to_dataframe(
+            #     self.worker)
 
             # Flag to use the fill forecaster.
-            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-                self.worker._forecaster_in.put(new_data)
-                if not self.worker._forecaster_out.empty():
-                    self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
-            else:
-                self.forecast_status = self._forecaster.update_predictions(
-                    new_data=new_data)
+            # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+            #     self.worker._forecaster_in.put(new_data)
+            #     if not self.worker._forecaster_out.empty():
+            #         self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
+            # else:
+            # self.forecast_status = self._forecaster.update_predictions(
+            #     new_data=new_data)
 
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-                self.forecast_status.value)
-            self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-                Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
+            #     self.forecast_status.value)
+            # self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
+            #     Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
@@ -3193,7 +3291,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         if time_running == 0:
                                             labelbar = 'Waiting for start...'
                                             continue
-                                        if time_running < 3.0:
+                                        if time_running < vector0.min() + 3.0:
                                             labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
@@ -3211,9 +3309,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                             if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
                                                     and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
                                                 self._drop_applied[i] = True
-                                    except:
+                                    except Exception as e:
                                         Log.e(
                                             "Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                        Log.d("ERROR DETAILS:", str(e))
                                         self._drop_applied[i] = True
                             else:
                                 labelbar = 'Capturing data... Drop applied! Wait for exit... Press "Stop" when run is finished.'
@@ -4393,7 +4492,34 @@ class MainWindow(QtWidgets.QMainWindow):
     ########################################################################################################
 
     def get_web_info(self, return_info):
+        """
+        Check for available software and resource updates from configured backends.
 
+        Performs an online update check using the configured update engine (Nightly or GitHub). Depending on
+        runtime state and the return_info flag this method will:
+        - run a blocking check and return a result tuple, or
+        - spawn background threads to perform update/license checks and schedule periodic pings to monitor
+          their progress.
+
+        Side effects:
+        - May start background threads (self.web_thread) to fetch license information or perform update checks.
+        - May change Constants.UpdateEngine on failure when probing nightly resources and/or updates.
+        - May set attributes such as self.latest_build, self.url_download, and self.ask_for_update.
+        - May initiate a download via self.start_download().
+        - May close and clear self._dbx_connection when finished.
+        - Schedules periodic progress checks via QtCore.QTimer.singleShot(..., self.update_ping).
+
+        Parameters:
+            return_info (bool): If True, perform a blocking update check and return status immediately.
+                If False, start non-blocking/background checks and return None (or return early in some
+                Nightly branches where a tuple is produced).
+
+        Returns:
+            tuple(str, str) or None: When a synchronous result is produced, returns (color, labelweb2),
+            where `color` is an HTML color string representing update status (green/orange/red) and
+            `labelweb2` is a short status label (typically 'ONLINE'). In non-blocking flows this method
+            may return None.
+        """
         try:
             Log.i(TAG, 'Checking online for updates...')
 
@@ -4403,6 +4529,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
+                    def fetch_license():
+                        try:
+                            self._license_manager = LicenseManager(
+                                dbx_conn=self._dbx_connection)
+                            is_valid, message, license_data = self._license_manager.validate_license(
+                                auto_create_if_missing=True)
+                            Log.d(
+                                f"License valid={is_valid}; message={message}")
+                        except Exception as e:
+                            Log.e(f"License fetch error: {e}")
+
+                    self.web_thread = threading.Thread(
+                        target=fetch_license)  # non-blocking
+                    self.web_thread.start()
+
                     from QATCH.nightly.interface import GH_Interface
                     ((update_available, update_now),
                      latest_bundle) = GH_Interface(self).update_check()
@@ -4415,9 +4556,23 @@ class MainWindow(QtWidgets.QMainWindow):
                                              "path": build['archive_download_url'],
                                              "size": build['size_in_bytes']}
                         self.start_download()
+                    else:
+                        # Check for nightly resource updates (if no build available)
+                        branch = f"{Constants.app_version[0:4]}x"
+                        if self.update_resources_check(branch):
+                            labelweb3 = 'Resources out-of-date'
+                            # self.res_download = True
+                        else:
+                            labelweb3 = 'UP-TO-DATE!'
+                        Log.i(f"Nightly resource update check: {labelweb3}")
+
+                    # ping periodically for task to finish
+                    QtCore.QTimer.singleShot(1000, self.update_ping)
+
                     return color, labelweb2
                 except:
                     # raise  # TODO: testing only, comment out!
+                    Constants.UpdateEngine = UpdateEngines.GitHub
                     if hasattr(self, "url_download"):
                         delattr(self, "url_download")
                     pass
@@ -4453,8 +4608,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     color, labelweb3 = self.update_found(self.build_descr)
 
-                if hasattr(self, "_dbx_connection"):
+                if hasattr(self, "_dbx_connection") and self._dbx_connection:
                     self._dbx_connection.close()
+                    self._dbx_connection = None
                 return color, labelweb2
 
             self.web_thread = threading.Thread(
@@ -4470,6 +4626,16 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_ping(self):
         # periodic check for update task completion
+        """
+        Periodic poll for asynchronous update and resource-check tasks.
+
+        Checks branch/version mapping from Constants.app_version, waits for a background web_thread to finish (re-scheduling itself via Qt singleShot while the thread is alive), then determines update/resource status:
+        - If a GitHub update build URL is present, delegates to update_found to produce UI labels.
+        - Otherwise, optionally calls update_resources to refresh resources for the detected branch and sets an internal ask_for_update flag.
+        - Closes any open Dropbox connection and triggers VisQAIWin.check_license if a license manager exists.
+
+        This function does not return a value. Exceptions are caught and logged; on thread-alive it re-schedules another ping after 1 second.
+        """
         try:
             if "v2.3" in Constants.app_version:
                 branch = "v2.3x"
@@ -4497,11 +4663,16 @@ class MainWindow(QtWidgets.QMainWindow):
                 else:
                     labelweb3 = 'UP-TO-DATE!'
                 self.ask_for_update = False
-            else:
+            elif Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 color, labelweb3 = self.update_found(self.build_descr)
 
-            if hasattr(self, "_dbx_connection"):
+            if hasattr(self, "_dbx_connection") and self._dbx_connection:
                 self._dbx_connection.close()
+                self._dbx_connection = None
+
+            if hasattr(self, "_license_manager") and self._license_manager:
+                self.VisQAIWin.check_license(
+                    getattr(self, "_license_manager", None))
 
         except Exception as e:
             Log.e("Update Task error:", e)
@@ -4534,6 +4705,16 @@ class MainWindow(QtWidgets.QMainWindow):
                                      "Running SW: {} ({})\nRecommended: {}\n".format(Constants.app_version, Constants.app_date, v) +
                                      "Filename: {}\n\nPlease save your work before updating.".format(os.path.basename(self.url_download["path"]))):
                     self.start_download()
+                else:
+                    # Check for resource updates still (if build update declined)
+                    branch = f"{Constants.app_version[0:4]}x"
+                    if self.update_resources_check(branch):
+                        if self.update_resources(branch):
+                            labelweb3 = 'Resources updated'
+                        else:
+                            labelweb3 = 'Resources out-of-date'
+                    else:
+                        pass  # 'Resources up-to-date'
             else:
                 Log.w(
                     "A software update is available! Please ask your administrator to install update.")
@@ -4649,7 +4830,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-
+            self._license_manager = LicenseManager(
+                dbx_conn=self._dbx_connection)
+            is_valid, message, license_data = self._license_manager.validate_license(
+                auto_create_if_missing=True)
+            Log.d(f"License valid={is_valid}; message={message}")
             try:
                 all_targets_path = f'/targets.csv'
                 metadata, response = self._dbx_connection.files_download(
@@ -4698,7 +4883,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                  "path": entry.path_display,
                                  "size": entry.size}  # ,
                         builds.append(build)
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 latest_release_url = Constants.UpdateGitRepo + "/releases/latest"
                 # url redirects to latest tag
                 resp = requests.get(latest_release_url)
@@ -4730,7 +4915,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                         metadata, response = self._dbx_connection.files_download(
                             build_targets_path)
-                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                         metadata = requests.get(install_check_path)
                         response = requests.get(build_targets_path)
                         if metadata.ok:
@@ -4899,7 +5084,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                 for resource in self._dbx_connection.files_list_folder(remote_resource_path, recursive=False).entries:
                     resources.append(resource.name)
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 resources = os.listdir(bundled_resource_path)
             self.res_files = resources.copy()
 
@@ -4946,7 +5131,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 for line in response.iter_lines():
                     latest_version = line.decode().strip()  # last line saved
                 server_file_size = metadata.size
-            if Constants.UpdateEngine == UpdateEngines.GitHub:
+            if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 resource_file_url = Constants.UpdateGitRepo + "/raw/" + \
                     Constants.UpdateGitBranch + \
                     remote_file_compare.replace(branch, "QATCH")
@@ -4991,6 +5176,11 @@ class MainWindow(QtWidgets.QMainWindow):
             resources = self.res_files
             current_version = self.res_current_version
             latest_version = self.res_latest_version
+
+            if Constants.UpdateEngine not in [UpdateEngines.DropboxAPI, UpdateEngines.GitHub, UpdateEngines.Nightly]:
+                Log.e(
+                    f"Invalid UpdateEngine \"{Constants.UpdateEngine}\": Cannot update resource files.")
+                return
 
             if download_resources:
                 if not PopUp.question_FW(self,
@@ -5037,20 +5227,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     detail_text.append(f"Updating \"{resource}\"...")
                     file_local = os.path.join(working_resource_path, resource)
                     file_remote = os.path.join(remote_resource_path, resource)
-                    if os.path.exists(file_local):
-                        Log.d(f"Deleting {file_local}...")
-                        os.remove(file_local)
                     Log.d(f"Downloading {file_remote} to {file_local}...")
                     if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
+                        if os.path.exists(file_local):
+                            Log.d(f"Deleting {file_local}...")
+                            os.remove(file_local)
+                        Log.d(f"Writing {file_local}...")
                         self._dbx_connection.files_download_to_file(
                             file_local, file_remote)
-                    if Constants.UpdateEngine == UpdateEngines.GitHub:
+                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                         git_mapped_url = Constants.UpdateGitRepo + '/raw/' + \
                             Constants.UpdateGitBranch + \
                             file_remote.replace(branch, "QATCH")
                         response = requests.get(git_mapped_url)
                         response.raise_for_status()
+                        if os.path.exists(file_local):
+                            Log.d(f"Deleting {file_local}...")
+                            os.remove(file_local)
                         with open(file_local, 'wb') as f:
+                            Log.d(f"Writing {file_local}...")
                             f.write(response.content)
                         response.close()
                     detail_text[-1] += "\tDONE!"
@@ -5605,7 +5800,7 @@ class TECTask(QtCore.QThread):
     _tec_update_now = False
     _tec_stop_thread = False
     _tec_debug = False
-    _tec_out_of_sync = False
+    _tec_out_of_sync = 0  # counter, task aborts if it gets to 3
 
     _task_timer = None
     _task_rate = 5000
@@ -5649,17 +5844,19 @@ class TECTask(QtCore.QThread):
             if True:  # was while()
                 try:
                     sp = ""  # only update TEC if changed
+                    # Log.d("TEC debug: {}, {}, {}".format(
+                    #     self.slider_value, self._tec_setpoint, self.slider_down))
                     if (self.slider_value != self._tec_setpoint and not self.slider_down):
                         # Try to update now to re-sync; if that fails, then auto-off.
-                        if not self._tec_out_of_sync:
+                        if self._tec_out_of_sync < 3:
                             Log.d(
                                 "Scheduling TEC for immediate update (out-of-sync)!")
-                            self._tec_out_of_sync = True
+                            self._tec_out_of_sync += 1
                             self._tec_update_now = True
                         else:
                             Log.w(
                                 "Shutting down TEC to re-sync states (out-of-sync)!")
-                            self._tec_out_of_sync = False
+                            self._tec_out_of_sync = 0
                             new_l1 = "[AUTO-OFF ERROR]"
                             self._tec_update("OFF")
                             self._task_stop()
@@ -5669,7 +5866,8 @@ class TECTask(QtCore.QThread):
                                 "background-color: {}".format('red'))
                             return
                     else:
-                        self._tec_out_of_sync = False
+                        # Log.d("TEC is in-sync!")
+                        self._tec_out_of_sync = 0
                     if self._tec_update_now and not self._tec_locked:
                         sp = self.slider_value
                     if self.slider_enable:
@@ -5677,6 +5875,9 @@ class TECTask(QtCore.QThread):
                             f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status...")
                         self._tec_update(sp)
                         self._tec_locked = False
+                        if (self.slider_value == self._tec_setpoint and not self.slider_down):
+                            # Log.d("TEC sync success!")
+                            self._tec_out_of_sync = 0
                     elif not self._tec_stop_thread:
                         if not self._tec_locked:
                             Log.d("Temp Control is locked while main thead is busy!")

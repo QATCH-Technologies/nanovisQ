@@ -17,6 +17,11 @@ class TableView(QtWidgets.QTableWidget):
 
     def __init__(self, data, *args):
         QtWidgets.QTableWidget.__init__(self, *args)
+
+        # Lookup table for mapping protein names to class types
+        # i.e. {"Protein #1": "None", "Protein #2": "Other"}
+        self._protein_type_to_class = {}
+
         self.itemChanged.connect(self._on_item_changed)
         self.setData(data)
         self.resizeColumnsToContents()
@@ -26,6 +31,7 @@ class TableView(QtWidgets.QTableWidget):
     def clear(self):
         super().clear()
         self._is_empty = True
+        
 
     def setData(self, data: dict[str, str]) -> None:
         self.data = data
@@ -50,7 +56,30 @@ class TableView(QtWidgets.QTableWidget):
                 else:
                     newitem = QtWidgets.QComboBox()
                     # newitem.addItem("add new...")
-                    if isinstance(item, list):
+                    if isinstance(item, dict):
+                        choices, selected = list(item.values())
+                        # use a local copy to avoid mutating source choices too
+                        local_choices = list(choices)
+                        # skip Protein Type/Class and Buffer Type rows
+                        if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
+                            if not any(str(c).casefold() == "none" for c in local_choices):
+                                local_choices.insert(0, "None")
+                        newitem.addItems(local_choices)
+                        if len(selected):
+                            try:
+                                newitem.setCurrentIndex(
+                                    [newitem.itemText(i).casefold() for i in range(newitem.count())]
+                                    .index(str(selected).casefold()))  # case-insensitive matching
+                            except ValueError:
+                                print(f"WARNING: Entry \"{str(selected)}\" is not a known type!")
+                                newitem.setCurrentText(str(selected))
+                            self.data["Units"][m] = ""  # clear flag
+                        else:
+                            newitem.setCurrentIndex(-1)  # no selection
+                            self.data["Units"][m] = "\u2190"  # unicode left arrow
+                            newitem.currentIndexChanged.connect(
+                                lambda idx, row=m: self._row_combo_set(row))
+                    elif isinstance(item, list):
                         # skip Protein Type/Class and Buffer Type rows
                         if m not in [self.PROTEIN_TYPE_ROW, self.PROTEIN_CLASS_ROW, self.BUFFER_TYPE_ROW]:
                             newitem.addItem("None")
@@ -58,12 +87,13 @@ class TableView(QtWidgets.QTableWidget):
                         self.data["Units"][m] = "\u2190"  # unicode left arrow
                         newitem.currentIndexChanged.connect(
                             lambda idx, row=m: self._row_combo_set(row))
-                        newitem.currentIndexChanged.connect(
-                            lambda idx, row=m: self._on_combo_change(idx, row))
                         newitem.setCurrentIndex(-1)  # no selection
                     else:  # str
                         newitem.addItem(item)
                         self.data["Units"][m] = ""  # clear flag
+                    # add `_on_combo_change` handler to all QComboBox widgets
+                    newitem.currentIndexChanged.connect(
+                        lambda idx, row=m: self._on_combo_change(idx, row))
                 # disable 1st and last column items (not selectable or editable)
                 if n == 0 or n == 2:
                     if n == 0:  # bold 1st column items (headers)
@@ -97,6 +127,18 @@ class TableView(QtWidgets.QTableWidget):
                 if item.background().color().name() in [Color.light_yellow.name(), Color.light_red.name()]:
                     return False
         return True
+    
+    def setProteinsByClass(self, proteins_by_class: dict):        
+        result = {}
+        for p_class, types in proteins_by_class.items():
+            for type in types:
+                p_type = str(type).casefold()
+                if p_type in result:
+                    print(f"Warning: '{type}' appears multiple times")
+                    print(f"         '{type}' was '{result[p_type]}'; now '{p_class}'.")
+                result[p_type] = str(p_class)
+        self._protein_type_to_class = result
+    
 
     def isEmpty(self) -> bool:
         return self._is_empty
@@ -153,6 +195,25 @@ class TableView(QtWidgets.QTableWidget):
 
     def _on_combo_change(self, idx: int, row: int):
         # self.blockSignals(True)
+        if row == self.PROTEIN_TYPE_ROW:
+            # Update protein class type to match protein name
+            protein_type = self.cellWidget(row, 1).currentText().casefold()
+            protein_class: str = self._protein_type_to_class.get(protein_type, "none")
+            class_item: QtWidgets.QComboBox = self.cellWidget(self.PROTEIN_CLASS_ROW, 1)
+            try:
+                if class_item is not None:
+                    class_item.setCurrentIndex(
+                        [class_item.itemText(i).casefold() for i in range(class_item.count())]
+                        .index(protein_class.casefold()))  # case-insensitive matching
+            except ValueError:
+                print(f"WARNING: Entry \"{protein_class}\" is not a known Protein Class! Using \"Other\" instead.")
+                try:
+                    class_item.setCurrentIndex(
+                        [class_item.itemText(i).casefold() for i in range(class_item.count())]
+                        .index("other"))
+                except ValueError:
+                    class_item.setCurrentIndex(-1)
+            # NOTE: Do NOT return here, Protein Type has an associated Protein Concentration field
         conc_item = self.item(row+1, 1)  # concentration item
         if conc_item is None or row == self.PROTEIN_CLASS_ROW:
             return  # no concentration item to change
@@ -168,7 +229,7 @@ class TableView(QtWidgets.QTableWidget):
             # If the user selects any other item, enable the concentration
             # value and set it to the default value (blank, missing input)
             conc_item.setFlags(conc_item.flags() |
-                               (QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsEditable))
+                               (QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEditable))
             conc_item.setText("")
         # NOTE: By not blocking signals here, we allow the `itemChanged` signal
         #       to propagate and set/clear the background color based on text.

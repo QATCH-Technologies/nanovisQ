@@ -148,7 +148,7 @@ class ConstraintsUI(QtWidgets.QWidget):
         self.constraints_ingredients.append(
             QtWidgets.QComboBox(self.constraints_group))
         self.constraints_ingredients[-1].addItems([
-            "Protein", "Buffer", "Surfactant", "Stabilizer", "Salt"])
+            "Protein", "Buffer", "Surfactant", "Stabilizer", "Salt", "Excipient"])
         # No selection by default
         self.constraints_ingredients[-1].setCurrentIndex(-1)
         self.constraints_ingredients[-1].currentIndexChanged.connect(
@@ -256,6 +256,8 @@ class ConstraintsUI(QtWidgets.QWidget):
                 autofill_items = self.parent.stabilizers.copy()
             elif ingredient == "Salt":
                 autofill_items = self.parent.salts.copy()
+            elif ingredient == "Excipient":
+                autofill_items = self.parent.excipients.copy()
             if ingredient not in ["Protein", "Buffer"] and "None" not in autofill_items:
                 autofill_items.insert(0, "None")  # allow "none" selection
         elif feature == "Class":

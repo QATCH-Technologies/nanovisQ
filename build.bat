@@ -14,6 +14,7 @@ REM call .venv\Scripts\activate & REM sadly this hangs, do not use
 set _OLD_VIRTUAL_PATH=%PATH%
 set VIRTUAL_ENV=%~dp0.venv
 set PATH=%VIRTUAL_ENV%\Scripts;%PATH%
+REM echo VENV: %VIRTUAL_ENV%
 REM echo %PATH% & pause & REM testing only
 REM NOTE: The above changes are "undone" by calling `deactivate.bat`
 
@@ -39,13 +40,21 @@ if exist "build\" (
 echo Build folders cleaned successfully.
 echo.
 
-py -3.11 -m pip install --upgrade pip-tools & REM pyinstaller --no-warn-script-location
+py -m pip install --upgrade pip-tools pip setuptools wheel & REM pyinstaller --no-warn-script-location
 pip-sync requirements.txt requirements-dev.txt
 
-REM get location to 'Scripts' folder for current Python installation
-REM py -3.11 -c "import sys; import os; print(os.path.join(os.path.split(sys.executable)[0], 'Scripts'))" > pypath.txt
-REM set /p PY_SCRIPTS=<pypath.txt
-REM del pypath.txt
+REM get location to '.venv' folder for current Python installation (if configured correctly)
+py -c "import sys; import os; print(os.path.dirname(os.path.dirname(sys.executable)))" > pypath.txt
+set /p PY_SCRIPTS=<pypath.txt
+del pypath.txt
+echo Path to PY scripts: %PY_SCRIPTS%
+
+if not "%VIRTUAL_ENV%" == "%PY_SCRIPTS%" (
+    echo Wrong python loaded. Please check your environment paths and try again!
+    echo VENV = %VIRTUAL_ENV%
+    echo PATH = %PY_SCRIPTS%
+    exit /b 1
+)
 
 REM set "PATH=%PATH%;%PY_SCRIPTS%"
 REM echo %PATH%
@@ -60,9 +69,9 @@ set /p SOURCE_DATE_EPOCH= <"source_date.txt"
 echo SOURCE_DATE_EPOCH = %SOURCE_DATE_EPOCH%
 
 set "TF_CPP_MIN_LOG_LEVEL=3" & REM HIDE TENSORFLOW MSGS
-make_clean.py & REM clean the working directory of build artifacts
 make_data_db.py & REM create data\app.db base database for VisQ.AI
 make_version.py & REM modify version.rc to reflect current version
+make_clean.py & REM clean the working directory of build artifacts after making DB and version info
 build_pyinstaller.py & REM pyinstaller --log-level WARN "QATCH nanovisQ.spec"
 REM PyInstaller --onedir --name "QATCH nanovisQ" --clean ^
 REM	--splash "QATCH\icons\qatch-splash.png" --noupx ^

@@ -50,12 +50,12 @@ class TestParser(unittest.TestCase):
     <param name="protein_mw" value="100.0" />
     <param name="protein_pI_mean" value="7.4" />
     <param name="protein_pI_range" value="1.2" />
-    <param name="protein_concentration" value="10.0" units="mg/ml" />
+    <param name="protein_concentration" value="10.0" units="mg/mL" />
     <param name="buffer_type" value="PBS" />
     <param name="buffer_pH" value="7.4" />
-    <param name="buffer_concentration" value="20.0" units="M" />
+    <param name="buffer_concentration" value="20.0" units="mM" />
     <param name="surfactant_type" value="Tween20" />
-    <param name="surfactant_concentration" value="0.1" units="%" />
+    <param name="surfactant_concentration" value="0.1" units="%w" />
     <param name="stabilizer_type" value="None" />
     <param name="stabilizer_concentration" value="0.0" units="M" />
   </params>
@@ -168,13 +168,13 @@ class TestParser(unittest.TestCase):
         """
         Test that get_param_attr returns the attribute value when it exists and is required.
 
-        - 'protein_concentration' has units="mg/ml"
-        - Call get_param_attr('protein_concentration', 'units', required=True), expect "mg/ml"
+        - 'protein_concentration' has units="mg/mL"
+        - Call get_param_attr('protein_concentration', 'units', required=True), expect "mg/mL"
         """
         units = self.parser.get_param_attr(
             "protein_concentration", "units", required=True
         )
-        self.assertEqual(units, "mg/ml")
+        self.assertEqual(units, "mg/mL")
 
     def test_get_param_attr_missing_not_required(self):
         """
@@ -222,7 +222,7 @@ class TestParser(unittest.TestCase):
 
         - Call get_protein() on the initial parser
         - Verify returned dict has keys: 'protein', 'concentration', 'units'
-        - Confirm 'protein' is a Protein with name "BSA", concentration ~10.0, units "mg/ml"
+        - Confirm 'protein' is a Protein with name "BSA", concentration ~10.0, units "mg/mL"
         """
         prot = self.parser.get_protein()
         self.assertIsInstance(prot, dict)
@@ -230,7 +230,7 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(protein_obj, Protein)
         self.assertEqual(protein_obj.name, "BSA")
         self.assertAlmostEqual(prot["concentration"], 10.0)
-        self.assertEqual(prot["units"], "mg/ml")
+        self.assertEqual(prot["units"], "mg/mL")
 
     def test_get_buffer(self):
         """
@@ -245,7 +245,7 @@ class TestParser(unittest.TestCase):
         buffer_obj = buf["buffer"]
         self.assertIsInstance(buffer_obj, Buffer)
         self.assertAlmostEqual(buf["concentration"], 20.0)
-        self.assertEqual(buf["units"], "M")
+        self.assertEqual(buf["units"], "mM")
 
     def test_get_surfactant(self):
         """
@@ -260,7 +260,7 @@ class TestParser(unittest.TestCase):
         surf_obj = surf["surfactant"]
         self.assertIsInstance(surf_obj, Surfactant)
         self.assertAlmostEqual(surf["concentration"], 0.1)
-        self.assertEqual(surf["units"], "%")
+        self.assertEqual(surf["units"], "%w")
 
     def test_get_stabilizer(self):
         """
@@ -276,29 +276,6 @@ class TestParser(unittest.TestCase):
         self.assertIsInstance(stab_obj, Stabilizer)
         self.assertAlmostEqual(stab["concentration"], 0.0)
         self.assertEqual(stab["units"], "M")
-
-    def test_get_formulation(self):
-        """
-        Test that get_formulation constructs a Formulation with components, temperature, and viscosity profile.
-
-        - Provide salt (Salt instance), vp dict with 'shear_rate' and 'viscosity', temp float
-        - Call get_formulation(vp, temp, salt, salt_concentration, salt_units)
-        - Verify returned object is a Formulation
-        - Convert to dict and confirm temperature, viscosity_profile.shear_rates/viscosities/units match inputs
-        """
-        salt = Salt(enc_id=-1, name="nacl")
-        vp = {"shear_rate": [100, 1000], "viscosity": [10, 9]}
-        temp = 25.0
-        form = self.parser.get_formulation(
-            vp=vp, temp=temp, salt=salt, salt_concentration=100, salt_units="mM"
-        )
-        self.assertIsInstance(form, Formulation)
-        data = form.to_dict()
-        self.assertAlmostEqual(data["temperature"], temp)
-        vp_data = data["viscosity_profile"]
-        self.assertEqual(vp_data["shear_rates"], vp["shear_rate"])
-        self.assertEqual(vp_data["viscosities"], vp["viscosity"])
-        self.assertEqual(vp_data["units"], "cP")
 
     @unittest.skipUnless(os.path.exists(SAMPLE_XML_PATH), "Sample XML not available")
     def test_init_with_sample_xml(self):

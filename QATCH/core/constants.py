@@ -41,8 +41,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b61"
-    app_date = "2025-07-02"
+    app_version = "v2.6r65"
+    app_date = "2025-10-14"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -52,7 +52,7 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b60"
+    best_fw_version = "v2.6r65"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
@@ -220,6 +220,7 @@ class Constants:
         local_app_data_path, "settings", "userConstants.py")
     auto_sign_key_path = os.path.join(
         local_app_data_path, "tokens", "auto_sign_key.pem")
+    license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = '-- Select Tag --'
@@ -310,12 +311,8 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v2",
-                           "QModel v3",
-                           "QModel v3 + Partial Fills"]
-    PF_predict = False
-    QModel3_predict = True
-    QModel2_predict = True
+                           "QModel v4 (Fusion)"]
+    QModel4_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
     # NOTE: If multiple models are enabled, they will be run
@@ -323,7 +320,7 @@ class Constants:
     # In general, the first model to return a valid result will
     # prevent the execution of lower priority order model(s).
     preload_tensorflow = False  # otherwise, it will be loaded if/when needed
-    USE_MULTIPROCESS_FILL_FORECASTER = True
+    USE_MULTIPROCESS_FILL_FORECASTER = False  # disabled and hidden
     FILL_TYPE_LABEL_MAP = {
         0: "Run: %v/%m (No Fill)",
         1: "Run: %v/%m (Filling)",
@@ -343,6 +340,7 @@ class Constants:
     drop_effect_multiplier_low = 1.025
     drop_effect_multiplier_high = 1.299
     drop_effect_cutoff_freq = 32
+    shear_interp_threshold = 0.15  # n < 0.85 or n > 1.15
 
     ######################
     # BATCH # parameters #

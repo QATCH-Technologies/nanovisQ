@@ -7,7 +7,7 @@ from src.db.db import Database
 from src.utils.constraints import Constraints
 from src.models.formulation import Formulation, ViscosityProfile
 from src.managers.asset_manager import AssetError
-from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant
+from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
 from src.controller.ingredient_controller import IngredientController
 
 
@@ -20,12 +20,14 @@ class TestSampler(unittest.TestCase):
         cls.stabilizer = Stabilizer(enc_id=-1, name="StabA")
         cls.salt = Salt(enc_id=-1, name="SaltA")
         cls.surfactant = Surfactant(enc_id=-1, name="SurfA")
+        cls.excipient = Excipient(enc_id=-1, name="ExcipA")
         cls.all_ings = [
             cls.protein,
             cls.buffer,
             cls.stabilizer,
             cls.salt,
-            cls.surfactant
+            cls.surfactant,
+            cls.excipient,
         ]
 
     def setUp(self):
@@ -76,7 +78,7 @@ class TestSampler(unittest.TestCase):
             kappa=1.0,
             reference_shear_rate=10.0
         )
-        mu = 1.0
+        mu = 1.0 + (3.0 - 1.0) * (10.0 - 8.0) / (12.0 - 8.0)
         sigma = np.nanmean(uncertainty)
         expected = mu + 1.0 * sigma
         self.assertAlmostEqual(score, expected, places=7)

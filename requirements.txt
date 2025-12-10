@@ -4,152 +4,207 @@
 #
 #    pip-compile --strip-extras
 #
-absl-py==2.1.0
+absl-py==2.3.1
     # via
+    #   -r requirements.in
     #   keras
     #   tensorboard
-    #   tensorflow-intel
+    #   tensorflow
+    #   tensorflow-cpu
 astunparse==1.6.3
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
+backports-tarfile==1.2.0
+    # via jaraco-context
+build==1.3.0
     # via tensorflow-intel
-certifi==2024.8.30
+certifi==2025.8.3
     # via requests
-charset-normalizer==3.4.0
+cffi==2.0.0
+    # via cryptography
+charset-normalizer==3.4.3
     # via requests
-cloudpickle==3.1.0
+cloudpickle==3.1.1
     # via hyperopt
 colorama==0.4.6
-    # via tqdm
-contourpy==1.3.0
+    # via
+    #   build
+    #   tqdm
+contourpy==1.3.3
     # via matplotlib
+cryptography==46.0.1
+    # via -r requirements.in
 cycler==0.12.1
     # via matplotlib
+docutils==0.22.2
+    # via readme-renderer
 dropbox==12.0.2
     # via -r requirements.in
-flatbuffers==24.3.25
-    # via tensorflow-intel
-fonttools==4.54.1
+filelock==3.19.1
+    # via torch
+flatbuffers==25.9.23
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
+fonttools==4.60.0
     # via matplotlib
+fsspec==2025.9.0
+    # via torch
 future==1.0.0
     # via hyperopt
 gast==0.6.0
-    # via tensorflow-intel
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
 google-pasta==0.2.0
-    # via tensorflow-intel
-grpcio==1.67.1
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
+grpcio==1.75.0
     # via
     #   tensorboard
-    #   tensorflow-intel
-h5py==3.12.1
+    #   tensorflow
+    #   tensorflow-cpu
+h5py==3.14.0
     # via
     #   keras
-    #   tensorflow-intel
-hid==1.0.6
+    #   tensorflow
+    #   tensorflow-cpu
+hid==1.0.8
     # via -r requirements.in
 hyperopt==0.2.7
     # via -r requirements.in
+id==1.5.0
+    # via twine
 idna==3.10
     # via requests
-imbalanced-learn==0.12.4
+importlib-metadata==8.7.0
+    # via keyring
+jaraco-classes==3.4.0
+    # via keyring
+jaraco-context==6.0.1
+    # via keyring
+jaraco-functools==4.3.0
+    # via keyring
+jinja2==3.1.6
+    # via torch
+joblib==1.5.2
     # via
     #   -r requirements.in
-    #   imblearn
-imblearn==0.0
-    # via -r requirements.in
-joblib==1.4.2
-    # via
-    #   -r requirements.in
-    #   imbalanced-learn
     #   scikit-learn
-keras==3.6.0
+keras==3.11.3
     # via
     #   -r requirements.in
-    #   tensorflow-intel
-keras-preprocessing==1.1.2
-    # via -r requirements.in
-kiwisolver==1.4.7
+    #   tensorflow
+    #   tensorflow-cpu
+keyring==25.6.0
+    # via twine
+kiwisolver==1.4.9
     # via matplotlib
 libclang==18.1.1
-    # via tensorflow-intel
-markdown==3.7
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
+markdown==3.9
     # via tensorboard
-markdown-it-py==3.0.0
+markdown-it-py==4.0.0
     # via rich
 markupsafe==3.0.2
-    # via werkzeug
-matplotlib==3.9.2
     # via
-    #   -r requirements.in
-    #   seaborn
+    #   werkzeug
+    #   jinja2
+matplotlib==3.10.6
+    # via -r requirements.in
 mdurl==0.1.2
     # via markdown-it-py
 ml-dtypes==0.4.1
     # via
     #   keras
-    #   tensorflow-intel
-namex==0.0.8
+    #   tensorflow
+    #   tensorflow-cpu
+more-itertools==10.8.0
+    # via
+    #   jaraco-classes
+    #   jaraco-functools
+mpmath==1.3.0
+    # via sympy
+namex==0.1.0
     # via keras
-networkx==3.4.2
+networkx==3.5
     # via hyperopt
+nh3==0.3.0
+    # via readme-renderer
 numpy==2.0.2
     # via
     #   -r requirements.in
     #   contourpy
     #   h5py
     #   hyperopt
-    #   imbalanced-learn
     #   keras
-    #   keras-preprocessing
     #   matplotlib
     #   ml-dtypes
     #   pandas
     #   pyqtgraph
     #   scikit-learn
     #   scipy
-    #   seaborn
     #   simdkalman
     #   tensorboard
-    #   tensorflow-intel
+    #   tensorflow
+    #   tensorflow-cpu
     #   tsmoothie
     #   xgboost
 opt-einsum==3.4.0
-    # via tensorflow-intel
-optree==0.13.0
-    # via keras
-packaging>=24.2
     # via
+    #   tensorflow
+    #   tensorflow-cpu
+optree==0.17.0
+    # via keras
+packaging==25.0
+    # via
+    #   build
     #   keras
     #   matplotlib
     #   tensorboard
-    #   tensorflow-intel
-pandas==2.2.3
+    #   tensorflow
+    #   tensorflow-cpu
+    #   twine
+pandas==2.3.2
+    # via -r requirements.in
+pillow==11.3.0
     # via
-    #   -r requirements.in
-    #   seaborn
-pillow==11.0.0
-    # via
-    #   -r requirements.in
     #   matplotlib
+    #   tensorboard
 ply==3.11
     # via stone
 progressbar33==2.4
     # via -r requirements.in
-protobuf==5.28.3
+protobuf==5.29.5
     # via
     #   tensorboard
-    #   tensorflow-intel
-py4j==0.10.9.7
+    #   tensorflow
+    #   tensorflow-cpu
+py4j==0.10.9.9
     # via hyperopt
-pycryptodomex==3.21.0
+pycparser==2.23
+    # via cffi
+pycryptodomex==3.23.0
     # via pyzipper
-pygments==2.18.0
-    # via rich
-pyparsing==3.2.0
+pygments==2.19.2
+    # via
+    #   readme-renderer
+    #   rich
+pymysql==1.1.2
+    # via -r requirements.in
+pyparsing==3.2.5
     # via matplotlib
+pyproject-hooks==1.2.0
+    # via build
 pyqt5==5.15.11
     # via -r requirements.in
 pyqt5-qt5==5.15.2
     # via pyqt5
-pyqt5-sip==12.15.0
+pyqt5-sip==12.17.0
     # via
     #   -r requirements.in
     #   pyqt5
@@ -162,90 +217,123 @@ python-dateutil==2.9.0.post0
     #   -r requirements.in
     #   matplotlib
     #   pandas
-pytz==2024.2
+pytz==2025.2
     # via pandas
+pywin32-ctypes==0.2.3
+    # via
+    #   keyring
 pyzipper==0.3.6
     # via -r requirements.in
-rapidfuzz==3.13.0
-	# via -r requirements.in
-requests==2.32.3
+rapidfuzz==3.14.1
+    # via -r requirements.in
+readme-renderer==44.0
+    # via twine
+requests==2.32.5
     # via
     #   -r requirements.in
     #   dropbox
-    #   tensorflow-intel
-rich==13.9.4
-    # via keras
-scikit-learn==1.5.1
+    #   id
+    #   requests-toolbelt
+    #   tensorflow
+    #   tensorflow-cpu
+    #   twine
+requests-toolbelt==1.0.0
+    # via twine
+rfc3986==2.0.0
+    # via twine
+rich==14.1.0
     # via
-    #   -r requirements.in
-    #   imbalanced-learn
-scipy==1.14.1
+    #   keras
+    #   twine
+scikit-learn==1.7.2
+    # via -r requirements.in
+scipy==1.16.2
     # via
     #   -r requirements.in
     #   hyperopt
-    #   imbalanced-learn
     #   scikit-learn
     #   tsmoothie
     #   xgboost
-seaborn==0.13.2
-    # via -r requirements.in
 send2trash==1.8.3
     # via -r requirements.in
 simdkalman==1.0.4
     # via tsmoothie
-six==1.16.0
+six==1.17.0
     # via
     #   astunparse
     #   dropbox
     #   google-pasta
     #   hyperopt
-    #   keras-preprocessing
     #   python-dateutil
     #   stone
-    #   tensorboard
-    #   tensorflow-intel
+    #   tensorflow
+    #   tensorflow-cpu
 stone==3.3.1
     # via dropbox
+sympy==1.14.0
+    # via torch
 tensorboard==2.18.0
-    # via tensorflow-intel
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
 tensorboard-data-server==0.7.2
     # via tensorboard
-tensorflow==2.18.0
+tensorflow-cpu==2.18.0
+    # via tf-keras
     # via -r requirements.in
-tensorflow-intel==2.18.0
-    # via
-    #   -r requirements.in
-    #   tensorflow
 tensorflow-io-gcs-filesystem==0.31.0
     # via tensorflow-intel
-termcolor==2.5.0
-    # via tensorflow-intel
-threadpoolctl==3.5.0
+tensorflow-intel==2.18.0
+    # via -r requirements.in
+termcolor==3.1.0
     # via
-    #   imbalanced-learn
-    #   scikit-learn
-tqdm==4.67.0
+    #   tensorflow
+    #   tensorflow-cpu
+tf-keras==2.18.0
+    # via -r requirements.in
+threadpoolctl==3.6.0
+    # via scikit-learn
+torch==2.8.0
+    # via
+    #   -r requirements.in
+torchaudio==2.8.0
+    # via
+    #   -r requirements.in
+torchvision==0.23.0
+    # via
+    #   -r requirements.in
+tqdm==4.67.1
     # via
     #   -r requirements.in
     #   hyperopt
 tsmoothie==1.0.5
     # via -r requirements.in
-typing-extensions==4.12.2
-    # via
-    #   optree
-    #   tensorflow-intel
-tzdata==2024.2
-    # via pandas
-urllib3==2.2.3
-    # via requests
-werkzeug==3.1.2
-    # via tensorboard
-wheel==0.44.0
-    # via astunparse
-wrapt==1.16.0
+twine==6.2.0
     # via tensorflow-intel
-xgboost==2.1.2
+typing-extensions==4.15.0
+    # via
+    #   grpcio
+    #   optree
+    #   tensorflow
+    #   tensorflow-cpu
+tzdata==2025.2
+    # via pandas
+urllib3==2.5.0
+    # via
+    #   requests
+    #   twine
+werkzeug==3.1.3
+    # via tensorboard
+wheel==0.45.1
+    # via astunparse
+wrapt==1.17.3
+    # via
+    #   tensorflow
+    #   tensorflow-cpu
+xgboost==3.0.5
     # via -r requirements.in
+zipp==3.23.0
+    # via importlib-metadata
 
 # The following packages are considered to be unsafe in a requirements file:
 # setuptools

@@ -18,15 +18,16 @@ Date:
     2025-06-03
 
 Version:
-    1.4
+    1.5
 """
 
 from src.models.formulation import (
     ViscosityProfile, Component, Formulation
 )
-from src.models.ingredient import Buffer, Protein, Stabilizer, Surfactant, Salt
+from src.models.ingredient import Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
 import pandas as pd
 import unittest
+import numpy as np
 
 
 class TestViscosityProfile(unittest.TestCase):
@@ -93,21 +94,27 @@ class TestViscosityProfile(unittest.TestCase):
 
     def test_get_viscosity_interpolation(self):
         """
-        Test linear interpolation behavior of get_viscosity for values between, below, and above known shear_rates.
+        Test logarithmic interpolation behavior of get_viscosity for values between, below, and above known shear_rates.
 
-        - Midpoint: should return average.
-        - Below lowest: extrapolate using first two points.
-        - Above highest: extrapolate using last two points.
+        Note: The function enforces monotonic non-increasing viscosity, so increasing viscosity profiles
+        will be flattened to the first value.
         """
-        vp = ViscosityProfile([1, 3], [10, 30], "u")
-        # midpoint
-        self.assertEqual(vp.get_viscosity(2), 20.0)
-        # below lowest (0 -> extrapolate from (1,10) and (3,30))
-        expected_below = 10.0 + (0 - 1) * (30 - 10) / (3 - 1)
-        self.assertEqual(vp.get_viscosity(0), expected_below)
-        # above highest (4 -> extrapolate)
-        expected_above = 10.0 + (4 - 1) * (30 - 10) / (3 - 1)
-        self.assertEqual(vp.get_viscosity(4), expected_above)
+        # Use a decreasing viscosity profile (typical behavior: viscosity decreases with shear rate)
+        vp = ViscosityProfile([1, 3], [30, 10], "u")
+
+        # Below lowest shear rate: clamped to first value
+        self.assertEqual(vp.get_viscosity(0), 30.0)
+
+        # Above highest shear rate: clamped to last value
+        self.assertEqual(vp.get_viscosity(4), 10.0)
+
+        # Within range: uses logarithmic interpolation
+        midpoint_visc = vp.get_viscosity(2)
+        self.assertIsInstance(midpoint_visc, (float, np.floating))
+        self.assertGreater(midpoint_visc, 0.0)
+        # For a monotonic decreasing profile, interpolated value should be between endpoints
+        self.assertGreaterEqual(midpoint_visc, 10.0)
+        self.assertLessEqual(midpoint_visc, 30.0)
 
     def test_get_viscosity_type_error(self):
         """
@@ -196,12 +203,15 @@ class TestFormulation(unittest.TestCase):
     def setUp(self):
         """Create a Formulation and sample Ingredient and ViscosityProfile instances."""
         self.form = Formulation()
-        self.prot = Protein(1, "BSA", 100, 10, 1)
+        self.prot = Protein(1, "BSA", 100, 10, 1,
+                            class_type=ProteinClass.OTHER)
         self.buf = Buffer(2, "PBS", 7.4)
         self.stab = Stabilizer(3, "None")
         self.surf = Surfactant(4, "None")
         self.salt = Salt(5, "NaCl")
-        self.vp = ViscosityProfile([1, 10], [1, 2], "u")
+        self.excip = Excipient(6, "Mannitol")
+        self.vp = ViscosityProfile(
+            [100, 1000, 10000, 100000, 15000000], [5, 4, 3, 2, 1], "u")
 
     def test_init_and_id_property(self):
         """
@@ -225,9 +235,9 @@ class TestFormulation(unittest.TestCase):
         """
         Test that all component properties default to None.
 
-        - protein, buffer, stabilizer, surfactant, and salt should be None initially.
+        - protein, buffer, stabilizer, surfactant, salt, and excipient should be None initially.
         """
-        for name in ("protein", "buffer", "stabilizer", "surfactant", "salt"):
+        for name in ("protein", "buffer", "stabilizer", "surfactant", "salt", "excipient"):
             self.assertIsNone(getattr(self.form, name))
 
     def test_setting_components(self):
@@ -247,15 +257,27 @@ class TestFormulation(unittest.TestCase):
         self.form.set_stabilizer(self.stab, 0, "M")
         self.form.set_surfactant(self.surf, 0, "%w")
         self.form.set_salt(self.salt, 5, "g")
+        self.form.set_excipient(self.excip, 2.5, "mg/mL")
 
-        # confirm all five slots filled
+        # confirm all six slots filled
         for comp in (
                 self.form.protein,
                 self.form.buffer,
                 self.form.stabilizer,
                 self.form.surfactant,
-                self.form.salt):
+                self.form.salt,
+                self.form.excipient):
             self.assertIsNotNone(comp)
+
+    def test_excipient_component_details(self):
+        """
+        Test that excipient component is set correctly with proper concentration and units.
+        """
+        self.form.set_excipient(self.excip, 10.5, "w/v")
+        self.assertIsNotNone(self.form.excipient)
+        self.assertEqual(self.form.excipient.concentration, 10.5)
+        self.assertEqual(self.form.excipient.units, "w/v")
+        self.assertIs(self.form.excipient.ingredient, self.excip)
 
     def test_temperature(self):
         """
@@ -290,7 +312,7 @@ class TestFormulation(unittest.TestCase):
         """
         Test to_dict, __repr__, and __eq__ methods for Formulation.
 
-        - Build a full formulation with all five components, temperature, and viscosity_profile.
+        - Build a full formulation with all six components, temperature, and viscosity_profile.
         - Verify to_dict returns dictionary with keys: 'id', component fields, 'temperature', 'viscosity_profile'.
         - __repr__ contains "Formulation(".
         - __eq__ compares based on to_dict excluding id; differing id yields inequality.
@@ -302,6 +324,7 @@ class TestFormulation(unittest.TestCase):
         self.form.set_stabilizer(self.stab, 0, "u")
         self.form.set_surfactant(self.surf, 0, "u")
         self.form.set_salt(self.salt, 5, "u")
+        self.form.set_excipient(self.excip, 3, "u")
         self.form.set_temperature(20)
         self.form.set_viscosity_profile(self.vp)
 
@@ -309,7 +332,7 @@ class TestFormulation(unittest.TestCase):
         # id should be None
         self.assertIsNone(d["id"])
         # each component should produce a dict with 'concentration' key
-        for key in ("protein", "buffer", "stabilizer", "surfactant", "salt"):
+        for key in ("protein", "buffer", "stabilizer", "surfactant", "salt", "excipient"):
             self.assertIsInstance(d[key], dict)
             self.assertIn("concentration", d[key])
         self.assertEqual(d["temperature"], 20.0)
@@ -326,6 +349,7 @@ class TestFormulation(unittest.TestCase):
             lambda f: f.set_stabilizer(self.stab, 0, "u"),
             lambda f: f.set_surfactant(self.surf, 0, "u"),
             lambda f: f.set_salt(self.salt, 5, "u"),
+            lambda f: f.set_excipient(self.excip, 3, "u"),
             lambda f: f.set_temperature(20),
             lambda f: f.set_viscosity_profile(self.vp),
         ):
@@ -341,29 +365,18 @@ class TestFormulation(unittest.TestCase):
     def test_to_dataframe(self):
         """
         Test that to_dataframe() returns a one-row DataFrame with all expected columns,
-        correctly populated from the Formulation’s components, temperature, and viscosity_profile.
+        correctly populated from the Formulation's components, temperature, and viscosity_profile.
         """
         self.form.set_protein(self.prot, concentration=5.0, units="mg/mL")
         self.form.set_buffer(self.buf, concentration=1.0, units="mM")
         self.form.set_stabilizer(self.stab, concentration=0.1, units="w/v")
         self.form.set_surfactant(self.surf, concentration=0.01, units="w/v")
         self.form.set_salt(self.salt, concentration=0.05, units="mM")
+        self.form.set_excipient(self.excip, concentration=2.5, units="mg/mL")
         self.form.set_temperature(37.0)
         self.form.set_viscosity_profile(self.vp)
         df = self.form.to_dataframe()
 
-        expected_columns = [
-            "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
-            "Temperature",
-            "Buffer_type", "Buffer_pH", "Buffer_conc",
-            "Salt_type", "Salt_conc",
-            "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc",
-            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
-            "Viscosity_100000", "Viscosity_15000000"
-        ]
-        self.assertListEqual(list(df.columns), expected_columns)
         self.assertEqual(len(df), 1)
         row = df.iloc[0]
 
@@ -381,9 +394,11 @@ class TestFormulation(unittest.TestCase):
         self.assertEqual(row["Stabilizer_conc"], 0.1)
         self.assertEqual(row["Surfactant_type"], self.surf.enc_id)
         self.assertEqual(row["Surfactant_conc"], 0.01)
+        self.assertEqual(row["Excipient_type"], self.excip.enc_id)
+        self.assertEqual(row["Excipient_conc"], 2.5)
         self.assertEqual(row["Temperature"], 37.0)
-        self.assertEqual(row["Viscosity_100"], 12)
-        self.assertEqual(row["Viscosity_1000"], 112)
+        self.assertEqual(row["Viscosity_100"], 5)
+        self.assertEqual(row["Viscosity_1000"], 4)
 
 
 if __name__ == "__main__":

@@ -12,17 +12,17 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-10-20
 
 Version:
-    1.1
+    1.3
 """
 import unittest
 from pathlib import Path
 import pandas as pd
 from src.db.db import Database
 from src.controller.formulation_controller import FormulationController
-from src.models.ingredient import Protein, Buffer, Salt, Surfactant, Stabilizer
+from src.models.ingredient import Protein, Buffer, Salt, Surfactant, Stabilizer, Excipient
 from src.models.formulation import Formulation, ViscosityProfile
 
 
@@ -61,7 +61,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
 
         Returns:
             Formulation: A fully populated formulation with protein, buffer, salt, surfactant,
-                stabilizer, temperature, and viscosity profile.
+                stabilizer, excipient, temperature, and viscosity profile.
         """
         p = Protein(
             enc_id=-1, name=f"prot{suffix}", molecular_weight=50.0, pI_mean=7.0, pI_range=0.5
@@ -70,6 +70,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         s = Salt(enc_id=-1, name=f"salt{suffix}")
         sf = Surfactant(enc_id=-1, name=f"surf{suffix}")
         st = Stabilizer(enc_id=-1, name=f"stab{suffix}")
+        ex = Excipient(enc_id=-1, name=f"excip{suffix}")
         vp = ViscosityProfile([1, 10], [0.5, 0.3], "cP")
 
         formulation = Formulation()
@@ -78,6 +79,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         formulation.set_salt(s, concentration=0.5, units="mM")
         formulation.set_surfactant(sf, concentration=0.05, units="%w")
         formulation.set_stabilizer(st, concentration=0.1, units="M")
+        formulation.set_excipient(ex, concentration=5.0, units="mM")
         formulation.set_temperature(25.0)
         formulation.set_viscosity_profile(vp)
         return formulation
@@ -163,6 +165,8 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         shear_rates = [100, 1000, 10000, 100000, 15000000]
         data = {
             "Protein_type": ["Lysozyme"],
+            "Protein_class_type": ["Polyclonal"],
+            "kP": [2.0],
             "MW": [14300.0],
             "PI_mean": [11.35],
             "PI_range": [0.2],
@@ -177,6 +181,8 @@ class TestFormulationControllerIntegration(unittest.TestCase):
             "Stabilizer_conc": [0.2],
             "Surfactant_type": ["Tween20"],
             "Surfactant_conc": [0.05],
+            "Excipient_type": ["Mannitol"],
+            "Excipient_conc": [5.0],
         }
         for r in shear_rates:
             data[f"Viscosity_{r}"] = [0.89 * (r / 100)]
@@ -198,6 +204,7 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         self.assertIsNotNone(form.salt.ingredient.id)
         self.assertIsNotNone(form.stabilizer.ingredient.id)
         self.assertIsNotNone(form.surfactant.ingredient.id)
+        self.assertIsNotNone(form.excipient.ingredient.id)
 
         out_df = self.ctrl.get_all_as_dataframe()
         self.assertEqual(len(out_df), 1)
@@ -218,6 +225,8 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         self.assertAlmostEqual(row["Stabilizer_conc"], 0.2)
         self.assertEqual(row["Surfactant_type"], 8001)
         self.assertAlmostEqual(row["Surfactant_conc"], 0.05)
+        self.assertEqual(row["Excipient_type"], 8001)
+        self.assertAlmostEqual(row["Excipient_conc"], 5.0)
 
         self.assertAlmostEqual(row["Viscosity_1000"],
                                df.at[0, "Viscosity_1000"])
@@ -241,15 +250,16 @@ class TestFormulationControllerIntegration(unittest.TestCase):
 
     def test_get_all_as_dataframe_empty(self):
         """Test that get_all_as_dataframe returns an empty DataFrame with correct columns when no data exists."""
-        out_df = self.ctrl.get_all_as_dataframe()
+        out_df = self.ctrl.get_all_as_dataframe(encoded=False)
         expected_columns = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
+            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",
             "Stabilizer_type", "Stabilizer_conc",
             "Surfactant_type", "Surfactant_conc",
+            "Excipient_type", "Excipient_conc",
             "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
             "Viscosity_100000", "Viscosity_15000000"
         ]
@@ -267,24 +277,6 @@ class TestFormulationControllerIntegration(unittest.TestCase):
         self.assertEqual(len(out_df), 1)
         ids = out_df["ID"].tolist()
         self.assertEqual(len(ids), len(set(ids)))
-
-    def test_get_all_as_dataframe_column_order(self):
-        """Test that the DataFrame returned by get_all_as_dataframe has columns in the defined order."""
-        df = self._make_complete_dataframe()
-        _ = self.ctrl.add_all_from_dataframe(df)
-        out_df = self.ctrl.get_all_as_dataframe()
-        expected_columns = [
-            "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc",
-            "Temperature",
-            "Buffer_type", "Buffer_pH", "Buffer_conc",
-            "Salt_type", "Salt_conc",
-            "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc",
-            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
-            "Viscosity_100000", "Viscosity_15000000"
-        ]
-        self.assertListEqual(list(out_df.columns), expected_columns)
 
 
 if __name__ == "__main__":

@@ -10,10 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2025-10-22
 
 Version:
-    1.6
+    1.7
 """
 
 from typing import List, Optional
@@ -21,10 +21,10 @@ from rapidfuzz import process, fuzz
 
 try:
     from src.db.db import Database
-    from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient
+    from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient
+    from QATCH.VisQAI.src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
 
 
 class IngredientController:
@@ -70,8 +70,10 @@ class IngredientController:
             List[str]: A list of all stored ingredient names.
         """
 
-        return [ing.name for ing in self.get_all_ingredients()
-                if self._user_mode and ing.is_user or not self._user_mode]
+        names = [ing.name for ing in self.get_all_ingredients()
+                 if self._user_mode and ing.is_user or not self._user_mode]
+
+        return list(set(names))
 
     def delete_all_ingredients(self) -> None:
         """Delete all ingredients from the database."""
@@ -101,6 +103,8 @@ class IngredientController:
             return self.get_salt_by_id(id)
         elif t == "Surfactant":
             return self.get_surfactant_by_id(id)
+        elif t == "Excipient":
+            return self.get_excipient_by_id(id)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -128,6 +132,8 @@ class IngredientController:
             return self.get_salt_by_name(name)
         elif t == "Surfactant":
             return self.get_surfactant_by_name(name)
+        elif t == "Excipient":
+            return self.get_excipient_by_name(name)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -154,6 +160,8 @@ class IngredientController:
             return self.get_all_salts()
         elif t == "Surfactant":
             return self.get_all_surfactants()
+        elif t == "Excipient":
+            return self.get_all_excipients()
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -178,6 +186,8 @@ class IngredientController:
             return self.delete_salt_by_id(id)
         elif t == "Surfactant":
             return self.delete_surfactant_by_id(id)
+        elif t == "Excipient":
+            return self.delete_excipient_by_id(id)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -202,6 +212,8 @@ class IngredientController:
             return self.delete_salt_by_name(name)
         elif t == "Surfactant":
             return self.delete_surfactant_by_name(name)
+        elif t == "Excipient":
+            return self.delete_excipient_by_name(name)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -225,6 +237,8 @@ class IngredientController:
             return self.delete_all_salts()
         elif t == "Surfactant":
             return self.delete_all_surfactants()
+        elif t == "Excipient":
+            return self.delete_all_excipients()
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -253,6 +267,8 @@ class IngredientController:
             return self.add_stabilizer(ingredient)
         elif t == "Surfactant":
             return self.add_surfactant(ingredient)
+        elif t == "Excipient":
+            return self.add_excipient(ingredient)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -277,6 +293,8 @@ class IngredientController:
             return self.update_stabilizer(id, ingredient)
         elif t == "Surfactant":
             return self.update_surfactant(id, ingredient)
+        elif t == "Excipient":
+            return self.update_excipient(id, ingredient)
         else:
             raise ValueError(f"Ingredient type '{t}' not supported.")
 
@@ -371,6 +389,36 @@ class IngredientController:
             List[Salt]: A list of all salts in the database.
         """
         return self._fetch_by_type("Salt")
+
+    def get_excipient_by_id(self, id: int) -> Optional[Excipient]:
+        """Retrieve a `Excipient` by its database ID.
+
+        Args:
+            id (int): The primary key of the surfactant to fetch.
+
+        Returns:
+            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
+        """
+        return self.db.get_ingredient(id)
+
+    def get_excipient_by_name(self, name: str) -> Optional[Excipient]:
+        """Retrieve a `Excipient` by its name.
+
+        Args:
+            name (str): Name of the excipient to fetch.
+
+        Returns:
+            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
+        """
+        return self._fetch_by_name(name, type="Excipient")
+
+    def get_all_excipients(self) -> List[Excipient]:
+        """Retrieve all `Excipients` instances from the database.
+
+        Returns:
+            List[Excipient]: A list of all excipients in the database.
+        """
+        return self._fetch_by_type("Excipient")
 
     def get_surfactant_by_id(self, id: int) -> Optional[Surfactant]:
         """Retrieve a `Surfactant` by its database ID.
@@ -553,6 +601,30 @@ class IngredientController:
         surfactant.id = db_id
 
         return surfactant
+
+    def add_excipient(self, excipient: Excipient) -> Excipient:
+        """Add a new `Excipient` to the database, assigning a unique `enc_id` if needed.
+
+        If a Excipient with the same name already exists, returns the existing instance.
+
+        Args:
+            excipient (Excipient): A `Excipient` instance with `name`.
+
+        Returns:
+            Excipient: The newly added or existing `Excipient` instance.
+        """
+        existing = self.get_excipient_by_name(excipient.name)
+        if existing is not None:
+            if existing != excipient:
+                return self.update_excipient(existing.id, excipient)
+            return existing
+
+        excipient.enc_id = self._get_next_enc_id(
+            is_user=excipient.is_user, ing_type="Excipient")
+        db_id = self.db.add_ingredient(excipient)
+        excipient.id = db_id
+
+        return excipient
 
     # ----- Deletion ----- #
 
@@ -751,6 +823,45 @@ class IngredientController:
         for s in stabs:
             self.db.delete_ingredient(s.id)
 
+    def delete_excipient_by_id(self, id: int) -> None:
+        """Delete a `Excipient` by its database ID.
+
+        Args:
+            id (int): The primary key of the excipient to delete.
+
+        Raises:
+            ValueError: If no excipient exists with the given ID.
+        """
+        if self.get_excipient_by_id(id) is None:
+            raise ValueError(f"Excipient with id {id} does not exist.")
+        self.db.delete_ingredient(id)
+
+    def delete_excipient_by_name(self, name: str) -> None:
+        """Delete a `Excipient` by its name.
+
+        Args:
+            name (str): The name of the Excipient to delete.
+
+        Raises:
+            ValueError: If no Excipient exists with the given name.
+        """
+        excip = self.get_excipient_by_name(name)
+        if excip is None:
+            raise ValueError(f"Excipient with name '{name}' does not exist.")
+        self.db.delete_ingredient(excip.id)
+
+    def delete_all_excipients(self) -> None:
+        """Delete all `Excipient` instances from the database.
+
+        Raises:
+            ValueError: If no Excipients are found.
+        """
+        excips = self.get_all_excipients()
+        if not excips:
+            raise ValueError("No items of type 'Excipient' found.")
+        for e in excips:
+            self.db.delete_ingredient(e.id)
+
     # ----- Mutators (update) ----- #
 
     def update_protein(self, id: int, p_new: Protein) -> Protein:
@@ -772,7 +883,7 @@ class IngredientController:
         if p_fetch is None:
             raise ValueError(f"Protein with id '{id}' does not exist.")
         if p_fetch == p_new:
-            return p_new
+            return p_fetch
 
         # Preserve enc_id and is_user
         p_new.enc_id = p_fetch.enc_id
@@ -889,10 +1000,37 @@ class IngredientController:
         self.db.update_ingredient(s_fetch.id, s_new)
         return s_new
 
+    def update_excipient(self, id: int, e_new: Excipient) -> Excipient:
+        """Update an existing `Excipient` record by replacing it.
+
+        Preserves the original `enc_id` and `is_user` fields.
+
+        Args:
+            id (int): The primary key of the existing excipient to update.
+            e_new (Excipient): The new `Excipient` instance containing updated data.
+
+        Returns:
+            Stabilizer: The updated `Excipient` instance.
+
+        Raises:
+            ValueError: If no excipient exists with the given ID.
+        """
+        e_fetch = self.get_excipient_by_id(id)
+        if e_fetch is None:
+            raise ValueError(f"Excipients with id '{id}' does not exist.")
+        if e_fetch == e_new:
+            return e_new
+
+        e_new.enc_id = e_fetch.enc_id
+        e_new.is_user = e_fetch.is_user
+
+        self.db.update_ingredient(e_fetch.id, e_new)
+        return e_new
+
     def fuzzy_fetch(self,
                     name: str,
                     max_results: int = 5,
-                    score_cutoff: int = 75) -> list[str]:
+                    score_cutoff: int = 90) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names
@@ -909,14 +1047,15 @@ class IngredientController:
             if no matches are found.
         """
         all_names = self.get_all_ingredient_names()
+        name_mapping = {n.lower(): n for n in all_names}
         matches = process.extract(
-            query=name,
-            choices=all_names,
+            query=name.lower(),
+            choices=list(name_mapping.keys()),
             scorer=fuzz.WRatio,
             limit=max_results,
             score_cutoff=score_cutoff
         )
-        return [match_name for match_name, score, idx in matches]
+        return [name_mapping[match_name] for match_name, score, idx in matches]
 
     def _fetch_by_type(self, type: str) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.
@@ -944,7 +1083,7 @@ class IngredientController:
         """
         ingredients = self.db.get_all_ingredients()
         # Perform a fuzzy matching search on the name.
-        fuzzy_name = self.fuzzy_fetch(name=name, max_results=1)
+        fuzzy_name = self.fuzzy_fetch(name=str(name), max_results=1)
         if fuzzy_name:
             name = fuzzy_name[0]
         for ing in ingredients:

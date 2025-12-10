@@ -9,20 +9,21 @@ except (ModuleNotFoundError, ImportError):
 class ListUtils:
 
     @staticmethod
-    def load_all_excipient_types(ing_ctrl: IngredientController):
+    def load_all_ingredient_types(ing_ctrl: IngredientController):
         proteins: list[str] = []
         buffers: list[str] = []
         surfactants: list[str] = []
         stabilizers: list[str] = []
         salts: list[str] = []
+        excipients: list[str] = []
         class_types: list[str] = []
-        proteins_by_class: dict[str, str] = {}
+        proteins_by_class: dict[str, list[str]] = {}
 
         # fixed list of supported protein class types:
         class_types = list(ProteinClass.all_strings())
 
-        for type in class_types:
-            proteins_by_class[type] = []
+        for class_name in class_types:
+            proteins_by_class[class_name] = []
 
         ingredients = ing_ctrl.get_all_ingredients()
 
@@ -37,12 +38,14 @@ class ListUtils:
                 # This could lead to unexpected behaviors if a protein ends up
                 # in both the allowed and the not allowed class type category.
                 # TODO: Add filter to restrict protein names to a single type!
-                if not isinstance(i.class_type, str):
+                # NOTE: `i.class_type` will be ProteinClass or None; never str
+                if not isinstance(i.class_type, ProteinClass):
                     class_type = "None"  # must be None
-                elif i.class_type not in class_types:
+                elif i.class_type.value not in class_types:
+                    # Something is off; value is not in `all_strings`
                     class_type = "Other"  # mark unknown as Other
-                else:
-                    class_type = i.class_type
+                else:  # class_type must be a ProteinClass object
+                    class_type = i.class_type.value
                 if i.name not in proteins_by_class[class_type]:
                     proteins_by_class[class_type].append(i.name)
             elif i.type == "Buffer":
@@ -53,6 +56,8 @@ class ListUtils:
                 stabilizers.append(i.name)
             elif i.type == "Salt":
                 salts.append(i.name)
+            elif i.type == "Excipient":
+                excipients.append(i.name)
 
         # use unique, case-insensitive sorting method:
         proteins = ListUtils.unique_case_insensitive_sort(proteins)
@@ -62,8 +67,9 @@ class ListUtils:
         stabilizers = ListUtils.unique_case_insensitive_sort(
             stabilizers)
         salts = ListUtils.unique_case_insensitive_sort(salts)
+        excipients = ListUtils.unique_case_insensitive_sort(excipients)
 
-        return proteins, buffers, surfactants, stabilizers, salts, class_types, proteins_by_class
+        return proteins, buffers, surfactants, stabilizers, salts, excipients, class_types, proteins_by_class
 
     @staticmethod
     def unique_case_insensitive_sort(list):
@@ -73,11 +79,11 @@ class ListUtils:
         seen = set()
         result = []
         for item in list:
-            lower_item = item.lower()
+            lower_item = item.casefold()
             if lower_item not in seen:
                 seen.add(lower_item)
                 result.append(item)
 
         # Sort case-insensitive
-        result.sort(key=str.lower)
+        result.sort(key=str.casefold)
         return result

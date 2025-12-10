@@ -15,10 +15,14 @@ data_files = [
     ( "QATCH\\models", "QATCH\\models" ),
     ( "QATCH\\QModel\\SavedModels", "QATCH\\QModel\\SavedModels" ),
     ( "QATCH\\resources", "QATCH\\resources" ),
-    ( "QATCH\\VisQAI\\assets", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\assets\\app.db", "QATCH\\VisQAI\\assets" ),
+    ( "QATCH\\VisQAI\\assets\\VisQAI-base.zip", "QATCH\\VisQAI\\assets" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.hex", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
     ( f"QATCH_Q-1_FW_py_{best_fw_version}\\*.pdf", f"QATCH_Q-1_FW_py_{best_fw_version}" ),
-    ( "tools", "tools" )
+    ( "tools\\tool-teensy", "tools\\tool-teensy" ),
+    ( "tools\\tytools\\LICENSE.txt", "tools\\tytools" ),
+    ( "tools\\tytools\\README.md", "tools\\tytools" ),
+    ( "tools\\tytools\\tycmd.exe", "tools\\tytools" )
 ]
 # NOTE: Use of UPX requires `upx.exe` to be in the `.venv\Scripts` folder (not there by default)
 upx_exclude = [
@@ -46,6 +50,7 @@ upx_exclude = [
     'libtensorflow_framework.dll',
     'libtensorflow.dll',
     'libtensorflow_cc.dll',
+    '_pywrap_tensorflow_internal.pyd',
 
 # gRPC and protobuf often include native binaries
     'grpcio',
