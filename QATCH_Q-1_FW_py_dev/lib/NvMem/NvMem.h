@@ -26,6 +26,7 @@
 #define HW_REVISION_0 0    // Rev 0 = no LCD; MAX config A; blue LED support; 125MHz xtal
 #define HW_REVISION_1 1    // Rev 1 = w/ LCD; MAX config B; multi LED support; 125MHz xtal
 #define HW_REVISION_2 2    // Rev 2 = w/ LCD; MAX config B; multi LED support; 30MHz xtal (6x multiplier enabled to 180MHz)
+#define HW_REVISION_3 3    // Rev 3 = Rev 2 w/ POGO servo and button to (un)lock the cartridge
 /// @note Add new HW revisions here...
 
 /// @note Increment NVMEM_VERSION each time you change NvMem_RAM structure!

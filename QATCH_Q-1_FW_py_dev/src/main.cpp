@@ -55,7 +55,7 @@
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
 #define CODE_VERSION "v2.6r65+POGOv2"
-#define RELEASE_DATE "2025-11-21"
+#define RELEASE_DATE "2025-12-10"
 
 /************************** LIBRARIES **************************/
 
@@ -596,7 +596,8 @@ void nv_init()
   if (nv.isValid())
   {
     // detect hw revision (if unknown)
-    if (HW_REV_MATCH(HW_REVISION_X))
+    // TODO: Only for next build, re-detect HW revision if Rev.2
+    if (HW_REV_MATCH(HW_REVISION_X) || HW_REV_MATCH(HW_REVISION_2))
     {
       Serial.println("Detecting HW Revision...");
       if (detect_hw_revision()) // hw revision found
@@ -651,6 +652,27 @@ bool detect_hw_revision(void)
           HW_REVs[i] = HW_REVISION_2; // upgrade Rev. 1 to Rev. 2 when solder short is not present
       }
 
+      if (HW_REVs[i] == HW_REVISION_2)
+      {
+        // Finally, check for HW existence of POGO button for cartridge (un)lock only with HW Rev. 2
+        //   If it exists: 
+        //     - LED will pull down POGO_BTN_LED_PIN when it is an input with pullup
+        //     - HW Rev. will be set to 3 (regardless of prior Rev value)
+        //   Otherwise, when POGO button is missing:
+        //     - Use the HW_REV set as the detected HW revision
+        bool servo_present = false;
+        pinMode(POGO_SERVO_1_PIN, INPUT_PULLDOWN);
+        pinMode(POGO_SERVO_2_PIN, INPUT_PULLDOWN);
+        // delay(1000);
+        // pin HIGH indicates SERVO is present
+        if (digitalRead(POGO_SERVO_1_PIN))
+          servo_present = true;
+        if (digitalRead(POGO_SERVO_2_PIN))
+          servo_present = true;
+        if (servo_present)
+          HW_REVs[i] = HW_REVISION_3; // upgrade Rev. 2 to Rev. 3 when servo is present
+      }
+
       NVMEM.HW_Revision = HW_REVs[i];
       Serial.printf("Detected HW: Rev %u\n", HW_REVs[i]);
       return true; // works, we found our HW rev
@@ -662,6 +684,10 @@ bool detect_hw_revision(void)
 void config_hw_revision(byte hw_rev)
 {
   Serial.printf("Configuring HW Rev: %u\n", hw_rev);
+  if (PID_IS_SECONDARY(NVMEM.pid) && HW_REV_MATCH(HW_REVISION_3))
+    Serial.println(
+      "INVALID HW CONFIG: PID_IS_SECONDARY && HW_REVISION_3(POGO_SERVO)\n"
+      "These settings are mutually exclusive! Only primary has pogo servo.");
   switch (hw_rev)
   {
   case HW_REVISION_0:
@@ -673,6 +699,7 @@ void config_hw_revision(byte hw_rev)
 
   case HW_REVISION_1:
   case HW_REVISION_2:
+  case HW_REVISION_3:
   case HW_REVISION_X: // if unknown, use most recent (assume new HW in HW error)
     max31855 = MAX31855(MAX31855_CLK_1, MAX31855_CS, MAX31855_SO_1, MAX31855_WAIT);
     LED_WHITE_PIN = LED_WHITE_PIN_1;
@@ -688,7 +715,7 @@ void config_hw_ad9851(void)
   unsigned long REFCLK_freq = ad9851.REFCLK_125MHz;
   bool REFCLK_6x_enable = false;
 
-  if (HW_REV_MATCH(HW_REVISION_2)) // 30MHz multiplied up to 180MHz
+  if (HW_REV_MATCH(HW_REVISION_2) || HW_REV_MATCH(HW_REVISION_3)) // 30MHz multiplied up to 180MHz
   {
     REFCLK_freq = ad9851.REFCLK_30MHz; // AD9851 will 6x this internally
     REFCLK_6x_enable = true;
@@ -950,7 +977,7 @@ void QATCH_setup()
   ledWrite(LED_ORANGE_PIN, _led_pwr);
   ledWrite(LED_WHITE_PIN, _led_pwr);
 
-  if (!PID_IS_SECONDARY(NVMEM.pid))
+  if (HW_REV_MATCH(HW_REVISION_3))
   {
     // Initialize POGO button and LED status
     pinMode(POGO_BUTTON_PIN_N, INPUT_PULLUP);
@@ -993,7 +1020,7 @@ void QATCH_setup()
   }
 #endif
 
-  if (!PID_IS_SECONDARY(NVMEM.pid))
+  if (HW_REV_MATCH(HW_REVISION_3))
     pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
@@ -1935,6 +1962,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("LID"))
     {
+      if (!HW_REV_MATCH(HW_REVISION_3))
+      {
+        client->println("LID command is only supported by HW_REVISION_3.");
+        return;
+      }
       if (PID_IS_SECONDARY(NVMEM.pid))
       {
         client->println("LID command is not supported on secondary devices.");
@@ -3156,32 +3188,35 @@ void QATCH_loop()
   }
 #endif
 
-  /* HANDLE POGO BUTTON PRESS */
-  // Debounce logic handled here, not in ISR
-  if (pogo_isr_hit_flag) {
-    unsigned long now = millis();
-    if ((now - lastInterruptTime) > debounceDelay) {
-      pogo_pressed_flag = true;
-      lastInterruptTime = now;
+  if (HW_REV_MATCH(HW_REVISION_3))
+  {
+    /* HANDLE POGO BUTTON PRESS */
+    // Debounce logic handled here, not in ISR
+    if (pogo_isr_hit_flag) {
+      unsigned long now = millis();
+      if ((now - lastInterruptTime) > debounceDelay) {
+        pogo_pressed_flag = true;
+        lastInterruptTime = now;
+      }
+      pogo_isr_hit_flag = false;
     }
-    pogo_isr_hit_flag = false;
-  }
-  if (pogo_pressed_flag) {
-    // Ignore button press if running an active sweep:
-    if (!is_running) pogo_button_pressed(false);
-    pogo_pressed_flag = false; // Clear flag
-  }
+    if (pogo_pressed_flag) {
+      // Ignore button press if running an active sweep:
+      if (!is_running) pogo_button_pressed(false);
+      pogo_pressed_flag = false; // Clear flag
+    }
 
-  if (pogo_lid_opened && (!tft_msgbox || msgbox_icon != 3)) {
-    tft_msgbox = true;
-    msgbox_icon = 3; // info
-    sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
-    sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
-    tft_idle();
-  }
-  if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
-    tft_msgbox = false; // hide unlocked message
-    tft_idle();
+    if (pogo_lid_opened && (!tft_msgbox || msgbox_icon != 3)) {
+      tft_msgbox = true;
+      msgbox_icon = 3; // info
+      sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
+      sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
+      tft_idle();
+    }
+    if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
+      tft_msgbox = false; // hide unlocked message
+      tft_idle();
+    }
   }
 }
 
