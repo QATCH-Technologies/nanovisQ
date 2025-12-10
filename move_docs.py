@@ -33,6 +33,8 @@ def move_docs():
         else:
             print(f"Unknown file: {file}")
 
+    input("Press enter to close.")  # pause
+
 
 def move_fw_changes(path):
 
