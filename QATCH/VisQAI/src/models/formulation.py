@@ -21,12 +21,17 @@ Author:
 
 Date:
     2025-10-28
+    2025-10-28
 
 Version:
+    1.5
     1.5
 """
 import math
 import pandas as pd
+from scipy.optimize import curve_fit
+import numpy as np
+import bisect
 from scipy.optimize import curve_fit
 import numpy as np
 import bisect
@@ -107,7 +112,7 @@ class ViscosityProfile:
         """
         self._is_measured = value
 
-    def get_viscosity(self, shear_rate: float, std_tol: float = 0.0) -> float:
+    def get_viscosity(self, shear_rate: float, std_tol: float = 0.1) -> float:
         """Retrieve viscosity at a given shear rate using logarithmic interpolation,
         enforcing a monotonic (non-increasing) relationship with tolerance.
 
@@ -117,8 +122,10 @@ class ViscosityProfile:
         Args:
             shear_rate (float): Shear rate at which to compute viscosity.
             std_tol (float): Allowed standard deviation tolerance for monotonic deviation.
+                            e.g., 1.0 allows deviations up to 1 std dev of viscosity differences.
 
         Returns:
+            float: The estimated viscosity at the specified shear rate.
             float: The estimated viscosity at the specified shear rate.
         """
         if not isinstance(shear_rate, (int, float)):
@@ -128,21 +135,34 @@ class ViscosityProfile:
         srs = np.asarray(self.shear_rates, dtype=float)
         vs = np.asarray(self.viscosities, dtype=float)
 
+<<<<<<< HEAD
         # Check for exact match first
+=======
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         exact_match = np.where(np.isclose(srs, sr))[0]
         if len(exact_match) > 0:
             return float(vs[exact_match[0]])
 
         vs_monotonic = vs.copy()
+
+        # Calculate tolerance based on standard deviation of viscosity differences
+        if len(vs) > 1:
+            visc_diffs = np.diff(vs)
+            std_dev = np.std(visc_diffs) if len(visc_diffs) > 0 else 0.0
+            tolerance = std_tol * std_dev
+        else:
+            tolerance = 0.0
+
+        # Apply monotonic constraint with tolerance
+        # Allow increases up to 'tolerance' to account for measurement noise
         for i in range(1, len(vs_monotonic)):
-            if vs_monotonic[i] > vs_monotonic[i - 1] + std_tol:
-                vs_monotonic[i] = vs_monotonic[i - 1] + std_tol
+            if vs_monotonic[i] > vs_monotonic[i - 1] + tolerance:
+                vs_monotonic[i] = vs_monotonic[i - 1] + tolerance
 
         def log_func(x, a, b, c):
-            return a * np.log10(np.maximum(x - c, 1e-8)) + b  # avoid log(0)
+            return a * np.log10(np.maximum(x - c, 1e-8)) + b
 
         try:
-            # Reasonable bounds: prevent weird large offsets
             bounds = ([-np.inf, -np.inf, -np.inf],
                       [np.inf, np.inf, np.min(srs) * 0.9])
             popt, _ = curve_fit(log_func, srs, vs_monotonic,
@@ -150,7 +170,6 @@ class ViscosityProfile:
             a_fit, b_fit, c_fit = popt
             fitted_viscosity = log_func(sr, a_fit, b_fit, c_fit)
         except Exception:
-
             idx = bisect.bisect_left(srs, sr)
             if idx == 0:
                 x0, x1, y0, y1 = srs[0], srs[1], vs_monotonic[0], vs_monotonic[1]
@@ -159,8 +178,11 @@ class ViscosityProfile:
             else:
                 x0, x1, y0, y1 = srs[idx -
                                      1], srs[idx], vs_monotonic[idx - 1], vs_monotonic[idx]
+
             fitted_viscosity = y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
+
         fitted_viscosity = max(fitted_viscosity, 0.0)
+
         if sr <= srs[0]:
             fitted_viscosity = vs_monotonic[0]
         elif sr >= srs[-1]:
@@ -261,8 +283,10 @@ class Component:
 
 
 class Formulation:
+    TAU = 1.5
     """Represents a complete formulation consisting of various components, temperature, and viscosity profile.
 
+    Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
     Each formulation can include a protein, buffer, stabilizer, surfactant, salt, and excipient as `Component` objects,
     along with an optional temperature and viscosity profile.
 
@@ -398,9 +422,12 @@ class Formulation:
         Args:
             excipient (Excipient): An instance of `Excipient` to include.
             concentration (float): Concentration of the excipient (must be ≥ 0).
+            excipient (Excipient): An instance of `Excipient` to include.
+            concentration (float): Concentration of the excipient (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
 
         Raises:
+            TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
@@ -457,6 +484,7 @@ class Formulation:
         """Get the excipient component of the formulation.
 
         Returns:
+            Optional[Component]: The excipient `Component` if set, otherwise None.
             Optional[Component]: The excipient `Component` if set, otherwise None.
         """
         return self._components["excipient"]
@@ -530,7 +558,7 @@ class Formulation:
         return data
 
     def to_dataframe(self, encoded: bool = True, training: bool = True) -> pd.DataFrame:
-        """Convert this Formulation into a one‐row pandas DataFrame.
+        """Convert this Formulation into a one-row pandas DataFrame.
 
         Args:
             encoded (bool): If endocded is set to true, the enc_id's are returned
@@ -571,6 +599,11 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.enc_id,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
+<<<<<<< HEAD
+=======
+                "HCI":              self.protein.ingredient.class_type.hci,
+                "C_Class":          self.protein.ingredient.class_type.c_class,
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -594,6 +627,11 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.name,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
+<<<<<<< HEAD
+=======
+                "HCI":             self.protein.ingredient.class_type.hci,
+                "C_Class":         self.protein.ingredient.class_type.c_class,
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -624,6 +662,10 @@ class Formulation:
         expected = [
             "ID",
             "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
+<<<<<<< HEAD
+=======
+            "C_Class", "HCI",
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

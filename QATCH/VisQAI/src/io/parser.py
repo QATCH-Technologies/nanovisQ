@@ -11,10 +11,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-22
+    2025-11-05
 
 Version:
-    1.2
+    1.3
 """
 import zipfile
 import re
@@ -214,6 +214,10 @@ class Parser:
 
         try:
             name = self.get_param("protein_type", str, required=True)
+            protein_obj = self.ing_ctrl.get_protein_by_name(name)
+            if protein_obj is None:
+                raise ValueError(
+                    "Protein could not be fetched from persistent store.")
         except:
             Log.w(
                 TAG, f"<protein_type> param could not be found in run XML; returning default.")
@@ -226,18 +230,25 @@ class Parser:
                     pI_range=0.0
                 ),
                 "concentration": 0.0,
-                "units": "mg/mL"
+                "units": "mg/mL",
+                "found": {
+                    "name": False,
+                    "conc": False,
+                    "units": False,
+                }
             }
         conc = self.get_param("protein_concentration", float)
-        protein_obj = self.ing_ctrl.get_protein_by_name(name)
-        if protein_obj is None:
-            raise ValueError(
-                "Protein could not be fetched from persistent store.")
+
         molecular_weight = protein_obj.molecular_weight
         pI_mean = protein_obj.pI_mean
         pI_range = protein_obj.pI_range
         units = self.get_param_attr(
             "protein_concentration", "units", required=True)
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
         return {
             "protein": Protein(
                 enc_id=-1,
@@ -248,7 +259,8 @@ class Parser:
                 class_type=protein_obj.class_type
             ),
             "concentration": conc,
-            "units": units
+            "units": units,
+            "found": found
         }
 
     def get_buffer(self) -> Buffer:
@@ -273,6 +285,8 @@ class Parser:
         """
         try:
             name = self.get_param("buffer_type", str, required=True)
+            conc = self.get_param("buffer_concentration",
+                                  float, required=True)
         except:
             Log.w(
                 TAG, f"<buffer_type> param could not be found in XML; returning default.")
@@ -280,21 +294,28 @@ class Parser:
                 "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
                 "concentration": 0.0,
                 "units": "mM",
+                "found": {
+                    "name": False,
+                    "conc": False,
+                    "units": False
+                }
             }
 
         buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
-        if buffer_obj is None:
-            raise ValueError(
-                f"Buffer {name} has not been added to DB.")
-        conc = self.get_param("buffer_concentration", float)
         units = self.get_param_attr("buffer_concentration", "units")
         if units is None:
             units = "pH"
-        buffer_ph = buffer_obj.pH
+        buffer_ph = buffer_obj.pH if buffer_obj is not None else 0.0
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
         return {
             "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),
             "concentration": conc,
             "units": units,
+            "found": found
         }
 
     def get_stabilizer(self) -> Stabilizer:
@@ -321,6 +342,11 @@ class Parser:
                               float, required=False)
         units = self.get_param_attr(
             "stabilizer_concentration", "units", required=False)
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
         if name is None:
             name = "None"
         if conc is None:
@@ -330,7 +356,8 @@ class Parser:
         return {
             "stabilizer": Stabilizer(enc_id=-1, name=name),
             "concentration": conc,
-            "units": units
+            "units": units,
+            "found": found
         }
 
     def get_surfactant(self) -> Surfactant:
@@ -357,6 +384,11 @@ class Parser:
                               float, required=False)
         units = self.get_param_attr(
             "surfactant_concentration", "units", required=False)
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
         if name is None:
             name = "None"
         if conc is None:
@@ -366,7 +398,8 @@ class Parser:
         return {
             "surfactant": Surfactant(enc_id=-1, name=name),
             "concentration": conc,
-            "units": units
+            "units": units,
+            "found": found
         }
 
     def get_excipient(self) -> Excipient:
@@ -376,7 +409,11 @@ class Parser:
         conc = self.get_param("excipient_concentration", float, required=False)
         units = self.get_param_attr(
             "excipient_concentration", "units", required=False)
-
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
         if name is None:
             name = "None"
         if conc is None:
@@ -387,7 +424,8 @@ class Parser:
         return {
             "excipient": Excipient(enc_id=-1, name=name),
             "concentration": conc,
-            "units": units
+            "units": units,
+            "found": found
         }
 
     def get_salt(self) -> Salt:
@@ -397,17 +435,101 @@ class Parser:
         conc = self.get_param("salt_concentration", float, required=False)
         units = self.get_param_attr(
             "salt_concentration", "units", required=False)
+<<<<<<< HEAD
+=======
+        found = {
+            "name": name is not None,
+            "conc": conc is not None,
+            "units": units is not None
+        }
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
             units = 'mM'
+
         return {
             "salt": Salt(enc_id=-1, name=name),
             "concentration": conc,
-            "units": units
+            "units": units,
+            "found": found
         }
+
+    def get_metrics(self) -> dict[str, str]:
+        """Extract all metrics from the most recent <metrics> section.
+
+        Returns:
+            dict[str, str]: Dictionary mapping metric names to their values (with units if applicable)
+        """
+        metrics_list = self.root.findall("metrics")
+        if not metrics_list:
+            return {}
+
+        metrics_elem = metrics_list[-1]  # most recent element
+        metrics_dict = {}
+
+        for metric in metrics_elem:
+            if metric.tag == "metric":
+                name = metric.get("name", "")
+                value = metric.get("value", "")
+                units = metric.get("units", "")
+
+                if units:
+                    metrics_dict[name] = f"{value} {units}"
+                else:
+                    metrics_dict[name] = value
+
+        return metrics_dict
+
+    def get_audits(self) -> dict[str, tuple[str, str]]:
+        """Extract all audit entries from the most recent <audits> section.
+
+        Returns:
+            dict[str, tuple[str, str]]: Dictionary mapping action names to (username, timestamp) tuples
+        """
+        audits_list = self.root.findall("audits")
+        if not audits_list:
+            return {}
+
+        audits_elem = audits_list[-1]  # most recent element
+        audits_dict = {}
+
+        for audit in audits_elem:
+            if audit.tag == "audit":
+                action = audit.get("action", "")
+                username = audit.get("username", "")
+                recorded = audit.get("recorded", "")
+
+                if action:
+                    audits_dict[action] = (username, recorded)
+
+        return audits_dict
+
+    def get_run_notes(self) -> Optional[str]:
+        """Retrieve the run notes from params.
+
+        Returns:
+            Optional[str]: The notes text with \\n replaced by actual newlines, or None if not found
+        """
+        notes = self.get_param("notes", str, required=False)
+        if notes:
+            return notes.replace("\\n", "\n")
+        return None
+
+    def get_batch_number(self) -> Optional[str]:
+        """Retrieve the batch number from params."""
+        return self.get_param("batch_number", str, required=False)
+
+    def get_fill_type(self) -> str:
+        """Retrieve the fill type from params, defaulting to '3'."""
+        return self.get_param("fill_type", str, required=False) or "3"
+
+    def is_bioformulation(self) -> bool:
+        """Check if this run is marked as a bioformulation."""
+        value = self.get_param("bioformulation", str, required=False)
+        return value == "True" if value else False
 
     def get_viscosity_profile(self) -> ViscosityProfile:
         """
@@ -506,7 +628,7 @@ class Parser:
 
         return run_name
 
-    def get_formulation(self,) -> Formulation:
+    def get_formulation(self) -> Formulation:
         """Construct a `Formulation` object using parsed parameters and provided arguments.
         Returns:
             Formulation: A fully populated `Formulation` instance.

@@ -25,7 +25,7 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Internal state tracking of the active tab index
         self._active = -1
-        
+
         # Make the widget frameless, transparent, and always on top
         self.setWindowFlags(
             QtCore.Qt.FramelessWindowHint |
@@ -36,7 +36,7 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Reserve space for the shadow effect
         self.setContentsMargins(0, 0, 10, 10)
-        
+
         # Main layout for the entire window
         container_layout = QtWidgets.QVBoxLayout(self)
         container_layout.setContentsMargins(0, 0, 0, 0)
@@ -61,7 +61,8 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Apply shadow effect
         shadow_effect = QtWidgets.QGraphicsDropShadowEffect(self)
-        shadow_effect.setColor(QtGui.QColor(69, 69, 69, 180))  # Semi-transparent dark gray
+        # Semi-transparent dark gray
+        shadow_effect.setColor(QtGui.QColor(69, 69, 69, 180))
         shadow_effect.setOffset(2, 2)
         shadow_effect.setBlurRadius(5)
         self.content_widget.setGraphicsEffect(shadow_effect)
@@ -79,7 +80,8 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Add a label to display text
         self.title = QtWidgets.QLabel("VisQ.AI<sup>TM</sup> Toolkit")
-        self.title.setStyleSheet("font-weight: bold; font-size: 12px; padding: 10px; padding-left: 15px;")
+        self.title.setStyleSheet(
+            "font-weight: bold; font-size: 12px; padding: 10px; padding-left: 15px;")
 
         self.vbox.addSpacing(25)
         self.vbox.addWidget(self.title)
@@ -117,17 +119,18 @@ class FloatingMenuWidget(QtWidgets.QWidget):
     def _setHoverItem(self, index: int):
         for idx in range(self.items.count()):
             label = self.items.itemAt(idx).widget()
-            self._setStyleSheet(label, 
-                                selected = True if idx == self._active else False, 
-                                hover = True if idx == index else False)
+            self._setStyleSheet(label,
+                                selected=True if idx == self._active else False,
+                                hover=True if idx == index else False)
 
     def _viewToolkitItem(self, index: int):
         if 0 <= index < self.items.count():
             self.parent.setLearnMode(tab_index=index)
             # self.setActiveItem(index) # Handled by VisQAIWindow.on_tab_change()
         else:
-            raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
-        
+            raise ValueError(
+                f"Index {index} is out-of-bounds for toolkit items count.")
+
     def _setStyleSheet(self, label: QtWidgets.QLabel, selected: bool, hover: bool = False) -> QtWidgets.QLabel:
         if hover and selected:
             label.setStyleSheet(
@@ -142,7 +145,7 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             label.setStyleSheet(
                 "padding: 10px; padding-left: 15px;")
         return label
-    
+
     def eventFilter(self, obj, event):
         if event.type() in [QtCore.QEvent.Enter, QtCore.QEvent.Leave]:
             found = False
@@ -440,7 +443,8 @@ class Ui_Main(object):
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...", "Mode change is not allowed while learning.")
+            PopUp.warning(self, "Learning In-Progress...",
+                          "Mode change is not allowed while learning.")
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
@@ -504,7 +508,8 @@ class Ui_Main(object):
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...", "Mode change is not allowed while learning.")
+            PopUp.warning(self, "Learning In-Progress...",
+                          "Mode change is not allowed while learning.")
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
             if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
@@ -545,7 +550,7 @@ class Ui_Main(object):
         if obj == None:
             return False
 
-    def setLearnMode(self, obj = None, tab_index = 0):
+    def setLearnMode(self, obj=None, tab_index=0):
         if self.splitter.widget(0) == self.learn_ui and not self._force_splitter_mode_set:
             if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
                 Log.d(
@@ -607,7 +612,7 @@ class Ui_Main(object):
                     "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
         if obj == None:
             return False
-        
+
     def showLearnTools(self, obj):
         if not self.floating_widget.isVisible():
             # Position and show the floating widget
@@ -622,10 +627,10 @@ class Ui_Main(object):
         menu_widget_pos = + self.modemenu.mapToGlobal(QtCore.QPoint(0, 0))
         menu_widget_width = self.modemenu.width()
         offset = (14, 8)
-        
+
         x = menu_widget_pos.x() + menu_widget_width + offset[0]
         y = menu_widget_pos.y() + offset[1]
-        
+
         self.floating_widget.move(x, y)
 
     def retranslateUi(self, MainWindow0):

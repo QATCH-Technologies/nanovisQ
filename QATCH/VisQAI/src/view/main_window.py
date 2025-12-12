@@ -36,7 +36,8 @@ try:
     from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
     from src.view.evaluation_ui import EvaluationUI
-    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
+    from src.view.hypothesis_testing_ui import HypothesisTestingUI
+    from src.view.optimize_ui import OptimizationUI
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.models.formulation import Formulation
@@ -48,6 +49,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
     from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
     from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
+    from QATCH.VisQAI.src.view.optimize_ui import OptimizationUI
 TRIAL_LABEL_TEXT = (
     "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
     "Please subscribe to retain access on this system.<br/><br/>"
@@ -402,7 +404,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget.setTabBar(HorizontalTabBar())
         self.tab_widget.setTabPosition(QtWidgets.QTabWidget.North)
         self.tab_widget.tabBar().installEventFilter(self)
-        self.tab_widget.tabBar().hide() # Prefer Toolkit floating menu
+        self.tab_widget.tabBar().hide()  # Prefer Toolkit floating menu
 
         # Enable database objects for initial UI load.
         self.enable(True)
@@ -419,9 +421,9 @@ class VisQAIWindow(BaseVisQAIWindow):
                                "\u2464 Evaluate")  # unicode circled 5
         self.tab_widget.addTab(FrameStep1(self, 5),
                                "\u2465 Predict")  # unicode circled 6
-        self.tab_widget.addTab(FrameStep2(self, 6),
+        self.tab_widget.addTab(OptimizationUI(self),
                                "\u2466 Optimize")  # unicode circled 7
-        self.tab_widget.addTab(HypothesisTestingUI(self, ),
+        self.tab_widget.addTab(HypothesisTestingUI(self),
                                "\u2467 Hypothesis Testing")  # unicode circled 8
 
         # Disable database objects after initial UI load.
@@ -751,9 +753,10 @@ class VisQAIWindow(BaseVisQAIWindow):
                 caller_frame = inspect.stack()[1]
                 caller_name = caller_frame.function
                 if caller_name == "init_ui":
-                    Log.d("VisQ.AI Toolkit menu widget not found yet (normal once on init)")
+                    Log.d(
+                        "VisQ.AI Toolkit menu widget not found yet (normal once on init)")
                 else:
-                    raise e # Throw error, this is not an expected exception
+                    raise e  # Throw error, this is not an expected exception
 
             except Exception as e:
                 Log.e("Failed to set active item in VisQ.AI Toolkit menu")

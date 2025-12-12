@@ -3,16 +3,16 @@ hypothesis_testing_ui.py
 
 This module provides the HypothesisTestingUI class for the Hypothesis Testing tab in VisQAI.
 It supports creating custom formulations, defining hypotheses about viscosity behavior,
-and visualizing prediction results with hypothesis outcomes using area-based CI polygon containment.
+and visualizing prediction results with hypothesis outcomes using area-based CI containment.
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-30
+    2025-10-31
 
 Version:
-   2.0 - Adapted for area-based CI polygon containment
+   2.0
 """
 
 import sys
@@ -83,7 +83,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
     This interface allows users to:
     - Build custom formulations from available ingredients
     - Define hypotheses about viscosity behavior
-    - Run model predictions with area-based CI polygon containment
+    - Run model predictions with area-based CI containment
     - Visualize results with hypothesis outcomes
     """
 
@@ -695,7 +695,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             has_model and all_types_selected and has_temperature)
 
     def run_hypothesis_test(self) -> None:
-        """Run the hypothesis test using the area-based CI polygon containment approach."""
+        """Run the hypothesis test using the area-based CI containment approach."""
         try:
             # Build formulation object
             self.formulation_obj = self._build_formulation_object()
@@ -943,7 +943,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.results_table.resizeColumnsToContents()
 
     def update_profile_plot(self) -> None:
-        """Update the viscosity profile plot showing the CI polygon and bounds."""
+        """Update the viscosity profile plot showing the CI and bounds."""
         if self.hypothesis_result is None:
             return
 
@@ -955,7 +955,10 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         bounds = self.hypothesis_result['bounds']
 
         # Color scheme
+<<<<<<< HEAD
         color_actual = "#00A3DA"
+=======
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         color_predicted = "#32E2DF"
         color_ci = "#69EAC5"
         color_hypothesis = "#BF616A"  # Muted red for hypothesis bounds
@@ -1011,6 +1014,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             zorder=5
         )
 
+<<<<<<< HEAD
         # Show hypothesis threshold bounds
         if self.show_threshold_check.isChecked():
             if bounds[0] > -np.inf:
@@ -1035,6 +1039,27 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     label=f'Upper Bound ({bounds[1]:.1f} cP)',
                     zorder=3
                 )
+=======
+        if self.show_threshold_check.isChecked():
+            lower, upper = bounds
+            x_min, x_max = ax.get_xlim()
+            y_min, y_max = ax.get_ylim()
+            if not np.isfinite(lower):
+                lower = y_min
+            if not np.isfinite(upper):
+                upper = y_max
+            ax.fill_between(
+                [x_min, x_max],
+                y1=lower,
+                y2=upper,
+                color=color_hypothesis,
+                alpha=0.2,  # translucent so the main curve stays visible
+                label=f'Hypothesis Range ({bounds[0]:.1f}-{bounds[1]:.1f} cP)'
+                if np.isfinite(bounds).all()
+                else "Hypothesis Range",
+                zorder=2
+            )
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
 
         ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
         ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
@@ -1067,7 +1092,16 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         ax.spines['left'].set_linewidth(1)
         ax.spines['bottom'].set_linewidth(1)
         ax.tick_params(colors="#4C566A", which="both", labelsize=9)
+<<<<<<< HEAD
 
+=======
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ax.text(0.98, 0.02, timestamp,
+                transform=ax.transAxes, fontsize=7,
+                verticalalignment='bottom', horizontalalignment='right',
+                alpha=0.4, style='italic', color='#636e72')
+>>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         self.profile_figure.tight_layout()
         self.profile_canvas.draw()
 
@@ -1098,7 +1132,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self.hypothesis_result = None
 
             # Reset visualizations
-            self.outcome_label.setText("Run a hypothesis test to see results")
+            self.outcome_label.setText("Create a query...")
             self.outcome_label.setStyleSheet(
                 "font-size: 18pt; font-weight: bold; padding: 20px;"
             )
