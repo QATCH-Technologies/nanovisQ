@@ -2397,9 +2397,12 @@ class QueryRunInfo(QtWidgets.QWidget):
         # Parameter initialization
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
-        protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
-        st = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
-                                      concentration=protein_concentration)
+        if self.b1.isChecked():  # IS bioformulation
+            protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
+            st = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
+                                          concentration=protein_concentration)
+        else:  # NOT bioformulation
+            st = float(self.t1.text()) if len(self.t1.text()) else 0
         ca = float(self.t2.text()) if len(self.t2.text()) else 0
         density = float(self.t5.text()) if len(self.t5.text()) else 0
 
