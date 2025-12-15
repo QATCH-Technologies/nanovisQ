@@ -135,10 +135,6 @@ class ViscosityProfile:
         srs = np.asarray(self.shear_rates, dtype=float)
         vs = np.asarray(self.viscosities, dtype=float)
 
-<<<<<<< HEAD
-        # Check for exact match first
-=======
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         exact_match = np.where(np.isclose(srs, sr))[0]
         if len(exact_match) > 0:
             return float(vs[exact_match[0]])
@@ -599,11 +595,8 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.enc_id,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
-<<<<<<< HEAD
-=======
                 "HCI":              self.protein.ingredient.class_type.hci,
                 "C_Class":          self.protein.ingredient.class_type.c_class,
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -627,11 +620,8 @@ class Formulation:
                 "Protein_type":    self.protein.ingredient.name,
                 "Protein_class_type":   self.protein.ingredient.class_type,
                 "kP":              self.protein.ingredient.class_type.kP,
-<<<<<<< HEAD
-=======
                 "HCI":             self.protein.ingredient.class_type.hci,
                 "C_Class":         self.protein.ingredient.class_type.c_class,
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
                 "MW":              self.protein.ingredient.molecular_weight,
                 "PI_mean":         self.protein.ingredient.pI_mean,
                 "PI_range":        self.protein.ingredient.pI_range,
@@ -662,10 +652,7 @@ class Formulation:
         expected = [
             "ID",
             "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
-<<<<<<< HEAD
-=======
             "C_Class", "HCI",
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
             "Temperature",
             "Buffer_type", "Buffer_pH", "Buffer_conc",
             "Salt_type", "Salt_conc",

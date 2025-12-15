@@ -955,10 +955,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         bounds = self.hypothesis_result['bounds']
 
         # Color scheme
-<<<<<<< HEAD
-        color_actual = "#00A3DA"
-=======
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         color_predicted = "#32E2DF"
         color_ci = "#69EAC5"
         color_hypothesis = "#BF616A"  # Muted red for hypothesis bounds
@@ -1014,32 +1010,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             zorder=5
         )
 
-<<<<<<< HEAD
-        # Show hypothesis threshold bounds
-        if self.show_threshold_check.isChecked():
-            if bounds[0] > -np.inf:
-                ax.axhline(
-                    y=bounds[0],
-                    color=color_hypothesis,
-                    linestyle='--',
-                    linewidth=2,
-                    alpha=0.8,
-                    dashes=(8, 4),
-                    label=f'Lower Bound ({bounds[0]:.1f} cP)',
-                    zorder=3
-                )
-            if bounds[1] < np.inf:
-                ax.axhline(
-                    y=bounds[1],
-                    color=color_hypothesis,
-                    linestyle='--',
-                    linewidth=2,
-                    alpha=0.8,
-                    dashes=(8, 4),
-                    label=f'Upper Bound ({bounds[1]:.1f} cP)',
-                    zorder=3
-                )
-=======
         if self.show_threshold_check.isChecked():
             lower, upper = bounds
             x_min, x_max = ax.get_xlim()
@@ -1059,7 +1029,6 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 else "Hypothesis Range",
                 zorder=2
             )
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
 
         ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
         ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
@@ -1092,16 +1061,12 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         ax.spines['left'].set_linewidth(1)
         ax.spines['bottom'].set_linewidth(1)
         ax.tick_params(colors="#4C566A", which="both", labelsize=9)
-<<<<<<< HEAD
-
-=======
         from datetime import datetime
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         ax.text(0.98, 0.02, timestamp,
                 transform=ax.transAxes, fontsize=7,
                 verticalalignment='bottom', horizontalalignment='right',
                 alpha=0.4, style='italic', color='#636e72')
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         self.profile_figure.tight_layout()
         self.profile_canvas.draw()
 

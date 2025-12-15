@@ -435,14 +435,11 @@ class Parser:
         conc = self.get_param("salt_concentration", float, required=False)
         units = self.get_param_attr(
             "salt_concentration", "units", required=False)
-<<<<<<< HEAD
-=======
         found = {
             "name": name is not None,
             "conc": conc is not None,
             "units": units is not None
         }
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
         if name is None:
             name = "None"
         if conc is None:

@@ -334,18 +334,12 @@ class ProteinClass(StrEnum):
             self.FC_FUSION: 4.5,
             self.BISPECIFIC: 5.0,
             self.TRISPECIFIC: 5.5,
-<<<<<<< HEAD
-            self.NONE: 2.0,
-=======
             self.NONE: 0.0,
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
             self.ADC: 2.5,
             self.OTHER: 2.0,
         }
         return kP_mapping[self]
 
-<<<<<<< HEAD
-=======
     @property
     def hci(self) -> float:
         hci_mapping = {
@@ -376,13 +370,10 @@ class ProteinClass(StrEnum):
         }
         return c_class_mapping[self]
 
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
     @classmethod
     def get_kP_mapping(cls) -> Dict[str, float]:
         return {pc.value: pc.kP for pc in cls}
 
-<<<<<<< HEAD
-=======
     @classmethod
     def get_hci_mapping(cls) -> Dict[str, float]:
         return {pc.value: pc.hci for pc in cls}
@@ -391,7 +382,6 @@ class ProteinClass(StrEnum):
     def get_c_class_mapping(cls) -> Dict[str, float]:
         return {pc.value: pc.c_class for pc in cls}
 
->>>>>>> f0b782c5c866e0ce320f9f3909d20420e33e25b5
 
 class Protein(Ingredient):
     """Represents a protein ingredient with optional molecular weight and isoelectric point information.
