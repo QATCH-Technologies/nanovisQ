@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional, List
 import hashlib
 import pyzipper
-import zipfile
 
 import numpy as np
 import pandas as pd
@@ -249,7 +248,8 @@ class Predictor:
             from inference import ViscosityPredictor
         except ImportError as e:
             Log.e(f"Failed to import ViscosityPredictor: {e}")
-            raise RuntimeError(f"Could not import ViscosityPredictor: {e}")
+            raise RuntimeError(
+                f"Could not import ViscosityPredictor: {e}") from e
 
         # Discover checkpoints
         checkpoint_paths = self._discover_checkpoints(model_dir)
@@ -648,6 +648,7 @@ class Predictor:
             f"Predictor.learn(): data.shape={new_df.shape}, n_epochs={n_epochs}")
 
         try:
+            # Perform the training (updates weights/adapter in memory)
             self.predictor.learn(
                 df_new=new_df,
                 y_new=y_new,
@@ -655,36 +656,70 @@ class Predictor:
                 lr=lr,
                 analog_protein=analog_protein
             )
+
             if save:
                 if not self.checkpoint_paths:
                     Log.w("No checkpoint paths known, cannot save updated model.")
+                elif 'core' not in sys.modules:
+                    Log.e("Core module not loaded, cannot save checkpoint.")
                 else:
-                    save_target = self.checkpoint_paths[0]
-                    Log.i(f"Persisting updated model to: {save_target}")
+                    core_module = sys.modules['core']
+                    save_func = core_module.save_model_checkpoint
 
-                    if 'core' in sys.modules:
-                        core_module = sys.modules['core']
-                        save_func = core_module.save_model_checkpoint
+                    # Get the active adapter (if any)
+                    adapter_to_save = getattr(self.predictor, 'adapter', None)
 
-                        # Check for adapter on the predictor instance
-                        adapter_to_save = getattr(
-                            self.predictor, 'adapter', None)
+                    # Check if we are saving an Ensemble or a Single Model
+                    # We use the class definition from core to be sure
+                    is_ensemble = False
+                    if hasattr(core_module, 'EnsembleModel'):
+                        is_ensemble = isinstance(
+                            self.predictor.model, core_module.EnsembleModel)
+
+                    if is_ensemble:
+                        Log.i(
+                            "Saving Ensemble: Persisting updates to all checkpoint files...")
+                        models_list = self.predictor.model.models
+
+                        # Verify we have paths for all models
+                        if len(models_list) != len(self.checkpoint_paths):
+                            Log.w(
+                                f"Ensemble count ({len(models_list)}) does not match file count ({len(self.checkpoint_paths)}). Saving may be misaligned.")
+
+                        for i, sub_model in enumerate(models_list):
+                            # Prevent index out of bounds if paths are missing
+                            if i >= len(self.checkpoint_paths):
+                                break
+
+                            path = self.checkpoint_paths[i]
+                            Log.i(f"  Saving ensemble member {i} to: {path}")
+
+                            save_func(
+                                model=sub_model,
+                                processor=self.predictor.processor,
+                                best_params=self.predictor.best_params,
+                                filepath=path,
+                                adapter=adapter_to_save  # Persist adapter to ALL members
+                            )
+                    else:
+                        # Single Model Case
+                        save_target = self.checkpoint_paths[0]
+                        Log.i(f"Persisting updated model to: {save_target}")
 
                         save_func(
                             model=self.predictor.model,
                             processor=self.predictor.processor,
                             best_params=self.predictor.best_params,
                             filepath=save_target,
-                            adapter=adapter_to_save  # Pass the active adapter
+                            adapter=adapter_to_save
                         )
-                        self._saved = True
-                    else:
-                        Log.e("Core module not loaded, cannot save checkpoint.")
+
+                    self._saved = True
 
             result = {
                 'n_samples': len(new_df),
                 'n_epochs': n_epochs,
-                'targets_trained': [c for c in self.ALL_SHEARS if c in new_df.columns],
+                'targets_trained': available_targets,
                 'status': 'completed'
             }
             return result
