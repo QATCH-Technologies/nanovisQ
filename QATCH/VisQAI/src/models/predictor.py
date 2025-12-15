@@ -8,17 +8,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-11-25
+    2025-12-15
 
 Version:
-    5.0
-
-Changes in 5.0:
-    - Updated to work with new ViscosityPredictor from inference.py
-    - Removed dependency on config.py / VisQ2xConfig
-    - Updated learn() to match new signature (df_new, y_new)
-    - Updated uncertainty estimation to use predict_with_uncertainty()
-    - Added ensemble checkpoint detection from package structure
+    5.1
 """
 import os
 import zipfile
@@ -93,7 +86,7 @@ class Predictor:
     predictions and updates.
 
     This class extracts a zip archive containing source files and model checkpoint,
-    loads required modules dynamically, and instantiates a ViscosityPredictor for 
+    loads required modules dynamically, and instantiates a ViscosityPredictor for
     inference and incremental updates.
 
     Security: By default, this class verifies cryptographic signatures of all source
@@ -137,19 +130,34 @@ class Predictor:
         self.secure_loader = None
         self.verification_report = None
         self.scaler_feature_names = None
+        self.checkpoint_paths = []  # Added to track paths for saving
 
         if self.verify_signatures and not SECURITY_AVAILABLE:
             raise RuntimeError(
-                "secure_loader module not available. Cannot verify signatures."
-            )
+                "secure_loader module not available. Cannot verify signatures.")
 
-        if not self.verify_signatures:
-            Log.w("Signature verification DISABLED!")
-
-        Log.i(
-            f"Predictor.__init__: archive={self.zip_path!r}, mc_samples={mc_samples}, "
-            f"verify_signatures={verify_signatures}")
         self._load_zip(self.zip_path)
+
+    def _log_adapter_status(self) -> None:
+        """
+        Check and log whether the current model is using an adapter.
+        """
+        if self.predictor is None:
+            return
+
+        has_adapter = False
+        details = "Base Model"
+        if getattr(self.predictor, 'adapter', None) is not None:
+            has_adapter = True
+            details = "AdapterPredictor (Active)"
+        elif hasattr(self.predictor, 'model') and getattr(self.predictor.model, 'adapter_state_dict', None) is not None:
+            has_adapter = True
+            details = "Model with Attached Adapter State"
+
+        if has_adapter:
+            Log.i(f"[Adapter Status] Running WITH ADAPTER: {details}")
+        else:
+            Log.i(f"[Adapter Status] Running WITHOUT ADAPTER: {details}")
 
     def _load_zip(self, zip_path: Path) -> None:
         """
@@ -236,27 +244,19 @@ class Predictor:
             Log.w("No metadata.json found in package")
         self._load_source_modules(src_dir)
 
-        # Import the ViscosityPredictor class from the new inference module
+        # Import ViscosityPredictor
         try:
             from inference import ViscosityPredictor
         except ImportError as e:
             Log.e(f"Failed to import ViscosityPredictor: {e}")
-            raise RuntimeError(f"Could not import ViscosityPredictor. "
-                               f"Ensure inference.py is in the src/ directory. Error: {e}")
+            raise RuntimeError(f"Could not import ViscosityPredictor: {e}")
 
-        # Determine checkpoint path(s) - support both single and ensemble
+        # Discover checkpoints
         checkpoint_paths = self._discover_checkpoints(model_dir)
         is_ensemble = len(checkpoint_paths) > 1
 
-        # Also check metadata for ensemble info
-        if self.metadata and self.metadata.get('model_type') == 'ensemble':
-            is_ensemble = True
+        Log.i(f"Instantiating ViscosityPredictor (Ensemble: {is_ensemble})...")
 
-        Log.i(
-            f"Discovered {len(checkpoint_paths)} checkpoint(s), ensemble={is_ensemble}")
-        Log.i("Instantiating ViscosityPredictor...")
-
-        # Instantiate ViscosityPredictor with appropriate parameters
         if is_ensemble:
             self.predictor = ViscosityPredictor(
                 checkpoint_path=checkpoint_paths,
@@ -270,7 +270,38 @@ class Predictor:
                 is_ensemble=False
             )
 
-        # Try to get scaler feature names from the processor
+        if hasattr(self.predictor, 'hydrate'):
+            Log.d("Forcing model hydration to check for adapters...")
+            self.predictor.hydrate()
+        elif hasattr(self.predictor, '_load_ensemble'):
+            self.predictor._load_ensemble(
+                checkpoint_paths[0] if not is_ensemble else checkpoint_paths)
+
+        # check if it has an adapter state attached
+        if hasattr(self.predictor, 'model') and \
+           hasattr(self.predictor.model, 'adapter_state_dict') and \
+           self.predictor.model.adapter_state_dict is not None:
+
+            Log.i("Adapter state detected in checkpoint. Attaching adapter...")
+
+            # Access core dynamically
+            if 'core' in sys.modules:
+                core = sys.modules['core']
+                if hasattr(core, 'attach_adapter'):
+                    # Reconstruct and attach adapter to the model instance
+                    adapter = core.attach_adapter(
+                        self.predictor.model,
+                        self.predictor.model.adapter_state_dict
+                    )
+                    # IMPORTANT: Store adapter on the predictor instance so save() can find it later
+                    self.predictor.adapter = adapter
+                    Log.i("Adapter successfully attached to predictor.")
+                else:
+                    Log.w("core module found but attach_adapter is missing.")
+            else:
+                Log.w("core module not loaded. Cannot attach adapter.")
+
+        # Try to get scaler feature names
         if hasattr(self.predictor, 'processor') and self.predictor.processor is not None:
             processor = self.predictor.processor
             if hasattr(processor, 'numeric_features'):
@@ -293,38 +324,22 @@ class Predictor:
     def _discover_checkpoints(self, model_dir: Path) -> List[str]:
         """
         Discover checkpoint files in the model directory.
-
-        Supports both single model (checkpoint.pt) and ensemble 
-        (checkpoint_0.pt, checkpoint_1.pt, ...) formats.
-
-        Args:
-            model_dir: Path to the model directory
-
-        Returns:
-            List of checkpoint file paths
-
-        Raises:
-            RuntimeError: If no checkpoint files are found
         """
-        # Check for single model checkpoint
         single_checkpoint = model_dir / "checkpoint.pt"
         if single_checkpoint.exists():
-            return [str(single_checkpoint)]
+            paths = [str(single_checkpoint)]
+        else:
+            ensemble_pattern = str(model_dir / "checkpoint_*.pt")
+            paths = sorted(glob.glob(ensemble_pattern))
 
-        # Check for ensemble checkpoints (checkpoint_0.pt, checkpoint_1.pt, ...)
-        ensemble_pattern = str(model_dir / "checkpoint_*.pt")
-        ensemble_checkpoints = sorted(glob.glob(ensemble_pattern))
+        if not paths:
+            paths = sorted(glob.glob(str(model_dir / "*.pt")))
 
-        if ensemble_checkpoints:
-            return ensemble_checkpoints
+        if not paths:
+            raise RuntimeError("No checkpoint files found in model/ directory")
+        self.checkpoint_paths = paths
 
-        # Fallback: look for any .pt files
-        any_pt_files = sorted(glob.glob(str(model_dir / "*.pt")))
-        if any_pt_files:
-            Log.w(f"Using fallback checkpoint discovery: {any_pt_files}")
-            return any_pt_files
-
-        raise RuntimeError("No checkpoint files found in model/ directory")
+        return paths
 
     def _load_source_modules(self, src_dir: Path) -> None:
         """
@@ -447,7 +462,7 @@ class Predictor:
             raise RuntimeError("No predictor loaded")
         if n_samples is None:
             n_samples = self.mc_samples
-
+        self._log_adapter_status()
         try:
             Log.i(df)
             Log.d(f"Predictor.predict_uncertainty() with {len(df)} samples, "
@@ -618,20 +633,19 @@ class Predictor:
         if self.predictor is None:
             Log.e("learn() called but predictor is not loaded")
             raise RuntimeError("No predictor loaded")
+
         available_targets = [
             col for col in self.ALL_SHEARS if col in new_df.columns]
         if not available_targets:
             raise ValueError(
-                f"new_df must contain target columns. Expected one of {self.ALL_SHEARS}, "
-                f"found columns: {list(new_df.columns)}"
-            )
+                f"new_df must contain target columns: {self.ALL_SHEARS}")
 
         y_new = new_df[available_targets].values
         if n_epochs is None:
             n_epochs = 100
 
-        Log.i(f"Predictor.learn(): data.shape={new_df.shape}, "
-              f"n_epochs={n_epochs}, verbose={verbose}")
+        Log.i(
+            f"Predictor.learn(): data.shape={new_df.shape}, n_epochs={n_epochs}")
 
         try:
             self.predictor.learn(
@@ -641,17 +655,40 @@ class Predictor:
                 lr=lr,
                 analog_protein=analog_protein
             )
+            if save:
+                if not self.checkpoint_paths:
+                    Log.w("No checkpoint paths known, cannot save updated model.")
+                else:
+                    save_target = self.checkpoint_paths[0]
+                    Log.i(f"Persisting updated model to: {save_target}")
+
+                    if 'core' in sys.modules:
+                        core_module = sys.modules['core']
+                        save_func = core_module.save_model_checkpoint
+
+                        # Check for adapter on the predictor instance
+                        adapter_to_save = getattr(
+                            self.predictor, 'adapter', None)
+
+                        save_func(
+                            model=self.predictor.model,
+                            processor=self.predictor.processor,
+                            best_params=self.predictor.best_params,
+                            filepath=save_target,
+                            adapter=adapter_to_save  # Pass the active adapter
+                        )
+                        self._saved = True
+                    else:
+                        Log.e("Core module not loaded, cannot save checkpoint.")
 
             result = {
                 'n_samples': len(new_df),
                 'n_epochs': n_epochs,
-                'targets_trained': available_targets,
+                'targets_trained': [c for c in self.ALL_SHEARS if c in new_df.columns],
                 'status': 'completed'
             }
-
-            Log.i(f"Incremental learning completed successfully, {result}")
-            self._saved = save
             return result
+
         except Exception as ex:
             Log.e(f"Error during learn(): {ex}")
             raise
