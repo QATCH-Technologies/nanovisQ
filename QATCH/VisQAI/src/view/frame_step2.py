@@ -428,7 +428,6 @@ class FrameStep2(QtWidgets.QDialog):
         self.timer.start()
 
         def learn_run_result(record: Optional[ExecutionRecord] = None):
-            """Callback after learning finishes."""
             if record and record.exception:
                 Log.e(
                     f"Error occurred while updating the model: {record.exception}")
@@ -438,34 +437,59 @@ class FrameStep2(QtWidgets.QDialog):
                 Log.w("Learning canceled!")
                 return
 
-            # Save the model
+            save_dir = self.predictor.save_path()
+            if not save_dir:
+                Log.e("Predictor did not mark session as saved. Cannot create archive.")
+                return
+
             try:
-                save_dir = self.predictor.save_path()
-                zip_base = os.path.join(
-                    self.model_dialog.directory().path(), "VisQAI-model")
-                saved_model = make_archive(
-                    base_name=zip_base, format="zip", root_dir=save_dir, base_dir=".")
-                enc_ok = self.predictor.add_security_to_zip(saved_model)
+                zip_base_name = os.path.join(
+                    self.model_dialog.directory().path(),
+                    "VisQAI-model-adapted"
+                )
+
+                Log.i(f"Archiving adapted model from {save_dir}...")
+
+                # Create the ZIP archive
+                saved_model_zip = make_archive(
+                    base_name=zip_base_name,
+                    format="zip",
+                    root_dir=save_dir,
+                    base_dir="."
+                )
+
+                # Apply Security
+                enc_ok = self.predictor.add_security_to_zip(saved_model_zip)
                 if not enc_ok:
                     Log.w(
                         "Failed to add security to ZIP; committing unencrypted archive.")
+
+                # Commit to Version Control
                 sha = self.mvc.commit(
-                    model_file=saved_model,
+                    model_file=saved_model_zip,
                     metadata={
                         "base_model": os.path.basename(self.model_path),
                         "learned_runs": [f"Formulation #{i+1}" for i in range(len(dfs))],
-                        "pinned_name": None
+                        "pinned_name": None,
+                        "has_adapter": True
                     }
                 )
-                os.remove(saved_model)
+
+                # Clean up
+                os.remove(saved_model_zip)
+
+                # Restore/Rename
                 restored_path = self.mvc.get(
                     sha, self.model_dialog.directory().path())
                 restored_path = Path(restored_path)
+
                 target_path = restored_path.with_name(f"VisQAI-{sha[:7]}.zip")
                 if target_path.exists():
                     target_path.unlink()
+
                 restored_path.rename(target_path)
-                Log.i(f"Created new model: {target_path}")
+                Log.i(f"Created new model package: {target_path}")
+
                 self.new_model_path = str(target_path)
 
             except Exception as e:
@@ -473,7 +497,6 @@ class FrameStep2(QtWidgets.QDialog):
 
             finally:
                 self.predictor.cleanup()
-
         # Start learning on the combined DataFrame
         self.executor.run(
             self.predictor,
