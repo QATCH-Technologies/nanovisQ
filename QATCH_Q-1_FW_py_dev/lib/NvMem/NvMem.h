@@ -26,10 +26,31 @@
 #define HW_REVISION_0 0    // Rev 0 = no LCD; MAX config A; blue LED support; 125MHz xtal
 #define HW_REVISION_1 1    // Rev 1 = w/ LCD; MAX config B; multi LED support; 125MHz xtal
 #define HW_REVISION_2 2    // Rev 2 = w/ LCD; MAX config B; multi LED support; 30MHz xtal (6x multiplier enabled to 180MHz)
+#define HW_REVISION_3 3    // Rev 3 = Rev 2 w/ POGO servo and button to (un)lock the cartridge
 /// @note Add new HW revisions here...
 
 /// @note Increment NVMEM_VERSION each time you change NvMem_RAM structure!
-#define NVMEM_VERSION 2
+#define NVMEM_VERSION 3
+
+// POGO lid servo positions and move delay are configurable via NVMEM
+// Default values (used if NVMEM not initialized)
+// Constraints:
+// - Positions: 0–180 (0x00–0xB4, in degrees); 0xFF is reserved by NVMEM for "uninitialized"
+// - Move delay (ms of step delay): 0–254; 0xFF reserved
+// NOTE: Servo 1 is used for Solo and Quad devices (Servo 2 not used here).
+//       Servo 1 & Servo 2 are used for Flux devices to move the 4x6 POGOs.
+#define DEFAULT_POS_OPENED_1 30
+#define DEFAULT_POS_CLOSED_1 50
+#define DEFAULT_POS_OPENED_2 0
+#define DEFAULT_POS_CLOSED_2 0
+#define DEFAULT_MOVE_DELAY 25
+
+// Compile-time guards to preserve 0xFF sentinel semantics
+#if (DEFAULT_POS_OPENED_1 == 0xFF) || (DEFAULT_POS_CLOSED_1 == 0xFF) \
+ || (DEFAULT_POS_OPENED_2 == 0xFF) || (DEFAULT_POS_CLOSED_2 == 0xFF) \
+ || (DEFAULT_MOVE_DELAY == 0xFF)
+#error "DEFAULT_* must not be 0xFF (reserved for NVMEM uninitialized sentinel)"
+#endif
 
 struct NvMem_RAM
 {
@@ -39,6 +60,11 @@ struct NvMem_RAM
   byte HW_Revision; // 2: see 'HW_REVISION_[#]' #defines for supported values
   byte OffsetM;     // 3: measuring (FW fixed offset, in EEPROM)
   byte Ethernet_EN; // 4: enable Ethernet PHY to report an IP (if chip present) - default: disable
+  byte POGO_PosOpened1; // 5: POGO lid open position (servo 1)
+  byte POGO_PosClosed1; // 6: POGO lid closed position (servo 1)
+  byte POGO_PosOpened2; // 7: POGO lid open position (servo 2)
+  byte POGO_PosClosed2; // 8: POGO lid closed position (servo 2)
+  byte POGO_MoveDelay; // 9: POGO lid move delay (ms)
   // byte NewValue;
   /// @note Add new entries here, even if inverted!
   /// @note Also increment NVMEM_VERSION, add a value in defaults(), and add logic in update()
