@@ -3231,10 +3231,11 @@ void QATCH_loop()
       }
     }
 
-    if (streaming) // TODO: correct variable name
-    // TODO: Disable temperature updates when lid is opened; reset temperature (no avg) on run stop
-    { // do not update OP during measurement runs, keep a fixed output power value
+    // Disable temperature PID updates when lid is opened/unlocked
+    if (pogo_lid_opened)
+    { // do not update OP during when POGO is unlocked
       updateTEC = false;
+      // do not accumulate Kd integral on TEC resume
       l298nhb.resetDeltaTime();
     }
     // SKIP THIS: TFT_TEMPCONTROL() NOW USES HW_ERROR TO FLAG LCD ERROR MESSAGE WRITE/CLEAR
