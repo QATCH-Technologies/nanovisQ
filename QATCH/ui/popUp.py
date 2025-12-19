@@ -134,8 +134,8 @@ class PopUp:
         :return: True if Yes button was pressed :rtype: bool.
         """
         defaultButton = QtWidgets.QMessageBox.Yes if default else QtWidgets.QMessageBox.No
-        ans = QtWidgets.QMessageBox.question(
-            None, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
+        ans = QtWidgets.QMessageBox.question(  # center dialog over parent (by default)
+            parent, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
         if ans == QtWidgets.QMessageBox.Yes:
             return True
         else:
@@ -156,16 +156,17 @@ class PopUp:
 
         width = 340
         height = 220
-        area = QtWidgets.QDesktopWidget().availableGeometry()
-        left = int((area.width() - width) / 2)
-        top = int((area.height() - height) / 2)
+        # area = QtWidgets.QDesktopWidget().availableGeometry()
+        # left = int((area.width() - width) / 2)
+        # top = int((area.height() - height) / 2)
         box = QtWidgets.QMessageBox(parent)
         if question:
             box.setIcon(QtWidgets.QMessageBox.Question)
         else:
             box.setIcon(QtWidgets.QMessageBox.Critical)
         box.setWindowTitle(title)
-        box.setGeometry(left, top, width, height)
+        # box.setGeometry(left, top, width, height)
+        box.setFixedSize(width, height)  # center dialog over parent (by default)
         box.setText(message)
         box.setDetailedText(details)
         if question:
