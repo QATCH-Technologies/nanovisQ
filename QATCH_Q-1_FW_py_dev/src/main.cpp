@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r67"
-#define RELEASE_DATE "2025-12-10"
+#define CODE_VERSION "v2.6b67"
+#define RELEASE_DATE "2025-12-19"
 
 /************************** LIBRARIES **************************/
 
@@ -3232,11 +3232,15 @@ void QATCH_loop()
     }
 
     // Disable temperature PID updates when lid is opened/unlocked
-    if (pogo_lid_opened)
+    if (updateTEC && pogo_lid_opened)
     { // do not update OP during when POGO is unlocked
       updateTEC = false;
       // do not accumulate Kd integral on TEC resume
       l298nhb.resetDeltaTime();
+      // update TFT display to inticate unlocked
+      tft_tempcontrol();
+      // indicate task completed, even though we blocked it
+      l298nhb_task_timer = millis();
     }
     // SKIP THIS: TFT_TEMPCONTROL() NOW USES HW_ERROR TO FLAG LCD ERROR MESSAGE WRITE/CLEAR
     //    else if (hw_error)
@@ -3359,11 +3363,13 @@ void QATCH_loop()
       msgbox_icon = 3; // info
       sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
       sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
-      tft_idle();
+      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
+        tft_idle();
     }
     if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
       tft_msgbox = false; // hide unlocked message
-      tft_idle();
+      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
+        tft_idle();
     }
   }
 }
@@ -4697,6 +4703,40 @@ void tft_cooldown()
   // }
   // }
 
+  if (tft_msgbox) {
+    if (tft_msgbox && msgbox_icon == 2) // pass
+      tft.setTextColor(ILI9341_GREEN);
+    else if (tft_msgbox && msgbox_icon == 3) // info
+      tft.setTextColor(QATCH_BLUE_FG);
+    else
+      tft.setTextColor(ILI9341_RED);
+
+    tft.setFont(Poppins_16_Bold);
+
+    String line1 = String(msgbox_title);
+    char buff1[line1.length() + 1]; // trailing NULL
+    line1.toCharArray(buff1, sizeof(buff1));
+
+    int msg_pad = 10;
+    int msg_w = tft.measureTextWidth(buff1);
+    //  msg_h = tft.measureTextHeight(buff1);
+    int msg_x = (TFT_WIDTH - msg_w) / 2;
+    int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+    tft.setCursor(msg_x, msg_y);
+    tft.print(line1);
+
+    // restore font and color to original values:
+    tft.setFont(Poppins_12_Bold);
+    tft.setTextColor(ILI9341_BLACK);
+  }
+  else
+  {
+    // No concerns about overwriting, and no need to blink when in cooldown
+
+    // clear out MSGBOX area at top (without requiring a full redraw)
+    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  }
+
   if (L298NHB_COOLDOWN / 1000 >= 100)
   {
     tft_progress_show(100 - (float)(100.0 * 1000.0 * last_pct / L298NHB_COOLDOWN));
@@ -5057,7 +5097,7 @@ void tft_tempcontrol()
     msgbox_visible = false;
 
     // clear out MSGBOX area at top (without requiring a full redraw)
-    tft.fillRect(0, 0, TFT_WIDTH, 42, ILI9341_BLACK); 
+    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
   }
 
   short pct;

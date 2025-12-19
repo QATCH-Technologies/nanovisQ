@@ -26,7 +26,7 @@ L298NHB::L298NHB(int8_t M1, int8_t E1, int8_t M2, int8_t E2, bool initM, byte in
   e2 = E2;
   signal = m0;
   power = e0;
-  target = 25.0;
+  target = -1.0;  // not set yet, will be cached across Temp Control sessions
   ambient = 25.0;
   invert = false;
 
@@ -176,13 +176,19 @@ float L298NHB::setTarget(float t)
   t_start = millis();
   resetDeltaTime();
   ki = (signal ? kic : kih);
-  PID_i = 0;
+  if (t != target) {
+    // Serial.print("PID_i reset 1: ");
+    // Serial.print(t);
+    // Serial.print(" != ");
+    // Serial.println(target);
+    PID_i = 0;  // only if new target
+  }
   PID_d = 0;
   t_stable = 0;
   resetMinMax();
   time_of_last_instability = millis(); // not zero, but time of TEC start
   label_state = 0;                     // STATE 0: Print "Temp Cycling"
-  invert = false;
+  // invert = false;
   target = round(t / 0.25) * 0.25;
   target = max(0, min(60, target));
   PID_error_avg = 0;
@@ -387,12 +393,15 @@ int8_t L298NHB::update(float t)
       if (0 != getSignal() || pid_retuned)
       {
         setPower(0); // briefly, always set to non-zero again later
-        pid_retuned = false;
         kp = kph;
         ki = kih;
         kd = kdh;
-        PID_i = 0;
+        if (!pid_retuned) {
+          // Serial.println("PID_i reset 2");
+          PID_i = 0;  // only if HEAT/COOL inverted
+        }
         PID_d = 0;
+        pid_retuned = false;
       }
       // switch to heat
       setSignal(0);
@@ -410,12 +419,15 @@ int8_t L298NHB::update(float t)
       if (1 != getSignal() || pid_retuned)
       {
         setPower(0); // briefly, always set to non-zero again later
-        pid_retuned = false;
         kp = kpc;
         ki = kic;
         kd = kdc;
-        PID_i = 0;
+        if (!pid_retuned) {
+          // Serial.println("PID_i reset 3");
+          PID_i = 0;  // only if HEAT/COOL inverted
+        }
         PID_d = 0;
+        pid_retuned = false;
       }
       // switch to cool
       setSignal(1);
@@ -565,7 +577,7 @@ int8_t L298NHB::update(float t)
 void L298NHB::shutdown(void)
 {
   setPower(0); // off
-  target = ambient = 25.0;
+  ambient = 25.0; // keep `target` cached
 }
 
 void L298NHB::wakeup(void)
