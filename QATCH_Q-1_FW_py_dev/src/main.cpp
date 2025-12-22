@@ -3585,6 +3585,9 @@ void pogo_button_pressed(bool init)
     return;
   }
 
+  // Kick the screensaver timer
+  time_of_last_msg = micros();
+
   // switch state: open <-> closed 
   pogo_lid_opened = !pogo_lid_opened;
 
