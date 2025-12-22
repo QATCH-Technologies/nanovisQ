@@ -2249,7 +2249,9 @@ class QueryRunInfo(QtWidgets.QWidget):
                 self.layout_h0.addWidget(QtWidgets.QWidget(), 1)  # dummy blank
             elif self.layout_h0.count() == 3:
                 # remove stretch item to avoid extra space when Solvent is visible
-                self.layout_h0.removeItem(self.layout_h0.itemAt(2))
+                item = self.layout_h0.takeAt(2)
+                if item.widget():
+                    item.widget().deleteLater()
 
             self.groupSolvent.setVisible(
                 is_bioformulation == False)  # solvent group
