@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r67"
-#define RELEASE_DATE "2025-12-10"
+#define CODE_VERSION "v2.6b67"
+#define RELEASE_DATE "2025-12-19"
 
 /************************** LIBRARIES **************************/
 
@@ -227,6 +227,16 @@ double freq_factor = 1.0;
 // use ILI9341 TFT touchscreen driver
 #define USE_ILI9341 true
 
+#if USE_MAX31855
+// use Ambient temperature to correct external K-probe temperature readings
+// NOTE: This correction only applies during active measurement runs
+#define USE_TEMP_CORRECTION true
+#define TEMP_CORRECT_COOLDOWN (1000 * 60 * 2)
+#else
+// no MAX31855 support, no ambient correction available
+#define USE_TEMP_CORRECTION false
+#endif
+
 // // Modify MAX31855 pins if ILI9341 missing
 // #if !USE_ILI9341
 // #undef MAX31855_SO
@@ -353,6 +363,11 @@ MAX31855 max31855 = MAX31855(MAX31855_CLK_1, MAX31855_CS, MAX31855_SO_1, MAX3185
 MCP9808 mcp9808 = MCP9808(); // always define (shutdown if unused)
 float temperature = NAN;
 float ambient = NAN;
+
+#if USE_TEMP_CORRECTION
+float starting_ambient = NAN;
+unsigned long temp_correct_auto_off_at = 0; // time to auto-off (after last run stop)
+#endif
 
 // Create servo object for POGO lid
 #include <Servo.h>
@@ -1580,6 +1595,12 @@ void QATCH_loop()
         client->printf("SYS. TIME:  %u\n", getSystemTime());
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
+#if USE_TEMP_CORRECTION
+        if (DEBUG) {
+          client->printf("CORR. TEMP: %f\n", starting_ambient); // DEBUG ONLY
+          client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DEBUG ONLY
+        }
+#endif
       }
       return;
     }
@@ -1624,6 +1645,15 @@ void QATCH_loop()
           // digitalWrite(FAN_HIGH_LOW, LOW);
           //        tft_tempcontrol(); // draw "OFF" state
           tft_cooldown_start(); // change status to "cooldown" and start countdown
+#if USE_TEMP_CORRECTION
+          if (temp_correct_auto_off_at != 0)
+          {
+            if (DEBUG)
+              Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+            temp_correct_auto_off_at = 0; // off
+            starting_ambient = NAN;
+          }
+#endif
         }
 #else
         digitalWrite(TEMP_CIRCUIT, LOW); // turn off fan
@@ -1905,8 +1935,19 @@ void QATCH_loop()
       mcp9808.shutdown();
 #endif
 #if USE_MAX31855
-      if (isnan(temperature) || (millis() - last_temp > 2000))
+      if (isnan(temperature) || (millis() - last_temp > 2000)) 
+      {
         temperature = max31855.readCelsius();
+#if USE_TEMP_CORRECTION
+        // NOTE: This is always an instantaneous read, no averaging
+        // Thus, we do not need to use a temporary temperature to
+        // apply the ambient temperature correction to the reading.
+        if (!isnan(starting_ambient)) // active
+        {
+          temperature -= (ambient - starting_ambient);
+        }
+#endif
+      }
       if (max31855.getType())
         client->print("MAX6675 STATUS: ");
       else
@@ -2189,6 +2230,19 @@ void QATCH_loop()
       ledWrite(LED_WHITE_PIN, HIGH); // turn on light // TODO: make this adjustable brightness
       ledWrite(LED_SEGMENT_DP, HIGH);
       max31855.useOffsetM(true);
+#if USE_TEMP_CORRECTION
+      if (l298nhb.active())
+      {
+        if (DEBUG)
+        {
+          Serial.println("CORRECTION ON!");
+          Serial.print("Ambient: ");
+          Serial.println(ambient);
+        }
+        starting_ambient = ambient;
+        temp_correct_auto_off_at = 0; // turn on, prevent auto-off
+      }
+#endif
       return;
     }
 
@@ -2360,10 +2414,35 @@ void QATCH_loop()
         temperature = mcp9808.readTempC();
 #endif
 #if USE_MAX31855
+        float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
+#if USE_TEMP_CORRECTION
+        // check for auto-off, stop if due
+        if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
+        {
+          if (DEBUG)
+          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+          temp_correct_auto_off_at = 0; // off
+          starting_ambient = NAN;
+        }
+        if (!isnan(starting_ambient)) // active
+        {
+          if (DEBUG)
+          {
+            Serial.println("CORRECTION: ");
+            Serial.print(temp_temp);
+            Serial.println(" -> ");
+          }
+          temp_temp -= (ambient - starting_ambient);
+          if (DEBUG)
+          {
+            Serial.println(temp_temp);
+          }
+        }
+#endif
         if (isnan(temperature))
-          temperature = max31855.readCelsius();
-        else
-          temperature = (((TEMP_AVG - 1) * temperature) + max31855.readCelsius()) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
+          temperature = temp_temp;
+        else if (n != 1) // skip temperature blip at start of stream
+          temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
         ambient = max31855.readInternal(false);
         // AJR TODO 2023-09-12: Disabled for old PID controller code
         // if (l298nhb.active())
@@ -2871,10 +2950,35 @@ void QATCH_loop()
       temperature = mcp9808.readTempC();
 #endif
 #if USE_MAX31855
+      float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
+#if USE_TEMP_CORRECTION
+      // check for auto-off, stop if due
+      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
+      {
+        if (DEBUG)
+          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+        temp_correct_auto_off_at = 0; // off
+        starting_ambient = NAN;
+      }
+      if (!isnan(starting_ambient)) // active
+      {
+        if (DEBUG)
+        {
+          Serial.println("CORRECTION: ");
+          Serial.print(temp_temp);
+          Serial.println(" -> ");
+        }
+        temp_temp -= (ambient - starting_ambient);
+        if (DEBUG)
+        {
+          Serial.println(temp_temp);
+        }
+      }
+#endif
       if (isnan(temperature))
-        temperature = max31855.readCelsius();
-      else
-        temperature = (((TEMP_AVG - 1) * temperature) + max31855.readCelsius()) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
+        temperature = temp_temp;
+      else if (n != 1) // skip temperature blip at start of stream
+        temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
       ambient = max31855.readInternal(false);
       // AJR TODO 2023-09-12: Disabled for old PID controller code
       // if (l298nhb.active())
@@ -3074,10 +3178,35 @@ void QATCH_loop()
       mcp9808.shutdown();
 #endif
 #if USE_MAX31855
+      float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
+#if USE_TEMP_CORRECTION
+      // check for auto-off, stop if due
+      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
+      {
+        if (DEBUG)
+          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+        temp_correct_auto_off_at = 0; // off
+        starting_ambient = NAN;
+      }
+      if (!isnan(starting_ambient)) // active
+      {
+        if (DEBUG)
+        {
+          Serial.println("CORRECTION: ");
+          Serial.print(temp_temp);
+          Serial.println(" -> ");
+        }
+        temp_temp -= (ambient - starting_ambient);
+        if (DEBUG)
+        {
+          Serial.println(temp_temp);
+        }
+      }
+#endif
       if (isnan(temperature))
-        temperature = max31855.readCelsius();
-      else
-        temperature = (((TEMP_AVG - 1) * temperature) + max31855.readCelsius()) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
+        temperature = temp_temp;
+      else if (n != 1) // skip temperature blip at start of stream
+        temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
       ambient = max31855.readInternal(false);
       // AJR TODO 2023-09-12: Disabled for old PID controller code
       // l298nhb.setAmbient(ambient);
@@ -3097,6 +3226,27 @@ void QATCH_loop()
       // digitalWrite(FAN_HIGH_LOW, LOW);
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
+#if USE_TEMP_CORRECTION
+      if (temp_correct_auto_off_at != 0)
+      {
+        if (DEBUG)
+          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+        temp_correct_auto_off_at = 0; // off
+        starting_ambient = NAN;
+      }
+#endif
+    }
+
+    // Disable temperature PID updates when lid is opened/unlocked
+    if (updateTEC && pogo_lid_opened)
+    { // do not update OP during when POGO is unlocked
+      updateTEC = false;
+      // do not accumulate Ki integral on TEC resume
+      l298nhb.resetDeltaTime();
+      // update TFT display to inticate unlocked
+      tft_tempcontrol();
+      // indicate task completed, even though we blocked it
+      l298nhb_task_timer = millis();
     }
     // SKIP THIS: TFT_TEMPCONTROL() NOW USES HW_ERROR TO FLAG LCD ERROR MESSAGE WRITE/CLEAR
     //    else if (hw_error)
@@ -3153,6 +3303,15 @@ void QATCH_loop()
       // digitalWrite(FAN_HIGH_LOW, LOW); // low speed fan
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
+#if USE_TEMP_CORRECTION
+      if (temp_correct_auto_off_at != 0)
+      {
+        if (DEBUG)
+          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+        temp_correct_auto_off_at = 0; // off
+        starting_ambient = NAN;
+      }
+#endif
     }
   }
   else if (l298nhb_auto_off_at != 0) // in cool-down mode
@@ -3211,11 +3370,13 @@ void QATCH_loop()
       msgbox_icon = 3; // info
       sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
       sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
-      tft_idle();
+      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
+        tft_idle();
     }
     if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
       tft_msgbox = false; // hide unlocked message
-      tft_idle();
+      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
+        tft_idle();
     }
   }
 }
@@ -3530,6 +3691,21 @@ void stopStreaming(void)
   last_temp = 0; // require temp on next sweep data
   n = 0;
   max31855.useOffsetM(false);
+#if USE_TEMP_CORRECTION
+  if (l298nhb.active() && !isnan(starting_ambient))
+  {
+    temp_correct_auto_off_at = millis() + TEMP_CORRECT_COOLDOWN; // calculate time to reset
+    // special case in event of rollover in prior line math
+    if (temp_correct_auto_off_at == 0) 
+    {
+      temp_correct_auto_off_at = 1;
+    }
+    if (DEBUG) 
+    {
+      Serial.printf("CORRECTION off @ t = %u\n", temp_correct_auto_off_at);
+    }
+  }
+#endif
 }
 
 /// @note removed instances of this being called, it's deprecated
@@ -4537,6 +4713,40 @@ void tft_cooldown()
   // }
   // }
 
+  if (tft_msgbox) {
+    if (tft_msgbox && msgbox_icon == 2) // pass
+      tft.setTextColor(ILI9341_GREEN);
+    else if (tft_msgbox && msgbox_icon == 3) // info
+      tft.setTextColor(QATCH_BLUE_FG);
+    else
+      tft.setTextColor(ILI9341_RED);
+
+    tft.setFont(Poppins_16_Bold);
+
+    String line1 = String(msgbox_title);
+    char buff1[line1.length() + 1]; // trailing NULL
+    line1.toCharArray(buff1, sizeof(buff1));
+
+    int msg_pad = 10;
+    int msg_w = tft.measureTextWidth(buff1);
+    //  msg_h = tft.measureTextHeight(buff1);
+    int msg_x = (TFT_WIDTH - msg_w) / 2;
+    int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+    tft.setCursor(msg_x, msg_y);
+    tft.print(line1);
+
+    // restore font and color to original values:
+    tft.setFont(Poppins_12_Bold);
+    tft.setTextColor(ILI9341_BLACK);
+  }
+  else
+  {
+    // No concerns about overwriting, and no need to blink when in cooldown
+
+    // clear out MSGBOX area at top (without requiring a full redraw)
+    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  }
+
   if (L298NHB_COOLDOWN / 1000 >= 100)
   {
     tft_progress_show(100 - (float)(100.0 * 1000.0 * last_pct / L298NHB_COOLDOWN));
@@ -4897,7 +5107,7 @@ void tft_tempcontrol()
     msgbox_visible = false;
 
     // clear out MSGBOX area at top (without requiring a full redraw)
-    tft.fillRect(0, 0, TFT_WIDTH, 42, ILI9341_BLACK); 
+    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
   }
 
   short pct;
