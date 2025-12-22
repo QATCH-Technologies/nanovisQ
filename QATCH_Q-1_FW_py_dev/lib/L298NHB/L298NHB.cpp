@@ -26,7 +26,7 @@ L298NHB::L298NHB(int8_t M1, int8_t E1, int8_t M2, int8_t E2, bool initM, byte in
   e2 = E2;
   signal = m0;
   power = e0;
-  target = -1.0;  // not set yet, will be cached across Temp Control sessions
+  target = NAN;  // not set yet, will be cached across Temp Control sessions
   ambient = 25.0;
   invert = false;
 

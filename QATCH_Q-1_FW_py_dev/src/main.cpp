@@ -1595,8 +1595,12 @@ void QATCH_loop()
         client->printf("SYS. TIME:  %u\n", getSystemTime());
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
-        //client->printf("CORR. TEMP: %f\n", starting_ambient); // DO NOT COMMIT (TESTING ONLY)
-        //client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DO NOT COMMIT (TESTING ONLY)
+#if USE_TEMP_CORRECTION
+        if (DEBUG) {
+          client->printf("CORR. TEMP: %f\n", starting_ambient); // DEBUG ONLY
+          client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DEBUG ONLY
+        }
+#endif
       }
       return;
     }
@@ -1641,7 +1645,7 @@ void QATCH_loop()
           // digitalWrite(FAN_HIGH_LOW, LOW);
           //        tft_tempcontrol(); // draw "OFF" state
           tft_cooldown_start(); // change status to "cooldown" and start countdown
-
+#if USE_TEMP_CORRECTION
           if (temp_correct_auto_off_at != 0)
           {
             if (DEBUG)
@@ -1649,6 +1653,7 @@ void QATCH_loop()
             temp_correct_auto_off_at = 0; // off
             starting_ambient = NAN;
           }
+#endif
         }
 #else
         digitalWrite(TEMP_CIRCUIT, LOW); // turn off fan
@@ -3221,7 +3226,7 @@ void QATCH_loop()
       // digitalWrite(FAN_HIGH_LOW, LOW);
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
-
+#if USE_TEMP_CORRECTION
       if (temp_correct_auto_off_at != 0)
       {
         if (DEBUG)
@@ -3229,13 +3234,14 @@ void QATCH_loop()
         temp_correct_auto_off_at = 0; // off
         starting_ambient = NAN;
       }
+#endif
     }
 
     // Disable temperature PID updates when lid is opened/unlocked
     if (updateTEC && pogo_lid_opened)
     { // do not update OP during when POGO is unlocked
       updateTEC = false;
-      // do not accumulate Kd integral on TEC resume
+      // do not accumulate Ki integral on TEC resume
       l298nhb.resetDeltaTime();
       // update TFT display to inticate unlocked
       tft_tempcontrol();
@@ -3297,7 +3303,7 @@ void QATCH_loop()
       // digitalWrite(FAN_HIGH_LOW, LOW); // low speed fan
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
-
+#if USE_TEMP_CORRECTION
       if (temp_correct_auto_off_at != 0)
       {
         if (DEBUG)
@@ -3305,6 +3311,7 @@ void QATCH_loop()
         temp_correct_auto_off_at = 0; // off
         starting_ambient = NAN;
       }
+#endif
     }
   }
   else if (l298nhb_auto_off_at != 0) // in cool-down mode
