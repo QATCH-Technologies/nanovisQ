@@ -1672,13 +1672,20 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def show(self):
         super(QueryRunInfo, self).show()
+        min_width = 500
+        if not hasattr(self, 'parent') or not hasattr(self.parent, 'AnalyzeProc'):
+            # Fallback to default positioning if parent window not available
+            self.resize(min_width, self.height())
+            return
         winAnalyze = self.parent.AnalyzeProc
+        if not hasattr(winAnalyze, 'tBtn_Info') or not hasattr(winAnalyze, 'tool_Cancel'):
+            self.resize(min_width, self.height())
+            return
         btnInfo = winAnalyze.tBtn_Info
         btnClose = winAnalyze.tool_Cancel
         globalPos_Window = winAnalyze.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Info = btnInfo.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Close = btnClose.mapToGlobal(QtCore.QPoint(0, 0))
-        min_width = 500
         width = max(min_width, globalPos_Close.x() - 
                     globalPos_Info.x() - btnInfo.width() - 20)
         if width == min_width:
