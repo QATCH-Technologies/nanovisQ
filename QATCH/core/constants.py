@@ -41,8 +41,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b67"
-    app_date = "2025-12-22"
+    app_version = "v2.6b68"
+    app_date = "2026-01-04"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -52,9 +52,19 @@ class Constants:
     ########################
     # RECOMMENDED firmware #
     ########################
-    best_fw_version = "v2.6b67"
+    best_fw_version = "v2.6b68"
     # best_fw_version = app_version # may specify an exact version if needed
     do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
+
+    #################
+    # FEATURE FLAGS #
+    #################
+    show_visQ_in_R_builds = False  # set to False to hide VisQ.AI mode in Release builds
+
+    if 'r' not in app_version:
+        show_visQ_in_R_builds = True  # always show in non-Release builds
+    else:
+        print("Hiding VisQ.AI mode in Release builds.")
 
     ###########################
     # FREQ HOPPING parameters #

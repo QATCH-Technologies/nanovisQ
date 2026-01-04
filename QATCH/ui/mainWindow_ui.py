@@ -209,7 +209,8 @@ class Ui_Main(object):
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
-        modelayout.addWidget(self.mode_learn)
+        if Constants.show_visQ_in_R_builds:
+            modelayout.addWidget(self.mode_learn)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()

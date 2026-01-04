@@ -28,7 +28,7 @@ class ListUtils:
         ingredients = ing_ctrl.get_all_ingredients()
 
         for i in ingredients:
-            if i.name.casefold() == "none":
+            if i is None or i.name.casefold() == "none":
                 continue  # skip "none"
             if i.type == "Protein" and i.is_user:
                 proteins.append(i.name)  # only show user proteins, hide core
