@@ -63,8 +63,6 @@ class Constants:
 
     if 'r' not in app_version:
         show_visQ_in_R_builds = True  # always show in non-Release builds
-    else:
-        print("Hiding VisQ.AI mode in Release builds.")
 
     ###########################
     # FREQ HOPPING parameters #
