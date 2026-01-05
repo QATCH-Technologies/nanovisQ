@@ -611,8 +611,7 @@ void nv_init()
   if (nv.isValid())
   {
     // detect hw revision (if unknown)
-    // TODO: Only for next build, re-detect HW revision if Rev.2
-    if (HW_REV_MATCH(HW_REVISION_X) || HW_REV_MATCH(HW_REVISION_2))
+    if (HW_REV_MATCH(HW_REVISION_X))
     {
       Serial.println("Detecting HW Revision...");
       if (detect_hw_revision()) // hw revision found
@@ -670,19 +669,17 @@ bool detect_hw_revision(void)
       if (HW_REVs[i] == HW_REVISION_2)
       {
         // Finally, check for HW existence of POGO button for cartridge (un)lock only with HW Rev. 2
-        //   If it exists: 
-        //     - LED will pull down POGO_BTN_LED_PIN when it is an input with pullup
+        //   If at least one servo exists: 
+        //     - Servo will pull down POGO_SERVO_[x]_PIN when it is an input with pulldown
         //     - HW Rev. will be set to 3 (regardless of prior Rev value)
-        //   Otherwise, when POGO button is missing:
-        //     - Use the HW_REV set as the detected HW revision
+        //   Otherwise, when POGO servo is missing:
+        //     - Use the existing HW_REV set as the detected HW revision.
         bool servo_present = false;
         pinMode(POGO_SERVO_1_PIN, INPUT_PULLDOWN);
         pinMode(POGO_SERVO_2_PIN, INPUT_PULLDOWN);
-        // delay(1000);
-        // pin HIGH indicates SERVO is present
-        if (digitalRead(POGO_SERVO_1_PIN))
+        if (digitalRead(POGO_SERVO_1_PIN)) // pin HIGH indicates SERVO_1 is present
           servo_present = true;
-        if (digitalRead(POGO_SERVO_2_PIN))
+        if (digitalRead(POGO_SERVO_2_PIN)) // pin HIGH indicates SERVO_2 is present
           servo_present = true;
         if (servo_present)
           HW_REVs[i] = HW_REVISION_3; // upgrade Rev. 2 to Rev. 3 when servo is present
