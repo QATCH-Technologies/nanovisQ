@@ -409,7 +409,7 @@ class Ui_Main(object):
                 return True
             # return # do not return when 'obj != None' to allow mode button styles to be set on 'setupUi()'' call
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
             self.parent.ControlsWin.ui_preferences.hide()
@@ -444,14 +444,14 @@ class Ui_Main(object):
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...",
+            PopUp.warning(self.parent, "Learning In-Progress...",
                           "Mode change is not allowed while learning.")
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
         if (self.splitter.widget(0) == self.userview or
            (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
@@ -509,14 +509,14 @@ class Ui_Main(object):
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...",
+            PopUp.warning(self.parent, "Learning In-Progress...",
                           "Mode change is not allowed while learning.")
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
         if (self.splitter.widget(0) == self.userview or
            (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
@@ -565,10 +565,10 @@ class Ui_Main(object):
                 return True
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(self.parent, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
         if (self.splitter.widget(0) == self.userview or
            (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
@@ -1858,7 +1858,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             well_height = 4
         num_channels = self.cBox_MultiMode.currentIndex() + 1  # user define device count
         if num_ports not in [well_width, well_height] and num_ports != 1:
-            PopUp.warning(self, "Plate Configuration",
+            PopUp.warning(self.parent, "Plate Configuration",
                           f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
                           f"You must have exactly 4 device ports connected for this mode.<br/>" +
                           f"Currently connected device port count is: {num_ports} (not 4)")
