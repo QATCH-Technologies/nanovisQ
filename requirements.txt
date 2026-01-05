@@ -148,6 +148,7 @@ numpy==2.0.2
     #   pyqtgraph
     #   scikit-learn
     #   scipy
+    #   shapely
     #   simdkalman
     #   tensorboard
     #   tensorflow
@@ -255,6 +256,8 @@ scipy==1.16.2
     #   tsmoothie
     #   xgboost
 send2trash==1.8.3
+    # via -r requirements.in
+shapely==2.1.2
     # via -r requirements.in
 simdkalman==1.0.4
     # via tsmoothie
