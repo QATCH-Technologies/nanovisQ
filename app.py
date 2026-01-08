@@ -1,15 +1,18 @@
-from multiprocessing import freeze_support
-import sys
-import os  # add
-import time
 import ctypes
-from PyQt5 import QtGui, QtCore
+import os  # add
+import sys
+import time
+from multiprocessing import freeze_support
+
+from PyQt5 import QtCore, QtGui
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import QApplication
+
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.arguments import Arguments
 from QATCH.common.logger import Logger as Log
-from QATCH.core.constants import MinimalPython, Constants
+from QATCH.core.constants import Constants, MinimalPython
+
 # from QATCH.ui import mainWindow # lazy load
 
 try:

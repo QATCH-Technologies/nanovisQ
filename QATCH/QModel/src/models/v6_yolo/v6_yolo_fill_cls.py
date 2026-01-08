@@ -1,37 +1,6 @@
 import os
 
 import cv2
-import pandas as pd
-from ultralytics import YOLO
-
-try:
-    from QATCH.common.logger import Logger as Log
-    from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import (
-        QModelV6YOLO_DataProcessor,
-    )
-except (ImportError, ModuleNotFoundError):
-
-    class Log:
-        @staticmethod
-        def d(tag: str = "", message: str = ""):
-            print(f"{tag} [DEBUG] {message}")
-
-        @staticmethod
-        def i(tag: str = "", message: str = ""):
-            print(f"{tag} [INFO] {message}")
-
-        @staticmethod
-        def w(tag: str = "", message: str = ""):
-            print(f"{tag} [WARNING] {message}")
-
-        @staticmethod
-        def e(tag: str = "", message: str = ""):
-            print(f"{tag} [ERROR] {message}")
-
-
-import os
-
-import cv2
 import numpy as np
 import pandas as pd
 from ultralytics import YOLO
@@ -74,7 +43,7 @@ class QModelV6YOLO_FillClassifier:
     Determines which detector (if any) should be run.
     """
 
-    TAG = "QModelV6YOLO_FillClassifier"
+    TAG = "[QModelV6YOLO_FillClassifier]"
 
     # --- Configuration ---
     INFERENCE_W = 224

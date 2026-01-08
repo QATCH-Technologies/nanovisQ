@@ -6,7 +6,7 @@ from scipy.signal import medfilt
 
 class QModelV6YOLO_DataProcessor:
 
-    TAG = "QModelV6YOLO_DataProcessor"
+    TAG = "[QModelV6YOLO_DataProcessor]"
 
     # --- Configuration / Constants ---
     # Column Names

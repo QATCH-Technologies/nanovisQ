@@ -1,36 +1,43 @@
-import pyzipper
-import hashlib
-import threading
-import sys
-import pyqtgraph as pg
 import datetime as dt
-from time import strftime, localtime, sleep
-from xml.dom import minidom
-from numpy import loadtxt
-from scipy import interpolate
-import numpy as np
-import pandas as pd
-from io import BytesIO
-from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QCompleter
-from PyQt5.QtCore import Qt
-from typing import Optional
-from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
-from QATCH.common.architecture import Architecture
-from QATCH.common.fileStorage import FileStorage, secure_open
-from QATCH.common.fileManager import FileManager
-from QATCH.common.logger import Logger as Log
-from QATCH.common.userProfiles import UserProfiles, UserRoles
-from QATCH.core.constants import Constants
-from QATCH.ui.popUp import PopUp
-from QATCH.ui.runInfo import QueryRunInfo
-from QATCH.processors.CurveOptimizer import DifferenceFactorOptimizer, DropEffectCorrection
-from QATCH.models.ModelData import ModelData
+import hashlib
 
 # from QATCH.QModel.QModel import QModelPredict
 # import joblib
 # from QATCH.QModel.q_data_pipeline import QDataPipeline
 import os
+import sys
+import threading
+from io import BytesIO
+from time import localtime, sleep, strftime
+from typing import Optional
+from xml.dom import minidom
+
+import numpy as np
+import pandas as pd
+import pyqtgraph as pg
+import pyzipper
+from numpy import loadtxt
+from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QCompleter
+from scipy import interpolate
+
+from QATCH.common.architecture import Architecture
+from QATCH.common.fileManager import FileManager
+from QATCH.common.fileStorage import FileStorage, secure_open
+from QATCH.common.logger import Logger as Log
+from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.core.constants import Constants
+from QATCH.models.ModelData import ModelData
+from QATCH.processors.CurveOptimizer import (
+    DifferenceFactorOptimizer,
+    DropEffectCorrection,
+)
+from QATCH.QModel.src.models.static_v4_fusion.v4_fusion import QModelV4Fusion
+from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6YOLO
+from QATCH.ui.popUp import PopUp
+from QATCH.ui.runInfo import QueryRunInfo
+
 # from scipy.interpolate import UnivariateSpline # unused
 # from scipy.optimize import curve_fit # lazy load
 # from scipy.signal import argrelextrema # lazy load
@@ -49,8 +56,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressValue = QtCore.pyqtSignal(int)
     progressFormat = QtCore.pyqtSignal(str)
     progressUpdate = QtCore.pyqtSignal()
-    predict_progress = QtCore.pyqtSignal(int, str)
-
+    v4_predict_progress = QtCore.pyqtSignal(int, str)
+    v6_predict_progress = QtCore.pyqtSignal(int, str)
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
@@ -385,6 +392,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
+
+        # QModel V6 (YOLO) Constants
+        self.QModel_v6_modules_loaded = False
+        self.QModel_v6_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         USE_FULLSCREEN = screen.width() == 2880
         pct_width = 75
@@ -922,7 +933,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         self.cBox_Models = QtWidgets.QComboBox()
         self.cBox_Models.addItems(Constants.list_predict_models)
-        if Constants.QModel4_predict:
+        if Constants.QModel6_predict:
+            self.cBox_Models.setCurrentIndex(2)
+        elif Constants.QModel4_predict:
             self.cBox_Models.setCurrentIndex(1)
         elif Constants.ModelData_predict:
             self.cBox_Models.setCurrentIndex(0)
@@ -1242,7 +1255,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
             lambda value: self.progressBar.setFormat(value))
         self.progressUpdate.connect(self.progressBar.repaint)
         self.progressUpdate.connect(QtCore.QCoreApplication.processEvents)
-        self.predict_progress.connect(self._QModel_v4_progress_update)
+        self.v4_predict_progress.connect(self._QModel_v4_progress_update)
+        self.v6_predict_progress.connect(self._QModel_v6_progress_update)
 
     def _validate_run(self):
         """
@@ -1786,6 +1800,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # these flags are set above `index` as a fallback option
             Constants.ModelData_predict = True if index >= 0 else False
             Constants.QModel4_predict = True if index >= 1 else False
+            Constants.QModel6_predict = True if index >= 2 else False
         except:
             Log.e(TAG, "Failed to set new prediction model flags in Constants.py")
         try:
@@ -2722,6 +2737,28 @@ class AnalyzeProcess(QtWidgets.QWidget):
             Log.e("ERROR:", e)
             Log.e("Failed to load 'QModel v4 (Fusion)' modules at load of run.")
 
+        # ---------- LOADING QMODEL V6 (YOLO11) -----------#
+        try:
+            if Constants.QModel6_predict and not self.QModel_v6_modules_loaded:
+                v6_base_path = os.path.join(
+                    Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
+                )
+                model_assets = {
+                    "fill_classifier": os.path.join(v6_base_path, "type_cls", "weights","best.pt"),
+                    "detectors": {
+                        0: os.path.join(v6_base_path, "init_fill", "weights", "best.pt"),
+                        1: os.path.join(v6_base_path, "ch1_detector", "weights","best.pt"),
+                        2: os.path.join(v6_base_path, "ch2_detector", "weights","best.pt"),
+                        3: os.path.join(v6_base_path, "ch3_detector", "weights","best.pt"),
+                    }
+                }
+                self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
+                self.QModel_v6_modules_loaded = True
+                Log.i(TAG, "'QModel v6 (YOLO11)' Modules loaded successfully.")
+        except Exception as e:
+            Log.e("ERROR:", e)
+            Log.e("Failed to load 'QModel v6 (YOLO11)' modules at load of run.")
+
         enabled, error, expires = UserProfiles.checkDevMode()
         if enabled == False and (error == True or expires != ""):
             PopUp.warning(
@@ -2943,6 +2980,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.progressBarDiag.setLabelText(status)
         QtCore.QCoreApplication.processEvents()
 
+    def _QModel_v6_progress_update(self, pct: int, status: Optional[str]):
+        self.progressBarDiag.setValue(pct)
+        if status and len(status):
+            self.progressBarDiag.setLabelText(status)
+        QtCore.QCoreApplication.processEvents()
+
     def _restore_qmodel_predictions(self):
         try:
             if self.model_engine == "None":
@@ -2998,8 +3041,49 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_result = -1
             self.model_candidates = None
             self.model_engine = "None"
+            if Constants.QModel6_predict:
+                Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                QtCore.QCoreApplication.processEvents()
+                try:
+                    with secure_open(self.loaded_datapath, "r", "capture") as f:
+                        fh = BytesIO(f.read())
+                        predictor = self.QModel_v6_predictor
+                        self.progressBarDiag.setRange(0, 100)
+                        predict_result, detected_channels = predictor.predict(
+                            file_buffer=fh,
+                            visualize=False,
+                            progress_signal=self.v6_predict_progress
+                        )
+                        Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
+                        predictions = []
+                        candidates = []
+                        for i in range(6):
+                            poi_key = f"POI{i+1}"
+                            data = predict_result.get(poi_key, {})
+                            indices = data.get("indices", [-1])
+                            confidences = data.get("confidences", [-1])
+                            if not indices: indices = [-1]
+                            if not confidences: confidences = [-1]
+                            predictions.append(indices[0])
+                            candidates.append((indices, confidences))
+                        self.model_run_this_load = True
+                        self.model_result = predictions
+                        self.model_candidates = candidates
+                        self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                        if (isinstance(self.model_result, list) and len(self.model_result) == 6):
+                            if self.model_result[2] == -1 and self.model_result[1] != -1:
+                                self.model_result[2] = self.model_result[1] + 2
+                        else:
+                            self.model_result = -1  # Invalid result format
 
-            if Constants.QModel4_predict:
+                except Exception as e:
+                    import traceback
+                    Log.e(TAG, f"Error using 'QModel v6 (YOLO)': {e}")
+                    for line in traceback.format_tb(sys.exc_info()[2]):
+                        Log.d(line.strip())
+                    self.model_result = -1  # Trigger fallback handling
+                    # raise e 
+            if self.model_result == -1 and Constants.QModel4_predict:
                 Log.w(
                     "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
@@ -3009,7 +3093,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         predictor = self.QModel_v4_predictor
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
-                            file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
+                            file_buffer=fh, visualize=False, progress_signal=self.v4_predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3115,18 +3199,24 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     for line in a_list:
                         Log.e(line)
 
-            # move markers to restore predicted points (if re-ran)
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                Log.i(
-                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
+                poi_vals = self.model_result 
+                Log.i(f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
                 for i, pm in enumerate(self.poi_markers):
-                    pm.setValue(self.xs[poi_vals[i]])
+                    idx = int(poi_vals[i])
+
+                    if idx < 0:
+                        continue 
+
+                    if idx >= len(self.xs):
+                        Log.w(f"[Auto-Fit] Clamped POI{i+1} index {idx} to {len(self.xs)-1}")
+                        idx = len(self.xs) - 1
+                    pm.setValue(self.xs[idx])
+
                 self._log_model_confidences()
                 self.detect_change()
             else:
-                Log.w(
-                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
-
+                Log.w("[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
         except ConnectionRefusedError:
             Log.d("Attempt to auto-fit with no run loaded. No action taken.")
 
@@ -3255,7 +3345,52 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel4_predict:
+                if Constants.QModel6_predict:
+                    Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                    QtCore.QCoreApplication.processEvents()
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read()) 
+                            predictor = self.QModel_v6_predictor
+                            self.progressBarDiag.setRange(0, 100)
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh, 
+                                visualize=False, 
+                                progress_signal=self.v6_predict_progress
+                            )
+                            Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
+
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                data = predict_result.get(poi_key, {})
+                                indices = data.get("indices", [-1])
+                                confidences = data.get("confidences", [-1])
+                                if not indices: indices = [-1]
+                                if not confidences: confidences = [-1]
+                                predictions.append(indices[0])
+                                candidates.append((indices, confidences))
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                            if (isinstance(self.model_result, list) and len(self.model_result) == 6):
+                                if self.model_result[2] == -1 and self.model_result[1] != -1:
+                                    self.model_result[2] = self.model_result[1] + 2
+                            else:
+                                self.model_result = -1  # Invalid result format
+
+                    except Exception as e:
+                        # --- ERROR HANDLING ---
+                        import traceback
+                        Log.e(TAG, f"Error using 'QModel v6 (YOLO)': {e}")
+                        # Print full stack trace to debug log
+                        for line in traceback.format_tb(sys.exc_info()[2]):
+                            Log.d(line.strip())
+                        self.model_result = -1  # Trigger fallback handling
+                        # raise e # Uncomment for strict debugging
+                if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w(
                         "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
@@ -3264,7 +3399,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
+                                file_buffer=fh, visualize=False, progress_signal=self.v4_predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
@@ -4403,8 +4538,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             - The method is resilient to partially malformed data (attempts to recover missing derived arrays) but requires at least ~3 seconds of runtime to perform full analysis.
         """
         # lazy load scipy modules
-        from scipy.signal import argrelextrema
-        from scipy.signal import savgol_filter
+        from scipy.signal import argrelextrema, savgol_filter
 
         self.stateStep = -1
         self.loaded_datapath = data_path
@@ -4539,10 +4673,69 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_result = -1
                 self.model_candidates = None
                 self.model_engine = "None"
-                if Constants.QModel4_predict and self.prior_points_in_xml:
-                    # skip running QModel v4 if prior points are available (it's too slow)
+                if Constants.QModel6_predict and self.prior_points_in_xml:
                     self.model_result = poi_vals
-                    self.model_engine = "QModel v4 (Fusion) skipped (using prior points)"
+                    self.model_engine = "QModel v6 (YOLO) skipped (using prior points)"
+
+                if self.model_result == -1 and Constants.QModel6_predict:
+                    Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                    self._text1.setHtml(
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO)... </span>"
+                    )
+                    self.graphWidget.addItem(self._text2, ignoreBounds=True)
+                    QtCore.QCoreApplication.processEvents()
+
+                    try:
+                        with secure_open(self.loaded_datapath, "r", "capture") as f:
+                            fh = BytesIO(f.read())
+                            predictor = self.QModel_v6_predictor
+                            self.progressBarDiag.setRange(0, 100)
+                            predict_result, detected_channels = predictor.predict(
+                                file_buffer=fh,
+                                visualize=False,
+                                progress_signal=self.v6_predict_progress
+                            )
+
+                            predictions = []
+                            candidates = []
+                            for i in range(6):
+                                poi_key = f"POI{i+1}"
+                                data = predict_result.get(poi_key, {})
+                                poi_indices = data.get("indices", [-1])
+                                poi_confidences = data.get("confidences", [-1])
+                                if not poi_indices: poi_indices = [-1]
+                                if not poi_confidences: poi_confidences = [-1]
+                                best_pair = (poi_indices[0], poi_confidences[0])
+                                predictions.append(best_pair[0])
+                                candidates.append(candidates_tuple := (poi_indices, poi_confidences))
+                            self.model_run_this_load = True
+                            self.model_result = predictions
+                            self.model_candidates = candidates
+                            self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                            if (isinstance(self.model_result, list) and len(self.model_result) == 6):
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    poi_vals[2] = poi_vals[1] + 2
+                            else:
+                                self.model_result = -1 
+
+                    except Exception as e:
+                        limit = None
+                        t, v, tb = sys.exc_info()
+                        from traceback import format_tb
+                        a_list = ["Traceback (most recent call last):"]
+                        a_list = a_list + format_tb(tb, limit)
+                        a_list.append(f"{t.__name__}: {str(v)}")
+                        for line in a_list:
+                            Log.d(line)
+                        Log.e(e)
+                        Log.e(TAG, "Error using 'QModel v6 (YOLO)'... Using a fallback model for auto-fitting.")
+                        # raise e  # debug only
+                        self.model_result = -1  # try fallback model
+                # if Constants.QModel4_predict and self.prior_points_in_xml:
+                #     # skip running QModel v4 if prior points are available (it's too slow)
+                #     self.model_result = poi_vals
+                #     self.model_engine = "QModel v4 (Fusion) skipped (using prior points)"
                 if self.model_result == -1 and Constants.QModel4_predict:
                     Log.w(
                         "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
@@ -4556,7 +4749,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
-                                file_buffer=fh, visualize=False, progress_signal=self.predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
+                                file_buffer=fh, visualize=False, progress_signal=self.v4_predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
 
                             predictions = []
                             candidates = []
@@ -5448,15 +5641,16 @@ class AnalyzerWorker(QtCore.QObject):
             self.update(status_label)
 
             # lazy load required modules
-            from scipy.optimize import curve_fit
-            from scipy.signal import argrelextrema
-            from scipy.signal import savgol_filter
             import matplotlib.backends.backend_pdf
+            import matplotlib.pyplot as plt
             from matplotlib.backends.backend_qt5agg import (
                 FigureCanvasQTAgg,
+            )
+            from matplotlib.backends.backend_qt5agg import (
                 NavigationToolbar2QT as NavigationToolbar,
             )
-            import matplotlib.pyplot as plt
+            from scipy.optimize import curve_fit
+            from scipy.signal import argrelextrema, savgol_filter
 
             matplotlib.use("Qt5Agg")
 
