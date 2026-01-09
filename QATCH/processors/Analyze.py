@@ -2746,10 +2746,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 model_assets = {
                     "fill_classifier": os.path.join(v6_base_path, "type_cls", "weights","best.pt"),
                     "detectors": {
-                        0: os.path.join(v6_base_path, "init_fill", "weights", "best.pt"),
-                        1: os.path.join(v6_base_path, "ch1_detector", "weights","best.pt"),
-                        2: os.path.join(v6_base_path, "ch2_detector", "weights","best.pt"),
-                        3: os.path.join(v6_base_path, "ch3_detector", "weights","best.pt"),
+                        "init": os.path.join(v6_base_path, "init_detector", "weights", "best.pt"),
+                        "ch1": os.path.join(v6_base_path, "ch1_detector", "weights","best.pt"),
+                        "ch2": os.path.join(v6_base_path, "ch2_detector", "weights","best.pt"),
+                        "ch3": os.path.join(v6_base_path, "ch3_detector", "weights","best.pt"),
                     }
                 }
                 self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
@@ -3051,7 +3051,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.progressBarDiag.setRange(0, 100)
                         predict_result, detected_channels = predictor.predict(
                             file_buffer=fh,
-                            visualize=False,
                             progress_signal=self.v6_predict_progress
                         )
                         Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
@@ -3355,7 +3354,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh, 
-                                visualize=False, 
                                 progress_signal=self.v6_predict_progress
                             )
                             Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
@@ -4692,7 +4690,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh,
-                                visualize=False,
                                 progress_signal=self.v6_predict_progress
                             )
 
@@ -5423,9 +5420,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 Log.d(
                     f"Model Result = {self.model_engine}: {self.model_result}")
                 self.stateStep = 6  # show summary
-                # print confidences to console for user review
                 self._log_model_confidences()
-                # POIs changed by AI prediction, mark as audit required
                 self.detect_change()
             else:
                 Log.e(

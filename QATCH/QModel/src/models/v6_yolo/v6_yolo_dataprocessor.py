@@ -1,3 +1,25 @@
+# module: QModelV6Dataprocessor.py
+"""
+This module provides the data preprocessing and visualization logic required for the
+QModel V6 YOLO pipeline. It handles the transformation of raw sensor CSV data into
+interpolated time-series data, computes derived features (like the Difference curve),
+and renders the signals into multi-channel images suitable for YOLO object detection
+and classification.
+
+Dependencies:
+- opencv-python (cv2)
+- pandas, numpy, matplotlib
+- scipy.signal (medfilt)
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+Date:
+    2026-01-09
+
+Version:
+    6.0.1
+"""
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -5,10 +27,31 @@ from scipy.signal import medfilt
 
 
 class QModelV6YOLO_DataProcessor:
+    """
+    A utility class for preprocessing sensor data and generating image inputs for YOLO.
+
+    This class handles the end-to-end data pipeline from raw CSV to model input:
+    1. Cleaning and interpolating raw sensor data.
+    2. Computing the 'Difference' curve based on Dissipation and Frequency.
+    3. Applying median filtering to smooth signal noise.
+    4. Rendering time-series data into stacked RGB images for classification
+       or detection tasks.
+
+    Attributes:
+        TAG (str): Log tag for the class.
+        COL_TIME (str): Column name for relative time.
+        COL_DISS (str): Column name for dissipation.
+        COL_FREQ (str): Column name for resonance frequency.
+        COL_DIFF (str): Column name for the calculated difference curve.
+        TIME_STEP (float): The time interval for interpolation grid (seconds).
+        MEDIAN_KERNEL (int): Kernel size for median filtering.
+        DIFF_FACTOR (float): Scaling factor for the difference calculation.
+        BASELINE_START_TIME (float): Start time for baseline averaging (seconds).
+        BASELINE_END_TIME (float): End time for baseline averaging (seconds).
+        IMG_CHANNELS (int): Number of image channels (3 for RGB/BGR).
+    """
 
     TAG = "[QModelV6YOLO_DataProcessor]"
-
-    # --- Configuration / Constants ---
     # Column Names
     COL_TIME = "Relative_time"
     COL_DISS = "Dissipation"
@@ -46,6 +89,23 @@ class QModelV6YOLO_DataProcessor:
 
     @classmethod
     def preprocess_dataframe(cls, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Cleans, interpolates, and enriches the raw sensor dataframe.
+
+        Performs the following steps:
+        1. Drops unnecessary columns (Ambient, Temperature, etc.).
+        2. Reindexes the dataframe to a fixed time grid defined by `TIME_STEP`.
+        3. Interpolates missing values.
+        4. Computes and appends the 'Difference' curve.
+        5. Applies a median filter to smooth numeric columns.
+
+        Args:
+            df (pd.DataFrame): The raw input dataframe containing sensor data.
+
+        Returns:
+            pd.DataFrame: The processed dataframe with interpolated time and
+            smoothed signals, or None if the required time column is missing.
+        """
         cols_to_drop = [c for c in cls.DROP_COLS if c in df.columns]
         df.drop(columns=cols_to_drop, inplace=True)
         if cls.COL_TIME not in df.columns:
@@ -67,6 +127,20 @@ class QModelV6YOLO_DataProcessor:
 
     @classmethod
     def _compute_difference_curve(cls, df: pd.DataFrame) -> pd.Series:
+        """
+        Computes the 'Difference' signal derived from Dissipation and Resonance Frequency.
+
+        The calculation uses a baseline window (defined by `BASELINE_START_TIME` and
+        `BASELINE_END_TIME`) to normalize the signals before computing the difference.
+
+        Args:
+            df (pd.DataFrame): The dataframe containing `Dissipation`,
+                `Resonance_Frequency`, and `Relative_time`.
+
+        Returns:
+            pd.Series: A pandas Series containing the computed difference values,
+            or None if required columns are missing or data is insufficient.
+        """
         required = [cls.COL_FREQ, cls.COL_DISS, cls.COL_TIME]
         if not all(col in df.columns for col in required):
             return None
@@ -96,13 +170,27 @@ class QModelV6YOLO_DataProcessor:
         cls, values, img_w, strip_h, strip_idx, scaling_limits=None, col_name=None
     ):
         """
-        Shared Math: Normalizes data values into pixel coordinates (x, y).
-        Returns an array of points (N, 2) suitable for cv2 functions.
+        Normalizes signal values and converts them to pixel coordinates.
+
+        This helper method maps a 1D array of signal values to (x, y) coordinates
+        suitable for drawing on an image strip.
+
+        Args:
+            values (np.array): The signal values to plot.
+            img_w (int): The width of the target image in pixels.
+            strip_h (int): The height of a single signal strip in pixels.
+            strip_idx (int): The index of the strip (0, 1, or 2) to calculate vertical offset.
+            scaling_limits (dict, optional): A dictionary of {col_name: (min, max)} for
+                fixed scaling. Defaults to None (auto-scaling based on data min/max).
+            col_name (str, optional): The name of the column being plotted, used for
+                looking up scaling limits.
+
+        Returns:
+            np.ndarray: An (N, 2) array of integer coordinates (x, y), or None if
+            values are insufficient.
         """
         if len(values) < 2:
             return None
-
-        # Determine limits
         v_min, v_max = np.nanmin(values), np.nanmax(values)
 
         if scaling_limits and col_name and col_name in scaling_limits:
@@ -111,25 +199,15 @@ class QModelV6YOLO_DataProcessor:
         diff = v_max - v_min
         if diff == 0:
             diff = cls.EPSILON
-            # Slight buffer if flatline to avoid div/0 issues
             v_min -= cls.EPSILON
 
-        # Normalize 0..1
         norm = (values - v_min) / diff
         norm = np.clip(norm, 0, 1)
-
-        # Map to X coordinates
         x_points = np.linspace(0, img_w - 1, len(values)).astype(np.int32)
-
-        # Map to Y coordinates (Inverted for image coordinates: 0 is top)
-        # Apply padding to keep line fully inside strip
         draw_h = strip_h - (2 * cls.PADDING)
         y_rel = (strip_h - cls.PADDING) - (norm * draw_h)
-
-        # Apply Strip Offset
         y_offset = strip_idx * strip_h
         y_points = (y_offset + y_rel).astype(np.int32)
-
         return np.stack((x_points, y_points), axis=1)
 
     @classmethod
@@ -137,7 +215,20 @@ class QModelV6YOLO_DataProcessor:
         cls, df: pd.DataFrame, img_h: int, img_w: int, scaling_limits: dict = None
     ) -> np.ndarray:
         """
-        Generates the visualization for human validation (Standard colors, edges).
+        Generates a stacked visualization of the signals for human validation/classification.
+
+        This method produces an image with 3 horizontal strips, one for each signal
+        (Dissipation, Frequency, Difference). It uses standard BGR colors for visualization.
+
+        Args:
+            df (pd.DataFrame): The preprocessed dataframe.
+            img_h (int): The height of a *single* strip. The total image height
+                will be 3 * img_h.
+            img_w (int): The width of the image.
+            scaling_limits (dict, optional): Fixed scaling limits for signal normalization.
+
+        Returns:
+            np.ndarray: A numpy array representing the generated image (Total_H, W, 3).
         """
         strip_h = img_h  # Input H is treated as height per strip
         total_h = 3 * strip_h
@@ -159,16 +250,10 @@ class QModelV6YOLO_DataProcessor:
                 continue
 
             strip_bottom_y = (idx + 1) * strip_h - cls.PADDING
-
-            # Create Polygon for fill (Signal line + bottom corners)
             poly_pts = np.concatenate(
                 [pts, [[pts[-1][0], strip_bottom_y]], [[pts[0][0], strip_bottom_y]]]
             )
-
-            # Draw Fill
             cv2.fillPoly(img, [poly_pts], color=config["color"])
-
-            # Draw Lighter Edge
             edge_color = tuple([min(c + 50, 255) for c in config["color"]])
             cv2.polylines(
                 img,
@@ -186,8 +271,21 @@ class QModelV6YOLO_DataProcessor:
         cls, df: pd.DataFrame, img_w: int, img_h: int
     ) -> np.ndarray:
         """
-        Generates the visualization for Model Input (Masks in RGB channels).
-        Note: img_h here is usually the TOTAL height.
+        Generates the visualization input for the YOLO Detection Model.
+
+        This method generates a stacked image where signals are encoded into specific
+        RGB channels to act as masks.
+        - Red Channel: Dissipation
+        - Green Channel: Resonance Frequency
+        - Blue Channel: Difference Curve
+
+        Args:
+            df (pd.DataFrame): The preprocessed dataframe.
+            img_w (int): The total width of the image.
+            img_h (int): The *total* height of the image (will be divided by 3 internally).
+
+        Returns:
+            np.ndarray: A numpy array representing the model input image (img_h, img_w, 3).
         """
         img = np.zeros((img_h, img_w, cls.IMG_CHANNELS), dtype=np.uint8)
         strip_h = img_h // 3  # Divide total height by 3 strips
@@ -213,20 +311,13 @@ class QModelV6YOLO_DataProcessor:
                 continue
 
             strip_bottom_y = (idx + 1) * strip_h - cls.PADDING
-
-            # Create Polygon for fill
             poly_pts = np.concatenate(
                 [pts, [[pts[-1][0], strip_bottom_y]], [[pts[0][0], strip_bottom_y]]]
             )
-
-            # Generate Mask Color: 255 in the specific channel, 0 elsewhere
             mask_color = [0, 0, 0]
             mask_color[config["ch_idx"]] = 255
 
-            # Draw Fill
             cv2.fillPoly(img, [poly_pts], tuple(mask_color))
-
-            # Draw Edge (White)
             cv2.polylines(
                 img,
                 [pts.reshape((-1, 1, 2))],
