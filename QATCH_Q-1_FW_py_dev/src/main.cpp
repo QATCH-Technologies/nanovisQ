@@ -376,9 +376,9 @@ Servo pogoServo2;
 
 // Debounce variables for POGO button
 volatile bool pogo_isr_hit_flag = false;
-volatile bool pogo_pressed_flag = false; // true if POGO button is pressed
-unsigned long lastInterruptTime = 0;
-const unsigned long debounceDelay = 50; // debounce delay in ms
+bool pogo_pressed_flag = false; // true if POGO button is pressed
+unsigned long lastInterruptHitTime = 0;
+const unsigned long debounceDelay = 100; // debounce delay in ms
 
 // Create variables for POGO lid servo, button and LED
 bool pogo_lid_opened = false; // true if POGO lid is opened
@@ -996,8 +996,8 @@ void QATCH_setup()
     pinMode(POGO_BTN_LED_PIN, OUTPUT);
     digitalWrite(POGO_BTN_LED_PIN, HIGH);
 
-    // Attach POGO button interrupt - triggers on FALLING edge (button press)
-    attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, FALLING);
+    // Attach POGO button interrupt - triggers on FALLING and RISING edge (button press on LOW)
+    attachInterrupt(digitalPinToInterrupt(POGO_BUTTON_PIN_N), pogo_button_ISR, CHANGE);
     // NOTE: Wait to initialize POGO state to open until ready to turn off other LEDs
     // pogo_button_pressed(true); // initialize to open state
   }
@@ -3348,13 +3348,13 @@ void QATCH_loop()
   {
     /* HANDLE POGO BUTTON PRESS */
     // Debounce logic handled here, not in ISR
+    unsigned long now = millis();
     if (pogo_isr_hit_flag) {
-      unsigned long now = millis();
-      if ((now - lastInterruptTime) > debounceDelay) {
+      if ((now - lastInterruptHitTime) > debounceDelay) {
         pogo_pressed_flag = true;
-        lastInterruptTime = now;
       }
-      pogo_isr_hit_flag = false;
+    } else {
+      lastInterruptHitTime = now;
     }
     if (pogo_pressed_flag) {
       // Ignore button press if running an active sweep:
@@ -3727,8 +3727,7 @@ void stopStreaming(void)
  */
 FASTRUN void pogo_button_ISR(void)
 {
-  if (!pogo_pressed_flag)
-    pogo_isr_hit_flag = true;
+  pogo_isr_hit_flag = (digitalReadFast(POGO_BUTTON_PIN_N) == LOW); // active low
 }
 
 /**
