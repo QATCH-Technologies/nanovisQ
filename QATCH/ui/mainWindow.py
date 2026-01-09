@@ -1,51 +1,65 @@
-from QATCH.ui.mainWindow_ui import Ui_Controls, Ui_Info, Ui_Plots, Ui_Logger, Ui_Main, Ui_Login
-from pyqtgraph import AxisItem
+import datetime
+import hashlib
+import logging
+import multiprocessing
+import os
+import shutil
+import stat
+import subprocess
+import sys
+import threading
+from time import localtime, mktime, strftime, strptime, time
+from typing import List
+from xml.dom import minidom
+
+import numpy as np
+import pandas as pd
 import pyqtgraph as pg
+import pyzipper
+import requests
+from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
-from QATCH.core.worker import Worker
-from QATCH.core.constants import Constants, OperationType, UpdateEngines
-from QATCH.ui.popUp import PopUp, QueryComboBox
-from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
-from QATCH.ui.export import Ui_Export
-from QATCH.ui.configure_data import UIConfigureData
-from QATCH.ui.preferences_ui import PreferencesUI
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileStorage import FileStorage
+from pyqtgraph import AxisItem
+from serial import serialutil
+
+from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
+from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.fwUpdater import FW_Updater
-from QATCH.common.architecture import Architecture, OSType
-from QATCH.common.tutorials import TutorialPages
-from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.licenseManager import LicenseManager
-from QATCH.common.userProfiles import UserProfiles, UserRoles, UserProfilesManager
+from QATCH.common.logger import Logger as Log
+from QATCH.common.tutorials import TutorialPages
+from QATCH.common.userProfiles import UserProfiles, UserProfilesManager, UserRoles
+from QATCH.core.constants import Constants, OperationType, UpdateEngines
+from QATCH.core.worker import Worker
+
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.processors.Analyze import AnalyzeProcess
-from QATCH.processors.InterpTemps import InterpTempsProcess, QueueCommandFormat, ActionType
-from QATCH.VisQAI.src.view.main_window import VisQAIWindow
-from QATCH.VisQAI.src.db.db import Database
-from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
-from time import time, mktime, strftime, strptime, localtime
-from dateutil import parser
-import threading
-import multiprocessing
-import datetime
-from serial import serialutil
 from QATCH.processors.Device import serial  # real device hardware
-from xml.dom import minidom
-import numpy as np
-import sys
-import os
-import pyzipper
-import hashlib
-import requests
-import stat
-import subprocess
-import logging
-from typing import List
-import shutil
-import pandas as pd
+from QATCH.processors.InterpTemps import (
+    ActionType,
+    InterpTempsProcess,
+    QueueCommandFormat,
+)
+from QATCH.ui.configure_data import UIConfigureData
+from QATCH.ui.export import Ui_Export
+from QATCH.ui.mainWindow_ui import (
+    Ui_Controls,
+    Ui_Info,
+    Ui_Logger,
+    Ui_Login,
+    Ui_Main,
+    Ui_Plots,
+)
+from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.preferences_ui import PreferencesUI
+from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
+from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.VisQAI.src.db.db import Database
+from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -366,12 +380,22 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar[3].addAction('View &User Guide', self.view_user_guide)
         self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
         self.menubar[3].addSeparator()
-        from QATCH.models.ModelData import __version__ as ModelData_version
         from QATCH.models.ModelData import __release__ as ModelData_release
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __version__ as QModel4_version
-        from QATCH.QModel.src.models.static_v4_fusion.__init__ import __release__ as QModel4_release
+        from QATCH.models.ModelData import __version__ as ModelData_version
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __release__ as QModel4_release,
+        )
+        from QATCH.QModel.src.models.static_v4_fusion.__init__ import (
+            __version__ as QModel4_version,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __release__ as QModel6_release,
+        )
+        from QATCH.QModel.src.models.v6_yolo.__init__ import (
+            __version__ as QModel6_version,
+        )
         qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (2 available)')
+            'Model versions (3 available)')
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
@@ -383,7 +407,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[1]))
         self.q_version_v4.setCheckable(True)
-        if Constants.QModel4_predict:
+        self.q_version_v6 = self.menubar[5].addAction(
+            'QModel YOLO11 v{} ({})'.format(QModel6_version, QModel6_release),
+            lambda: self.parent.AnalyzeProc.set_new_prediction_model(
+                Constants.list_predict_models[2]))
+        self.q_version_v6.setCheckable(True)
+        if Constants.QModel6_predict:
+            self.q_version_v6.setChecked(True)
+        elif Constants.QModel4_predict:
             self.q_version_v4.setChecked(True)
         elif Constants.ModelData_predict:
             self.q_version_v1.setChecked(True)
@@ -2502,7 +2533,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     path=machine_database_path, parse_file_key=True)
 
                 if exec_migrations:
-                    from QATCH.VisQAI.src.db.db_migrator import DatabaseMigrator, Migration, MigrationVersion, MigrationStatus
+                    from QATCH.VisQAI.src.db.db_migrator import (
+                        DatabaseMigrator,
+                        Migration,
+                        MigrationStatus,
+                        MigrationVersion,
+                    )
                     tmp_path = machine_database.create_temp_decrypt()
                     try:
                         if tmp_path:
@@ -4735,9 +4771,10 @@ class MainWindow(QtWidgets.QMainWindow):
             if not hasattr(self, "res_download"):
                 self.res_download = False
 
-            import dropbox
             import base64
             import json
+
+            import dropbox
 
             access_path = os.path.join(
                 Constants.local_app_data_path, "tokens", "dbx_access_token.pem")
@@ -6221,8 +6258,9 @@ class TECTask(QtCore.QThread):
     @staticmethod
     def get_ports():
         return serial.enumerate()
-        from QATCH.common.architecture import Architecture, OSType
         from serial.tools import list_ports
+
+        from QATCH.common.architecture import Architecture, OSType
         if Architecture.get_os() is OSType.macosx:
             import glob
             return glob.glob("/dev/tty.usbmodem*")
