@@ -3053,6 +3053,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             file_buffer=fh,
                             progress_signal=self.v6_predict_progress
                         )
+                        # Restoring predictions restores the channel count.
+                        self.parent.num_channels = detected_channels
                         Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
                         predictions = []
                         candidates = []
@@ -3356,6 +3358,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 file_buffer=fh, 
                                 progress_signal=self.v6_predict_progress
                             )
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
                             Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
 
                             predictions = []
@@ -4664,7 +4668,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
 
             Log.d(f"Number of channels (fill_type): {fill_type}")
-            self.parent.num_channels = 3  # pulled from XML
+            self.parent.num_channels = fill_type  # pulled from XML
             # --------------------------------------------------------------- #
 
             if self.model_result == -1:  # self.stateStep != 6:
@@ -4692,6 +4696,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 file_buffer=fh,
                                 progress_signal=self.v6_predict_progress
                             )
+                            # Analysis only updates num_channels if not present.
+                            if not self.parent.num_channels:
+                                self.parent.num_channels = detected_channels
 
                             predictions = []
                             candidates = []
