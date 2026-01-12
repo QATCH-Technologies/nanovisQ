@@ -30,7 +30,7 @@ import os
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2
+import cv2  # New project requirement as of 2026-01-12
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -47,33 +47,34 @@ except (ImportError, ModuleNotFoundError):
 
     class Log:
         @staticmethod
-        def d(tag: str, message: str):
-            print(f"{tag} [DEBUG] {message}")
+        def d(tag: str, msg: str):
+            print(f"{tag} [DEBUG] {msg}")
 
         @staticmethod
-        def i(tag: str, message: str):
-            print(f"{tag} [INFO] {message}")
+        def i(tag: str, msg: str):
+            print(f"{tag} [INFO] {msg}")
 
         @staticmethod
-        def w(tag: str, message: str):
-            print(f"{tag} [WARNING] {message}")
+        def w(tag: str, msg: str):
+            print(f"{tag} [WARNING] {msg}")
 
         @staticmethod
-        def e(tag: str, message: str):
-            print(f"{tag} [ERROR] {message}")
+        def e(tag: str, msg: str):
+            print(f"{tag} [ERROR] {msg}")
 
-    Log.i(tag="[HEADLESS OPERATION]", message="=== RUNNING HEADLESS ===")
+    Log.i(tag="[HEADLESS OPERATION]", msg="=== RUNNING HEADLESS ===")
     try:
         from v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
     except ImportError:
         from v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
 
 try:
+    # New project requirement as of 2026-01-12
     from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
 except ImportError:
     Log.e(
         tag="[QModelV6YOLO]",
-        message="'ultralytics' not found. YOLO inference will fail.",
+        msg="'ultralytics' not found. YOLO inference will fail.",
     )
 
 
