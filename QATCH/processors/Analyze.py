@@ -58,6 +58,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
     progressUpdate = QtCore.pyqtSignal()
     v4_predict_progress = QtCore.pyqtSignal(int, str)
     v6_predict_progress = QtCore.pyqtSignal(int, str)
+
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
@@ -2744,16 +2745,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
                 )
                 model_assets = {
-                    "fill_classifier": os.path.join(v6_base_path, "type_cls", "weights","best.pt"),
+                    "fill_classifier": os.path.join(v6_base_path, "type_cls", "weights", "best.pt"),
                     "detectors": {
                         "init": os.path.join(v6_base_path, "init_detector", "weights", "best.pt"),
-                        "ch1": os.path.join(v6_base_path, "ch1_detector", "weights","best.pt"),
-                        "ch2": os.path.join(v6_base_path, "ch2_detector", "weights","best.pt"),
-                        "ch3": os.path.join(v6_base_path, "ch3_detector", "weights","best.pt"),
-                        "poi5_fine": os.path.join(v6_base_path, "eof_detector_fine", "weights","best.pt"),
+                        "ch1": os.path.join(v6_base_path, "ch1_detector", "weights", "best.pt"),
+                        "ch2": os.path.join(v6_base_path, "ch2_detector", "weights", "best.pt"),
+                        "ch3": os.path.join(v6_base_path, "ch3_detector", "weights", "best.pt"),
+                        "poi5_fine": os.path.join(v6_base_path, "eof_detector_fine", "weights", "best.pt"),
                     }
                 }
-                self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
+                self.QModel_v6_predictor = QModelV6YOLO(
+                    model_assets=model_assets)
                 self.QModel_v6_modules_loaded = True
                 Log.i(TAG, "'QModel v6 (YOLO11)' Modules loaded successfully.")
         except Exception as e:
@@ -2975,13 +2977,45 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ws = 10
         return [ws, clipped]
 
+    def _QModel_create_new_progress_dialog(self):
+        if hasattr(self, 'progressBarDiag'):
+            self.progressBarDiag.close()
+            del self.progressBarDiag
+
+        # Special modal progress dialog for auto-fitting points
+        self.progressBarDiag = QtWidgets.QProgressDialog(
+            "Auto-fitting points...", "Cancel", 0, 0, self)
+        # Disable auto-reset and auto-close to retain `wasCanceled()` state
+        self.progressBarDiag.setAutoReset(False)
+        self.progressBarDiag.setAutoClose(False)
+        icon_path = os.path.join(
+            Architecture.get_path(), 'QATCH/icons/reset.png')
+        self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
+        self.progressBarDiag.setWindowTitle("Busy")
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBarDiag.setWindowFlag(
+            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBarDiag.setFixedSize(
+            int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
+        self.progressBarDiag.setModal(True)
+        self.progressBarDiag.show()
+
+        cancelButton = self.progressBarDiag.findChild(
+            QtWidgets.QPushButton)
+        cancelButton.setEnabled(False)
+
     def _QModel_v4_progress_update(self, pct: int, status: Optional[str]):
+        if not hasattr(self, 'progressBarDiag'):
+            self._QModel_new_create_progress_dialog()
         self.progressBarDiag.setValue(pct)
         if status and len(status):
             self.progressBarDiag.setLabelText(status)
         QtCore.QCoreApplication.processEvents()
 
     def _QModel_v6_progress_update(self, pct: int, status: Optional[str]):
+        if not hasattr(self, 'progressBarDiag'):
+            self._QModel_new_create_progress_dialog()
         self.progressBarDiag.setValue(pct)
         if status and len(status):
             self.progressBarDiag.setLabelText(status)
@@ -3009,28 +3043,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
             # Flag used to check when finished (hides progress bar)
             self.prediction_restored = False
 
-            self.progressBarDiag = QtWidgets.QProgressDialog(
-                "Auto-fitting points...", "Cancel", 0, 0, self)
-            # Disable auto-reset and auto-close to retain `wasCanceled()` state
-            self.progressBarDiag.setAutoReset(False)
-            self.progressBarDiag.setAutoClose(False)
-            icon_path = os.path.join(
-                Architecture.get_path(), 'QATCH/icons/reset.png')
-            self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
-            self.progressBarDiag.setWindowTitle("Busy")
-            self.progressBarDiag.setWindowFlag(
-                QtCore.Qt.WindowContextHelpButtonHint, False)
-            self.progressBarDiag.setWindowFlag(
-                QtCore.Qt.WindowStaysOnTopHint, True)
-            self.progressBarDiag.setFixedSize(
-                int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
-            self.progressBarDiag.setModal(True)
-            self.progressBarDiag.show()
-
-            cancelButton = self.progressBarDiag.findChild(
-                QtWidgets.QPushButton)
-            cancelButton.setEnabled(False)
-
             self.timer = QtCore.QTimer()
             self.timer.setInterval(100)
             self.timer.setSingleShot(False)
@@ -3043,12 +3055,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_candidates = None
             self.model_engine = "None"
             if Constants.QModel6_predict:
-                Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                Log.w(
+                    "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v6_predictor
+                        self._QModel_create_new_progress_dialog()
                         self.progressBarDiag.setRange(0, 100)
                         predict_result, detected_channels = predictor.predict(
                             file_buffer=fh,
@@ -3056,7 +3070,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         )
                         # Restoring predictions restores the channel count.
                         self.parent.num_channels = detected_channels
-                        Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
+                        Log.i(
+                            TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
                         predictions = []
                         candidates = []
                         for i in range(6):
@@ -3064,8 +3079,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             data = predict_result.get(poi_key, {})
                             indices = data.get("indices", [-1])
                             confidences = data.get("confidences", [-1])
-                            if not indices: indices = [-1]
-                            if not confidences: confidences = [-1]
+                            if not indices:
+                                indices = [-1]
+                            if not confidences:
+                                confidences = [-1]
                             predictions.append(indices[0])
                             candidates.append((indices, confidences))
                         self.model_run_this_load = True
@@ -3073,8 +3090,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_candidates = candidates
                         self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
                         if (isinstance(self.model_result, list) and len(self.model_result) == 6):
-                            if self.model_result[2] == -1 and self.model_result[1] != -1:
-                                self.model_result[2] = self.model_result[1] + 2
+                            poi_vals = self.model_result.copy()
+                            if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                # Correct POST point to End-of-fill + 2
+                                poi_vals[2] = poi_vals[1] + 2
                         else:
                             self.model_result = -1  # Invalid result format
 
@@ -3084,7 +3103,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     for line in traceback.format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
-                    # raise e 
+                    # raise e
             if self.model_result == -1 and Constants.QModel4_predict:
                 Log.w(
                     "Auto-fitting points with QModel v4 (Fusion)... (may take a few seconds)")
@@ -3093,6 +3112,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
                         fh = BytesIO(f.read())
                         predictor = self.QModel_v4_predictor
+                        self._QModel_create_new_progress_dialog()
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
                             file_buffer=fh, visualize=False, progress_signal=self.v4_predict_progress, use_partial_fills=self.partial_fills_checkbox.isChecked())
@@ -3202,23 +3222,31 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         Log.e(line)
 
             if self.model_result != -1 and len(self.poi_markers) == 6:
-                poi_vals = self.model_result 
-                Log.i(f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
+                Log.i(
+                    f"[Auto-Fit] Auto-fit points with '{self.model_engine}' for this run.")
                 for i, pm in enumerate(self.poi_markers):
                     idx = int(poi_vals[i])
 
-                    if idx < 0:
-                        continue 
-
-                    if idx >= len(self.xs):
-                        Log.w(f"[Auto-Fit] Clamped POI{i+1} index {idx} to {len(self.xs)-1}")
+                    if idx == -1:
+                        # Mark "missing" points at end of data
                         idx = len(self.xs) - 1
+                    elif idx <= 0:
+                        Log.w(
+                            f"[Auto-Fit] Clamped POI{i+1} index {idx} to {1}")
+                        idx = 1
+                    elif idx >= len(self.xs):
+                        Log.w(
+                            f"[Auto-Fit] Clamped POI{i+1} index {idx} to {len(self.xs)-1}")
+                        idx = len(self.xs) - 1
+
+                    # Update marker position to new index
                     pm.setValue(self.xs[idx])
 
                 self._log_model_confidences()
                 self.detect_change()
             else:
-                Log.w("[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
+                Log.w(
+                    "[Auto-Fit] No auto-fit points available for this run. Leaving points unchanged.")
         except ConnectionRefusedError:
             Log.d("Attempt to auto-fit with no run loaded. No action taken.")
 
@@ -3248,7 +3276,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
     def check_finished(self):
         if self.prediction_restored:
             # finished, but keep the dialog open to retain `wasCanceled()` state
-            self.progressBarDiag.hide()
+            QtCore.QTimer.singleShot(
+                1000, self.progressBarDiag.hide)  # hide after use
             self.timer.stop()
 
     def getPoints(self):
@@ -3348,20 +3377,23 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_candidates = None
                 self.model_engine = "None"
                 if Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                    Log.w(
+                        "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
-                            fh = BytesIO(f.read()) 
+                            fh = BytesIO(f.read())
                             predictor = self.QModel_v6_predictor
+                            self._QModel_create_new_progress_dialog()
                             self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
-                                file_buffer=fh, 
+                                file_buffer=fh,
                                 progress_signal=self.v6_predict_progress
                             )
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels
-                            Log.i(TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
+                            Log.i(
+                                TAG, f"QModel v6 Inference Complete. Detected Config: {detected_channels} Channel(s)")
 
                             predictions = []
                             candidates = []
@@ -3370,8 +3402,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 data = predict_result.get(poi_key, {})
                                 indices = data.get("indices", [-1])
                                 confidences = data.get("confidences", [-1])
-                                if not indices: indices = [-1]
-                                if not confidences: confidences = [-1]
+                                if not indices:
+                                    indices = [-1]
+                                if not confidences:
+                                    confidences = [-1]
                                 predictions.append(indices[0])
                                 candidates.append((indices, confidences))
                             self.model_run_this_load = True
@@ -3379,8 +3413,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_candidates = candidates
                             self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
                             if (isinstance(self.model_result, list) and len(self.model_result) == 6):
-                                if self.model_result[2] == -1 and self.model_result[1] != -1:
-                                    self.model_result[2] = self.model_result[1] + 2
+                                poi_vals = self.model_result.copy()
+                                if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
+                                    poi_vals[2] = poi_vals[1] + 2
                             else:
                                 self.model_result = -1  # Invalid result format
 
@@ -3448,6 +3484,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                 if self.model_result == -1 and Constants.ModelData_predict:
                     try:
+                        start_time = poi_vals[0] if len(poi_vals) > 0 else 0
+                        stop_time = poi_vals[5] if len(
+                            poi_vals) > 5 else len(self.xs) - 1
                         model_starting_points = [
                             start_time,
                             None,
@@ -3510,6 +3549,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Log.e(
                         "Model returned insufficient points. Please manually select points."
                     )
+                    start_time = poi_vals[0] if len(poi_vals) > 0 else 0
+                    stop_time = poi_vals[5] if len(
+                        poi_vals) > 5 else len(self.xs) - 1
                     fill_time = self.xs[stop_time] - self.xs[start_time]
                     poi2_time = self.xs[start_time] + \
                         (fill_time * 0.05)  # end of fill
@@ -4681,7 +4723,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.model_engine = "QModel v6 (YOLO) skipped (using prior points)"
 
                 if self.model_result == -1 and Constants.QModel6_predict:
-                    Log.w("Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                    Log.w(
+                        "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
                     self._text1.setHtml(
                         "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO)... </span>"
                     )
@@ -4692,11 +4735,14 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
                             fh = BytesIO(f.read())
                             predictor = self.QModel_v6_predictor
+                            self._QModel_create_new_progress_dialog()
                             self.progressBarDiag.setRange(0, 100)
                             predict_result, detected_channels = predictor.predict(
                                 file_buffer=fh,
                                 progress_signal=self.v6_predict_progress
                             )
+                            QtCore.QTimer.singleShot(
+                                1000, self.progressBarDiag.hide)  # hide after use
                             # Analysis only updates num_channels if not present.
                             if not self.parent.num_channels:
                                 self.parent.num_channels = detected_channels
@@ -4708,11 +4754,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
                                 data = predict_result.get(poi_key, {})
                                 poi_indices = data.get("indices", [-1])
                                 poi_confidences = data.get("confidences", [-1])
-                                if not poi_indices: poi_indices = [-1]
-                                if not poi_confidences: poi_confidences = [-1]
-                                best_pair = (poi_indices[0], poi_confidences[0])
+                                if not poi_indices:
+                                    poi_indices = [-1]
+                                if not poi_confidences:
+                                    poi_confidences = [-1]
+                                best_pair = (
+                                    poi_indices[0], poi_confidences[0])
                                 predictions.append(best_pair[0])
-                                candidates.append(candidates_tuple := (poi_indices, poi_confidences))
+                                candidates.append(candidates_tuple := (
+                                    poi_indices, poi_confidences))
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
@@ -4720,9 +4770,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             if (isinstance(self.model_result, list) and len(self.model_result) == 6):
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
+                                    # Correct POST point to End-of-fill + 2
                                     poi_vals[2] = poi_vals[1] + 2
                             else:
-                                self.model_result = -1 
+                                self.model_result = -1
 
                     except Exception as e:
                         limit = None
@@ -4734,7 +4785,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         for line in a_list:
                             Log.d(line)
                         Log.e(e)
-                        Log.e(TAG, "Error using 'QModel v6 (YOLO)'... Using a fallback model for auto-fitting.")
+                        Log.e(
+                            TAG, "Error using 'QModel v6 (YOLO)'... Using a fallback model for auto-fitting.")
                         # raise e  # debug only
                         self.model_result = -1  # try fallback model
                 # if Constants.QModel4_predict and self.prior_points_in_xml:
