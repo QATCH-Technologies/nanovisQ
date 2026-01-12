@@ -113,26 +113,34 @@ class QModelV6YOLO_DataProcessor:
             if not hasattr(worker, method):
                 raise ValueError(f"Worker is missing required method: {method}")
 
-        relative_time = worker.get_t1_buffer(0)
-        resonance_frequency = worker.get_d1_buffer(0)
-        dissipation = worker.get_d2_buffer(0)
+        relative_time = np.array(worker.get_t1_buffer(0))
+        resonance_frequency = np.array(worker.get_d1_buffer(0))
+        dissipation = np.array(worker.get_d2_buffer(0))
 
         min_length = min(len(relative_time), len(resonance_frequency), len(dissipation))
 
         if min_length == 0:
             raise ValueError("One or more buffers are empty.")
 
-        relative_time_truncated = relative_time[:min_length]
-        resonance_frequency_truncated = resonance_frequency[:min_length]
-        dissipation_truncated = dissipation[:min_length]
+        t_raw = relative_time[:min_length]
+        freq_raw = resonance_frequency[:min_length]
+        diss_raw = dissipation[:min_length]
+        t_start = t_raw[0]
+        t_end = t_raw[-1]
+        dt = QModelV6YOLO_DataProcessor.TIME_STEP
+        t_new = np.arange(t_start, t_end, dt)
+
+        freq_interp = np.interp(t_new, t_raw, freq_raw)
+        diss_interp = np.interp(t_new, t_raw, diss_raw)
 
         df = pd.DataFrame(
             {
-                "Relative_time": relative_time_truncated,
-                "Resonance_Frequency": resonance_frequency_truncated,
-                "Dissipation": dissipation_truncated,
+                QModelV6YOLO_DataProcessor.COL_TIME: t_new,
+                QModelV6YOLO_DataProcessor.COL_FREQ: freq_interp,
+                QModelV6YOLO_DataProcessor.COL_DISS: diss_interp,
             }
         )
+
         return df
 
     @classmethod
