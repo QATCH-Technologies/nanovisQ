@@ -1,7 +1,8 @@
-from enum import Enum
-from time import strftime, localtime
-import os
 import ctypes
+import os
+from enum import Enum
+from time import localtime, strftime
+
 from QATCH.common.architecture import Architecture, OSType
 
 ###############################################################################
@@ -319,7 +320,9 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)"]
+                           "QModel v4 (Fusion)",
+                           "QModel V6 (YOLO11)"]
+    QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
     TensorFlow_predict = True
@@ -410,8 +413,9 @@ class Constants:
         # Returns the found parameter for the (batch,param) pair as a string.
         # Unless, if you only supply a 'batch', it returns True/False if found.
         # Caller MUST cast the returned string to the desired data type!
-        from QATCH.common.logger import Logger as Log
         import numpy as np
+
+        from QATCH.common.logger import Logger as Log
 
         params = [""]
         batches = [""]
