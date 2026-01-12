@@ -62,7 +62,7 @@ except (ImportError, ModuleNotFoundError):
         def e(tag: str, message: str):
             print(f"{tag} [ERROR] {message}")
 
-    Log.i(tag="[HEADLESS OPERATION]", message="=== RUNNING HEADLESS ===")
+    Log.i(tag="[HEADLESS OPERATION]", message="Running...")
     try:
         from v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
     except ImportError:

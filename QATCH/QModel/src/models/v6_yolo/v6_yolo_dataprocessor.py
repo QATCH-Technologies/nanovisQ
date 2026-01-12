@@ -20,6 +20,8 @@ Version:
     6.0.1
 """
 
+from typing import Any
+
 import cv2
 import numpy as np
 import pandas as pd
@@ -86,6 +88,52 @@ class QModelV6YOLO_DataProcessor:
         1: {"col": COL_FREQ, "color": COLOR_GREEN, "ch_idx": 1},  # Green Channel
         2: {"col": COL_DIFF, "color": COLOR_BLUE, "ch_idx": 0},  # Blue Channel
     }
+
+    @staticmethod
+    def convert_to_dataframe(worker: Any) -> pd.DataFrame:
+        """
+        Convert raw buffer data from a worker into a pandas DataFrame.
+
+        Retrieves the relative time, resonance frequency, and dissipation buffers from the worker,
+        truncates them to the same length, and constructs a DataFrame.
+
+        Args:
+            worker (Any): A worker object that provides buffer data through methods
+                          `get_t1_buffer(index: int)`, `get_d1_buffer(index: int)`, and
+                          `get_d2_buffer(index: int)`.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns 'Relative_time', 'Resonance_Frequency', 'Dissipation'.
+
+        Raises:
+            ValueError: If the worker does not have the required buffer methods or buffers are empty.
+        """
+        required_methods = ["get_t1_buffer", "get_d1_buffer", "get_d2_buffer"]
+        for method in required_methods:
+            if not hasattr(worker, method):
+                raise ValueError(f"Worker is missing required method: {method}")
+
+        relative_time = worker.get_t1_buffer(0)
+        resonance_frequency = worker.get_d1_buffer(0)
+        dissipation = worker.get_d2_buffer(0)
+
+        min_length = min(len(relative_time), len(resonance_frequency), len(dissipation))
+
+        if min_length == 0:
+            raise ValueError("One or more buffers are empty.")
+
+        relative_time_truncated = relative_time[:min_length]
+        resonance_frequency_truncated = resonance_frequency[:min_length]
+        dissipation_truncated = dissipation[:min_length]
+
+        df = pd.DataFrame(
+            {
+                "Relative_time": relative_time_truncated,
+                "Resonance_Frequency": resonance_frequency_truncated,
+                "Dissipation": dissipation_truncated,
+            }
+        )
+        return df
 
     @classmethod
     def preprocess_dataframe(cls, df: pd.DataFrame) -> pd.DataFrame:
