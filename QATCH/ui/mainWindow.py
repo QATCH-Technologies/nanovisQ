@@ -3193,23 +3193,41 @@ class MainWindow(QtWidgets.QMainWindow):
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
 
-            #  Build dataframe from worker databuffer.
-            # new_data = QForecastDataProcessor.convert_to_dataframe(
-            #     self.worker)
+            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+                class WorkerSnapshot:
+                    def __init__(self, t, d1, d2):
+                        self.t = t
+                        self.d1 = d1
+                        self.d2 = d2
+                    def get_t1_buffer(self, idx): return self.t
+                    def get_d1_buffer(self, idx): return self.d1
+                    def get_d2_buffer(self, idx): return self.d2
 
-            # Flag to use the fill forecaster.
-            # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            #     self.worker._forecaster_in.put(new_data)
-            #     if not self.worker._forecaster_out.empty():
-            #         self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
-            # else:
-            # self.forecast_status = self._forecaster.update_predictions(
-            #     new_data=new_data)
+                snapshot = WorkerSnapshot(
+                    self.worker.get_value0_buffer(0),
+                    self.worker.get_d1_buffer(0),
+                    self.worker.get_d2_buffer(0)
+                )
 
-            # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-            #     self.forecast_status.value)
-            # self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-            #     Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
+                self.worker._forecaster_in.put(snapshot)
+
+                if not self.worker._forecaster_out.empty():
+                    try:
+                        pred_int, pred_str = self.worker._forecaster_out.get()
+
+                        # MAPPING LOGIC:
+                        # Model: -1 (No Fill) -> UI: 0 (0%)
+                        # Model:  0 (Initial) -> UI: 1 (25%)
+                        # Model:  1 (Chan 1)  -> UI: 2 (50%)
+                        # Model:  2 (Chan 2)  -> UI: 3 (75%)
+                        # Model:  3 (Full)    -> UI: 4 (100%)
+                        ui_value = pred_int + 1
+                        # Clamp value just in case of unexpected model output
+                        ui_value = max(0, min(ui_value, 4))
+                        self.ControlsWin.ui1.fill_status_progress_bar.setValue(ui_value)
+                        self.ControlsWin.ui1.fill_status_progress_bar.setFormat(f"Run: %v/%m ({pred_str})")
+                    except Exception as e:
+                        Log.e(TAG, f"Error retrieving forecast result: {e}")
 
             self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
 
