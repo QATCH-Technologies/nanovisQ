@@ -22,9 +22,10 @@ Date:
     2026-01-09
 
 Version:
-    6.0.1
+    6.1.0  # Bumped for Fine Tuning Support
 """
 
+import datetime
 import os
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -62,7 +63,10 @@ except (ImportError, ModuleNotFoundError):
             print(f"{tag} [ERROR] {message}")
 
     Log.i(tag="[HEADLESS OPERATION]", message="=== RUNNING HEADLESS ===")
-    from v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
+    try:
+        from v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
+    except ImportError:
+        from v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
 
 try:
     from ultralytics import YOLO  # pyright: ignore[reportPrivateImportUsage]
@@ -361,6 +365,7 @@ class QModelV6YOLO:
                     "detectors": {
                         "init": "path/to/init.pt",
                         "ch1": "path/to/ch1.pt",
+                        "poi5_fine": "path/to/poi5_fine.pt", # ADDED
                         # ... etc
                     }
                 }
@@ -372,6 +377,7 @@ class QModelV6YOLO:
             "ch1": None,
             "ch2": None,
             "ch3": None,
+            "poi5_fine": None,  # Added for fine-tuning
         }
 
     def _load_fill_cls(self) -> Any:
@@ -409,7 +415,7 @@ class QModelV6YOLO:
                 try:
                     self._detectors[name] = QModelV6YOLO_Detector(model_path)
                 except Exception as e:
-                    Log.e(self.TAG, f"Error while loading detector: {e}")
+                    Log.e(self.TAG, f"Error while loading detector '{name}': {e}")
                     return None
         return self._detectors.get(name)
 
@@ -548,12 +554,21 @@ class QModelV6YOLO:
         """
         if df is None or df.empty:
             return
+
+        # UPDATED: Added %f for microseconds to prevent overwrites in fast loops
+        # Format example: _20231027_153045_123456
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+
+        base_name, ext = os.path.splitext(save_path)
+        final_save_path = f"{base_name}_{timestamp}{ext}"
+
         time = df["Relative_time"].values
         signal = (
             df["Dissipation"].values
             if "Dissipation" in df.columns
             else df.iloc[:, 1].values
         )
+
         plt.figure(figsize=(12, 6))
         plt.plot(time, signal, color="gray", alpha=0.6, label="Raw Signal")
 
@@ -562,7 +577,7 @@ class QModelV6YOLO:
             if data and "time" in data:
                 t = data["time"]
                 c = colors.get(poi_id, "black")
-                name = self.POI_MAP.get(poi_id, f"POI{poi_id}")
+                name = getattr(self, "POI_MAP", {}).get(poi_id, f"POI{poi_id}")
                 plt.axvline(x=t, color=c, linestyle="-", linewidth=2, label=f"{name}")
 
         for _, (_, cut_time) in enumerate(cut_history):
@@ -570,8 +585,10 @@ class QModelV6YOLO:
             plt.axvspan(cut_time, np.max(time), color="red", alpha=0.05)
 
         plt.title(f"Cascade Detection Debug - {len(cut_history)} Slices Applied")
-        plt.savefig(save_path)
+        plt.savefig(final_save_path)
         plt.close()
+        # Optional: Print where it saved for easier tracking
+        Log.i(self.TAG, f"Debug plot saved to: {final_save_path}")
 
     def predict(
         self,
@@ -637,33 +654,15 @@ class QModelV6YOLO:
             if master_df is None or master_df.empty:
                 raise ValueError("Preprocessing failed")
 
-            # --- Fill Type Classification ---
             if num_channels is None:
                 fill_cls = self._load_fill_cls()
-                if fill_cls:
-                    if progress_signal:
-                        progress_signal.emit(30, "Classifying Run Type...")
-                    num_channels = fill_cls.predict(master_df)
-                else:
-                    # Fallback default if classifier fails/missing
-                    num_channels = 3
+                num_channels = int(fill_cls.predict(master_df)) if fill_cls else 3
 
-            # ensure int for comparison
-            num_channels = int(num_channels)
-
-            # If the classifier detected "no_fill"
             if num_channels == -1:
-                if progress_signal:
-                    progress_signal.emit(100, "No Fill Detected - Skipping Analysis")
-                Log.i(
-                    self.TAG,
-                    "Run classified as 'no_fill'. Returning default placeholders.",
-                )
                 return self._get_default_predictions(), num_channels
 
-            # --- Reverse Cascading Detection ---
             final_results = {}
-            current_df = master_df.copy()  # Working slice
+            current_df = master_df.copy()
             col_time = (
                 "Relative_time"
                 if "Relative_time" in current_df.columns
@@ -671,7 +670,6 @@ class QModelV6YOLO:
             )
             cut_history = []
 
-            # Helper to process results and map to RAW index
             def process_detection(res_dict, poi_id):
                 if poi_id in res_dict:
                     t_det = res_dict[poi_id]["time"]
@@ -685,7 +683,6 @@ class QModelV6YOLO:
                     return t_det
                 return None
 
-            # 3rd Channel (POI 6) - Runs only if 3+ channels detected
             if num_channels >= 3:
                 det_ch3 = self._load_detector_by_name("ch3")
                 if det_ch3:
@@ -695,7 +692,6 @@ class QModelV6YOLO:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH3_Cut", cut_time))
 
-            # 2nd Channel (POI 5) - Runs if 2+ channels detected
             if num_channels >= 2:
                 det_ch2 = self._load_detector_by_name("ch2")
                 if det_ch2:
@@ -705,7 +701,6 @@ class QModelV6YOLO:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH2_Cut", cut_time))
 
-            # 1st Channel (POI 4) - Runs if 1+ channels detected
             if num_channels >= 1:
                 det_ch1 = self._load_detector_by_name("ch1")
                 if det_ch1:
@@ -715,13 +710,29 @@ class QModelV6YOLO:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH1_Cut", cut_time))
 
-            # Initial Fill (POI 1 & 2) - Runs for 0, 1, 2, or 3 channels
-            # Since we guarded against -1 above, this runs for 'initial_fill' (0) and up.
             det_init = self._load_detector_by_name("init")
             if det_init:
                 res = det_init.predict_single(current_df, target_class_map={0: 1, 1: 2})
                 process_detection(res, 1)
                 process_detection(res, 2)
+
+            if num_channels >= 3 and 5 in final_results:
+                det_fine = self._load_detector_by_name("poi5_fine")
+                if det_fine:
+                    if progress_signal:
+                        progress_signal.emit(90, "Applying Fine Adjustment...")
+                    anchor_time = final_results[5]["time"]
+                    fine_slice = master_df[master_df[col_time] >= anchor_time]
+                    res_fine = det_fine.predict_single(
+                        fine_slice, target_class_map={0: 6}
+                    )
+
+                    if 6 in res_fine:
+                        Log.i(self.TAG, "Fine adjustment updated POI 6.")
+                        process_detection(res_fine, 6)
+
+            if 3 in final_results:
+                del final_results[3]
 
             if progress_signal:
                 progress_signal.emit(100, "Inference Complete")

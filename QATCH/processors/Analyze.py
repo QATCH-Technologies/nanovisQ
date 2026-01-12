@@ -2750,6 +2750,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         "ch1": os.path.join(v6_base_path, "ch1_detector", "weights","best.pt"),
                         "ch2": os.path.join(v6_base_path, "ch2_detector", "weights","best.pt"),
                         "ch3": os.path.join(v6_base_path, "ch3_detector", "weights","best.pt"),
+                        "poi5_fine": os.path.join(v6_base_path, "eof_detector_fine", "weights","best.pt"),
                     }
                 }
                 self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
