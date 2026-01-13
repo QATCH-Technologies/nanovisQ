@@ -5050,8 +5050,8 @@ void tft_tempcontrol()
     //    Serial.println("Drawing TEC scale...");
     last_temp_label = 255;             // none
     last_line_label[0] = '\0';         // invalidate string
-    last_pv = last_sp = last_op = 255; // impossible values
-    last_pct = 0;
+    last_pv = last_sp = 255;           // impossible values
+    last_op = last_pct = 0;            // not started (yet)
 
     tft.fillScreen(ILI9341_BLACK);
     //    tft.fillRect(0, 22, TFT_WIDTH, 115, fillColor); // only do once, not on every bar update
