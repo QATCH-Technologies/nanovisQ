@@ -44,8 +44,7 @@ class Constants:
     app_title = "QATCH nanovisQ Real-Time GUI"
     app_version = "v2.6r68"
     app_date = "2026-01-05"
-    app_sources = ["Calibration Qatch Q-1 Device",
-                   "Measurement Qatch Q-1 Device"]
+    app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
     app_encoding = "utf-8"
@@ -55,14 +54,16 @@ class Constants:
     ########################
     best_fw_version = "v2.6r68"
     # best_fw_version = app_version # may specify an exact version if needed
-    do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
+    do_legacy_updates = (
+        False  # only use on FW v2.5b23 or older; will break newer devices!
+    )
 
     #################
     # FEATURE FLAGS #
     #################
     show_visQ_in_R_builds = False  # set to False to hide VisQ.AI mode in Release builds
 
-    if 'r' not in app_version:
+    if "r" not in app_version:
         show_visQ_in_R_builds = True  # always show in non-Release builds
 
     ###########################
@@ -95,7 +96,7 @@ class Constants:
     ###########################
     # raw input averaging (value too low will cause false peaks)
     avg_in = 35
-    avg_out = 5               # raw averaging of peak, left, right and magnitude outputs
+    avg_out = 5  # raw averaging of peak, left, right and magnitude outputs
     # frequency sweep step size (smaller = more accurate, but slower)   step 3: 4 Hz noise, 4 ms speed
     step_size = 3
     # allowed frequency drift LEFT from initial peak detection (in Hz)
@@ -136,8 +137,16 @@ class Constants:
     # PLOT parameters #
     ###################
     plot_update_ms = 100  # 16
-    plot_colors = ['#ff0000', '#0072bd', '#4d90ee',
-                   '#edb120', '#7e2f8e', '#77ac30', '#4dbeee', '#a2142f']
+    plot_colors = [
+        "#ff0000",
+        "#0072bd",
+        "#4d90ee",
+        "#edb120",
+        "#7e2f8e",
+        "#77ac30",
+        "#4dbeee",
+        "#a2142f",
+    ]
     plot_max_lines = len(plot_colors)
     plot_min_range_freq = 1000  # Hz
     plot_min_range_diss = 10e-6  # Hz
@@ -206,9 +215,10 @@ class Constants:
     csv_extension = "csv"
     txt_extension = "txt"
     csv_export_path = "logged_data"
-    csv_filename = (strftime(csv_default_prefix, localtime()))
+    csv_filename = strftime(csv_default_prefix, localtime())
     csv_sweeps_export_path = "{}{}{}{}{}".format(
-        csv_export_path, slash, tbd_active_device_name_path, slash, csv_filename)
+        csv_export_path, slash, tbd_active_device_name_path, slash, csv_filename
+    )
     csv_sweeps_filename = "sweep"
 
     export_notes_to_txt_file = True
@@ -219,37 +229,40 @@ class Constants:
     csv_calibration_filename10 = "Calibration_10MHz"
 
     local_app_data_path = os.path.expandvars(
-        r"%LOCALAPPDATA%{0}{1}{0}{2}".format(slash, app_publisher, app_name))
+        r"%LOCALAPPDATA%{0}{1}{0}{2}".format(slash, app_publisher, app_name)
+    )
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
     run_profiles_path = os.path.join(
-        local_app_data_path, "profiles", "runs")  # future use
+        local_app_data_path, "profiles", "runs"
+    )  # future use
     query_info_recall_path = os.path.join(local_app_data_path, "recall.xml")
     user_constants_path = os.path.join(
-        local_app_data_path, "settings", "userConstants.py")
+        local_app_data_path, "settings", "userConstants.py"
+    )
     auto_sign_key_path = os.path.join(
-        local_app_data_path, "tokens", "auto_sign_key.pem")
+        local_app_data_path, "tokens", "auto_sign_key.pem"
+    )
     license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
-    select_tag_prompt = '-- Select Tag --'
-    subfolder_field = f'/ (Subfolder)'
-    valid_tags = ["Username", "Initials", "Device",
-                  "Runname", "Date", "Time", "Port"]
+    select_tag_prompt = "-- Select Tag --"
+    subfolder_field = f"/ (Subfolder)"
+    valid_tags = ["Username", "Initials", "Device", "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]
     date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
     time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
     date_conversion = {
         "YYYY-MM-DD": "%Y-%m-%d",
         "DD-MM-YYYY": "%d-%m-%Y",
-        "MM-DD-YYYY": "%m-%d-%Y"
+        "MM-DD-YYYY": "%m-%d-%Y",
     }
 
     time_conversion = {
         "HH:mm:ss": "%H:%M:%S",
         "hh:mm:ss A": "%I:%M:%S %p",
         "HH:mm": "%H:%M",
-        "hh:mm A": "%I:%M %p"
+        "hh:mm A": "%I:%M %p",
     }
     working_logged_data_path = os.path.join(os.getcwd(), log_export_path)
     default_preferences = {
@@ -265,22 +278,41 @@ class Constants:
     ##################
     # Calibration: baseline correction (READ for @5MHz and @10MHz QCS) path: 'common\'
     csv_calibration_path = "{}{}{}{}{}.{}".format(
-        csv_calibration_export_path, slash, tbd_active_device_name_path, slash, csv_calibration_filename, txt_extension)
+        csv_calibration_export_path,
+        slash,
+        tbd_active_device_name_path,
+        slash,
+        csv_calibration_filename,
+        txt_extension,
+    )
     csv_calibration_path10 = "{}{}{}{}{}.{}".format(
-        csv_calibration_export_path, slash, tbd_active_device_name_path, slash, csv_calibration_filename10, txt_extension)
+        csv_calibration_export_path,
+        slash,
+        tbd_active_device_name_path,
+        slash,
+        csv_calibration_filename10,
+        txt_extension,
+    )
 
     # Frequencies: Fundamental and overtones (READ and WRITE for @5MHz and @10MHz QCS)
     csv_peakfrequencies_filename = "PeakFrequencies"
     cvs_peakfrequencies_path = "{}{}{}{}{}.{}".format(
-        csv_calibration_export_path, slash, tbd_active_device_name_path, slash, csv_peakfrequencies_filename, txt_extension)
+        csv_calibration_export_path,
+        slash,
+        tbd_active_device_name_path,
+        slash,
+        csv_peakfrequencies_filename,
+        txt_extension,
+    )
     #########################
 
     # Temp file to store paths of all log files created during a run
     new_files_path = csv_export_path + slash + "new_files.txt"
 
     # Log file for storing the output of the TEC temperature controller
-    tec_log_path = csv_export_path + slash + \
-        tbd_active_device_name_path + slash + "output_tec.csv"
+    tec_log_path = (
+        csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
+    )
 
     ##########################
     # CALIBRATION parameters #
@@ -288,12 +320,18 @@ class Constants:
     calibration_default_samples = 100001
     calibration_frequency_start = 2500000  # 1000000
     calibration_frequency_stop = 17500000  # 51000000
-    calibration_fStep = (calibration_frequency_stop -
-                         calibration_frequency_start) / (calibration_default_samples-1)
-    calibration_readFREQ = list(range(
-        calibration_frequency_start, calibration_frequency_stop+1, int(calibration_fStep)))
+    calibration_fStep = (calibration_frequency_stop - calibration_frequency_start) / (
+        calibration_default_samples - 1
+    )
+    calibration_readFREQ = list(
+        range(
+            calibration_frequency_start,
+            calibration_frequency_stop + 1,
+            int(calibration_fStep),
+        )
+    )
     # Peak Detection - distance in samples between neighbouring peaks
-    dist5 = int(3000000/calibration_fStep)  # for @5MHz
+    dist5 = int(3000000 / calibration_fStep)  # for @5MHz
     dist10 = 10000  # for @10MHz
 
     ##########################
@@ -319,9 +357,7 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)",
-                           "QModel V6 (YOLO11)"]
+    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
@@ -331,7 +367,7 @@ class Constants:
     # In general, the first model to return a valid result will
     # prevent the execution of lower priority order model(s).
     preload_tensorflow = False  # otherwise, it will be loaded if/when needed
-    USE_MULTIPROCESS_FILL_FORECASTER = False  # disabled and hidden
+    USE_MULTIPROCESS_FILL_FORECASTER = True  # disabled and hidden
     FILL_TYPE_LABEL_MAP = {
         0: "Run: %v/%m (No Fill)",
         1: "Run: %v/%m (Filling)",
@@ -380,8 +416,9 @@ class Constants:
     # NIGHTLY adjustment #
     ######################
     if os.path.exists("QATCH/nightly/latest_build.json"):
-        with open("QATCH/nightly/latest_build.json", 'r') as f:
+        with open("QATCH/nightly/latest_build.json", "r") as f:
             import json
+
             data = json.load(f)
             if "name" in data:
                 dev_branch = False
@@ -422,22 +459,24 @@ class Constants:
         try:
             # pull in lookup table from resources
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
-            batch_params_file = os.path.join(
-                resource_path, "lookup_batch_params.csv")
-            detected_delimeter = '\t'
-            with open(batch_params_file, 'r') as f:
+            batch_params_file = os.path.join(resource_path, "lookup_batch_params.csv")
+            detected_delimeter = "\t"
+            with open(batch_params_file, "r") as f:
                 first_line = f.readline()
-                tab_count = first_line.count('\t')
-                comma_count = first_line.count(',')
+                tab_count = first_line.count("\t")
+                comma_count = first_line.count(",")
                 if comma_count > tab_count:
-                    detected_delimeter = ','
+                    detected_delimeter = ","
             table = np.genfromtxt(
-                batch_params_file, dtype='str', delimiter=detected_delimeter, skip_header=0)
+                batch_params_file,
+                dtype="str",
+                delimiter=detected_delimeter,
+                skip_header=0,
+            )
             params = table[0][1:]  # first row values, without A1 cell (empty)
             # first col values, without A1 cell (empty)
             batches = table[:, 0][1:]
@@ -473,7 +512,8 @@ class Constants:
         if param == "ALL":
             if batch_in_csv_file:
                 idx_of_batch = np.where(batches == batch_upper)[
-                    0]  # batches.index(batch)
+                    0
+                ]  # batches.index(batch)
                 all_params = data[idx_of_batch[0]]
                 return dict(zip(params_orig_case, all_params))
             else:
@@ -487,35 +527,42 @@ class Constants:
         # print(f"batch_in_csv_file: {batch_in_csv_file}")
 
         # param does not exist, anywhere
-        if param_in_py_file == False and (param_in_csv_file == False or batch_in_csv_file == False):
+        if param_in_py_file == False and (
+            param_in_csv_file == False or batch_in_csv_file == False
+        ):
             default_val = 0  # getattr(Constants, param)
             Log.e(
-                f"get_batch_param(): PARAM '{param}' is not found (using {default_val}). Please specify a default value in Constants.py.")
+                f"get_batch_param(): PARAM '{param}' is not found (using {default_val}). Please specify a default value in Constants.py."
+            )
             return str(default_val)
 
         # param only exists in Constants.py
-        if param_in_py_file == True and (param_in_csv_file == False or batch_in_csv_file == False):
+        if param_in_py_file == True and (
+            param_in_csv_file == False or batch_in_csv_file == False
+        ):
             default_val = getattr(Constants, param)
             Log.w(
-                f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv.")
+                f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv."
+            )
             return str(default_val)
 
         # batch and param exists in lookup_BATCH, so return the lookup pair
-        idx_of_param = np.where(params == param_upper)[
-            0]  # params.index(param)
-        idx_of_batch = np.where(batches == batch_upper)[
-            0]  # batches.index(batch)
+        idx_of_param = np.where(params == param_upper)[0]  # params.index(param)
+        idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
         found_param = data[idx_of_batch[0], idx_of_param[0]]
 
         # check for dups and report the warning if so
         if len(idx_of_param) != 1:
             Log.w(
-                f"get_batch_param(): More than one PARAM col {param} found in lookup_BATCH#.py! Using first column.")
+                f"get_batch_param(): More than one PARAM col {param} found in lookup_BATCH#.py! Using first column."
+            )
         if len(idx_of_batch) != 1:
             Log.w(
-                f"get_batch_param(): More than one BATCH col {batch} found in lookup_BATCH#.py! Using first row.")
+                f"get_batch_param(): More than one BATCH col {batch} found in lookup_BATCH#.py! Using first row."
+            )
         Log.d(
-            f"Found param '{found_param}' from ('{batch}', '{param}') pair in lookup table at idx ({idx_of_batch}, {idx_of_param}).")
+            f"Found param '{found_param}' from ('{batch}', '{param}') pair in lookup table at idx ({idx_of_batch}, {idx_of_param})."
+        )
 
         # return the found param as a string
         # caller must cast to desired type

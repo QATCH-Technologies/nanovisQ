@@ -17,10 +17,12 @@ from QATCH.core.constants import Constants, MinimalPython
 
 try:
     import logging
+
     # suppress ERROR if not bundled in EXE
     logging.getLogger("pyi_splash").setLevel(logging.CRITICAL)
     # if splash binaries are not bundled with a compiled EXE, this import will fail
     import pyi_splash
+
     # this is just a sanity check to confirm the splash module
     USE_PYI_SPLASH = pyi_splash.is_alive()
     # restore to default level, it's active
@@ -53,12 +55,12 @@ class QATCH:
                 Constants.app_publisher,
                 Constants.app_name,
                 Constants.app_version,
-                Constants.app_date
+                Constants.app_date,
             )  # arbitrary string, required for Windows Toolbar to display QATCH icon
-            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-                myappid)
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
             ctypes.windll.kernel32.SetConsoleTitleW(
-                "QATCH Q-1 Real-Time GUI - command line")
+                "QATCH Q-1 Real-Time GUI - command line"
+            )
         self._args = self._init_logger()
         self._app = QApplication(argv)
         if not USE_PYI_SPLASH:
@@ -69,18 +71,23 @@ class QATCH:
 
         if USE_PYI_SPLASH:
             # Update the text on the splash screen
-            build_info = '\n'.join(
-                [f"                                          {s}" for s in build_info.split('\n')])
+            build_info = "\n".join(
+                [
+                    f"                                          {s}"
+                    for s in build_info.split("\n")
+                ]
+            )
             pyi_splash.update_text(build_info)
         else:
             icon_path = os.path.join(
-                Architecture.get_path(), 'QATCH\\icons\\qatch-splash.png')
+                Architecture.get_path(), "QATCH\\icons\\qatch-splash.png"
+            )
             pixmap = QPixmap(icon_path)
             pixmap_resized = pixmap.scaledToWidth(512)
-            self.splash = QSplashScreen(
-                pixmap_resized, QtCore.Qt.WindowStaysOnTopHint)
+            self.splash = QSplashScreen(pixmap_resized, QtCore.Qt.WindowStaysOnTopHint)
             self.splash.showMessage(
-                build_info, QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter)
+                build_info, QtCore.Qt.AlignBottom | QtCore.Qt.AlignCenter
+            )
             self.splash.show()
 
         # Close SplashScreen after app is loaded
@@ -125,10 +132,11 @@ class QATCH:
         # lazy load imports
         from QATCH.ui import mainWindow
 
-        if Architecture.is_python_version(MinimalPython.major, minor=MinimalPython.minor):
+        if Architecture.is_python_version(
+            MinimalPython.major, minor=MinimalPython.minor
+        ):
             Log.i(TAG, "Application started")
-            self.win = mainWindow.MainWindow(
-                samples=self._args.get_user_samples())
+            self.win = mainWindow.MainWindow(samples=self._args.get_user_samples())
             # win.setWindowTitle("{} - {}".format(Constants.app_title, Constants.app_version))
             # win.move(500, 20) #GUI position (x,y) on the screen
             # win.show()
@@ -168,11 +176,14 @@ class QATCH:
     ###########################################################################
     @staticmethod
     def _fail():
-        txt = str("Application requires Python {}.{} to run".format(
-            MinimalPython.major, MinimalPython.minor))
+        txt = str(
+            "Application requires Python {}.{} to run".format(
+                MinimalPython.major, MinimalPython.minor
+            )
+        )
         Log.e(TAG, txt)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     freeze_support()
     QATCH().run()

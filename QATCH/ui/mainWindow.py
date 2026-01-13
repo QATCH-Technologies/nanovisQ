@@ -111,8 +111,12 @@ class _MainWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(self, Constants.app_title,
-                             "Are you sure you want to quit QATCH Q-1 application now?", True)
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
         if res:
             # self.close()
             QtWidgets.QApplication.quit()
@@ -187,7 +191,10 @@ class LoginWindow(QtWidgets.QMainWindow):
                 self.ui5.clear_form()
 
             # Handles toggling Caps Lock indicator while password field has focus.
-            if self.ui5.user_password.hasFocus() and event.key() == QtCore.Qt.Key_CapsLock:
+            if (
+                self.ui5.user_password.hasFocus()
+                and event.key() == QtCore.Qt.Key_CapsLock
+            ):
                 self.ui5.caps_lock_on = not self.ui5.caps_lock_on
                 self.ui5.update_caps_lock_state(self.ui5.caps_lock_on)
 
@@ -226,8 +233,12 @@ class LoginWindow(QtWidgets.QMainWindow):
         Returns:
             None
         """
-        res = PopUp.question(self, Constants.app_title,
-                             "Are you sure you want to quit QATCH Q-1 application now?", True)
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
         if res:
             QtWidgets.QApplication.quit()
         else:
@@ -244,8 +255,12 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(self, Constants.app_title,
-                             "Are you sure you want to quit QATCH Q-1 application now?", True)
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
         if res:
             # self.close()
             QtWidgets.QApplication.quit()
@@ -260,7 +275,8 @@ class PlotsWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.ui2 = Ui_Plots()
         self.ui2.setupUi(self)
-    '''
+
+    """
     def closeEvent(self, event):
         #Log.d(" Exit Real-Time Plot GUI")
         res =PopUp.question(self, Constants.app_title,
@@ -271,17 +287,37 @@ class PlotsWindow(QtWidgets.QMainWindow):
         else:
            event.ignore()#pass
         #sys.exit(0)
-    '''
+    """
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(self, Constants.app_title,
-                             "Are you sure you want to quit QATCH Q-1 application now?", True)
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
         if res:
             # self.close()
             QtWidgets.QApplication.quit()
         else:
             event.ignore()
+
+
+class WorkerSnapshot:
+    def __init__(self, t, d1, d2):
+        self.t = t
+        self.d1 = d1
+        self.d2 = d2
+
+    def get_t1_buffer(self, idx):
+        return self.t
+
+    def get_d1_buffer(self, idx):
+        return self.d1
+
+    def get_d2_buffer(self, idx):
+        return self.d2
 
 
 # ------------------------------------------------------------------------------
@@ -294,13 +330,18 @@ class InfoWindow(QtWidgets.QMainWindow):
 
     def closeEvent(self, event):
         # Log.d(" Exit Real-Time Plot GUI")
-        res = PopUp.question(self, Constants.app_title,
-                             "Are you sure you want to quit QATCH Q-1 application now?", True)
+        res = PopUp.question(
+            self,
+            Constants.app_title,
+            "Are you sure you want to quit QATCH Q-1 application now?",
+            True,
+        )
         if res:
             # self.close()
             QtWidgets.QApplication.quit()
         else:
             event.ignore()
+
 
 # ------------------------------------------------------------------------------
 
@@ -323,62 +364,71 @@ class ControlsWindow(QtWidgets.QMainWindow):
     def _createMenu(self, target):
         self.menubar = []
         self.menubar.append(target.menuBar().addMenu("&Options"))
-        self.menubar[0].addAction('&Analyze Data', self.analyze_data)
-        self.menubar[0].addAction('&Import Data', self.import_data)
-        self.menubar[0].addAction('&Export Data', self.export_data)
+        self.menubar[0].addAction("&Analyze Data", self.analyze_data)
+        self.menubar[0].addAction("&Import Data", self.import_data)
+        self.menubar[0].addAction("&Export Data", self.export_data)
         # self.menubar[0].addAction('&Configure Data', self.configure_data)
-        self.menubar[0].addAction('&Preferences', self.preferences)
-        self.menubar[0].addAction('&Find Devices', self.scan_subnets)
-        self.menubar[0].addAction('E&xit', self.close)
+        self.menubar[0].addAction("&Preferences", self.preferences)
+        self.menubar[0].addAction("&Find Devices", self.scan_subnets)
+        self.menubar[0].addAction("E&xit", self.close)
         self.menubar.append(target.menuBar().addMenu("&Users"))
-        self.username = self.menubar[1].addAction('User: [NONE]')
+        self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
-        self.signinout = self.menubar[1].addAction(
-            '&Sign In', self.set_user_profile)
-        self.menubar[1].addAction(
-            'Select &directory...', self.set_working_directory)
+        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
+        self.menubar[1].addAction("Select &directory...", self.set_working_directory)
         self.manage = self.menubar[1].addAction(
-            '&Manage Users...', self.manage_user_profiles)
+            "&Manage Users...", self.manage_user_profiles
+        )
         self.userrole = UserRoles.NONE
         self.menubar.append(target.menuBar().addMenu("&View"))
-        self.modebar = self.menubar[2].addMenu('&Mode')
-        self.modebar.addAction('&1: Run',
-                               lambda: self.parent.MainWin.ui0.setRunMode(None))
-        self.modebar.addAction('&2: Analyze',
-                               lambda: self.parent.MainWin.ui0.setAnalyzeMode(None))
+        self.modebar = self.menubar[2].addMenu("&Mode")
+        self.modebar.addAction(
+            "&1: Run", lambda: self.parent.MainWin.ui0.setRunMode(None)
+        )
+        self.modebar.addAction(
+            "&2: Analyze", lambda: self.parent.MainWin.ui0.setAnalyzeMode(None)
+        )
         if Constants.show_visQ_in_R_builds:
-            self.modebar.addAction('&3: VisQ.AI',
-                               lambda: self.parent.MainWin.ui0.setLearnMode(None))
-        self.chk1 = self.menubar[2].addAction('&Console', self.toggle_console)
+            self.modebar.addAction(
+                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0.setLearnMode(None)
+            )
+        self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
         self.chk1.setCheckable(True)
-        self.chk1.setChecked(self.parent.AppSettings.value(
-            "viewState_Console", "True").lower() == "true")
-        self.chk2 = self.menubar[2].addAction(
-            '&Amplitude', self.toggle_amplitude)
+        self.chk1.setChecked(
+            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
+        )
+        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
         self.chk2.setCheckable(True)
-        self.chk2.setChecked(self.parent.AppSettings.value(
-            "viewState_Amplitude", "True").lower() == "true")
-        self.chk3 = self.menubar[2].addAction(
-            '&Temperature', self.toggle_temperature)
+        self.chk2.setChecked(
+            self.parent.AppSettings.value("viewState_Amplitude", "True").lower()
+            == "true"
+        )
+        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
         self.chk3.setCheckable(True)
-        self.chk3.setChecked(self.parent.AppSettings.value(
-            "viewState_Temperature", "True").lower() == "true")
+        self.chk3.setChecked(
+            self.parent.AppSettings.value("viewState_Temperature", "True").lower()
+            == "true"
+        )
         self.chk4 = self.menubar[2].addAction(
-            '&Resonance/Dissipation', self.toggle_RandD)
+            "&Resonance/Dissipation", self.toggle_RandD
+        )
         self.chk4.setCheckable(True)
-        self.chk4.setChecked(self.parent.AppSettings.value(
-            "viewState_Resonance_Dissipation", "True").lower() == "true")
+        self.chk4.setChecked(
+            self.parent.AppSettings.value(
+                "viewState_Resonance_Dissipation", "True"
+            ).lower()
+            == "true"
+        )
         self.menubar.append(target.menuBar().addMenu("&Help"))
-        self.chk5 = self.menubar[3].addAction(
-            'View &Tutorials', self.view_tutorials)
+        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
         self.chk5.setCheckable(False)
-        self.menubar.append(self.menubar[3].addMenu('View &Documentation'))
-        self.menubar[4].addAction('&Release Notes', self.release_notes)
-        self.menubar[4].addAction('&FW Change Log', self.fw_change_log)
-        self.menubar[4].addAction('&SW Change Log', self.sw_change_log)
-        self.menubar[3].addAction('View &License', self.view_license)
-        self.menubar[3].addAction('View &User Guide', self.view_user_guide)
-        self.menubar[3].addAction('&Check for Updates', self.check_for_updates)
+        self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
+        self.menubar[4].addAction("&Release Notes", self.release_notes)
+        self.menubar[4].addAction("&FW Change Log", self.fw_change_log)
+        self.menubar[4].addAction("&SW Change Log", self.sw_change_log)
+        self.menubar[3].addAction("View &License", self.view_license)
+        self.menubar[3].addAction("View &User Guide", self.view_user_guide)
+        self.menubar[3].addAction("&Check for Updates", self.check_for_updates)
         self.menubar[3].addSeparator()
         from QATCH.models.ModelData import __release__ as ModelData_release
         from QATCH.models.ModelData import __version__ as ModelData_version
@@ -394,23 +444,29 @@ class ControlsWindow(QtWidgets.QMainWindow):
         from QATCH.QModel.src.models.v6_yolo.__init__ import (
             __version__ as QModel6_version,
         )
-        qmodel_versions_menu = self.menubar[3].addMenu(
-            'Model versions (3 available)')
+
+        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
-            'ModelData v{} ({})'.format(ModelData_version, ModelData_release),
+            "ModelData v{} ({})".format(ModelData_version, ModelData_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[0]))
+                Constants.list_predict_models[0]
+            ),
+        )
         self.q_version_v1.setCheckable(True)
         self.q_version_v4 = self.menubar[5].addAction(
-            'QModel Fusion v{} ({})'.format(QModel4_version, QModel4_release),
+            "QModel Fusion v{} ({})".format(QModel4_version, QModel4_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[1]))
+                Constants.list_predict_models[1]
+            ),
+        )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
-            'QModel YOLO11 v{} ({})'.format(QModel6_version, QModel6_release),
+            "QModel YOLO11 v{} ({})".format(QModel6_version, QModel6_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
-                Constants.list_predict_models[2]))
+                Constants.list_predict_models[2]
+            ),
+        )
         self.q_version_v6.setCheckable(True)
         if Constants.QModel6_predict:
             self.q_version_v6.setChecked(True)
@@ -421,10 +477,13 @@ class ControlsWindow(QtWidgets.QMainWindow):
         else:
             Log.w(TAG, "No model selected on startup")
         self.menubar[3].addSeparator()
-        sw_version = self.menubar[3].addAction('SW {}_{} ({})'.format(
-            Constants.app_version,
-            "exe" if getattr(sys, 'frozen', False) else "py",
-            Constants.app_date))
+        sw_version = self.menubar[3].addAction(
+            "SW {}_{} ({})".format(
+                Constants.app_version,
+                "exe" if getattr(sys, "frozen", False) else "py",
+                Constants.app_date,
+            )
+        )
         sw_version.setEnabled(False)
         fingerprint_txt = DeviceFingerprint.get_key()
         if fingerprint_txt is not None:
@@ -478,7 +537,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.w("Working directory not changed.")
 
     def set_user_profile(self):
-        action = self.signinout.text().lower().replace('&', '')
+        action = self.signinout.text().lower().replace("&", "")
         if action == "sign in":
             if UserProfiles().count() == 0:
                 self.manage_user_profiles()
@@ -515,9 +574,12 @@ class ControlsWindow(QtWidgets.QMainWindow):
 
         # dissallow user management if current mode is busy
         if not self.parent.ControlsWin.ui1.pButton_Start.isEnabled():
-            PopUp.warning(self, "Action Not Allowed",
-                          "User info cannot be changed during an active capture.\n" +
-                          "Please 'Stop' the measurement before attempting this action.")
+            PopUp.warning(
+                self,
+                "Action Not Allowed",
+                "User info cannot be changed during an active capture.\n"
+                + "Please 'Stop' the measurement before attempting this action.",
+            )
             return
 
         if self.userrole != UserRoles.ADMIN and self.userrole != UserRoles.NONE:
@@ -567,8 +629,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Console window")
             self.parent.MainWin.ui0.logview.setVisible(True)
             # self.parent.LogWin.ui4.centralwidget.setVisible(True)
-        self.parent.AppSettings.setValue(
-            "viewState_Console", self.chk1.isChecked())
+        self.parent.AppSettings.setValue("viewState_Console", self.chk1.isChecked())
 
     def toggle_amplitude(self):
         tc = self.show_top_plot()
@@ -587,8 +648,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue(
-            "viewState_Amplitude", self.chk2.isChecked())
+        self.parent.AppSettings.setValue("viewState_Amplitude", self.chk2.isChecked())
 
     def toggle_temperature(self):
         tc = self.show_top_plot()
@@ -599,8 +659,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Temperature plot")
             self.parent._plt4.setVisible(True)
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue(
-            "viewState_Temperature", self.chk3.isChecked())
+        self.parent.AppSettings.setValue("viewState_Temperature", self.chk3.isChecked())
 
     def toggle_RandD(self):
         if self.current_timer.isActive():
@@ -612,7 +671,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Resonance/Dissipation plot(s)")
             self.parent.PlotsWin.ui2.pltB.setVisible(True)
         self.parent.AppSettings.setValue(
-            "viewState_Resonance_Dissipation", self.chk4.isChecked())
+            "viewState_Resonance_Dissipation", self.chk4.isChecked()
+        )
 
     def show_top_plot(self):
         toggle_console = False
@@ -641,8 +701,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(0, self.toggle_RandD)
 
     def view_tutorials(self):
-        self.parent.TutorialWin.setVisible(
-            not self.parent.TutorialWin.isVisible())
+        self.parent.TutorialWin.setVisible(not self.parent.TutorialWin.isVisible())
         self.chk5.setChecked(self.parent.TutorialWin.isVisible())
 
     def open_file(self, filepath, relative_to_cwd=True):
@@ -650,25 +709,26 @@ class ControlsWindow(QtWidgets.QMainWindow):
             if relative_to_cwd:
                 fullpath = os.path.join(Architecture.get_path(), filepath)
             os_type = Architecture.get_os()
-            if os_type == OSType.macosx:    # macOS
-                subprocess.call(('open', fullpath))
+            if os_type == OSType.macosx:  # macOS
+                subprocess.call(("open", fullpath))
             elif os_type == OSType.windows:  # Windows
                 os.startfile(fullpath)
-            elif os_type == OSType.linux:   # linux
-                subprocess.call(('xdg-open', fullpath))
-            else:                           # other variants
+            elif os_type == OSType.linux:  # linux
+                subprocess.call(("xdg-open", fullpath))
+            else:  # other variants
                 Log.w("Unknown OS Type:", os_type)
                 Log.w("Assuming Linux variant...")
-                subprocess.call(('xdg-open', fullpath))
+                subprocess.call(("xdg-open", fullpath))
         except:
-            Log.e(TAG, f"ERROR: Cannot open \"{os.path.split(fullpath)[1]}\"")
+            Log.e(TAG, f'ERROR: Cannot open "{os.path.split(fullpath)[1]}"')
 
     def release_notes(self):
         self.open_file(f"docs/Release Notes {Constants.app_version}.pdf")
 
     def fw_change_log(self):
         self.open_file(
-            f"QATCH_Q-1_FW_py_{Constants.best_fw_version}/FW Change Control Doc.pdf")
+            f"QATCH_Q-1_FW_py_{Constants.best_fw_version}/FW Change Control Doc.pdf"
+        )
 
     def sw_change_log(self):
         self.open_file("QATCH/SW Change Control Doc.pdf")
@@ -690,15 +750,20 @@ class ControlsWindow(QtWidgets.QMainWindow):
         color, status = self.parent.start_download(True)
         if color == "#ff0000":
             if status == "ERROR":
-                PopUp.warning(self, "Check for Updates",
-                              "An error occurred checking for updates.")
+                PopUp.warning(
+                    self, "Check for Updates", "An error occurred checking for updates."
+                )
             if status == "OFFLINE":
-                PopUp.warning(self, "Check for Updates",
-                              "Unable to check online for updates.")
+                PopUp.warning(
+                    self, "Check for Updates", "Unable to check online for updates."
+                )
         elif color != "#00ff00":
             technicality = " available " if color == "#00c600" else " supported "
-            PopUp.information(self, "Check for Updates",
-                              f"You are running the latest{technicality}version.")
+            PopUp.information(
+                self,
+                "Check for Updates",
+                f"You are running the latest{technicality}version.",
+            )
 
     def closeEvent(self, event):
         # Log.d(" Exit Setup/Control GUI")
@@ -706,7 +771,11 @@ class ControlsWindow(QtWidgets.QMainWindow):
             res = True
         else:
             res = PopUp.question(
-                self, Constants.app_title, "Are you sure you want to quit QATCH Q-1 application now?", True)
+                self,
+                Constants.app_title,
+                "Are you sure you want to quit QATCH Q-1 application now?",
+                True,
+            )
         if res:
             # self.close()
             QtWidgets.QApplication.quit()
@@ -736,22 +805,22 @@ class Rename_Output_Files(QtCore.QObject):
         self._logHandler.timeout.connect(self.interp_logger)
 
     def indicate_analyzing(self):
-        color_err = '#333333'
+        color_err = "#333333"
         labelbar = "Run Stopped. Analyzing run..."
         self.infobar_write(color_err, labelbar)
 
     def indicate_saving(self):
-        color_err = '#333333'
+        color_err = "#333333"
         labelbar = "Run Stopped. Saving run..."
         self.infobar_write(color_err, labelbar)
 
     def indicate_finalizing(self):
-        color_err = '#333333'
+        color_err = "#333333"
         labelbar = "Run Stopped. Requesting run info..."
         self.infobar_write(color_err, labelbar)
 
     def indicate_error(self):
-        color_err = '#ff0000'
+        color_err = "#ff0000"
         labelbar = "Run Stopped. Error saving data!"
         self.infobar_write(color_err, labelbar)
 
@@ -762,22 +831,24 @@ class Rename_Output_Files(QtCore.QObject):
             if self.bWorker[i].isVisible():
                 remaining_threads += 1
         if remaining_threads > 0:
-            Log.d(
-                f"Waiting on {remaining_threads} Run Info threads to close...")
+            Log.d(f"Waiting on {remaining_threads} Run Info threads to close...")
             return  # not done yet
-        color_err = '#333333'
+        color_err = "#333333"
         labelbar = "Run Stopped. Saved to local data."
         self.infobar_write(color_err, labelbar)
 
     def infobar_write(self, color_err, labelbar):
         self.parent.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                color_err, labelbar
+            )
+        )
 
     def interp_temps(self, new_files: List[str]) -> None:
         """
         The handler method for performing temperature interpolation on a list of files.
 
-        This method handles starting the `pInterpTemps` thread which interpolates temperature 
+        This method handles starting the `pInterpTemps` thread which interpolates temperature
         through a list of file paths.
 
         Args:
@@ -804,7 +875,7 @@ class Rename_Output_Files(QtCore.QObject):
             self.pInterpTemps._queueCmd.put(
                 QueueCommandFormat(
                     file.rstrip(),
-                    ActionType.load if not cache_loaded else ActionType.interp
+                    ActionType.load if not cache_loaded else ActionType.interp,
                 ).asdict()
             )
             cache_loaded = True
@@ -838,10 +909,10 @@ class Rename_Output_Files(QtCore.QObject):
                 PopUp.critical(
                     parent=self.parent,
                     title="Temp Propagation Failure",
-                    message="ERROR: Failed to write temps to secondary.\n" +
-                            f"Filename: \"{result['filename']}\"",
-                    details=result['details'],
-                    ok_only=True
+                    message="ERROR: Failed to write temps to secondary.\n"
+                    + f"Filename: \"{result['filename']}\"",
+                    details=result["details"],
+                    ok_only=True,
                 )
 
     #######################################################################
@@ -849,11 +920,11 @@ class Rename_Output_Files(QtCore.QObject):
     #######################################################################
     def run(self) -> None:
         """
-        Executes the run process to handle new files, analyze data quality, prompt user input, 
+        Executes the run process to handle new files, analyze data quality, prompt user input,
         and manage file storage and encryption.
 
-        This method checks for newly generated files, processes them by analyzing quality, 
-        renaming, and saving them into user-defined directories. It also handles user input 
+        This method checks for newly generated files, processes them by analyzing quality,
+        renaming, and saving them into user-defined directories. It also handles user input
         for naming runs, encrypts output files if required, and manages error conditions.
 
         Raises:
@@ -874,10 +945,9 @@ class Rename_Output_Files(QtCore.QObject):
             # Copy and rename log files from the temporary directory in alphabetical order
             # to include a user-defined run name string
             content = []
-            with open(Constants.new_files_path, 'r') as file:
+            with open(Constants.new_files_path, "r") as file:
                 self.indicate_analyzing()
-                new_file_time = strftime(
-                    Constants.csv_default_prefix, localtime())
+                new_file_time = strftime(Constants.csv_default_prefix, localtime())
                 content = file.readlines()
                 content.sort()
 
@@ -906,14 +976,16 @@ class Rename_Output_Files(QtCore.QObject):
                 path_parts = os.path.split(old_path)
                 this_dir = path_parts[0]
                 this_file = path_parts[1]
-                this_name = this_file[:this_file.rindex('_')]
+                this_name = this_file[: this_file.rindex("_")]
                 copy_file = None
 
                 # Skip if the new directory is the same as the temporary directory.
                 if this_dir != current_directory:
                     current_directory = this_dir
                     path_split = os.path.split(this_dir)
-                    preferences_write_path = UserProfiles.user_preferences._get_write_data_path()
+                    preferences_write_path = (
+                        UserProfiles.user_preferences._get_write_data_path()
+                    )
                     if preferences_write_path == "":
                         path_root = path_split[0]
                     else:
@@ -923,29 +995,30 @@ class Rename_Output_Files(QtCore.QObject):
                     try:
                         _dev_pid = 0
                         _dev_name = dev_name
-                        if _dev_name.count('_') > 0:
-                            _dev_parts = _dev_name.split('_')
+                        if _dev_name.count("_") > 0:
+                            _dev_parts = _dev_name.split("_")
                             _dev_pid = int(_dev_parts[0], base=16) % 9
                             # do not override 'dev_name'
                             _dev_name = _dev_parts[1]
 
                         # Retrieve device info based on the device name and port-id
-                        dev_info = FileStorage.DEV_info_get(
-                            _dev_pid, _dev_name)
-                        if 'NAME' in dev_info:
-                            if dev_info['NAME'] != _dev_name:
-                                dev_name = dev_info['NAME']
+                        dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
+                        if "NAME" in dev_info:
+                            if dev_info["NAME"] != _dev_name:
+                                dev_name = dev_info["NAME"]
 
-                        if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
+                        if (
+                            _dev_pid != 0
+                        ):  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                             # Convert PID to multiplex designation (i.e. int(1) -> int(162) for "A2")
                             if self.has_active_multi_port():  # 4x6 system
                                 # mask in port, e.g. "A" -> "A1"
                                 _dev_pid = (
-                                    (_dev_pid + 9) << 4) | self.get_active_multi_port()
+                                    (_dev_pid + 9) << 4
+                                ) | self.get_active_multi_port()
                             # else: 4x1 system, nothing to do
                     except:
-                        Log.e(
-                            TAG, f"Unable to lookup device info for: {dev_name}")
+                        Log.e(TAG, f"Unable to lookup device info for: {dev_name}")
 
                     # Controls saving with errors.
                     force_save = True
@@ -954,35 +1027,51 @@ class Rename_Output_Files(QtCore.QObject):
                     # If run is not deemed "good" report this to the user asking if they should save the
                     # force save with bad data.
                     if input_text == "" and not is_good:
-                        force_save = PopUp.critical(self.parent,
-                                                    "Capture Run",
-                                                    "Are you sure you want to save this run?",
-                                                    "This software contains AI technology that is trained to detect run quality and it has determined this run does not match the standard characteristics of a complete run. Analysis of this run data may enocunter issues. If so, trying again with a different crystal may yield better results.",
-                                                    True)
+                        force_save = PopUp.critical(
+                            self.parent,
+                            "Capture Run",
+                            "Are you sure you want to save this run?",
+                            "This software contains AI technology that is trained to detect run quality and it has determined this run does not match the standard characteristics of a complete run. Analysis of this run data may enocunter issues. If so, trying again with a different crystal may yield better results.",
+                            True,
+                        )
                     self.indicate_saving()
 
                     # Prompt user for a runname.
                     while True:
                         if input_text == "":
                             if force_save:
-                                input_text, status_ok = QtWidgets.QInputDialog.getText(self.parent, 'Name this run...',
-                                                                                       # for device "{}":'.format(dev_name),
-                                                                                       'Enter a name for this run:',
-                                                                                       text=input_text)
+                                input_text, status_ok = QtWidgets.QInputDialog.getText(
+                                    self.parent,
+                                    "Name this run...",
+                                    # for device "{}":'.format(dev_name),
+                                    "Enter a name for this run:",
+                                    text=input_text,
+                                )
                             else:
-                                status_ok = False  # bad run, don't save with custom name
+                                status_ok = (
+                                    False  # bad run, don't save with custom name
+                                )
 
                         # Remove any invalid characters from user input
                         # invalid_characters = "\\/:*?\"'<>|"
                         for character in Constants.invalidChars:
-                            input_text = input_text.replace(
-                                character, '')
+                            input_text = input_text.replace(character, "")
 
                         # Fetch run and run_parent directories based on user preferences.
-                        run_directory = UserProfiles.user_preferences.get_file_save_path(
-                            runname=input_text, device_id=_dev_name, port_id=_dev_pid)
-                        run_parent_directory = UserProfiles.user_preferences.get_folder_save_path(
-                            runname=input_text, device_id=_dev_name, port_id=_dev_pid)
+                        run_directory = (
+                            UserProfiles.user_preferences.get_file_save_path(
+                                runname=input_text,
+                                device_id=_dev_name,
+                                port_id=_dev_pid,
+                            )
+                        )
+                        run_parent_directory = (
+                            UserProfiles.user_preferences.get_folder_save_path(
+                                runname=input_text,
+                                device_id=_dev_name,
+                                port_id=_dev_pid,
+                            )
+                        )
 
                         if status_ok:
                             ask_for_info = True
@@ -991,40 +1080,59 @@ class Rename_Output_Files(QtCore.QObject):
                             try:
                                 if len(input_text) == 0:
                                     raise Exception(
-                                        "No text entered. Please try again.")
+                                        "No text entered. Please try again."
+                                    )
 
                                 # Using Device folder path from UserPreferences class.
                                 # os.makedirs(os.path.join(
                                 #     path_root, dev_name, run_directory), exist_ok=False)
 
-                                os.makedirs(os.path.join(
-                                    path_root, run_parent_directory, run_directory), exist_ok=False)
+                                os.makedirs(
+                                    os.path.join(
+                                        path_root, run_parent_directory, run_directory
+                                    ),
+                                    exist_ok=False,
+                                )
                                 # break (done below)
                             except:
                                 if len(input_text) > 0:
-                                    PopUp.warning(self.parent,
-                                                  "Duplicate Run Name",
-                                                  "A run with this name already exists...\nPlease try again with a different name.")
+                                    PopUp.warning(
+                                        self.parent,
+                                        "Duplicate Run Name",
+                                        "A run with this name already exists...\nPlease try again with a different name.",
+                                    )
                                 else:
-                                    PopUp.warning(self.parent,
-                                                  "Enter a Run Name",
-                                                  "Please enter a run name to save this run...\nPlease try again with a valid name.")
+                                    PopUp.warning(
+                                        self.parent,
+                                        "Enter a Run Name",
+                                        "Please enter a run name to save this run...\nPlease try again with a valid name.",
+                                    )
                                 input_text = ""
                                 continue  # no break (try again)
-                            input_text = input_text.strip().replace(' ', '_')  # word spaces -> underscores
+                            input_text = input_text.strip().replace(
+                                " ", "_"
+                            )  # word spaces -> underscores
                         else:
                             ask_for_info = False
                             input_text = new_file_time  # uniquify
                             if not is_good:
                                 input_text += "_BAD"
                             run_parent_directory = "_unnamed"
-                            run_directory = UserProfiles.user_preferences.get_file_save_path(
-                                runname=input_text, device_id=_dev_name, port_id=_dev_pid)
+                            run_directory = (
+                                UserProfiles.user_preferences.get_file_save_path(
+                                    runname=input_text,
+                                    device_id=_dev_name,
+                                    port_id=_dev_pid,
+                                )
+                            )
                             # trim off dev_id
-                            run_directory = run_directory[:run_directory.rfind(
-                                "_")]
-                            os.makedirs(os.path.join(
-                                path_root, run_parent_directory, run_directory), exist_ok=True)
+                            run_directory = run_directory[: run_directory.rfind("_")]
+                            os.makedirs(
+                                os.path.join(
+                                    path_root, run_parent_directory, run_directory
+                                ),
+                                exist_ok=True,
+                            )
                         break
 
                 # We *must* wait here until InterpTempsProcess has finished
@@ -1037,18 +1145,26 @@ class Rename_Output_Files(QtCore.QObject):
 
                 # Construct new run path to the new run path under run parent directory.
                 new_run_path = os.path.join(
-                    path_root, run_parent_directory, run_directory, this_file.replace(this_name, input_text))
+                    path_root,
+                    run_parent_directory,
+                    run_directory,
+                    this_file.replace(this_name, input_text),
+                )
 
                 try:
                     # Attempt to rename temporary files to the new run path.
                     os.rename(old_path, new_run_path)
                     Log.i(
-                        ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path))
+                        ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path)
+                    )
                     copy_file = new_run_path
                 except Exception:
                     # Log and raise any errors terminating early if rename fails.
-                    Log.e(' ERROR: Failed to rename "{}" to "{}"!!!'.format(
-                        old_path, new_run_path))
+                    Log.e(
+                        ' ERROR: Failed to rename "{}" to "{}"!!!'.format(
+                            old_path, new_run_path
+                        )
+                    )
                     self.finished.connect(self.indicate_error)
                     if os.path.isfile(old_path):
                         copy_file = old_path
@@ -1063,13 +1179,16 @@ class Rename_Output_Files(QtCore.QObject):
                         os.rmdir(old_path_parts[0])
                 except:
                     Log.e(
-                        ' ERROR: Failed to clean-up after renaming "{}"!!!'.format(old_path_parts[1]))
+                        ' ERROR: Failed to clean-up after renaming "{}"!!!'.format(
+                            old_path_parts[1]
+                        )
+                    )
                     self.finished.connect(self.indicate_error)
 
                 if copy_file != None:  # require access controls
                     file_parts = os.path.split(copy_file)
                     if run_parent_directory == "_unnamed":
-                        zn = copy_file[:copy_file.rfind("_")] + ".zip"
+                        zn = copy_file[: copy_file.rfind("_")] + ".zip"
                         if _dev_pid > 0:  # multiplex systems, add dev_id
                             zn = zn.replace(".zip", f"_{_dev_pid}.zip")
                     else:
@@ -1078,34 +1197,43 @@ class Rename_Output_Files(QtCore.QObject):
                     crc_file = archive_file[:-4] + ".crc"
 
                     # Create a new zip file with a password
-                    with pyzipper.AESZipFile(zn, 'a',
-                                             compression=pyzipper.ZIP_DEFLATED,
-                                             allowZip64=True,
-                                             encryption=pyzipper.WZ_AES) as zf:
+                    with pyzipper.AESZipFile(
+                        zn,
+                        "a",
+                        compression=pyzipper.ZIP_DEFLATED,
+                        allowZip64=True,
+                        encryption=pyzipper.WZ_AES,
+                    ) as zf:
                         # Add a protected file to the zip archive
                         friendly_name = f"{run_directory} ({datetime.date.today()})"
                         zf.comment = friendly_name.encode()  # run name
 
                         enabled, error, expires = UserProfiles.checkDevMode()
                         if enabled == False and (error == True or expires != ""):
-                            PopUp.warning(self, "Developer Mode Expired",
-                                          "Developer Mode has expired and this data capture will now be encrypted.\n" +
-                                          "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
+                            PopUp.warning(
+                                self,
+                                "Developer Mode Expired",
+                                "Developer Mode has expired and this data capture will now be encrypted.\n"
+                                + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
+                            )
 
                         if UserProfiles.count() > 0 and enabled == False:
                             # create a protected archive
-                            zf.setpassword(hashlib.sha256(
-                                zf.comment).hexdigest().encode())
+                            zf.setpassword(
+                                hashlib.sha256(zf.comment).hexdigest().encode()
+                            )
                         else:
                             zf.setencryption(None)
                             if enabled:
                                 Log.w(
-                                    "Developer Mode is ENABLED - NOT encrypting ZIP file")
+                                    "Developer Mode is ENABLED - NOT encrypting ZIP file"
+                                )
 
                         zf.write(copy_file, arcname=archive_file)
                         if archive_file.endswith(".csv"):
-                            zf.writestr(crc_file, str(
-                                hex(zf.getinfo(archive_file).CRC)))
+                            zf.writestr(
+                                crc_file, str(hex(zf.getinfo(archive_file).CRC))
+                            )
 
                     os.remove(copy_file)
 
@@ -1113,11 +1241,21 @@ class Rename_Output_Files(QtCore.QObject):
                     ask_for_info = False
                     self.indicate_finalizing()
                     self.bThread.append(QtCore.QThread())
-                    user_name = None if self.parent == None else self.parent.ControlsWin.username.text()[
-                        6:]
+                    user_name = (
+                        None
+                        if self.parent == None
+                        else self.parent.ControlsWin.username.text()[6:]
+                    )
                     # TODO: more secure to pass user_hash (filename)
-                    self.bWorker.append(QueryRunInfo(
-                        run_directory, new_run_path, is_good, user_name, parent=self.parent))
+                    self.bWorker.append(
+                        QueryRunInfo(
+                            run_directory,
+                            new_run_path,
+                            is_good,
+                            user_name,
+                            parent=self.parent,
+                        )
+                    )
                     self.bThread[-1].started.connect(self.bWorker[-1].show)
                     self.bWorker[-1].finished.connect(self.bThread[-1].quit)
                     # add here
@@ -1134,13 +1272,15 @@ class Rename_Output_Files(QtCore.QObject):
                 self.bThread[-1].start()  # only 1 run to save
             else:
                 self.RunInfoWindow = RunInfoWindow(
-                    self.bWorker, self.bThread)  # more than 1 run to save
+                    self.bWorker, self.bThread
+                )  # more than 1 run to save
 
         except:
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -1167,6 +1307,7 @@ class Rename_Output_Files(QtCore.QObject):
         # returns 1-6, depending on active 4x6 port on MUX of active device
         return self.parent.active_multi_ch
         # NOTE: setting 'active_multi_ch' is not implemented, only defined as 1 (always)
+
 
 # ------------------------------------------------------------------------------
 
@@ -1195,10 +1336,10 @@ class MainWindow(QtWidgets.QMainWindow):
     # Initializes methods, values and sets the UI
     ###########################################################################
     def __init__(self, samples=Constants.argument_default_samples):
-        """ Handles the main window layout.
+        """Handles the main window layout.
 
         This method setups up the various child windows and layout of the main application
-        window.  This initializer also establishes the layout of the various plots for each 
+        window.  This initializer also establishes the layout of the various plots for each
         application mode.  Last, the initializer sets the various signals for each thread and
         enables the UI.
 
@@ -1220,8 +1361,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dbx_connection = None
 
         # Check application settings global variable to get/set elsewhere
-        self.AppSettings = QtCore.QSettings(
-            Constants.app_publisher, Constants.app_name)
+        self.AppSettings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
 
         # Sets up the user interface from the generated Python script using Qt Designer
         # Instantiates Ui classes
@@ -1258,21 +1398,33 @@ class MainWindow(QtWidgets.QMainWindow):
         self._plt0_2 = None
         self._plt0_3 = None
         self._plt0_4 = None
-        self._plt0_arr = [self._plt0_1, self._plt0_2,
-                          self._plt0_3, self._plt0_4]  # array of all _plt0 plots
+        self._plt0_arr = [
+            self._plt0_1,
+            self._plt0_2,
+            self._plt0_3,
+            self._plt0_4,
+        ]  # array of all _plt0 plots
         self._plt1 = None  # phase (not used)
         self._plt2_1 = None  # resonance (split for multi below)
         self._plt2_2 = None
         self._plt2_3 = None
         self._plt2_4 = None
-        self._plt2_arr = [self._plt2_1, self._plt2_2,
-                          self._plt2_3, self._plt2_4]  # array of all _plt2 plots
+        self._plt2_arr = [
+            self._plt2_1,
+            self._plt2_2,
+            self._plt2_3,
+            self._plt2_4,
+        ]  # array of all _plt2 plots
         self._plt3_1 = None  # dissipation (split for multi below)
         self._plt3_2 = None
         self._plt3_3 = None
         self._plt3_4 = None
-        self._plt3_arr = [self._plt3_1, self._plt3_2,
-                          self._plt3_3, self._plt3_4]  # array of all _plt3 plots
+        self._plt3_arr = [
+            self._plt3_1,
+            self._plt3_2,
+            self._plt3_3,
+            self._plt3_4,
+        ]  # array of all _plt3 plots
         self._plt4 = None  # temperature (combined)
         self.multiplex_plots = 1
         # TODO: update this variable on write to MUX state of primary device
@@ -1286,16 +1438,24 @@ class MainWindow(QtWidgets.QMainWindow):
         self._ser_err_usb = 0
         self._identifying = False
         self._no_ports_found = 0
-        self._selected_port = ''
+        self._selected_port = ""
 
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
         self._run_finished = [False, False, False, False]
-        self._baselinedata = [[[0, 0], [0, 0]], [
-            [0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]
-        self._last_y_range = [[[0, 0], [0, 0]], [
-            [0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]
+        self._baselinedata = [
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+        ]
+        self._last_y_range = [
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+            [[0, 0], [0, 0]],
+        ]
         self._last_y_delta = [0, 0, 0, 0]
         self._reference_flag = False
         self._vector_reference_frequency = [None]
@@ -1312,6 +1472,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Check for nightly build option, set if available
         try:
             from QATCH.nightly.interface import UpdaterTask_Nightly
+
             Constants.UpdateEngine = UpdateEngines.Nightly
         except:
             pass  # no nightly build option available
@@ -1340,7 +1501,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Populates combo box for serial ports
         self._source_changed()
         self.ControlsWin.ui1.cBox_Source.setCurrentIndex(
-            OperationType.calibration.value)
+            OperationType.calibration.value
+        )
         self.ControlsWin.ui1.sBox_Samples.setValue(samples - 1)  # samples
 
         # Populate TEC temperature initial value
@@ -1356,8 +1518,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Safety check
         if (Constants.avg_in or Constants.avg_out) < 5:
-            PopUp.warning(self, "Averaging Disabled", "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging." +
-                                                      "\n\nThis seems unintentional and may result in unreliable measurement performance.")
+            PopUp.warning(
+                self,
+                "Averaging Disabled",
+                "WARNING: avg_in and/or avg_out are set to unsupported values that disable averaging."
+                + "\n\nThis seems unintentional and may result in unreliable measurement performance.",
+            )
 
         # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
         #     pass
@@ -1384,14 +1550,17 @@ class MainWindow(QtWidgets.QMainWindow):
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
         if check_result == None:  # user check required, but no user signed in
             Log.w(
-                f"Not signed in: User with role {action_role.name} is required to perform this action.")
+                f"Not signed in: User with role {action_role.name} is required to perform this action."
+            )
             Log.i("Please sign in to continue.")
             self.ControlsWin.set_user_profile()  # prompt for sign-in
             check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role)  # check again
+                self.ControlsWin.userrole, action_role
+            )  # check again
         if not check_result:  # no user signed in or user not authorized
             Log.w(
-                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+                f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+            )
             return  # deny action
 
         self.data_device = data_device
@@ -1412,70 +1581,71 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w("No data devices available for selection.")
             return
         if data_folder == None:
-            self.data_folders = FileStorage.DEV_get_logged_data_folders(
-                data_device)
+            self.data_folders = FileStorage.DEV_get_logged_data_folders(data_device)
             if len(self.data_folders) > 0:
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_folders, "run")
                 self.aThread.started.connect(self.aWorker.show)
                 self.aWorker.finished.connect(self.aThread.quit)
-                self.aWorker.finished.connect(
-                    self.analyze_data_get_data_folder)
+                self.aWorker.finished.connect(self.analyze_data_get_data_folder)
                 self.aThread.start()
             else:
                 Log.w("No data folders available for selection.")
             return
         if data_file == None:
             self.data_files = FileStorage.DEV_get_logged_data_files(
-                data_device, data_folder)
+                data_device, data_folder
+            )
             if "capture.zip" in self.data_files:
-                zn = os.path.join(Constants.log_prefer_path,
-                                  data_device, data_folder, "capture.zip")
+                zn = os.path.join(
+                    Constants.log_prefer_path, data_device, data_folder, "capture.zip"
+                )
                 if FileManager.file_exists(zn):
-                    with pyzipper.AESZipFile(zn, 'r',
-                                             compression=pyzipper.ZIP_DEFLATED,
-                                             allowZip64=True,
-                                             encryption=pyzipper.WZ_AES) as zf:
+                    with pyzipper.AESZipFile(
+                        zn,
+                        "r",
+                        compression=pyzipper.ZIP_DEFLATED,
+                        allowZip64=True,
+                        encryption=pyzipper.WZ_AES,
+                    ) as zf:
                         # Add a protected file to the zip archive
                         try:
                             zf.testzip()
                         except:
-                            zf.setpassword(hashlib.sha256(
-                                zf.comment).hexdigest().encode())
+                            zf.setpassword(
+                                hashlib.sha256(zf.comment).hexdigest().encode()
+                            )
                         self.data_files = zf.namelist()
                         self.data_files = [
-                            x for x in self.data_files if not x.endswith(".crc")]
+                            x for x in self.data_files if not x.endswith(".crc")
+                        ]
+            self.data_files = [x for x in self.data_files if not x.endswith("_tec.csv")]
+            self.data_files = [x for x in self.data_files if not x.endswith("_poi.csv")]
+            self.data_files = [x for x in self.data_files if not x.endswith(".txt")]
+            self.data_files = [x for x in self.data_files if not x.endswith(".xml")]
+            self.data_files = [x for x in self.data_files if not x.endswith(".pdf")]
+            self.data_files = [x for x in self.data_files if not x.endswith(".zip")]
             self.data_files = [
-                x for x in self.data_files if not x.endswith("_tec.csv")]
-            self.data_files = [
-                x for x in self.data_files if not x.endswith("_poi.csv")]
-            self.data_files = [
-                x for x in self.data_files if not x.endswith(".txt")]
-            self.data_files = [
-                x for x in self.data_files if not x.endswith(".xml")]
-            self.data_files = [
-                x for x in self.data_files if not x.endswith(".pdf")]
-            self.data_files = [
-                x for x in self.data_files if not x.endswith(".zip")]
-            self.data_files = [x for x in self.data_files if not x.endswith(
-                Constants.export_file_format)]
+                x
+                for x in self.data_files
+                if not x.endswith(Constants.export_file_format)
+            ]
             if len(self.data_files) == 1:
                 self.data_file = self.data_files[0]
                 Log.i("Selected data file = {}".format(self.data_file))
                 # continue analysis
-                self.analyze_data(self.data_device,
-                                  self.data_folder, self.data_file)
+                self.analyze_data(self.data_device, self.data_folder, self.data_file)
             elif "_3rd.csv" in self.data_files[0] or "_3rd.csv" in self.data_files[-1]:
                 if "_3rd.csv" in self.data_files[0]:
                     self.data_file = self.data_files[0]
                 else:
                     self.data_file = self.data_files[1]
                 Log.i(
-                    f"Found {len(self.data_files)} modes in this run: {self.data_files}")
+                    f"Found {len(self.data_files)} modes in this run: {self.data_files}"
+                )
                 Log.i("Selected data file = {}".format(self.data_file))
                 # continue analysis
-                self.analyze_data(self.data_device,
-                                  self.data_folder, self.data_file)
+                self.analyze_data(self.data_device, self.data_folder, self.data_file)
             elif len(self.data_files) > 1:
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_files, "log file")
@@ -1489,15 +1659,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # do analysis here, we've been given a device, folder and file to get data from
         data_path = os.path.join(
-            Constants.log_prefer_path, data_device, data_folder, data_file)
+            Constants.log_prefer_path, data_device, data_folder, data_file
+        )
 
         is_good = True  # AnalyzeProcess.Model_Data(data_path)
         if not is_good:
-            if not PopUp.critical(self,
-                                  "Bad Run",
-                                  "This run appears to be bad...\nPlease try again with a different crystal.\n\nDo you want to analyze this run anyways?",
-                                  "This software contains a machine learning model that has been trained to detect run quality and it has determined this run looks bad.",
-                                  True):
+            if not PopUp.critical(
+                self,
+                "Bad Run",
+                "This run appears to be bad...\nPlease try again with a different crystal.\n\nDo you want to analyze this run anyways?",
+                "This software contains a machine learning model that has been trained to detect run quality and it has determined this run looks bad.",
+                True,
+            ):
                 Log.w("Analysis aborted by user due to bad run detection.")
                 return
 
@@ -1511,7 +1684,7 @@ class MainWindow(QtWidgets.QMainWindow):
         try:
             xml_path = data_path[0:-3] + "xml"
             # set always, even if not found
-            Log.d(TAG, f'XML PATH= {xml_path}, DATA PATH = {data_path}')
+            Log.d(TAG, f"XML PATH= {xml_path}, DATA PATH = {data_path}")
             self.AnalyzeProc.setXmlPath(xml_path)
             if os.path.exists(xml_path):
                 doc = minidom.parse(xml_path)
@@ -1520,12 +1693,12 @@ class MainWindow(QtWidgets.QMainWindow):
                     name = m.getAttribute("name")
                     value = m.getAttribute("value")
                     if name == "start":
-                        captured = value[0:value.find("T")]
+                        captured = value[0 : value.find("T")]
             else:
                 zn = os.path.join(os.path.split(xml_path)[0], "capture.zip")
                 # Log.e(f"zn: {zn}")
                 if FileManager.file_exists(zn):
-                    with pyzipper.AESZipFile(zn, 'r') as zf:
+                    with pyzipper.AESZipFile(zn, "r") as zf:
                         captured = zf.comment.decode()[-11:-1]
                 else:
                     raise Exception("No XML exists for this run.")
@@ -1535,8 +1708,12 @@ class MainWindow(QtWidgets.QMainWindow):
             captured = datetime.datetime.fromtimestamp(captured)
             captured = captured.strftime("%Y-%m-%d")  # %H:%M:%S")
         self.AnalyzeProc.text_Created.setText(
-            "Loaded: {} ({})".format(data_folder, captured))
-        if hasattr(self.AnalyzeProc, "_batched_runs") and self.AnalyzeProc._batched_runs:
+            "Loaded: {} ({})".format(data_folder, captured)
+        )
+        if (
+            hasattr(self.AnalyzeProc, "_batched_runs")
+            and self.AnalyzeProc._batched_runs
+        ):
             self.AnalyzeProc._current_run = self.AnalyzeProc.text_Created.text()
 
         self.AnalyzeProc.Analyze_Data(data_path)
@@ -1545,7 +1722,8 @@ class MainWindow(QtWidgets.QMainWindow):
         Log.i(TAG, "Refreshing data files...")
         # print(self.data_files) # DEBUG ONLY
         self.data_files = FileStorage.DEV_get_logged_data_files(
-            self.data_device, self.data_folder)
+            self.data_device, self.data_folder
+        )
 
     def analyze_data_get_data_device(self):
         idx = self.aWorker.clickedButton()
@@ -1575,8 +1753,9 @@ class MainWindow(QtWidgets.QMainWindow):
         if idx >= 0:
             self.data_file = self.data_files[idx]
             Log.i(TAG, f"Selected data file = {self.data_file}")
-            self.analyze_data(self.data_device, self.data_folder,
-                              self.data_file)  # continue analysis
+            self.analyze_data(
+                self.data_device, self.data_folder, self.data_file
+            )  # continue analysis
         else:
             self.data_device = self.data_folder = self.data_file = None
             Log.w("User aborted data file selection.")
@@ -1603,7 +1782,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if chk4 != self.ControlsWin.chk4.isChecked():
             self.ControlsWin.toggle_RandD()
 
-    def parse_ports_from_file(self, path_to_plate_config: str = r'plate-config.json'):
+    def parse_ports_from_file(self, path_to_plate_config: str = r"plate-config.json"):
         """
         Parses a JSON file containing a nested list of booleans and maps them to port names.
 
@@ -1619,46 +1798,59 @@ class MainWindow(QtWidgets.QMainWindow):
             ValueError: If the file does not contain the expected nested list structure.
         """
         import json
+
         # Check if file exists
         if not os.path.exists(path_to_plate_config):
-            Log.e(
-                tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
+            Log.e(tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
             raise FileNotFoundError(
-                f"The file '{path_to_plate_config}' does not exist.")
+                f"The file '{path_to_plate_config}' does not exist."
+            )
 
         # Read the JSON file
         try:
-            with open(path_to_plate_config, 'r') as file:
+            with open(path_to_plate_config, "r") as file:
                 matrix = json.load(file)
         except json.JSONDecodeError as e:
             Log.e(
-                tag=TAG, msg=f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+                tag=TAG,
+                msg=f"The file '{path_to_plate_config}' is not a valid JSON file: {e}",
+            )
             raise ValueError(
-                f"The file '{path_to_plate_config}' is not a valid JSON file: {e}")
+                f"The file '{path_to_plate_config}' is not a valid JSON file: {e}"
+            )
 
         # Validate the JSON structure
-        if not isinstance(matrix, list) or not all(isinstance(row, list) for row in matrix):
+        if not isinstance(matrix, list) or not all(
+            isinstance(row, list) for row in matrix
+        ):
             Log.e(
-                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+                tag=TAG,
+                msg=f"The JSON file '{path_to_plate_config}' does not contain active well matrix.",
+            )
             raise ValueError(
-                f"The JSON file '{path_to_plate_config}' does not contain active well matrix.")
+                f"The JSON file '{path_to_plate_config}' does not contain active well matrix."
+            )
 
         # Check all elements are booleans
         if not all(all(isinstance(value, bool) for value in row) for row in matrix):
             Log.e(
-                tag=TAG, msg=f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+                tag=TAG,
+                msg=f"The JSON file '{path_to_plate_config}' contains non-boolean values.",
+            )
             raise ValueError(
-                f"The JSON file '{path_to_plate_config}' contains non-boolean values.")
+                f"The JSON file '{path_to_plate_config}' contains non-boolean values."
+            )
 
         # Map rows to numbers (1-6) and columns to letters (A-D)
         rows = range(1, len(matrix) + 1)  # 1 through number of rows
-        columns = ['A', 'B', 'C', 'D']   # A through D
+        columns = ["A", "B", "C", "D"]  # A through D
 
         # Ensure each row has the correct number of columns
         num_columns = len(columns)
         if any(len(row) != num_columns for row in matrix):
             raise ValueError(
-                f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements.")
+                f"Each row in the JSON file '{path_to_plate_config}' must have exactly {num_columns} elements."
+            )
 
         # Create the dictionary of ports and their states, and track active ports
         ports_dict = {}
@@ -1682,7 +1874,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         The start() method initially validates signed in user permissions and requested CAPTURE action.  If a
         user does not have CAPTURE permissions, the method returns to caller.  Next, the method handles orphaned run
-        files from previous runs, uniqufiying run names.  Next, error checking for the correct number of ports is 
+        files from previous runs, uniqufiying run names.  Next, error checking for the correct number of ports is
         determined.  More than 2 ports or no ports results in a return to caller and error message.  Then, the user profile
         and calibration data is validated for developer mode and recency respecitvely. Last, the mode of capture is set to
         either multiplex or single mode.
@@ -1708,19 +1900,22 @@ class MainWindow(QtWidgets.QMainWindow):
         # User check required, but no user signed in.
         if check_result == None:
             Log.w(
-                tag=TAG, msg=f"Not signed in: User with role {action_role.name} is required to perform this action.")
+                tag=TAG,
+                msg=f"Not signed in: User with role {action_role.name} is required to perform this action.",
+            )
             Log.i(tag=TAG, msg="Please sign in to continue.")
 
             # Prompt user for sign-in.
             self.ControlsWin.set_user_profile()
-            check_result = UserProfiles().check(
-                self.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
 
         # No user signed in or user not authorized to perform capture.  Notify user and deny action request returning to
         # caller.
         if not check_result:
             Log.w(
-                tag=TAG, msg=f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+                tag=TAG,
+                msg=f"ACTION DENIED: User with role {self.ControlsWin.userrole.name} does not have permission to {action_role.name}.",
+            )
             return
 
         Log.d(tag=TAG, msg="GUI: Clear console window")
@@ -1748,8 +1943,9 @@ class MainWindow(QtWidgets.QMainWindow):
             import glob
 
             # Get a recursive list of file paths that matches pattern including sub directories
-            fileList = glob.glob(os.path.join(
-                os.getcwd(), Constants.csv_export_path, '*/*.csv'))
+            fileList = glob.glob(
+                os.path.join(os.getcwd(), Constants.csv_export_path, "*/*.csv")
+            )
 
             # Iterate over the list of filepaths & remove each file.
             for old_path in fileList:
@@ -1765,28 +1961,34 @@ class MainWindow(QtWidgets.QMainWindow):
                 os.makedirs(os.path.join(path_parts[0], subDir), exist_ok=True)
 
                 # Uniquify file names.
-                new_file_time = strftime(
-                    Constants.csv_default_prefix, localtime())
+                new_file_time = strftime(Constants.csv_default_prefix, localtime())
 
                 new_path = os.path.join(
-                    path_parts[0], subDir, "{}_{}".format(new_file_time, path_parts[1]))
+                    path_parts[0], subDir, "{}_{}".format(new_file_time, path_parts[1])
+                )
                 try:
                     os.rename(old_path, new_path)
                     Log.i(
-                        tag=TAG, msg='Renamed "{}" ->\n         "{}"'.format(old_path, new_path))
+                        tag=TAG,
+                        msg='Renamed "{}" ->\n         "{}"'.format(old_path, new_path),
+                    )
                 except:
-                    Log.e(tag=TAG, msg='Failed to rename "{}" to "{}"!'.format(
-                        old_path, new_path))
+                    Log.e(
+                        tag=TAG,
+                        msg='Failed to rename "{}" to "{}"!'.format(old_path, new_path),
+                    )
         except:
             Log.e(
-                tag=TAG, msg="Failed to move prior created files. Some new files may not be renamed.")
+                tag=TAG,
+                msg="Failed to move prior created files. Some new files may not be renamed.",
+            )
 
         ### END HANDLE ORPHANED FILES ###
 
         # Add TEC output file to new files list (if exists)
         tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
         if os.path.exists(tec_log_path) and not self.tecWorker._tec_state == "OFF":
-            with open(Constants.new_files_path, 'a') as tempFile:
+            with open(Constants.new_files_path, "a") as tempFile:
                 tempFile.write(tec_log_path + "\n")
 
         # Select a valid port for for the current data displayed.  If selected port is None or the
@@ -1794,12 +1996,12 @@ class MainWindow(QtWidgets.QMainWindow):
         # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if selected_port == None:
-            selected_port = ''  # Dissallow None
+            selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
-            selected_port = ''  # Dissallow Action
+            selected_port = ""  # Dissallow Action
 
         # If the selected port has been disallowed, the application scans for connected devices.
-        if selected_port == '':
+        if selected_port == "":
 
             # Scan for connected devices.
             self.ControlsWin.ui1.pButton_Refresh.clicked.emit()
@@ -1808,24 +2010,34 @@ class MainWindow(QtWidgets.QMainWindow):
             # port returns.
             now_port = self.ControlsWin.ui1.cBox_Port.currentData()
             if now_port is None:
-                now_port = ''
+                now_port = ""
             if now_port == "CMD_DEV_INFO":
-                now_port = ''
+                now_port = ""
 
-            if now_port == '' or now_port is None:
+            if now_port == "" or now_port is None:
                 # If ports are empty or None type, determine the number of devices connected.  If multiple devices (>2)
                 # are connected, warn the user.  Otherwise, pressume there are no deives connected and warn the user again and
                 # return to caller.
                 if self.ControlsWin.ui1.cBox_Port.count() > 2:
                     Log.e(
-                        tag=TAG, msg="Multiple devices detected. Please select a device and try again.")
+                        tag=TAG,
+                        msg="Multiple devices detected. Please select a device and try again.",
+                    )
                     PopUp.warning(
-                        self, Constants.app_title, "Multiple devices detected. Please select a device in Advanced Settings and try again.")
+                        self,
+                        Constants.app_title,
+                        "Multiple devices detected. Please select a device in Advanced Settings and try again.",
+                    )
                 else:
                     Log.e(
-                        tag=TAG, msg="No device is detected. Please connect a device and try again.")
+                        tag=TAG,
+                        msg="No device is detected. Please connect a device and try again.",
+                    )
                     PopUp.warning(
-                        self, Constants.app_title, "No device is detected. Please connect a device and try again.")
+                        self,
+                        Constants.app_title,
+                        "No device is detected. Please connect a device and try again.",
+                    )
                 self._enable_ui(True)
                 return
             else:
@@ -1834,11 +2046,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # TODO AJR: This code still requires the existence of `plate-config.json`
         #           Removing it, for now; this code should create the file if none exists:
-        '''
+        """
         # Parsed list of active ports as a dictionary of booleans {A1 : True, A2 : False, ...}
         active_port_dict, active_port_list = self.parse_ports_from_file()
         Log.d(TAG, active_port_dict)
-        '''
+        """
         active_port_list = range(self.multiplex_plots)
 
         # Sets the number of ports to use for a multiplex device.
@@ -1850,55 +2062,75 @@ class MainWindow(QtWidgets.QMainWindow):
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
                     selected_port.append(
-                        self.ControlsWin.ui1.cBox_Port.itemData(port_id))
+                        self.ControlsWin.ui1.cBox_Port.itemData(port_id)
+                    )
 
         # Determine the measurement type and user profile is not in developer mode.  If the user profile is in developer
         # mode, and there is an error or expires is empty, warn the user.
         if self._get_source() == OperationType.measurement:
             enabled, error, expires = UserProfiles.checkDevMode()
             if enabled == False and (error == True or expires != ""):
-                PopUp.warning(self, "Developer Mode Expired",
-                              "Developer Mode has expired and this data capture will be encrypted.\n" +
-                              "An admin must renew or disable \"Developer Mode\" to suppress this warning.")
+                PopUp.warning(
+                    self,
+                    "Developer Mode Expired",
+                    "Developer Mode has expired and this data capture will be encrypted.\n"
+                    + 'An admin must renew or disable "Developer Mode" to suppress this warning.',
+                )
 
         # Check for the latest calibrations.  If the last calibration data is not recent, recomend to the user
         # to recalibrate their device.
         if self._get_source() == OperationType.measurement:
             is_recent, age_in_mins = self._get_cal_age()
             if not is_recent:
-                Log.w(TAG, "Initialize was last performed {} minute{} ago.".format(
-                    age_in_mins, "" if age_in_mins == 1 else "s"))
-                if PopUp.question(self, "Initialize Recommended", "Initialize has not been performed recently.\nWould you like to initialize now?", True):
+                Log.w(
+                    TAG,
+                    "Initialize was last performed {} minute{} ago.".format(
+                        age_in_mins, "" if age_in_mins == 1 else "s"
+                    ),
+                )
+                if PopUp.question(
+                    self,
+                    "Initialize Recommended",
+                    "Initialize has not been performed recently.\nWould you like to initialize now?",
+                    True,
+                ):
                     self.ControlsWin.ui1.cBox_Source.setCurrentIndex(
-                        OperationType.calibration.value)
+                        OperationType.calibration.value
+                    )
             else:
-                Log.i(TAG, "Initialize was last performed {} minute{} ago.".format(
-                    age_in_mins, "" if age_in_mins == 1 else "s"))
+                Log.i(
+                    TAG,
+                    "Initialize was last performed {} minute{} ago.".format(
+                        age_in_mins, "" if age_in_mins == 1 else "s"
+                    ),
+                )
 
             # Application EXE hangs on close if we do not check before doing a measurement run every single time.
             self.fwUpdater.checkAgain()
 
         else:
             # Check for and remove any invalid calibration files in root of config folder on CAL start
-            paths = [Constants.csv_calibration_path,
-                     Constants.cvs_peakfrequencies_path]
+            paths = [Constants.csv_calibration_path, Constants.cvs_peakfrequencies_path]
             for p in paths:
-                path = p.replace(Constants.tbd_active_device_name_path, '')
+                path = p.replace(Constants.tbd_active_device_name_path, "")
                 if os.path.exists(path):
                     Log.w(
-                        f"Removing invalid initialization file from 'config' root: {path}")
+                        f"Removing invalid initialization file from 'config' root: {path}"
+                    )
                     os.remove(path)
 
         # Instantiates process
-        self.worker.config(QCS_on=self._QCS_installed,
-                           port=selected_port,
-                           pid=self.ControlsWin.ui1.cBox_Port.currentIndex() + 1,
-                           speed=self.ControlsWin.ui1.cBox_Speed.currentText(),
-                           samples=self.ControlsWin.ui1.sBox_Samples.value() + 1,
-                           source=self._get_source(),
-                           export_enabled=self.ControlsWin.ui1.chBox_export.isChecked(),
-                           freq_hopping=self.ControlsWin.ui1.chBox_freqHop.isChecked(),
-                           reconstruct=self.ControlsWin.ui1.chBox_correctNoise.isChecked())
+        self.worker.config(
+            QCS_on=self._QCS_installed,
+            port=selected_port,
+            pid=self.ControlsWin.ui1.cBox_Port.currentIndex() + 1,
+            speed=self.ControlsWin.ui1.cBox_Speed.currentText(),
+            samples=self.ControlsWin.ui1.sBox_Samples.value() + 1,
+            source=self._get_source(),
+            export_enabled=self.ControlsWin.ui1.chBox_export.isChecked(),
+            freq_hopping=self.ControlsWin.ui1.chBox_freqHop.isChecked(),
+            reconstruct=self.ControlsWin.ui1.chBox_correctNoise.isChecked(),
+        )
 
         # Check for firmware updates (only if not yet checked this instance)
         try:
@@ -1910,7 +2142,9 @@ class MainWindow(QtWidgets.QMainWindow):
             if not do_continue:
                 # If firmware is incompatible with software, notify the user and return to caller.
                 Log.e(
-                    tag=TAG, msg="Firmware is incompatible for running with this version of software.")
+                    tag=TAG,
+                    msg="Firmware is incompatible for running with this version of software.",
+                )
                 self._enable_ui(True)
                 return
         except Exception as e:
@@ -1927,7 +2161,10 @@ class MainWindow(QtWidgets.QMainWindow):
             color_err = "#333333"
             labelbar = "Starting..."
             self.ControlsWin.ui1.infobar.setText(
-                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
+                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                    color_err, labelbar
+                )
+            )
             self.ControlsWin.ui1._update_progress_text()
             self.ControlsWin.ui1.run_progress_bar.repaint()
 
@@ -1942,10 +2179,18 @@ class MainWindow(QtWidgets.QMainWindow):
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
             self._run_finished = [False, False, False, False]
-            self._baselinedata = [[[0, 0], [0, 0]], [
-                [0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]
-            self._last_y_range = [[[0, 0], [0, 0]], [
-                [0, 0], [0, 0]], [[0, 0], [0, 0]], [[0, 0], [0, 0]]]
+            self._baselinedata = [
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+            ]
+            self._last_y_range = [
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+                [[0, 0], [0, 0]],
+            ]
             self._last_y_delta = [0, 0, 0, 0]
             self._reference_flag = False
             self._vector_reference_frequency = [list(self._readFREQ)]
@@ -1969,7 +2214,9 @@ class MainWindow(QtWidgets.QMainWindow):
             # Check for invalid range and abort if bad logging error message and returning to the caller.
             if self._readFREQ[0] >= self._readFREQ[-1]:
                 Log.e(
-                    tag=TAG, msg="Invalid frequency range calculated. Re-Initialize and try again. Aborting run...")
+                    tag=TAG,
+                    msg="Invalid frequency range calculated. Re-Initialize and try again. Aborting run...",
+                )
                 self._enable_ui(True)
                 return
 
@@ -1978,7 +2225,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if self._get_source() == OperationType.measurement:
                 overtones_number = len(
-                    self.worker.get_source_speeds(OperationType.measurement))
+                    self.worker.get_source_speeds(OperationType.measurement)
+                )
 
                 # Set the quartz sensor
                 if overtones_number == 5:
@@ -1989,63 +2237,90 @@ class MainWindow(QtWidgets.QMainWindow):
                     label_quartz = "@5MHz_QCM"
 
                 self.InfoWin.ui3.info1a.setText(
-                    "<font color=#0000ff > Device Setup </font>" + label_quartz)
+                    "<font color=#0000ff > Device Setup </font>" + label_quartz
+                )
                 label11 = "Measurement Qatch Q-1"
                 self.InfoWin.ui3.info11.setText(
-                    "<font color=#0000ff > Operation Mode </font>" + label11)
-                self._overtone_name, self._overtone_value, self._fStep = self.worker.get_overtone()
-                label6 = str(int(self._overtone_value))+" Hz"
+                    "<font color=#0000ff > Operation Mode </font>" + label11
+                )
+                self._overtone_name, self._overtone_value, self._fStep = (
+                    self.worker.get_overtone()
+                )
+                label6 = str(int(self._overtone_value)) + " Hz"
                 self.InfoWin.ui3.info6.setText(
-                    "<font color=#0000ff > Frequency Value </font>" + label6)
+                    "<font color=#0000ff > Frequency Value </font>" + label6
+                )
                 # +" "+ str(self._overtone_value)+"Hz"
                 label2 = str(self._overtone_name)
                 self.InfoWin.ui3.info2.setText(
-                    "<font color=#0000ff > Selected Frequency </font>" + label2)
-                label3 = str(int(self._readFREQ[0]))+" Hz"
+                    "<font color=#0000ff > Selected Frequency </font>" + label2
+                )
+                label3 = str(int(self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info3.setText(
-                    "<font color=#0000ff > Start Frequency </font>" + label3)
-                label4 = str(int(self._readFREQ[-1]))+" Hz"
+                    "<font color=#0000ff > Start Frequency </font>" + label3
+                )
+                label4 = str(int(self._readFREQ[-1])) + " Hz"
                 self.InfoWin.ui3.info4.setText(
-                    "<font color=#0000ff > Stop Frequency </font>" + label4)
-                label4a = str(int(self._readFREQ[-1]-self._readFREQ[0]))+" Hz"
+                    "<font color=#0000ff > Stop Frequency </font>" + label4
+                )
+                label4a = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info4a.setText(
-                    "<font color=#0000ff > Frequency Range </font>" + label4a)
-                label5 = str(int(self._fStep))+" Hz"
+                    "<font color=#0000ff > Frequency Range </font>" + label4a
+                )
+                label5 = str(int(self._fStep)) + " Hz"
                 self.InfoWin.ui3.info5.setText(
-                    "<font color=#0000ff > Sample Rate </font>" + label5)
-                label7 = str(Constants.argument_default_samples-1)
+                    "<font color=#0000ff > Sample Rate </font>" + label5
+                )
+                label7 = str(Constants.argument_default_samples - 1)
                 self.InfoWin.ui3.info7.setText(
-                    "<font color=#0000ff > Sample Number </font>" + label7)
+                    "<font color=#0000ff > Sample Number </font>" + label7
+                )
 
             elif self._get_source() == OperationType.calibration:
                 label_quartz = self.ControlsWin.ui1.cBox_Speed.currentText()
                 self.InfoWin.ui3.info1a.setText(
-                    "<font color=#0000ff > Device Setup </font>" + label_quartz)
+                    "<font color=#0000ff > Device Setup </font>" + label_quartz
+                )
                 label11 = "Calibration Qatch Q-1"
                 self.InfoWin.ui3.info11.setText(
-                    "<font color=#0000ff > Operation Mode </font>" + label11)
+                    "<font color=#0000ff > Operation Mode </font>" + label11
+                )
                 label6 = "Overall Frequency Range"
                 self.InfoWin.ui3.info6.setText(
-                    "<font color=#0000ff > Frequency Value </font>" + label6)
+                    "<font color=#0000ff > Frequency Value </font>" + label6
+                )
                 label2 = "Overall Frequency Range"
                 self.InfoWin.ui3.info2.setText(
-                    "<font color=#0000ff > Selected Frequency </font>" + label2)
-                label3 = str(Constants.calibration_frequency_start)+" Hz"
+                    "<font color=#0000ff > Selected Frequency </font>" + label2
+                )
+                label3 = str(Constants.calibration_frequency_start) + " Hz"
                 self.InfoWin.ui3.info3.setText(
-                    "<font color=#0000ff > Start Frequency </font>" + label3)
-                label4 = str(Constants.calibration_frequency_stop)+" Hz"
+                    "<font color=#0000ff > Start Frequency </font>" + label3
+                )
+                label4 = str(Constants.calibration_frequency_stop) + " Hz"
                 self.InfoWin.ui3.info4.setText(
-                    "<font color=#0000ff > Stop Frequency </font>" + label4)
-                label4a = str(int(Constants.calibration_frequency_stop -
-                              Constants.calibration_frequency_start))+" Hz"
+                    "<font color=#0000ff > Stop Frequency </font>" + label4
+                )
+                label4a = (
+                    str(
+                        int(
+                            Constants.calibration_frequency_stop
+                            - Constants.calibration_frequency_start
+                        )
+                    )
+                    + " Hz"
+                )
                 self.InfoWin.ui3.info4a.setText(
-                    "<font color=#0000ff > Frequency Range </font>" + label4a)
-                label5 = str(int(Constants.calibration_fStep))+" Hz"
+                    "<font color=#0000ff > Frequency Range </font>" + label4a
+                )
+                label5 = str(int(Constants.calibration_fStep)) + " Hz"
                 self.InfoWin.ui3.info5.setText(
-                    "<font color=#0000ff > Sample Rate </font>" + label5)
-                label7 = str(Constants.calibration_default_samples-1)
+                    "<font color=#0000ff > Sample Rate </font>" + label5
+                )
+                label7 = str(Constants.calibration_default_samples - 1)
                 self.InfoWin.ui3.info7.setText(
-                    "<font color=#0000ff > Sample Number </font>" + label7)
+                    "<font color=#0000ff > Sample Number </font>" + label7
+                )
                 self.stop_flag = 0
             #
             self._timer_plot.start(Constants.plot_update_ms)
@@ -2053,17 +2328,26 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if self._get_source() == OperationType.calibration:
                 self.ControlsWin.ui1.pButton_Clear.setEnabled(False)  # insert
-                self.ControlsWin.ui1.pButton_Reference.setEnabled(
-                    False)  # insert
+                self.ControlsWin.ui1.pButton_Reference.setEnabled(False)  # insert
         elif worker_check == 0:
             Log.w(tag=TAG, msg="Port is not available")
-            PopUp.warning(self, Constants.app_title, "Warning: Selected Port [{}] is not available!".format(
-                self.ControlsWin.ui1.cBox_Port.currentText()))
+            PopUp.warning(
+                self,
+                Constants.app_title,
+                "Warning: Selected Port [{}] is not available!".format(
+                    self.ControlsWin.ui1.cBox_Port.currentText()
+                ),
+            )
             self._enable_ui(True)
         elif worker_check == -1:
             Log.w(tag=TAG, msg="No peak magnitudes found. Rerun Initialize.")
-            PopUp.warning(self, Constants.app_title, "Warning: No peak magnitudes found. Rerun Initialize on port {}".format(
-                self.ControlsWin.ui1.cBox_Port.currentText()))
+            PopUp.warning(
+                self,
+                Constants.app_title,
+                "Warning: No peak magnitudes found. Rerun Initialize on port {}".format(
+                    self.ControlsWin.ui1.cBox_Port.currentText()
+                ),
+            )
             self._enable_ui(True)
 
     ###########################################################################
@@ -2074,15 +2358,20 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # This function is connected to the clicked signal of the Stop button.
         self.ControlsWin.ui1.infostatus.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.ControlsWin.ui1.infostatus.setText(
-            "<font color=#333333 > Program Status Standby</font>")
+            "<font color=#333333 > Program Status Standby</font>"
+        )
         self.ControlsWin.ui1.infobar_label.setText(
-            "<font color=#0000ff > Infobar </font>Stopped")
+            "<font color=#0000ff > Infobar </font>Stopped"
+        )
         self.InfoWin.ui3.inforef1.setText(
-            "<font color=#0000ff > Ref. Frequency </font>")
+            "<font color=#0000ff > Ref. Frequency </font>"
+        )
         self.InfoWin.ui3.inforef2.setText(
-            "<font color=#0000ff > Ref. Dissipation </font>")
+            "<font color=#0000ff > Ref. Dissipation </font>"
+        )
         self.ControlsWin.ui1.run_progress_bar.setValue(0)
         Log.i(TAG, "Clicked STOP")
         self._timer_plot.stop()
@@ -2099,7 +2388,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             for i in range(len(self._drop_applied)):
                 if self._text4[i] != None:
-                    self._text4[i].setText(' ')  # clear plot status message
+                    self._text4[i].setText(" ")  # clear plot status message
 
     ###########################################################################
     # Overrides the QTCloseEvent,is connected to the close button of the window
@@ -2110,7 +2399,9 @@ class MainWindow(QtWidgets.QMainWindow):
         # :param evnt: QT evnt.
         if self.worker.is_running():
             Log.i(
-                TAG, "Window closed without stopping the capture, application will stop...")
+                TAG,
+                "Window closed without stopping the capture, application will stop...",
+            )
             self.stop()
             # self.ControlsWin.close()
             # self.PlotsWin.close()
@@ -2165,8 +2456,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.sBox_Samples.setEnabled(not enabled)  # insert
         self.ControlsWin.ui1.pButton_Clear.setEnabled(not enabled)
         self.ControlsWin.ui1.pButton_Reference.setEnabled(not enabled)
-        self.ControlsWin.ui1.pButton_Reference.setChecked(
-            False)  # clear toggle state
+        self.ControlsWin.ui1.pButton_Reference.setChecked(False)  # clear toggle state
 
         enable_start = enabled
         if enable_start:
@@ -2175,8 +2465,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
         enable_stop = False if enabled else True
         if enable_stop:
-            enable_stop = self.ControlsWin.ui1.cBox_Source.currentIndex(
-            ) == OperationType.measurement.value
+            enable_stop = (
+                self.ControlsWin.ui1.cBox_Source.currentIndex()
+                == OperationType.measurement.value
+            )
 
         enable_temp = enabled
         if enable_temp:
@@ -2213,18 +2505,29 @@ class MainWindow(QtWidgets.QMainWindow):
                 try:
                     # If less than 1 hour: display as "MM:SS" format.
                     # If equal or over 1 hour: display as "HH:MM:SS".
-                    z = [datetime.datetime.utcfromtimestamp(float(value)).strftime("%M:%S")
-                         if datetime.datetime.utcfromtimestamp(float(value)).strftime("%H") == "00"
-                         else datetime.datetime.utcfromtimestamp(float(value)).strftime("%H:%M:%S")
-                         for value in values]
+                    z = [
+                        (
+                            datetime.datetime.utcfromtimestamp(float(value)).strftime(
+                                "%M:%S"
+                            )
+                            if datetime.datetime.utcfromtimestamp(
+                                float(value)
+                            ).strftime("%H")
+                            == "00"
+                            else datetime.datetime.utcfromtimestamp(
+                                float(value)
+                            ).strftime("%H:%M:%S")
+                        )
+                        for value in values
+                    ]
                 except:
-                    z = ''
+                    z = ""
                 return z
 
         # ----------------------------------------------------------------------
         # set background color
-        self.PlotsWin.ui2.plt.setBackground(background='#FFFFFF')
-        self.PlotsWin.ui2.pltB.setBackground(background='#FFFFFF')
+        self.PlotsWin.ui2.plt.setBackground(background="#FFFFFF")
+        self.PlotsWin.ui2.pltB.setBackground(background="#FFFFFF")
 
         # ----------------------------------------------------------------------
         # defines the graph title
@@ -2250,12 +2553,22 @@ class MainWindow(QtWidgets.QMainWindow):
                     span = 2
                     y = 0
             p = self.PlotsWin.ui2.plt.addPlot(
-                col=x, row=y, colspan=span, title=title1+f" {i+1}", **{'font-size': '10pt'})
+                col=x,
+                row=y,
+                colspan=span,
+                title=title1 + f" {i+1}",
+                **{"font-size": "10pt"},
+            )
             p.showGrid(x=True, y=True)
             p.setVisible(visible)
-            p.setLabel('bottom', 'Frequency', units='Hz')
-            p.setLabel('left', 'Amplitude', units='dB',
-                       color=Constants.plot_colors[0], **{'font-size': '10pt'})
+            p.setLabel("bottom", "Frequency", units="Hz")
+            p.setLabel(
+                "left",
+                "Amplitude",
+                units="dB",
+                color=Constants.plot_colors[0],
+                **{"font-size": "10pt"},
+            )
             # set size policy for show/hide
             not_resize = p.sizePolicy()
             not_resize.setHorizontalStretch(1)
@@ -2274,14 +2587,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             x = int(i % 2)  # 0 -> 0     1 -> 1      2 -> 0      3 -> 1
             y = int(i / 2)  # 0 -> 0     1 -> 0      2 -> 1      3 -> 1
-            self._yaxis.append(AxisItem(orientation='left'))
-            self._xaxis.append(DateAxis(orientation='bottom'))
-            p = self.PlotsWin.ui2.pltB.addPlot(col=x, row=y, title=title2+f" {i+1}", **{
-                                               'font-size': '12pt'}, axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]})
+            self._yaxis.append(AxisItem(orientation="left"))
+            self._xaxis.append(DateAxis(orientation="bottom"))
+            p = self.PlotsWin.ui2.pltB.addPlot(
+                col=x,
+                row=y,
+                title=title2 + f" {i+1}",
+                **{"font-size": "12pt"},
+                axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
+            )
             p.showGrid(x=True, y=True)
-            p.setLabel('bottom', 'Time', units='s')
-            p.setLabel('left', 'Resonance Frequency', units='Hz',
-                       color=Constants.plot_colors[2], **{'font-size': '10pt'})
+            p.setLabel("bottom", "Time", units="s")
+            p.setLabel(
+                "left",
+                "Resonance Frequency",
+                units="Hz",
+                color=Constants.plot_colors[2],
+                **{"font-size": "10pt"},
+            )
             # save back to global, otherwise local gets trashed
             self._plt2_arr[i] = p
 
@@ -2294,16 +2617,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 continue
             _p2 = self._plt2_arr[i]
             p = pg.ViewBox()
-            _p2.showAxis('right')
+            _p2.showAxis("right")
             _p2.scene().addItem(p)
-            _p2.getAxis('right').setGrid(False)
-            _p2.getAxis('right').linkToView(p)
+            _p2.getAxis("right").setGrid(False)
+            _p2.getAxis("right").linkToView(p)
             p.setXLink(_p2)
-            _p2.enableAutoRange(axis='y', enable=True)
-            p.enableAutoRange(axis='y', enable=True)
-            _p2.setLabel('bottom', 'Time', units='s')
-            _p2.setLabel('right', 'Dissipation', units='',
-                         color=Constants.plot_colors[3], **{'font-size': '10pt'})
+            _p2.enableAutoRange(axis="y", enable=True)
+            p.enableAutoRange(axis="y", enable=True)
+            _p2.setLabel("bottom", "Time", units="s")
+            _p2.setLabel(
+                "right",
+                "Dissipation",
+                units="",
+                color=Constants.plot_colors[3],
+                **{"font-size": "10pt"},
+            )
             # save back to global, otherwise local gets trashed
             self._plt2_arr[i] = _p2
             # save back to global, otherwise local gets trashed
@@ -2313,12 +2641,22 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # -----------------------------------------------------------------------------------------------------------------
         # Configures elements of the PyQtGraph plots: temperature
-        self._plt4 = self.PlotsWin.ui2.plt.addPlot(row=3, col=0, colspan=2, title=title3, axisItems={
-                                                   'bottom': DateAxis(orientation='bottom')})
+        self._plt4 = self.PlotsWin.ui2.plt.addPlot(
+            row=3,
+            col=0,
+            colspan=2,
+            title=title3,
+            axisItems={"bottom": DateAxis(orientation="bottom")},
+        )
         self._plt4.showGrid(x=True, y=True)
-        self._plt4.setLabel('bottom', 'Time', units='s')
-        self._plt4.setLabel('left', 'Temperature', units='°C',
-                            color=Constants.plot_colors[4], **{'font-size': '10pt'})
+        self._plt4.setLabel("bottom", "Time", units="s")
+        self._plt4.setLabel(
+            "left",
+            "Temperature",
+            units="°C",
+            color=Constants.plot_colors[4],
+            **{"font-size": "10pt"},
+        )
         # set size policy for show/hide
         not_resize = self._plt4.sizePolicy()
         not_resize.setHorizontalStretch(1)
@@ -2337,15 +2675,18 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self._plt2_arr[0].clear()
         font_size = 10 if self.multiplex_plots == 1 else 9
-        self._text1 = pg.TextItem('', (51, 51, 51), anchor=(0.5, 0.5))
+        self._text1 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
         self._text1.setHtml(
-            "<span style='font-size: 14pt'>Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI </span>")
-        self._text2 = pg.TextItem('', (51, 51, 51), anchor=(0.5, 0.5))
+            "<span style='font-size: 14pt'>Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI </span>"
+        )
+        self._text2 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
         self._text2.setHtml(
-            f"<span style='font-size: {font_size}pt'>Don't forget to initialize (in air) your quartz device <b><i>before</i></b> starting. </span>")
-        self._text3 = pg.TextItem('', (51, 51, 51), anchor=(0.5, 0.5))
+            f"<span style='font-size: {font_size}pt'>Don't forget to initialize (in air) your quartz device <b><i>before</i></b> starting. </span>"
+        )
+        self._text3 = pg.TextItem("", (51, 51, 51), anchor=(0.5, 0.5))
         self._text3.setHtml(
-            f"<span style='font-size: {font_size}pt'>Wait to apply the drop to your quartz device until <b><i>after</i></b> hitting \"Start\". </span>")
+            f"<span style='font-size: {font_size}pt'>Wait to apply the drop to your quartz device until <b><i>after</i></b> hitting \"Start\". </span>"
+        )
         if UserProfiles.count() == 0:
             self._text1.setPos(0.5, 0.65)
             self._text2.setPos(0.5, 0.35)
@@ -2376,14 +2717,19 @@ class MainWindow(QtWidgets.QMainWindow):
         return
         self._plt0.setTitle("Real-Time Plot: Amplitude / Phase")
         self._plt1 = pg.ViewBox()
-        self._plt0.showAxis('right')
+        self._plt0.showAxis("right")
         self._plt0.scene().addItem(self._plt1)
-        self._plt0.getAxis('right').linkToView(self._plt1)
+        self._plt0.getAxis("right").linkToView(self._plt1)
         self._plt1.setXLink(self._plt0)
-        self._plt0.enableAutoRange(axis='y', enable=True)
-        self._plt1.enableAutoRange(axis='y', enable=True)
-        self._plt0.setLabel('right', 'Phase', units='deg',
-                            color=Constants.plot_colors[1], **{'font-size': '10pt'})
+        self._plt0.enableAutoRange(axis="y", enable=True)
+        self._plt1.enableAutoRange(axis="y", enable=True)
+        self._plt0.setLabel(
+            "right",
+            "Phase",
+            units="deg",
+            color=Constants.plot_colors[1],
+            **{"font-size": "10pt"},
+        )
 
     ###########################################################################
     # Configures specific elements of the QTimers
@@ -2404,22 +2750,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_Stop.clicked.connect(self.stop)
         self.ControlsWin.ui1.pButton_Clear.clicked.connect(self.clear)
         self.ControlsWin.ui1.pButton_Reference.clicked.connect(self.reference)
-        self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(
-            self.factory_defaults)
+        self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
-        self.ControlsWin.ui1.pButton_Refresh.clicked.connect(
-            self._port_list_refresh)
-        self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(
-            self._update_sample_size)
+        self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
+        self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
         self.ControlsWin.ui1.slTemp.valueChanged.connect(self._update_tec_temp)
-        self.ControlsWin.ui1.slTemp.sliderReleased.connect(
-            self._update_tec_temp)
+        self.ControlsWin.ui1.slTemp.sliderReleased.connect(self._update_tec_temp)
         self.ControlsWin.ui1.cBox_Source.currentIndexChanged.connect(
-            self._source_changed)
-        self.ControlsWin.ui1.cBox_Port.currentIndexChanged.connect(
-            self._port_changed)
+            self._source_changed
+        )
+        self.ControlsWin.ui1.cBox_Port.currentIndexChanged.connect(self._port_changed)
         self.ControlsWin.ui1.cBox_MultiMode.currentIndexChanged.connect(
-            self.set_multi_mode)
+            self.set_multi_mode
+        )
         self.ControlsWin.ui1.pTemp.clicked.connect(self._enable_tec)
         # --------
         self.InfoWin.ui3.pButton_Download.clicked.connect(self.start_download)
@@ -2431,35 +2774,41 @@ class MainWindow(QtWidgets.QMainWindow):
     def _configure_filesystem(self):
         # set permissions on local application data folders and files
         try:
-            local_app_data_path = os.path.split(
-                Constants.local_app_data_path)[0]
-            path_to_logged_data = os.path.join(
-                os.getcwd(), Constants.log_export_path)
-            path_to_mydocs_data = os.path.join(
-                os.getcwd(), Constants.app_publisher)
+            local_app_data_path = os.path.split(Constants.local_app_data_path)[0]
+            path_to_logged_data = os.path.join(os.getcwd(), Constants.log_export_path)
+            path_to_mydocs_data = os.path.join(os.getcwd(), Constants.app_publisher)
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
                 subprocess.call(
-                    f"cd {local_app_data_path} & attrib -r -a -s -h /s /d", shell=True)
+                    f"cd {local_app_data_path} & attrib -r -a -s -h /s /d", shell=True
+                )
                 subprocess.call(
-                    f"cd {path_to_logged_data} & attrib -r -a -s -h /s /d", shell=True)
+                    f"cd {path_to_logged_data} & attrib -r -a -s -h /s /d", shell=True
+                )
                 subprocess.call(
-                    f"cd {path_to_mydocs_data} & attrib -r -a -s -h /s /d", shell=True)
+                    f"cd {path_to_mydocs_data} & attrib -r -a -s -h /s /d", shell=True
+                )
             else:
-                os.chmod(local_app_data_path, stat.S_IRWXU |
-                         stat.S_IRWXG | stat.S_IRWXO)
+                os.chmod(
+                    local_app_data_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
+                )
                 for root, dirs, files in os.walk(local_app_data_path):
                     # set perms on sub-directories
                     for momo in dirs:
-                        os.chmod(os.path.join(root, momo),
-                                 stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+                        os.chmod(
+                            os.path.join(root, momo),
+                            stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO,
+                        )
                     # set perms on files
                     for momo in files:
-                        os.chmod(os.path.join(root, momo),
-                                 stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
+                        os.chmod(
+                            os.path.join(root, momo),
+                            stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO,
+                        )
         except:
             Log.e(
-                "ERROR: Unable to set file permissions on local application data folders and files.")
+                "ERROR: Unable to set file permissions on local application data folders and files."
+            )
 
     ###########################################################################
     # Configures the database file for VisQ.AI (if missing or out-of-date)
@@ -2497,16 +2846,17 @@ class MainWindow(QtWidgets.QMainWindow):
         """
         try:
             machine_database_path = os.path.join(
-                Constants.local_app_data_path, "database/app.db")
+                Constants.local_app_data_path, "database/app.db"
+            )
             bundled_database_path = os.path.join(
-                Architecture.get_path(), "QATCH/VisQAI/assets/app.db")
+                Architecture.get_path(), "QATCH/VisQAI/assets/app.db"
+            )
 
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.dirname(
-                    machine_database_path), exist_ok=True)
+                os.makedirs(os.path.dirname(machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
@@ -2528,9 +2878,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 # After update, both files will exist: add any missing core ingredients to localapp
                 # TODO: Add a quicker way to check if there are missing core ingredients in database
                 bundled_database = Database(
-                    path=bundled_database_path, parse_file_key=True)
+                    path=bundled_database_path, parse_file_key=True
+                )
                 machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
+                    path=machine_database_path, parse_file_key=True
+                )
 
                 if exec_migrations:
                     from QATCH.VisQAI.src.db.db_migrator import (
@@ -2539,40 +2891,36 @@ class MainWindow(QtWidgets.QMainWindow):
                         MigrationStatus,
                         MigrationVersion,
                     )
+
                     tmp_path = machine_database.create_temp_decrypt()
                     try:
                         if tmp_path:
-                            migrator = DatabaseMigrator(
-                                tmp_path, backup_dir=None)
+                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
                             current_version = migrator.get_current_version()
                             target_version = MigrationVersion(1, 1, 0)
                             if current_version < target_version:
                                 new_migration = Migration(
                                     from_version=current_version,
                                     to_version=target_version,
-                                    up_sql=[
-                                        ""
-                                    ],
-                                    down_sql=[
-                                        ""
-                                    ],
-                                    data_transform=lambda conn: conn.execute(
-                                        ""
-                                    ),
-                                    autofill_defaults={
-                                        ""
-                                    },
-                                    description=""
+                                    up_sql=[""],
+                                    down_sql=[""],
+                                    data_transform=lambda conn: conn.execute(""),
+                                    autofill_defaults={""},
+                                    description="",
                                 )
                                 migrator.register_migration(new_migration)
                                 status, msgs = migrator.migrate(
-                                    target_version=MigrationVersion(1, 1, 0), dry_run=True)
+                                    target_version=MigrationVersion(1, 1, 0),
+                                    dry_run=True,
+                                )
                                 if not status:
                                     Log.e(
-                                        f"Database migration dry-run failed: {'; '.join(msgs)}")
+                                        f"Database migration dry-run failed: {'; '.join(msgs)}"
+                                    )
                         else:
                             Log.w(
-                                "Skipping migration check: could not create temp decrypted DB.")
+                                "Skipping migration check: could not create temp decrypted DB."
+                            )
                     finally:
                         machine_database.cleanup_temp_decrypt()
 
@@ -2582,8 +2930,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
                         machine_database.add_ingredient(ing)
-                        Log.w(
-                            f"Added missing core ingredient to database: {ing.name}")
+                        Log.w(f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
                 # TODO: Think of a better way to do this!
@@ -2595,7 +2942,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w("Nothing to do. No local bundled database file found.")
         except Exception as e:
             Log.e(
-                "ERROR: Unable to configure database file in local application data folder.")
+                "ERROR: Unable to configure database file in local application data folder."
+            )
             raise e  # TODO remove
 
     ###########################################################################
@@ -2611,7 +2959,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Automatically opens links
         self.TutorialText.setOpenExternalLinks(True)
         self.TutorialCheckbox = QtWidgets.QCheckBox(
-            "Show these tutorials on startup", self)
+            "Show these tutorials on startup", self
+        )
         # stylesheet applies to titlebar and all children widgets
         self.TutorialWin.setStyleSheet("background-color: #A9E1FA;")
         # self.TutorialTitle.setWordWrap(True)
@@ -2623,9 +2972,11 @@ class MainWindow(QtWidgets.QMainWindow):
         scroll_widget.setLayout(scroll_layout)
         # Scroll Area Properties
         self.TutorialScroll.setVerticalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
         self.TutorialScroll.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
         # self.TutorialScroll.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
         self.TutorialScroll.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.TutorialScroll.setWidgetResizable(True)
@@ -2634,7 +2985,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # QtCore.Qt.TextInteractionFlag.TextBrowserInteraction = (
         #    TextSelectableByMouse | LinksAccessibleByMouse | LinksAccessibleByKeyboard)
         self.TutorialText.setTextInteractionFlags(
-            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction)
+            QtCore.Qt.TextInteractionFlag.TextBrowserInteraction
+        )
         self.TutorialText.setWordWrap(True)
         # apply layout to tutorials widget
         top_layout = QtWidgets.QVBoxLayout()
@@ -2649,8 +3001,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialWin.setWidget(self.TutorialWidget)
         # set widget to the dock
         self.MainWin.addDockWidget(
-            QtCore.Qt.DockWidgetArea.RightDockWidgetArea,
-            self.TutorialWin)
+            QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.TutorialWin
+        )
         # check application settings and set visibility on startup
         if self.AppSettings.contains("showTutorialsOnStartup"):
             if not self.AppSettings.value("showTutorialsOnStartup").lower() == "true":
@@ -2658,15 +3010,16 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             self.AppSettings.setValue("showTutorialsOnStartup", True)
         # update checkbox to reflect application settings state
-        self.ControlsWin.chk5.setChecked(self.AppSettings.value(
-            "showTutorialsOnStartup").lower() == "true")
-        self.TutorialCheckbox.setChecked(self.AppSettings.value(
-            "showTutorialsOnStartup").lower() == "true")
+        self.ControlsWin.chk5.setChecked(
+            self.AppSettings.value("showTutorialsOnStartup").lower() == "true"
+        )
+        self.TutorialCheckbox.setChecked(
+            self.AppSettings.value("showTutorialsOnStartup").lower() == "true"
+        )
         self.TutorialCheckbox.clicked.connect(self.toggleTutorialOnStartup)
         # force widget to minimum width, determined by length of checkbox text
         min_size = self.TutorialWin.minimumSizeHint()
-        self.TutorialWidget.setMinimumSize(
-            min_size.width()+42, min_size.height())
+        self.TutorialWidget.setMinimumSize(min_size.width() + 42, min_size.height())
         # self.TutorialText.setMinimumSize(min_size.width(), min_size.height())
 
         if UserProfiles.count() == 0:
@@ -2696,7 +3049,7 @@ class MainWindow(QtWidgets.QMainWindow):
             if len(subset_ids) > 0:
                 base = ids.index(id)
                 for y, sub in enumerate(subset_ids):
-                    ids.insert(base+y+1, sub)
+                    ids.insert(base + y + 1, sub)
         tutorial_html = ""
         last_id = ids[-1]
         for id in ids:
@@ -2704,9 +3057,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 if id in TutorialPages.keys():
                     title, text = TutorialPages[id]
                 else:
-                    title, text = "Missing Tutorial", f"Sorry, the requested tutorial ID {id} cannot be found!"
+                    title, text = (
+                        "Missing Tutorial",
+                        f"Sorry, the requested tutorial ID {id} cannot be found!",
+                    )
             except:
-                title, text = "Tutorial Error", f"Sorry, there was an error showing the requested tutorial ID {id}!"
+                title, text = (
+                    "Tutorial Error",
+                    f"Sorry, there was an error showing the requested tutorial ID {id}!",
+                )
             tutorial_html += f"<b>{title}</b><br/>{text}"
             if id != last_id:
                 tutorial_html += "<br/><br/>"
@@ -2725,24 +3084,25 @@ class MainWindow(QtWidgets.QMainWindow):
         # Open or close the port accordingly
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if selected_port == None:
-            selected_port = ''  # Dissallow None
+            selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
-            selected_port = ''  # Dissallow Action
-        friendly_port_name = selected_port.split(':')[0]
+            selected_port = ""  # Dissallow Action
+        friendly_port_name = selected_port.split(":")[0]
 
         if not self._identifying:
             Log.i(TAG, f"Identifying port {friendly_port_name}...")
-            self.ControlsWin.ui1.pButton_ID.setStyleSheet(
-                "background: yellow;")
+            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: yellow;")
             self._identifying = True
-            if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
+            if (
+                True
+            ):  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
                 if not len(selected_port) == 0:
                     IDENTIFY_serial = serial.Serial()
                     IDENTIFY_serial.port = selected_port
                     IDENTIFY_serial.write("identify\n".encode())
                     resp_bytes = IDENTIFY_serial.read().strip()
-                    if not resp_bytes == b'1':
+                    if not resp_bytes == b"1":
                         IDENTIFY_serial.write("identify\n".encode())
                         resp_bytes = IDENTIFY_serial.read().strip()
                     IDENTIFY_serial.close()
@@ -2761,14 +3121,16 @@ class MainWindow(QtWidgets.QMainWindow):
             self._identifying = False
             # close port to stop LED blink
             self.fwUpdater.close()
-            if True:  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
+            if (
+                True
+            ):  # not ';' in selected_port: # for NET only, call 'IDENTIFY' command
                 # selected_port.count('.') == 3:
                 if not len(selected_port) == 0:
                     IDENTIFY_serial = serial.Serial()
                     IDENTIFY_serial.port = selected_port
                     IDENTIFY_serial.write("identify\n".encode())
                     resp_bytes = IDENTIFY_serial.read().strip()
-                    if not resp_bytes == b'0':
+                    if not resp_bytes == b"0":
                         IDENTIFY_serial.write("identify\n".encode())
                         resp_bytes = IDENTIFY_serial.read().strip()
                     IDENTIFY_serial.close()
@@ -2801,37 +3163,41 @@ class MainWindow(QtWidgets.QMainWindow):
         # Set active port to update speeds in real-time
         self._selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if self._selected_port == None:
-            self._selected_port = ''  # Dissallow None
+            self._selected_port = ""  # Dissallow None
         if self._selected_port == "CMD_DEV_INFO":
-            self._selected_port = ''  # Dissallow Action
+            self._selected_port = ""  # Dissallow Action
 
-        if self._selected_port.find(';') > 0:
-            self._selected_port = self._selected_port.split(
-                ';')[0]  # use COM port; never Ethernet
+        if self._selected_port.find(";") > 0:
+            self._selected_port = self._selected_port.split(";")[
+                0
+            ]  # use COM port; never Ethernet
         device_list = FileStorage.DEV_get_device_list()
         usb_dev = []
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'USB' in dev_info and 'PORT' in dev_info:
-                if dev_info['PORT'] == self._selected_port:
-                    usb_dev.append([i, dev_info['USB']])
+            if "USB" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    usb_dev.append([i, dev_info["USB"]])
                     # keep going, search for dups (conflicts in config)
         if len(usb_dev) == 0:
             Log.d(
-                f"No matching config found for port \"{self._selected_port.split(':')[0]}\". New device?")
+                f"No matching config found for port \"{self._selected_port.split(':')[0]}\". New device?"
+            )
         elif len(usb_dev) == 1:
             i, dev_name = usb_dev.pop()
             config_folder_name = dev_name if i == 0 else f"{i}_{dev_name}"
             Log.d(
-                f"Matching config found: port \"{self._selected_port.split(':')[0]}\" is device \"{config_folder_name}\".")
+                f"Matching config found: port \"{self._selected_port.split(':')[0]}\" is device \"{config_folder_name}\"."
+            )
             FileStorage.DEV_set_active(i, dev_name)
         # multiple dev infos contain the same port (conflicts should resolve later)
         else:
             Log.d(
-                f"Multiple matching configs found for port \"{self._selected_port.split(':')[0]}\":")
+                f"Multiple matching configs found for port \"{self._selected_port.split(':')[0]}\":"
+            )
             Log.d(f"Matching devices are: [{', '.join('_'.join(usb_dev))}]")
             # use root, trigger FW check conflict correction
-            FileStorage.DEV_set_active(None, '')
+            FileStorage.DEV_set_active(None, "")
             # Log.w(f"There is conflicting device info for port \"{self._selected_port}\"")
             # Log.w(f"Conflicts should automatically resolve once the port is FW checked.")
         self._refresh_speeds()
@@ -2841,13 +3207,14 @@ class MainWindow(QtWidgets.QMainWindow):
         Sets the application in multi-port mode for multiplex devices.
 
         Sets the number of multiplex plots and clears and redraws current plots
-        with the correct plot count.  Exceptions are logged as errors and returned to the 
+        with the correct plot count.  Exceptions are logged as errors and returned to the
         main ui window.
         """
         try:
 
             self.multiplex_plots = max(
-                1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex()))
+                1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex())
+            )
             self.PlotsWin.ui2.plt.clear()
             self.PlotsWin.ui2.pltB.clear()
             self.clear()  # erase any saved data shown on plots
@@ -2876,7 +3243,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # restore selected port back to device
             restore_port_idx = self.ControlsWin.ui1.cBox_Port.findData(
-                self._selected_port)
+                self._selected_port
+            )
             self.ControlsWin.ui1.cBox_Port.setCurrentIndex(restore_port_idx)
 
             if ok_pid:
@@ -2902,40 +3270,43 @@ class MainWindow(QtWidgets.QMainWindow):
         device_list = FileStorage.DEV_get_device_list()
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'NAME' in dev_info and 'PORT' in dev_info:
-                if dev_info['PORT'] == self._selected_port:
-                    friendly_name = dev_info['NAME']
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    friendly_name = dev_info["NAME"]
                     dev_handle = dev_name
                     break
 
-        text, ok = QtWidgets.QInputDialog.getText(self,
-                                                  self.ControlsWin.ui1.cBox_Port.currentText(),
-                                                  "Enter a name for device '{}':".format(
-                                                      dev_handle),
-                                                  text=friendly_name)
+        text, ok = QtWidgets.QInputDialog.getText(
+            self,
+            self.ControlsWin.ui1.cBox_Port.currentText(),
+            "Enter a name for device '{}':".format(dev_handle),
+            text=friendly_name,
+        )
         if ok:
             # remove any invalid characters from user input
             # invalidChars = "\\/:*?\"'<>|"
             for invalidChar in Constants.invalidChars:
-                text = text.replace(invalidChar, '')
-            text = text.strip().replace(' ', '_')  # word spaces -> underscores
+                text = text.replace(invalidChar, "")
+            text = text.strip().replace(" ", "_")  # word spaces -> underscores
             # limit length of input
             text = text[:12] if len(text) > 12 else text
             text = text.upper()  # make user input uppercase
             try:
-                if text == '':
-                    text = dev_info['USB']
+                if text == "":
+                    text = dev_info["USB"]
                 Log.i("Set on device '{}': NAME = {}".format(dev_handle, text))
                 dev_file = os.path.join(
                     Constants.csv_calibration_export_path,
                     dev_handle,
-                    "{}.{}".format(Constants.txt_device_info_filename,
-                                   Constants.txt_extension))
+                    "{}.{}".format(
+                        Constants.txt_device_info_filename, Constants.txt_extension
+                    ),
+                )
                 dev_lines = []
-                with open(dev_file, 'r') as file:
+                with open(dev_file, "r") as file:
                     dev_lines = file.readlines()
                     dev_lines[0] = "NAME: {}\n".format(text)
-                with open(dev_file, 'w') as file:
+                with open(dev_file, "w") as file:
                     file.writelines(dev_lines)
                 Log.i("Program 'Name' operation was successful!")
             except:
@@ -2952,12 +3323,12 @@ class MainWindow(QtWidgets.QMainWindow):
         device_list = FileStorage.DEV_get_device_list()
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'NAME' in dev_info and 'PORT' in dev_info:
-                if dev_info['PORT'] == self._selected_port:
-                    friendly_name = dev_info['NAME']
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    friendly_name = dev_info["NAME"]
                     dev_handle = dev_name
-                    if 'PID' in dev_info:
-                        pid_old = int(dev_info['PID'], base=16)
+                    if "PID" in dev_info:
+                        pid_old = int(dev_info["PID"], base=16)
                     break
 
         # confirm PID in DEV_INFO matches COM Port listed text
@@ -2969,16 +3340,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     dev_i = int(device_text.split(":")[0], base=16)
                     if dev_i != pid_old:
                         Log.e(
-                            f'Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!')
+                            f"Conflicting device info, using PID as {dev_i} instead of reported {pid_old}!"
+                        )
                         pid_old = int(dev_i, base=16)
         except:
             Log.e("ERROR: Unable to check if PID in COM Port list matches DEV_INFO.")
 
-        text, ok = QtWidgets.QInputDialog.getText(self,
-                                                  self.ControlsWin.ui1.cBox_Port.currentText(),
-                                                  "Enter a 'Position ID' for device '{}':".format(
-                                                      friendly_name),
-                                                  text=hex(pid_old)[2:].upper())
+        text, ok = QtWidgets.QInputDialog.getText(
+            self,
+            self.ControlsWin.ui1.cBox_Port.currentText(),
+            "Enter a 'Position ID' for device '{}':".format(friendly_name),
+            text=hex(pid_old)[2:].upper(),
+        )
         if ok:
             try:
                 pid_new = int(text, base=16)
@@ -3010,20 +3383,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 _serial.timeout = Constants.serial_timeout_ms
                 _serial.write_timeout = Constants.serial_writetimeout_ms
                 _serial.open()
-                _serial.write(b'MULTI INIT 0\n')
+                _serial.write(b"MULTI INIT 0\n")
                 _serial.close()
             except:
                 Log.e("Unable to refresh LCD. PID error may be stale.")
             try:
                 dev_name = dev_handle
                 i_old = 0 if pid_old == 0xFF else pid_old
-                dev_folder_old = "{}_{}".format(
-                    i_old, dev_name) if i_old > 0 else dev_name
+                dev_folder_old = (
+                    "{}_{}".format(i_old, dev_name) if i_old > 0 else dev_name
+                )
                 dev_info_file_old = os.path.join(
-                    Constants.csv_calibration_export_path, dev_folder_old, f"{Constants.txt_device_info_filename}.txt")
+                    Constants.csv_calibration_export_path,
+                    dev_folder_old,
+                    f"{Constants.txt_device_info_filename}.txt",
+                )
                 if os.path.exists(dev_info_file_old):
                     Log.d(
-                        f"Queueing removal of stale DEV_INFO file for {dev_name} with PID {pid_new}...")
+                        f"Queueing removal of stale DEV_INFO file for {dev_name} with PID {pid_new}..."
+                    )
                     return ok, dev_info_file_old
             except:
                 Log.e("Unable to check for stale DEV_INFO file removal.")
@@ -3035,17 +3413,20 @@ class MainWindow(QtWidgets.QMainWindow):
         device_list = FileStorage.DEV_get_device_list()
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'NAME' in dev_info and 'PORT' in dev_info:
-                if dev_info['PORT'] == self._selected_port:
-                    friendly_name = dev_info['NAME']
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    friendly_name = dev_info["NAME"]
                     dev_handle = dev_name
                     break
 
-        text, ok = QtWidgets.QInputDialog.getText(self,
-                                                  self.ControlsWin.ui1.cBox_Port.currentText(),
-                                                  "Enter a constant 'TEMP CAL' for device '{}':\n(Applies all the time)".format(
-                                                      friendly_name),
-                                                  text=self.set_cal1)
+        text, ok = QtWidgets.QInputDialog.getText(
+            self,
+            self.ControlsWin.ui1.cBox_Port.currentText(),
+            "Enter a constant 'TEMP CAL' for device '{}':\n(Applies all the time)".format(
+                friendly_name
+            ),
+            text=self.set_cal1,
+        )
         if ok:
             try:
                 cal_new = int(float(text) * 20.0)
@@ -3061,8 +3442,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.set_cal1 = "0"
             else:
                 self.set_cal1 = text
-            Log.i("Set on device '{}': CAL1 = {} ({}C)".format(
-                dev_handle, cal_new, text))
+            Log.i(
+                "Set on device '{}': CAL1 = {} ({}C)".format(dev_handle, cal_new, text)
+            )
             if self.setEEPROM(self._selected_port, 1, cal_new):
                 Log.i("Device EEPROM write CAL1 success!")
             Log.i("Program 'TEMP CAL1' operation was successful!")
@@ -3076,17 +3458,20 @@ class MainWindow(QtWidgets.QMainWindow):
         device_list = FileStorage.DEV_get_device_list()
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'NAME' in dev_info and 'PORT' in dev_info:
-                if dev_info['PORT'] == self._selected_port:
-                    friendly_name = dev_info['NAME']
+            if "NAME" in dev_info and "PORT" in dev_info:
+                if dev_info["PORT"] == self._selected_port:
+                    friendly_name = dev_info["NAME"]
                     dev_handle = dev_name
                     break
 
-        text, ok = QtWidgets.QInputDialog.getText(self,
-                                                  self.ControlsWin.ui1.cBox_Port.currentText(),
-                                                  "Enter a running 'TEMP CAL' for device '{}':\n(Applies during measurements ONLY)".format(
-                                                      friendly_name),
-                                                  text=self.set_cal2)
+        text, ok = QtWidgets.QInputDialog.getText(
+            self,
+            self.ControlsWin.ui1.cBox_Port.currentText(),
+            "Enter a running 'TEMP CAL' for device '{}':\n(Applies during measurements ONLY)".format(
+                friendly_name
+            ),
+            text=self.set_cal2,
+        )
         if ok:
             try:
                 cal_new = int(float(text) * 20.0)
@@ -3102,8 +3487,9 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.set_cal2 = "0"
             else:
                 self.set_cal2 = text
-            Log.i("Set on device '{}': CAL2 = {} ({}C)".format(
-                dev_handle, cal_new, text))
+            Log.i(
+                "Set on device '{}': CAL2 = {} ({}C)".format(dev_handle, cal_new, text)
+            )
             if self.setEEPROM(self._selected_port, 3, cal_new):
                 Log.i("Device EEPROM write CAL2 success!")
             Log.i("Program 'TEMP CAL2' operation was successful!")
@@ -3131,18 +3517,16 @@ class MainWindow(QtWidgets.QMainWindow):
             EEPROM_serial.open()
 
             # Write EEPROM address with value on the device
-            EEPROM_serial.write(
-                "EEPROM {} {}\n".format(address, value).encode())
+            EEPROM_serial.write("EEPROM {} {}\n".format(address, value).encode())
             timeoutAt = time() + 3
             temp_reply = ""
             lines_in_reply = 2
             # timeout needed if old FW
-            while temp_reply.count('\n') < lines_in_reply and time() < timeoutAt:
+            while temp_reply.count("\n") < lines_in_reply and time() < timeoutAt:
                 # timeout needed if old FW:
                 while EEPROM_serial.in_waiting == 0 and time() < timeoutAt:
                     pass
-                temp_reply += EEPROM_serial.read(
-                    EEPROM_serial.in_waiting).decode()
+                temp_reply += EEPROM_serial.read(EEPROM_serial.in_waiting).decode()
 
             if time() < timeoutAt:
                 success = True
@@ -3163,8 +3547,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # This function is connected to the valueChanged signal of the sample Spin Box.
         if self.worker is not None:
             # Log.i(TAG, "Changing sample size")
-            self.worker.reset_buffers(
-                self.ControlsWin.ui1.sBox_Samples.value() + 1)
+            self.worker.reset_buffers(self.ControlsWin.ui1.sBox_Samples.value() + 1)
 
     ###########################################################################
     # Updates and redraws the graphics in the plot.
@@ -3193,52 +3576,64 @@ class MainWindow(QtWidgets.QMainWindow):
             vectortemp = self.worker.get_d3_buffer(0)
             vectoramb = self.worker.get_d4_buffer(0)
 
-            #  Build dataframe from worker databuffer.
-            # new_data = QForecastDataProcessor.convert_to_dataframe(
-            #     self.worker)
+            if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+                snapshot = WorkerSnapshot(
+                    self.worker.get_t1_buffer(0),
+                    self.worker.get_d1_buffer(0),
+                    self.worker.get_d2_buffer(0),
+                )
+                self.worker._forecaster_in.put(snapshot)
+                if not self.worker._forecaster_out.empty():
+                    try:
+                        pred_int, pred_str = self.worker._forecaster_out.get()
+                        ui_value = pred_int + 1
+                        ui_value = max(0, min(ui_value, 4))
+                        self.ControlsWin.ui1.fill_status_progress_bar.setValue(ui_value)
+                        self.ControlsWin.ui1.fill_status_progress_bar.setFormat(
+                            f"Run: %v/%m ({pred_str})"
+                        )
+                    except Exception as e:
+                        Log.e(TAG, f"Error retrieving forecast result: {e}")
 
-            # Flag to use the fill forecaster.
-            # if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
-            #     self.worker._forecaster_in.put(new_data)
-            #     if not self.worker._forecaster_out.empty():
-            #         self.forecast_status, self.forecast_start_time, self.forecast_end_time = self.worker._forecaster_out.get()
-            # else:
-            # self.forecast_status = self._forecaster.update_predictions(
-            #     new_data=new_data)
-
-            # self.ControlsWin.ui1.fill_prediction_progress_bar.setValue(
-            #     self.forecast_status.value)
-            # self.ControlsWin.ui1.fill_prediction_progress_bar.setFormat(
-            #     Constants.FILL_TYPE_LABEL_MAP.get(self.forecast_status.value, ""))
-
-            self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._ser_control, self._ser_err_usb = self.worker.get_ser_error()
+            (
+                self._ser_error1,
+                self._ser_error2,
+                self._ser_error3,
+                self._ser_error4,
+                self._ser_control,
+                self._ser_err_usb,
+            ) = self.worker.get_ser_error()
 
             if self._ser_err_usb > 0:
                 if self.worker.is_running():
                     Log.i(
-                        TAG, "Port closed without stopping the capture, application will stop...")
+                        TAG,
+                        "Port closed without stopping the capture, application will stop...",
+                    )
                     self.stop()
-                PopUp.warning(self, Constants.app_title,
-                              "Warning: Disconnected Device!")
+                PopUp.warning(
+                    self, Constants.app_title, "Warning: Disconnected Device!"
+                )
 
             if vectortemp.any():
                 # TEMPERATURE: Update TEC temperature and power (if running)
                 ############################################################
                 if self.tecWorker._tec_locked:
                     self.tecWorker._tec_temp = vectortemp[0]
-                    self.tecWorker._tec_power = self.worker.get_value2_buffer(
-                        0)
+                    self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
                     sp = self.tecWorker._tec_setpoint
                     pv = self.tecWorker._tec_temp
                     op = self.tecWorker._tec_power
                     if sp == 0.00:
                         sp = 0.25
                     if op == 0:
-                        new_l1 = "[AUTO-OFF ERROR]" if np.isnan(
-                            pv) else "[AUTO-OFF TIMEOUT]"
+                        new_l1 = (
+                            "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
+                        )
                     else:
                         new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
-                            pv, sp, op)
+                            pv, sp, op
+                        )
                     self.ControlsWin.ui1.lTemp.setText(new_l1)
                     bgcolor = "yellow"
                     if op == 0:
@@ -3246,75 +3641,87 @@ class MainWindow(QtWidgets.QMainWindow):
                     elif abs(pv - sp) <= 1.0:
                         bgcolor = "lightgreen"
                     self.ControlsWin.ui1.lTemp.setStyleSheet(
-                        "background-color: {}".format(bgcolor))
+                        "background-color: {}".format(bgcolor)
+                    )
                     self.ControlsWin.ui1.lTemp.repaint()
 
             if vector1.any():
                 # progressbar
                 if self._ser_control <= Constants.environment:
-                    self._completed = self._ser_control*2
+                    self._completed = self._ser_control * 2
 
                 if vector1[0] == 0 and not self._ser_error1 and not self._ser_error2:
-                    label1 = 'processing...'
-                    label2 = 'processing...'
-                    label3 = 'processing...'
-                    labelstatus = 'Processing'
+                    label1 = "processing..."
+                    label2 = "processing..."
+                    label3 = "processing..."
+                    labelstatus = "Processing"
                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        'background: #ffff00; padding: 1px; border: 1px solid #cccccc')  # ff8000
-                    color_err = '#333333'
-                    labelbar = 'Please wait, processing early data...'
+                        "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+                    )  # ff8000
+                    color_err = "#333333"
+                    labelbar = "Please wait, processing early data..."
 
-                elif (vector1[0] == 0 and (self._ser_error1 or self._ser_error2)):
+                elif vector1[0] == 0 and (self._ser_error1 or self._ser_error2):
                     if self._ser_error1 and self._ser_error2:
                         label1 = ""
                         label2 = ""
                         label3 = ""
-                        labelstatus = 'Warning'
-                        color_err = '#ff0000'
-                        labelbar = 'Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found'
+                        labelstatus = "Warning"
+                        color_err = "#ff0000"
+                        labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                        )
                     elif self._ser_error1:
                         label1 = ""
                         label2 = ""
                         label3 = ""
-                        labelstatus = 'Warning'
-                        color_err = '#ff0000'
-                        labelbar = 'Warning: unable to apply half-power bandwidth method, lower cut-off frequency (left side) not found'
+                        labelstatus = "Warning"
+                        color_err = "#ff0000"
+                        labelbar = "Warning: unable to apply half-power bandwidth method, lower cut-off frequency (left side) not found"
                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                        )
                     elif self._ser_error2:
                         label1 = ""
                         label2 = ""
                         label3 = ""
-                        labelstatus = 'Warning'
-                        color_err = '#ff0000'
-                        labelbar = 'Warning: unable to apply half-power bandwidth method, upper cut-off frequency (right side) not found'
+                        labelstatus = "Warning"
+                        color_err = "#ff0000"
+                        labelbar = "Warning: unable to apply half-power bandwidth method, upper cut-off frequency (right side) not found"
                         self.ControlsWin.ui1.infostatus.setStyleSheet(
-                            'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                            "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                        )
                 else:
-                    if not self._ser_error1 and not self._ser_error2 and not self._ser_error3 and not self._ser_error4:
+                    if (
+                        not self._ser_error1
+                        and not self._ser_error2
+                        and not self._ser_error3
+                        and not self._ser_error4
+                    ):
                         if not self._reference_flag:
                             d1 = float("{0:.2f}".format(vector1[0]))
-                            d2 = float("{0:.4f}".format(vector2[0]*1e6))
+                            d2 = float("{0:.4f}".format(vector2[0] * 1e6))
                             d3 = float("{0:.2f}".format(vectortemp[0]))
                         else:
-                            a1 = vector1[0]-self._reference_value_frequency[0]
-                            a2 = vector2[0] - \
-                                self._reference_value_dissipation[0]
+                            a1 = vector1[0] - self._reference_value_frequency[0]
+                            a2 = vector2[0] - self._reference_value_dissipation[0]
                             d1 = float("{0:.2f}".format(a1))
-                            d2 = float("{0:.4f}".format(a2*1e6))
+                            d2 = float("{0:.4f}".format(a2 * 1e6))
                             d3 = float("{0:.2f}".format(vectortemp[0]))
-                        if not vector2[0] in (Constants.max_dissipation_1st_mode,
-                                              Constants.max_dissipation_3rd_mode,
-                                              Constants.max_dissipation_5th_mode):
+                        if not vector2[0] in (
+                            Constants.max_dissipation_1st_mode,
+                            Constants.max_dissipation_3rd_mode,
+                            Constants.max_dissipation_5th_mode,
+                        ):
                             label1 = str(d1) + " Hz"
                             label2 = str(d2) + "e-06"
                             label3 = str(d3) + " °C"
-                            labelstatus = 'Monitoring'
-                            color_err = '#008000'
+                            labelstatus = "Monitoring"
+                            color_err = "#008000"
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #00ff80; padding: 1px; border: 1px solid #cccccc')
+                                "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+                            )
 
                             if not all(self._drop_applied):
                                 for i, p in enumerate(self._plt2_arr):
@@ -3326,29 +3733,42 @@ class MainWindow(QtWidgets.QMainWindow):
                                         vector0 = self.worker.get_t2_buffer(i)
                                         time_running = vector0[0]
                                         if time_running == 0:
-                                            labelbar = 'Waiting for start...'
+                                            labelbar = "Waiting for start..."
                                             continue
                                         if time_running < vector0.min() + 3.0:
-                                            labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
+                                            labelbar = "Capturing data... Calibrating baselines for first 3 seconds... please wait..."
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
                                             if idx > 0:
                                                 self._baseline_freq_avg = np.average(
-                                                    vector1[:-idx])
+                                                    vector1[:-idx]
+                                                )
                                                 self._baseline_freq_noise = np.amax(
-                                                    vector1[:-idx]) - np.amin(vector1[:-idx])
+                                                    vector1[:-idx]
+                                                ) - np.amin(vector1[:-idx])
                                                 self._baseline_diss_avg = np.average(
-                                                    vector2[:-idx])
+                                                    vector2[:-idx]
+                                                )
                                                 self._baseline_diss_noise = np.amax(
-                                                    vector2[:-idx]) - np.amin(vector2[:-idx])
+                                                    vector2[:-idx]
+                                                ) - np.amin(vector2[:-idx])
                                         else:
-                                            labelbar = 'Capturing data... Apply drop when ready...'
-                                            if (abs(vector1[0] - self._baseline_freq_avg) > 10 * self._baseline_freq_noise
-                                                    and abs(vector2[0] - self._baseline_diss_avg) > 10 * self._baseline_diss_noise):
+                                            labelbar = "Capturing data... Apply drop when ready..."
+                                            if (
+                                                abs(
+                                                    vector1[0] - self._baseline_freq_avg
+                                                )
+                                                > 10 * self._baseline_freq_noise
+                                                and abs(
+                                                    vector2[0] - self._baseline_diss_avg
+                                                )
+                                                > 10 * self._baseline_diss_noise
+                                            ):
                                                 self._drop_applied[i] = True
                                     except Exception as e:
                                         Log.e(
-                                            "Error 'calibrating baselines' for drop detection. Apply drop when ready.")
+                                            "Error 'calibrating baselines' for drop detection. Apply drop when ready."
+                                        )
                                         Log.d("ERROR DETAILS:", str(e))
                                         self._drop_applied[i] = True
                             else:
@@ -3358,101 +3778,124 @@ class MainWindow(QtWidgets.QMainWindow):
                             label1 = str(d1) + " Hz"
                             label2 = "-"
                             label3 = str(d3) + " °C"
-                            labelstatus = 'Warning'
-                            color_err = '#ff8000'
-                            labelbar = ('Warning: sensor dissipation calculation is not considered accurate above ' +
-                                        str("{0:.0f}e-06".format(vector2[0]*1e6)) + ' for the this mode')
+                            labelstatus = "Warning"
+                            color_err = "#ff8000"
+                            labelbar = (
+                                "Warning: sensor dissipation calculation is not considered accurate above "
+                                + str("{0:.0f}e-06".format(vector2[0] * 1e6))
+                                + " for the this mode"
+                            )
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #00ff80; padding: 1px; border: 1px solid #cccccc')
+                                "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+                            )
                     else:
                         if self._ser_error1 and self._ser_error2:
                             label1 = "-"
                             label2 = "-"
                             label3 = "-"
-                            labelstatus = 'Warning'
-                            color_err = '#ff0000'
-                            labelbar = 'Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found'
+                            labelstatus = "Warning"
+                            color_err = "#ff0000"
+                            labelbar = "Warning: unable to apply half-power bandwidth method, lower and upper cut-off frequency not found"
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                            )
                         elif self._ser_error1:
                             label1 = "-"
                             label2 = "-"
                             label3 = "-"
-                            labelstatus = 'Warning'
-                            color_err = '#ff0000'
+                            labelstatus = "Warning"
+                            color_err = "#ff0000"
                             peak_name = " "
                             if self._ser_error1 == 1:
                                 peak_name = " upper "
                             if self._ser_error1 == 2:
                                 peak_name = " lower "
-                            labelbar = 'Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (left) allows'.format(
-                                peak_name)
+                            labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (left) allows".format(
+                                peak_name
+                            )
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                            )
                         elif self._ser_error2:
                             label1 = "-"
                             label2 = "-"
                             label3 = "-"
-                            labelstatus = 'Warning'
-                            color_err = '#ff0000'
+                            labelstatus = "Warning"
+                            color_err = "#ff0000"
                             peak_name = " "
                             if self._ser_error1 == 1:
                                 peak_name = " upper "
                             if self._ser_error1 == 2:
                                 peak_name = " lower "
-                            labelbar = 'Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (right) allows'.format(
-                                peak_name)
+                            labelbar = "Warning: unable to track the{}peak frequency, it has drifted more than maximum drift (right) allows".format(
+                                peak_name
+                            )
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                            )
                         elif self._ser_error3:
                             label1 = "-"
                             label2 = "-"
                             label3 = "-"
-                            labelstatus = 'Warning'
-                            color_err = '#ff0000'
-                            labelbar = 'Warning: failed to construct sine wave, approximating reconstruction with derivatives only'
+                            labelstatus = "Warning"
+                            color_err = "#ff0000"
+                            labelbar = "Warning: failed to construct sine wave, approximating reconstruction with derivatives only"
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                            )
                         elif self._ser_error4:
                             label1 = "-"
                             label2 = "-"
                             label3 = "-"
-                            labelstatus = 'Warning'
-                            color_err = '#ff0000'
-                            labelbar = 'Warning: failed to reconstruct signal wave, unable to apply noise correction reconstruction'
+                            labelstatus = "Warning"
+                            color_err = "#ff0000"
+                            labelbar = "Warning: failed to reconstruct signal wave, unable to apply noise correction reconstruction"
                             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                                'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                                "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                            )
 
-                label8 = str(
-                    int(self._readFREQ[self._readFREQ.size // 2]))+" Hz"
+                label8 = str(int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
                 self.InfoWin.ui3.info6.setText(
-                    "<font color=#0000ff > Frequency Value </font>" + label8)
-                label7 = str(int(self._readFREQ[0]))+" Hz"
+                    "<font color=#0000ff > Frequency Value </font>" + label8
+                )
+                label7 = str(int(self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info3.setText(
-                    "<font color=#0000ff > Start Frequency </font>" + label7)
-                label6 = str(int(self._readFREQ[-1]))+" Hz"
+                    "<font color=#0000ff > Start Frequency </font>" + label7
+                )
+                label6 = str(int(self._readFREQ[-1])) + " Hz"
                 self.InfoWin.ui3.info4.setText(
-                    "<font color=#0000ff > Stop Frequency </font>" + label6)
-                label5 = str(int(self._readFREQ[-1]-self._readFREQ[0]))+" Hz"
+                    "<font color=#0000ff > Stop Frequency </font>" + label6
+                )
+                label5 = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info4a.setText(
-                    "<font color=#0000ff > Frequency Range </font>" + label5)
-                label4 = str(int(self._readFREQ[1]-self._readFREQ[0]))+" Hz"
+                    "<font color=#0000ff > Frequency Range </font>" + label5
+                )
+                label4 = str(int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info5.setText(
-                    "<font color=#0000ff > Sample Rate </font>" + label4)
+                    "<font color=#0000ff > Sample Rate </font>" + label4
+                )
 
                 self.InfoWin.ui3.l6a.setText(
-                    "<font color=#0000ff > Temperature </font>" + label3)
+                    "<font color=#0000ff > Temperature </font>" + label3
+                )
                 self.InfoWin.ui3.l6.setText(
-                    "<font color=#0000ff > Dissipation </font>" + label2)
+                    "<font color=#0000ff > Dissipation </font>" + label2
+                )
                 self.InfoWin.ui3.l7.setText(
-                    "<font color=#0000ff > Resonance Frequency </font>" + label1)
+                    "<font color=#0000ff > Resonance Frequency </font>" + label1
+                )
                 self.ControlsWin.ui1.infostatus.setText(
-                    "<font color=#333333 > Program Status </font>" + labelstatus)
+                    "<font color=#333333 > Program Status </font>" + labelstatus
+                )
                 self.ControlsWin.ui1.infobar.setText(
-                    "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
+                    "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                        color_err, labelbar
+                    )
+                )
                 # progressbar
                 self.ControlsWin.ui1.run_progress_bar.setValue(
-                    int((self._ser_control / 10) % 100))
+                    int((self._ser_control / 10) % 100)
+                )
 
         # CALIBRATION: dynamic info in infobar at run-time
         ##################################################
@@ -3466,89 +3909,107 @@ class MainWindow(QtWidgets.QMainWindow):
             vector2 = self.worker.get_t3_buffer(0)
             vector3 = self.worker.get_d3_buffer(0)
 
-            label1 = 'not available'
-            label2 = 'not available'
-            label3 = 'not available'
-            labelstatus = 'Calibration Processing'
-            color_err = '#333333'
-            labelbar = 'The operation will take a few seconds to complete... please wait...'
+            label1 = "not available"
+            label2 = "not available"
+            label3 = "not available"
+            labelstatus = "Calibration Processing"
+            color_err = "#333333"
+            labelbar = (
+                "The operation will take a few seconds to complete... please wait..."
+            )
             self.ControlsWin.ui1.infostatus.setStyleSheet(
-                'background: #ffff00; padding: 1px; border: 1px solid #cccccc')
+                "background: #ffff00; padding: 1px; border: 1px solid #cccccc"
+            )
 
             # progressbar
             error1, error2, error3, on_sample, _, _ = self.worker.get_ser_error()
             if on_sample < Constants.calibration_default_samples:
                 self._completed = (
-                    on_sample / Constants.calibration_default_samples)*100
+                    on_sample / Constants.calibration_default_samples
+                ) * 100
             ###########################################
             # calibration buffer empty
             if vector1_any == 0 and vector3[0] == 1:
-                label1 = 'not available'
-                label2 = 'not available'
-                label3 = 'not available'
-                color_err = '#ff0000'
-                labelstatus = 'Calibration Warning'
+                label1 = "not available"
+                label2 = "not available"
+                label3 = "not available"
+                color_err = "#ff0000"
+                labelstatus = "Calibration Warning"
                 self.ControlsWin.ui1.infostatus.setStyleSheet(
-                    'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
-                labelbar = 'Initialize Warning: empty buffer! Please, repeat the Initialize after disconnecting/reconnecting Device!'
+                    "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                )
+                labelbar = "Initialize Warning: empty buffer! Please, repeat the Initialize after disconnecting/reconnecting Device!"
                 stop_flag = 1
             # calibration buffer empty and ValueError from the serial port
             elif vector1_any == 0 and vector2[0] == 1:
-                label1 = 'not available'
-                label2 = 'not available'
-                label3 = 'not available'
-                color_err = '#ff0000'
-                labelstatus = 'Calibration Warning'
+                label1 = "not available"
+                label2 = "not available"
+                label3 = "not available"
+                color_err = "#ff0000"
+                labelstatus = "Calibration Warning"
                 self.ControlsWin.ui1.infostatus.setStyleSheet(
-                    'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
-                labelbar = 'Initialize Warning: empty buffer/ValueError! Please, repeat the Initialize after disconnecting/reconnecting Device!'
+                    "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                )
+                labelbar = "Initialize Warning: empty buffer/ValueError! Please, repeat the Initialize after disconnecting/reconnecting Device!"
                 stop_flag = 1
             # calibration buffer not empty
             elif vector1_any != 0:
-                label1 = 'not available'
-                label2 = 'not available'
-                label3 = 'not available'
-                labelstatus = 'Calibration Processing'
-                color_err = '#333333'
-                labelbar = 'The operation will take a few seconds to complete... please wait...'
+                label1 = "not available"
+                label2 = "not available"
+                label3 = "not available"
+                labelstatus = "Calibration Processing"
+                color_err = "#333333"
+                labelbar = "The operation will take a few seconds to complete... please wait..."
                 if vector2[0] == 0 and vector3[0] == 0:
-                    labelstatus = 'Calibration Success'
+                    labelstatus = "Calibration Success"
                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        'background: #00ff80; padding: 1px; border: 1px solid #cccccc')
-                    color_err = '#008000'
+                        "background: #00ff80; padding: 1px; border: 1px solid #cccccc"
+                    )
+                    color_err = "#008000"
                     labelbar = 'Initialize Success for baseline correction! Ready to measure. Press "Start" then apply drop.'
                     stop_flag = 1
 
                 elif vector2[0] == 1 or vector3[0] == 1:
-                    color_err = '#ff0000'
-                    labelstatus = 'Calibration Warning'
+                    color_err = "#ff0000"
+                    labelstatus = "Calibration Warning"
                     self.ControlsWin.ui1.infostatus.setStyleSheet(
-                        'background: #ff0000; padding: 1px; border: 1px solid #cccccc')
+                        "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
+                    )
                     if vector2[0] == 1:
-                        labelbar = 'Initialize Warning: ValueError or generic error during signal acquisition. Please, repeat the Initialize'
+                        labelbar = "Initialize Warning: ValueError or generic error during signal acquisition. Please, repeat the Initialize"
                         stop_flag = 1
                     elif vector3[0] == 1:
-                        labelbar = 'Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please, repeat the Initialize!'
+                        labelbar = "Initialize Warning: unable to identify fundamental peak or apply peak detection algorithm. Please, repeat the Initialize!"
                         stop_flag = 1
 
             # progressbar -------------
             self.ControlsWin.ui1.run_progress_bar.setValue(
-                0 if stop_flag else int(self._completed+1))  # dwight ver const was 10
+                0 if stop_flag else int(self._completed + 1)
+            )  # dwight ver const was 10
             self.InfoWin.ui3.l6a.setText(
-                "<font color=#0000ff>  Temperature </font>" + label3)
+                "<font color=#0000ff>  Temperature </font>" + label3
+            )
             self.InfoWin.ui3.l6.setText(
-                "<font color=#0000ff>  Dissipation </font>" + label2)
+                "<font color=#0000ff>  Dissipation </font>" + label2
+            )
             self.InfoWin.ui3.l7.setText(
-                "<font color=#0000ff>  Resonance Frequency </font>" + label1)
+                "<font color=#0000ff>  Resonance Frequency </font>" + label1
+            )
             self.ControlsWin.ui1.infostatus.setText(
-                "<font color=#333333> Program Status </font>" + labelstatus)
+                "<font color=#333333> Program Status </font>" + labelstatus
+            )
             self.ControlsWin.ui1.infobar.setText(
-                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(color_err, labelbar))
+                "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                    color_err, labelbar
+                )
+            )
 
             # terminate the  calibration (simulate clicked stop)
             if stop_flag == 1:
                 self.stop_flag += 1
-                if isinstance(self.worker._port, str) or self.stop_flag >= len(self.worker._port):
+                if isinstance(self.worker._port, str) or self.stop_flag >= len(
+                    self.worker._port
+                ):
                     self._timer_plot.stop()
                     self._enable_ui(True)
                     self.worker.stop()
@@ -3560,16 +4021,28 @@ class MainWindow(QtWidgets.QMainWindow):
             for i, p in enumerate(self._plt2_arr):
                 if p == None:
                     continue
-                p.setLabel('left', 'Resonance Frequency', units='Hz',
-                           color=Constants.plot_colors[6], **{'font-size': '10pt'})
-                p.setLabel('right', 'Dissipation', units='',
-                           color=Constants.plot_colors[7], **{'font-size': '10pt'})
+                p.setLabel(
+                    "left",
+                    "Resonance Frequency",
+                    units="Hz",
+                    color=Constants.plot_colors[6],
+                    **{"font-size": "10pt"},
+                )
+                p.setLabel(
+                    "right",
+                    "Dissipation",
+                    units="",
+                    color=Constants.plot_colors[7],
+                    **{"font-size": "10pt"},
+                )
                 # save back to global, otherwise local gets trashed
                 self._plt2_arr[i] = p
             self.InfoWin.ui3.inforef1.setText(
-                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
+                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
+            )
             self.InfoWin.ui3.inforef2.setText(
-                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+            )
 
             ###################################################################
             # Amplitude and phase multiple Plot
@@ -3584,8 +4057,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     return
                     self._plt1.clear()
                     self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(
-                        self._plt0.vb, self._plt1.XAxis)
+                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
 
             # updates for multiple plot y-axes
             updateViews1()
@@ -3593,12 +4065,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 if p == None:
                     continue
                 # p.vb.sigResized.connect(updateViews1)
-                p.setLimits(yMax=None, yMin=None,
-                            minYRange=None, maxYRange=None)
-                p.enableAutoRange(axis='x', enable=True)
-                p.enableAutoRange(axis='y', enable=True)
-                p.plot(x=self.worker.get_value0_buffer(
-                    i), y=self.worker.get_value1_buffer(i), pen=Constants.plot_colors[0])
+                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p.enableAutoRange(axis="x", enable=True)
+                p.enableAutoRange(axis="y", enable=True)
+                p.plot(
+                    x=self.worker.get_value0_buffer(i),
+                    y=self.worker.get_value1_buffer(i),
+                    pen=Constants.plot_colors[0],
+                )
                 # save back to global, otherwise local gets trashed
                 self._plt0_arr[i] = p
             if not self._plt1 is None:
@@ -3628,17 +4102,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 if p == None:
                     continue
                 # p.vb.sigResized.connect(updateViews2)
-                self._vector_1 = np.array(self.worker.get_d1_buffer(
-                    i))-self._reference_value_frequency[i]
-                p.plot(x=self.worker.get_t1_buffer(i), y=self._vector_1,
-                       pen=Constants.plot_colors[6])  # 2
+                self._vector_1 = (
+                    np.array(self.worker.get_d1_buffer(i))
+                    - self._reference_value_frequency[i]
+                )
+                p.plot(
+                    x=self.worker.get_t1_buffer(i),
+                    y=self._vector_1,
+                    pen=Constants.plot_colors[6],
+                )  # 2
 
                 # Prevent the user from zooming/panning out of this specified region
                 if self._get_source() == OperationType.measurement:
                     p.setLimits(
-                        yMax=self._vector_reference_frequency[i][-1], yMin=self._vector_reference_frequency[i][0], minYRange=5)
-                    p.enableAutoRange(axis='x', enable=True)
-                    p.enableAutoRange(axis='y', enable=True)
+                        yMax=self._vector_reference_frequency[i][-1],
+                        yMin=self._vector_reference_frequency[i][0],
+                        minYRange=5,
+                    )
+                    p.enableAutoRange(axis="x", enable=True)
+                    p.enableAutoRange(axis="y", enable=True)
 
                 # save back to global, otherwise local gets trashed
                 self._plt2_arr[i] = p
@@ -3646,17 +4128,27 @@ class MainWindow(QtWidgets.QMainWindow):
             for i, p in enumerate(self._plt3_arr):
                 if p == None:
                     continue
-                self._vector_2 = np.array(self.worker.get_d2_buffer(
-                    i))-self._reference_value_dissipation[i]
-                p.addItem(pg.PlotCurveItem(self.worker.get_t2_buffer(
-                    i), self._vector_2, pen=Constants.plot_colors[7]))
+                self._vector_2 = (
+                    np.array(self.worker.get_d2_buffer(i))
+                    - self._reference_value_dissipation[i]
+                )
+                p.addItem(
+                    pg.PlotCurveItem(
+                        self.worker.get_t2_buffer(i),
+                        self._vector_2,
+                        pen=Constants.plot_colors[7],
+                    )
+                )
 
                 # Prevent the user from zooming/panning out of this specified region
                 if self._get_source() == OperationType.measurement:
                     p.setLimits(
-                        yMax=self._vector_reference_dissipation[i][-1], yMin=self._vector_reference_dissipation[i][0], minYRange=1e-7)
-                    p.enableAutoRange(axis='x', enable=True)
-                    p.enableAutoRange(axis='y', enable=True)
+                        yMax=self._vector_reference_dissipation[i][-1],
+                        yMin=self._vector_reference_dissipation[i][0],
+                        minYRange=1e-7,
+                    )
+                    p.enableAutoRange(axis="x", enable=True)
+                    p.enableAutoRange(axis="y", enable=True)
 
                 # save back to global, otherwise local gets trashed
                 self._plt3_arr[i] = p
@@ -3664,14 +4156,17 @@ class MainWindow(QtWidgets.QMainWindow):
             # Prevent the user from zooming/panning out of this specified region
             if self._get_source() == OperationType.measurement:
                 self._plt4.setLimits(yMax=50, yMin=-10)
-                self._plt4.enableAutoRange(axis='x', enable=True)
-                self._plt4.enableAutoRange(axis='y', enable=True)
+                self._plt4.enableAutoRange(axis="x", enable=True)
+                self._plt4.enableAutoRange(axis="y", enable=True)
 
             ###################################################################
             # Temperature plot
             self._plt4.clear()
-            self._plt4.plot(x=self.worker.get_t3_buffer(
-                i), y=self.worker.get_d3_buffer(i), pen=Constants.plot_colors[4])
+            self._plt4.plot(
+                x=self.worker.get_t3_buffer(i),
+                y=self.worker.get_d3_buffer(i),
+                pen=Constants.plot_colors[4],
+            )
             # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
 
         ###########################################################################################################################
@@ -3682,15 +4177,27 @@ class MainWindow(QtWidgets.QMainWindow):
             for i, p in enumerate(self._plt2_arr):
                 if p == None:
                     continue
-                p.setLabel('left', 'Resonance Frequency', units='Hz',
-                           color=Constants.plot_colors[2], **{'font-size': '10pt'})
-                p.setLabel('right', 'Dissipation', units='',
-                           color=Constants.plot_colors[3], **{'font-size': '10pt'})
+                p.setLabel(
+                    "left",
+                    "Resonance Frequency",
+                    units="Hz",
+                    color=Constants.plot_colors[2],
+                    **{"font-size": "10pt"},
+                )
+                p.setLabel(
+                    "right",
+                    "Dissipation",
+                    units="",
+                    color=Constants.plot_colors[3],
+                    **{"font-size": "10pt"},
+                )
                 self._plt2_arr[i] = p
             self.InfoWin.ui3.inforef1.setText(
-                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1)
+                "<font color=#0000ff > Ref. Frequency </font>" + self._labelref1
+            )
             self.InfoWin.ui3.inforef2.setText(
-                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2)
+                "<font color=#0000ff > Ref. Dissipation </font>" + self._labelref2
+            )
 
             # limit number of display points to last num
             numPoints = 12000
@@ -3708,8 +4215,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return
                     self._plt1.clear()
                     self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(
-                        self._plt0.vb, self._plt1.XAxis)
+                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+
             # updates for multiple plot y-axes
             updateViews1()
             self._amps = {}  # empty dict for showing combined amplitudes
@@ -3721,16 +4228,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._readFREQ = self.worker.get_value0_buffer(i)
                 vector1 = self.worker.get_d1_buffer(i)
 
-                if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
+                if (
+                    self._get_source() == OperationType.measurement
+                    and self.multiplex_plots > 1
+                ):
                     self._amps[i] = self.worker.get_value1_buffer(i)
                 else:
                     # p.vb.sigResized.connect(updateViews1)
-                    p.setLimits(yMax=None, yMin=None,
-                                minYRange=None, maxYRange=None)
-                    p.enableAutoRange(axis='x', enable=True)
-                    p.enableAutoRange(axis='y', enable=True)
-                    p.plot(x=self._readFREQ, y=self.worker.get_value1_buffer(
-                        i), pen=Constants.plot_colors[0])
+                    p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                    p.enableAutoRange(axis="x", enable=True)
+                    p.enableAutoRange(axis="y", enable=True)
+                    p.plot(
+                        x=self._readFREQ,
+                        y=self.worker.get_value1_buffer(i),
+                        pen=Constants.plot_colors[0],
+                    )
                 if not self._plt1 is None:
                     Log.w("Phase is no longer supported with multiplex software.")
                     # self._plt1.addItem(pg.PlotCurveItem(x=self._readFREQ,y=self.worker.get_value2_buffer(i),pen=Constants.plot_colors[1]))
@@ -3743,58 +4255,85 @@ class MainWindow(QtWidgets.QMainWindow):
                         _plt3.clear()
                         _plt3.setGeometry(_plt2.vb.sceneBoundingRect())
                         _plt3.linkedViewChanged(_plt2.vb, _plt3.XAxis)
+
                     # updates for multiple plot y-axes
                     updateViews2(_plt2, _plt3)
                     # _plt2.vb.sigResized.connect(updateViews2)
-                    _plt2.plot(x=self.worker.get_t1_buffer(i)[:numPoints], y=self.worker.get_d1_buffer(
-                        i)[:numPoints], pen=Constants.plot_colors[2])
+                    _plt2.plot(
+                        x=self.worker.get_t1_buffer(i)[:numPoints],
+                        y=self.worker.get_d1_buffer(i)[:numPoints],
+                        pen=Constants.plot_colors[2],
+                    )
 
                     # Add apply drop message to those still pending drop
                     try:
                         if self._text4[i] == None:
                             # 'size' and 'bold' retained when calling 'setText()'
-                            self._text4[i] = pg.LabelItem(
-                                size='11pt', bold=True)
+                            self._text4[i] = pg.LabelItem(size="11pt", bold=True)
                             self._text4[i].setParentItem(_plt2.graphicsItem())
                             self._text4[i].anchor(
-                                itemPos=(0.5, 0.25), parentPos=(0.5, 0.25))
+                                itemPos=(0.5, 0.25), parentPos=(0.5, 0.25)
+                            )
                         elif not self._drop_applied[i]:
                             vector0 = self.worker.get_t2_buffer(i)
                             time_running = vector0[0]
                             if time_running == 0:
-                                labelbar = 'Waiting for start...'
+                                labelbar = "Waiting for start..."
                                 continue
                             if time_running < 3.0:
                                 self._text4[i].setText(
-                                    'Calibrating...', color=(0, 0, 200))
+                                    "Calibrating...", color=(0, 0, 200)
+                                )
                                 self._baselinedata[i] = [
-                                    [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
-                                        self.worker.get_d1_buffer(i)[:numPoints])],
-                                    [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
+                                    [
+                                        np.amin(
+                                            self.worker.get_d1_buffer(i)[:numPoints]
+                                        ),
+                                        np.amax(
+                                            self.worker.get_d1_buffer(i)[:numPoints]
+                                        ),
+                                    ],
+                                    [
+                                        np.amin(
+                                            self.worker.get_d2_buffer(i)[:numPoints]
+                                        ),
+                                        np.amax(
+                                            self.worker.get_d2_buffer(i)[:numPoints]
+                                        ),
+                                    ],
+                                ]
                             else:
                                 self._text4[i].setText(
-                                    'Apply drop now!', color=(0, 200, 0))
+                                    "Apply drop now!", color=(0, 200, 0)
+                                )
                         else:
                             time_running = _plt2.getViewBox().viewRange()[0][1]
-                            current_y_range = [_plt2.getViewBox().viewRange()[
-                                1], _plt3.viewRange()[1]]
+                            current_y_range = [
+                                _plt2.getViewBox().viewRange()[1],
+                                _plt3.viewRange()[1],
+                            ]
                             current_deltas = np.diff(current_y_range)[:, 0]
-                            last_y_deltas = np.diff(
-                                self._last_y_range[i])[:, 0]
-                            baseline_deltas = np.diff(
-                                self._baselinedata[i])[:, 0]
+                            last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
+                            baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
                             # self._last_y_range[i] != current_y_range:
-                            if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
+                            if any(
+                                np.subtract(current_deltas, last_y_deltas)
+                                > baseline_deltas
+                            ):
                                 self._last_y_range[i] = current_y_range
                                 # time of last delta
                                 self._last_y_delta[i] = time_running
                                 # hide message once drop is applied
-                                self._text4[i].setText(' ')
+                                self._text4[i].setText(" ")
                                 self._run_finished[i] = False
-                            elif time_running - self._last_y_delta[i] > 10.0 and not self._run_finished[i]:
+                            elif (
+                                time_running - self._last_y_delta[i] > 10.0
+                                and not self._run_finished[i]
+                            ):
                                 self._run_finished[i] = True
                                 Log.d(
-                                    f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)")
+                                    f"The dataset on Plot {i} appears to have finished (Y-Axis stablized for 10 seconds)"
+                                )
                                 # TODO 2024-05-24: (Temporary) Disable showing "Press Stop" on UI until accuracy is improved
                                 # if all(self._run_finished):
                                 #     status_text = 'Press \"Stop\"'
@@ -3820,18 +4359,30 @@ class MainWindow(QtWidgets.QMainWindow):
                         _ymax += Constants.default_plot_padding * _yrange
 
                         _plt2.setLimits(
-                            yMax=_ymax, yMin=_ymin, minYRange=Constants.plot_min_range_freq)  # remove maxYRange limit
-                        _plt3.setLimits(yMax=(
-                            self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0], yMin=0, minYRange=Constants.plot_min_range_diss)
+                            yMax=_ymax,
+                            yMin=_ymin,
+                            minYRange=Constants.plot_min_range_freq,
+                        )  # remove maxYRange limit
+                        _plt3.setLimits(
+                            yMax=(self._readFREQ[-1] - self._readFREQ[0])
+                            / self._readFREQ[0],
+                            yMin=0,
+                            minYRange=Constants.plot_min_range_diss,
+                        )
 
-                        _plt2.enableAutoRange(axis='x', enable=True)
-                        _plt3.enableAutoRange(axis='x', enable=True)
+                        _plt2.enableAutoRange(axis="x", enable=True)
+                        _plt3.enableAutoRange(axis="x", enable=True)
 
-                        _plt2.enableAutoRange(axis='y', enable=True)
-                        _plt3.enableAutoRange(axis='y', enable=True)
+                        _plt2.enableAutoRange(axis="y", enable=True)
+                        _plt3.enableAutoRange(axis="y", enable=True)
 
-                    _plt3.addItem(pg.PlotCurveItem(self.worker.get_t2_buffer(i)[
-                                  :numPoints], self.worker.get_d2_buffer(i)[:numPoints], pen=Constants.plot_colors[3]))
+                    _plt3.addItem(
+                        pg.PlotCurveItem(
+                            self.worker.get_t2_buffer(i)[:numPoints],
+                            self.worker.get_d2_buffer(i)[:numPoints],
+                            pen=Constants.plot_colors[3],
+                        )
+                    )
 
                 # save back to global, otherwise local gets trashed
                 self._plt0_arr[i] = p
@@ -3843,27 +4394,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 # Prevent the user from zooming/panning out of this specified region
                 if self._get_source() == OperationType.measurement:
                     self._plt4.setLimits(yMax=50, yMin=-10, minYRange=0.5)
-                    self._plt4.enableAutoRange(axis='x', enable=True)
-                    self._plt4.enableAutoRange(axis='y', enable=True)
+                    self._plt4.enableAutoRange(axis="x", enable=True)
+                    self._plt4.enableAutoRange(axis="y", enable=True)
 
-            if self._get_source() == OperationType.measurement and self.multiplex_plots > 1:
+            if (
+                self._get_source() == OperationType.measurement
+                and self.multiplex_plots > 1
+            ):
                 # get the largest values for each index
                 i = 0  # first Amplitude plot is the main one
                 combined_amps = self._amps[i]
                 for a in range(1, len(self._amps)):
                     combined_amps = np.maximum(combined_amps, self._amps[a])
                 p = self._plt0_arr[i]
-                p.setLimits(yMax=None, yMin=None,
-                            minYRange=None, maxYRange=None)
-                p.enableAutoRange(axis='x', enable=True)
-                p.enableAutoRange(axis='y', enable=True)
-                p.plot(x=self._readFREQ, y=combined_amps,
-                       pen=Constants.plot_colors[0])
+                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p.enableAutoRange(axis="x", enable=True)
+                p.enableAutoRange(axis="y", enable=True)
+                p.plot(x=self._readFREQ, y=combined_amps, pen=Constants.plot_colors[0])
                 self.labels = []
                 for j in range(len(self._amps)):
                     am = np.argmax(self._amps[j])
-                    item = pg.TextItem(
-                        text=str(j+1), color=(0, 0, 0), anchor=(0, 1))
+                    item = pg.TextItem(text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
                     item.setPos(self._readFREQ[am], combined_amps[am])
                     self.labels.append(item)
                     p.addItem(self.labels[j])
@@ -3873,8 +4424,11 @@ class MainWindow(QtWidgets.QMainWindow):
             ###################################################################
             # Temperature plot
             self._plt4.clear()
-            self._plt4.plot(x=self.worker.get_t3_buffer(0)[:numPoints], y=self.worker.get_d3_buffer(
-                0)[:numPoints], pen=Constants.plot_colors[4])
+            self._plt4.plot(
+                x=self.worker.get_t3_buffer(0)[:numPoints],
+                y=self.worker.get_d3_buffer(0)[:numPoints],
+                pen=Constants.plot_colors[4],
+            )
             # self._plt4.addItem(pg.PlotCurveItem(self.worker.get_t3_buffer(i),self.worker.get_d4_buffer(i),pen=Constants.plot_colors[1])) # hide ambient
 
     ###########################################################################################################################################
@@ -3887,16 +4441,18 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Capture ports list before changing it
         before_count = self.ControlsWin.ui1.cBox_Port.count()
-        before_items = [self.ControlsWin.ui1.cBox_Port.itemData(
-            i) for i in range(before_count)]
+        before_items = [
+            self.ControlsWin.ui1.cBox_Port.itemData(i) for i in range(before_count)
+        ]
 
         # Update ports list
         self._source_changed()
 
         # Get differences from before and after
         after_count = self.ControlsWin.ui1.cBox_Port.count()
-        after_items = [self.ControlsWin.ui1.cBox_Port.itemData(
-            i) for i in range(after_count)]
+        after_items = [
+            self.ControlsWin.ui1.cBox_Port.itemData(i) for i in range(after_count)
+        ]
         differences = set(before_items) ^ set(after_items)
 
         # Compare before and after, report changes
@@ -3904,13 +4460,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         added = differences & set(after_items)
         if len(added) > 0:  # port(s) added
-            added_str = str(sorted(added)).translate(
-                {ord(i): None for i in "[{',}]"})
+            added_str = str(sorted(added)).translate({ord(i): None for i in "[{',}]"})
             if len(added) == 1:
                 # PopUp.question(self, title, "Found new port: {}\nWould you like to use it?".format(added_str), default=True)
                 use_port = True
-                Log.w(
-                    f"Found new port: {[t.split(':')[0] for t in added_str.split()]}")
+                Log.w(f"Found new port: {[t.split(':')[0] for t in added_str.split()]}")
                 if use_port:
                     i = self.ControlsWin.ui1.cBox_Port.findData(added_str)
                     self.ControlsWin.ui1.cBox_Port.setCurrentIndex(i)
@@ -3920,31 +4474,41 @@ class MainWindow(QtWidgets.QMainWindow):
                     added_str = added_str.replace(" ", "\n")
                 # PopUp.information(self, title, "{} port(s) added:\n{}".format(len(added), added_str))
                 Log.w(
-                    f"{len(added)} port(s) added: {[t.split(':')[0] for t in added_str.split()]}")
+                    f"{len(added)} port(s) added: {[t.split(':')[0] for t in added_str.split()]}"
+                )
 
         removed = differences & set(before_items)
         if len(removed) > 0:  # port(s) removed
             removed_str = str(sorted(removed)).translate(
-                {ord(i): None for i in "[{',}]"})
+                {ord(i): None for i in "[{',}]"}
+            )
             if len(list(removed)[0]) > 6:
                 removed_str = removed_str.replace(" ", "\n")
             # PopUp.information(self, title, "{} port(s) removed:\n{}".format(len(removed), removed_str))
             Log.w(
-                f"{len(removed)} port(s) removed: {[t.split(':')[0] for t in removed_str.split()]}")
+                f"{len(removed)} port(s) removed: {[t.split(':')[0] for t in removed_str.split()]}"
+            )
 
         if after_count == ADMIN_OPTION_CMDS and self._no_ports_found > 1:
             # no ports connected, ask if initial flash desired
-            PopUp.warning(self, "Device Not Detected", "WARNING: No device port is detected. Please connect a device first and try again.\n\n" +
-                                "If a device is connected, it is not enumerating a COM port. Please seek assistance from support.")
+            PopUp.warning(
+                self,
+                "Device Not Detected",
+                "WARNING: No device port is detected. Please connect a device first and try again.\n\n"
+                + "If a device is connected, it is not enumerating a COM port. Please seek assistance from support.",
+            )
             # NOTE: The required "tools" for recovery are not included anymore. This is no longer possible.
             # PopUp.question(self, "Having Trouble?", "No working devices detected.\n\n" +
             do_flash = False
             #      "Would you like to restore functionality to an unresponsive device?")
             if do_flash:
-                PopUp.warning(self, "Manual Firmware Update Process",
-                                    "Once the \"PROGRAM\" button is pushed and the HW TYPE is known this tool will attempt to flash the firmware.\n\n" +
-                                    "NOTICE: YOU MUST PUSH THE \"PROGRAM\" BUTTON ON THE DEVICE BEFORE PROCEEDING.\n\n" +
-                                    "Next Step: You will be asked to provide the HW TYPE of the Teensy device.")
+                PopUp.warning(
+                    self,
+                    "Manual Firmware Update Process",
+                    'Once the "PROGRAM" button is pushed and the HW TYPE is known this tool will attempt to flash the firmware.\n\n'
+                    + 'NOTICE: YOU MUST PUSH THE "PROGRAM" BUTTON ON THE DEVICE BEFORE PROCEEDING.\n\n'
+                    + "Next Step: You will be asked to provide the HW TYPE of the Teensy device.",
+                )
                 self.fwUpdater.doUpdate(self, None)
         elif len(differences) == 0:  # no port list changes
             # PopUp.information(self, title, "No port changes detected.")
@@ -3961,8 +4525,12 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # It is connected to the indexValueChanged signal of the Source ComboBox.
         try:
-            Log.i(TAG, "Scanning the source: {}".format(
-                Constants.app_sources[self._get_source().value]))
+            Log.i(
+                TAG,
+                "Scanning the source: {}".format(
+                    Constants.app_sources[self._get_source().value]
+                ),
+            )
         except:
             Log.e(TAG, "Scanning the source: [UNKNOWN]")
 
@@ -3977,9 +4545,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if selected_port == None:
-            selected_port = ''  # Dissallow None
+            selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
-            selected_port = ''  # Dissallow Action
+            selected_port = ""  # Dissallow Action
 
         # Clears boxes before adding new
         self.ControlsWin.ui1.cBox_Port.clear()
@@ -3988,13 +4556,19 @@ class MainWindow(QtWidgets.QMainWindow):
         source = self._get_source()
 
         self.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "Searching for devices... please wait..."))
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                "#333333", "Searching for devices... please wait..."
+            )
+        )
         self.ControlsWin.ui1.infobar.repaint()
 
         ports = self.worker.get_source_ports(source)
 
         self.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", ""))
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                "#333333", ""
+            )
+        )
 
         # Check for device info and update port names accordingly
         port_names = list(ports)  # copy list
@@ -4003,40 +4577,44 @@ class MainWindow(QtWidgets.QMainWindow):
         dev_pids = []
         for i, dev_name in device_list:
             dev_info = FileStorage.DEV_info_get(i, dev_name)
-            if 'IP' in dev_info and not dev_info['IP'] == "0.0.0.0":
-                net_exists = Discovery().ping(dev_info['IP'])
-            if 'NAME' in dev_info and 'PORT' in dev_info:
+            if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
+                net_exists = Discovery().ping(dev_info["IP"])
+            if "NAME" in dev_info and "PORT" in dev_info:
                 try:
-                    device_ports.append(dev_info['PORT'])
-                    if not dev_info['PORT'] in port_names:
+                    device_ports.append(dev_info["PORT"])
+                    if not dev_info["PORT"] in port_names:
                         continue  # do not throw exception for debugging
-                    i = port_names.index(dev_info['PORT'])
-                    if 'PID' in dev_info and not dev_info['PID'] == "FF":
-                        if not dev_info['PID'] in dev_pids:
-                            dev_pids.append(dev_info['PID'])
+                    i = port_names.index(dev_info["PORT"])
+                    if "PID" in dev_info and not dev_info["PID"] == "FF":
+                        if not dev_info["PID"] in dev_pids:
+                            dev_pids.append(dev_info["PID"])
                         # shorthand, for dropdown menu only (colon; no underscore)
                         port_names[i] = "{}:{}".format(
-                            dev_info['PID'], dev_info['NAME'])
-                    elif dev_info['NAME'] != dev_name:
-                        port_names[i] = dev_info['NAME']
-                    elif 'COM' in dev_info['PORT']:
+                            dev_info["PID"], dev_info["NAME"]
+                        )
+                    elif dev_info["NAME"] != dev_name:
+                        port_names[i] = dev_info["NAME"]
+                    elif "COM" in dev_info["PORT"]:
                         port_names[i] = "{} ({})".format(
-                            dev_info['NAME'], dev_info['PORT'])
-                    elif ':' in dev_info['PORT']:
-                        port_names[i] = dev_info['NAME']
+                            dev_info["NAME"], dev_info["PORT"]
+                        )
+                    elif ":" in dev_info["PORT"]:
+                        port_names[i] = dev_info["NAME"]
                     else:
                         port_names[i] = "{} ({})".format(
-                            dev_info['NAME'], "COM" + str((10 + i)))
-                    if 'IP' in dev_info and not dev_info['IP'] == "0.0.0.0":
+                            dev_info["NAME"], "COM" + str((10 + i))
+                        )
+                    if "IP" in dev_info and not dev_info["IP"] == "0.0.0.0":
                         ports[i] += f";{dev_info['IP']}"
-                        if ' (' in port_names[i]:
+                        if " (" in port_names[i]:
                             port_names[i] = "{} ({})".format(
-                                port_names[i][0:port_names[i].index(' (')], dev_info['IP'])
+                                port_names[i][0 : port_names[i].index(" (")],
+                                dev_info["IP"],
+                            )
                         else:
                             port_names[i] += f" ({dev_info['IP']})"
                         if not net_exists:
-                            Log.e(
-                                f"ERROR: Failed to ping device {dev_info['IP']}")
+                            Log.e(f"ERROR: Failed to ping device {dev_info['IP']}")
                 except ValueError:
                     pass  # device not connected, ignore it
                 except:
@@ -4047,7 +4625,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # found connected port with no associated device info in config folder
                 # force parse and/or write device info (to update name and/or pid)
                 Log.d(
-                    f"New device found: querying device info for {port_name.split(':')[0]}...")
+                    f"New device found: querying device info for {port_name.split(':')[0]}..."
+                )
                 self.fwUpdater.checkAgain()
                 self.worker._port = port_name  # used in run()
                 # do NOT ask to update if not ReadyToShow
@@ -4061,58 +4640,55 @@ class MainWindow(QtWidgets.QMainWindow):
             [build, version, date, hw, ip, mac, usb, uid] = net_dev
             found_new = True
             found_exist = False
-            for port in ports:              # find if IP already in port list
+            for port in ports:  # find if IP already in port list
                 if ip in port:
                     found_new = False
                     break
             if found_new:
-                for name in port_names:     # find if DEV already in port list
+                for name in port_names:  # find if DEV already in port list
                     if usb in name:
                         found_exist = True
                         found_new = False
                         break
             if found_exist:
-                for i in range(len(port_names)):    # add IP to existing DEV
+                for i in range(len(port_names)):  # add IP to existing DEV
                     if usb in port_names[i]:
                         ports[i] += f";{ip}"
-            if found_new:                           # add new IP & DEV to list
+            if found_new:  # add new IP & DEV to list
                 ports.append(ip)
                 port_names.append("{} ({})".format(usb, ip))
 
         # usb and ethernet icons
-        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/')
-        usb_icon = QtGui.QIcon(os.path.join(icon_path, 'usb-icon.png'))  # png
-        ethernet_icon = QtGui.QIcon(os.path.join(
-            icon_path, 'ethernet-icon.png'))  # png
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+        usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
+        ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
 
         if ports is not None:
             for i in range(len(ports)):
-                port_parts = port_names[i].split(' (')
+                port_parts = port_names[i].split(" (")
                 dev_name = port_parts[0]
                 is_networked = port_parts[-1].count(".") == 3
                 port_icon = ethernet_icon if is_networked else usb_icon
-                self.ControlsWin.ui1.cBox_Port.addItem(
-                    port_icon, dev_name, ports[i])
+                self.ControlsWin.ui1.cBox_Port.addItem(port_icon, dev_name, ports[i])
             self.ControlsWin.ui1.cBox_Port.model().sort(0)
-            self.ControlsWin.ui1.cBox_Port.addItem(
-                "⚙️  Configure...", "CMD_DEV_INFO")
+            self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
 
         # Log.d(selected_port, ports)
-        selected_port_parts = selected_port.split(';')
-        common_port = ''
+        selected_port_parts = selected_port.split(";")
+        common_port = ""
         for port in ports:
-            port_parts = port.split(';')
+            port_parts = port.split(";")
             for p in port_parts:
                 for sp in selected_port_parts:
                     # Log.d(f"compare {sp} to {p}")
                     if sp == p:
                         common_port = ";".join(port_parts)
                         break
-                if common_port != '':
+                if common_port != "":
                     break
-            if common_port != '':
+            if common_port != "":
                 break
-        if common_port != '':
+        if common_port != "":
             Log.d(f"found pre-selected port = {common_port.split(':')[0]}")
             selected_port = common_port
 
@@ -4130,7 +4706,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 _serial.timeout = Constants.serial_timeout_ms
                 _serial.write_timeout = Constants.serial_writetimeout_ms
                 _serial.open()
-                _serial.write(b'MSGBOX\n')
+                _serial.write(b"MSGBOX\n")
                 _serial.close()
             except Exception as e:
                 Log.e("ERROR: Unable to clear messagebox on device.")
@@ -4140,7 +4716,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.cBox_Port.setCurrentIndex(-1)
             if len(selected_port) > 0:
                 Log.w(
-                    f"The selected port ({selected_port.split(':')[0]}) is no longer available.")
+                    f"The selected port ({selected_port.split(':')[0]}) is no longer available."
+                )
                 Log.w("Please check connection or select a new port.")
                 # PopUp.warning(self, "Missing COM Port",
                 #     "The selected port ({}) is no longer available.\n\n".format(selected_port) +
@@ -4151,11 +4728,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
         self.ControlsWin.ui1.cBox_MultiMode.clear()
-        multi_channel_count = 4*1
+        multi_channel_count = 4 * 1
         if "A" in dev_pids:
-            multi_channel_count = 4*6
+            multi_channel_count = 4 * 6
         multi_channel_items = [
-            f"{i+1} Channel" + ("s" if i > 0 else "") for i in range(multi_channel_count)]
+            f"{i+1} Channel" + ("s" if i > 0 else "")
+            for i in range(multi_channel_count)
+        ]
         self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
         if self.ControlsWin.ui1.chBox_MultiAuto.isChecked():
             idx = max(0, min(len(dev_pids), multi_channel_count) - 1)
@@ -4168,7 +4747,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 idx = self.ControlsWin.ui1.cBox_MultiMode.count() - 1
         self.ControlsWin.ui1.cBox_MultiMode.setCurrentIndex(idx)
         for i in range(self.ControlsWin.ui1.cBox_MultiMode.count()):
-            if i < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1) - 1:
+            if (
+                i
+                < self.ControlsWin.ui1.cBox_Port.count() * (6 if "A" in dev_pids else 1)
+                - 1
+            ):
                 enable = True
             else:
                 enable = False
@@ -4192,8 +4775,7 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             idx = (source.value + 1) % 2  # 0 -> 1, 1 -> 0
         if not self.ControlsWin.ui1.cBox_Speed.currentText() == "0":
-            self.restore_mode_idx[idx] = self.ControlsWin.ui1.cBox_Speed.currentIndex(
-            )
+            self.restore_mode_idx[idx] = self.ControlsWin.ui1.cBox_Speed.currentIndex()
         # do not use 'idx' here
         selected_index = self.restore_mode_idx[source.value]
 
@@ -4237,16 +4819,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         j = self.ControlsWin.ui1.cBox_Port.currentIndex() + 1
                     # Check age of calibration file, and ask for new cal if older than 15 mins
                     cal_file_path = Constants.cvs_peakfrequencies_path
-                    cal_file_path = FileStorage.DEV_populate_path(
-                        cal_file_path, j)
-                    timestamp = os.path.getmtime(
-                        cal_file_path)  # may throw OSError
+                    cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j)
+                    timestamp = os.path.getmtime(cal_file_path)  # may throw OSError
                     last_modified = datetime.datetime.fromtimestamp(timestamp)
                     last_cal_age = datetime.datetime.now() - last_modified
                     FIFTEEN_MINS = datetime.timedelta(minutes=15)
                     # mask in this device cal state to the top-level vars
                     is_recent &= last_cal_age < FIFTEEN_MINS
-                    age_of_this = int(last_cal_age.total_seconds()/60)
+                    age_of_this = int(last_cal_age.total_seconds() / 60)
                     if age_of_this > age_in_mins:
                         age_in_mins = age_of_this
                     if not isinstance(self.worker._port, list):
@@ -4261,13 +4841,17 @@ class MainWindow(QtWidgets.QMainWindow):
     # Cleans history plot
     ###########################################################################
     def clear(self):
-        elems = self._plt0_arr + [self._plt1] + \
-            self._plt2_arr + self._plt3_arr + [self._plt4]
+        elems = (
+            self._plt0_arr
+            + [self._plt1]
+            + self._plt2_arr
+            + self._plt3_arr
+            + [self._plt4]
+        )
         for e in elems:
             if e != None:
                 e.clear()
-                e.setLimits(yMin=None, yMax=None,
-                            minYRange=None, maxYRange=None)
+                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
                 e.setXRange(min=0, max=1)
                 e.setYRange(min=0, max=1)
         if self._plt2_arr[0] != None:
@@ -4280,6 +4864,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def reference(self):
         import numpy as np
+
         # import sys
         self._reference_value_frequency.clear()
         self._vector_reference_frequency.clear()
@@ -4295,9 +4880,11 @@ class MainWindow(QtWidgets.QMainWindow):
             if support.any():
                 if support[0] != 0:
                     ref_vector1 = [
-                        c for c in self.worker.get_d1_buffer(i) if ~np.isnan(c)]
+                        c for c in self.worker.get_d1_buffer(i) if ~np.isnan(c)
+                    ]
                     ref_vector2 = [
-                        c for c in self.worker.get_d2_buffer(i) if ~np.isnan(c)]
+                        c for c in self.worker.get_d2_buffer(i) if ~np.isnan(c)
+                    ]
                     self._reference_value_frequency.append(ref_vector1[0])
                     self._reference_value_dissipation.append(ref_vector2[0])
                     # sys.stdout.write("\033[K") #clear line
@@ -4308,19 +4895,32 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._labelref2 = "not set"
                     else:
                         self._reference_flag = True
-                        d1 = float("{0:.2f}".format(
-                            self._reference_value_frequency[i]))
-                        d2 = float("{0:.4f}".format(
-                            self._reference_value_dissipation[i]*1e6))
+                        d1 = float("{0:.2f}".format(self._reference_value_frequency[i]))
+                        d2 = float(
+                            "{0:.4f}".format(self._reference_value_dissipation[i] * 1e6)
+                        )
                         self._labelref1 = str(d1) + "Hz"
                         self._labelref2 = str(d2) + "e-06"
                         Log.i(TAG, "Reference set!     ")
                         self._vector_reference_frequency.append(
-                            [s - self._reference_value_frequency[i] for s in self._readFREQ])
-                        xs = np.array(np.linspace(
-                            0, ((self._readFREQ[-1]-self._readFREQ[0])/self._readFREQ[0]), len(self._readFREQ)))
+                            [
+                                s - self._reference_value_frequency[i]
+                                for s in self._readFREQ
+                            ]
+                        )
+                        xs = np.array(
+                            np.linspace(
+                                0,
+                                (
+                                    (self._readFREQ[-1] - self._readFREQ[0])
+                                    / self._readFREQ[0]
+                                ),
+                                len(self._readFREQ),
+                            )
+                        )
                         self._vector_reference_dissipation.append(
-                            xs-self._reference_value_dissipation[i])
+                            xs - self._reference_value_dissipation[i]
+                        )
 
     def factory_defaults(self):
 
@@ -4328,13 +4928,20 @@ class MainWindow(QtWidgets.QMainWindow):
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
 
         if not check_result:
-            PopUp.critical(self, "Insufficient User Rights",
-                           "A user with ADMIN rights is required to perform this action.\nPlease try again with sufficient user rights.", ok_only=True)
+            PopUp.critical(
+                self,
+                "Insufficient User Rights",
+                "A user with ADMIN rights is required to perform this action.\nPlease try again with sufficient user rights.",
+                ok_only=True,
+            )
             Log.w("Factory Default aborted: Insufficient User Rights.")
             return
 
-        do_default = PopUp.question(self, "Restore Factory Defaults",
-                                    "WARNING: Are you sure you want to restore factory defaults?\n\nThis will invalidate the 'config' folder and delete all registry keys that are associated with this application.")
+        do_default = PopUp.question(
+            self,
+            "Restore Factory Defaults",
+            "WARNING: Are you sure you want to restore factory defaults?\n\nThis will invalidate the 'config' folder and delete all registry keys that are associated with this application.",
+        )
 
         if not do_default:
             Log.d("Factory Default aborted: User Canceled Confirmation.")
@@ -4345,11 +4952,14 @@ class MainWindow(QtWidgets.QMainWindow):
             i = 1
             while os.path.exists(Constants.csv_calibration_export_path):
                 try:
-                    os.rename(Constants.csv_calibration_export_path,
-                              f"{Constants.csv_calibration_export_path}-{i}")
+                    os.rename(
+                        Constants.csv_calibration_export_path,
+                        f"{Constants.csv_calibration_export_path}-{i}",
+                    )
                 except:
                     Log.d(
-                        "Folder already exists, looking for non-existent directory:", i)
+                        "Folder already exists, looking for non-existent directory:", i
+                    )
                     i += 1
             Log.w("Factory Default: Invalidated 'config' folder successfully.")
 
@@ -4382,11 +4992,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_tec_temp(self):  # wired to slider change
 
-        self.tecWorker.set_slider_down(
-            self.ControlsWin.ui1.slTemp.isSliderDown())
+        self.tecWorker.set_slider_down(self.ControlsWin.ui1.slTemp.isSliderDown())
         self.tecWorker.set_slider_value(self.ControlsWin.ui1.slTemp.value())
-        self.tecWorker.set_slider_enable(
-            self.ControlsWin.ui1.slTemp.isEnabled())
+        self.tecWorker.set_slider_enable(self.ControlsWin.ui1.slTemp.isEnabled())
 
         pv = self.tecWorker._tec_temp
         sp = self.ControlsWin.ui1.slTemp.value()
@@ -4402,8 +5010,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tecWorker._tec_update_now = False
         elif self.ControlsWin.ui1.slTemp.isSliderDown():
             # control is ON: update GUI only, not TEC
-            new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
-                pv, sp, op)
+            new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
             self.ControlsWin.ui1.lTemp.setText(new_l1)
             self.tecWorker._tec_update_now = False
         else:
@@ -4416,16 +5023,15 @@ class MainWindow(QtWidgets.QMainWindow):
             # check version and write device info (if needed)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
             if selected_port == None:
-                selected_port = ''  # Dissallow None
+                selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
-                selected_port = ''  # Dissallow Action
+                selected_port = ""  # Dissallow Action
 
             if self.multiplex_plots > 1:
                 selected_port = []
                 for i in range(self.multiplex_plots):
                     if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
-                        selected_port.append(
-                            self.ControlsWin.ui1.cBox_Port.itemData(i))
+                        selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(i))
 
             self.worker._port = selected_port  # used in run()
             do_continue = self.fwUpdater.run(self)
@@ -4439,15 +5045,17 @@ class MainWindow(QtWidgets.QMainWindow):
             # Restore single selected port (even when multiplex mode)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
             if selected_port == None:
-                selected_port = ''  # Dissallow None
+                selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
-                selected_port = ''  # Dissallow Action
+                selected_port = ""  # Dissallow Action
 
             if len(self._selected_port) == 0:
                 Log.e(
-                    f"ERROR: No active device is currently available for TEC status updates.")
+                    f"ERROR: No active device is currently available for TEC status updates."
+                )
                 Log.e(
-                    "Please connect a device, hit \"Reset\", and try \"Temp Control\" again.")
+                    'Please connect a device, hit "Reset", and try "Temp Control" again.'
+                )
                 return
 
             # turn temp control on
@@ -4458,19 +5066,18 @@ class MainWindow(QtWidgets.QMainWindow):
                     Log.d("Waiting for Temp Control to stop.")
                     # queue thread for 'quit' on next update
                     self.tecWorker._tec_stop_thread = True
-                    self.tecWorker._tec_update_now = False  # invalidate flag to update TEC again
+                    self.tecWorker._tec_update_now = (
+                        False  # invalidate flag to update TEC again
+                    )
                     self.tecWorker.update_now.emit()  # force next update of task to happen now
                     self.tecThread.wait()  # wait for thread to quit, gracefully
             Log.d("Starting new TEC thread.")
             self.tecThread = QtCore.QThread()
             self.tecWorker = TECTask()
             self.tecWorker.set_port(selected_port)
-            self.tecWorker.set_slider_down(
-                self.ControlsWin.ui1.slTemp.isSliderDown())
-            self.tecWorker.set_slider_value(
-                self.ControlsWin.ui1.slTemp.value())
-            self.tecWorker.set_slider_enable(
-                self.ControlsWin.ui1.slTemp.isEnabled())
+            self.tecWorker.set_slider_down(self.ControlsWin.ui1.slTemp.isSliderDown())
+            self.tecWorker.set_slider_value(self.ControlsWin.ui1.slTemp.value())
+            self.tecWorker.set_slider_enable(self.ControlsWin.ui1.slTemp.isEnabled())
             self.tecWorker.moveToThread(self.tecThread)
             self.tecThread.worker = self.tecWorker
             self.tecThread.started.connect(self.tecWorker.run)
@@ -4479,11 +5086,14 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tecWorker.volt_err.connect(self.tec_volt_err)
             self.tecWorker.finished.connect(self.tec_stopped)
             self.tecWorker.lTemp_setText.connect(
-                lambda str: self.ControlsWin.ui1.lTemp.setText(str))
+                lambda str: self.ControlsWin.ui1.lTemp.setText(str)
+            )
             self.tecWorker.lTemp_setStyleSheet.connect(
-                lambda str: self.ControlsWin.ui1.lTemp.setStyleSheet(str))
+                lambda str: self.ControlsWin.ui1.lTemp.setStyleSheet(str)
+            )
             self.tecWorker.infobar_setText.connect(
-                lambda str: self.ControlsWin.ui1.infobar.setText(str))
+                lambda str: self.ControlsWin.ui1.infobar.setText(str)
+            )
             self.tecThread.start()
 
             # disable task timeout if running in development mode
@@ -4496,7 +5106,9 @@ class MainWindow(QtWidgets.QMainWindow):
             self.ControlsWin.ui1.pTemp.setText("Start Temp Control")
             self.tecWorker._tec_update("OFF")
             self.tecWorker._tec_stop_thread = True
-            self.tecWorker._tec_update_now = False  # invalidate flag to update TEC again
+            self.tecWorker._tec_update_now = (
+                False  # invalidate flag to update TEC again
+            )
             self.tecWorker.update_now.emit()
             self.ControlsWin.ui1.lTemp.setStyleSheet("")
 
@@ -4506,13 +5118,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.tempController.setEnabled(False)
 
     def tec_volt_err(self):
-        if not PopUp.critical(self,
-                              "Power Issue Detected",
-                              "<b>POWER ISSUE</b>: VOLTAGE ERROR DETECTED!<br/>" +
-                              "Please confirm external voltage supply is powered.<br/>" +
-                              "Ignore this warning at your own risk. May cause damage!",
-                              details=f"Voltage Detected: {self.tecWorker._tec_voltage}\nExpected: 5V",
-                              btn1_text="Ok"):
+        if not PopUp.critical(
+            self,
+            "Power Issue Detected",
+            "<b>POWER ISSUE</b>: VOLTAGE ERROR DETECTED!<br/>"
+            + "Please confirm external voltage supply is powered.<br/>"
+            + "Ignore this warning at your own risk. May cause damage!",
+            details=f"Voltage Detected: {self.tecWorker._tec_voltage}\nExpected: 5V",
+            btn1_text="Ok",
+        ):
             # force auto-restart, user accepts liability of incorrect voltage
             self.tecWorker._tec_stop_thread = False
             self.tecWorker._tec_update_now = True
@@ -4558,49 +5172,58 @@ class MainWindow(QtWidgets.QMainWindow):
             may return None.
         """
         try:
-            Log.i(TAG, 'Checking online for updates...')
+            Log.i(TAG, "Checking online for updates...")
 
-            color = '#ffa500'
-            labelweb2 = 'ONLINE'
-            labelweb3 = 'UNKNOWN!'
+            color = "#ffa500"
+            labelweb2 = "ONLINE"
+            labelweb3 = "UNKNOWN!"
 
             if Constants.UpdateEngine == UpdateEngines.Nightly:
                 try:
+
                     def fetch_license():
                         try:
                             self._license_manager = LicenseManager(
-                                dbx_conn=self._dbx_connection)
-                            is_valid, message, license_data = self._license_manager.validate_license(
-                                auto_create_if_missing=True)
-                            Log.d(
-                                f"License valid={is_valid}; message={message}")
+                                dbx_conn=self._dbx_connection
+                            )
+                            is_valid, message, license_data = (
+                                self._license_manager.validate_license(
+                                    auto_create_if_missing=True
+                                )
+                            )
+                            Log.d(f"License valid={is_valid}; message={message}")
                         except Exception as e:
                             Log.e(f"License fetch error: {e}")
 
                     self.web_thread = threading.Thread(
-                        target=fetch_license)  # non-blocking
+                        target=fetch_license
+                    )  # non-blocking
                     self.web_thread.start()
 
                     from QATCH.nightly.interface import GH_Interface
-                    ((update_available, update_now),
-                     latest_bundle) = GH_Interface(self).update_check()
-                    color = '#00ff00' if not update_available else '#ff0000'
+
+                    ((update_available, update_now), latest_bundle) = GH_Interface(
+                        self
+                    ).update_check()
+                    color = "#00ff00" if not update_available else "#ff0000"
                     if update_now:
                         (build, key) = latest_bundle
                         self.latest_build = build
-                        self.url_download = {"date": build['created_at'].split('T')[0],
-                                             "name": f"{build['name'].split()[0]}.zip",
-                                             "path": build['archive_download_url'],
-                                             "size": build['size_in_bytes']}
+                        self.url_download = {
+                            "date": build["created_at"].split("T")[0],
+                            "name": f"{build['name'].split()[0]}.zip",
+                            "path": build["archive_download_url"],
+                            "size": build["size_in_bytes"],
+                        }
                         self.start_download()
                     else:
                         # Check for nightly resource updates (if no build available)
                         branch = f"{Constants.app_version[0:4]}x"
                         if self.update_resources_check(branch):
-                            labelweb3 = 'Resources out-of-date'
+                            labelweb3 = "Resources out-of-date"
                             # self.res_download = True
                         else:
-                            labelweb3 = 'UP-TO-DATE!'
+                            labelweb3 = "UP-TO-DATE!"
                         Log.i(f"Nightly resource update check: {labelweb3}")
 
                     # ping periodically for task to finish
@@ -4624,7 +5247,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.6x"
             else:
                 # skip to 'except' case below
-                raise NameError('Unknown branch, not recognized')
+                raise NameError("Unknown branch, not recognized")
 
             if hasattr(self, "url_download"):
                 color, labelweb3 = self.update_found(self.build_descr)
@@ -4633,14 +5256,14 @@ class MainWindow(QtWidgets.QMainWindow):
             if return_info:
                 color, labelweb2 = self.update_check()  # blocking
 
-                if not hasattr(self, 'url_download'):
+                if not hasattr(self, "url_download"):
                     if self.res_download:
                         if self.update_resources(branch):
-                            labelweb3 = 'Resources updated'
+                            labelweb3 = "Resources updated"
                         else:
-                            labelweb3 = 'Resources out-of-date'
+                            labelweb3 = "Resources out-of-date"
                     else:
-                        labelweb3 = 'UP-TO-DATE!'
+                        labelweb3 = "UP-TO-DATE!"
                     self.ask_for_update = False
                 else:
                     color, labelweb3 = self.update_found(self.build_descr)
@@ -4650,8 +5273,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._dbx_connection = None
                 return color, labelweb2
 
-            self.web_thread = threading.Thread(
-                target=self.update_check)  # non-blocking
+            self.web_thread = threading.Thread(target=self.update_check)  # non-blocking
             self.web_thread.start()
 
             # ping periodically for task to finish
@@ -4684,23 +5306,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.6x"
             else:
                 # skip to 'except' case below
-                raise NameError('Unknown branch, not recognized')
+                raise NameError("Unknown branch, not recognized")
 
             if self.web_thread.is_alive():
                 Log.d("Waiting on update check...")
                 QtCore.QTimer.singleShot(1000, self.update_ping)
                 return
 
-            if not hasattr(self, 'url_download'):
+            if not hasattr(self, "url_download"):
                 if self.res_download:
                     if self.update_resources(branch):
-                        labelweb3 = 'Resources updated'
+                        labelweb3 = "Resources updated"
                     else:
-                        labelweb3 = 'Resources out-of-date'
+                        labelweb3 = "Resources out-of-date"
                 else:
-                    labelweb3 = 'UP-TO-DATE!'
+                    labelweb3 = "UP-TO-DATE!"
                 self.ask_for_update = False
-            elif Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
+            elif Constants.UpdateEngine in [
+                UpdateEngines.GitHub,
+                UpdateEngines.Nightly,
+            ]:
                 color, labelweb3 = self.update_found(self.build_descr)
 
             if hasattr(self, "_dbx_connection") and self._dbx_connection:
@@ -4708,26 +5333,27 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._dbx_connection = None
 
             if hasattr(self, "_license_manager") and self._license_manager:
-                self.VisQAIWin.check_license(
-                    getattr(self, "_license_manager", None))
+                self.VisQAIWin.check_license(getattr(self, "_license_manager", None))
 
         except Exception as e:
             Log.e("Update Task error:", e)
 
     def update_found(self, v):
-        color = '#ff0000'
+        color = "#ff0000"
         # if there's a space, skip the first word; otherwise, use the whole string
-        labelweb3 = '{} available!'.format(v)
+        labelweb3 = "{} available!".format(v)
         _translate = QtCore.QCoreApplication.translate
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/download_icon.ico')
-        self.InfoWin.ui3.pButton_Download.setIcon(
-            QtGui.QIcon(QtGui.QPixmap(icon_path)))
+            Architecture.get_path(), "QATCH/icons/download_icon.ico"
+        )
+        self.InfoWin.ui3.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.InfoWin.ui3.pButton_Download.setText(
-            _translate("MainWindow3", " Download ZIP"))
+            _translate("MainWindow3", " Download ZIP")
+        )
 
         # re-import each time to update settings from file
         from QATCH.common.userProfiles import UserConstants
+
         check_result = True
         if UserConstants.REQ_ADMIN_UPDATES:
             action_role = UserRoles.ADMIN
@@ -4736,25 +5362,32 @@ class MainWindow(QtWidgets.QMainWindow):
         if hasattr(self, "ask_for_update"):
             Log.i("Update Status:", labelweb3)
             if check_result == True:
-                if PopUp.question_FW(self,
-                                     "QATCH Update Available!",
-                                     "A new software version is available!\nWould you like to download it now?",
-                                     "Running SW: {} ({})\nRecommended: {}\n".format(Constants.app_version, Constants.app_date, v) +
-                                     "Filename: {}\n\nPlease save your work before updating.".format(os.path.basename(self.url_download["path"]))):
+                if PopUp.question_FW(
+                    self,
+                    "QATCH Update Available!",
+                    "A new software version is available!\nWould you like to download it now?",
+                    "Running SW: {} ({})\nRecommended: {}\n".format(
+                        Constants.app_version, Constants.app_date, v
+                    )
+                    + "Filename: {}\n\nPlease save your work before updating.".format(
+                        os.path.basename(self.url_download["path"])
+                    ),
+                ):
                     self.start_download()
                 else:
                     # Check for resource updates still (if build update declined)
                     branch = f"{Constants.app_version[0:4]}x"
                     if self.update_resources_check(branch):
                         if self.update_resources(branch):
-                            labelweb3 = 'Resources updated'
+                            labelweb3 = "Resources updated"
                         else:
-                            labelweb3 = 'Resources out-of-date'
+                            labelweb3 = "Resources out-of-date"
                     else:
                         pass  # 'Resources up-to-date'
             else:
                 Log.w(
-                    "A software update is available! Please ask your administrator to install update.")
+                    "A software update is available! Please ask your administrator to install update."
+                )
             color = "#00ff00"  # do now show popup indicating "You are running the latest version"
         self.ask_for_update = True
 
@@ -4763,9 +5396,9 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_check(self):
         # Get latest info from Dropbox webpage
         try:
-            color = '#ffa500'
-            labelweb2 = 'ONLINE'
-            labelweb3 = 'UNKNOWN!'
+            color = "#ffa500"
+            labelweb2 = "ONLINE"
+            labelweb3 = "UNKNOWN!"
 
             # init 'res_download' if not set
             if not hasattr(self, "res_download"):
@@ -4777,64 +5410,72 @@ class MainWindow(QtWidgets.QMainWindow):
             import dropbox
 
             access_path = os.path.join(
-                Constants.local_app_data_path, "tokens", "dbx_access_token.pem")
+                Constants.local_app_data_path, "tokens", "dbx_access_token.pem"
+            )
             expires_at = datetime.datetime.fromtimestamp(
-                0)  # mark expired if no file found
+                0
+            )  # mark expired if no file found
             # check if stored access token is still valid
             if os.path.exists(access_path):
                 Log.d("Checking expiration of access token.")
-                with open(access_path, 'r') as f:
+                with open(access_path, "r") as f:
                     data = json.load(f)
-                    access_token = data['access_token']
-                    expires_in = data['expires_in']
+                    access_token = data["access_token"]
+                    expires_in = data["expires_in"]
                     captured = os.path.getmtime(access_path)
                     captured = datetime.datetime.fromtimestamp(captured)
                     # consider expired if within 1 min of expiration:
-                    expires_at = captured + \
-                        datetime.timedelta(seconds=int(expires_in), minutes=-1)
+                    expires_at = captured + datetime.timedelta(
+                        seconds=int(expires_in), minutes=-1
+                    )
                     Log.d(f"Expires at: {expires_at}")
             if datetime.datetime.now() >= expires_at:
                 # stored access_token is expired, attempt to get a new one
                 # prefer working resource path, if exists
-                working_resource_path = os.path.join(
-                    os.getcwd(), "QATCH/resources/")
-                bundled_resource_path = os.path.join(Architecture.get_path(
-                ), "QATCH/resources/")  # otherwise, use bundled resource path
+                working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+                bundled_resource_path = os.path.join(
+                    Architecture.get_path(), "QATCH/resources/"
+                )  # otherwise, use bundled resource path
                 # resource_path = working_resource_path if os.path.exists(working_resource_path) else bundled_resource_path
                 # prefer working keystore, if it exists
-                keystore = os.path.join(
-                    working_resource_path, "dbx_key_store.zip")
+                keystore = os.path.join(working_resource_path, "dbx_key_store.zip")
                 if not os.path.exists(keystore):
                     # use bundled keystore, if none in working folder
-                    keystore = os.path.join(
-                        bundled_resource_path, "dbx_key_store.zip")
+                    keystore = os.path.join(bundled_resource_path, "dbx_key_store.zip")
                 if os.path.exists(keystore):
                     Log.d("Retrieving keys from Dropbox Keystore.")
-                    with pyzipper.AESZipFile(keystore, 'r',
-                                             compression=pyzipper.ZIP_DEFLATED,
-                                             allowZip64=True,
-                                             encryption=pyzipper.WZ_AES) as zf:
+                    with pyzipper.AESZipFile(
+                        keystore,
+                        "r",
+                        compression=pyzipper.ZIP_DEFLATED,
+                        allowZip64=True,
+                        encryption=pyzipper.WZ_AES,
+                    ) as zf:
                         # Add a protected file to the zip archive
-                        zf.setpassword(hashlib.sha256(
-                            zf.comment).hexdigest().encode())
-                        app_authorization = zf.read(
-                            "app_authorization").decode()
+                        zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
+                        app_authorization = zf.read("app_authorization").decode()
                         refresh_token = zf.read("refresh_token").decode()
                 else:
                     raise Exception(
-                        "Dropbox Keystore file does not exist. Cannot automatically check for updates.")
+                        "Dropbox Keystore file does not exist. Cannot automatically check for updates."
+                    )
                 Log.d("Retrieving refreshed access token from Dropbox.")
-                headers = {'Authorization': f'Basic {app_authorization}',
-                           'content-type': 'application/x-www-form-urlencoded'}
-                r = requests.post("https://api.dropbox.com/oauth2/token", headers=headers,
-                                  data=f"refresh_token={refresh_token}&grant_type=refresh_token")
+                headers = {
+                    "Authorization": f"Basic {app_authorization}",
+                    "content-type": "application/x-www-form-urlencoded",
+                }
+                r = requests.post(
+                    "https://api.dropbox.com/oauth2/token",
+                    headers=headers,
+                    data=f"refresh_token={refresh_token}&grant_type=refresh_token",
+                )
                 if r.status_code != requests.codes.ok:
                     Log.e(r.status_code, r.json())
                 r.raise_for_status()  # throw exception if not Status Code 200 - OK
-                access_token = r.json()['access_token']
+                access_token = r.json()["access_token"]
                 # store retrieved access_token for later
                 FileManager.create_dir(os.path.split(access_path)[0])
-                with open(access_path, 'w') as f:
+                with open(access_path, "w") as f:
                     f.write(r.text)
                     Log.d("Saved access token for later.")
 
@@ -4848,40 +5489,42 @@ class MainWindow(QtWidgets.QMainWindow):
                 branch = "v2.6x"
             else:
                 # skip to 'except' case below
-                raise NameError('Unknown branch, not recognized')
+                raise NameError("Unknown branch, not recognized")
 
             # determing bundle type: Python vs EXE
-            if getattr(sys, 'frozen', False):
+            if getattr(sys, "frozen", False):
                 require_EXE = True
             else:
                 require_EXE = False
 
             # determine current build type: beta vs release
-            running_beta_build = branch.replace(
-                'x', 'b') in Constants.app_version
-            running_release_build = branch.replace(
-                'x', 'r') in Constants.app_version
+            running_beta_build = branch.replace("x", "b") in Constants.app_version
+            running_release_build = branch.replace("x", "r") in Constants.app_version
             if running_beta_build == running_release_build:
                 Log.e(
-                    "Unable to determine whether running beta or release build. Assuming 'beta' and continuing.")
-                running_beta_build = True  # if we got here, logically both had to be 'False'
+                    "Unable to determine whether running beta or release build. Assuming 'beta' and continuing."
+                )
+                running_beta_build = (
+                    True  # if we got here, logically both had to be 'False'
+                )
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-            self._license_manager = LicenseManager(
-                dbx_conn=self._dbx_connection)
+            self._license_manager = LicenseManager(dbx_conn=self._dbx_connection)
             is_valid, message, license_data = self._license_manager.validate_license(
-                auto_create_if_missing=True)
+                auto_create_if_missing=True
+            )
             Log.d(f"License valid={is_valid}; message={message}")
             try:
-                all_targets_path = f'/targets.csv'
+                all_targets_path = f"/targets.csv"
                 metadata, response = self._dbx_connection.files_download(
-                    all_targets_path)
+                    all_targets_path
+                )
                 targets = {}
                 response_data = ""
                 for line in response.iter_lines():
                     response_data += f"{line.decode()}\n"
-                    uuid, uuip = line.decode().strip().split(',')
+                    uuid, uuip = line.decode().strip().split(",")
                     targets[uuid] = uuip
                 response.close()  # release connection, we are done reading 'targets'
                 # get unique user id (PC name) and universal user ip (WANIP address)
@@ -4891,35 +5534,48 @@ class MainWindow(QtWidgets.QMainWindow):
                 uuip = r.text.strip()
                 if not uuid in targets.keys():  # UUID not registered in targets, add it
                     response_data += f"{uuid},{uuip}\n"
-                    self._dbx_connection.files_upload(response_data.encode(
-                    ), all_targets_path, dropbox.files.WriteMode.overwrite)
-                elif targets[uuid] != uuip:  # UUIP has changed for existing UUID, update it
+                    self._dbx_connection.files_upload(
+                        response_data.encode(),
+                        all_targets_path,
+                        dropbox.files.WriteMode.overwrite,
+                    )
+                elif (
+                    targets[uuid] != uuip
+                ):  # UUIP has changed for existing UUID, update it
                     start_idx = response_data.index(uuid)
-                    end_idx = response_data.index('\n', start_idx)
-                    old_entry = response_data[start_idx:end_idx+1]
+                    end_idx = response_data.index("\n", start_idx)
+                    old_entry = response_data[start_idx : end_idx + 1]
                     new_entry = f"{uuid},{uuip}\n"
                     response_data = response_data.replace(old_entry, new_entry)
-                    self._dbx_connection.files_upload(response_data.encode(
-                    ), all_targets_path, dropbox.files.WriteMode.overwrite)
+                    self._dbx_connection.files_upload(
+                        response_data.encode(),
+                        all_targets_path,
+                        dropbox.files.WriteMode.overwrite,
+                    )
             except Exception as e:
                 Log.w("Unable to check the list of targets on Dropbox.")
                 Log.d("Exception details:", e)
 
             builds = []
             if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
-                for entry in self._dbx_connection.files_list_folder(f'/{branch}', recursive=True).entries:
+                for entry in self._dbx_connection.files_list_folder(
+                    f"/{branch}", recursive=True
+                ).entries:
                     if (
-                        entry.name.lower().startswith("nanovisq") and
-                        entry.name.lower().endswith(".zip") and
-                        entry.name.lower().find("installer") == -1 and
+                        entry.name.lower().startswith("nanovisq")
+                        and entry.name.lower().endswith(".zip")
+                        and entry.name.lower().find("installer") == -1
+                        and
                         # build type matches (python vs EXE)
                         (entry.name.lower().find("exe") >= 0) == require_EXE
                     ):
-                        build = {"date": entry.server_modified,
-                                 # .replace("_exe", "").replace("_py", ""),
-                                 "name": entry.name,
-                                 "path": entry.path_display,
-                                 "size": entry.size}  # ,
+                        build = {
+                            "date": entry.server_modified,
+                            # .replace("_exe", "").replace("_py", ""),
+                            "name": entry.name,
+                            "path": entry.path_display,
+                            "size": entry.size,
+                        }  # ,
                         builds.append(build)
             if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 latest_release_url = Constants.UpdateGitRepo + "/releases/latest"
@@ -4928,20 +5584,24 @@ class MainWindow(QtWidgets.QMainWindow):
                 tags_url = resp.url.replace("tag", "download") + "/tags.txt"
                 resp = requests.get(tags_url)
                 if resp.ok:
-                    all_tags = resp.content.decode().split()[
-                        ::-1]  # newest to oldest
-                    date_order = parser.parse(resp.headers['Last-Modified'])
+                    all_tags = resp.content.decode().split()[::-1]  # newest to oldest
+                    date_order = parser.parse(resp.headers["Last-Modified"])
                     for entry in all_tags:
                         build_type = "exe" if require_EXE else "py"
                         date_order -= datetime.timedelta(days=1)
-                        build = {"date": date_order,  # updated to actual release date when calling target_build()
-                                 "name": f"nanovisQ_SW_{entry}_{build_type}.zip",
-                                 "path": latest_release_url.replace("latest", f"download/{entry}/nanovisQ_SW_{entry}_{build_type}.zip"),
-                                 "size": 0}
+                        build = {
+                            "date": date_order,  # updated to actual release date when calling target_build()
+                            "name": f"nanovisQ_SW_{entry}_{build_type}.zip",
+                            "path": latest_release_url.replace(
+                                "latest",
+                                f"download/{entry}/nanovisQ_SW_{entry}_{build_type}.zip",
+                            ),
+                            "size": 0,
+                        }
                         builds.append(build)
 
             def get_dates(build):
-                return build.get('date')
+                return build.get("date")
 
             def target_build(path):
                 try:
@@ -4952,18 +5612,24 @@ class MainWindow(QtWidgets.QMainWindow):
                     build_targets_path = f"{os.path.split(path)[0]}/targets.csv"
                     if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                         metadata, response = self._dbx_connection.files_download(
-                            build_targets_path)
-                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
+                            build_targets_path
+                        )
+                    if Constants.UpdateEngine in [
+                        UpdateEngines.GitHub,
+                        UpdateEngines.Nightly,
+                    ]:
                         metadata = requests.get(install_check_path)
                         response = requests.get(build_targets_path)
                         if metadata.ok:
                             # prefer time from 'installer.checksum'
                             actual_date = parser.parse(
-                                metadata.headers['Last-Modified'])
+                                metadata.headers["Last-Modified"]
+                            )
                         elif response.ok:
                             # fallback to time from 'targets.csv'
                             actual_date = parser.parse(
-                                response.headers['Last-Modified'])
+                                response.headers["Last-Modified"]
+                            )
                     if response:
                         for line in response.iter_lines():
                             targets.append(line.decode().strip())
@@ -4974,21 +5640,20 @@ class MainWindow(QtWidgets.QMainWindow):
                     return True, actual_date
                 else:
                     return False, actual_date
+
             # sort by name (descending order)
             builds.sort(key=get_dates, reverse=True)
 
             # find most recent build based on allowed build type: beta vs release
             enabled, error, expires = UserProfiles.checkDevMode()
             # bundled EXE, running 'r' or not in dev
-            release_builds_only = (require_EXE and (
-                running_release_build or not enabled))
+            release_builds_only = require_EXE and (running_release_build or not enabled)
             most_recent = None
             if release_builds_only:
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = branch.replace(
-                        'x', 'r') in build["name"]
+                    is_release_build = branch.replace("x", "r") in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -4997,8 +5662,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = branch.replace(
-                        'x', 'r') in build["name"]
+                    is_release_build = branch.replace("x", "r") in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -5010,22 +5674,22 @@ class MainWindow(QtWidgets.QMainWindow):
                         most_recent = build
                         break  # found, stop searching
             if most_recent == None:
-                Log.d(f'requires EXE: {require_EXE}')
-                Log.d(f'release ONLY: {release_builds_only}')
-                Log.d(f'found builds: {builds}')
+                Log.d(f"requires EXE: {require_EXE}")
+                Log.d(f"release ONLY: {release_builds_only}")
+                Log.d(f"found builds: {builds}")
                 raise NameError("No compatible builds available on server!")
 
             # import all to dictionary, sorted by date
             # download the most recent build if version is different and/or date is newer than current build
             ts1 = most_recent["date"].date()
             ts2 = datetime.datetime.fromisoformat(Constants.app_date).date()
-            Log.d(f'ts1 = {ts1}, ts2 = {ts2}')
+            Log.d(f"ts1 = {ts1}, ts2 = {ts2}")
 
             if Constants.app_version in most_recent["name"] and ts1 == ts2:
                 # we're running the latest version (with files)
                 if hasattr(self, "url_download"):
                     delattr(self, "url_download")
-                color = '#00c600'
+                color = "#00c600"
             elif ts1 >= ts2 or (running_beta_build and release_builds_only):
                 # most recent build is newer than current build - or -
                 # current version is a *beta* build and we are only allowed to run *release* builds
@@ -5034,63 +5698,71 @@ class MainWindow(QtWidgets.QMainWindow):
                 version_info_descr = branch[:-1]  # drop 'x' from 'v2.6x'
                 self.build_descr = f'{most_recent["name"][most_recent["name"].rfind(version_info_descr):-4]} ({ts1})'
                 self.build_descr = self.build_descr.replace("_exe", "").replace(
-                    "_py", "")  # remove '_exe' and '_py' from build description
+                    "_py", ""
+                )  # remove '_exe' and '_py' from build description
                 # color, labelweb3 = self.update_found(self.build_descr)
 
-            if not hasattr(self, 'url_download'):
+            if not hasattr(self, "url_download"):
                 if self.update_resources_check(branch):
-                    labelweb3 = 'Resources out-of-date'
+                    labelweb3 = "Resources out-of-date"
                     # self.res_download = True
                 else:
-                    labelweb3 = 'UP-TO-DATE!'
+                    labelweb3 = "UP-TO-DATE!"
 
                 if ts1 < ts2:  # and 'self.url_download' not defined
                     Log.w(
-                        "*Most recent build on server is not newer than this build. Ignoring it.")
-                    labelweb3 += '*'
+                        "*Most recent build on server is not newer than this build. Ignoring it."
+                    )
+                    labelweb3 += "*"
             elif ts1 < ts2:  # and 'self.url_download' is defined
                 Log.e(
-                    "*Most recent RELEASE build on server is not newer but you are running a BETA build against policy.")
+                    "*Most recent RELEASE build on server is not newer but you are running a BETA build against policy."
+                )
                 Log.e(
-                    "Please downgrade your BETA build back to the most recent RELEASE build (or enable DEV MODE again).")
-                labelweb3 += '*'
+                    "Please downgrade your BETA build back to the most recent RELEASE build (or enable DEV MODE again)."
+                )
+                labelweb3 += "*"
 
         # catch network-related errors
         except requests.exceptions.RequestException as e:
-            Log.d('Update Error:', e)
-            color = '#ff0000'
-            labelweb2 = 'OFFLINE'
-            labelweb3 = 'Offline, cannot check'
+            Log.d("Update Error:", e)
+            color = "#ff0000"
+            labelweb2 = "OFFLINE"
+            labelweb3 = "Offline, cannot check"
 
         # catch unknown branch error
         except NameError as e:
-            Log.e('Update Error:', e)
+            Log.e("Update Error:", e)
             # do nothing else, labels are good
 
         # catch all other errors (non-network)
         except Exception as e:
-            Log.e('Update Error:', e)
-            color = '#ff0000'
-            labelweb2 = 'ERROR'
-            labelweb3 = 'Error, check failed'
+            Log.e("Update Error:", e)
+            color = "#ff0000"
+            labelweb2 = "ERROR"
+            labelweb3 = "Error, check failed"
 
             # a general exception has occurred, print stack traceback
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(line)
 
-        Log.i(TAG, 'Checking your internet connection {} '.format(labelweb2))
+        Log.i(TAG, "Checking your internet connection {} ".format(labelweb2))
 
         self.InfoWin.ui3.lweb3.setText(
-            "<font color=#0000ff > Update Status &nbsp;&nbsp;&nbsp;</font><font color={}>{}</font>".format(color, labelweb3))
-        if hasattr(self, 'ask_for_update') == False or self.ask_for_update == False:
+            "<font color=#0000ff > Update Status &nbsp;&nbsp;&nbsp;</font><font color={}>{}</font>".format(
+                color, labelweb3
+            )
+        )
+        if hasattr(self, "ask_for_update") == False or self.ask_for_update == False:
             Log.i("Update Status:", labelweb3)
-        if not hasattr(self, 'ask_for_update'):
+        if not hasattr(self, "ask_for_update"):
             self.ask_for_update = False
         return color, labelweb2
 
@@ -5106,21 +5778,26 @@ class MainWindow(QtWidgets.QMainWindow):
             self.res_latest_version = latest_version
             self.res_files = []
 
-            remote_resource_path = f'/{branch}/resources/'
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            remote_resource_path = f"/{branch}/resources/"
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             bundled_resource_path = os.path.join(
-                Architecture.get_path(), "QATCH/resources/")
+                Architecture.get_path(), "QATCH/resources/"
+            )
             remote_file_compare = os.path.join(
-                remote_resource_path, "lookup_resources.csv")
+                remote_resource_path, "lookup_resources.csv"
+            )
             working_file_compare = os.path.join(
-                working_resource_path, "lookup_resources.csv")
+                working_resource_path, "lookup_resources.csv"
+            )
             bundled_file_compare = os.path.join(
-                bundled_resource_path, "lookup_resources.csv")
+                bundled_resource_path, "lookup_resources.csv"
+            )
 
             resources = []
             if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
-                for resource in self._dbx_connection.files_list_folder(remote_resource_path, recursive=False).entries:
+                for resource in self._dbx_connection.files_list_folder(
+                    remote_resource_path, recursive=False
+                ).entries:
                     resources.append(resource.name)
             if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
                 resources = os.listdir(bundled_resource_path)
@@ -5129,60 +5806,79 @@ class MainWindow(QtWidgets.QMainWindow):
             try:
                 if os.path.exists(bundled_file_compare):
                     Log.d(
-                        "Looking for updated bundled resources to unpack in local working directory...")
-                    if (os.path.exists(working_file_compare) == False or
-                            os.stat(working_file_compare).st_size < os.stat(bundled_file_compare).st_size):
+                        "Looking for updated bundled resources to unpack in local working directory..."
+                    )
+                    if (
+                        os.path.exists(working_file_compare) == False
+                        or os.stat(working_file_compare).st_size
+                        < os.stat(bundled_file_compare).st_size
+                    ):
                         Log.d(
-                            "Found newer locally bundled resources! Extracting to working directory...")
+                            "Found newer locally bundled resources! Extracting to working directory..."
+                        )
                         os.makedirs(working_resource_path, exist_ok=True)
                         for root, dirs, files in os.walk(bundled_resource_path):
                             for file in files:
                                 if file in resources:
                                     # only export resources listed on server, not all locally bundled resources
                                     bundled_resource_path_file = os.path.join(
-                                        bundled_resource_path, file)
+                                        bundled_resource_path, file
+                                    )
                                     working_resource_path_file = os.path.join(
-                                        working_resource_path, file)
+                                        working_resource_path, file
+                                    )
                                     if os.path.exists(working_resource_path_file):
                                         Log.d(
-                                            f"Deleting {working_resource_path_file}...")
+                                            f"Deleting {working_resource_path_file}..."
+                                        )
                                         os.remove(working_resource_path_file)
                                     Log.d(
-                                        f"Extracting {file}... to {working_resource_path}")
-                                    os.rename(bundled_resource_path_file,
-                                              working_resource_path_file)
+                                        f"Extracting {file}... to {working_resource_path}"
+                                    )
+                                    os.rename(
+                                        bundled_resource_path_file,
+                                        working_resource_path_file,
+                                    )
                         Log.d(
-                            "Extracted all bundled resource files to working directory.")
+                            "Extracted all bundled resource files to working directory."
+                        )
                     else:
                         Log.d(
-                            "Resources are up-to-date compared to the locally bundled files. Checking server for updates.")
+                            "Resources are up-to-date compared to the locally bundled files. Checking server for updates."
+                        )
                 else:
                     Log.w(
-                        "Unable to find any locally bundled resource files. Nothing to extract.")
+                        "Unable to find any locally bundled resource files. Nothing to extract."
+                    )
             except Exception as e:
                 Log.e(
-                    "An error occurred while extracting bundled resources to working directory. Checking server for updates.")
+                    "An error occurred while extracting bundled resources to working directory. Checking server for updates."
+                )
 
             if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
                 metadata, response = self._dbx_connection.files_download(
-                    remote_file_compare)
+                    remote_file_compare
+                )
                 for line in response.iter_lines():
                     latest_version = line.decode().strip()  # last line saved
                 server_file_size = metadata.size
             if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
-                resource_file_url = Constants.UpdateGitRepo + "/raw/" + \
-                    Constants.UpdateGitBranch + \
-                    remote_file_compare.replace(branch, "QATCH")
+                resource_file_url = (
+                    Constants.UpdateGitRepo
+                    + "/raw/"
+                    + Constants.UpdateGitBranch
+                    + remote_file_compare.replace(branch, "QATCH")
+                )
                 response = requests.get(resource_file_url)
                 if response.ok:
-                    latest_version = response.text.split(
-                    )[-1].strip()  # last line saved
-                    server_file_size = int(
-                        response.headers['Content-Length'])+112
+                    latest_version = response.text.split()[
+                        -1
+                    ].strip()  # last line saved
+                    server_file_size = int(response.headers["Content-Length"]) + 112
             response.close()  # release connection, we are done reading 'remote file compare'
             if os.path.exists(working_file_compare):
                 if server_file_size != os.stat(working_file_compare).st_size:
-                    with open(working_file_compare, 'r') as f:
+                    with open(working_file_compare, "r") as f:
                         lines = f.read().splitlines()
                         current_version = lines[-1].strip()
                     if latest_version != current_version:
@@ -5204,48 +5900,66 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def update_resources(self, branch):
         try:
-            remote_resource_path = f'/{branch}/resources/'
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            remote_resource_path = f"/{branch}/resources/"
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             working_file_compare = os.path.join(
-                working_resource_path, "lookup_resources.csv")
+                working_resource_path, "lookup_resources.csv"
+            )
 
             download_resources = self.res_download
             resources = self.res_files
             current_version = self.res_current_version
             latest_version = self.res_latest_version
 
-            if Constants.UpdateEngine not in [UpdateEngines.DropboxAPI, UpdateEngines.GitHub, UpdateEngines.Nightly]:
+            if Constants.UpdateEngine not in [
+                UpdateEngines.DropboxAPI,
+                UpdateEngines.GitHub,
+                UpdateEngines.Nightly,
+            ]:
                 Log.e(
-                    f"Invalid UpdateEngine \"{Constants.UpdateEngine}\": Cannot update resource files.")
+                    f'Invalid UpdateEngine "{Constants.UpdateEngine}": Cannot update resource files.'
+                )
                 return
 
             if download_resources:
-                if not PopUp.question_FW(self,
-                                         "QATCH Update Available!",
-                                         "A new resource bundle is available!\nWould you like to download it now?",
-                                         "Current version: {}\nRecommended: {}\n".format(current_version, latest_version) +
-                                         "Remote path: {}\n\nPlease save your work before updating.".format(remote_resource_path)):
-                    download_resources = False  # abort, do now download resources, user does not want it
+                if not PopUp.question_FW(
+                    self,
+                    "QATCH Update Available!",
+                    "A new resource bundle is available!\nWould you like to download it now?",
+                    "Current version: {}\nRecommended: {}\n".format(
+                        current_version, latest_version
+                    )
+                    + "Remote path: {}\n\nPlease save your work before updating.".format(
+                        remote_resource_path
+                    ),
+                ):
+                    download_resources = (
+                        False  # abort, do now download resources, user does not want it
+                    )
             else:
                 Log.d(
-                    f"Resource files are up-to-date! Latest Version: {latest_version}")
+                    f"Resource files are up-to-date! Latest Version: {latest_version}"
+                )
                 return
 
             if download_resources:
                 # Show progress bar
                 self.progressBar = QtWidgets.QProgressDialog(
-                    f"Downloading resources...", "Cancel", 0, 100, self)
+                    f"Downloading resources...", "Cancel", 0, 100, self
+                )
                 icon_path = os.path.join(
-                    Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+                    Architecture.get_path(), "QATCH/icons/download_icon.ico"
+                )
                 self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                 self.progressBar.setWindowTitle("QATCH nanovisQ")
                 self.progressBar.setWindowFlag(
-                    QtCore.Qt.WindowContextHelpButtonHint, False)
-                self.progressBar.setWindowFlag(
-                    QtCore.Qt.WindowStaysOnTopHint, True)
+                    QtCore.Qt.WindowContextHelpButtonHint, False
+                )
+                self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                 self.progressBar.setFixedSize(
-                    int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+                    int(self.progressBar.width() * 1.5),
+                    int(self.progressBar.height() * 1.1),
+                )
                 self.progressBar.show()
                 _cancel = False
 
@@ -5262,7 +5976,7 @@ class MainWindow(QtWidgets.QMainWindow):
                         # stop prematurely due to user cancel
                         _cancel = True
                         break
-                    detail_text.append(f"Updating \"{resource}\"...")
+                    detail_text.append(f'Updating "{resource}"...')
                     file_local = os.path.join(working_resource_path, resource)
                     file_remote = os.path.join(remote_resource_path, resource)
                     Log.d(f"Downloading {file_remote} to {file_local}...")
@@ -5272,17 +5986,24 @@ class MainWindow(QtWidgets.QMainWindow):
                             os.remove(file_local)
                         Log.d(f"Writing {file_local}...")
                         self._dbx_connection.files_download_to_file(
-                            file_local, file_remote)
-                    if Constants.UpdateEngine in [UpdateEngines.GitHub, UpdateEngines.Nightly]:
-                        git_mapped_url = Constants.UpdateGitRepo + '/raw/' + \
-                            Constants.UpdateGitBranch + \
-                            file_remote.replace(branch, "QATCH")
+                            file_local, file_remote
+                        )
+                    if Constants.UpdateEngine in [
+                        UpdateEngines.GitHub,
+                        UpdateEngines.Nightly,
+                    ]:
+                        git_mapped_url = (
+                            Constants.UpdateGitRepo
+                            + "/raw/"
+                            + Constants.UpdateGitBranch
+                            + file_remote.replace(branch, "QATCH")
+                        )
                         response = requests.get(git_mapped_url)
                         response.raise_for_status()
                         if os.path.exists(file_local):
                             Log.d(f"Deleting {file_local}...")
                             os.remove(file_local)
-                        with open(file_local, 'wb') as f:
+                        with open(file_local, "wb") as f:
                             Log.d(f"Writing {file_local}...")
                             f.write(response.content)
                         response.close()
@@ -5293,18 +6014,38 @@ class MainWindow(QtWidgets.QMainWindow):
                 if _cancel:
                     # Partial success
                     Log.w(
-                        f"User canceled resource download: Updated {i} of {num_files} files.")
+                        f"User canceled resource download: Updated {i} of {num_files} files."
+                    )
                     with open(working_file_compare, "a") as f:
                         f.write("* (Partial download)")
                     Log.w("Marked resources for future update again.")
-                    PopUp.question_FW(self, "Resource Update Canceled",
-                                      "Resource files are partially updated to their latest versions.\nPlease update again to fully update.",
-                                      "Updated {} of {} files from \"{}\" to \"{}\".\n\nDETAILS:\n{}".format(i, num_files, current_version, latest_version, "\n".join(detail_text)), True)
+                    PopUp.question_FW(
+                        self,
+                        "Resource Update Canceled",
+                        "Resource files are partially updated to their latest versions.\nPlease update again to fully update.",
+                        'Updated {} of {} files from "{}" to "{}".\n\nDETAILS:\n{}'.format(
+                            i,
+                            num_files,
+                            current_version,
+                            latest_version,
+                            "\n".join(detail_text),
+                        ),
+                        True,
+                    )
                 else:
                     # Update successful
-                    PopUp.question_FW(self, "Resource Update Successful",
-                                      "Resource files are now updated to their latest versions.",
-                                      "Updated all {} files from \"{}\" to \"{}\".\n\nDETAILS:\n{}".format(num_files, current_version, latest_version, "\n".join(detail_text)), True)
+                    PopUp.question_FW(
+                        self,
+                        "Resource Update Successful",
+                        "Resource files are now updated to their latest versions.",
+                        'Updated all {} files from "{}" to "{}".\n\nDETAILS:\n{}'.format(
+                            num_files,
+                            current_version,
+                            latest_version,
+                            "\n".join(detail_text),
+                        ),
+                        True,
+                    )
 
             else:
                 Log.d("User declined resource update. Skipping download.")
@@ -5336,18 +6077,21 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # auto-extract build and launch it when user says yes
             cur_install_path = os.path.dirname(sys.argv[0])
-            if '\\' in cur_install_path or '/' in cur_install_path:
+            if "\\" in cur_install_path or "/" in cur_install_path:
                 pass  # found directories in install path, not relative to CWD()
-            elif getattr(sys, 'frozen', False):  # frozen cannot do relative path
+            elif getattr(sys, "frozen", False):  # frozen cannot do relative path
                 cur_install_path = os.path.dirname(sys.executable)
             # argv[0] contains a file name only, no relative path
             elif len(cur_install_path) == 0:
                 cur_install_path = os.path.dirname(
-                    os.path.dirname(os.path.abspath(__file__)))
-            if name[0:-4].endswith("_py") and os.path.split(cur_install_path)[1] == "QATCH":
+                    os.path.dirname(os.path.abspath(__file__))
+                )
+            if (
+                name[0:-4].endswith("_py")
+                and os.path.split(cur_install_path)[1] == "QATCH"
+            ):
                 cur_install_path = os.path.dirname(cur_install_path)
-            save_to = os.path.join(os.path.dirname(
-                cur_install_path), name[0:-4], name)
+            save_to = os.path.join(os.path.dirname(cur_install_path), name[0:-4], name)
             new_install_path = os.path.dirname(save_to)
             if not os.path.exists(new_install_path):
                 # make folder first
@@ -5355,9 +6099,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 do_install = True
             else:
                 Log.w(f"Default path already exists: {new_install_path}")
-                do_install = PopUp.question(self, "QATCH Software Conflict",
-                                            "WARNING: The default path for this new build already exists.\n\n" +
-                                            "Would you like to re-install or repair this installation?")
+                do_install = PopUp.question(
+                    self,
+                    "QATCH Software Conflict",
+                    "WARNING: The default path for this new build already exists.\n\n"
+                    + "Would you like to re-install or repair this installation?",
+                )
 
             setup_finished = False
             if do_install:
@@ -5381,20 +6128,29 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.do_launch_inline = do_launch_inline
 
                     self.progressBar = QtWidgets.QProgressDialog(
-                        f"Downloading SW {os.path.basename(new_install_path)}...", "Cancel", 0, 100, self)
+                        f"Downloading SW {os.path.basename(new_install_path)}...",
+                        "Cancel",
+                        0,
+                        100,
+                        self,
+                    )
                     icon_path = os.path.join(
-                        Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+                        Architecture.get_path(), "QATCH/icons/download_icon.ico"
+                    )
                     self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
                     self.progressBar.setWindowTitle(
-                        f" Installing SW {os.path.basename(new_install_path)}")
+                        f" Installing SW {os.path.basename(new_install_path)}"
+                    )
                     self.progressBar.setWindowFlag(
-                        QtCore.Qt.WindowContextHelpButtonHint, False)
-                    self.progressBar.setWindowFlag(
-                        QtCore.Qt.WindowStaysOnTopHint, True)
+                        QtCore.Qt.WindowContextHelpButtonHint, False
+                    )
+                    self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                     self.progressBar.canceled.disconnect()
                     self.progressBar.canceled.connect(self.install_cancel)
                     self.progressBar.setFixedSize(
-                        int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+                        int(self.progressBar.width() * 1.5),
+                        int(self.progressBar.height() * 1.1),
+                    )
 
                     self.upd_thread = QtCore.QThread()
                     self.updater = self.newUpdaterTask(path, save_to, size)
@@ -5403,8 +6159,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.upd_thread.started.connect(self.updater.run)
                     self.updater.finished.connect(self.upd_thread.quit)
                     self.updater.finished.connect(self.updater.deleteLater)
-                    self.upd_thread.finished.connect(
-                        self.upd_thread.deleteLater)
+                    self.upd_thread.finished.connect(self.upd_thread.deleteLater)
                     self.updater.progress.connect(self.update_progress)
                     self.updater.finished.connect(self.progressBar.reset)
                     self.updater.finished.connect(self.post_download_check)
@@ -5427,14 +6182,29 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # NOTE: post_download_check() called upon task completion (but not on cancel)
                 else:
-                    engine = "Dropbox" if Constants.UpdateEngine == UpdateEngines.DropboxAPI else "GitHub"
+                    engine = (
+                        "Dropbox"
+                        if Constants.UpdateEngine == UpdateEngines.DropboxAPI
+                        else "GitHub"
+                    )
                     Log.d(
-                        f"Build {name} already downloaded from {engine}. Ready to update.")
+                        f"Build {name} already downloaded from {engine}. Ready to update."
+                    )
                     self.post_download_check(
-                        do_install, setup_finished, save_to, new_install_path, do_launch_inline)
+                        do_install,
+                        setup_finished,
+                        save_to,
+                        new_install_path,
+                        do_launch_inline,
+                    )
             else:
                 self.post_download_check(
-                    do_install, setup_finished, save_to, new_install_path, do_launch_inline)
+                    do_install,
+                    setup_finished,
+                    save_to,
+                    new_install_path,
+                    do_launch_inline,
+                )
 
             # threading.Thread(target=self.ControlsWin.close,).start()
             return None, None
@@ -5446,14 +6216,14 @@ class MainWindow(QtWidgets.QMainWindow):
         if Constants.UpdateEngine == UpdateEngines.Nightly:
             try:
                 from QATCH.nightly.interface import UpdaterTask_Nightly
+
                 _updaterTask = UpdaterTask_Nightly(dest, src, size)
             except:
                 Log.e("Cannot use nightly updater. Falling back to GitHub...")
                 Constants.UpdateEngine = UpdateEngines.GitHub
         if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
             # InstallWorker(proceed, copy_src, copy_dst)
-            _updaterTask = UpdaterTask_Dbx(
-                dest, src, size, self._dbx_connection)
+            _updaterTask = UpdaterTask_Dbx(dest, src, size, self._dbx_connection)
         if Constants.UpdateEngine == UpdateEngines.GitHub:
             _updaterTask = UpdaterTask_Git(dest, src, size)
         if not _updaterTask:
@@ -5491,38 +6261,61 @@ class MainWindow(QtWidgets.QMainWindow):
         box.setIcon(QtWidgets.QMessageBox.Critical)
         # box.setWindowIcon(QtGui.QIcon(tempicon))
         box.setWindowTitle("Download Software Update")
-        box.setText("<b>An unhandled exception has occurred during execution:</b><br/>" +
-                    f"{except_str}<br/><br/>" +
-                    "See details for more information.")
+        box.setText(
+            "<b>An unhandled exception has occurred during execution:</b><br/>"
+            + f"{except_str}<br/><br/>"
+            + "See details for more information."
+        )
         # box.setDetailedText(log_stream.getvalue())
         box.setStandardButtons(QtWidgets.QMessageBox.Ok)
         box.exec_()
 
-    def post_download_check(self, do_install=None, setup_finished=None, save_to=None, new_install_path=None, do_launch_inline=None):
+    def post_download_check(
+        self,
+        do_install=None,
+        setup_finished=None,
+        save_to=None,
+        new_install_path=None,
+        do_launch_inline=None,
+    ):
         do_install = do_install if not do_install is None else self.do_install
-        setup_finished = setup_finished if not setup_finished is None else self.setup_finished
+        setup_finished = (
+            setup_finished if not setup_finished is None else self.setup_finished
+        )
         save_to = save_to if not save_to is None else self.save_to
-        new_install_path = new_install_path if not new_install_path is None else self.new_install_path
-        do_launch_inline = do_launch_inline if not do_launch_inline is None else self.do_launch_inline
+        new_install_path = (
+            new_install_path if not new_install_path is None else self.new_install_path
+        )
+        do_launch_inline = (
+            do_launch_inline if not do_launch_inline is None else self.do_launch_inline
+        )
 
         if os.path.exists(save_to):
 
             self.progressBar = QtWidgets.QProgressDialog(
-                f"Extracting SW {os.path.basename(new_install_path)}...", "Cancel", 0, 0, self)
+                f"Extracting SW {os.path.basename(new_install_path)}...",
+                "Cancel",
+                0,
+                0,
+                self,
+            )
             icon_path = os.path.join(
-                Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+                Architecture.get_path(), "QATCH/icons/download_icon.ico"
+            )
             self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
             self.progressBar.setWindowTitle(
-                f" Installing SW {os.path.basename(new_install_path)}")
-            self.progressBar.setWindowFlag(
-                QtCore.Qt.WindowContextHelpButtonHint, False)
-            self.progressBar.setWindowFlag(
-                QtCore.Qt.WindowStaysOnTopHint, True)
+                f" Installing SW {os.path.basename(new_install_path)}"
+            )
+            self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
             self.progressBar.canceled.disconnect()
             self.progressBar.setFixedSize(
-                int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
-            self.progressBar.findChild(QtWidgets.QPushButton). \
-                setEnabled(False)  # disable "cancel" button
+                int(self.progressBar.width() * 1.5),
+                int(self.progressBar.height() * 1.1),
+            )
+            self.progressBar.findChild(QtWidgets.QPushButton).setEnabled(
+                False
+            )  # disable "cancel" button
 
             extract_thread = ExtractWorker(save_to, new_install_path)
             # extract_thread.label_text.connect(self.progressBar.setLabelText)
@@ -5536,9 +6329,14 @@ class MainWindow(QtWidgets.QMainWindow):
             start_new_build = os.path.join(new_install_path, "launch.bat")
 
             if do_launch_inline:
-                with subprocess.Popen(start_new_build, cwd=new_install_path,
-                                      stdout=subprocess.PIPE, stdin=subprocess.PIPE, stderr=subprocess.PIPE,
-                                      universal_newlines=True) as proc:
+                with subprocess.Popen(
+                    start_new_build,
+                    cwd=new_install_path,
+                    stdout=subprocess.PIPE,
+                    stdin=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                ) as proc:
 
                     # Cannot send input after starting communication (must do it now)
                     Log.d("INPUT: Sending inputs to automate the launch script.")
@@ -5554,7 +6352,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             setup_finished = True
                             proc.kill()  # abort!
                             break  # stop monitoring
-                        if line.endswith('\n'):
+                        if line.endswith("\n"):
                             Log.i(line.strip())
                             line = ""  # clear, ready for next line
 
@@ -5568,15 +6366,20 @@ class MainWindow(QtWidgets.QMainWindow):
                             Log.i("Warnings & Errors Encountered:")
                         if "ERROR" in line:
                             Log.e(line.strip())
-                            if not "Access is denied" in line:  # ignore WinError 5: future dev needed to avoid this error
+                            if (
+                                not "Access is denied" in line
+                            ):  # ignore WinError 5: future dev needed to avoid this error
                                 has_errors = True
                         else:
                             Log.w(line.strip())
                     # let BAT file script die...
 
                 if has_errors:
-                    PopUp.warning(self, "QATCH Update Warning",
-                                  "Setup finished, but encountered one or more errors.\nSee log for details.")
+                    PopUp.warning(
+                        self,
+                        "QATCH Update Warning",
+                        "Setup finished, but encountered one or more errors.\nSee log for details.",
+                    )
 
                 # finally, remove the setup file (if finished)
                 try:
@@ -5587,17 +6390,29 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 setup_finished = True
         else:
-            engine = "Dropbox" if Constants.UpdateEngine == UpdateEngines.DropboxAPI else "GitHub"
+            engine = (
+                "Dropbox"
+                if Constants.UpdateEngine == UpdateEngines.DropboxAPI
+                else "GitHub"
+            )
             Log.e(
-                f"ERROR: File {save_to} does not exist. Failed to download from {engine} server.")
+                f"ERROR: File {save_to} does not exist. Failed to download from {engine} server."
+            )
 
         if setup_finished or not do_install:
-            if PopUp.question_FW(self, "QATCH Software Ready!", "<b>Install Success!</b><br/><br/>Would you like to close this instance and<br/>launch the new application now?"):
+            if PopUp.question_FW(
+                self,
+                "QATCH Software Ready!",
+                "<b>Install Success!</b><br/><br/>Would you like to close this instance and<br/>launch the new application now?",
+            ):
 
                 # launch new instance
                 launch_file = "QATCH nanovisQ.lnk" if do_launch_inline else "launch.bat"
                 start_new_build = os.path.join(new_install_path, launch_file)
-                os.startfile(start_new_build, cwd=new_install_path,)
+                os.startfile(
+                    start_new_build,
+                    cwd=new_install_path,
+                )
 
                 # close application (prompting user first)
                 self.ControlsWin.close_no_confirm = True
@@ -5607,15 +6422,21 @@ class MainWindow(QtWidgets.QMainWindow):
                 if Constants.UpdateEngine == UpdateEngines.Nightly:
                     if hasattr(self, "latest_build"):
                         from QATCH.nightly.artifacts import GH_Artifacts
+
                         GH_Artifacts().write_latest_build_file(self.latest_build)
 
         elif hasattr(self, "updater") and self.updater._cancel:
             Log.w(
-                "User aborted software download by clicking cancel. Failed to update software.")
+                "User aborted software download by clicking cancel. Failed to update software."
+            )
 
         else:
-            PopUp.critical(self, "QATCH Software Update Failed!",
-                           "Setup of new application encountered a fatal error.\nSee log for details.", ok_only=True)
+            PopUp.critical(
+                self,
+                "QATCH Software Update Failed!",
+                "Setup of new application encountered a fatal error.\nSee log for details.",
+                ok_only=True,
+            )
 
         # Log.d("GUI: Normal repaint events") # no longer needed
 
@@ -5637,11 +6458,10 @@ class ExtractWorker(QtCore.QThread):
         zip_filename = os.path.basename(save_to)[:-4]
 
         if os.path.basename(new_install_path) != zip_filename:
-            new_install_path = os.path.join(
-                new_install_path, zip_filename)
+            new_install_path = os.path.join(new_install_path, zip_filename)
 
         # Extract ZIP and launch new build
-        with pyzipper.AESZipFile(save_to, 'r') as zf:
+        with pyzipper.AESZipFile(save_to, "r") as zf:
             file_list = zf.namelist()
             total = len(file_list)
             self.set_range.emit(0, total)
@@ -5652,15 +6472,16 @@ class ExtractWorker(QtCore.QThread):
                 self.progress.emit(i)
 
         self.label_text.emit("Finalizing...")
-        nested_path_wrong = os.path.join(
-            new_install_path, zip_filename)
+        nested_path_wrong = os.path.join(new_install_path, zip_filename)
 
         if os.path.exists(nested_path_wrong):
             # this guarantees files are extracted where we want them
             os.renames(nested_path_wrong, new_install_path + "_temp")
             if os.path.dirname(save_to) == new_install_path:
-                os.renames(save_to, os.path.join(
-                    new_install_path + "_temp", zip_filename + ".zip"))
+                os.renames(
+                    save_to,
+                    os.path.join(new_install_path + "_temp", zip_filename + ".zip"),
+                )
             os.renames(new_install_path + "_temp", new_install_path)
 
         os.remove(save_to)
@@ -5722,7 +6543,8 @@ class UpdaterTask_Dbx(UpdaterTask):
             last_pct = -1
 
             self.progressTaskHandle = UpdaterProcess_Dbx(
-                self._dbx_connection, save_to, path)
+                self._dbx_connection, save_to, path
+            )
             self.progressTaskHandle.start()
 
             while True:
@@ -5736,15 +6558,22 @@ class UpdaterTask_Dbx(UpdaterTask):
                     self.exception.emit(str(e))
                 pct = int(100 * curr_size / size)
                 if pct != last_pct or curr_size == size:
-                    status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
+                    status_str = (
+                        f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
+                    )
                     if curr_size == 0:
-                        status_str = f"Starting Download: {os.path.basename(path)} ({pct}%)"
+                        status_str = (
+                            f"Starting Download: {os.path.basename(path)} ({pct}%)"
+                        )
                     Log.i(self.TAG, status_str)
-                    self.progress.emit(
-                        status_str[:status_str.rfind(' (')], pct)
+                    self.progress.emit(status_str[: status_str.rfind(" (")], pct)
                     need_repaint = True
                     last_pct = pct
-                if curr_size == size or self._cancel or not self.progressTaskHandle.is_alive():
+                if (
+                    curr_size == size
+                    or self._cancel
+                    or not self.progressTaskHandle.is_alive()
+                ):
                     break
             if not self._cancel:
                 Log.d("GUI: Toggle progress mode")
@@ -5771,14 +6600,14 @@ class UpdaterTask_Git(UpdaterTask):
 
             status_str = f"Starting Download: {os.path.basename(path)} (0%)"
             Log.i(self.TAG, status_str)
-            self.progress.emit(status_str[:status_str.rfind(' (')], 0)
+            self.progress.emit(status_str[: status_str.rfind(" (")], 0)
 
             file_remote = path
             file_local = save_to
             with requests.get(file_remote, stream=True) as r:
                 r.raise_for_status()
-                size = int(r.headers['Content-Length'])
-                with open(file_local, 'wb') as f:
+                size = int(r.headers["Content-Length"])
+                with open(file_local, "wb") as f:
                     curr_size = 0
                     for chunk in r.iter_content(chunk_size=8192):
                         if self._cancel:
@@ -5792,7 +6621,8 @@ class UpdaterTask_Git(UpdaterTask):
                             status_str = f"Download Progress: {curr_size} / {size} bytes ({pct}%)"
                             Log.i(self.TAG, status_str)
                             self.progress.emit(
-                                status_str[:status_str.rfind(' (')], pct)
+                                status_str[: status_str.rfind(" (")], pct
+                            )
                             last_pct = pct
 
             if not self._cancel:
@@ -5842,7 +6672,7 @@ class TECTask(QtCore.QThread):
 
     _task_timer = None
     _task_rate = 5000
-    _task_timeout = 15*60*1000 / _task_rate
+    _task_timeout = 15 * 60 * 1000 / _task_rate
     _task_counter = 0
     _task_active = False
 
@@ -5866,10 +6696,15 @@ class TECTask(QtCore.QThread):
         self.slider_enable = value
 
     def run(self):
-        Log.i(TAG, "Temp Control started".format(
-            strftime('%Y-%m-%d %H:%M:%S', localtime())))
-        self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",
-                                                                                                        "Temp Control started."))
+        Log.i(
+            TAG,
+            "Temp Control started".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+        )
+        self.infobar_setText.emit(
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                "#333333", "Temp Control started."
+            )
+        )
 
         self._task_active = True
         self._task_timer.start(self._task_rate)
@@ -5884,16 +6719,14 @@ class TECTask(QtCore.QThread):
                     sp = ""  # only update TEC if changed
                     # Log.d("TEC debug: {}, {}, {}".format(
                     #     self.slider_value, self._tec_setpoint, self.slider_down))
-                    if (self.slider_value != self._tec_setpoint and not self.slider_down):
+                    if self.slider_value != self._tec_setpoint and not self.slider_down:
                         # Try to update now to re-sync; if that fails, then auto-off.
                         if self._tec_out_of_sync < 3:
-                            Log.d(
-                                "Scheduling TEC for immediate update (out-of-sync)!")
+                            Log.d("Scheduling TEC for immediate update (out-of-sync)!")
                             self._tec_out_of_sync += 1
                             self._tec_update_now = True
                         else:
-                            Log.w(
-                                "Shutting down TEC to re-sync states (out-of-sync)!")
+                            Log.w("Shutting down TEC to re-sync states (out-of-sync)!")
                             self._tec_out_of_sync = 0
                             new_l1 = "[AUTO-OFF ERROR]"
                             self._tec_update("OFF")
@@ -5901,7 +6734,8 @@ class TECTask(QtCore.QThread):
                             self.auto_off.emit()
                             self.lTemp_setText.emit(new_l1)
                             self.lTemp_setStyleSheet.emit(
-                                "background-color: {}".format('red'))
+                                "background-color: {}".format("red")
+                            )
                             return
                     else:
                         # Log.d("TEC is in-sync!")
@@ -5910,10 +6744,14 @@ class TECTask(QtCore.QThread):
                         sp = self.slider_value
                     if self.slider_enable:
                         Log.d(
-                            f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status...")
+                            f"{self._task_counter:.0f}/{self._task_timeout:.0f}: Querying TEC status..."
+                        )
                         self._tec_update(sp)
                         self._tec_locked = False
-                        if (self.slider_value == self._tec_setpoint and not self.slider_down):
+                        if (
+                            self.slider_value == self._tec_setpoint
+                            and not self.slider_down
+                        ):
                             # Log.d("TEC sync success!")
                             self._tec_out_of_sync = 0
                     elif not self._tec_stop_thread:
@@ -5935,50 +6773,81 @@ class TECTask(QtCore.QThread):
                             self._tec_voltage_error_seen = False
                             self.volt_err.emit()
                         else:
-                            new_l1 = "[AUTO-OFF ERROR]" if np.isnan(
-                                pv) else "[AUTO-OFF TIMEOUT]"
+                            new_l1 = (
+                                "[AUTO-OFF ERROR]"
+                                if np.isnan(pv)
+                                else "[AUTO-OFF TIMEOUT]"
+                            )
                             self._tec_update("OFF")
                             self._task_stop()
                             self.auto_off.emit()
                     else:
                         new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
-                            pv, sp, op)
+                            pv, sp, op
+                        )
                     self.lTemp_setText.emit(new_l1)
                     bgcolor = "yellow"
                     if op == 0 or self._task_counter > self._task_timeout:
                         self._tec_stop_thread = True
-                        self._tec_update_now = False  # invalidate flag to update TEC again
+                        self._tec_update_now = (
+                            False  # invalidate flag to update TEC again
+                        )
                         bgcolor = "red" if np.isnan(pv) else "yellow"
                     else:
                         if self._tec_status == "CYCLE":
                             # Log.i(TAG, "{0}: TEC setpoint is rapid cycle. Wait for READY!".format(strftime('%Y-%m-%d %H:%M:%S', localtime())))
-                            self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format("#ff0000",
-                                                                                                                                   "Temp Control is cycling to target. Wait for READY! (this may take a few minutes)"))
+                            self.infobar_setText.emit(
+                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
+                                    "#ff0000",
+                                    "Temp Control is cycling to target. Wait for READY! (this may take a few minutes)",
+                                )
+                            )
 
                         if self._tec_status == "WAIT":
-                            self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format("#ff9900",
-                                                                                                                                   "Temp Control is stabilizing. Wait for READY! (about one minute remaining)"))
+                            self.infobar_setText.emit(
+                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
+                                    "#ff9900",
+                                    "Temp Control is stabilizing. Wait for READY! (about one minute remaining)",
+                                )
+                            )
 
                         if self._tec_status == "CLOSE":
-                            self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format("#ff9900",
-                                                                                                                                   "Temp Control is about ready. Wait for READY! (only a few seconds left)"))
+                            self.infobar_setText.emit(
+                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
+                                    "#ff9900",
+                                    "Temp Control is about ready. Wait for READY! (only a few seconds left)",
+                                )
+                            )
 
                         if self._tec_status == "STABLE":
                             bgcolor = "lightgreen"
                             # Log.i(TAG, "{0}: TEC setpoint has stabilized. Ready for START!".format(strftime('%Y-%m-%d %H:%M:%S', localtime())))
-                            self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format("#009900",
-                                                                                                                                   "Temp Control has stabilized. Ready for START!"))
+                            self.infobar_setText.emit(
+                                "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
+                                    "#009900",
+                                    "Temp Control has stabilized. Ready for START!",
+                                )
+                            )
 
                         if self._tec_status == "ERROR":
                             bgcolor = "red"
-                            Log.e(TAG, "TEC status is in an unkown state. Please restart Temp Control.".format(
-                                strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                            Log.e(
+                                TAG,
+                                "TEC status is in an unkown state. Please restart Temp Control.".format(
+                                    strftime("%Y-%m-%d %H:%M:%S", localtime())
+                                ),
+                            )
 
                     self.lTemp_setStyleSheet.emit(
-                        "background-color: {}".format(bgcolor))
+                        "background-color: {}".format(bgcolor)
+                    )
                 except Exception as e:
-                    Log.e(TAG, "ERROR: Port read error during TEC task".format(
-                        strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                    Log.e(
+                        TAG,
+                        "ERROR: Port read error during TEC task".format(
+                            strftime("%Y-%m-%d %H:%M:%S", localtime())
+                        ),
+                    )
                     if self._tec_debug:
                         raise e  # debug only
                 finally:
@@ -5988,7 +6857,8 @@ class TECTask(QtCore.QThread):
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -6005,10 +6875,15 @@ class TECTask(QtCore.QThread):
             self.task()  # fire immediately
 
     def _task_stop(self):
-        Log.i(TAG, "Temp Control stopped".format(
-            strftime('%Y-%m-%d %H:%M:%S', localtime())))
-        self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333",
-                                                                                                        "Temp Control stopped."))
+        Log.i(
+            TAG,
+            "Temp Control stopped".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+        )
+        self.infobar_setText.emit(
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
+                "#333333", "Temp Control stopped."
+            )
+        )
         self._task_active = False
         self.finished.emit()  # stop task
 
@@ -6016,18 +6891,20 @@ class TECTask(QtCore.QThread):
         # Open, write, read and close the port accordingly
         selected_port = self.port
         if selected_port == None:
-            selected_port = ''  # Dissallow None
+            selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
-            selected_port = ''  # Dissallow Action
+            selected_port = ""  # Dissallow Action
 
         if self._tec_initialized == False:
             self._tec_initialized = True
 
             if len(selected_port) == 0:
                 Log.e(
-                    f"ERROR: No active device is currently available for TEC status updates.")
+                    f"ERROR: No active device is currently available for TEC status updates."
+                )
                 Log.e(
-                    "Please connect a device, hit \"Reset\", and try \"Temp Control\" again.")
+                    'Please connect a device, hit "Reset", and try "Temp Control" again.'
+                )
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
                 self.auto_off.emit()  # toggle off button state now
@@ -6037,9 +6914,11 @@ class TECTask(QtCore.QThread):
 
             if not self._is_port_available(selected_port):
                 Log.e(
-                    f"ERROR: The selected device \"{selected_port}\" is no longer available.")
+                    f'ERROR: The selected device "{selected_port}" is no longer available.'
+                )
                 Log.e(
-                    "Please \"Reset\" to detect devices and then try \"Temp Control\" again.")
+                    'Please "Reset" to detect devices and then try "Temp Control" again.'
+                )
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
                 self.auto_off.emit()  # toggle off button state now
@@ -6048,43 +6927,70 @@ class TECTask(QtCore.QThread):
                 return
 
             # set offsetB, offsetH and offsetC prior to initialization
-            if hasattr(Constants, 'temp_offset_both'):
-                self._tec_update("=OFFSET {0:2.2f}".format(
-                    Constants.temp_offset_both))
-                Log.d(TAG, '{1}: Set offsetB={0:+02.2f}'.format(
-                    Constants.temp_offset_both, strftime('%Y-%m-%d %H:%M:%S', localtime())))
+            if hasattr(Constants, "temp_offset_both"):
+                self._tec_update("=OFFSET {0:2.2f}".format(Constants.temp_offset_both))
+                Log.d(
+                    TAG,
+                    "{1}: Set offsetB={0:+02.2f}".format(
+                        Constants.temp_offset_both,
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
+                    ),
+                )
             if self._tec_stop_thread:
                 return
-            if hasattr(Constants, 'temp_offset_heat'):
-                self._tec_update(
-                    "+OFFSET {0:2.2f}".format(Constants.temp_offset_heat))
-                Log.d(TAG, '{1}: Set offsetH={0:+02.2f}'.format(
-                    Constants.temp_offset_heat, strftime('%Y-%m-%d %H:%M:%S', localtime())))
+            if hasattr(Constants, "temp_offset_heat"):
+                self._tec_update("+OFFSET {0:2.2f}".format(Constants.temp_offset_heat))
+                Log.d(
+                    TAG,
+                    "{1}: Set offsetH={0:+02.2f}".format(
+                        Constants.temp_offset_heat,
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
+                    ),
+                )
             if self._tec_stop_thread:
                 return
-            if hasattr(Constants, 'temp_offset_cool'):
-                self._tec_update(
-                    "-OFFSET {0:2.2f}".format(Constants.temp_offset_cool))
-                Log.d(TAG, '{1}: Set offsetC={0:+02.2f}'.format(
-                    Constants.temp_offset_cool, strftime('%Y-%m-%d %H:%M:%S', localtime())))
+            if hasattr(Constants, "temp_offset_cool"):
+                self._tec_update("-OFFSET {0:2.2f}".format(Constants.temp_offset_cool))
+                Log.d(
+                    TAG,
+                    "{1}: Set offsetC={0:+02.2f}".format(
+                        Constants.temp_offset_cool,
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
+                    ),
+                )
             if self._tec_stop_thread:
                 return
 
             if (
-                hasattr(Constants, 'tune_pid_cp') and
-                hasattr(Constants, 'tune_pid_ci') and
-                hasattr(Constants, 'tune_pid_cd') and
-                hasattr(Constants, 'tune_pid_hp') and
-                hasattr(Constants, 'tune_pid_hi') and
-                hasattr(Constants, 'tune_pid_hd')
+                hasattr(Constants, "tune_pid_cp")
+                and hasattr(Constants, "tune_pid_ci")
+                and hasattr(Constants, "tune_pid_cd")
+                and hasattr(Constants, "tune_pid_hp")
+                and hasattr(Constants, "tune_pid_hi")
+                and hasattr(Constants, "tune_pid_hd")
             ):
-                self._tec_update("TUNE {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}".format(
-                    Constants.tune_pid_cp, Constants.tune_pid_ci, Constants.tune_pid_cd,  # cool PID
-                    Constants.tune_pid_hp, Constants.tune_pid_hi, Constants.tune_pid_hd))  # heat PID
-                Log.w(TAG, '{6}: Set PID tuning per Constants.py parameters: {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}'.format(
-                    Constants.tune_pid_cp, Constants.tune_pid_ci, Constants.tune_pid_cd,  # cool PID
-                    Constants.tune_pid_hp, Constants.tune_pid_hi, Constants.tune_pid_hd,  # heat PID
-                    strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                self._tec_update(
+                    "TUNE {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}".format(
+                        Constants.tune_pid_cp,
+                        Constants.tune_pid_ci,
+                        Constants.tune_pid_cd,  # cool PID
+                        Constants.tune_pid_hp,
+                        Constants.tune_pid_hi,
+                        Constants.tune_pid_hd,
+                    )
+                )  # heat PID
+                Log.w(
+                    TAG,
+                    "{6}: Set PID tuning per Constants.py parameters: {0:.3g},{1:.3g},{2:.3g},{3:.3g},{4:.3g},{5:.3g}".format(
+                        Constants.tune_pid_cp,
+                        Constants.tune_pid_ci,
+                        Constants.tune_pid_cd,  # cool PID
+                        Constants.tune_pid_hp,
+                        Constants.tune_pid_hi,
+                        Constants.tune_pid_hd,  # heat PID
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()),
+                    ),
+                )
             if self._tec_stop_thread:
                 return
 
@@ -6106,10 +7012,18 @@ class TECTask(QtCore.QThread):
                     dac = "OFF"  # turn off if temp is outside valid range
                 if int(dac) == 0:
                     dac = 0.25  # temp sensor clips at 0, so target 0.25C
-                Log.i(TAG, "Temp Control setpoint: {1}C".format(
-                    strftime('%Y-%m-%d %H:%M:%S', localtime()), dac))
-                self.infobar_setText.emit("<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format("#ff0000",
-                                                                                                                       "Cycling temperature to Temp Control setpoint... please wait..."))
+                Log.i(
+                    TAG,
+                    "Temp Control setpoint: {1}C".format(
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()), dac
+                    ),
+                )
+                self.infobar_setText.emit(
+                    "<font color=#0000ff> Infobar </font><font color={}><b>{}</b></font>".format(
+                        "#ff0000",
+                        "Cycling temperature to Temp Control setpoint... please wait...",
+                    )
+                )
                 self._tec_cycling = True
 
             # Read and show the TEC temp status from the device
@@ -6118,51 +7032,53 @@ class TECTask(QtCore.QThread):
             temp_reply = ""
             lines_in_reply = 11
             # timeout needed if old FW
-            while temp_reply.count('\n') < lines_in_reply and time() < timeoutAt:
-                while TEC_serial.in_waiting == 0 and time() < timeoutAt:  # timeout needed if old FW:
+            while temp_reply.count("\n") < lines_in_reply and time() < timeoutAt:
+                while (
+                    TEC_serial.in_waiting == 0 and time() < timeoutAt
+                ):  # timeout needed if old FW:
                     pass
                 temp_reply += TEC_serial.read(TEC_serial.in_waiting).decode()
 
             if time() < timeoutAt:
-                temp_reply = temp_reply.split('\n')
+                temp_reply = temp_reply.split("\n")
                 actual_lines = len(temp_reply)
                 # ends with blank line (+1)
-                sl = actual_lines - (lines_in_reply+1)
-                status_line = temp_reply[sl+0]          # line 1
-                setpoint_line = temp_reply[sl+1]        # line 2
-                power_line = temp_reply[sl+2]           # line 3
-                voltage_line = temp_reply[sl+3]         # line 4
-                stable_total_line = temp_reply[sl+4]    # line 5
-                min_max_line = temp_reply[sl+5]         # line 6
-                temp_status_line = temp_reply[sl+6]     # line 7
-                ambient_line = temp_reply[sl+7]         # line 8
-                temp_line = temp_reply[sl+8]            # line 9
-                offsets_line = temp_reply[sl+9]         # line 10 (unused)
-                tune_pid_line = temp_reply[sl+10]       # line 11 (unused)
-                status_text = status_line.split(':')[1].strip()
+                sl = actual_lines - (lines_in_reply + 1)
+                status_line = temp_reply[sl + 0]  # line 1
+                setpoint_line = temp_reply[sl + 1]  # line 2
+                power_line = temp_reply[sl + 2]  # line 3
+                voltage_line = temp_reply[sl + 3]  # line 4
+                stable_total_line = temp_reply[sl + 4]  # line 5
+                min_max_line = temp_reply[sl + 5]  # line 6
+                temp_status_line = temp_reply[sl + 6]  # line 7
+                ambient_line = temp_reply[sl + 7]  # line 8
+                temp_line = temp_reply[sl + 8]  # line 9
+                offsets_line = temp_reply[sl + 9]  # line 10 (unused)
+                tune_pid_line = temp_reply[sl + 10]  # line 11 (unused)
+                status_text = status_line.split(":")[1].strip()
                 # cycle, wait, close, stable, error
-                cycle_stable = status_text.split(',')[0]
-                heat_cool_off = status_text.split(',')[1]
-                setpoint_val = float(setpoint_line.split(':')[1].strip())
-                power_val = int(power_line.split(':')[1].strip())
-                voltage_val = voltage_line.split(':')[1].strip()
+                cycle_stable = status_text.split(",")[0]
+                heat_cool_off = status_text.split(",")[1]
+                setpoint_val = float(setpoint_line.split(":")[1].strip())
+                power_val = int(power_line.split(":")[1].strip())
+                voltage_val = voltage_line.split(":")[1].strip()
                 voltage_volts = float(voltage_val.split()[0][0:-1])
                 voltage_raw = int(voltage_val.split()[1][1:-1])
                 stable_total = stable_total_line.split(":")[1].strip()
-                stable = int(stable_total.split(',')[0])
-                total = int(stable_total.split(',')[1])
+                stable = int(stable_total.split(",")[0])
+                total = int(stable_total.split(",")[1])
                 min_max = min_max_line.split(":")[1].strip()
-                min = float(min_max.split(',')[0])
-                max = float(min_max.split(',')[1])
+                min = float(min_max.split(",")[0])
+                max = float(min_max.split(",")[1])
                 if min == 50:
                     min = -1
                 if max == 0:
                     max = -1
                 temp_status = temp_status_line.split(":")[1].strip()
-                ambient = float(ambient_line.split(':')[1].strip())
-                temp = float(temp_line.split(':')[1].strip())
-                offsets_text = offsets_line.split(':')[1].strip().split(',')
-                tune_pid_text = tune_pid_line.split(':')[1].strip().split(',')
+                ambient = float(ambient_line.split(":")[1].strip())
+                temp = float(temp_line.split(":")[1].strip())
+                offsets_text = offsets_line.split(":")[1].strip().split(",")
+                tune_pid_text = tune_pid_line.split(":")[1].strip().split(",")
                 # throw variables into global module scope
                 self._tec_status = cycle_stable
                 self._tec_state = heat_cool_off
@@ -6184,19 +7100,17 @@ class TECTask(QtCore.QThread):
 
                 # Append to log file for temperature controller
                 # checks the path for the header insertion
-                tec_log_path = FileStorage.DEV_populate_path(
-                    Constants.tec_log_path, 0)
+                tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
                 os.makedirs(os.path.split(tec_log_path)[0], exist_ok=True)
                 header_exists = os.path.exists(tec_log_path)
-                with open(tec_log_path, 'a') as tempFile:
+                with open(tec_log_path, "a") as tempFile:
                     if not header_exists:
                         tempFile.write(
-                            "Date/Time,Command,Status/Mode,Power(raw),Stable/Total(sec),Min/Max(C),Temp(C),Ambient(C)\n")
+                            "Date/Time,Command,Status/Mode,Power(raw),Stable/Total(sec),Min/Max(C),Temp(C),Ambient(C)\n"
+                        )
                     log_line = "{},{},{},{},{},{},{},{}\n".format(
-                        strftime('%Y-%m-%d %H:%M:%S', localtime()
-                                 ),             # Date/Time
-                        "SET '{}'".format(
-                            dac) if not dac == "" else "GET",     # Command
+                        strftime("%Y-%m-%d %H:%M:%S", localtime()),  # Date/Time
+                        "SET '{}'".format(dac) if not dac == "" else "GET",  # Command
                         # Status/Mode
                         "{}/{}".format(cycle_stable, heat_cool_off),
                         # Power(raw)
@@ -6207,11 +7121,16 @@ class TECTask(QtCore.QThread):
                         "{}/{}".format(min, max),
                         # Temp(C)
                         temp,
-                        ambient)                                                # Ambient(C)
+                        ambient,
+                    )  # Ambient(C)
                     tempFile.write(log_line)
             else:
-                Log.e(TAG, "ERROR: Timeout during check and/or update to TEC controller.".format(
-                    strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                Log.e(
+                    TAG,
+                    "ERROR: Timeout during check and/or update to TEC controller.".format(
+                        strftime("%Y-%m-%d %H:%M:%S", localtime())
+                    ),
+                )
         except serialutil.SerialException as e:
             self._tec_state = "OFF" if dac == "OFF" else "ERROR"
             # Ignore the following exception types:
@@ -6220,19 +7139,27 @@ class TECTask(QtCore.QThread):
             #   2   FileNotFoundError   scanning the source
             #  13   PermissionError     active run in progress
             if not any([s in str(e) for s in ["FileNotFoundError", "PermissionError"]]):
-                Log.e(TAG, "ERROR: Serial exception reading port to check and/or update TEC controller.".format(
-                    strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                Log.e(
+                    TAG,
+                    "ERROR: Serial exception reading port to check and/or update TEC controller.".format(
+                        strftime("%Y-%m-%d %H:%M:%S", localtime())
+                    ),
+                )
                 if self._tec_debug:
                     raise e  # debug only
         except PermissionError as e:
             self._tec_state = "OFF" if dac == "OFF" else "ERROR"
-            if "OFFSET" in dac:  # unable to open port during initialize phase is a hard-stop condition
+            if (
+                "OFFSET" in dac
+            ):  # unable to open port during initialize phase is a hard-stop condition
                 # if dac == "OFF" else "ERROR" # always off here, since we are OFF in 500ms
                 self._tec_state = "OFF"
                 Log.e(
-                    f"ERROR: The selected device \"{selected_port}\" cannot be opened. Is the port already open in another program?")
+                    f'ERROR: The selected device "{selected_port}" cannot be opened. Is the port already open in another program?'
+                )
                 Log.e(
-                    "Please close the device port, hit \"Reset\", and try \"Temp Control\" again.")
+                    'Please close the device port, hit "Reset", and try "Temp Control" again.'
+                )
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
                 self.auto_off.emit()  # toggle off button state now
@@ -6241,11 +7168,19 @@ class TECTask(QtCore.QThread):
         except Exception as e:
             self._tec_state = "OFF" if dac == "OFF" else "ERROR"
             if not any([s in str(e) for s in ["Permission"]]):
-                Log.e(TAG, "ERROR: Failure reading port to check and/or update TEC controller.".format(
-                    strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                Log.e(
+                    TAG,
+                    "ERROR: Failure reading port to check and/or update TEC controller.".format(
+                        strftime("%Y-%m-%d %H:%M:%S", localtime())
+                    ),
+                )
             else:
-                Log.e(TAG, "ERROR: File permission error occurred while logging TEC controller data.".format(
-                    strftime('%Y-%m-%d %H:%M:%S', localtime())))
+                Log.e(
+                    TAG,
+                    "ERROR: File permission error occurred while logging TEC controller data.".format(
+                        strftime("%Y-%m-%d %H:%M:%S", localtime())
+                    ),
+                )
             if self._tec_debug:
                 raise e  # debug only
         finally:
@@ -6261,11 +7196,14 @@ class TECTask(QtCore.QThread):
         from serial.tools import list_ports
 
         from QATCH.common.architecture import Architecture, OSType
+
         if Architecture.get_os() is OSType.macosx:
             import glob
+
             return glob.glob("/dev/tty.usbmodem*")
         elif Architecture.get_os() is OSType.linux:
             import glob
+
             return glob.glob("/dev/ttyACM*")
         else:
             found_ports = []

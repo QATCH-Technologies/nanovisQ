@@ -20,10 +20,14 @@ Version:
     6.0.1
 """
 
+from typing import Any
+
 import cv2
 import numpy as np
 import pandas as pd
 from scipy.signal import medfilt
+
+from QATCH.common.logger import Logger as Log
 
 
 class QModelV6YOLO_DataProcessor:
@@ -87,6 +91,53 @@ class QModelV6YOLO_DataProcessor:
         2: {"col": COL_DIFF, "color": COLOR_BLUE, "ch_idx": 0},  # Blue Channel
     }
 
+    @staticmethod
+    def convert_to_dataframe(worker: Any) -> pd.DataFrame:
+        """
+        Convert raw buffer data from a worker into a pandas DataFrame.
+
+        Retrieves the relative time, resonance frequency, and dissipation buffers from the worker,
+        truncates them to the same length, and constructs a DataFrame.
+
+        Args:
+            worker (Any): A worker object that provides buffer data through methods
+                          `get_t1_buffer(index: int)`, `get_d1_buffer(index: int)`, and
+                          `get_d2_buffer(index: int)`.
+
+        Returns:
+            pd.DataFrame: A DataFrame with columns 'Relative_time', 'Resonance_Frequency', 'Dissipation'.
+
+        Raises:
+            ValueError: If the worker does not have the required buffer methods or buffers are empty.
+        """
+        required_methods = ["get_t1_buffer", "get_d1_buffer", "get_d2_buffer"]
+        for method in required_methods:
+            if not hasattr(worker, method):
+                raise ValueError(f"Worker is missing required method: {method}")
+
+        relative_time = np.array(worker.get_t1_buffer(0))
+        resonance_frequency = np.array(worker.get_d1_buffer(0))
+        dissipation = np.array(worker.get_d2_buffer(0))
+
+        min_length = min(len(relative_time), len(resonance_frequency), len(dissipation))
+
+        if min_length == 0:
+            raise ValueError("One or more buffers are empty.")
+
+        t_raw = relative_time[:min_length]
+        freq_raw = resonance_frequency[:min_length]
+        diss_raw = dissipation[:min_length]
+
+        df = pd.DataFrame(
+            {
+                QModelV6YOLO_DataProcessor.COL_TIME: t_raw,
+                QModelV6YOLO_DataProcessor.COL_FREQ: freq_raw,
+                QModelV6YOLO_DataProcessor.COL_DISS: diss_raw,
+            }
+        )
+
+        return df
+
     @classmethod
     def preprocess_dataframe(cls, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -110,6 +161,7 @@ class QModelV6YOLO_DataProcessor:
         df.drop(columns=cols_to_drop, inplace=True)
         if cls.COL_TIME not in df.columns:
             return None
+        df.drop_duplicates(subset=[cls.COL_TIME], keep="first", inplace=True)
         t_min = df[cls.COL_TIME].min()
         t_max = df[cls.COL_TIME].max()
         new_time_grid = np.arange(t_min, t_max, cls.TIME_STEP)
@@ -122,7 +174,6 @@ class QModelV6YOLO_DataProcessor:
         for col in df.columns:
             if col != cls.COL_TIME and pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = medfilt(df[col], kernel_size=cls.MEDIAN_KERNEL)
-
         return df
 
     @classmethod

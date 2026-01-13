@@ -1,16 +1,18 @@
 import logging
 import multiprocessing
 from multiprocessing import Queue
+from time import time
 
-from QATCH.core.constants import Constants, OperationType
-from QATCH.processors.Parser import ParserProcess
-from QATCH.processors.Serial import SerialProcess
-from QATCH.processors.Calibration import CalibrationProcess
+import numpy as np
+
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants, OperationType
 from QATCH.core.ringBuffer import RingBuffer
-import numpy as np
-from time import time
+from QATCH.processors.Calibration import CalibrationProcess
+from QATCH.processors.Parser import ParserProcess
+from QATCH.processors.Serial import SerialProcess
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
 
 TAG = ""  # "[Worker]"
 
@@ -25,15 +27,17 @@ class Worker:
     # Initializer to configure all processes needed for a basic configuration
     # NOTE: Subsequent configurations should use the config() call instead!
     ###########################################################################
-    def __init__(self,
-                 QCS_on=None,
-                 port=None,
-                 speed=Constants.serial_default_overtone,
-                 samples=Constants.argument_default_samples,
-                 source=OperationType.measurement,
-                 export_enabled=False,
-                 freq_hopping=False,
-                 reconstruct=False):
+    def __init__(
+        self,
+        QCS_on=None,
+        port=None,
+        speed=Constants.serial_default_overtone,
+        samples=Constants.argument_default_samples,
+        source=OperationType.measurement,
+        export_enabled=False,
+        freq_hopping=False,
+        reconstruct=False,
+    ):
 
         # set up logger (only once)
         multiprocessing.log_to_stderr()
@@ -41,28 +45,32 @@ class Worker:
         logger.setLevel(logging.INFO)
 
         # configure basic process
-        self.config(QCS_on=QCS_on,
-                    port=port,
-                    speed=speed,
-                    samples=samples,
-                    source=source,
-                    export_enabled=export_enabled,
-                    freq_hopping=freq_hopping,
-                    reconstruct=reconstruct)
+        self.config(
+            QCS_on=QCS_on,
+            port=port,
+            speed=speed,
+            samples=samples,
+            source=source,
+            export_enabled=export_enabled,
+            freq_hopping=freq_hopping,
+            reconstruct=reconstruct,
+        )
 
     ###########################################################################
     # Reusable call to configure all processes for acquisition and processing
     ###########################################################################
-    def config(self,
-               QCS_on=None,
-               port=None,
-               pid=None,
-               speed=Constants.serial_default_overtone,
-               samples=Constants.argument_default_samples,
-               source=OperationType.measurement,
-               export_enabled=False,
-               freq_hopping=False,
-               reconstruct=False):
+    def config(
+        self,
+        QCS_on=None,
+        port=None,
+        pid=None,
+        speed=Constants.serial_default_overtone,
+        samples=Constants.argument_default_samples,
+        source=OperationType.measurement,
+        export_enabled=False,
+        freq_hopping=False,
+        reconstruct=False,
+    ):
         """
         :param port: Port to open on start :type port: str.
         :param speed: Speed for the specified port :type speed: float.
@@ -110,7 +118,7 @@ class Worker:
 
         # others
         self._QCS_on = QCS_on  # QCS installed on device (unused now)
-        self._port = port     # dynamically select COM vs Ethernet
+        self._port = port  # dynamically select COM vs Ethernet
         # overtones (str) if 'serial' is called
         # QCS (str) if 'calibration' is called
         self._pid = pid
@@ -147,27 +155,88 @@ class Worker:
         self.reset_buffers(self._samples)
         # Instantiates process
         self._parser_process = ParserProcess(
-            self._queueLog, self._queue0, self._queue1, self._queue2, self._queue3, self._queue4, self._queue5, self._queue6)
+            self._queueLog,
+            self._queue0,
+            self._queue1,
+            self._queue2,
+            self._queue3,
+            self._queue4,
+            self._queue5,
+            self._queue6,
+        )
         # Checks the type of source
         if self._source == OperationType.measurement:
             self._acquisition_process = SerialProcess(
-                self._queueLog, self._parser_process, self._timestart, self._freq_hopping, self._export, self._reconstruct)
+                self._queueLog,
+                self._parser_process,
+                self._timestart,
+                self._freq_hopping,
+                self._export,
+                self._reconstruct,
+            )
         elif self._source == OperationType.calibration:
             self._acquisition_process = CalibrationProcess(
-                self._queueLog, self._parser_process)
+                self._queueLog, self._parser_process
+            )
 
         port_and_peak_check = self._acquisition_process.open(
-            port=self._port, speed=self._speed, pid=self._pid)
+            port=self._port, speed=self._speed, pid=self._pid
+        )
         if port_and_peak_check == 1:
             if self._source == OperationType.measurement:
                 # (self._overtone_name,self._overtone_value, self._fStep, self._readFREQ, SG_window_size, spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
                 if self._freq_hopping:
-                    (self._overtone_name, self._overtone_value, self._fStep, self._readFREQ, SG_window_size, spline_points, spline_factor, _, _, _,
-                     self._overtone_name_up, self._overtone_value_up, self._fStep_up, self._readFREQ_up, SG_window_size_up, spline_points_up, spline_factor_up, _, _, _,
-                     self._overtone_name_down, self._overtone_value_down, self._fStep_down, self._readFREQ_down, SG_window_size_down, spline_points_down, spline_factor_down, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
+                    (
+                        self._overtone_name,
+                        self._overtone_value,
+                        self._fStep,
+                        self._readFREQ,
+                        SG_window_size,
+                        spline_points,
+                        spline_factor,
+                        _,
+                        _,
+                        _,
+                        self._overtone_name_up,
+                        self._overtone_value_up,
+                        self._fStep_up,
+                        self._readFREQ_up,
+                        SG_window_size_up,
+                        spline_points_up,
+                        spline_factor_up,
+                        _,
+                        _,
+                        _,
+                        self._overtone_name_down,
+                        self._overtone_value_down,
+                        self._fStep_down,
+                        self._readFREQ_down,
+                        SG_window_size_down,
+                        spline_points_down,
+                        spline_factor_down,
+                        _,
+                        _,
+                        _,
+                    ) = self._acquisition_process.get_frequencies(self._samples, 0)
                 else:
-                    (self._overtone_name, self._overtone_value, self._fStep, self._readFREQ, SG_window_size,
-                     spline_points, spline_factor, _, _, _) = self._acquisition_process.get_frequencies(self._samples, 0)
+                    (
+                        self._overtone_name,
+                        self._overtone_value,
+                        self._fStep,
+                        self._readFREQ,
+                        SG_window_size,
+                        spline_points,
+                        spline_factor,
+                        _,
+                        _,
+                        _,
+                    ) = self._acquisition_process.get_frequencies(self._samples, 0)
+
+                # Setup QModelV6YOLO_LiveProcess live fill process.
+                self._forecaster_process = QModelV6YOLO_LiveProcess(
+                    self._queueLog, self._forecaster_in, self._forecaster_out
+                )
+                self._forecaster_process.start()
 
                 # Prepopulate frequency buffer before starting
                 for i in range(len(self._data0_buffer)):
@@ -175,15 +244,21 @@ class Worker:
 
                 Log.i("")
                 Log.i(TAG, "DATA MAIN INFORMATION")
-                Log.i(TAG, "Selected frequency: {} - {} Hz".format(
-                    self._overtone_name, int(self._overtone_value)))
-                Log.i(TAG, "Frequency start: {} Hz".format(
-                    int(self._readFREQ[0])))
-                Log.i(TAG, "Frequency stop:  {} Hz".format(
-                    int(self._readFREQ[-1])))
-                Log.i(TAG, "Frequency range: {} Hz".format(
-                    int(self._readFREQ[-1]-self._readFREQ[0])))
-                Log.i(TAG, "Number of samples: {}".format(int(self._samples-1)))
+                Log.i(
+                    TAG,
+                    "Selected frequency: {} - {} Hz".format(
+                        self._overtone_name, int(self._overtone_value)
+                    ),
+                )
+                Log.i(TAG, "Frequency start: {} Hz".format(int(self._readFREQ[0])))
+                Log.i(TAG, "Frequency stop:  {} Hz".format(int(self._readFREQ[-1])))
+                Log.i(
+                    TAG,
+                    "Frequency range: {} Hz".format(
+                        int(self._readFREQ[-1] - self._readFREQ[0])
+                    ),
+                )
+                Log.i(TAG, "Number of samples: {}".format(int(self._samples - 1)))
                 Log.i(TAG, "Sample rate: {} Hz".format(int(self._fStep)))
                 Log.i(TAG, "History buffer size: 5 min\n")
                 Log.i(TAG, "MAIN PROCESSING INFORMATION")
@@ -194,17 +269,37 @@ class Worker:
             elif self._source == OperationType.calibration:
                 Log.i("")
                 Log.i(TAG, "MAIN CALIBRATION INFORMATION")
-                Log.i(TAG, "Calibration frequency start:  {} Hz".format(
-                    int(Constants.calibration_frequency_start)))
-                Log.i(TAG, "Calibration frequency stop:  {} Hz".format(
-                    int(Constants.calibration_frequency_stop)))
-                Log.i(TAG, "Frequency range: {} Hz".format(
-                    int(Constants.calibration_frequency_stop-Constants.calibration_frequency_start)))
-                Log.i(TAG, "Number of samples: {}".format(
-                    int(Constants.calibration_default_samples-1)))
-                Log.i(TAG, "Sample rate: {} Hz".format(
-                    int(Constants.calibration_fStep)))
-            Log.i(TAG, 'Starting processes...\n')
+                Log.i(
+                    TAG,
+                    "Calibration frequency start:  {} Hz".format(
+                        int(Constants.calibration_frequency_start)
+                    ),
+                )
+                Log.i(
+                    TAG,
+                    "Calibration frequency stop:  {} Hz".format(
+                        int(Constants.calibration_frequency_stop)
+                    ),
+                )
+                Log.i(
+                    TAG,
+                    "Frequency range: {} Hz".format(
+                        int(
+                            Constants.calibration_frequency_stop
+                            - Constants.calibration_frequency_start
+                        )
+                    ),
+                )
+                Log.i(
+                    TAG,
+                    "Number of samples: {}".format(
+                        int(Constants.calibration_default_samples - 1)
+                    ),
+                )
+                Log.i(
+                    TAG, "Sample rate: {} Hz".format(int(Constants.calibration_fStep))
+                )
+            Log.i(TAG, "Starting processes...\n")
             # Starts processes
             self._acquisition_process.start()
             self._parser_process.start()
@@ -312,9 +407,10 @@ class Worker:
         i = data[0]
         self._data2_buffer[i] = data[1]
         # Additional function: exports calibration data in a file if export box is checked.
-        '''
+        """
         self.store_data_calibration()
-        '''
+        """
+
     #####
 
     def _queue_data3(self, data):
@@ -351,11 +447,12 @@ class Worker:
             self._timestart = time()
             self._flag = False
         # Data Storage in csv and/or txt file
-        '''
+        """
         self.store_data() # Now handled by SerialProcess entirely
-        '''
+        """
 
         #####
+
     def _queue_data6(self, data):
         # :param data: values to add for serial error :type data: float.
         self._ser_error1 = data[0]
@@ -419,7 +516,14 @@ class Worker:
     # Gets serial error
     def get_ser_error(self):
         # :return: float list.
-        return self._ser_error1, self._ser_error2, self._ser_error3, self._ser_error4, self._control_k, self._ser_err_usb
+        return (
+            self._ser_error1,
+            self._ser_error2,
+            self._ser_error3,
+            self._ser_error4,
+            self._control_k,
+            self._ser_err_usb,
+        )
 
     ###########################################################################
     # Checks if processes are running
@@ -427,7 +531,10 @@ class Worker:
 
     def is_running(self):
         # :return: True if a process is running :rtype: bool.
-        return self._acquisition_process is not None and self._acquisition_process.is_alive()
+        return (
+            self._acquisition_process is not None
+            and self._acquisition_process.is_alive()
+        )
 
     ###########################################################################
     # Gets the available ports for specified source
@@ -440,28 +547,28 @@ class Worker:
         :return: List of available ports :rtype: str list.
         """
         if Constants.serial_simulate_device:
-            return ['/dev/simulator']
+            return ["/dev/simulator"]
         elif source == OperationType.measurement:
             ports = SerialProcess.get_ports()
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0:ports[i].index(':')])
+                    port_names.append(ports[i][0 : ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
-            Log.i('Port connected:', port_names)
+            Log.i("Port connected:", port_names)
             return ports
         elif source == OperationType.calibration:
             ports = CalibrationProcess.get_ports()
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0:ports[i].index(':')])
+                    port_names.append(ports[i][0 : ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
-            Log.i('Port connected:', port_names)
+            Log.i("Port connected:", port_names)
             return ports
         else:
             Log.w(TAG, "Warning: Unknown source selected")
@@ -510,18 +617,21 @@ class Worker:
             self._data2_buffer.append(np.zeros(samples))  # phase
             # Resonance frequency
             self._d1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._d2_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # Dissipation
-            self._d3_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # temperature
-            self._d4_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # ambient
+            self._d2_buffer.append(
+                RingBuffer(Constants.ring_buffer_samples)
+            )  # Dissipation
+            self._d3_buffer.append(
+                RingBuffer(Constants.ring_buffer_samples)
+            )  # temperature
+            self._d4_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # ambient
             # time (Resonance frequency)
             self._t1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._t2_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # time (Dissipation)
-            self._t3_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # time (temperature)
+            self._t2_buffer.append(
+                RingBuffer(Constants.ring_buffer_samples)
+            )  # time (Dissipation)
+            self._t3_buffer.append(
+                RingBuffer(Constants.ring_buffer_samples)
+            )  # time (temperature)
 
         # Initialises supporting variables
         self._d1_store = 0
@@ -550,7 +660,9 @@ class Worker:
         :return: overtone :type overtone: float.
         :return: frequency range :type readFREQ: float list.
         """
-        return self._readFREQ  # stale after peak tracking kicks in (use _data0_buffer instead)
+        return (
+            self._readFREQ
+        )  # stale after peak tracking kicks in (use _data0_buffer instead)
 
     ############################################################################
     # Gets overtones name, value and frequency step
