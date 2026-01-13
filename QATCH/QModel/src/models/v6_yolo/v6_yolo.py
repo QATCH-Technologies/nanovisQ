@@ -27,6 +27,7 @@ Version:
 
 import datetime
 import os
+import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -190,7 +191,15 @@ class QModelV6YOLO_FillClassifier:
             (QModelV6Config.FILL_INFERENCE_W, QModelV6Config.FILL_INFERENCE_H),
             interpolation=cv2.INTER_AREA,
         )
+        # # --- Debugging for live fill frames and type cls ---
+        # debug_dir = os.path.join(os.getcwd(), "debug_frames")
+        # os.makedirs(debug_dir, exist_ok=True)
 
+        # # Use nanoseconds to ensure unique filenames in a fast loop
+        # timestamp = time.time_ns()
+        # save_path = os.path.join(debug_dir, f"input_{timestamp}.png")
+
+        # cv2.imwrite(save_path, img_input)
         # Inference
         try:
             results = self.model(img_input, verbose=False)
@@ -352,8 +361,7 @@ class QModelV6YOLO:
     TAG = "QModelV6YOLO"
 
     # Maps internal integer Class IDs to application-standard POI strings
-    POI_MAP = {1: "POI1", 2: "POI2", 3: "POI3",
-               4: "POI4", 5: "POI5", 6: "POI6"}
+    POI_MAP = {1: "POI1", 2: "POI2", 3: "POI3", 4: "POI4", 5: "POI5", 6: "POI6"}
 
     def __init__(self, model_assets: Dict[str, Any]):
         """
@@ -417,8 +425,7 @@ class QModelV6YOLO:
                 try:
                     self._detectors[name] = QModelV6YOLO_Detector(model_path)
                 except Exception as e:
-                    Log.e(
-                        self.TAG, f"Error while loading detector '{name}': {e}")
+                    Log.e(self.TAG, f"Error while loading detector '{name}': {e}")
                     return None
         return self._detectors.get(name)
 
@@ -581,16 +588,13 @@ class QModelV6YOLO:
                 t = data["time"]
                 c = colors.get(poi_id, "black")
                 name = getattr(self, "POI_MAP", {}).get(poi_id, f"POI{poi_id}")
-                plt.axvline(x=t, color=c, linestyle="-",
-                            linewidth=2, label=f"{name}")
+                plt.axvline(x=t, color=c, linestyle="-", linewidth=2, label=f"{name}")
 
         for _, (_, cut_time) in enumerate(cut_history):
-            plt.axvline(x=cut_time, color="red",
-                        linestyle="--", linewidth=1, alpha=0.5)
+            plt.axvline(x=cut_time, color="red", linestyle="--", linewidth=1, alpha=0.5)
             plt.axvspan(cut_time, np.max(time), color="red", alpha=0.05)
 
-        plt.title(
-            f"Cascade Detection Debug - {len(cut_history)} Slices Applied")
+        plt.title(f"Cascade Detection Debug - {len(cut_history)} Slices Applied")
         plt.savefig(final_save_path)
         plt.close()
         # Optional: Print where it saved for easier tracking
@@ -656,15 +660,21 @@ class QModelV6YOLO:
             if progress_signal:
                 progress_signal.emit(10, "Data Loaded")
 
-            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
-                raw_df.copy())
+            master_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(raw_df.copy())
+
+            # --- UPDATE: Preprocessing Complete ---
+            if progress_signal:
+                progress_signal.emit(20, "Preprocessing Data...")
+
             if master_df is None or master_df.empty:
                 raise ValueError("Preprocessing failed")
 
             if num_channels is None:
+                if progress_signal:
+                    progress_signal.emit(30, "Determining Channel Count...")
+
                 fill_cls = self._load_fill_cls()
-                num_channels = int(fill_cls.predict(
-                    master_df)) if fill_cls else 3
+                num_channels = int(fill_cls.predict(master_df)) if fill_cls else 3
 
             if num_channels == -1:
                 return self._get_default_predictions(), num_channels
@@ -692,39 +702,47 @@ class QModelV6YOLO:
                 return None
 
             if num_channels >= 3:
+                if progress_signal:
+                    progress_signal.emit(45, "Detecting Channel 3...")
+
                 det_ch3 = self._load_detector_by_name("ch3")
                 if det_ch3:
-                    res = det_ch3.predict_single(
-                        current_df, target_class_map={0: 6})
+                    res = det_ch3.predict_single(current_df, target_class_map={0: 6})
                     cut_time = process_detection(res, 6)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH3_Cut", cut_time))
 
             if num_channels >= 2:
+                if progress_signal:
+                    progress_signal.emit(60, "Detecting Channel 2...")
+
                 det_ch2 = self._load_detector_by_name("ch2")
                 if det_ch2:
-                    res = det_ch2.predict_single(
-                        current_df, target_class_map={0: 5})
+                    res = det_ch2.predict_single(current_df, target_class_map={0: 5})
                     cut_time = process_detection(res, 5)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH2_Cut", cut_time))
 
             if num_channels >= 1:
+                if progress_signal:
+                    progress_signal.emit(75, "Detecting Channel 1...")
+
                 det_ch1 = self._load_detector_by_name("ch1")
                 if det_ch1:
-                    res = det_ch1.predict_single(
-                        current_df, target_class_map={0: 4})
+                    res = det_ch1.predict_single(current_df, target_class_map={0: 4})
                     cut_time = process_detection(res, 4)
                     if cut_time:
                         current_df = current_df[current_df[col_time] < cut_time]
                         cut_history.append(("CH1_Cut", cut_time))
 
+            if progress_signal:
+                progress_signal.emit(85, "Detecting Initialization Points...")
+
             det_init = self._load_detector_by_name("init")
             if det_init:
-                res = det_init.predict_single(
-                    current_df, target_class_map={0: 1, 1: 2})
+                res = det_init.predict_single(current_df, target_class_map={0: 1, 1: 2})
                 process_detection(res, 1)
                 process_detection(res, 2)
 
@@ -740,14 +758,13 @@ class QModelV6YOLO:
                     )
 
                     if 6 in res_fine:
-                        Log.i(self.TAG, "Fine adjustment updated POI 6.")
                         process_detection(res_fine, 6)
 
             if 3 in final_results:
                 del final_results[3]
 
             if progress_signal:
-                progress_signal.emit(100, "Inference Complete")
+                progress_signal.emit(100, "Complete!")
 
             if visualize:
                 try:

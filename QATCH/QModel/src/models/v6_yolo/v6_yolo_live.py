@@ -20,10 +20,11 @@ import multiprocessing
 import os
 import sys
 from logging.handlers import QueueHandler
-from typing import List, Optional
+from typing import Optional
 
 import pandas as pd
 
+from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
 from QATCH.QModel.src.models.v6_yolo.v6_yolo import (
     QModelV6Config,
@@ -37,26 +38,22 @@ TAG = "[QModelV6YOLO_LiveProcess]"
 
 
 class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
-    """
-    Manages data buffering and executes predictions for real-time fill classification.
+    """Manages data buffering and executes predictions for real-time fill classification.
 
-    This class extends the base YOLO fill classifier to handle streaming data.
-    It maintains a rolling buffer of data chunks, consolidates them into a single
-    DataFrame, and performs inference when sufficient data is available.
+    This class handles the accumulation of streaming sensor data, maintains a fixed-size
+    sliding window buffer, and triggers inference using a YOLO-based model when conditions
+    are met.
 
     Attributes:
-        buffer_window_size (Optional[int]): The maximum number of rows to retain in
-            the rolling buffer. If None, the buffer size is unlimited (not recommended).
-        current_prediction (int): The most recent classification result index.
-        _chunk_buffer (List[pd.DataFrame]): A list of incoming data chunks waiting
-            to be consolidated.
-        _cumulative_row_count (int): The total number of rows currently held in the
-            unconsolidated chunks.
+        buffer_window_size (Optional[int]): The maximum number of rows to retain in the
+            rolling buffer. If None, the buffer grows indefinitely.
+        current_prediction (int): The most recent classification result class ID.
+        STATUS_MAP (dict): Mapping of integer classification codes to human-readable strings.
     """
 
     STATUS_MAP = {
         -1: "No Fill",
-        0: "Initial/Unknown",
+        0: "Initial FIll",
         1: "1 Channel",
         2: "2 Channels",
         3: "3 Channels",
@@ -64,99 +61,126 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     TAG = "[QModelV6YOLO_Live]"
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
-        """
-        Initializes the live fill classifier.
+        """Initializes the live fill classifier with a model and buffer settings.
 
         Args:
-            model_path (str): The file path to the trained YOLO model.
-            buffer_window_size (Optional[int], optional): The maximum size of the
-                rolling data buffer in rows. Defaults to None.
+            model_path (str): The file path to the trained YOLO model weights.
+            buffer_window_size (Optional[int]): The maximum number of data rows to keep
+                in memory. Defaults to None.
         """
         super().__init__(model_path)
         self.buffer_window_size = buffer_window_size
         self.current_prediction = 0
-        self._chunk_buffer: List[pd.DataFrame] = []
-        self._cumulative_row_count = 0
+
+        # New storage attributes
+        self._data: Optional[pd.DataFrame] = None
+        self._last_max_time = -float("inf")
+        self._prediction_buffer_size = 0
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
     def add_chunk(self, df_chunk: pd.DataFrame) -> None:
-        """
-        Adds a new chunk of data to the processing buffer.
+        """Ingests a new chunk of data into the rolling buffer.
 
-        If the buffer exceeds twice the `buffer_window_size`, it triggers an
-        automatic consolidation and truncation to manage memory usage.
+        This is the public interface for data ingestion. It wraps the internal
+        buffer extension logic and handles error logging if the update fails.
 
         Args:
-            df_chunk (pd.DataFrame): The new dataframe chunk to append.
+            df_chunk (pd.DataFrame): A pandas DataFrame containing the new time-series
+                data to append.
         """
-        if df_chunk is None or df_chunk.empty:
+        try:
+            self._extend_buffer(df_chunk)
+        except ValueError as e:
+            Log.e(self.TAG, f"Failed to add chunk: {e}")
+
+    def _extend_buffer(self, new_data: pd.DataFrame) -> None:
+        """Extends the internal data buffer with new unique data points.
+
+        Ensures time monotonicity by only adding rows with 'Relative_time' greater
+        than the previously recorded maximum. Also handles sorting and trimming the
+        buffer to the defined `buffer_window_size`.
+
+        Args:
+            new_data (pd.DataFrame): DataFrame containing new data to be appended.
+
+        Raises:
+            ValueError: If `new_data` is not a DataFrame or is missing the
+                'Relative_time' column.
+        """
+        if not isinstance(new_data, pd.DataFrame):
+            raise ValueError("new_data must be a pandas DataFrame.")
+
+        if new_data.empty:
             return
 
-        self._chunk_buffer.append(df_chunk)
-        self._cumulative_row_count += len(df_chunk)
-        if self.buffer_window_size and self._cumulative_row_count > (
-            self.buffer_window_size * 2
-        ):
-            self._consolidate_and_truncate()
+        if "Relative_time" not in new_data.columns:
+            raise ValueError("new_data must contain the 'Relative_time' column.")
 
-    def _consolidate_and_truncate(self) -> pd.DataFrame:
-        """
-        Consolidates buffered chunks and enforces the window size limit.
+        if self._data is None or self._data.empty:
+            self._data = new_data.copy()
+            self._prediction_buffer_size = len(self._data)
+        else:
+            new_data_filtered = new_data[
+                new_data["Relative_time"] > self._last_max_time
+            ]
 
-        Merges all dataframes in `_chunk_buffer` into a single DataFrame and
-        truncates it to keep only the most recent `buffer_window_size` rows.
-
-        Returns:
-            pd.DataFrame: The consolidated and truncated dataframe.
-        """
-        if not self._chunk_buffer:
-            return pd.DataFrame()
-        full_df = pd.concat(self._chunk_buffer, ignore_index=True)
-        if self.buffer_window_size and len(full_df) > self.buffer_window_size:
-            full_df = full_df.iloc[-self.buffer_window_size :]
-        self._chunk_buffer = [full_df]
-        self._cumulative_row_count = len(full_df)
-        return full_df
+            if not new_data_filtered.empty:
+                new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
+                self._data = pd.concat(
+                    [self._data, new_data_aligned], ignore_index=True
+                )
+                self._prediction_buffer_size += len(new_data_filtered)
+        if self._data is not None and not self._data.empty:
+            self._last_max_time = self._data["Relative_time"].max()
+            self._data.sort_values(by="Relative_time", ascending=True, inplace=True)
+            self._data.reset_index(drop=True, inplace=True)
+            if self.buffer_window_size and len(self._data) > self.buffer_window_size:
+                self._data = self._data.iloc[-self.buffer_window_size :]
+                self._data.reset_index(drop=True, inplace=True)
 
     def attempt_classification(self) -> int:
-        """
-        Attempts to classify the current state of the buffered data.
+        """Executes the classification pipeline on the current buffered data.
 
-        Consolidates the buffer, preprocesses the data, and runs the YOLO
-        prediction model. If the data is insufficient (less than MIN_SLICE_LENGTH)
-        or preprocessing fails, the previous prediction is retained.
+        This method validates data length against `QModelV6Config.MIN_SLICE_LENGTH`,
+        filters for valid time ranges (Relative_time > 0.05), applies preprocessing,
+        and runs the model inference.
 
         Returns:
-            int: The class index of the prediction (e.g., 1, 2, 3) or the
-            previous prediction if inference could not be run.
+            int: The classification result class ID. Returns the previous `current_prediction`
+            if the buffer is insufficient, empty, or if inference fails.
         """
-        current_df = self._consolidate_and_truncate()
-        if len(current_df) < QModelV6Config.MIN_SLICE_LENGTH:
-            return 0
+        if self._data is None or len(self._data) < QModelV6Config.MIN_SLICE_LENGTH:
+            return self.current_prediction
 
         try:
-            processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
-                current_df.copy()
-            )
+            processed_df = self._data.copy()
 
-            if processed_df is not None and not processed_df.empty:
-                pred = self.predict(processed_df)
-                self.current_prediction = pred
-                return pred
+            mask = self._data["Relative_time"] > 0.05
+            if mask.any():
+                self._data = self._data.loc[mask]
+                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
+                    self._data.copy()
+                )
+                if processed_df is not None and not processed_df.empty:
+                    pred = self.predict(processed_df)
+                    self.current_prediction = pred
+                    return pred
+                else:
+                    Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
             else:
-                Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
-
+                Log.d(self.TAG, "Waiting for > 0.05s of buffer data.")
         except Exception as e:
             Log.e(self.TAG, f"Inference failed: {str(e)}")
+
         return self.current_prediction
 
     def get_status_str(self) -> str:
-        """
-        Retrieves the string representation of the current prediction.
+        """Retrieves the human-readable string representation of the current prediction.
 
         Returns:
-            str: The human-readable status string (e.g., "1 Channel").
+            str: The status label corresponding to `current_prediction` (e.g., "1 Channel",
+            "No Fill"). Returns "Unknown" if the ID is not in `STATUS_MAP`.
         """
         return self.STATUS_MAP.get(self.current_prediction, "Unknown")
 
@@ -181,12 +205,13 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         _classifier (Optional[QModelV6YOLO_Live]): The internal classifier instance (created in run).
     """
 
+    TAG = "[QModelV6YOLO_LiveProcess]"
+
     def __init__(
         self,
         queue_log: multiprocessing.Queue,
         queue_in: multiprocessing.Queue,
         queue_out: multiprocessing.Queue,
-        model_path: str,
         buffer_window_size: Optional[int] = None,
     ) -> None:
         """
@@ -200,6 +225,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             buffer_window_size (Optional[int], optional): The maximum size of the rolling
                 data buffer. Defaults to None.
         """
+        Log.d(self.TAG, "Starting multiprocess fill status")
         self._queueLog: multiprocessing.Queue = queue_log
         multiprocessing.Process.__init__(self)
 
@@ -209,7 +235,11 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         self._queue_out: multiprocessing.Queue = queue_out
 
         # Store config to initialize model inside run()
-        self.model_path = model_path
+        v6_base_path = os.path.join(
+            Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
+        )
+        type_cls_asset = os.path.join(v6_base_path, "type_cls", "weights", "best.pt")
+        self.model_path = type_cls_asset
         self.buffer_window_size = buffer_window_size
 
         # Instance placeholder
@@ -248,7 +278,6 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             self._classifier = QModelV6YOLO_Live(
                 model_path=self.model_path, buffer_window_size=self.buffer_window_size
             )
-
             Log.i(TAG, "YOLO Live Process Started and Model Loaded.")
 
             while not self._exit.is_set():
@@ -259,13 +288,9 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
                 data_received = False
                 while not self._queue_in.empty():
-                    raw_worker_data = self._queue_in.get()
-
+                    raw_data = self._queue_in.get()
+                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(raw_data)
                     try:
-                        df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(
-                            raw_worker_data
-                        )
-
                         if df_chunk is not None and not df_chunk.empty:
                             self._classifier.add_chunk(df_chunk)
                             data_received = True
@@ -275,10 +300,10 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                     except Exception as e:
                         Log.e(TAG, f"Error converting worker data: {e}")
 
-                if data_received:
-                    pred_int = self._classifier.attempt_classification()
-                    pred_str = self._classifier.get_status_str()
-                    self._queue_out.put((pred_int, pred_str))
+                    if data_received:
+                        pred_int = self._classifier.attempt_classification()
+                        pred_str = self._classifier.get_status_str()
+                        self._queue_out.put((pred_int, pred_str))
 
         except Exception:
             # Capture traceback

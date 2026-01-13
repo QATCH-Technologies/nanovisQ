@@ -394,7 +394,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.QModel_v4_modules_loaded = False
         self.QModel_v4_predictor = None
 
-        # QModel V6 (YOLO) Constants
+        # QModel v6 (YOLO11) Constants
         self.QModel_v6_modules_loaded = False
         self.QModel_v6_predictor = None
         screen = QtWidgets.QDesktopWidget().availableGeometry()
@@ -3056,7 +3056,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
             self.model_engine = "None"
             if Constants.QModel6_predict:
                 Log.w(
-                    "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                    "Auto-fitting points with QModel v6 (YOLO11)... (may take a few seconds)")
                 QtCore.QCoreApplication.processEvents()
                 try:
                     with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3088,7 +3088,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.model_run_this_load = True
                         self.model_result = predictions
                         self.model_candidates = candidates
-                        self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                        self.model_engine = f"QModel v6 (YOLO11) - {detected_channels}ch"
                         if (isinstance(self.model_result, list) and len(self.model_result) == 6):
                             poi_vals = self.model_result.copy()
                             if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3099,7 +3099,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                 except Exception as e:
                     import traceback
-                    Log.e(TAG, f"Error using 'QModel v6 (YOLO)': {e}")
+                    Log.e(TAG, f"Error using 'QModel v6 (YOLO11)': {e}")
                     for line in traceback.format_tb(sys.exc_info()[2]):
                         Log.d(line.strip())
                     self.model_result = -1  # Trigger fallback handling
@@ -3378,7 +3378,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_engine = "None"
                 if Constants.QModel6_predict:
                     Log.w(
-                        "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                        "Auto-fitting points with QModel v6 (YOLO11)... (may take a few seconds)")
                     QtCore.QCoreApplication.processEvents()
                     try:
                         with secure_open(self.loaded_datapath, "r", "capture") as f:
@@ -3411,7 +3411,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                            self.model_engine = f"QModel v6 (YOLO11) - {detected_channels}ch"
                             if (isinstance(self.model_result, list) and len(self.model_result) == 6):
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -3423,7 +3423,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     except Exception as e:
                         # --- ERROR HANDLING ---
                         import traceback
-                        Log.e(TAG, f"Error using 'QModel v6 (YOLO)': {e}")
+                        Log.e(TAG, f"Error using 'QModel v6 (YOLO11)': {e}")
                         # Print full stack trace to debug log
                         for line in traceback.format_tb(sys.exc_info()[2]):
                             Log.d(line.strip())
@@ -4720,13 +4720,13 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.model_engine = "None"
                 if Constants.QModel6_predict and self.prior_points_in_xml:
                     self.model_result = poi_vals
-                    self.model_engine = "QModel v6 (YOLO) skipped (using prior points)"
+                    self.model_engine = "QModel v6 (YOLO11) skipped (using prior points)"
 
                 if self.model_result == -1 and Constants.QModel6_predict:
                     Log.w(
-                        "Auto-fitting points with QModel v6 (YOLO)... (may take a few seconds)")
+                        "Auto-fitting points with QModel v6 (YOLO11)... (may take a few seconds)")
                     self._text1.setHtml(
-                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO)... </span>"
+                        "<span style='font-size: 14pt'>Auto-fitting points with QModel v6 (YOLO11)... </span>"
                     )
                     self.graphWidget.addItem(self._text2, ignoreBounds=True)
                     QtCore.QCoreApplication.processEvents()
@@ -4766,7 +4766,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             self.model_run_this_load = True
                             self.model_result = predictions
                             self.model_candidates = candidates
-                            self.model_engine = f"QModel v6 (YOLO) - {detected_channels}ch"
+                            self.model_engine = f"QModel v6 (YOLO11) - {detected_channels}ch"
                             if (isinstance(self.model_result, list) and len(self.model_result) == 6):
                                 poi_vals = self.model_result.copy()
                                 if poi_vals[2] == -1 and poi_vals[1] != -1:
@@ -4786,7 +4786,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             Log.d(line)
                         Log.e(e)
                         Log.e(
-                            TAG, "Error using 'QModel v6 (YOLO)'... Using a fallback model for auto-fitting.")
+                            TAG, "Error using 'QModel v6 (YOLO11)'... Using a fallback model for auto-fitting.")
                         # raise e  # debug only
                         self.model_result = -1  # try fallback model
                 # if Constants.QModel4_predict and self.prior_points_in_xml:

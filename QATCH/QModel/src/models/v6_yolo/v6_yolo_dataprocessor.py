@@ -27,6 +27,8 @@ import numpy as np
 import pandas as pd
 from scipy.signal import medfilt
 
+from QATCH.common.logger import Logger as Log
+
 
 class QModelV6YOLO_DataProcessor:
     """
@@ -125,19 +127,12 @@ class QModelV6YOLO_DataProcessor:
         t_raw = relative_time[:min_length]
         freq_raw = resonance_frequency[:min_length]
         diss_raw = dissipation[:min_length]
-        t_start = t_raw[0]
-        t_end = t_raw[-1]
-        dt = QModelV6YOLO_DataProcessor.TIME_STEP
-        t_new = np.arange(t_start, t_end, dt)
-
-        freq_interp = np.interp(t_new, t_raw, freq_raw)
-        diss_interp = np.interp(t_new, t_raw, diss_raw)
 
         df = pd.DataFrame(
             {
-                QModelV6YOLO_DataProcessor.COL_TIME: t_new,
-                QModelV6YOLO_DataProcessor.COL_FREQ: freq_interp,
-                QModelV6YOLO_DataProcessor.COL_DISS: diss_interp,
+                QModelV6YOLO_DataProcessor.COL_TIME: t_raw,
+                QModelV6YOLO_DataProcessor.COL_FREQ: freq_raw,
+                QModelV6YOLO_DataProcessor.COL_DISS: diss_raw,
             }
         )
 
@@ -166,6 +161,7 @@ class QModelV6YOLO_DataProcessor:
         df.drop(columns=cols_to_drop, inplace=True)
         if cls.COL_TIME not in df.columns:
             return None
+        df.drop_duplicates(subset=[cls.COL_TIME], keep="first", inplace=True)
         t_min = df[cls.COL_TIME].min()
         t_max = df[cls.COL_TIME].max()
         new_time_grid = np.arange(t_min, t_max, cls.TIME_STEP)
@@ -178,7 +174,6 @@ class QModelV6YOLO_DataProcessor:
         for col in df.columns:
             if col != cls.COL_TIME and pd.api.types.is_numeric_dtype(df[col]):
                 df[col] = medfilt(df[col], kernel_size=cls.MEDIAN_KERNEL)
-
         return df
 
     @classmethod

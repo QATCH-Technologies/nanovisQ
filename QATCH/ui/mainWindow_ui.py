@@ -1602,7 +1602,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.fill_status_progress_bar = QtWidgets.QProgressBar()
         self.fill_status_progress_bar.setMinimum(0)
-        self.fill_status_progress_bar.setMaximum(2)
+        self.fill_status_progress_bar.setMaximum(4)
         self.fill_status_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
         self.fill_status_progress_bar.setObjectName("fillProgressBar")
         self.fill_status_progress_bar.setStyleSheet(styleBar)
@@ -1779,7 +1779,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.toolLayout.addWidget(self.toolBarWidget)
         self.toolLayout.addWidget(self.run_progress_bar)
-        # self.toolLayout.addWidget(self.fill_status_progress_bar)
+        self.toolLayout.addWidget(self.fill_status_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
             # Remove bottom margin, leaving the rest as "default"
