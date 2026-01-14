@@ -1541,6 +1541,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
+        self.auto_set_channels = True
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True

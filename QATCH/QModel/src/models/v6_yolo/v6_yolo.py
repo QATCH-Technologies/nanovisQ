@@ -607,6 +607,7 @@ class QModelV6YOLO:
         df: pd.DataFrame | None = None,
         visualize: bool = False,
         num_channels: int | None = None,
+        autoset: bool = True,
     ) -> Tuple[Dict[str, Dict[str, List]], int]:
         """
         Executes the QModel V6 YOLO prediction pipeline on the provided data.
@@ -630,6 +631,8 @@ class QModelV6YOLO:
             num_channels (int, optional): The number of channels to enforce. If None,
                 the fill classifier is used to automatically determine the channel count.
                 Defaults to None.
+            autoset (bool, optional): Boolean control to automatically determine the number
+                of channels in a fill.
 
         Returns:
             Tuple[Dict[str, Dict[str, List]], int]: A tuple containing:
@@ -669,12 +672,14 @@ class QModelV6YOLO:
             if master_df is None or master_df.empty:
                 raise ValueError("Preprocessing failed")
 
-            if num_channels is None:
+            if autoset:
                 if progress_signal:
                     progress_signal.emit(30, "Determining Channel Count...")
 
                 fill_cls = self._load_fill_cls()
                 num_channels = int(fill_cls.predict(master_df)) if fill_cls else 3
+            else:
+                Log.i(self.TAG, f"Channel count set by user={num_channels}")
 
             if num_channels == -1:
                 return self._get_default_predictions(), num_channels
