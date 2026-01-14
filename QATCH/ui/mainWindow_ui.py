@@ -1,26 +1,25 @@
+import datetime
+import logging
+import math
+import os
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
 from pyqtgraph import GraphicsLayoutWidget
 
-from QATCH.core.constants import Constants, OperationType
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
-from QATCH.ui.popUp import PopUp
+from QATCH.core.constants import Constants, OperationType
 from QATCH.ui.drawPlateConfig import WellPlate
+from QATCH.ui.popUp import PopUp
 
-import datetime
-import logging
-import math
-import os
 # import threading
 
 
 class FloatingMenuWidget(QtWidgets.QWidget):
     def __init__(self, parent=None):
-        super().__init__(
-            parent.parent if hasattr(parent, "parent") else parent)
+        super().__init__(parent.parent if hasattr(parent, "parent") else parent)
         self.parent = parent
 
         # Internal state tracking of the active tab index
@@ -28,9 +27,9 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 
         # Make the widget frameless, transparent, and always on top
         self.setWindowFlags(
-            QtCore.Qt.FramelessWindowHint |
-            QtCore.Qt.WindowStaysOnTopHint |
-            QtCore.Qt.Tool
+            QtCore.Qt.FramelessWindowHint
+            | QtCore.Qt.WindowStaysOnTopHint
+            | QtCore.Qt.Tool
         )
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
 
@@ -81,7 +80,8 @@ class FloatingMenuWidget(QtWidgets.QWidget):
         # Add a label to display text
         self.title = QtWidgets.QLabel("VisQ.AI<sup>TM</sup> Toolkit")
         self.title.setStyleSheet(
-            "font-weight: bold; font-size: 12px; padding: 10px; padding-left: 15px;")
+            "font-weight: bold; font-size: 12px; padding: 10px; padding-left: 15px;"
+        )
 
         self.vbox.addSpacing(25)
         self.vbox.addWidget(self.title)
@@ -101,7 +101,8 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             self.items.addWidget(label)
         self.setFixedSize(
             self.sizeHint().width() + self.contentsMargins().right(),
-            self.sizeHint().height() + self.contentsMargins().bottom())
+            self.sizeHint().height() + self.contentsMargins().bottom(),
+        )
 
     def removeItems(self):
         while self.items.count():
@@ -119,31 +120,36 @@ class FloatingMenuWidget(QtWidgets.QWidget):
     def _setHoverItem(self, index: int):
         for idx in range(self.items.count()):
             label = self.items.itemAt(idx).widget()
-            self._setStyleSheet(label,
-                                selected=True if idx == self._active else False,
-                                hover=True if idx == index else False)
+            self._setStyleSheet(
+                label,
+                selected=True if idx == self._active else False,
+                hover=True if idx == index else False,
+            )
 
     def _viewToolkitItem(self, index: int):
         if 0 <= index < self.items.count():
             self.parent.setLearnMode(tab_index=index)
             # self.setActiveItem(index) # Handled by VisQAIWindow.on_tab_change()
         else:
-            raise ValueError(
-                f"Index {index} is out-of-bounds for toolkit items count.")
+            raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
 
-    def _setStyleSheet(self, label: QtWidgets.QLabel, selected: bool, hover: bool = False) -> QtWidgets.QLabel:
+    def _setStyleSheet(
+        self, label: QtWidgets.QLabel, selected: bool, hover: bool = False
+    ) -> QtWidgets.QLabel:
         if hover and selected:
             label.setStyleSheet(
-                "padding: 10px; padding-left: 15px; background: #A9E1FA;")
+                "padding: 10px; padding-left: 15px; background: #A9E1FA;"
+            )
         elif hover:
             label.setStyleSheet(
-                "padding: 10px; padding-left: 15px; background: #E5E5E5;")
+                "padding: 10px; padding-left: 15px; background: #E5E5E5;"
+            )
         elif selected:
             label.setStyleSheet(
-                "padding: 10px; padding-left: 15px; background: #B7D3DC;")
+                "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+            )
         else:
-            label.setStyleSheet(
-                "padding: 10px; padding-left: 15px;")
+            label.setStyleSheet("padding: 10px; padding-left: 15px;")
         return label
 
     def eventFilter(self, obj, event):
@@ -168,7 +174,7 @@ class FloatingMenuWidget(QtWidgets.QWidget):
 class Ui_Main(object):
 
     def setupUi(self, MainWindow0, parent):
-        USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
+        USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
         self.parent = parent
 
         MainWindow0.setObjectName("MainWindow0")
@@ -182,7 +188,8 @@ class Ui_Main(object):
         modewidget = QtWidgets.QWidget()
         modelayout = QtWidgets.QVBoxLayout()
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/nanovisQ-logo.png')
+            Architecture.get_path(), "QATCH/icons/nanovisQ-logo.png"
+        )
         logo_icon = QtGui.QPixmap(icon_path).scaledToWidth(100)
         self.logolabel = QtWidgets.QLabel()
         self.logolabel.setStyleSheet("padding-bottom:10px;")
@@ -209,7 +216,8 @@ class Ui_Main(object):
         modelayout.addWidget(self.mode_mode)
         modelayout.addWidget(self.mode_run)
         modelayout.addWidget(self.mode_analyze)
-        modelayout.addWidget(self.mode_learn)
+        if Constants.show_visQ_in_R_builds:
+            modelayout.addWidget(self.mode_learn)
         modelayout.addStretch()
         modewidget.setLayout(modelayout)
         self.modemenu = QtWidgets.QScrollArea()
@@ -231,9 +239,11 @@ class Ui_Main(object):
         self.userview = QtWidgets.QScrollArea()
         self.userview.setObjectName("userview")
         self.userview.setStyleSheet(
-            "#userview {border: 1px solid #DDDDDD; border-radius: 2px;}")
+            "#userview {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
         self.userview.setFrameShape(
-            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain
+        )
         self.userview.setLineWidth(0)
         self.userview.setMidLineWidth(0)
         self.userview.setWidgetResizable(True)
@@ -251,9 +261,11 @@ class Ui_Main(object):
         self.runview = QtWidgets.QScrollArea()
         self.runview.setObjectName("runview")
         self.runview.setStyleSheet(
-            "#runview {border: 1px solid #DDDDDD; border-radius: 2px;}")
+            "#runview {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
         self.runview.setFrameShape(
-            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain
+        )
         self.runview.setLineWidth(0)
         self.runview.setMidLineWidth(0)
         self.runview.setWidgetResizable(True)
@@ -264,9 +276,11 @@ class Ui_Main(object):
         self.analyze = QtWidgets.QScrollArea()
         self.analyze.setObjectName("analyze")
         self.analyze.setStyleSheet(
-            "#analyze {border: 1px solid #DDDDDD; border-radius: 2px;}")
+            "#analyze {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
         self.analyze.setFrameShape(
-            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain
+        )
         self.analyze.setLineWidth(0)
         self.analyze.setMidLineWidth(0)
         self.analyze.setWidgetResizable(True)
@@ -277,9 +291,11 @@ class Ui_Main(object):
         self.learn_ui = QtWidgets.QScrollArea()
         self.learn_ui.setObjectName("learn_ui")
         self.learn_ui.setStyleSheet(
-            "#learn_ui {border: 1px solid #DDDDDD; border-radius: 2px;}")
+            "#learn_ui {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
         self.learn_ui.setFrameShape(
-            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain
+        )
         self.learn_ui.setLineWidth(0)
         self.learn_ui.setMidLineWidth(0)
         self.learn_ui.setWidgetResizable(True)
@@ -290,9 +306,11 @@ class Ui_Main(object):
         self.logview = QtWidgets.QScrollArea()
         self.logview.setObjectName("logview")
         self.logview.setStyleSheet(
-            "#logview {border: 1px solid #DDDDDD; border-radius: 2px;}")
+            "#logview {border: 1px solid #DDDDDD; border-radius: 2px;}"
+        )
         self.logview.setFrameShape(
-            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain)
+            QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Plain
+        )
         self.logview.setLineWidth(0)
         self.logview.setMidLineWidth(0)
         self.logview.setWidgetResizable(True)
@@ -310,8 +328,11 @@ class Ui_Main(object):
         self.splitter.addWidget(self.logview)
         self.splitter.setSizes([1000, 1])
         layout_v.addWidget(self.splitter)
-        copy_foot = QtWidgets.QLabel("<center>&copy; {} QATCH Technologies. All rights reserved.</center>"
-                                     .format(datetime.date.today().year))  # use <center> tag to force HTML parsing of &copy; symbol
+        copy_foot = QtWidgets.QLabel(
+            "<center>&copy; {} QATCH Technologies. All rights reserved.</center>".format(
+                datetime.date.today().year
+            )
+        )  # use <center> tag to force HTML parsing of &copy; symbol
         # copy_foot.setAlignment(QtCore.Qt.AlignCenter)
         copy_foot.setContentsMargins(0, 0, 0, 0)
         copy_foot.setFixedHeight(20)
@@ -326,13 +347,11 @@ class Ui_Main(object):
         layout_s.addStretch()
         self.btnCollapse = QtWidgets.QToolButton(handle)
         self.btnCollapse.setArrowType(QtCore.Qt.DownArrow)
-        self.btnCollapse.clicked.connect(
-            lambda: self.handleSplitterButton(True))
+        self.btnCollapse.clicked.connect(lambda: self.handleSplitterButton(True))
         layout_s.addWidget(self.btnCollapse)
         self.btnExpand = QtWidgets.QToolButton(handle)
         self.btnExpand.setArrowType(QtCore.Qt.UpArrow)
-        self.btnExpand.clicked.connect(
-            lambda: self.handleSplitterButton(False))
+        self.btnExpand.clicked.connect(lambda: self.handleSplitterButton(False))
         layout_s.addWidget(self.btnExpand)
         layout_s.addStretch()
         handle.setLayout(layout_s)
@@ -352,22 +371,16 @@ class Ui_Main(object):
         # (ignore the warning: "Trying to replace a widget with itself")
 
         # retain sizing of view menu toggle elements
-        elems = [
-            parent.LogWin.ui4.centralwidget,
-            parent.PlotsWin.ui2.centralwidget
-        ]
+        elems = [parent.LogWin.ui4.centralwidget, parent.PlotsWin.ui2.centralwidget]
         for e in elems:
             not_resize = e.sizePolicy()
             not_resize.setHorizontalStretch(1)
             e.setSizePolicy(not_resize)
 
-        elems = [
-            parent.PlotsWin.ui2.plt,
-            parent.PlotsWin.ui2.pltB
-        ]
+        elems = [parent.PlotsWin.ui2.plt, parent.PlotsWin.ui2.pltB]
         for i, e in enumerate(elems):
             not_resize = e.sizePolicy()
-            not_resize.setVerticalStretch(i+2)
+            not_resize.setVerticalStretch(i + 2)
             e.setSizePolicy(not_resize)
 
         self.centralwidget.setLayout(layout_h)
@@ -391,7 +404,7 @@ class Ui_Main(object):
             self.btnExpand.setVisible(False)
             height = self.splitter.height()
             log_size = self.logview.minimumHeight()
-            self.splitter.setSizes([height-log_size, log_size])
+            self.splitter.setSizes([height - log_size, log_size])
 
     def setNoUserMode(self, obj):
 
@@ -402,27 +415,33 @@ class Ui_Main(object):
         # pyautogui.typewrite("12345678")
         # pyautogui.press("enter")
 
-        if self.splitter.widget(0) == self.userview and not self._force_splitter_mode_set:
+        if (
+            self.splitter.widget(0) == self.userview
+            and not self._force_splitter_mode_set
+        ):
             Log.d("User sign-in mode already active. Skipping mode change request.")
             if obj == None:
                 return True
             # return # do not return when 'obj != None' to allow mode button styles to be set on 'setupUi()'' call
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
             self.parent.ControlsWin.ui_preferences.hide()
-            self.mode_run.setStyleSheet(
-                "padding: 10px; padding-left: 15px;")
-            self.mode_analyze.setStyleSheet(
-                "padding: 10px; padding-left: 15px;")
-            self.mode_learn.setStyleSheet(
-                "")
+            self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+            self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+            self.mode_learn.setStyleSheet("")
             self.splitter.replaceWidget(0, self.userview)
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
             self.parent.viewTutorialPage([1, 2, 0])
             QtCore.QTimer.singleShot(
-                500, self.parent.LoginWin.ui5.user_initials.setFocus)
+                500, self.parent.LoginWin.ui5.user_initials.setFocus
+            )
             if obj == None:
                 if not UserProfiles.session_info()[0]:  # user session expired
                     self.parent.LoginWin.ui5.error_expired()
@@ -432,48 +451,79 @@ class Ui_Main(object):
                 return True
         else:
             Log.e(
-                "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
+                'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
+            )
         if obj == None:
             return False
 
     def setRunMode(self, obj):
-        if self.splitter.widget(0) == self.runview and not self._force_splitter_mode_set:
+        if (
+            self.splitter.widget(0) == self.runview
+            and not self._force_splitter_mode_set
+        ):
             Log.d("Run mode already active. Skipping mode change request.")
             if obj == None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...",
-                          "Mode change is not allowed while learning.")
+            PopUp.warning(
+                self.parent,
+                "Learning In-Progress...",
+                "Mode change is not allowed while learning.",
+            )
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
-        if (self.splitter.widget(0) == self.userview or
-           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
-           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
-           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
+        if (
+            self.splitter.widget(0) == self.userview
+            or (
+                self.splitter.widget(0) == self.runview
+                and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            )
+            or (
+                self.splitter.widget(0) == self.analyze
+                and not self.parent.AnalyzeProc.hasUnsavedChanges()
+            )
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+        ):
             action_role = UserRoles.CAPTURE
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )
             if check_result == None:  # user check required, but no user signed in
                 Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action.")
+                    f"Not signed in: User with role {action_role.name} is required to perform this action."
+                )
                 Log.i("Please sign in to continue.")
                 self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
                 check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role)  # check again
+                    self.parent.ControlsWin.userrole, action_role
+                )  # check again
             if check_result:
                 self.parent._enable_ui(True)
                 self.parent.VisQAIWin.enable(False)
                 self.mode_run.setStyleSheet(
-                    "padding: 10px; padding-left: 15px; background: #B7D3DC;")
-                self.mode_analyze.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
-                self.mode_learn.setStyleSheet(
-                    "")
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                )
+                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet("")
                 self.splitter.replaceWidget(0, self.runview)
                 if UserProfiles.count() == 0:
                     # measure, next steps, create accounts (must match pages in _configure_tutorials() too)
@@ -485,54 +535,86 @@ class Ui_Main(object):
                     return True
             elif check_result == None:
                 Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                )
                 Log.e("Please sign in to access Run mode.")
             else:
                 Log.w(
-                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}.")
+                    f"ACTION DENIED: User with role {self.parent.ControlsWin.userrole.name} does not have permission to {action_role.name}."
+                )
                 Log.e("You are not authorized to access Run mode.")
         else:
             if self.splitter.widget(0) == self.analyze:
                 Log.e(
-                    "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
+                    'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
+                )
             else:
                 Log.e(
-                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
+                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes."
+                )
         if obj == None:
             return False
 
     def setAnalyzeMode(self, obj):
-        if self.splitter.widget(0) == self.analyze and not self._force_splitter_mode_set:
+        if (
+            self.splitter.widget(0) == self.analyze
+            and not self._force_splitter_mode_set
+        ):
             Log.d("Analyze mode already active. Skipping mode change request.")
             if obj == None:
                 return True
             return
         if self.parent.VisQAIWin.isBusy():
-            PopUp.warning(self, "Learning In-Progress...",
-                          "Mode change is not allowed while learning.")
+            PopUp.warning(
+                self.parent,
+                "Learning In-Progress...",
+                "Mode change is not allowed while learning.",
+            )
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
-        if (self.splitter.widget(0) == self.userview or
-           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
-           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
-           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
+        if (
+            self.splitter.widget(0) == self.userview
+            or (
+                self.splitter.widget(0) == self.runview
+                and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            )
+            or (
+                self.splitter.widget(0) == self.analyze
+                and not self.parent.AnalyzeProc.hasUnsavedChanges()
+            )
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+        ):
             self.parent.analyze_data()
             action_role = UserRoles.ANALYZE
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
-                self.mode_run.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
+                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
-                    "padding: 10px; padding-left: 15px; background: #B7D3DC;")
-                self.mode_learn.setStyleSheet(
-                    "")
+                    "padding: 10px; padding-left: 15px; background: #B7D3DC;"
+                )
+                self.mode_learn.setStyleSheet("")
                 self.splitter.replaceWidget(0, self.analyze)
                 self.parent.viewTutorialPage([5, 6])  # analyze / prior results
                 if obj == None:
@@ -546,56 +628,87 @@ class Ui_Main(object):
                 Log.e("Please stop the current run before switching modes.")
             else:
                 Log.e(
-                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes.")
+                    "Please save your unsaved changes in VisQ.AI(tm) before switching modes."
+                )
         if obj == None:
             return False
 
     def setLearnMode(self, obj=None, tab_index=0):
-        if self.splitter.widget(0) == self.learn_ui and not self._force_splitter_mode_set:
+        if (
+            self.splitter.widget(0) == self.learn_ui
+            and not self._force_splitter_mode_set
+        ):
             if self.parent.VisQAIWin.tab_widget.currentIndex() != tab_index:
                 Log.d(
-                    "VisQ.AI<sup>TM</sup> showing toolkit at index {}.".format(tab_index))
+                    "VisQ.AI<sup>TM</sup> showing toolkit at index {}.".format(
+                        tab_index
+                    )
+                )
                 # Calling `setCurrentIndex()` will trigger `on_tab_changed()` to set active toolkit item
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
             else:
                 Log.d(
-                    "VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request.")
+                    "VisQ.AI<sup>TM</sup> mode already active. Skipping mode change request."
+                )
             if obj == None:
                 return True
             return
         if self.parent.AnalyzeProc.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.AnalyzeProc.clear()  # lose unsaved changes
         if self.parent.VisQAIWin.hasUnsavedChanges():
-            if PopUp.question(self, Constants.app_title, "You have unsaved changes!\n\nAre you sure you want to close this window?", False):
+            if PopUp.question(
+                self.parent,
+                Constants.app_title,
+                "You have unsaved changes!\n\nAre you sure you want to close this window?",
+                False,
+            ):
                 self.parent.VisQAIWin.clear()  # lose unsaved changes
-        if (self.splitter.widget(0) == self.userview or
-           (self.splitter.widget(0) == self.runview and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()) or
-           (self.splitter.widget(0) == self.analyze and not self.parent.AnalyzeProc.hasUnsavedChanges()) or
-           (self.splitter.widget(0) == self.learn_ui and not self.parent.VisQAIWin.hasUnsavedChanges())):
+        if (
+            self.splitter.widget(0) == self.userview
+            or (
+                self.splitter.widget(0) == self.runview
+                and self.parent.ControlsWin.ui1.pButton_Start.isEnabled()
+            )
+            or (
+                self.splitter.widget(0) == self.analyze
+                and not self.parent.AnalyzeProc.hasUnsavedChanges()
+            )
+            or (
+                self.splitter.widget(0) == self.learn_ui
+                and not self.parent.VisQAIWin.hasUnsavedChanges()
+            )
+        ):
             self.parent.VisQAIWin.reset()
             action_role = UserRoles.OPERATE
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )
             if check_result == None:  # user check required, but no user signed in
                 Log.w(
-                    f"Not signed in: User with role {action_role.name} is required to perform this action.")
+                    f"Not signed in: User with role {action_role.name} is required to perform this action."
+                )
                 Log.i("Please sign in to continue.")
                 self.parent.ControlsWin.set_user_profile()  # prompt for sign-in
                 check_result = UserProfiles().check(
-                    self.parent.ControlsWin.userrole, action_role)  # check again
+                    self.parent.ControlsWin.userrole, action_role
+                )  # check again
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(True)
                 self.parent.VisQAIWin.check_license(
-                    getattr(self.parent, "_license_manager", None))
+                    getattr(self.parent, "_license_manager", None)
+                )
                 # Calling `setCurrentIndex()` will trigger `on_tab_changed()` to set active toolkit item
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
-                self.mode_run.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
-                self.mode_analyze.setStyleSheet(
-                    "padding: 10px; padding-left: 15px;")
-                self.mode_learn.setStyleSheet(
-                    "background: #B7D3DC;")
+                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_learn.setStyleSheet("background: #B7D3DC;")
                 self.splitter.replaceWidget(0, self.learn_ui)
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
                 if obj == None:
@@ -609,7 +722,8 @@ class Ui_Main(object):
                 Log.e("Please stop the current run before switching modes.")
             else:
                 Log.e(
-                    "Please \"Analyze\" to save or \"Close\" to lose your changes before switching modes.")
+                    'Please "Analyze" to save or "Close" to lose your changes before switching modes.'
+                )
         if obj == None:
             return False
 
@@ -624,7 +738,7 @@ class Ui_Main(object):
 
     def set_floating_widget_position(self):
         # Calculate the desired position (e.g., top-right corner)
-        menu_widget_pos = + self.modemenu.mapToGlobal(QtCore.QPoint(0, 0))
+        menu_widget_pos = +self.modemenu.mapToGlobal(QtCore.QPoint(0, 0))
         menu_widget_width = self.modemenu.width()
         offset = (14, 8)
 
@@ -635,11 +749,14 @@ class Ui_Main(object):
 
     def retranslateUi(self, MainWindow0):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow0.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        MainWindow0.setWindowTitle(_translate("MainWindow0", "{} {}".format(
-            Constants.app_title, Constants.app_version)))
+        MainWindow0.setWindowTitle(
+            _translate(
+                "MainWindow0",
+                "{} {}".format(Constants.app_title, Constants.app_version),
+            )
+        )
 
 
 class Ui_Login(object):
@@ -704,7 +821,9 @@ class Ui_Login(object):
         >>> login_ui.setupUi(main_window, parent_window)
     """
 
-    def setupUi(self, MainWindow5: QtWidgets.QMainWindow, parent: QtWidgets.QMainWindow) -> None:
+    def setupUi(
+        self, MainWindow5: QtWidgets.QMainWindow, parent: QtWidgets.QMainWindow
+    ) -> None:
         """Set up and configure the login user interface for the main window.
 
         This method initializes and arranges all the UI elements required for a user
@@ -742,29 +861,28 @@ class Ui_Login(object):
         # TODO: user grid layout to narrow width and height with spacers
         self.layout = QtWidgets.QGridLayout()
         self.user_welcome = QtWidgets.QLabel(
-            "<span style='font-size: 14pt'>Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI </span>")
+            "<span style='font-size: 14pt'>Welcome to QATCH nanovisQ<sup>TM</sup> Real-Time GUI </span>"
+        )
         self.user_welcome.setAlignment(QtCore.Qt.AlignCenter)
         self.user_welcome.setFixedHeight(50)
         self.user_label = QtWidgets.QLabel(
-            "<span style='font-size: 10pt'><b>User Sign-In Required</b></span>")
+            "<span style='font-size: 10pt'><b>User Sign-In Required</b></span>"
+        )
         self.user_label.setFixedHeight(50)
-        self.layout.addWidget(self.user_label, 2, 1, 1,
-                              3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_label, 2, 1, 1, 3, QtCore.Qt.AlignCenter)
         self.user_initials = QtWidgets.QLineEdit()
         self.user_initials.textEdited.connect(self.text_transform)
         self.user_initials.setMinimumWidth(190)
         self.user_initials.setPlaceholderText("Initials")
         self.user_initials.setMaxLength(4)
         self.user_initials.installEventFilter(MainWindow5)
-        self.layout.addWidget(self.user_initials, 3, 2,
-                              1, 1, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_initials, 3, 2, 1, 1, QtCore.Qt.AlignCenter)
         self.user_password = QtWidgets.QLineEdit()
         self.user_password.setMinimumWidth(190)
         self.user_password.setPlaceholderText("Password")
         self.user_password.setEchoMode(QtWidgets.QLineEdit.Password)
         self.user_password.installEventFilter(MainWindow5)
-        self.layout.addWidget(self.user_password, 4, 2,
-                              1, 1, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_password, 4, 2, 1, 1, QtCore.Qt.AlignCenter)
         self.sign_in = QtWidgets.QPushButton("&Sign In")
         self.sign_in.setMinimumWidth(190)
         self.sign_in.clicked.connect(self.action_sign_in)
@@ -775,15 +893,13 @@ class Ui_Login(object):
         self.user_info = QtWidgets.QLabel("")
         self.user_info.setStyleSheet("color: #000000; font-weight: bold;")
         # self.user_info.setFixedHeight(50)
-        self.layout.addWidget(self.user_info, 6, 1, 1,
-                              3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_info, 6, 1, 1, 3, QtCore.Qt.AlignCenter)
 
         self.user_error = QtWidgets.QLabel("")
         self.user_error.setStyleSheet("color: #ff0000;")
         # self.user_label.setAlignment(QtCore.Qt.AlignCenter)
         # self.user_error.setFixedHeight(50)
-        self.layout.addWidget(self.user_error, 7, 1, 1,
-                              3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_error, 7, 1, 1, 3, QtCore.Qt.AlignCenter)
 
         v_layout = QtWidgets.QVBoxLayout()
         v_layout.addStretch()
@@ -808,19 +924,21 @@ class Ui_Login(object):
         self._sessionTimer = QtCore.QTimer()
         self._sessionTimer.setSingleShot(True)
         self._sessionTimer.timeout.connect(self.check_user_session)
-        self._sessionTimer.setInterval(1000*60*60)  # once an hour
+        self._sessionTimer.setInterval(1000 * 60 * 60)  # once an hour
 
-        self.visibleIcon = QtGui.QIcon(os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "eye.svg"))
-        self.hiddenIcon = QtGui.QIcon(os.path.join(
-            Architecture.get_path(), "QATCH", "icons", "hide.svg"))
+        self.visibleIcon = QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "eye.svg")
+        )
+        self.hiddenIcon = QtGui.QIcon(
+            os.path.join(Architecture.get_path(), "QATCH", "icons", "hide.svg")
+        )
 
         # Add the password hide/shown toggle at the end of the edit box.
         self.password_shown = False
         self.togglepasswordAction = self.user_password.addAction(
-            self.visibleIcon, QtWidgets.QLineEdit.TrailingPosition)
-        self.togglepasswordAction.triggered.connect(
-            self.on_toggle_password_Action)
+            self.visibleIcon, QtWidgets.QLineEdit.TrailingPosition
+        )
+        self.togglepasswordAction.triggered.connect(self.on_toggle_password_Action)
 
     def on_toggle_password_Action(self) -> None:
         """Toggle the visibility of the password input field.
@@ -881,11 +999,14 @@ class Ui_Login(object):
                 icon and title updated.
         """
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow5.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        MainWindow5.setWindowTitle(_translate(
-            "MainWindow5", "{} {} - Login".format(Constants.app_title, Constants.app_version)))
+        MainWindow5.setWindowTitle(
+            _translate(
+                "MainWindow5",
+                "{} {} - Login".format(Constants.app_title, Constants.app_version),
+            )
+        )
 
     def error_loggedout(self) -> None:
         """Display a logout error message and initiate a timer to clear it.
@@ -949,7 +1070,7 @@ class Ui_Login(object):
             self.user_initials.setText(text.upper())
 
     def action_sign_in(self) -> None:
-        """ Perform the sign-in action for a user given initials and a password.
+        """Perform the sign-in action for a user given initials and a password.
 
         This method attempts to sign in a user given that their provided initials and password
         are non-empty and valid.  Upon sign-in, a new user session is opened along with as session timer.
@@ -965,11 +1086,9 @@ class Ui_Login(object):
         initials = self.user_initials.text().upper()
         pwd = self.user_password.text()
         requiredRole = UserRoles.ANY
-        authenticated, filename, params = UserProfiles.auth(
-            initials, pwd, requiredRole)
+        authenticated, filename, params = UserProfiles.auth(initials, pwd, requiredRole)
         if authenticated:
-            Log.i(
-                f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
+            Log.i(f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
             name, init, role = params[0], params[1], params[2].value
             self._sessionTimer.start()  # check session every hour
         else:
@@ -986,27 +1105,41 @@ class Ui_Login(object):
                 self.parent.ControlsWin.manage.setText("&Change Password...")
 
             action_role = UserRoles.CAPTURE
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )
             if check_result:
                 self.parent.MainWin.ui0.setRunMode(self.user_label)
             else:
                 self.parent.MainWin.ui0.setAnalyzeMode(self.user_label)
 
             action_role = UserRoles.ADMIN
-            check_result = UserProfiles().check(self.parent.ControlsWin.userrole, action_role)
+            check_result = UserProfiles().check(
+                self.parent.ControlsWin.userrole, action_role
+            )
             if check_result:
                 enabled, error, expires = UserProfiles.checkDevMode()
                 if enabled != True and error != False:
                     is_expired = True if expires != "" else False
-                    messagebox_description = ("<b>Developer Mode " +
-                                              ("has expired" if is_expired else "is invalid") +
-                                              " and is no longer active!</b>")  # requires renewal to use.")
-                    from QATCH.common.userProfiles import UserProfilesManager, UserConstants
-                    if PopUp.question(self.parent, "Developer Mode " + ("Expired" if is_expired else "Error"),
-                                      messagebox_description + "<br/>" +
-                                      f"Renewal Period: Every {UserConstants.DEV_EXPIRE_LEN} days<br/><br/>" +
-                                      "Would you like to renew Developer Mode now?<br/><br/>" +
-                                      "<small>NOTE: This setting can be changed in the \"Manage Users\" window.</small>"):
+                    messagebox_description = (
+                        "<b>Developer Mode "
+                        + ("has expired" if is_expired else "is invalid")
+                        + " and is no longer active!</b>"
+                    )  # requires renewal to use.")
+                    from QATCH.common.userProfiles import (
+                        UserConstants,
+                        UserProfilesManager,
+                    )
+
+                    if PopUp.question(
+                        self.parent,
+                        "Developer Mode " + ("Expired" if is_expired else "Error"),
+                        messagebox_description
+                        + "<br/>"
+                        + f"Renewal Period: Every {UserConstants.DEV_EXPIRE_LEN} days<br/><br/>"
+                        + "Would you like to renew Developer Mode now?<br/><br/>"
+                        + '<small>NOTE: This setting can be changed in the "Manage Users" window.</small>',
+                    ):
                         temp_upm = UserProfilesManager(self.parent, name)
                         # triggers call to 'toggleDevMode' on state change
                         temp_upm.developerModeChk.setChecked(True)
@@ -1060,7 +1193,7 @@ class Ui_Login(object):
 class Ui_Controls(object):  # QtWidgets.QMainWindow
 
     def setupUi(self, MainWindow1):
-        USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
+        USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
         SHOW_SIMPLE_CONTROLS = True
         self.cal_initialized = False
 
@@ -1097,10 +1230,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # stop button ---------------------------------------------------------
         self.pButton_Stop = QtWidgets.QPushButton()
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/stop_icon.ico')
-        self.pButton_Stop.setIcon(QtGui.QIcon(
-            QtGui.QPixmap(icon_path)))  # .png
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/stop_icon.ico")
+        self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Stop.setObjectName("pButton_Stop")
         if USE_FULLSCREEN:
@@ -1119,7 +1250,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.pButton_ID = QtWidgets.QPushButton()
         self.pButton_ID.setToolTip("Identify selected Serial COM Port")
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/identify-icon.png')
+            Architecture.get_path(), "QATCH/icons/identify-icon.png"
+        )
         self.pButton_ID.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
         self.pButton_ID.setStyleSheet("background:white;padding:3px;")
         if USE_FULLSCREEN:
@@ -1133,11 +1265,12 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.pButton_Refresh = QtWidgets.QPushButton()
         self.pButton_Refresh.setToolTip("Refresh Serial COM Port list")
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/refresh-icon.png')
-        self.pButton_Refresh.setIcon(
-            QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
+            Architecture.get_path(), "QATCH/icons/refresh-icon.png"
+        )
+        self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
         self.pButton_Refresh.setStyleSheet(
-            "background:white;padding:3px;margin-right:9px;")
+            "background:white;padding:3px;margin-right:9px;"
+        )
         if USE_FULLSCREEN:
             self.pButton_Refresh.setMinimumSize(QtCore.QSize(70, 50))
         else:
@@ -1169,8 +1302,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # start button --------------------------------------------------------
         self.pButton_Start = QtWidgets.QPushButton()
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/start_icon.ico')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start_icon.ico")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Start.setObjectName("pButton_Start")
@@ -1180,8 +1312,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # clear plots button --------------------------------------------------
         self.pButton_Clear = QtWidgets.QPushButton()
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/clear_icon.ico')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/clear_icon.ico")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Clear.setObjectName("pButton_Clear")
@@ -1239,7 +1370,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # self.lTemp.setStyleSheet('background: #008EC0; padding: 1px;')
         self.lTemp.setText("PV:--.--C SP:--.--C OP:----")
         self.lTemp.setAlignment(QtCore.Qt.AlignCenter)
-        self.lTemp.setFont(QtGui.QFont('Consolas', -1))
+        self.lTemp.setFont(QtGui.QFont("Consolas", -1))
         # self.lTemp.setFixedHeight(15)
         self.Layout_controls.addWidget(self.lTemp, 2, 4, 1, 1)
 
@@ -1261,7 +1392,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Control Buttons------------------------------------------------------
         self.l = QtWidgets.QLabel()
-        self.l.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.l.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l.setText("<font color=#ffffff > Control Buttons </font>")
         if USE_FULLSCREEN:
             self.l.setFixedHeight(50)
@@ -1271,7 +1402,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Operation Mode ------------------------------------------------------
         self.l0 = QtWidgets.QLabel()
-        self.l0.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.l0.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l0.setText("<font color=#ffffff >Operation Mode</font> </a>")
         if USE_FULLSCREEN:
             self.l0.setFixedHeight(50)
@@ -1281,9 +1412,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Resonance Frequency / Quartz Sensor ---------------------------------
         self.l2 = QtWidgets.QLabel()
-        self.l2.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.l2.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l2.setText(
-            "<font color=#ffffff > Resonance Frequency / Quartz Sensor </font>")
+            "<font color=#ffffff > Resonance Frequency / Quartz Sensor </font>"
+        )
         if USE_FULLSCREEN:
             self.l2.setFixedHeight(50)
         # else:
@@ -1292,7 +1424,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Serial COM Port -----------------------------------------------------
         self.l1 = QtWidgets.QLabel()
-        self.l1.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.l1.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l1.setText("<font color=#ffffff > Serial COM Port </font>")
         if USE_FULLSCREEN:
             self.l1.setFixedHeight(50)
@@ -1305,11 +1437,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.l3.setAlignment(QtCore.Qt.AlignRight)
         self.Layout_controls.addWidget(self.l3, 4, 7, 1, 1)
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-logo_full.jpg')
+            Architecture.get_path(), "QATCH/icons/qatch-logo_full.jpg"
+        )
         if USE_FULLSCREEN:
             pixmap = QtGui.QPixmap(icon_path)
             pixmap = pixmap.scaled(
-                250, 50, QtCore.Qt.KeepAspectRatio, QtCore.Qt.FastTransformation)
+                250, 50, QtCore.Qt.KeepAspectRatio, QtCore.Qt.FastTransformation
+            )
             self.l3.setPixmap(pixmap)
         else:
             self.l3.setPixmap(QtGui.QPixmap(icon_path))
@@ -1320,10 +1454,12 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         def link(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
+
         self.l4.linkActivated.connect(link)
         self.l4.setAlignment(QtCore.Qt.AlignRight)
         self.l4.setText(
-            '<a href="https://qatchtech.com/"> <font size=4 color=#008EC0 >qatchtech.com</font>')  # &nbsp;
+            '<a href="https://qatchtech.com/"> <font size=4 color=#008EC0 >qatchtech.com</font>'
+        )  # &nbsp;
 
         # info@qatchtech.com Mail -----------------------------------------------
         self.lmail = QtWidgets.QLabel()
@@ -1331,11 +1467,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         def linkmail(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
+
         self.lmail.linkActivated.connect(linkmail)
         self.lmail.setAlignment(QtCore.Qt.AlignRight)
         # self.lmail.setAlignment(QtCore.Qt.AlignLeft)
         self.lmail.setText(
-            '<a href="mailto:info@qatchtech.com"> <font color=#008EC0 >info@qatchtech.com</font>')
+            '<a href="mailto:info@qatchtech.com"> <font color=#008EC0 >info@qatchtech.com</font>'
+        )
 
         # software user guide --------------------------------------------------------
         self.lg = QtWidgets.QLabel()
@@ -1343,12 +1481,16 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         def link(linkStr):
             QtGui.QDesktopServices.openUrl(QtCore.QUrl(linkStr))
+
         self.lg.linkActivated.connect(link)
         self.lg.setAlignment(QtCore.Qt.AlignRight)
-        self.lg.setText('<a href="file://{}/docs/userguide.pdf"> <font color=#008EC0 >User Guide</font>'.format(
-            Architecture.get_path()))  # &nbsp;
+        self.lg.setText(
+            '<a href="file://{}/docs/userguide.pdf"> <font color=#008EC0 >User Guide</font>'.format(
+                Architecture.get_path()
+            )
+        )  # &nbsp;
         #####################################
-        '''
+        """
         self.ico = QtWidgets.QLabel()
         self.Layout_controls.addWidget(self.ico, 2, 5, 1, 1)
         self.title = QtWidgets.QLabel()
@@ -1363,27 +1505,26 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.ico.setAlignment(QtCore.Qt.AlignRight)
         self.title.setMinimumHeight(self.pixmap.height())
         self.title.setAlignment(QtCore.Qt.AlignRight)
-        '''
+        """
         #####################################
         # Save file -----------------------------------------------------------
         self.infosave = QtWidgets.QLabel()
-        self.infosave.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.infosave.setStyleSheet("background: #008EC0; padding: 1px;")
         # self.infosave.setAlignment(QtCore.Qt.AlignCenter)
         if USE_FULLSCREEN:
             self.infosave.setFixedHeight(50)
         # else:
         #    self.infosave.setFixedHeight(15)
-        self.infosave.setText(
-            "<font color=#ffffff > TEC Temperature Control </font>")
+        self.infosave.setText("<font color=#ffffff > TEC Temperature Control </font>")
         self.Layout_controls.addWidget(self.infosave, 1, 4, 1, 1)
 
         # Program Status standby ----------------------------------------------
         self.infostatus = QtWidgets.QLabel()
         self.infostatus.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.infostatus.setAlignment(QtCore.Qt.AlignCenter)
-        self.infostatus.setText(
-            "<font color=#333333 > Program Status Standby </font>")
+        self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
         if USE_FULLSCREEN:
             self.infostatus.setFixedHeight(50)
         self.Layout_controls.addWidget(self.infostatus, 5, 5, 1, 2)
@@ -1393,7 +1534,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.infobar.setReadOnly(True)
         self.infobar_label = QtWidgets.QLabel()
         self.infobar_label.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         # self.infobar_label.setAlignment(QtCore.Qt.AlignCenter)
         self.infobar.textChanged.connect(self.infobar_label.setText)
         if SHOW_SIMPLE_CONTROLS:
@@ -1405,7 +1547,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # Multiplex -----------------------------------------------------------
         self.lmp = QtWidgets.QLabel()
-        self.lmp.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.lmp.setStyleSheet("background: #008EC0; padding: 1px;")
         self.lmp.setText("<font color=#ffffff > Multiplex Mode </font>")
         if USE_FULLSCREEN:
             self.lmp.setFixedHeight(50)
@@ -1416,14 +1558,16 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.cBox_MultiMode = QtWidgets.QComboBox()
         self.cBox_MultiMode.setObjectName("cBox_MultiMode")
         self.cBox_MultiMode.addItems(
-            ["1 Channel", "2 Channels", "3 Channels", "4 Channels"])
+            ["1 Channel", "2 Channels", "3 Channels", "4 Channels"]
+        )
         self.cBox_MultiMode.setCurrentIndex(0)  # default 1
         if USE_FULLSCREEN:
             self.cBox_MultiMode.setFixedHeight(50)
 
-        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
         self.pButton_PlateConfig = QtWidgets.QPushButton(
-            QtGui.QIcon(os.path.join(icon_path, 'advanced.png')), "")
+            QtGui.QIcon(os.path.join(icon_path, "advanced.png")), ""
+        )
         self.pButton_PlateConfig.setToolTip("Plate Configuration...")
         self.pButton_PlateConfig.clicked.connect(self.doPlateConfig)
         self.hBox_MultiConfig = QtWidgets.QHBoxLayout()
@@ -1456,25 +1600,23 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.run_progress_bar.setObjectName("progressBar")
         self.run_progress_bar.setStyleSheet(styleBar)
 
-        # self.fill_prediction_progress_bar = QtWidgets.QProgressBar()
-        # self.fill_prediction_progress_bar.setMinimum(0)
-        # self.fill_prediction_progress_bar.setMaximum(2)
-        # self.fill_prediction_progress_bar.setGeometry(
-        #     QtCore.QRect(0, 0, 50, 10))
-        # self.fill_prediction_progress_bar.setObjectName("fillProgressBar")
-        # self.fill_prediction_progress_bar.setStyleSheet(styleBar)
+        self.fill_status_progress_bar = QtWidgets.QProgressBar()
+        self.fill_status_progress_bar.setMinimum(0)
+        self.fill_status_progress_bar.setMaximum(4)
+        self.fill_status_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        self.fill_status_progress_bar.setObjectName("fillProgressBar")
+        self.fill_status_progress_bar.setStyleSheet(styleBar)
 
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
-            # self.fill_prediction_progress_bar.setFixedHeight(50)
+            self.fill_status_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
-            self.run_progress_bar.valueChanged.connect(
-                self._update_progress_value)
+            self.run_progress_bar.valueChanged.connect(self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
-        # self.fill_prediction_progress_bar.setValue(0)
+        self.fill_status_progress_bar.setValue(0)
 
-        # self.fill_prediction_progress_bar.setFormat("Run: %v/%m (No Fill)")
+        self.fill_status_progress_bar.setFormat("Run: %v/%m (No Fill)")
 
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
@@ -1495,15 +1637,15 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
         self.tool_bar.setStyleSheet("color: #333333;")
 
-        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
 
         icon_init = QtGui.QIcon()
-        icon_init.addPixmap(QtGui.QPixmap(os.path.join(
-            icon_path, "initialize.png")), QtGui.QIcon.Normal)
+        icon_init.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "initialize.png")), QtGui.QIcon.Normal
+        )
         # icon_init.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'initialize-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Initialize = QtWidgets.QToolButton()
-        self.tool_Initialize.setToolButtonStyle(
-            QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_Initialize.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Initialize.setIcon(icon_init)  # normal and disabled pixmaps
         self.tool_Initialize.setText("Initialize")
         self.tool_Initialize.clicked.connect(self.action_initialize)
@@ -1512,8 +1654,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.addSeparator()
 
         icon_start = QtGui.QIcon()
-        icon_start.addPixmap(QtGui.QPixmap(os.path.join(
-            icon_path, "start.png")), QtGui.QIcon.Normal)
+        icon_start.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "start.png")), QtGui.QIcon.Normal
+        )
         # icon_start.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'start-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Start = QtWidgets.QToolButton()
         self.tool_Start.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1523,8 +1666,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.addWidget(self.tool_Start)
 
         icon_stop = QtGui.QIcon()
-        icon_stop.addPixmap(QtGui.QPixmap(os.path.join(
-            icon_path, "stop.png")), QtGui.QIcon.Normal)
+        icon_stop.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "stop.png")), QtGui.QIcon.Normal
+        )
         # icon_stop.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'stop-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Stop = QtWidgets.QToolButton()
         self.tool_Stop.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1536,8 +1680,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.addSeparator()
 
         icon_reset = QtGui.QIcon()
-        icon_reset.addPixmap(QtGui.QPixmap(os.path.join(
-            icon_path, "reset.png")), QtGui.QIcon.Normal)
+        icon_reset.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "reset.png")), QtGui.QIcon.Normal
+        )
         # icon_reset.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'reset-disabled.png')), QtGui.QIcon.Disabled) # not provided
         self.tool_Reset = QtWidgets.QToolButton()
         self.tool_Reset.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
@@ -1554,12 +1699,12 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self._warningTimer.setInterval(2000)  # 2 second delay
 
         icon_temp = QtGui.QIcon()
-        icon_temp.addPixmap(QtGui.QPixmap(os.path.join(
-            icon_path, "temp.png")), QtGui.QIcon.Normal)
+        icon_temp.addPixmap(
+            QtGui.QPixmap(os.path.join(icon_path, "temp.png")), QtGui.QIcon.Normal
+        )
         # icon_temp.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'temp-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_TempControl = QtWidgets.QToolButton()
-        self.tool_TempControl.setToolButtonStyle(
-            QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_TempControl.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_TempControl.setIcon(icon_temp)
         self.tool_TempControl.setText("Temp Control")
         self.tool_TempControl.setCheckable(True)
@@ -1600,13 +1745,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # self.toolBar.addWidget(self.tool_Advanced)
 
         icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/advanced.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Advanced = QtWidgets.QToolButton()
-        self.tool_Advanced.setToolButtonStyle(
-            QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         # normal and disabled pixmaps
         self.tool_Advanced.setIcon(icon_advanced)
         self.tool_Advanced.setText("Advanced")
@@ -1616,8 +1759,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar_2.addSeparator()
 
         icon_user = QtGui.QIcon()
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/user.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
@@ -1637,7 +1779,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.toolLayout.addWidget(self.toolBarWidget)
         self.toolLayout.addWidget(self.run_progress_bar)
-        # self.toolLayout.addWidget(self.fill_prediction_progress_bar)
+        self.toolLayout.addWidget(self.fill_status_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
             # Remove bottom margin, leaving the rest as "default"
@@ -1656,13 +1798,17 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
             self.advancedwidget = QtWidgets.QWidget()
             self.advancedwidget.setWindowFlags(
-                QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint)
+                QtCore.Qt.Dialog | QtCore.Qt.WindowStaysOnTopHint
+            )
             self.advancedwidget.setWhatsThis(
-                "These settings are for Advanced Users ONLY!")
+                "These settings are for Advanced Users ONLY!"
+            )
             warningWidget = QtWidgets.QLabel(
-                f"WARNING: {self.advancedwidget.whatsThis()}")
+                f"WARNING: {self.advancedwidget.whatsThis()}"
+            )
             warningWidget.setStyleSheet(
-                'background: #FF6600; padding: 1px; font-weight: bold;')
+                "background: #FF6600; padding: 1px; font-weight: bold;"
+            )
             warningLayout = QtWidgets.QVBoxLayout()
             warningLayout.addWidget(warningWidget)
             warningLayout.addLayout(self.gridLayout)
@@ -1678,16 +1824,17 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
     def _update_progress_text(self):
         # get innerText from HTML in infobar
         plain_text = self.infobar.text()
-        color = plain_text[plain_text.rindex(
-            'color=')+6:plain_text.rindex('color=')+6+7]
-        plain_text = plain_text[plain_text.index('>')+1:]
-        plain_text = plain_text[plain_text.index('>')+1:]
-        plain_text = plain_text[plain_text.index('>')+1:]
-        plain_text = plain_text[0:plain_text.rindex('<')]
+        color = plain_text[
+            plain_text.rindex("color=") + 6 : plain_text.rindex("color=") + 6 + 7
+        ]
+        plain_text = plain_text[plain_text.index(">") + 1 :]
+        plain_text = plain_text[plain_text.index(">") + 1 :]
+        plain_text = plain_text[plain_text.index(">") + 1 :]
+        plain_text = plain_text[0 : plain_text.rindex("<")]
         # remove any formatting tags: <b>, <i>, <u>
-        while plain_text.rfind('<') != plain_text.find('<'):
-            plain_text = plain_text[0:plain_text.rindex('<')]
-            plain_text = plain_text[plain_text.index('>')+1:]
+        while plain_text.rfind("<") != plain_text.find("<"):
+            plain_text = plain_text[0 : plain_text.rindex("<")]
+            plain_text = plain_text[plain_text.index(">") + 1 :]
         if len(plain_text) == 0:
             plain_text = "Progress: Not Started"
         else:
@@ -1706,7 +1853,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     {
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
-                 """.replace("{COLOR}", color)
+                 """.replace(
+            "{COLOR}", color
+        )
         self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
@@ -1717,47 +1866,57 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
-        MainWindow.setWindowTitle(_translate(
-            "MainWindow", "{} {} - Setup/Control".format(Constants.app_title, Constants.app_version)))
-        icon_path = os.path.join(Architecture.get_path(), 'QATCH/icons/')
-        MainWindow.setWindowIcon(QtGui.QIcon(
-            os.path.join(icon_path, 'qatch-icon.png')))  # .png
-        self.advancedwidget.setWindowIcon(QtGui.QIcon(
-            os.path.join(icon_path, 'advanced.png')))  # .png
+        MainWindow.setWindowTitle(
+            _translate(
+                "MainWindow",
+                "{} {} - Setup/Control".format(
+                    Constants.app_title, Constants.app_version
+                ),
+            )
+        )
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
+        MainWindow.setWindowIcon(
+            QtGui.QIcon(os.path.join(icon_path, "qatch-icon.png"))
+        )  # .png
+        self.advancedwidget.setWindowIcon(
+            QtGui.QIcon(os.path.join(icon_path, "advanced.png"))
+        )  # .png
         self.advancedwidget.setWindowTitle(
-            _translate("MainWindow2", "Advanced Settings"))
+            _translate("MainWindow2", "Advanced Settings")
+        )
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
-        self.pButton_Reference.setText(
-            _translate("MainWindow", "Set/Reset Reference"))
-        self.pButton_ResetApp.setText(
-            _translate("MainWindow", "Factory Defaults"))
+        self.pButton_Reference.setText(_translate("MainWindow", "Set/Reset Reference"))
+        self.pButton_ResetApp.setText(_translate("MainWindow", "Factory Defaults"))
         self.sBox_Samples.setSuffix(_translate("MainWindow", " / 5 min"))
         self.sBox_Samples.setPrefix(_translate("MainWindow", ""))
-        self.chBox_export.setText(_translate(
-            "MainWindow", "Txt Export Sweep File"))
+        self.chBox_export.setText(_translate("MainWindow", "Txt Export Sweep File"))
         self.chBox_freqHop.setText(_translate("MainWindow", "Mode Hop"))
         self.chBox_correctNoise.setText(
-            _translate("MainWindow", "Show amplitude curve"))
-        self.chBox_MultiAuto.setText(_translate(
-            "MainWindow", "Auto-detect channel count"))
+            _translate("MainWindow", "Show amplitude curve")
+        )
+        self.chBox_MultiAuto.setText(
+            _translate("MainWindow", "Auto-detect channel count")
+        )
 
     def action_initialize(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
-            # self.fill_prediction_progress_bar.setValue(0)
-            # self.fill_prediction_progress_bar.setFormat(
-            #     Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
+            self.fill_status_progress_bar.setValue(0)
+            self.fill_status_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, "")
+            )
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
 
     def action_start(self):
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.measurement.value)
-            # self.fill_prediction_progress_bar.setValue(0)
-            # self.fill_prediction_progress_bar.setFormat(
-            #     Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
+            self.fill_status_progress_bar.setValue(0)
+            self.fill_status_progress_bar.setFormat(
+                Constants.FILL_TYPE_LABEL_MAP.get(0, "")
+            )
             self.pButton_Start.clicked.emit()
 
     def action_stop(self):
@@ -1774,25 +1933,30 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.pButton_Clear.clicked.emit()
             self.pButton_Refresh.clicked.emit()
         self.infostatus.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
-        self.infostatus.setText(
-            "<font color=#333333 > Program Status Standby </font>")
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
+        self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
         self.cal_initialized = False
         self.tool_Start.setEnabled(False)
-        # self.fill_prediction_progress_bar.setValue(0)
-        # self.fill_prediction_progress_bar.setFormat(
-        #     Constants.FILL_TYPE_LABEL_MAP.get(0, ""))
+        self.fill_status_progress_bar.setValue(0)
+        self.fill_status_progress_bar.setFormat(
+            Constants.FILL_TYPE_LABEL_MAP.get(0, "")
+        )
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
 
     def action_tempcontrol(self):
         self.tempController.setEnabled(self.tool_TempControl.isChecked())
         if self.tool_TempControl.isChecked():
-            if self.pTemp.text().find("Stop") < 0:  # not found (i.e. "start" or "resume")
+            if (
+                self.pTemp.text().find("Stop") < 0
+            ):  # not found (i.e. "start" or "resume")
                 self.pTemp.clicked.emit()
                 self.slTemp.setFocus()
         else:
-            if self.pTemp.text().find("Stop") >= 0:  # found (i.e. currently running, not locked)
+            if (
+                self.pTemp.text().find("Stop") >= 0
+            ):  # found (i.e. currently running, not locked)
                 self.pTemp.clicked.emit()
 
     def action_tempcontrol_warn_start(self, event):
@@ -1812,12 +1976,17 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             # Log.e("window pos:", self.event_windowPos)
             # Log.e("widget pos:", self.tempController.mapToGlobal(QtCore.QPoint(0, 0)))
             Log.w("WARNING: Temp Control mode cannot be changed during an active run.")
-            if self.event_windowPos.x() >= self.tempController.mapToGlobal(QtCore.QPoint(0, 0)).x():
+            if (
+                self.event_windowPos.x()
+                >= self.tempController.mapToGlobal(QtCore.QPoint(0, 0)).x()
+            ):
                 Log.w(
-                    "To adjust Temp Control: Press \"Stop\" first, then adjust setpoint accordingly.")
+                    'To adjust Temp Control: Press "Stop" first, then adjust setpoint accordingly.'
+                )
             else:
                 Log.w(
-                    "To stop Temp Control: Press \"Stop\" first, then click \"Temp Control\" button.")
+                    'To stop Temp Control: Press "Stop" first, then click "Temp Control" button.'
+                )
 
         # TODO: Not implemented; only show once per measurement run (maybe not the best idea)
         # else:
@@ -1830,8 +1999,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.advancedwidget.move(0, 0)
         self.advancedwidget.show()
         # make plate config button square
-        self.pButton_PlateConfig.setFixedWidth(
-            self.pButton_PlateConfig.height())
+        self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
         # QtWidgets.QWhatsThis.enterWhatsThisMode()
         # QtWidgets.QWhatsThis.showText(
         #     QtCore.QPoint(int(self.advancedwidget.width() / 2), int(self.advancedwidget.height() * (2/3))),
@@ -1850,17 +2018,24 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         i = self.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
         if i % 9 == i:  # 4x1 system
-            well_width = 4  # number of well on a single device sensor for a multiplex device
+            well_width = (
+                4  # number of well on a single device sensor for a multiplex device
+            )
             well_height = 1  # num of multiplex devices, ceil
-        else:           # 4x6 system
+        else:  # 4x6 system
             well_width = 6
             well_height = 4
-        num_channels = self.cBox_MultiMode.currentIndex() + 1  # user define device count
+        num_channels = (
+            self.cBox_MultiMode.currentIndex() + 1
+        )  # user define device count
         if num_ports not in [well_width, well_height] and num_ports != 1:
-            PopUp.warning(self, "Plate Configuration",
-                          f"<b>Multiplex device(s) are required for plate configuration.</b><br/>" +
-                          f"You must have exactly 4 device ports connected for this mode.<br/>" +
-                          f"Currently connected device port count is: {num_ports} (not 4)")
+            PopUp.warning(
+                self.parent,
+                "Plate Configuration",
+                f"<b>Multiplex device(s) are required for plate configuration.</b><br/>"
+                + f"You must have exactly 4 device ports connected for this mode.<br/>"
+                + f"Currently connected device port count is: {num_ports} (not 4)",
+            )
         else:
             # creation of widget also shows UI to user
             self.wellPlateUI = WellPlate(well_width, well_height, num_channels)
@@ -1868,9 +2043,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
 #######################################################################################################################
 
+
 class Ui_Plots(object):
     def setupUi(self, MainWindow2):
-        USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
+        USE_FULLSCREEN = QDesktopWidget().availableGeometry().width() == 2880
 
         MainWindow2.setObjectName("MainWindow2")
         # MainWindow2.setGeometry(100, 100, 890, 750)
@@ -1891,8 +2067,7 @@ class Ui_Plots(object):
         self.gridLayout.setObjectName("gridLayout")
         # Remove top margin, leaving the rest as "default"
         self.gridLayout.setContentsMargins(11, 0, 11, 11)
-        self.Layout_graphs = QtWidgets.QSplitter(
-            QtCore.Qt.Horizontal)  # QGridLayout()
+        self.Layout_graphs = QtWidgets.QSplitter(QtCore.Qt.Horizontal)  # QGridLayout()
         self.Layout_graphs.setObjectName("Layout_graphs")
 
         self.plt = GraphicsLayoutWidget(self.centralwidget)
@@ -1927,7 +2102,7 @@ class Ui_Plots(object):
         self.Layout_graphs.addWidget(self.pltB)
         self.Layout_graphs.addWidget(self.plt)
         width = self.Layout_graphs.width()
-        self.Layout_graphs.setSizes([int(width*2/3), int(width*1/3)])
+        self.Layout_graphs.setSizes([int(width * 2 / 3), int(width * 1 / 3)])
 
         # add collapse/expand icon arrows
         self.Layout_graphs.setHandleWidth(10)
@@ -1937,13 +2112,11 @@ class Ui_Plots(object):
         layout_s.addStretch()
         self.btnCollapse = QtWidgets.QToolButton(handle)
         self.btnCollapse.setArrowType(QtCore.Qt.RightArrow)
-        self.btnCollapse.clicked.connect(
-            lambda: self.handleSplitterButton(True))
+        self.btnCollapse.clicked.connect(lambda: self.handleSplitterButton(True))
         layout_s.addWidget(self.btnCollapse)
         self.btnExpand = QtWidgets.QToolButton(handle)
         self.btnExpand.setArrowType(QtCore.Qt.LeftArrow)
-        self.btnExpand.clicked.connect(
-            lambda: self.handleSplitterButton(False))
+        self.btnExpand.clicked.connect(lambda: self.handleSplitterButton(False))
         layout_s.addWidget(self.btnExpand)
         layout_s.addStretch()
         handle.setLayout(layout_s)
@@ -1971,18 +2144,22 @@ class Ui_Plots(object):
             self.btnCollapse.setVisible(True)
             self.btnExpand.setVisible(False)
             width = self.Layout_graphs.width()
-            self.Layout_graphs.setSizes([int(width*2/3), int(width*1/3)])
+            self.Layout_graphs.setSizes([int(width * 2 / 3), int(width * 1 / 3)])
 
     def retranslateUi(self, MainWindow2):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        MainWindow2.setWindowTitle(_translate(
-            "MainWindow2", "{} {} - Plots".format(Constants.app_title, Constants.app_version)))
+        MainWindow2.setWindowTitle(
+            _translate(
+                "MainWindow2",
+                "{} {} - Plots".format(Constants.app_title, Constants.app_version),
+            )
+        )
 
 
 ############################################################################################################
+
 
 class Ui_Info(object):
     def setupUi(self, MainWindow3):
@@ -2005,8 +2182,10 @@ class Ui_Info(object):
 
         # Setup Information -------------------------------------------------------------------
         self.info1 = QtWidgets.QLabel()
-        self.info1.setStyleSheet('background: #008EC0; padding: 1px;')
-        self.info1.setText("<font color=#ffffff > Setup Information&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>")
+        self.info1.setStyleSheet("background: #008EC0; padding: 1px;")
+        self.info1.setText(
+            "<font color=#ffffff > Setup Information&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</font>"
+        )
         # self.info1.setFixedWidth(250)
         # self.info1.setFixedHeight(15)
         self.gridLayout_2.addWidget(self.info1, 0, 0, 1, 1)
@@ -2014,7 +2193,8 @@ class Ui_Info(object):
         # Device Setup -------------------------------------------------------------------------
         self.info1a = QtWidgets.QLabel()
         self.info1a.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info1a.setText("<font color=#0000ff > Device Setup</font>")
         # self.info1a.setFixedWidth(250)
         # self.info1a.setFixedHeight(22)
@@ -2023,16 +2203,16 @@ class Ui_Info(object):
         # Operation Mode -----------------------------------------------------------------------
         self.info11 = QtWidgets.QLabel()
         self.info11.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info11.setText("<font color=#0000ff > Operation Mode </font>")
         # self.info11.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info11, 2, 0, 1, 1)
 
         # Data Information ---------------------------------------------------------------------
         self.info = QtWidgets.QLabel()
-        self.info.setStyleSheet('background: #008EC0; padding: 1px;')
-        self.info.setText(
-            "<font color=#ffffff > Data Information&nbsp;</font>")
+        self.info.setStyleSheet("background: #008EC0; padding: 1px;")
+        self.info.setText("<font color=#ffffff > Data Information&nbsp;</font>")
         # self.info.setFixedWidth(250)
         # self.info.setFixedHeight(15)
         self.gridLayout_2.addWidget(self.info, 3, 0, 1, 1)
@@ -2040,7 +2220,8 @@ class Ui_Info(object):
         # Selected Frequency -------------------------------------------------------------------
         self.info2 = QtWidgets.QLabel()
         self.info2.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info2.setText("<font color=#0000ff > Selected Frequency </font>")
         # self.info2.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info2, 4, 0, 1, 1)
@@ -2048,7 +2229,8 @@ class Ui_Info(object):
         # Frequency Value ----------------------------------------------------------------------
         self.info6 = QtWidgets.QLabel()
         self.info6.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info6.setText("<font color=#0000ff > Frequency Value </font>")
         # self.info6.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info6, 5, 0, 1, 1)
@@ -2056,7 +2238,8 @@ class Ui_Info(object):
         # Start Frequency ----------------------------------------------------------------------
         self.info3 = QtWidgets.QLabel()
         self.info3.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info3.setText("<font color=#0000ff > Start Frequency </font>")
         # self.info3.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info3, 6, 0, 1, 1)
@@ -2064,7 +2247,8 @@ class Ui_Info(object):
         # Stop Frequency -----------------------------------------------------------------------
         self.info4 = QtWidgets.QLabel()
         self.info4.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info4.setText("<font color=#0000ff > Stop Frequency </font>")
         # self.info4.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info4, 7, 0, 1, 1)
@@ -2072,7 +2256,8 @@ class Ui_Info(object):
         # Frequency Range----------------------------------------------------------------------
         self.info4a = QtWidgets.QLabel()
         self.info4a.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info4a.setText("<font color=#0000ff > Frequency Range </font>")
         # self.info4a.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info4a, 8, 0, 1, 1)
@@ -2080,7 +2265,8 @@ class Ui_Info(object):
         # Sample Rate----------------------------------------------------------------------
         self.info5 = QtWidgets.QLabel()
         self.info5.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info5.setText("<font color=#0000ff > Sample Rate </font>")
         # self.info5.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info5, 9, 0, 1, 1)
@@ -2088,17 +2274,17 @@ class Ui_Info(object):
         # Sample Number----------------------------------------------------------------------
         self.info7 = QtWidgets.QLabel()
         self.info7.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.info7.setText("<font color=#0000ff > Sample Number </font>")
         # self.info7.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.info7, 10, 0, 1, 1)
 
         # Reference Settings -------------------------------------------------------------------
         self.inforef = QtWidgets.QLabel()
-        self.inforef.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.inforef.setStyleSheet("background: #008EC0; padding: 1px;")
         # self.inforef1.setAlignment(QtCore.Qt.AlignCenter)
-        self.inforef.setText(
-            "<font color=#ffffff > Reference Settings </font>")
+        self.inforef.setText("<font color=#ffffff > Reference Settings </font>")
         # self.inforef.setFixedHeight(15)
         # self.inforef.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.inforef, 11, 0, 1, 1)
@@ -2106,7 +2292,8 @@ class Ui_Info(object):
         # Ref. Frequency -----------------------------------------------------------------------
         self.inforef1 = QtWidgets.QLabel()
         self.inforef1.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         # self.inforef1.setAlignment(QtCore.Qt.AlignCenter)
         self.inforef1.setText("<font color=#0000ff > Ref. Frequency </font>")
         # self.inforef1.setFixedWidth(250)
@@ -2115,7 +2302,8 @@ class Ui_Info(object):
 
         self.inforef2 = QtWidgets.QLabel()
         self.inforef2.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         # self.inforef2.setAlignment(QtCore.Qt.AlignCenter)
         self.inforef2.setText("<font color=#0000ff > Ref. Dissipation </font>")
         # self.inforef2.setFixedWidth(250)
@@ -2123,7 +2311,7 @@ class Ui_Info(object):
 
         # Current Data ---------------------------------------------------------------------------
         self.l8 = QtWidgets.QLabel()
-        self.l8.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.l8.setStyleSheet("background: #008EC0; padding: 1px;")
         self.l8.setText("<font color=#ffffff > Current Data </font>")
         # self.l8.setFixedHeight(15)
         # self.l8.setFixedWidth(250)
@@ -2132,7 +2320,8 @@ class Ui_Info(object):
         # Resonance Frequency -------------------------------------------------------------------
         self.l7 = QtWidgets.QLabel()
         self.l7.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.l7.setText("<font color=#0000ff >  Resonance Frequency </font>")
         # self.l7.setAlignment(QtCore.Qt.AlignCenter)
         # self.l7.setFixedWidth(250)
@@ -2141,7 +2330,8 @@ class Ui_Info(object):
         # Dissipation ---------------------------------------------------------------------------
         self.l6 = QtWidgets.QLabel()
         self.l6.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.l6.setText("<font color=#0000ff > Dissipation  </font>")
         # self.l6.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.l6, 16, 0, 1, 1)
@@ -2149,33 +2339,35 @@ class Ui_Info(object):
         # Temperature ---------------------------------------------------------------------------
         self.l6a = QtWidgets.QLabel()
         self.l6a.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.l6a.setText("<font color=#0000ff >  Temperature </font>")
         # self.l6a.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.l6a, 17, 0, 1, 1)
 
         # Info from QATCH website -------------------------------------------------------------
         self.lweb = QtWidgets.QLabel()
-        self.lweb.setStyleSheet('background: #008EC0; padding: 1px;')
+        self.lweb.setStyleSheet("background: #008EC0; padding: 1px;")
         self.lweb.setText("<font color=#ffffff > Check for Updates </font>")
         # self.lweb.setFixedHeight(15)
         # self.lweb.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.lweb, 18, 0, 1, 1)
 
         # Check internet connection -------------------------------------------------------------
-        '''self.lweb2 = QtWidgets.QLabel()
+        """self.lweb2 = QtWidgets.QLabel()
         self.lweb2.setStyleSheet(
             'background: white; padding: 1px; border: 1px solid #cccccc')
         self.lweb2.setText(
             "<font color=#0000ff > Checking your internet connection </font>")
         # self.lweb2.setFixedHeight(20)
         #self.lweb2.setFixedWidth(250)
-        self.gridLayout_2.addWidget(self.lweb2, 19, 0, 1, 1)'''
+        self.gridLayout_2.addWidget(self.lweb2, 19, 0, 1, 1)"""
 
         # Software update status ----------------------------------------------------------------
         self.lweb3 = QtWidgets.QLabel()
         self.lweb3.setStyleSheet(
-            'background: white; padding: 1px; border: 1px solid #cccccc')
+            "background: white; padding: 1px; border: 1px solid #cccccc"
+        )
         self.lweb3.setText("<font color=#0000ff > Update Status </font>")
         # self.lweb3.setFixedHeight(16)
         # self.lweb3.setFixedWidth(300)
@@ -2184,13 +2376,15 @@ class Ui_Info(object):
         # Download button -----------------------------------------------------------------------
         self.pButton_Download = QtWidgets.QPushButton(self.centralwidget)
         icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/refresh-icon.png')
+            Architecture.get_path(), "QATCH/icons/refresh-icon.png"
+        )
         self.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Download.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Download.setObjectName("pButton_Download")
         self.pButton_Download.setFixedWidth(145)
         self.gridLayout_2.addWidget(
-            self.pButton_Download, 21, 0, 1, 1, QtCore.Qt.AlignRight)
+            self.pButton_Download, 21, 0, 1, 1, QtCore.Qt.AlignRight
+        )
         ##########################################################################################
 
         self.gridLayout.addLayout(self.gridLayout_2, 3, 1, 1, 1)
@@ -2201,10 +2395,8 @@ class Ui_Info(object):
 
     def retranslateUi(self, MainWindow3):
         _translate = QtCore.QCoreApplication.translate
-        self.pButton_Download.setText(
-            _translate("MainWindow3", " Check Again"))
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
+        self.pButton_Download.setText(_translate("MainWindow3", " Check Again"))
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow3.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow3.setWindowTitle(_translate("MainWindow3", "Information"))
 
@@ -2221,9 +2413,8 @@ class Ui_Logger(object):
 
         # log to text box
         logTextBox.setFormatter(
-            logging.Formatter(
-                fmt='%(asctime)s %(levelname)s %(message)s',
-                datefmt=None))
+            logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt=None)
+        )
         logging.getLogger("QATCH").addHandler(logTextBox)
         Log._show_user_info()
 
@@ -2234,11 +2425,14 @@ class Ui_Logger(object):
 
     def retranslateUi(self, MainWindow4):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/qatch-icon.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow4.setWindowIcon(QtGui.QIcon(icon_path))  # .png
-        MainWindow4.setWindowTitle(_translate(
-            "MainWindow4", "{} {} - Console".format(Constants.app_title, Constants.app_version)))
+        MainWindow4.setWindowTitle(
+            _translate(
+                "MainWindow4",
+                "{} {} - Console".format(Constants.app_title, Constants.app_version),
+            )
+        )
 
 
 class QTextEditLogger(logging.Handler, QtCore.QObject):
@@ -2285,15 +2479,14 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
     def appendToInfo(self, html):
         if self.forceRepaintEvents and "[Device] ERROR:" in html:
             return  # do not show serial errors during firmware update on info console
-        self.logInfo.moveCursor(QtGui.QTextCursor.End,
-                                QtGui.QTextCursor.MoveAnchor)
+        self.logInfo.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
         if self.progressMode:
             # replace the most recent line with this new html line
             self.logInfo.textCursor().deletePreviousChar()
             self.logInfo.moveCursor(
-                QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor)
-            self.logInfo.moveCursor(
-                QtGui.QTextCursor.End, QtGui.QTextCursor.KeepAnchor)
+                QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor
+            )
+            self.logInfo.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.KeepAnchor)
             self.logInfo.textCursor().removeSelectedText()
         self.logInfo.insertHtml(html)
         self.logInfo.ensureCursorVisible()
@@ -2301,8 +2494,7 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
             self.logInfo.repaint()
 
     def appendToDebug(self, html):
-        self.logDebug.moveCursor(
-            QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
+        self.logDebug.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
         self.logDebug.insertHtml(html)
         self.logDebug.ensureCursorVisible()
         if self.forceRepaintEvents:
@@ -2323,11 +2515,11 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
             print(msg, "(duplicate record ignored)")
             return  # ignore duplicate records when they are handled back-to-back
         self.last_record_msg = msg
-        msg = msg[msg.index(' ')+1:]  # trim date from console
-        html_fmt = "<font style='font-family:\"Lucida Console\",\"Courier New\",monospace;color:{};font-weight:{};'>{}</font><br/><br/>"
+        msg = msg[msg.index(" ") + 1 :]  # trim date from console
+        html_fmt = '<font style=\'font-family:"Lucida Console","Courier New",monospace;color:{};font-weight:{};\'>{}</font><br/><br/>'
         color = "black" if record.levelno <= logging.INFO else "red"
         weight = "normal" if record.levelno <= logging.WARNING else "bold"
-        time_only = msg[0:msg.index(',')]
+        time_only = msg[0 : msg.index(",")]
         padding = "&nbsp;&nbsp;&nbsp;" if weight == "normal" else "&nbsp;&nbsp;"
         msg_info = time_only + padding + record.msg
         msg_debug = msg

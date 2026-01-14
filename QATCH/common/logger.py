@@ -130,7 +130,12 @@ class Logger:
         Returns:
             None
         """
-        logging.shutdown()
+        # The Python interpreter calls logging.shutdown() automatically at exit.
+        # Manually calling it inside a handler's own close method can cause recursion.
+        # logging.shutdown()
+        top_level_logger = logging.getLogger("QATCH")
+        top_level_logger.info("Closed logging handlers")
+        top_level_logger.handlers.clear()
 
     @staticmethod
     def d(tag, msg="") -> None:

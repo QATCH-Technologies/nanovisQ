@@ -23,6 +23,9 @@ class PopUp:
         :param message: Message to be shown in the dialog :type message: str.
         :return: 1 if button1 was pressed, 0 if button2   :rtype: int.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         # ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
         # if ans == QtWidgets.QMessageBox.Yes:
         #    Log.d('Si')
@@ -66,6 +69,9 @@ class PopUp:
         :param message: Message to be shown in the dialog :type message: str.
         :return: 1 if button1 was pressed, 0 if button2   :rtype: int.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         # ans = QtWidgets.QMessageBox.question(parent, title, message, QtWidgets.QMessageBox.Yes, QtWidgets.QMessageBox.No)
         # if ans == QtWidgets.QMessageBox.Yes:
         #    Log.d('Si')
@@ -115,8 +121,11 @@ class PopUp:
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         QtWidgets.QMessageBox.warning(
-            None, title, message, QtWidgets.QMessageBox.Ok)
+            parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox = QtWidgets.QMessageBox()
         # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
@@ -133,9 +142,12 @@ class PopUp:
         :param message: Message to be shown in the dialog :type message: str.
         :return: True if Yes button was pressed :rtype: bool.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         defaultButton = QtWidgets.QMessageBox.Yes if default else QtWidgets.QMessageBox.No
-        ans = QtWidgets.QMessageBox.question(
-            None, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
+        ans = QtWidgets.QMessageBox.question(  # center dialog over parent (by default)
+            parent, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
         if ans == QtWidgets.QMessageBox.Yes:
             return True
         else:
@@ -147,25 +159,28 @@ class PopUp:
     @staticmethod
     def critical(parent, title, message, details="", question=False, ok_only=False, btn1_text="Retry"):
         """
-        :param parent: Parent window for the dialog.
+        :param parent: Parent window for the dialog (must inherit QWidget).
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         # return (QtWidgets.QMessageBox.critical(parent, title, message, QtWidgets.QMessageBox.Retry, QtWidgets.QMessageBox.Ignore)
         #     == QtWidgets.QMessageBox.Retry)
-
         width = 340
         height = 220
-        area = QtWidgets.QDesktopWidget().availableGeometry()
-        left = int((area.width() - width) / 2)
-        top = int((area.height() - height) / 2)
+        # area = QtWidgets.QDesktopWidget().availableGeometry()
+        # left = int((area.width() - width) / 2)
+        # top = int((area.height() - height) / 2)
         box = QtWidgets.QMessageBox(parent)
         if question:
             box.setIcon(QtWidgets.QMessageBox.Question)
         else:
             box.setIcon(QtWidgets.QMessageBox.Critical)
         box.setWindowTitle(title)
-        box.setGeometry(left, top, width, height)
+        # box.setGeometry(left, top, width, height)
+        box.setFixedSize(width, height)  # center dialog over parent (by default)
         box.setText(message)
         box.setDetailedText(details)
         if question:
@@ -203,8 +218,11 @@ class PopUp:
         :param title: Title of the dialog :type title: str.
         :param message: Message to be shown in the dialog :type message: str.
         """
+        if not isinstance(parent, QtWidgets.QWidget):
+            parent = None  # make dialog have no parent if invalid type
+
         QtWidgets.QMessageBox.information(
-            None, title, message, QtWidgets.QMessageBox.Ok)
+            parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox = QtWidgets.QMessageBox()
         # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))

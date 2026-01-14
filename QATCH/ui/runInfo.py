@@ -221,6 +221,7 @@ class RunInfoWindow(QtWidgets.QWidget):
         for dw in self.DockingWidgets:
             dw.setMinimumSize(dw.width(), dw.height())
         # center window in desktop geometry
+        # NOTE: This position applies only to multiplex run info window
         width = self.width()
         height = self.height()
         area = QtWidgets.QDesktopWidget().availableGeometry()
@@ -486,10 +487,10 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.notes.setTabChangesFocus(True)
         self.notes.setFixedHeight(100)
 
+        self.groupBioformulation = QtWidgets.QGroupBox("Is this a bioformulation?")
+        self.groupBioformulation.setCheckable(False)
         self.q1 = QtWidgets.QHBoxLayout()
-        self.l1 = QtWidgets.QLabel()
-        self.l1.setText("Is this a bioformulation?\t")
-        self.q1.addWidget(self.l1)
+        self.groupBioformulation.setLayout(self.q1)
         self.g1 = QtWidgets.QButtonGroup()
         self.b1 = QtWidgets.QCheckBox("Yes")
         self.b2 = QtWidgets.QCheckBox("No")
@@ -922,10 +923,14 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.collapsibleBox = CollapsibleBox("Advanced Information")
         lay = QtWidgets.QVBoxLayout()
         lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.groupBuffer)
-        lay.addWidget(self.groupSurfactant)
-        lay.addWidget(self.groupSalt)
-        lay.addWidget(self.groupExcipient)
+        lay_h2 = QtWidgets.QHBoxLayout()
+        lay_h2.addWidget(self.groupBuffer, 1)
+        lay_h2.addWidget(self.groupSurfactant, 1)
+        lay.addLayout(lay_h2)
+        lay_h3 = QtWidgets.QHBoxLayout()
+        lay_h3.addWidget(self.groupSalt, 1)
+        lay_h3.addWidget(self.groupExcipient, 1)
+        lay.addLayout(lay_h3)
         self.collapsibleBox.setContentLayout(lay)
         self.collapsibleBox.toggle_button.pressed.connect(
             self.resize_on_collapse_change)
@@ -938,13 +943,18 @@ class QueryRunInfo(QtWidgets.QWidget):
         layout_v.addLayout(self.q_runname)
         layout_v.addLayout(self.q_batch)
         layout_v.addWidget(self.notes)
-        layout_v.addLayout(self.q1)  # show "Is this a bioformulation?"
+        # layout_v.addLayout(self.q1)  # show "Is this a bioformulation?"
         # layout_v.addLayout(self.q2)  # hide Solvent
         # layout_v.addLayout(self.q3) # hide Surfactant
         # layout_v.addLayout(self.q4) # hide Concentration
-        layout_v.addWidget(self.groupSolvent)
-        layout_v.addWidget(self.groupProtein)
-        layout_v.addWidget(self.groupStabilizer)
+        self.layout_h0 = QtWidgets.QHBoxLayout()
+        self.layout_h0.addWidget(self.groupBioformulation, 1)
+        self.layout_h0.addWidget(self.groupSolvent, 1)
+        layout_v.addLayout(self.layout_h0)
+        layout_h1 = QtWidgets.QHBoxLayout()
+        layout_h1.addWidget(self.groupProtein, 1)
+        layout_h1.addWidget(self.groupStabilizer, 1)
+        layout_v.addLayout(layout_h1)
         layout_v.addWidget(self.collapsibleBox)
         # layout_v.addWidget(self.groupBuffer)
         # layout_v.addWidget(self.groupSurfactant)
@@ -1662,11 +1672,29 @@ class QueryRunInfo(QtWidgets.QWidget):
 
     def show(self):
         super(QueryRunInfo, self).show()
-        width = 350
+        min_width = 500
+        if not hasattr(self, 'parent') or not hasattr(self.parent, 'AnalyzeProc'):
+            # Fallback to default positioning if parent window not available
+            self.resize(min_width, self.height())
+            return
+        winAnalyze = self.parent.AnalyzeProc
+        if not hasattr(winAnalyze, 'tBtn_Info') or not hasattr(winAnalyze, 'tool_Cancel'):
+            self.resize(min_width, self.height())
+            return
+        btnInfo = winAnalyze.tBtn_Info
+        btnClose = winAnalyze.tool_Cancel
+        globalPos_Window = winAnalyze.mapToGlobal(QtCore.QPoint(0, 0))
+        globalPos_Info = btnInfo.mapToGlobal(QtCore.QPoint(0, 0))
+        globalPos_Close = btnClose.mapToGlobal(QtCore.QPoint(0, 0))
+        width = max(min_width, globalPos_Close.x() - 
+                    globalPos_Info.x() - btnInfo.width() - 20)
+        if width == min_width:
+            width = max(min_width, globalPos_Window.x() + winAnalyze.width() - 
+                    globalPos_Info.x() - btnInfo.width() - 30)
         height = self.height()
-        area = QtWidgets.QDesktopWidget().availableGeometry()
-        left = int((area.width() - width) / 2)
-        top = int((area.height() - height) / 2) - 100
+        # area = QtWidgets.QDesktopWidget().availableGeometry() # todo
+        left = globalPos_Info.x() + btnInfo.width() + 10
+        top = globalPos_Info.y() + 30
         self.setGeometry(left, top, width, height)
 
     def new_protein_type(self, text: str):
@@ -2223,6 +2251,15 @@ class QueryRunInfo(QtWidgets.QWidget):
             self.t3.setEnabled(is_bioformulation == True)
             self.t4.setEnabled(is_bioformulation == True)  # protein (hidden)
 
+            if is_bioformulation:
+                # add stretch item to take up space when Solvent is hidden
+                self.layout_h0.addWidget(QtWidgets.QWidget(), 1)  # dummy blank
+            elif self.layout_h0.count() == 3:
+                # remove stretch item to avoid extra space when Solvent is visible
+                item = self.layout_h0.takeAt(2)
+                if item.widget():
+                    item.widget().deleteLater()
+
             self.groupSolvent.setVisible(
                 is_bioformulation == False)  # solvent group
             self.groupProtein.setVisible(
@@ -2619,11 +2656,13 @@ class QueryRunInfo(QtWidgets.QWidget):
                     self.signedInAs.setText(self.username)
                     self.signerInit.setText(
                         f"Initials: <b>{self.initials}</b>")
-                    screen = QtWidgets.QDesktopWidget().availableGeometry()
-                    left = int(
-                        (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
-                    top = int(
-                        (screen.height() - self.signForm.sizeHint().height()) / 2) - 50
+                    # center the Sign form over the Run Info form
+                    # area = QtWidgets.QDesktopWidget().availableGeometry() # todo
+                    global_pos = self.mapToGlobal(QtCore.QPoint(0, 0))
+                    center_x = global_pos.x() + (self.width() // 2)
+                    center_y = global_pos.y() + (self.height() // 2)
+                    left = center_x - (self.signForm.sizeHint().width() // 2) - 10
+                    top = center_y - (self.signForm.sizeHint().height() // 2) - 10
                     self.signForm.move(left, top)
                     self.signForm.setVisible(True)
                     self.sign.setFocus()
