@@ -144,18 +144,25 @@ class QatchTagger():
             if os.path.exists(fw_build_path):
                 logging.debug(f"Removing FW Build path: {fw_build_path}")
                 shutil.rmtree(fw_build_path)
-                
-            fw_image_path = os.path.join(path_to_tag, keepers[2], f"{keepers[2]}.ino.TEENSY41.hex")
+
+            fw_image_path = os.path.join(
+                path_to_tag, keepers[2], f"{keepers[2]}.ino.TEENSY41.hex")
             if os.path.exists(fw_image_path):
                 logging.debug(f"Found FW image: {fw_image_path}")
             else:
-                raise Exception(f"Missing FW image: {fw_image_path}")
-                
-            assets_path = os.path.join(path_to_tag,  "QATCH", "VisQAI", "assets")
+                if self.args.nightly:
+                    logging.warning(
+                        f"Missing FW image (nightly build): {fw_image_path}")
+                else:
+                    raise Exception(f"Missing FW image: {fw_image_path}")
+
+            assets_path = os.path.join(
+                path_to_tag,  "QATCH", "VisQAI", "assets")
             for filename in os.listdir(assets_path):
                 if filename.lower().endswith(".csv"):
                     formula_csv = os.path.join(assets_path, filename)
-                    logging.debug(f"Removing Formulation CSV from tag: {formula_csv}")
+                    logging.debug(
+                        f"Removing Formulation CSV from tag: {formula_csv}")
                     os.remove(formula_csv)
 
         except Exception as e:
