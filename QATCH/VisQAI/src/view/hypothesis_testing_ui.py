@@ -1,47 +1,57 @@
-"""
-hypothesis_testing_ui.py
+# hypothesis_testing_ui.py
 
+"""
 This module provides the HypothesisTestingUI class for the Hypothesis Testing tab in VisQAI.
 It supports creating custom formulations, defining hypotheses about viscosity behavior,
 and visualizing prediction results with hypothesis outcomes using area-based CI containment.
 
-Author:
+Author(s):
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-31
+    2026-01-16
 
 Version:
-   2.0
+   2.2
 """
 
-import sys
+import json
 import os
 import traceback
-from typing import Optional, List, Dict, Tuple, TYPE_CHECKING
-import json
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, cast
+
 import numpy as np
 
+from QATCH.VisQAI.src.models import predictor
+
 try:
-    from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
     from QATCH.core.constants import Constants
 
 except (ModuleNotFoundError, ImportError):
 
     class Log:
         @staticmethod
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
         @staticmethod
-        def i(tag, msg=""): print("INFO:", tag, msg)
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
         @staticmethod
-        def w(tag, msg=""): print("WARNING:", tag, msg)
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
         @staticmethod
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
 
     class Constants:
         app_title = "VisQAI"
         log_prefer_path = os.path.expanduser("~/Documents")
+
     Log.i("Running VisQAI as standalone app")
 
     class Architecture:
@@ -49,27 +59,28 @@ except (ModuleNotFoundError, ImportError):
         def get_path():
             return os.path.dirname(os.path.abspath(__file__))
 
+
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 from PyQt5 import QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.figure import Figure
 
 try:
+    from src.controller.ingredient_controller import IngredientController
+    from src.db.db import Database
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
     from src.processors.hypothesis_testing import HypothesisTesting
-    from src.controller.ingredient_controller import IngredientController
-    from src.db.db import Database
-    from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
+
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.processors.hypothesis_testing import HypothesisTesting
-    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
+
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -88,32 +99,38 @@ class HypothesisTestingUI(QtWidgets.QDialog):
     """
 
     HYPOTHESIS_TYPES = {
-        'upper': 'Upper Bound (Less Than)',
-        'lower': 'Lower Bound (Greater Than)',
-        'between': 'Between Bounds'
+        "upper": "Upper Bound (Less Than)",
+        "lower": "Lower Bound (Greater Than)",
+        "between": "Between Bounds",
     }
 
     SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
 
     SHEAR_RATE_LABELS = {
-        100: 'Viscosity_100',
-        1000: 'Viscosity_1000',
-        10000: 'Viscosity_10000',
-        100000: 'Viscosity_100000',
-        15000000: 'Viscosity_15000000'
+        100: "Viscosity_100",
+        1000: "Viscosity_1000",
+        10000: "Viscosity_10000",
+        100000: "Viscosity_100000",
+        15000000: "Viscosity_15000000",
     }
 
     INGREDIENT_UNITS = {
-        'Protein': 'mg/mL',
-        'Buffer': 'mM',
-        'Surfactant': '%w',
-        'Stabilizer': 'M',
-        'Excipient': 'mM',
-        'Salt': 'mM'
+        "Protein": "mg/mL",
+        "Buffer": "mM",
+        "Surfactant": "%w",
+        "Stabilizer": "M",
+        "Excipient": "mM",
+        "Salt": "mM",
     }
 
-    INGREDIENT_TYPES = ['Protein', 'Buffer',
-                        'Surfactant', 'Stabilizer', 'Excipient', 'Salt']
+    INGREDIENT_TYPES = [
+        "Protein",
+        "Buffer",
+        "Surfactant",
+        "Stabilizer",
+        "Excipient",
+        "Salt",
+    ]
 
     def __init__(self, parent=None):
         """Initialize the HypothesisTestingUI window.
@@ -122,7 +139,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             parent (VisQAIWindow, optional): The parent window instance.
         """
         super().__init__(parent)
-        self.parent: 'VisQAIWindow' = parent
+        if self.parent is None:
+            raise RuntimeError("Parent window could not be initialized.")
+        self.parent: VisQAIWindow | None = parent
         self.setWindowTitle("Hypothesis Testing (Area-Based)")
 
         # Database and controllers
@@ -135,7 +154,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.model_path: Optional[str] = None
 
         # Current formulation and results
-        self.current_formulation: Optional[Dict[str, float]] = {}
+        self.current_formulation: Dict[str, Dict[str, Any]] = {}
         self.formulation_obj: Optional[Formulation] = None
         self.hypothesis_result: Optional[Dict] = None
 
@@ -144,22 +163,22 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Available ingredients by type
         self.ingredients_by_type: Dict[str, List] = {
-            'Protein': [],
-            'Buffer': [],
-            'Surfactant': [],
-            'Stabilizer': [],
-            'Excipient': [],
-            'Salt': []
+            "Protein": [],
+            "Buffer": [],
+            "Surfactant": [],
+            "Stabilizer": [],
+            "Excipient": [],
+            "Salt": [],
         }
 
         # Selected ingredients by type
-        self.selected_ingredients: Dict[str, tuple] = {
-            'Protein': None,
-            'Buffer': None,
-            'Surfactant': None,
-            'Stabilizer': None,
-            'Excipient': None,
-            'Salt': None
+        self.selected_ingredients: Dict[str, tuple | None] = {
+            "Protein": None,
+            "Buffer": None,
+            "Surfactant": None,
+            "Stabilizer": None,
+            "Excipient": None,
+            "Salt": None,
         }
 
         # Initialize file dialogs
@@ -175,13 +194,11 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         """Initialize file dialog for model selection."""
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.model_dialog.setNameFilter(
-            "VisQAI Model Files (*.zip);;All Files (*)")
+        self.model_dialog.setNameFilter("VisQAI Model Files (*.zip);;All Files (*)")
         self.model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
 
         # Set default directory
-        model_path = os.path.join(
-            Architecture.get_path(), "QATCH/VisQAI/assets")
+        model_path = os.path.join(Architecture.get_path(), "QATCH/VisQAI/assets")
         if os.path.exists(model_path):
             self.model_dialog.setDirectory(model_path)
         else:
@@ -212,8 +229,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             for ingredient in all_ingredients:
                 ingredient_type = ingredient.type
                 if ingredient_type in self.ingredients_by_type:
-                    self.ingredients_by_type[ingredient_type].append(
-                        ingredient)
+                    self.ingredients_by_type[ingredient_type].append(ingredient)
 
             # Sort each type by name and remove duplicates
             for ing_type in self.ingredients_by_type:
@@ -228,10 +244,16 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
                 # Replace with unique, sorted list
                 self.ingredients_by_type[ing_type] = sorted(
-                    unique_ingredients.values(), key=lambda x: x.name.lower())
+                    unique_ingredients.values(), key=lambda x: x.name.lower()
+                )
 
-            Log.i(TAG, f"Loaded ingredients by type: " +
-                  ", ".join([f"{k}:{len(v)}" for k, v in self.ingredients_by_type.items()]))
+            Log.i(
+                TAG,
+                "Loaded ingredients by type: "
+                + ", ".join(
+                    [f"{k}:{len(v)}" for k, v in self.ingredients_by_type.items()]
+                ),
+            )
 
         except Exception as e:
             Log.e(TAG, f"Failed to load ingredients by type: {e}")
@@ -239,7 +261,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
     def init_ui(self) -> None:
         main_layout = QtWidgets.QVBoxLayout(self)
-        splitter = QtWidgets.QSplitter(Qt.Horizontal)
+        splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         left_panel = self.create_configuration_panel()
         splitter.addWidget(left_panel)
         right_panel = self.create_visualization_panel()
@@ -331,8 +353,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 # Sort ingredients: 'none' first, then alphabetically
                 sorted_ingredients = sorted(
                     ingredients,
-                    key=lambda ing: (ing.name.lower() !=
-                                     'none', ing.name.lower())
+                    key=lambda ing: (ing.name.lower() != "none", ing.name.lower()),
                 )
 
                 for ingredient in sorted_ingredients:
@@ -345,20 +366,27 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             spin = QtWidgets.QDoubleSpinBox()
             unit = self.INGREDIENT_UNITS[ing_type]
 
-            if unit == 'M':
-                spin.setRange(0.0, 10.0)
+            # Set ranges and precision based on IO_CLAMP_RANGE and unit type
+            limit_key = f"{ing_type}_conc"
+            if self.parent:
+                min_val, max_val = self.parent.IO_CLAMP_RANGE.get(
+                    limit_key, (0.0, 1000.0)
+                )
+            else:
+                min_val, max_val = (0.0, 1000.0)
+            spin.setRange(min_val, max_val)
+            spin.setToolTip(f"Range: {min_val} - {max_val} {unit}")
+
+            if unit == "M":
                 spin.setDecimals(3)
                 spin.setSingleStep(0.001)
-            elif unit == 'mM':
-                spin.setRange(0.0, 1000.0)
+            elif unit == "mM":
                 spin.setDecimals(2)
-                spin.setSingleStep(0.1)
-            elif unit == 'mg/mL':
-                spin.setRange(0.0, 500.0)
+                spin.setSingleStep(1.0)
+            elif unit == "mg/mL":
                 spin.setDecimals(2)
                 spin.setSingleStep(0.5)
-            elif unit == '%w':
-                spin.setRange(0.0, 100.0)
+            elif unit == "%w":
                 spin.setDecimals(3)
                 spin.setSingleStep(0.01)
 
@@ -367,7 +395,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             spin.setMinimumWidth(120)
 
             combo.currentIndexChanged.connect(
-                lambda idx, t=ing_type: self.on_ingredient_changed(t, idx))
+                lambda idx, t=ing_type: self.on_ingredient_changed(t, idx)
+            )
             spin.valueChanged.connect(self.update_formulation)
 
             self.ingredient_combos[ing_type] = combo
@@ -380,10 +409,19 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             label.setStyleSheet("font-weight: bold;")
             form_layout.addRow(label, row_layout)
 
+        # Temperature Control
         temp_layout = QtWidgets.QHBoxLayout()
         self.temperature_spin = QtWidgets.QDoubleSpinBox()
-        self.temperature_spin.setRange(0.0, 100.0)
+
+        # Apply Temperature Clamps
+        if self.parent:
+            t_min, t_max = self.parent.IO_CLAMP_RANGE.get("Temperature", (8.0, 40.0))
+        else:
+            t_min, t_max = (8.0, 40.0)
+        self.temperature_spin.setRange(t_min, t_max)
         self.temperature_spin.setValue(25.0)
+        self.temperature_spin.setToolTip(f"Range: {t_min} - {t_max} °C")
+
         self.temperature_spin.setSuffix(" °C")
         self.temperature_spin.setDecimals(1)
         self.temperature_spin.setSingleStep(0.5)
@@ -414,7 +452,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         for key, label in self.HYPOTHESIS_TYPES.items():
             self.hypothesis_type_combo.addItem(label, key)
         self.hypothesis_type_combo.currentIndexChanged.connect(
-            self.on_hypothesis_type_changed)
+            self.on_hypothesis_type_changed
+        )
 
         type_layout.addWidget(self.hypothesis_type_combo, stretch=1)
         layout.addLayout(type_layout)
@@ -492,20 +531,19 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Hypothesis outcome display
         self.outcome_frame = QtWidgets.QFrame()
-        self.outcome_frame.setFrameStyle(
-            QtWidgets.QFrame.Box | QtWidgets.QFrame.Raised)
+        self.outcome_frame.setFrameStyle(QtWidgets.QFrame.Box | QtWidgets.QFrame.Raised)
         self.outcome_frame.setLineWidth(2)
         outcome_layout = QtWidgets.QVBoxLayout(self.outcome_frame)
 
-        self.outcome_label = QtWidgets.QLabel(
-            "Run a hypothesis test to see results")
-        self.outcome_label.setAlignment(Qt.AlignCenter)
+        self.outcome_label = QtWidgets.QLabel("Run a hypothesis test to see results")
+        self.outcome_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.outcome_label.setStyleSheet(
-            "font-size: 18pt; font-weight: bold; padding: 20px;")
+            "font-size: 18pt; font-weight: bold; padding: 20px;"
+        )
         outcome_layout.addWidget(self.outcome_label)
 
         self.probability_label = QtWidgets.QLabel("")
-        self.probability_label.setAlignment(Qt.AlignCenter)
+        self.probability_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.probability_label.setStyleSheet("font-size: 14pt; padding: 10px;")
         outcome_layout.addWidget(self.probability_label)
 
@@ -515,8 +553,11 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.results_table = QtWidgets.QTableWidget()
         self.results_table.setColumnCount(2)
         self.results_table.setHorizontalHeaderLabels(["Metric", "Value"])
-        self.results_table.horizontalHeader().setStretchLastSection(True)
-        self.results_table.verticalHeader().setVisible(False)
+        if h_header := self.results_table.horizontalHeader():
+            h_header.setStretchLastSection(True)
+
+        if v_header := self.results_table.verticalHeader():
+            v_header.setVisible(False)
         layout.addWidget(self.results_table)
 
         return widget
@@ -534,17 +575,13 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Controls for profile plot
         controls_layout = QtWidgets.QHBoxLayout()
 
-        self.show_confidence_check = QtWidgets.QCheckBox(
-            "Show CI")
+        self.show_confidence_check = QtWidgets.QCheckBox("Show CI")
         self.show_confidence_check.setChecked(True)
-        self.show_confidence_check.stateChanged.connect(
-            self.update_profile_plot)
+        self.show_confidence_check.stateChanged.connect(self.update_profile_plot)
 
-        self.show_threshold_check = QtWidgets.QCheckBox(
-            "Show Hypothesis Threshold")
+        self.show_threshold_check = QtWidgets.QCheckBox("Show Hypothesis Threshold")
         self.show_threshold_check.setChecked(True)
-        self.show_threshold_check.stateChanged.connect(
-            self.update_profile_plot)
+        self.show_threshold_check.stateChanged.connect(self.update_profile_plot)
 
         self.log_scale_check = QtWidgets.QCheckBox("Log Scale (X-axis)")
         self.log_scale_check.setChecked(True)
@@ -573,8 +610,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     self.model_path = file_path
                     self.predictor = Predictor(file_path)
                     self.hypothesis_tester = HypothesisTesting(file_path)
-                    display_name = file_path.split(
-                        '\\')[-1].split('/')[-1].split('.')[0]
+                    display_name = (
+                        file_path.split("\\")[-1].split("/")[-1].split(".")[0]
+                    )
                     self.model_label.setText(f"Model: {display_name}")
                     Log.i(TAG, f"Model loaded: {file_path}")
                     self.check_run_button_state()
@@ -582,9 +620,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 except Exception as e:
                     Log.e(TAG, f"Failed to load model: {e}")
                     QtWidgets.QMessageBox.critical(
-                        self,
-                        "Model Loading Error",
-                        f"Failed to load model: {str(e)}"
+                        self, "Model Loading Error", f"Failed to load model: {str(e)}"
                     )
                     self.model_path = None
                     self.predictor = None
@@ -593,7 +629,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
     def update_formulation(self) -> None:
         """Update the current formulation based on selected ingredients and concentrations."""
-        self.current_formulation.clear()
+        if self.current_formulation:
+            self.current_formulation.clear()
 
         # Build formulation from selected ingredients with their units
         for ing_type in self.INGREDIENT_TYPES:
@@ -607,9 +644,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             if ingredient is not None and concentration > 0:
                 # Store with ingredient name as key and value with unit info
                 self.current_formulation[ingredient.name] = {
-                    'value': concentration,
-                    'unit': self.INGREDIENT_UNITS[ing_type],
-                    'type': ing_type
+                    "value": concentration,
+                    "unit": self.INGREDIENT_UNITS[ing_type],
+                    "type": ing_type,
                 }
 
         # Update temperature
@@ -627,10 +664,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         current_ingredient = combo.currentData()
 
         # Check if 'none' or placeholder is selected
-        is_none_or_placeholder = (
-            current_ingredient is None or
-            (hasattr(current_ingredient, 'name')
-             and current_ingredient.name.lower() == 'none')
+        is_none_or_placeholder = current_ingredient is None or (
+            hasattr(current_ingredient, "name")
+            and current_ingredient.name.lower() == "none"
         )
 
         # If the selected item has None as data (the "Select" option)
@@ -649,18 +685,18 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         # Clear existing layout
         while self.value_layout.count():
             child = self.value_layout.takeAt(0)
-            if child.widget():
-                child.widget().setParent(None)
+            if child and (widget := child.widget()):
+                widget.setParent(None)
 
         hypothesis_type = self.hypothesis_type_combo.currentData()
 
-        if hypothesis_type == 'upper':
+        if hypothesis_type == "upper":
             self.value_layout.addRow("Upper Threshold:", self.threshold_spin)
 
-        elif hypothesis_type == 'lower':
+        elif hypothesis_type == "lower":
             self.value_layout.addRow("Lower Threshold:", self.threshold_spin)
 
-        elif hypothesis_type == 'between':
+        elif hypothesis_type == "between":
             self.value_layout.addRow("Lower Bound:", self.min_spin)
             self.value_layout.addRow("Upper Bound:", self.max_spin)
 
@@ -680,8 +716,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 break
 
             # Check if ingredient is 'none'
-            is_none_ingredient = (hasattr(ingredient, 'name') and
-                                  ingredient.name.lower() == 'none')
+            is_none_ingredient = (
+                hasattr(ingredient, "name") and ingredient.name.lower() == "none"
+            )
 
             # If not 'none' ingredient, concentration must be > 0
             if not is_none_ingredient and concentration <= 0:
@@ -692,7 +729,8 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         has_temperature = self.temperature is not None
 
         self.run_test_btn.setEnabled(
-            has_model and all_types_selected and has_temperature)
+            has_model and all_types_selected and has_temperature
+        )
 
     def run_hypothesis_test(self) -> None:
         """Run the hypothesis test using the area-based CI containment approach."""
@@ -704,7 +742,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Invalid Formulation",
-                    "Please ensure all required ingredients are selected."
+                    "Please ensure all required ingredients are selected.",
                 )
                 return
 
@@ -717,13 +755,13 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             ci_range = (alpha, 100 - alpha)
 
             # Determine bounds based on hypothesis type
-            if hypothesis_type == 'upper':
+            if hypothesis_type == "upper":
                 threshold = self.threshold_spin.value()
                 bounds = (-np.inf, threshold)
-            elif hypothesis_type == 'lower':
+            elif hypothesis_type == "lower":
                 threshold = self.threshold_spin.value()
                 bounds = (threshold, np.inf)
-            elif hypothesis_type == 'between':
+            elif hypothesis_type == "between":
                 min_val = self.min_spin.value()
                 max_val = self.max_spin.value()
 
@@ -731,38 +769,40 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                     QtWidgets.QMessageBox.warning(
                         self,
                         "Invalid Bounds",
-                        "Lower bound must be less than upper bound."
+                        "Lower bound must be less than upper bound.",
                     )
                     return
 
                 bounds = (min_val, max_val)
             else:
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Error",
-                    "Unknown hypothesis type."
+                    self, "Error", "Unknown hypothesis type."
                 )
                 return
 
             # Run hypothesis test using area-based approach
             Log.i(
-                TAG, f"Running hypothesis test: type={hypothesis_type}, bounds={bounds}, CI={ci_range}")
-
-            result = self.hypothesis_tester.evaluate_hypothesis(
-                formulation=self.formulation_obj,
-                hypothesis_type=hypothesis_type,
-                shear_rates=self.SHEAR_RATES,
-                bounds=bounds,
-                ci_range=ci_range
+                TAG,
+                f"Running hypothesis test: type={hypothesis_type}, bounds={bounds}, CI={ci_range}",
             )
+            if self.hypothesis_tester:
+                result = self.hypothesis_tester.evaluate_hypothesis(
+                    formulation=self.formulation_obj,
+                    hypothesis_type=hypothesis_type,
+                    shear_rates=self.SHEAR_RATES,
+                    bounds=bounds,
+                    ci_range=ci_range,
+                )
+            else:
+                raise RuntimeError("Hypothesis could not be initialized at runtime.")
 
             # Store results
             self.hypothesis_result = {
-                'hypothesis_type': hypothesis_type,
-                'bounds': bounds,
-                'confidence_level': confidence_level,
-                'ci_range': ci_range,
-                'result': result
+                "hypothesis_type": hypothesis_type,
+                "bounds": bounds,
+                "confidence_level": confidence_level,
+                "ci_range": ci_range,
+                "result": result,
             }
 
             # Update visualizations
@@ -773,7 +813,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self.save_btn.setEnabled(True)
 
             Log.i(
-                TAG, f"Hypothesis test completed: {result['pct_contained']:.2f}% contained")
+                TAG,
+                f"Hypothesis test completed: {result['pct_contained']:.2f}% contained",
+            )
 
         except Exception as e:
             Log.e(TAG, f"Error running hypothesis test: {e}")
@@ -781,42 +823,58 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             QtWidgets.QMessageBox.critical(
                 self,
                 "Hypothesis Test Error",
-                f"Failed to run hypothesis test:\n{str(e)}"
+                f"Failed to run hypothesis test:\n{str(e)}",
             )
 
     def _build_formulation_object(self) -> Optional[Formulation]:
         """Build a Formulation object from the current formulation."""
         try:
             # Get ingredients
-            protein = self.ingredient_combos['Protein'].currentData()
-            buffer = self.ingredient_combos['Buffer'].currentData()
-            surfactant = self.ingredient_combos['Surfactant'].currentData()
-            stabilizer = self.ingredient_combos['Stabilizer'].currentData()
-            excipient = self.ingredient_combos['Excipient'].currentData()
-            salt = self.ingredient_combos['Salt'].currentData()
+            protein = self.ingredient_combos["Protein"].currentData()
+            buffer = self.ingredient_combos["Buffer"].currentData()
+            surfactant = self.ingredient_combos["Surfactant"].currentData()
+            stabilizer = self.ingredient_combos["Stabilizer"].currentData()
+            excipient = self.ingredient_combos["Excipient"].currentData()
+            salt = self.ingredient_combos["Salt"].currentData()
 
             # Get concentrations
-            protein_conc = self.concentration_spins['Protein'].value()
-            buffer_conc = self.concentration_spins['Buffer'].value()
-            surfactant_conc = self.concentration_spins['Surfactant'].value()
-            stabilizer_conc = self.concentration_spins['Stabilizer'].value()
-            excipient_conc = self.concentration_spins['Excipient'].value()
-            salt_conc = self.concentration_spins['Salt'].value()
+            protein_conc = self.concentration_spins["Protein"].value()
+            buffer_conc = self.concentration_spins["Buffer"].value()
+            surfactant_conc = self.concentration_spins["Surfactant"].value()
+            stabilizer_conc = self.concentration_spins["Stabilizer"].value()
+            excipient_conc = self.concentration_spins["Excipient"].value()
+            salt_conc = self.concentration_spins["Salt"].value()
 
             # Create formulation
             formulation = Formulation()
             formulation.set_protein(
-                protein=protein, concentration=protein_conc, units=self.INGREDIENT_UNITS["Protein"])
+                protein=protein,
+                concentration=protein_conc,
+                units=self.INGREDIENT_UNITS["Protein"],
+            )
             formulation.set_buffer(
-                buffer=buffer, concentration=buffer_conc, units=self.INGREDIENT_UNITS["Buffer"])
+                buffer=buffer,
+                concentration=buffer_conc,
+                units=self.INGREDIENT_UNITS["Buffer"],
+            )
             formulation.set_excipient(
-                excipient=excipient, concentration=excipient_conc, units=self.INGREDIENT_UNITS["Excipient"])
+                excipient=excipient,
+                concentration=excipient_conc,
+                units=self.INGREDIENT_UNITS["Excipient"],
+            )
             formulation.set_salt(
-                salt=salt, concentration=salt_conc, units=self.INGREDIENT_UNITS["Salt"])
+                salt=salt, concentration=salt_conc, units=self.INGREDIENT_UNITS["Salt"]
+            )
             formulation.set_stabilizer(
-                stabilizer=stabilizer, concentration=stabilizer_conc, units=self.INGREDIENT_UNITS["Stabilizer"])
+                stabilizer=stabilizer,
+                concentration=stabilizer_conc,
+                units=self.INGREDIENT_UNITS["Stabilizer"],
+            )
             formulation.set_surfactant(
-                surfactant=surfactant, concentration=surfactant_conc, units=self.INGREDIENT_UNITS["Surfactant"])
+                surfactant=surfactant,
+                concentration=surfactant_conc,
+                units=self.INGREDIENT_UNITS["Surfactant"],
+            )
             formulation.set_temperature(self.temperature)
             return formulation
 
@@ -829,10 +887,10 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         if self.hypothesis_result is None:
             return
 
-        result = self.hypothesis_result['result']
-        hypothesis_type = self.hypothesis_result['hypothesis_type']
-        bounds = self.hypothesis_result['bounds']
-        pct_contained = result['pct_contained']
+        result = self.hypothesis_result["result"]
+        hypothesis_type = self.hypothesis_result["hypothesis_type"]
+        bounds = self.hypothesis_result["bounds"]
+        pct_contained = result["pct_contained"]
 
         # Update outcome label
         if pct_contained >= 90:
@@ -854,16 +912,18 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         self.outcome_label.setText(outcome_text)
         self.outcome_frame.setStyleSheet(
-            f"background-color: {color}; border-radius: 10px;")
+            f"background-color: {color}; border-radius: 10px;"
+        )
         self.probability_label.setText(
-            f"{pct_contained:.1f}% of CI within bounds\n{interpretation}")
+            f"{pct_contained:.1f}% of CI within bounds\n{interpretation}"
+        )
 
         # Build hypothesis statement
-        if hypothesis_type == 'upper':
+        if hypothesis_type == "upper":
             hyp_statement = f"Viscosity < {bounds[1]:.2f} cP"
-        elif hypothesis_type == 'lower':
+        elif hypothesis_type == "lower":
             hyp_statement = f"Viscosity > {bounds[0]:.2f} cP"
-        elif hypothesis_type == 'between':
+        elif hypothesis_type == "between":
             hyp_statement = f"{bounds[0]:.2f} ≤ Viscosity ≤ {bounds[1]:.2f} cP"
 
         # Populate results table
@@ -872,43 +932,48 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         rows = [
             ("Hypothesis", hyp_statement),
             ("Test Type", hypothesis_type.title()),
-            ("Confidence Level",
-             f"{self.hypothesis_result['confidence_level']:.1f}%"),
-            ("CI Range",
-             f"{self.hypothesis_result['ci_range'][0]:.3f} - {self.hypothesis_result['ci_range'][1]:.3f}"),
+            ("Confidence Level", f"{self.hypothesis_result['confidence_level']:.1f}%"),
+            (
+                "CI Range",
+                f"{self.hypothesis_result['ci_range'][0]:.3f} - {self.hypothesis_result['ci_range'][1]:.3f}",
+            ),
             ("", ""),  # Separator
             ("% CI Contained", f"{pct_contained:.2f}%"),
-            ("Area Contained",
-             f"{result['area_contained']:.4f} (log₁₀[1/s] × cP)"),
+            ("Area Contained", f"{result['area_contained']:.4f} (log₁₀[1/s] × cP)"),
             ("Total CI Area", f"{result['total_area']:.4f} (log₁₀[1/s] × cP)"),
             ("", ""),  # Separator
-            ("Mean Predictions:", "")
+            ("Mean Predictions:", ""),
         ]
 
         # Add mean predictions for each shear rate
-        for sr, pred in result['mean_predictions'].items():
+        for sr, pred in result["mean_predictions"].items():
             rows.append((f"  @ {sr:,} 1/s", f"{pred:.2f} cP"))
 
         self.results_table.setRowCount(len(rows))
 
         # Define colors for alternating rows
         color_row_even = "#F8F9FA"  # Light gray
-        color_row_odd = "#FFFFFF"   # White
+        color_row_odd = "#FFFFFF"  # White
         color_separator = "#E5E9F0"  # Slightly darker for separators
-        color_header = "#D8DEE9"     # Header row color
+        color_header = "#D8DEE9"  # Header row color
 
         for i, (metric, value) in enumerate(rows):
             metric_item = QtWidgets.QTableWidgetItem(metric)
             value_item = QtWidgets.QTableWidgetItem(value)
 
             # Make cells non-editable
-            metric_item.setFlags(metric_item.flags() & ~
-                                 Qt.ItemIsEditable)
-            value_item.setFlags(value_item.flags() & ~Qt.ItemIsEditable)
+            new_flags_int = metric_item.flags() & ~Qt.ItemFlag.ItemIsEditable
 
+            # Cast that integer to the 'Qt.ItemFlags' type so setFlags() accepts it
+            metric_item.setFlags(cast(Qt.ItemFlags, new_flags_int))
+
+            # Repeat for value_item
+            value_item.setFlags(
+                cast(Qt.ItemFlags, value_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            )
             # Determine row color and styling
-            is_separator = (metric == "")
-            is_header = (metric == "Mean Predictions:")
+            is_separator = metric == ""
+            is_header = metric == "Mean Predictions:"
 
             if is_separator:
                 # Separator rows
@@ -927,8 +992,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 value_item.setFont(font)
             else:
                 # Regular data rows - alternating colors
-                bg_color = QtGui.QColor(
-                    color_row_even if i % 2 == 0 else color_row_odd)
+                bg_color = QtGui.QColor(color_row_even if i % 2 == 0 else color_row_odd)
                 metric_item.setBackground(bg_color)
                 value_item.setBackground(bg_color)
 
@@ -950,9 +1014,9 @@ class HypothesisTestingUI(QtWidgets.QDialog):
         self.profile_figure.clear()
         ax = self.profile_figure.add_subplot(111)
 
-        result = self.hypothesis_result['result']
-        mean_preds = result['mean_predictions']
-        bounds = self.hypothesis_result['bounds']
+        result = self.hypothesis_result["result"]
+        mean_preds = result["mean_predictions"]
+        bounds = self.hypothesis_result["bounds"]
 
         # Color scheme
         color_predicted = "#32E2DF"
@@ -961,14 +1025,18 @@ class HypothesisTestingUI(QtWidgets.QDialog):
 
         # Get CI bounds from predictor
         try:
-            ci_range = self.hypothesis_result['ci_range']
-            _, pred_stats = self.predictor.predict_uncertainty(
-                df=self.formulation_obj.to_dataframe(
-                    encoded=False, training=False),
-                ci_range=ci_range
-            )
-            lower_ci = pred_stats['lower_ci']
-            upper_ci = pred_stats['upper_ci']
+            ci_range = self.hypothesis_result["ci_range"]
+            if self.predictor and self.formulation_obj:
+                _, pred_stats = self.predictor.predict_uncertainty(
+                    df=self.formulation_obj.to_dataframe(encoded=False, training=False),
+                    ci_range=ci_range,
+                )
+            else:
+                raise RuntimeError(
+                    "Predictor and/or formulation is None at inference time."
+                )
+            lower_ci = pred_stats["lower_ci"]
+            upper_ci = pred_stats["upper_ci"]
             upper_ci = upper_ci.flatten()
             lower_ci = lower_ci.flatten()
         except Exception as e:
@@ -986,28 +1054,28 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 upper_ci,
                 color=color_ci,
                 alpha=0.15,
-                label=f'{ci_range}% CI',
+                label=f"{ci_range}% CI",
                 linewidth=0,
-                zorder=2
+                zorder=2,
             )
 
         # Plot mean prediction
         if self.log_scale_check.isChecked():
-            ax.set_xscale('log')
+            ax.set_xscale("log")
 
         ax.plot(
             shear_rates,
             mean_values,
-            '-',
+            "-",
             color=color_predicted,
             alpha=0.85,
             linewidth=2.5,
-            marker='o',
+            marker="o",
             markersize=6,
             markerfacecolor=color_predicted,
             markeredgewidth=0,
-            label='Mean Prediction',
-            zorder=5
+            label="Mean Prediction",
+            zorder=5,
         )
 
         if self.show_threshold_check.isChecked():
@@ -1024,49 +1092,72 @@ class HypothesisTestingUI(QtWidgets.QDialog):
                 y2=upper,
                 color=color_hypothesis,
                 alpha=0.2,  # translucent so the main curve stays visible
-                label=f'Hypothesis Range ({bounds[0]:.1f}-{bounds[1]:.1f} cP)'
-                if np.isfinite(bounds).all()
-                else "Hypothesis Range",
-                zorder=2
+                label=(
+                    f"Hypothesis Range ({bounds[0]:.1f}-{bounds[1]:.1f} cP)"
+                    if np.isfinite(bounds).all()
+                    else "Hypothesis Range"
+                ),
+                zorder=2,
             )
 
-        ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
-        ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
+        ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, color="#4C566A")
+        ax.set_ylabel("Viscosity (cP)", fontsize=11, color="#4C566A")
         ax.set_title(
-            'Viscosity Profile with Confidence Interval',
+            "Viscosity Profile with Confidence Interval",
             fontsize=13,
             fontweight=600,
             color="#2E3440",
-            pad=15
+            pad=15,
         )
 
         ax.legend(
-            loc='best',
+            loc="best",
             fontsize=9,
             frameon=True,
             framealpha=0.95,
             edgecolor="#E5E9F0",
-            fancybox=False
+            fancybox=False,
         )
 
-        ax.grid(True, alpha=0.2, which="major",
-                linestyle="-", linewidth=0.5, color="#D8DEE9")
-        ax.grid(True, alpha=0.1, which="minor",
-                linestyle="-", linewidth=0.3, color="#D8DEE9")
+        ax.grid(
+            True,
+            alpha=0.2,
+            which="major",
+            linestyle="-",
+            linewidth=0.5,
+            color="#D8DEE9",
+        )
+        ax.grid(
+            True,
+            alpha=0.1,
+            which="minor",
+            linestyle="-",
+            linewidth=0.3,
+            color="#D8DEE9",
+        )
 
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.spines['left'].set_color("#E5E9F0")
-        ax.spines['bottom'].set_color("#E5E9F0")
-        ax.spines['left'].set_linewidth(1)
-        ax.spines['bottom'].set_linewidth(1)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.spines["left"].set_color("#E5E9F0")
+        ax.spines["bottom"].set_color("#E5E9F0")
+        ax.spines["left"].set_linewidth(1)
+        ax.spines["bottom"].set_linewidth(1)
         ax.tick_params(colors="#4C566A", which="both", labelsize=9)
         from datetime import datetime
+
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        ax.text(0.98, 0.02, timestamp,
-                transform=ax.transAxes, fontsize=7,
-                verticalalignment='bottom', horizontalalignment='right',
-                alpha=0.4, style='italic', color='#636e72')
+        ax.text(
+            0.98,
+            0.02,
+            timestamp,
+            transform=ax.transAxes,
+            fontsize=7,
+            verticalalignment="bottom",
+            horizontalalignment="right",
+            alpha=0.4,
+            style="italic",
+            color="#636e72",
+        )
         self.profile_figure.tight_layout()
         self.profile_canvas.draw()
 
@@ -1076,7 +1167,7 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self,
             "Clear All",
             "Are you sure you want to clear all inputs and results?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
         )
 
         if reply == QtWidgets.QMessageBox.Yes:
@@ -1120,60 +1211,56 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self,
             "Save Results",
             "hypothesis_test_results.json",
-            "JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)",
         )
 
         if file_path:
             try:
-                result = self.hypothesis_result['result']
+                result = self.hypothesis_result["result"]
 
                 # Build hypothesis statement
-                hypothesis_type = self.hypothesis_result['hypothesis_type']
-                bounds = self.hypothesis_result['bounds']
+                hypothesis_type = self.hypothesis_result["hypothesis_type"]
+                bounds = self.hypothesis_result["bounds"]
 
-                if hypothesis_type == 'upper':
+                if hypothesis_type == "upper":
                     statement = f"Viscosity < {bounds[1]:.2f} cP across all shear rates"
-                elif hypothesis_type == 'lower':
+                elif hypothesis_type == "lower":
                     statement = f"Viscosity > {bounds[0]:.2f} cP across all shear rates"
-                elif hypothesis_type == 'between':
+                elif hypothesis_type == "between":
                     statement = f"{bounds[0]:.2f} ≤ Viscosity ≤ {bounds[1]:.2f} cP across all shear rates"
 
                 # Prepare data
                 data = {
-                    'formulation': self.current_formulation,
-                    'temperature': self.temperature,
-                    'hypothesis': {
-                        'type': hypothesis_type,
-                        'bounds': bounds,
-                        'confidence_level': self.hypothesis_result['confidence_level'],
-                        'ci_range': self.hypothesis_result['ci_range'],
-                        'statement': statement
+                    "formulation": self.current_formulation,
+                    "temperature": self.temperature,
+                    "hypothesis": {
+                        "type": hypothesis_type,
+                        "bounds": bounds,
+                        "confidence_level": self.hypothesis_result["confidence_level"],
+                        "ci_range": self.hypothesis_result["ci_range"],
+                        "statement": statement,
                     },
-                    'results': {
-                        'pct_contained': result['pct_contained'],
-                        'area_contained': result['area_contained'],
-                        'total_area': result['total_area'],
-                        'mean_predictions': result['mean_predictions'],
-                        'test_type': result['test_type']
-                    }
+                    "results": {
+                        "pct_contained": result["pct_contained"],
+                        "area_contained": result["area_contained"],
+                        "total_area": result["total_area"],
+                        "mean_predictions": result["mean_predictions"],
+                        "test_type": result["test_type"],
+                    },
                 }
 
                 # Save to file
-                with open(file_path, 'w') as f:
+                with open(file_path, "w") as f:
                     json.dump(data, f, indent=2)
 
                 QtWidgets.QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Results saved successfully to:\n{file_path}"
+                    self, "Success", f"Results saved successfully to:\n{file_path}"
                 )
 
             except Exception as e:
                 Log.e(TAG, f"Failed to save results: {e}")
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Save Error",
-                    f"Failed to save results:\n{str(e)}"
+                    self, "Save Error", f"Failed to save results:\n{str(e)}"
                 )
 
     def save_profile_plot(self) -> None:
@@ -1182,29 +1269,16 @@ class HypothesisTestingUI(QtWidgets.QDialog):
             self,
             "Save Profile Plot",
             "viscosity_profile.png",
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)"
+            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
         )
 
         if file_path:
             try:
-                self.profile_figure.savefig(
-                    file_path, dpi=300, bbox_inches='tight')
+                self.profile_figure.savefig(file_path, dpi=300, bbox_inches="tight")
                 QtWidgets.QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Plot saved successfully to:\n{file_path}"
+                    self, "Success", f"Plot saved successfully to:\n{file_path}"
                 )
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Failed to save plot:\n{str(e)}"
+                    self, "Error", f"Failed to save plot:\n{str(e)}"
                 )
-
-
-# Example usage
-if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
-    window = HypothesisTestingUI()
-    window.show()
-    sys.exit(app.exec_())
