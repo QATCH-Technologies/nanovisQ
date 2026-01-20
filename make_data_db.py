@@ -1,13 +1,12 @@
-import os
-import uuid
 import json
-import time
+import os
 import random
+import time
+import uuid
+from typing import List, Optional, Union
 
 import pandas as pd
-
-from typing import List, Optional, Union
-from rapidfuzz import process, fuzz
+from rapidfuzz import fuzz, process
 
 from QATCH.core.constants import Constants
 from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
@@ -41,27 +40,29 @@ print("Creating database file at:", DB_PATH)
 if os.path.exists(DB_PATH):
     os.remove(DB_PATH)
 
-database = Database(
-    path=DB_PATH,
-    encryption_key=metadata.get("app_key", None))
+database = Database(path=DB_PATH, encryption_key=metadata.get("app_key", None))
 ing_ctrl = IngredientController(db=database)
 ing_ctrl._user_mode = False
 
 # Populate DB with core training samples
 print(f"Adding core training samples to newly created app.db...")
 form_ctrl = FormulationController(db=database)
-csv_path = os.path.join(QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
-                        "VisQAI", "assets", "formulation_data_11112025.csv")
+csv_path = os.path.join(
+    QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
+    "VisQAI",
+    "assets",
+    "formulation_data_12292025.csv",
+)
 if not os.path.isfile(csv_path):
     raise FileNotFoundError(f"CSV file not found: {csv_path}")
 
 
 def _read_and_normalize_csv(path: str) -> pd.DataFrame:
     """Massage dataframe to an expected parsable format by:
-        1. Removing undesired columns from the dataset
-        2. Removing any blank/partial rows at end of file
-        3. Enforcing that columns match a valid type (None vs NaN)
-        4. Normalize protein class types to values from enum
+    1. Removing undesired columns from the dataset
+    2. Removing any blank/partial rows at end of file
+    3. Enforcing that columns match a valid type (None vs NaN)
+    4. Normalize protein class types to values from enum
     """
     df = pd.read_csv(csv_path)
     # Step 1: Removing undesired columns from the dataset
@@ -70,7 +71,7 @@ def _read_and_normalize_csv(path: str) -> pd.DataFrame:
     float_cols = ["MW", "PI_mean", "PI_range"]
     for col in float_cols:
         # Convert to numeric, invalid values become NaN
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col] = pd.to_numeric(df[col], errors="coerce")
     # Step 4: Normalize protein class types to values from enum
     valid_classes = ProteinClass.all_strings()
     given_classes = df["Protein_class_type"].tolist()
@@ -81,10 +82,9 @@ def _read_and_normalize_csv(path: str) -> pd.DataFrame:
                 choices=valid_classes,
                 scorer=fuzz.WRatio,
                 limit=1,
-                score_cutoff=0.5
+                score_cutoff=0.5,
             )
-            best_match_class = [
-                match_name for match_name, score, idx in matches][0]
+            best_match_class = [match_name for match_name, score, idx in matches][0]
             if best_match_class not in valid_classes:
                 best_match_class = ProteinClass.OTHER.value
             given_classes[i] = best_match_class
@@ -112,12 +112,12 @@ def _shuffle_text(text: str, seed: Union[int, None] = None) -> tuple[str, int]:
     if seed is None:
         milliseconds = int(round(time.time() * 1000))
         seed = milliseconds % 255
-    if seed == ord('\n'):
+    if seed == ord("\n"):
         seed += 1  # seed 10 cannot be used, it breaks metadata parsing
     random.seed(seed)
     indices = list(range(len(text)))
     random.shuffle(indices)
-    shuffled = ''.join(text[i] for i in indices)
+    shuffled = "".join(text[i] for i in indices)
     return shuffled, seed
 
 
@@ -139,7 +139,7 @@ with open(DB_PATH, "wb") as f:
 
 with open(DB_PATH, "rb") as f:
     print("Decrypting metadata...")
-    enc_metadata = f.readline().decode(app_encoding).rsplit('\n', 1)[0]
+    enc_metadata = f.readline().decode(app_encoding).rsplit("\n", 1)[0]
     print(f"Reading encrypted metadata: '{enc_metadata}'")
     seed = ord(enc_metadata[0])
     shuffled = enc_metadata[1:]
