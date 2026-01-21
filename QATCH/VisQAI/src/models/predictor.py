@@ -647,7 +647,7 @@ class Predictor:
         save: bool = False,
         verbose: bool = True,
         analog_protein: Optional[str] = None,
-        lr: float = 5e-3,
+        lr: float = 1e-2,
     ) -> Dict:
         """
         Incrementally update the model with new data.
