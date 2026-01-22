@@ -31,16 +31,15 @@ import pandas as pd
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import FormatStrFormatter
-from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5 import QtCore, QtWidgets
 from scipy.interpolate import interp1d
 
 try:
     from src.managers.version_manager import VersionManager
-    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.formulation import Formulation
     from src.models.predictor import Predictor
     from src.threads.executor import ExecutionRecord, Executor
     from src.utils.constraints import Constraints
-    from src.utils.icon_utils import IconUtils
     from src.utils.list_utils import ListUtils
     from src.utils.progress_tracker import Lite_QProgressDialog
     from src.view.constraints_ui import ConstraintsUI
@@ -51,11 +50,10 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.managers.version_manager import VersionManager
-    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.threads.executor import ExecutionRecord, Executor
     from QATCH.VisQAI.src.utils.constraints import Constraints
-    from QATCH.VisQAI.src.utils.icon_utils import IconUtils
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
     from QATCH.VisQAI.src.utils.progress_tracker import Lite_QProgressDialog
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI

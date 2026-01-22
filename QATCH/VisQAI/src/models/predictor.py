@@ -30,6 +30,8 @@ import pandas as pd
 import pyzipper
 
 try:
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+    from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.io.secure_loader import (
         SecureModuleLoader,
         SecurityError,
@@ -46,6 +48,8 @@ try:
 except (ImportError, ModuleNotFoundError):
     import logging
 
+    from src.controller.formulation_controller import FormulationController
+    from src.db.db import Database
     from src.io.secure_loader import (
         SecureModuleLoader,
         SecurityError,
@@ -135,6 +139,8 @@ class Predictor:
         self.verification_report = None
         self.scaler_feature_names = None
         self.checkpoint_paths = []  # Added to track paths for saving
+        self.database = Database(parse_file_key=True)
+        self.form_ctrl = FormulationController(db=self.database)
 
         if self.verify_signatures and not SECURITY_AVAILABLE:
             raise RuntimeError(
@@ -682,7 +688,7 @@ class Predictor:
             n_epochs = 100
 
         Log.i(f"Predictor.learn(): data.shape={new_df.shape}, n_epochs={n_epochs}")
-
+        ref_df = self.form_ctrl.get_all_as_dataframe(encoded=False)
         try:
             # Perform the training (updates weights/adapter in memory)
             self.predictor.learn(
@@ -691,6 +697,7 @@ class Predictor:
                 epochs=n_epochs,
                 lr=lr,
                 analog_protein=analog_protein,
+                reference_df=ref_df,
             )
 
             if save:
