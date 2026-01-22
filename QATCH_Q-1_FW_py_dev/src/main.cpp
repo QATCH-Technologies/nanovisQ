@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r68"
-#define RELEASE_DATE "2026-01-05"
+#define CODE_VERSION "v2.6b68"
+#define RELEASE_DATE "2026-01-22"
 
 /************************** LIBRARIES **************************/
 
@@ -376,7 +376,7 @@ Servo pogoServo2;
 
 // Debounce variables for POGO button
 volatile bool pogo_isr_hit_flag = false;
-bool pogo_pressed_flag = false; // true if POGO button is pressed
+bool pogo_pressed_flag = false; // true if POGO movement is queued
 unsigned long lastInterruptHitTime = 0;
 const unsigned long debounceDelay = 100; // debounce delay in ms
 
@@ -3347,33 +3347,30 @@ void QATCH_loop()
   if (HW_REV_MATCH(HW_REVISION_3))
   {
     /* HANDLE POGO BUTTON PRESS */
+    // NOTE: Event fires on button release.
+
     // Debounce logic handled here, not in ISR
     unsigned long now = millis();
-    if (pogo_isr_hit_flag) {
+    if (pogo_isr_hit_flag)
+    {
+      // Button IS actively being pressed
+      // Check button debounce delay timer
       if ((now - lastInterruptHitTime) > debounceDelay) {
-        pogo_pressed_flag = true;
+        pogo_pressed_flag = true; // queue movement
       }
-    } else {
+    }
+    else
+    {
+      // Button is NOT actively being pressed
+      // Time to fire POGO movement (if queued)
       lastInterruptHitTime = now;
-    }
-    if (pogo_pressed_flag) {
-      // Ignore button press if running an active sweep:
-      if (!is_running) pogo_button_pressed(false);
-      pogo_pressed_flag = false; // Clear flag
-    }
-
-    if (pogo_lid_opened && (!tft_msgbox || msgbox_icon != 3)) {
-      tft_msgbox = true;
-      msgbox_icon = 3; // info
-      sprintf(msgbox_title, "CARTRIDGE UNLOCKED");
-      sprintf(msgbox_text, "PRESS BUTTON TO LOCK");
-      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
-        tft_idle();
-    }
-    if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 3) {
-      tft_msgbox = false; // hide unlocked message
-      if (l298nhb_auto_off_at == 0) // Temp Control NOT in cool-down mode
-        tft_idle();
+      if (pogo_pressed_flag)
+      {
+        // Ignore button press if running an active sweep:
+        if (!is_running) pogo_button_pressed(false);
+        pogo_pressed_flag = false; // Clear queue flag
+        tft_idle(); // update cartridge lock state
+      }
     }
   }
 }
@@ -4711,30 +4708,30 @@ void tft_cooldown()
 
   if (tft_msgbox) {
     if (tft_msgbox && msgbox_icon == 2) // pass
-      tft.setTextColor(ILI9341_GREEN);
-    else if (tft_msgbox && msgbox_icon == 3) // info
-      tft.setTextColor(QATCH_BLUE_FG);
-    else
-      tft.setTextColor(ILI9341_RED);
+        tft.setTextColor(ILI9341_GREEN);
+      else if (tft_msgbox && msgbox_icon == 3) // info
+        tft.setTextColor(QATCH_BLUE_FG);
+      else
+        tft.setTextColor(ILI9341_RED);
 
-    tft.setFont(Poppins_16_Bold);
+      tft.setFont(Poppins_16_Bold);
 
     String line1 = String(msgbox_title);
-    char buff1[line1.length() + 1]; // trailing NULL
-    line1.toCharArray(buff1, sizeof(buff1));
+      char buff1[line1.length() + 1]; // trailing NULL
+      line1.toCharArray(buff1, sizeof(buff1));
 
-    int msg_pad = 10;
-    int msg_w = tft.measureTextWidth(buff1);
-    //  msg_h = tft.measureTextHeight(buff1);
-    int msg_x = (TFT_WIDTH - msg_w) / 2;
-    int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
-    tft.setCursor(msg_x, msg_y);
-    tft.print(line1);
+      int msg_pad = 10;
+      int msg_w = tft.measureTextWidth(buff1);
+      //  msg_h = tft.measureTextHeight(buff1);
+      int msg_x = (TFT_WIDTH - msg_w) / 2;
+      int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+      tft.setCursor(msg_x, msg_y);
+      tft.print(line1);
 
-    // restore font and color to original values:
-    tft.setFont(Poppins_12_Bold);
-    tft.setTextColor(ILI9341_BLACK);
-  }
+      // restore font and color to original values:
+      tft.setFont(Poppins_12_Bold);
+      tft.setTextColor(ILI9341_BLACK);
+    }
   else
   {
     // No concerns about overwriting, and no need to blink when in cooldown
@@ -5060,13 +5057,13 @@ void tft_tempcontrol()
 
     tft.setCursor((TFT_WIDTH - w) / 2, rect_y + rect_h + 5 * pad);
     tft.print(buf);
-
+    
     //    tft.fillRoundRect(rect_x - 101 - pad, rect_y - pad, rect_w + 2 * pad, rect_h + 2 * pad, rect_r, ILI9341_WHITE);
     //    tft.drawFastVLine(rect_x - 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x + 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
   }
-
+  
   if (tft_msgbox && !msgbox_visible) {
     msgbox_visible = true;
 
@@ -5130,22 +5127,22 @@ void tft_tempcontrol()
 
   bool rewrite_PV_color = false;
   if (max31855.status() != 0)
-  {
-    tft.setTextColor(ILI9341_RED);
-    tft.setFont(Poppins_16_Bold);
-
+  {  
+      tft.setTextColor(ILI9341_RED);
+      tft.setFont(Poppins_16_Bold);
+      
     String line0 = "Hardware Error Detected";
-    char buff0[line0.length() + 1]; // trailing NULL
-    line0.toCharArray(buff0, sizeof(buff0));
-
-    uint16_t _pad = 10;
-    uint16_t _w = tft.measureTextWidth(buff0);
-    // uint16_t _h = tft.measureTextHeight(buff0);
-    uint16_t _x = (TFT_WIDTH - _w) / 2;
-    uint16_t _y = _pad;
-    //    Serial.printf("%u;%u;%u;%u", _x, _y, _w, _h);
-    tft.setCursor(_x, _y);
-    tft.print(line0);
+      char buff0[line0.length() + 1]; // trailing NULL
+      line0.toCharArray(buff0, sizeof(buff0));
+      
+      uint16_t _pad = 10;
+      uint16_t _w = tft.measureTextWidth(buff0);
+      // uint16_t _h = tft.measureTextHeight(buff0);
+      uint16_t _x = (TFT_WIDTH - _w) / 2;
+      uint16_t _y = _pad;
+      //    Serial.printf("%u;%u;%u;%u", _x, _y, _w, _h);
+      tft.setCursor(_x, _y);
+      tft.print(line0);
 
     hw_error = true;
 
