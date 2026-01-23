@@ -424,14 +424,30 @@ class FrameStep2(QtWidgets.QDialog):
         if self.model_path is None or not Path(self.model_path).exists():
             Log.e("No model selected. Please select a model to train first.")
             return
+
         self.learn_idx = 1
         self.run_learn_time = 0
+
+        # 1. Initialize Predictor to access current model metadata
         self.predictor = Predictor(zip_path=self.model_path)
+
+        # Retrieve the IDs this specific model instance has already seen
+        # (Default to empty if this is the first run on top of Base)
+        previous_trained_ids = self.predictor.metadata.get("trained_ids", [])
+
+        # 2. Prepare Current Training Data (The "New" Knowledge)
         dfs = []
+        current_batch_ids = []
+
         for form in self.parent.import_formulations:
             if getattr(form.viscosity_profile, "is_measured", True):
+                # Add to dataframe list
                 df = form.to_dataframe(encoded=False, training=True)
                 dfs.append(df)
+
+                # Track ID if it is in User Space (> 8000)
+                if hasattr(form, "ID") and form.id > 8000:
+                    current_batch_ids.append(form.id)
 
         if not dfs:
             Log.w(
@@ -440,6 +456,40 @@ class FrameStep2(QtWidgets.QDialog):
             return
 
         combined_df = pd.concat(dfs, ignore_index=True)
+
+        # 3. Prepare Reference Data (The "Old" Knowledge)
+        try:
+            # Corrected controller call
+            all_data_df = self.parent.form_ctrl.get_all_as_dataframe(encoded=False)
+
+            # Logic: Reference Data = (Base Model Data) OR (History of Parent Model)
+            # Base Model Data: ID < 8000
+            # History: ID is in previous_trained_ids
+
+            # Corrected Key: "ID"
+            is_base_model_data = all_data_df["ID"] < 8000
+            is_previously_learned = all_data_df["ID"].isin(previous_trained_ids)
+
+            # Filter the master dataframe
+            reference_df = all_data_df[is_base_model_data | is_previously_learned]
+
+            # Ensure we don't duplicate the *current* batch in the reference set
+            reference_df = reference_df[~reference_df["ID"].isin(current_batch_ids)]
+
+            if reference_df.empty:
+                reference_df = None
+                Log.w(
+                    "No reference data found (ID < 8000 or Previous IDs). Learning without memory replay."
+                )
+            else:
+                Log.i(
+                    f"Loaded {len(reference_df)} rows of reference data for memory replay."
+                )
+
+        except Exception as e:
+            Log.e(f"Failed to load reference data from database: {e}")
+            reference_df = None
+
         self.executor = Executor()
         self.mvc = VersionManager(self.model_dialog.directory().path(), retention=255)
         self.new_model_path = None
@@ -472,7 +522,6 @@ class FrameStep2(QtWidgets.QDialog):
 
                 Log.i(f"Archiving adapted model from {save_dir}...")
 
-                # Create the ZIP archive
                 saved_model_zip = make_archive(
                     base_name=zip_base_name,
                     format="zip",
@@ -480,30 +529,33 @@ class FrameStep2(QtWidgets.QDialog):
                     base_dir=".",
                 )
 
-                # Apply Security
                 enc_ok = self.predictor.add_security_to_zip(saved_model_zip)
                 if not enc_ok:
                     Log.w(
                         "Failed to add security to ZIP; committing unencrypted archive."
                     )
 
-                # Commit to Version Control
+                # 4. Update Metadata
+                # Calculate the new cumulative list of User Space IDs tracked
+                total_trained_ids = list(set(previous_trained_ids + current_batch_ids))
+                total_trained_ids.sort()
+
                 sha = self.mvc.commit(
                     model_file=saved_model_zip,
                     metadata={
                         "base_model": os.path.basename(self.model_path),
-                        "learned_runs": [
+                        "run_description": [
                             f"Formulation #{i+1}" for i in range(len(dfs))
                         ],
+                        # Track cumulative history
+                        "trained_ids": total_trained_ids,
                         "pinned_name": None,
                         "has_adapter": True,
                     },
                 )
 
-                # Clean up
                 os.remove(saved_model_zip)
 
-                # Restore/Rename
                 restored_path = self.mvc.get(sha, self.model_dialog.directory().path())
                 restored_path = Path(restored_path)
 
@@ -522,11 +574,12 @@ class FrameStep2(QtWidgets.QDialog):
             finally:
                 self.predictor.cleanup()
 
-        # Start learning on the combined DataFrame
+        # Start learning
         self.executor.run(
             self.predictor,
             method_name="learn",
             new_df=combined_df,
+            reference_df=reference_df,
             n_epochs=100,
             save=True,
             callback=learn_run_result,

@@ -107,6 +107,7 @@ class Predictor:
     VISC_100000 = "Viscosity_100000"
     VISC_15000000 = "Viscosity_15000000"
     ALL_SHEARS = [VISC_100, VISC_1000, VISC_10000, VISC_100000, VISC_15000000]
+    TAG = "[Predictor]"
 
     def __init__(
         self,
@@ -139,9 +140,6 @@ class Predictor:
         self.verification_report = None
         self.scaler_feature_names = None
         self.checkpoint_paths = []  # Added to track paths for saving
-        self.database = Database(parse_file_key=True)
-        self.form_ctrl = FormulationController(db=self.database)
-
         if self.verify_signatures and not SECURITY_AVAILABLE:
             raise RuntimeError(
                 "secure_loader module not available. Cannot verify signatures."
@@ -654,6 +652,7 @@ class Predictor:
         verbose: bool = True,
         analog_protein: Optional[str] = None,
         lr: float = 1e-2,
+        reference_df: pd.DataFrame = None,
     ) -> Dict:
         """
         Incrementally update the model with new data.
@@ -688,7 +687,7 @@ class Predictor:
             n_epochs = 100
 
         Log.i(f"Predictor.learn(): data.shape={new_df.shape}, n_epochs={n_epochs}")
-        ref_df = self.form_ctrl.get_all_as_dataframe(encoded=False)
+        Log.i(f"ref_df: {reference_df.head()}")
         try:
             # Perform the training (updates weights/adapter in memory)
             self.predictor.learn(
@@ -697,7 +696,7 @@ class Predictor:
                 epochs=n_epochs,
                 lr=lr,
                 analog_protein=analog_protein,
-                reference_df=ref_df,
+                reference_df=reference_df,
             )
 
             if save:
