@@ -421,6 +421,8 @@ class FrameStep2(QtWidgets.QDialog):
             self.run_canvas.draw()
 
     def learn(self):
+        import traceback  # Ensure traceback is available for error logging
+
         if self.model_path is None or not Path(self.model_path).exists():
             Log.e("No model selected. Please select a model to train first.")
             return
@@ -428,26 +430,81 @@ class FrameStep2(QtWidgets.QDialog):
         self.learn_idx = 1
         self.run_learn_time = 0
 
-        # 1. Initialize Predictor to access current model metadata
+        # --- Helper: User Space Detection Logic ---
+        def _is_user_space(formulation) -> bool:
+            """
+            Determines if a formulation is in User Space.
+            Rule: If ANY ingredient has an enc_id >= 8000, the formulation is User Space.
+            If ALL ingredients are < 8000, it is Admin Space (implicitly seen by Base Model).
+            """
+            try:
+                # List of component accessors in the Formulation class
+                components = [
+                    formulation.protein,
+                    formulation.buffer,
+                    formulation.stabilizer,
+                    formulation.surfactant,
+                    formulation.salt,
+                    formulation.excipient,
+                ]
+
+                for comp in components:
+                    # comp is an instance of Component (or None)
+                    # Component has an .ingredient attribute
+                    if comp is not None and comp.ingredient is not None:
+                        # Check encoded ID against Developer Limit (8000)
+                        if comp.ingredient.enc_id >= 8000:
+                            return True
+            except Exception as e:
+                Log.w(
+                    f"Could not check ingredients for formulation {getattr(formulation, 'id', 'Unknown')}: {e}"
+                )
+
+            return False
+
+        # ------------------------------------------
+
+        # 1. Initialize Version Manager & History
+        # We access the VCS directly to see what the *current* model file has in its metadata history.
+        self.mvc = VersionManager(self.model_dialog.directory().path(), retention=255)
+
+        previous_trained_ids = []
+        try:
+            current_model_path = Path(self.model_path)
+            # Hash the file on disk to find its record in the VCS index
+            current_sha = self.mvc._hash_file(current_model_path)
+            vcs_index = self.mvc._load_index()
+            current_model_record = vcs_index.get(current_sha, {})
+            current_metadata = current_model_record.get("metadata", {})
+
+            # Retrieve the list of User Space Formulation IDs this model has previously trained on
+            previous_trained_ids = current_metadata.get("trained_ids", [])
+
+        except Exception as e:
+            Log.e(f"Failed to retrieve model history from Version Manager: {e}")
+
+        # 2. Initialize Predictor (loads binary weights)
         self.predictor = Predictor(zip_path=self.model_path)
 
-        # Retrieve the IDs this specific model instance has already seen
-        # (Default to empty if this is the first run on top of Base)
-        previous_trained_ids = self.predictor.metadata.get("trained_ids", [])
-
-        # 2. Prepare Current Training Data (The "New" Knowledge)
+        # 3. Process Current Batch (The "New" Knowledge)
         dfs = []
-        current_batch_ids = []
+        current_batch_user_ids = []  # IDs of User Space forms in this batch
+        current_batch_all_ids = (
+            []
+        )  # IDs of ALL forms in this batch (to prevent duplication)
 
         for form in self.parent.import_formulations:
-            if getattr(form.viscosity_profile, "is_measured", True):
+            # Only train on measured profiles
+            if form.viscosity_profile and form.viscosity_profile.is_measured:
                 # Add to dataframe list
                 df = form.to_dataframe(encoded=False, training=True)
                 dfs.append(df)
 
-                # Track ID if it is in User Space (> 8000)
-                if hasattr(form, "ID") and form.id > 8000:
-                    current_batch_ids.append(form.id)
+                if form.id is not None:
+                    current_batch_all_ids.append(form.id)
+                    # If this specific formulation contains User Space ingredients, we must track it
+                    if _is_user_space(form):
+                        current_batch_user_ids.append(form.id)
 
         if not dfs:
             Log.w(
@@ -457,29 +514,37 @@ class FrameStep2(QtWidgets.QDialog):
 
         combined_df = pd.concat(dfs, ignore_index=True)
 
-        # 3. Prepare Reference Data (The "Old" Knowledge)
+        # 4. Process Reference Data (The "Old" Knowledge)
         try:
-            # Corrected controller call
+            # A. Get all data as DataFrame for training input
             all_data_df = self.parent.form_ctrl.get_all_as_dataframe(encoded=False)
 
-            # Logic: Reference Data = (Base Model Data) OR (History of Parent Model)
-            # Base Model Data: ID < 8000
-            # History: ID is in previous_trained_ids
+            # B. Identify "Admin Space" IDs from the Database
+            # We must fetch the actual objects to inspect their ingredients via _is_user_space
+            all_db_formulations = self.parent.form_ctrl.get_all_formulations()
 
-            # Corrected Key: "ID"
-            is_base_model_data = all_data_df["ID"] < 8000
-            is_previously_learned = all_data_df["ID"].isin(previous_trained_ids)
+            admin_space_ids = set()
+            for f in all_db_formulations:
+                # If it has an ID and is NOT User Space, it is Admin Space
+                if f.id is not None and not _is_user_space(f):
+                    admin_space_ids.add(f.id)
 
-            # Filter the master dataframe
-            reference_df = all_data_df[is_base_model_data | is_previously_learned]
+            # C. Filter Master DataFrame to create Reference Set
+            # Keep row if: (Is Admin Space) OR (Is explicitly tracked in History)
+            # Note: The DataFrame column is "ID" based on Formulation.to_dataframe
+            is_admin = all_data_df["ID"].isin(admin_space_ids)
+            is_history = all_data_df["ID"].isin(previous_trained_ids)
 
-            # Ensure we don't duplicate the *current* batch in the reference set
-            reference_df = reference_df[~reference_df["ID"].isin(current_batch_ids)]
+            reference_df = all_data_df[is_admin | is_history]
+
+            # D. Exclude Current Batch
+            # Remove any ID present in the current training batch to avoid duplication/overfitting
+            reference_df = reference_df[~reference_df["ID"].isin(current_batch_all_ids)]
 
             if reference_df.empty:
                 reference_df = None
                 Log.w(
-                    "No reference data found (ID < 8000 or Previous IDs). Learning without memory replay."
+                    "No reference data found (Admin Space or History). Learning without memory replay."
                 )
             else:
                 Log.i(
@@ -487,11 +552,11 @@ class FrameStep2(QtWidgets.QDialog):
                 )
 
         except Exception as e:
-            Log.e(f"Failed to load reference data from database: {e}")
+            full_trace = traceback.format_exc()
+            Log.e(f"Failed to calculate reference data: {e}\n{full_trace}")
             reference_df = None
 
         self.executor = Executor()
-        self.mvc = VersionManager(self.model_dialog.directory().path(), retention=255)
         self.new_model_path = None
 
         self.progressState = Lite_QProgressDialog("Learning...", "Cancel", 0, 1, self)
@@ -535,9 +600,11 @@ class FrameStep2(QtWidgets.QDialog):
                         "Failed to add security to ZIP; committing unencrypted archive."
                     )
 
-                # 4. Update Metadata
-                # Calculate the new cumulative list of User Space IDs tracked
-                total_trained_ids = list(set(previous_trained_ids + current_batch_ids))
+                # 5. Commit to VCS
+                # Merge previous history with new User Space IDs
+                total_trained_ids = list(
+                    set(previous_trained_ids + current_batch_user_ids)
+                )
                 total_trained_ids.sort()
 
                 sha = self.mvc.commit(
@@ -547,7 +614,7 @@ class FrameStep2(QtWidgets.QDialog):
                         "run_description": [
                             f"Formulation #{i+1}" for i in range(len(dfs))
                         ],
-                        # Track cumulative history
+                        # Save updated User Space history to VCS
                         "trained_ids": total_trained_ids,
                         "pinned_name": None,
                         "has_adapter": True,
@@ -569,7 +636,8 @@ class FrameStep2(QtWidgets.QDialog):
                 self.new_model_path = str(target_path)
 
             except Exception as e:
-                Log.e(f"Error occurred while saving the model: {e}")
+                full_trace = traceback.format_exc()
+                Log.e(f"Error occurred while saving the model: {e}\n{full_trace}")
 
             finally:
                 self.predictor.cleanup()

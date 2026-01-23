@@ -17,14 +17,31 @@ Version:
 """
 
 from typing import List, Optional
-from rapidfuzz import process, fuzz
+
+from rapidfuzz import fuzz, process
 
 try:
     from src.db.db import Database
-    from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 
 
 class IngredientController:
@@ -70,8 +87,11 @@ class IngredientController:
             List[str]: A list of all stored ingredient names.
         """
 
-        names = [ing.name for ing in self.get_all_ingredients()
-                 if self._user_mode and ing.is_user or not self._user_mode]
+        names = [
+            ing.name
+            for ing in self.get_all_ingredients()
+            if self._user_mode and ing.is_user or not self._user_mode
+        ]
 
         return list(set(names))
 
@@ -500,7 +520,8 @@ class IngredientController:
             return existing
 
         protein.enc_id = self._get_next_enc_id(
-            is_user=protein.is_user, ing_type="Protein")
+            is_user=self._user_mode, ing_type="Protein"
+        )
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
 
@@ -524,7 +545,8 @@ class IngredientController:
             return existing
 
         buffer.enc_id = self._get_next_enc_id(
-            is_user=buffer.is_user, ing_type="Buffer")
+            is_user=self._user_mode, ing_type="Buffer"
+        )
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
 
@@ -547,8 +569,7 @@ class IngredientController:
                 return self.update_salt(existing.id, salt)
             return existing
 
-        salt.enc_id = self._get_next_enc_id(
-            is_user=salt.is_user, ing_type="Salt")
+        salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
 
@@ -572,7 +593,8 @@ class IngredientController:
             return existing
 
         stabilizer.enc_id = self._get_next_enc_id(
-            is_user=stabilizer.is_user, ing_type="Stabilizer")
+            is_user=self._user_mode, ing_type="Stabilizer"
+        )
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
 
@@ -596,7 +618,8 @@ class IngredientController:
             return existing
 
         surfactant.enc_id = self._get_next_enc_id(
-            is_user=surfactant.is_user, ing_type="Surfactant")
+            is_user=self._user_mode, ing_type="Surfactant"
+        )
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
 
@@ -620,7 +643,8 @@ class IngredientController:
             return existing
 
         excipient.enc_id = self._get_next_enc_id(
-            is_user=excipient.is_user, ing_type="Excipient")
+            is_user=self._user_mode, ing_type="Excipient"
+        )
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
 
@@ -1027,10 +1051,9 @@ class IngredientController:
         self.db.update_ingredient(e_fetch.id, e_new)
         return e_new
 
-    def fuzzy_fetch(self,
-                    name: str,
-                    max_results: int = 5,
-                    score_cutoff: int = 90) -> list[str]:
+    def fuzzy_fetch(
+        self, name: str, max_results: int = 5, score_cutoff: int = 90
+    ) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names
@@ -1053,7 +1076,7 @@ class IngredientController:
             choices=list(name_mapping.keys()),
             scorer=fuzz.WRatio,
             limit=max_results,
-            score_cutoff=score_cutoff
+            score_cutoff=score_cutoff,
         )
         return [name_mapping[match_name] for match_name, score, idx in matches]
 
@@ -1111,16 +1134,16 @@ class IngredientController:
         same_type = self._fetch_by_type(type=ing_type)
         if is_user:
             # User-created enc_id must start at USER_START_ID
-            used = [ing.enc_id for ing in same_type if ing.enc_id >=
-                    self.USER_START_ID]
+            used = [ing.enc_id for ing in same_type if ing.enc_id >= self.USER_START_ID]
             if not used:
                 return self.USER_START_ID
             else:
                 return max(used) + 1
         else:
             # Developer-created enc_id must be in range [1..DEV_MAX_ID]
-            used = [ing.enc_id for ing in same_type if 1 <=
-                    ing.enc_id <= self.DEV_MAX_ID]
+            used = [
+                ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
+            ]
             if not used:
                 return 1
             next_id = max(used) + 1

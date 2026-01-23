@@ -47,6 +47,7 @@ ing_ctrl._user_mode = False
 # Populate DB with core training samples
 print(f"Adding core training samples to newly created app.db...")
 form_ctrl = FormulationController(db=database)
+form_ctrl.ingredient_controller._user_mode = False
 csv_path = os.path.join(
     QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
     "VisQAI",

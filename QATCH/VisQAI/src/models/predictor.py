@@ -417,7 +417,14 @@ class Predictor:
                 Log.e("Module loading aborted for safety")
                 raise
             except Exception as e:
-                Log.e(f"Error during secure module loading: {e}")
+                import traceback
+
+                # formats the exception and stack trace into a string
+                full_trace = traceback.format_exc()
+
+                Log.e(
+                    f"Error during secure module loading: {e}\nStack Trace:\n{full_trace}"
+                )
                 raise RuntimeError(f"Failed to load modules securely: {e}")
         else:
             if not self.verify_signatures:
