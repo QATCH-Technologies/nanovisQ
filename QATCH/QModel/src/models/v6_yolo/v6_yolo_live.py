@@ -72,10 +72,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         self.buffer_window_size = buffer_window_size
         self.current_prediction = 0
 
-        # New storage attributes
         self._data: Optional[pd.DataFrame] = None
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
+
+        self._stability_counter = 0
+        self._pending_prediction = None
+        self.STABILITY_THRESHOLD = 4  # Number of consecutive frames required to switch
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
@@ -163,9 +166,28 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     self._data.copy()
                 )
                 if processed_df is not None and not processed_df.empty:
-                    pred = self.predict(processed_df)
-                    self.current_prediction = pred
-                    return pred
+                    raw_pred = self.predict(processed_df)
+
+                    if raw_pred == self.current_prediction:
+                        self._stability_counter = 0
+                        self._pending_prediction = None
+                    else:
+                        if raw_pred == self._pending_prediction:
+                            self._stability_counter += 1
+                        else:
+                            self._pending_prediction = raw_pred
+                            self._stability_counter = 1
+
+                        if self._stability_counter >= self.STABILITY_THRESHOLD:
+                            Log.d(
+                                self.TAG,
+                                f"State Stable: Switching {self.current_prediction} -> {raw_pred}",
+                            )
+                            self.current_prediction = raw_pred
+                            self._stability_counter = 0
+                            self._pending_prediction = None
+
+                    return self.current_prediction
                 else:
                     Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
             else:

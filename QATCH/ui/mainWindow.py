@@ -2476,8 +2476,13 @@ class MainWindow(QtWidgets.QMainWindow):
             enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
 
         self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
-        self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
-        self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+        # self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
+        # self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+
+        # Modified for new run-status controls
+        if hasattr(self.ControlsWin.ui1, "unified_control"):
+            self.ControlsWin.ui1.run_controls.setEnabled(enable_start or enable_stop)
+
         self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
         self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui1.tool_Advanced.setEnabled(enabled)
@@ -3585,15 +3590,40 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker._forecaster_in.put(snapshot)
                 if not self.worker._forecaster_out.empty():
                     try:
-                        pred_int, pred_str = self.worker._forecaster_out.get()
-                        ui_value = pred_int + 1
-                        ui_value = max(0, min(ui_value, 4))
-                        self.ControlsWin.ui1.fill_status_progress_bar.setValue(ui_value)
-                        self.ControlsWin.ui1.fill_status_progress_bar.setFormat(
-                            f"Run: %v/%m ({pred_str})"
-                        )
+                        # Get raw model prediction (0=Empty, 1=Init, 2=Ch1, 3=Ch2, 4=Ch3)
+                        pred_int, _ = self.worker._forecaster_out.get()
+                        # This logic handles drop application code.
+                        is_drop_applied = all(self._drop_applied)
+                        # Refactored messages out of constants.  Can move them back if we like the messages.
+                        ui_step = 0
+                        status_msg = "Unkown"
+                        if pred_int == 0:
+                            if not is_drop_applied:
+                                status_msg = "Waiting for drop"
+                                ui_step = 0
+                            else:
+                                status_msg = "Drop applied, waiting for init data"
+                                ui_step = 1
+                        elif pred_int == 1:
+                            status_msg = "Init points detected, waiting on 1st ch"
+                            ui_step = 2
+                        elif pred_int == 2:
+                            status_msg = "1st ch detected, waiting on 2nd ch"
+                            ui_step = 3
+                        elif pred_int == 3:
+                            status_msg = "2nd ch detected, waiting on 3rd ch"
+                            ui_step = 4
+                        elif pred_int >= 4:
+                            status_msg = "Fill complete"
+                            ui_step = 5
+
+                        if hasattr(self.ControlsWin.ui1, "run_controls"):
+                            self.ControlsWin.ui1.run_controls.update_progress(
+                                ui_step, 5, status_msg
+                            )
+
                     except Exception as e:
-                        Log.e(TAG, f"Error retrieving forecast result: {e}")
+                        Log.e(TAG, f"Error retrieving fill status: {e}")
 
             (
                 self._ser_error1,

@@ -1,10 +1,42 @@
+"""
+QATCH.ui.mainWindow_ui
+
+The mainWindow_ui module handles the drawing, UI control elements,
+and UI actions for the main window of the main application.
+
+Author(s)
+    Alexander Ross (alexander.ross@qatchtech.com)
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+    Others...
+
+Date:
+    2026-01-26
+"""
+
 import datetime
 import logging
-import math
 import os
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from PyQt5.QtWidgets import QDesktopWidget
+from PyQt5.QtCore import (
+    QEasingCurve,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    QVariantAnimation,
+    pyqtSignal,
+)
+from PyQt5.QtGui import QBrush, QColor, QPainter, QPainterPath, QPen
+from PyQt5.QtWidgets import (
+    QDesktopWidget,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 from pyqtgraph import GraphicsLayoutWidget
 
 from QATCH.common.architecture import Architecture, OSType
@@ -1600,23 +1632,23 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.run_progress_bar.setObjectName("progressBar")
         self.run_progress_bar.setStyleSheet(styleBar)
 
-        self.fill_status_progress_bar = QtWidgets.QProgressBar()
-        self.fill_status_progress_bar.setMinimum(0)
-        self.fill_status_progress_bar.setMaximum(4)
-        self.fill_status_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
-        self.fill_status_progress_bar.setObjectName("fillProgressBar")
-        self.fill_status_progress_bar.setStyleSheet(styleBar)
+        # self.fill_status_progress_bar = QtWidgets.QProgressBar()
+        # self.fill_status_progress_bar.setMinimum(0)
+        # self.fill_status_progress_bar.setMaximum(4)
+        # self.fill_status_progress_bar.setGeometry(QtCore.QRect(0, 0, 50, 10))
+        # self.fill_status_progress_bar.setObjectName("fillProgressBar")
+        # self.fill_status_progress_bar.setStyleSheet(styleBar)
 
         if USE_FULLSCREEN:
             self.run_progress_bar.setFixedHeight(50)
-            self.fill_status_progress_bar.setFixedHeight(50)
+            # self.fill_status_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
             self.run_progress_bar.valueChanged.connect(self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
-        self.fill_status_progress_bar.setValue(0)
+        # self.fill_status_progress_bar.setValue(0)
 
-        self.fill_status_progress_bar.setFormat("Run: %v/%m (No Fill)")
+        # self.fill_status_progress_bar.setFormat("Run: %v/%m (No Fill)")
 
         self.Layout_controls.setColumnStretch(0, 0)
         self.Layout_controls.setColumnStretch(1, 1)
@@ -1652,32 +1684,16 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.addWidget(self.tool_Initialize)
 
         self.tool_bar.addSeparator()
-
-        icon_start = QtGui.QIcon()
-        icon_start.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "start.png")), QtGui.QIcon.Normal
-        )
-        # icon_start.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'start-disabled.png')), QtGui.QIcon.Disabled)
-        self.tool_Start = QtWidgets.QToolButton()
-        self.tool_Start.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Start.setIcon(icon_start)
-        self.tool_Start.setText("Start")
-        self.tool_Start.clicked.connect(self.action_start)
-        self.tool_bar.addWidget(self.tool_Start)
-
-        icon_stop = QtGui.QIcon()
-        icon_stop.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "stop.png")), QtGui.QIcon.Normal
-        )
-        # icon_stop.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'stop-disabled.png')), QtGui.QIcon.Disabled)
-        self.tool_Stop = QtWidgets.QToolButton()
-        self.tool_Stop.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
-        self.tool_Stop.setIcon(icon_stop)
-        self.tool_Stop.setText("Stop")
-        self.tool_Stop.clicked.connect(self.action_stop)
-        self.tool_bar.addWidget(self.tool_Stop)
-
+        # ----------------------------------------------------------------------
+        # Init RunControls object.  Replaces the old Start/Stop buttons and fill
+        # status bar.
+        self.run_controls = RunControls()
+        self.run_controls.startRequested.connect(self.action_start)
+        self.run_controls.stopRequested.connect(self.action_stop)
+        self.run_controls.setEnabled(False)  # Set disabled initially
+        self.tool_bar.addWidget(self.run_controls)
         self.tool_bar.addSeparator()
+        # ----------------------------------------------------------------------
 
         icon_reset = QtGui.QIcon()
         icon_reset.addPixmap(
@@ -1779,7 +1795,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         self.toolLayout.addWidget(self.toolBarWidget)
         self.toolLayout.addWidget(self.run_progress_bar)
-        self.toolLayout.addWidget(self.fill_status_progress_bar)
+        # self.toolLayout.addWidget(self.fill_status_progress_bar)
 
         if SHOW_SIMPLE_CONTROLS:
             # Remove bottom margin, leaving the rest as "default"
@@ -1901,30 +1917,32 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         )
 
     def action_initialize(self):
+        """Method to handle initalization UI actions."""
+        if hasattr(self, "run_controls"):
+            self.run_controls.update_progress(0, 5, "Ready")
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
-            self.fill_status_progress_bar.setValue(0)
-            self.fill_status_progress_bar.setFormat(
-                Constants.FILL_TYPE_LABEL_MAP.get(0, "")
-            )
-            self.pButton_Start.clicked.emit()
-            self.cal_initialized = True
+        self.pButton_Start.clicked.emit()
+        self.cal_initialized = True
 
     def action_start(self):
+        """Method to handle start UI actions."""
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.measurement.value)
-            self.fill_status_progress_bar.setValue(0)
-            self.fill_status_progress_bar.setFormat(
-                Constants.FILL_TYPE_LABEL_MAP.get(0, "")
-            )
+            if hasattr(self, "run_controls"):
+                self.run_controls.set_running(True)
             self.pButton_Start.clicked.emit()
 
     def action_stop(self):
+        """Method to handle stop UI actions."""
         if self.pButton_Stop.isEnabled():
             self.cal_initialized = False
+            if hasattr(self, "run_controls"):
+                self.run_controls.set_running(False)
             self.pButton_Stop.clicked.emit()
 
     def action_reset(self):
+        """Method to handle reset UI actions."""
         if self.tool_TempControl.isChecked():
             self.tool_TempControl.setChecked(False)
             self.tool_TempControl.clicked.emit()  # if running, stop
@@ -1932,16 +1950,17 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         if self.pButton_Start.isEnabled():
             self.pButton_Clear.clicked.emit()
             self.pButton_Refresh.clicked.emit()
+
         self.infostatus.setStyleSheet(
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
         self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
+
         self.cal_initialized = False
-        self.tool_Start.setEnabled(False)
-        self.fill_status_progress_bar.setValue(0)
-        self.fill_status_progress_bar.setFormat(
-            Constants.FILL_TYPE_LABEL_MAP.get(0, "")
-        )
+        if hasattr(self, "run_controls"):
+            self.run_controls.set_running(False)
+            self.run_controls.update_progress(0, 5, "Idle")
+            self.run_controls.setEnabled(False)
         # at least one device connected
         self.tool_TempControl.setEnabled(self.cBox_Port.count() > 1)
 
@@ -2528,3 +2547,386 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
         if record.levelno >= logging.INFO:
             self.appendInfoText.emit(html_info)
         self.appendDebugText.emit(html_debug)
+
+
+class StartStopButton(QPushButton):
+    """A custom Start/Stop/Progress button that displays progress and success animations.
+
+    This widget draws a circular progress ring, handles state transitions between
+    running, stopped, and completed, and renders specific icons (Play, Stop, Checkmark)
+    based on the current state.
+
+    Attributes:
+        progress (float): Current progress value ranging from 0.0 to 1.0.
+        is_running (bool): Flag indicating if the button is in the 'running' (stop icon) state.
+        is_complete (bool): Flag indicating if the task has finished successfully.
+        success_angle (float): Current angle for the success animation arc.
+        animating_success (bool): Flag indicating if the success animation is currently active.
+        color_blue (QColor): Color used for the active progress ring.
+        color_green (QColor): Color used for the success state.
+        color_track (QColor): Color of the background ring track.
+        color_icon (QColor): Default color for the internal icons.
+        color_disabled (QColor): Color used when the widget is disabled.
+        success_anim (QVariantAnimation): Animation object for the success spin effect.
+        progress_anim (QVariantAnimation): Animation object for smooth progress updates.
+    """
+
+    def __init__(self, parent=None):
+        """Initializes the button with default states, colors, and animations.
+
+        Args:
+            parent (QWidget, optional): The parent widget. Defaults to None.
+        """
+        super().__init__(parent)
+        self.setFixedSize(34, 34)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.progress = 0.0
+        self.is_running = False
+        self.is_complete = False
+        self.success_angle = 0
+        self.animating_success = False
+        self.color_blue = QColor(
+            "#00AEEF"
+        )  # TODO: Change to QATCH blue (forgot what the hex was for it)
+        self.color_green = QColor("#4CAF50")
+        self.color_track = QColor("#9E9E9E")
+        self.color_icon = QColor("#555555")
+        self.color_disabled = QColor("#D0D0D0")
+
+        # Success Animation
+        self.success_anim = QVariantAnimation()
+        self.success_anim.setStartValue(0)
+        self.success_anim.setEndValue(360)
+        self.success_anim.setDuration(800)
+        self.success_anim.valueChanged.connect(self._update_success_anim)
+        self.success_anim.finished.connect(self._finish_success_anim)
+
+        # Progress Animation
+        self.progress_anim = QVariantAnimation()
+        self.progress_anim.setDuration(500)
+        self.progress_anim.setEasingCurve(QEasingCurve.OutQuad)
+        self.progress_anim.valueChanged.connect(self._update_progress_anim)
+
+    def animate_progress(self, target_value):
+        """Smoothly interpolates the blue ring to a new progress value.
+
+        Args:
+            target_value (float): The progress value to animate towards (0.0 to 1.0).
+        """
+        self.progress_anim.stop()
+        self.progress_anim.setStartValue(self.progress)
+        self.progress_anim.setEndValue(target_value)
+        self.progress_anim.start()
+
+    def _update_progress_anim(self, value):
+        """Slot called by the progress animation to update the ring value.
+
+        Args:
+            value (float): The current interpolated progress value.
+        """
+        self.progress = value
+        self.update()
+
+    def trigger_success(self):
+        """Transitions the button to the success state.
+
+        Stops any active progress animation, sets the state to complete,
+        and initiates the success animation.
+        """
+        # Stop progress animation if we reach a successful fill
+        self.progress_anim.stop()
+
+        self.is_running = False
+        self.is_complete = True
+        self.animating_success = True
+        self.success_anim.start()
+        self.update()
+
+    def reset(self):
+        """Resets the button to its initial idle state.
+
+        Clears progress, stops animations, and resets internal flags.
+        """
+        self.progress_anim.stop()
+        self.is_running = False
+        self.is_complete = False
+        self.progress = 0.0
+        self.animating_success = False
+        self.update()
+
+    def _update_success_anim(self, value):
+        """Slot called by the success animation to update the angle.
+
+        Args:
+            value (int): The current angle of the success arc.
+        """
+        self.success_angle = value
+        self.update()
+
+    def _finish_success_anim(self):
+        """Slot called when the success animation finishes to clean up state."""
+        self.animating_success = False
+        self.update()
+
+    def paintEvent(self, event):
+        """Handles the custom painting of the widget.
+
+        Draws the three main components, the background track ring, the active progress ring/success ring,
+        and the central icon.
+
+        Args:
+            event (QPaintEvent): The paint event triggering the redraw.
+        """
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        rect = self.rect()
+        center = rect.center()
+        radius = min(rect.width(), rect.height()) / 2 - 2
+
+        # Coloring
+        if not self.isEnabled():
+            track_color = self.color_disabled
+            icon_color = QColor("#AAAAAA")
+            ring_color = self.color_disabled
+        elif self.is_complete:
+            track_color = self.color_track
+            icon_color = self.color_green
+            ring_color = self.color_green
+        else:
+            track_color = self.color_track
+            icon_color = self.color_icon
+            ring_color = self.color_blue
+
+        #  Progress track
+        painter.setPen(QPen(track_color, 2.5))
+        painter.setBrush(Qt.NoBrush)
+        painter.drawEllipse(center, radius, radius)
+
+        # Active ring
+        if self.isEnabled():
+            if self.is_complete:
+                # On success, trigger success animation.
+                pen = QPen(ring_color, 2.5, Qt.SolidLine, Qt.RoundCap)
+                painter.setPen(pen)
+
+                if self.animating_success:
+                    start = 90 * 16
+                    span = -self.success_angle * 16
+                    painter.drawArc(
+                        QRectF(
+                            center.x() - radius,
+                            center.y() - radius,
+                            radius * 2,
+                            radius * 2,
+                        ),
+                        int(start),
+                        int(span),
+                    )
+                else:
+                    painter.drawEllipse(center, radius, radius)
+
+            elif self.is_running and self.progress > 0:
+                # While running, trigger progress animation.
+                pen = QPen(ring_color, 2.5, Qt.SolidLine, Qt.RoundCap)
+                painter.setPen(pen)
+                angle_span = -self.progress * 360 * 16
+                painter.drawArc(
+                    QRectF(
+                        center.x() - radius, center.y() - radius, radius * 2, radius * 2
+                    ),
+                    90 * 16,
+                    int(angle_span),
+                )
+
+        # Render icons
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QBrush(icon_color))
+
+        icon_size = radius * 0.9
+        # NOTE: These have to be drawn dynamically to animate them.  The icons in the icon directory cannot be
+        # animated properly so the checkmark is manually drawn, the Stop icon is drawn as a square, and the
+        # Start icon is drawn as a triangle.
+        if self.is_complete:
+            # Checkmark
+            path = QPainterPath()
+            path.moveTo(center.x() - icon_size * 0.4, center.y())
+            path.lineTo(center.x() - icon_size * 0.1, center.y() + icon_size * 0.3)
+            path.lineTo(center.x() + icon_size * 0.4, center.y() - icon_size * 0.4)
+
+            check_pen = QPen(icon_color, 2.5)
+            check_pen.setCapStyle(Qt.RoundCap)
+            painter.strokePath(path, check_pen)
+
+        elif self.is_running:
+            # Stop Square
+            s = icon_size * 0.5
+            painter.drawRect(QRectF(center.x() - s / 2, center.y() - s / 2, s, s))
+
+        else:
+            # Start Triangle
+            path = QPainterPath()
+            h = icon_size * 0.6
+            w = icon_size * 0.5
+            x = center.x() - (w / 2) + 1.5
+            y = center.y() - (h / 2)
+            path.moveTo(x, y)
+            path.lineTo(x + w, center.y())
+            path.lineTo(x, y + h)
+            path.closeSubpath()
+            painter.drawPath(path)
+
+
+class RunControls(QWidget):
+    """A composite RunControls widget combining a StartStopButton with a sliding status label.
+
+    This control acts as a run controller. When the button is clicked, it emits
+    signals to start or stop a process. When running, a status label slides out
+    to the right to display textual progress details.
+
+    Attributes:
+        startRequested (pyqtSignal): Signal emitted when the user requests to start.
+        stopRequested (pyqtSignal): Signal emitted when the user requests to stop.
+        layout (QHBoxLayout): Main horizontal layout.
+        btn (StartStopButton): The custom circular button instance.
+        lbl_action (QLabel): Label below the button showing "Start", "Stop", or "Done".
+        status_container (QFrame): The collapsible container for the status text.
+        status_label (QLabel): The label displaying current step information.
+        anim (QPropertyAnimation): Animation for sliding the status container.
+    """
+
+    startRequested = pyqtSignal()
+    stopRequested = pyqtSignal()
+
+    def __init__(self, parent=None):
+        """Initializes the UnifiedProgressControl.
+
+        Args:
+            parent (QWidget, optional): The parent widget. Defaults to None.
+        """
+        super().__init__(parent)
+        self.setFixedHeight(55)
+        self.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+
+        self.layout = QHBoxLayout(self)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(0)
+
+        # Left container is button and label.
+        self.button_container = QWidget()
+        self.button_container.setFixedWidth(75)
+
+        self.v_layout = QVBoxLayout(self.button_container)
+        self.v_layout.setContentsMargins(0, 0, 0, 0)
+        self.v_layout.setSpacing(0)
+
+        self.btn = StartStopButton()
+        self.btn.clicked.connect(self.toggle_state)
+        self.v_layout.addWidget(self.btn, 0, Qt.AlignHCenter)
+
+        self.lbl_action = QLabel("Start")
+        self.lbl_action.setAlignment(Qt.AlignCenter)
+        self.lbl_action.setStyleSheet(
+            "color: #555555; font-size: 11px; margin-top: 2px;"
+        )
+        self.v_layout.addWidget(self.lbl_action, 0, Qt.AlignHCenter)
+
+        self.layout.addWidget(self.button_container)
+
+        # Right sliding status container.
+        self.status_container = QFrame()
+        self.status_container.setFixedWidth(0)
+        self.status_container.setStyleSheet("background-color: transparent;")
+
+        self.status_layout = QHBoxLayout(self.status_container)
+        self.status_layout.setContentsMargins(5, 0, 5, 0)
+        self.status_layout.setAlignment(Qt.AlignVCenter)
+
+        self.status_label = QLabel("Idle")
+        self.status_label.setStyleSheet(
+            "color: #555; font-size: 12px; font-weight: bold;"
+        )
+        self.status_label.setFixedWidth(200)
+        self.status_layout.addWidget(self.status_label)
+
+        self.layout.addWidget(self.status_container)
+
+        self.anim = QPropertyAnimation(self.status_container, b"minimumWidth")
+        self.anim.setEasingCurve(QEasingCurve.InOutQuad)
+        self.anim.setDuration(300)
+
+    def setEnabled(self, enabled):
+        """Sets the enabled state of the control and its sub-widgets.
+
+        Args:
+            enabled (bool): True to enable, False to disable.
+        """
+        super().setEnabled(enabled)
+        self.btn.setEnabled(enabled)
+        self.lbl_action.setEnabled(enabled)
+        self.btn.update()
+
+    def toggle_state(self):
+        """Toggles the state based on the current button status.
+
+        Emits `stopRequested` if the button is currently running or complete.
+        Emits `startRequested` if the button is idle.
+        """
+        if self.btn.is_complete:
+            self.stopRequested.emit()
+        elif self.btn.is_running:
+            self.stopRequested.emit()
+        else:
+            self.startRequested.emit()
+
+    def set_running(self, running=True):
+        """Updates the UI to reflect whether a process is running.
+
+        If running is True, the status container slides open. If False,
+        it slides closed.
+
+        Args:
+            running (bool, optional): The target running state. Defaults to True.
+        """
+        if self.btn.is_running == running and not self.btn.is_complete:
+            return
+
+        if running:
+            self.btn.is_complete = False
+            self.lbl_action.setText("Stop")
+            self.anim.setStartValue(0)
+            self.anim.setEndValue(160)
+            self.anim.start()
+        else:
+            self.lbl_action.setText("Start")
+            self.anim.setStartValue(160)
+            self.anim.setEndValue(0)
+            self.anim.start()
+
+        self.btn.is_running = running
+        self.btn.update()
+
+    def update_progress(self, current_step, max_steps, fill_type_text):
+        """Updates the progress button and status label text.
+
+        If `current_step` meets or exceeds `max_steps`, the control triggers
+        the success state on the button.
+
+        Args:
+            current_step (int): The current step number in the process.
+            max_steps (int): The total number of steps.
+            fill_type_text (str): Descriptive text to display in the status label.
+        """
+        if current_step >= max_steps and max_steps > 0:
+            if not self.btn.is_complete:
+                self.btn.trigger_success()
+                self.status_label.setText(f"Done ({fill_type_text})")
+                self.lbl_action.setText("Done")
+            return
+
+        if max_steps > 0:
+            percentage = current_step / max_steps
+        else:
+            percentage = 0
+        self.btn.animate_progress(percentage)
+        self.status_label.setText(f"{fill_type_text}")
