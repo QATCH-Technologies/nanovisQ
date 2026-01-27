@@ -55,7 +55,7 @@
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
 #define CODE_VERSION "v2.6b68"
-#define RELEASE_DATE "2026-01-21"
+#define RELEASE_DATE "2026-01-22"
 
 /************************** LIBRARIES **************************/
 
@@ -378,7 +378,7 @@ Servo pogoServo2;
 
 // Debounce variables for POGO button
 volatile bool pogo_isr_hit_flag = false;
-bool pogo_pressed_flag = false; // true if POGO button is pressed
+bool pogo_pressed_flag = false; // true if POGO movement is queued
 unsigned long lastInterruptHitTime = 0;
 const unsigned long debounceDelay = 100; // debounce delay in ms
 
@@ -2046,6 +2046,48 @@ void QATCH_loop()
           pogo_pressed_flag = true; // queue movement
         }
       }
+      else if (message_str.substring(4, 8) == "HOLD")
+      {
+        // e.g., CMD "LID HOLD [ON/OFF/(0-180)]"
+        if (message_str.endsWith("OFF"))
+        {
+          if (pogoServo1.attached())
+            pogoServo1.detach();
+          if (pogoServo2.attached())
+            pogoServo2.detach();
+          client->println("0");
+        }
+        else
+        {
+          if (!pogoServo1.attached())
+            pogoServo1.attach(POGO_SERVO_1_PIN);
+          if (!pogoServo2.attached())
+            pogoServo2.attach(POGO_SERVO_2_PIN);
+          if (message_str.endsWith("ON"))
+          {
+            // start at open positions
+            pogoServo1.write(POS_OPENED_1);
+            pogoServo2.write(POS_OPENED_2);
+            client->println("1");
+          }
+          else
+          {
+            // move to user-defined position
+            int pos = message_str.substring(9).toInt();
+            if (pos >= 0 && pos <= 180)
+            {
+              pogoServo1.write(pos);
+              pogoServo2.write(pos);
+              client->print("LID HOLD @ ");
+              client->println(pos); // echo pos back to user
+            }
+            else
+            {
+              client->println("?"); // invalid pos
+            }
+          }
+        }
+      }
       else if (message_str.substring(4, 7) == "CAL")
       {
         if (message_str.endsWith("CAL")) {
@@ -3396,22 +3438,31 @@ void QATCH_loop()
   if (HW_REV_MATCH(HW_REVISION_3))
   {
     /* HANDLE POGO BUTTON PRESS */
+    // NOTE: Event fires on button release.
+
     // Debounce logic handled here, not in ISR
     unsigned long now = millis();
-    if (pogo_isr_hit_flag) {
+    if (pogo_isr_hit_flag)
+    {
+      // Button IS actively being pressed
+      // Check button debounce delay timer
       if ((now - lastInterruptHitTime) > debounceDelay) {
-        pogo_pressed_flag = true;
+        pogo_pressed_flag = true; // queue movement
       }
-    } else {
-      lastInterruptHitTime = now;
     }
-    if (pogo_pressed_flag) {
-      // Ignore button press if running an active sweep:
-      if (!is_running) {
-        pogo_button_pressed(false);
-        tft_idle(); // update cartridge lock state
+    else
+    {
+      // Button is NOT actively being pressed
+      // Time to fire POGO movement (if queued)
+      lastInterruptHitTime = now;
+      if (pogo_pressed_flag) {
+        // Ignore button press if running an active sweep:
+        if (!is_running) {
+          pogo_button_pressed(false);
+          tft_idle(); // update cartridge lock state
+        }
+        pogo_pressed_flag = false; // Clear flag
       }
-      pogo_pressed_flag = false; // Clear flag
     }
   }
 }
