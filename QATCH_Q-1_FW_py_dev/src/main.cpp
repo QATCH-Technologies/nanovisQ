@@ -3407,9 +3407,11 @@ void QATCH_loop()
     }
     if (pogo_pressed_flag) {
       // Ignore button press if running an active sweep:
-      if (!is_running) pogo_button_pressed(false);
+      if (!is_running) {
+        pogo_button_pressed(false);
+        tft_idle(); // update cartridge lock state
+      }
       pogo_pressed_flag = false; // Clear flag
-      tft_idle(); // update cartridge lock state
     }
   }
 }
