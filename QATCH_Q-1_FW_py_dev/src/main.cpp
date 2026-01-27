@@ -2041,6 +2041,48 @@ void QATCH_loop()
           pogo_pressed_flag = true; // queue movement
         }
       }
+      else if (message_str.substring(4, 8) == "HOLD")
+      {
+        // e.g., CMD "LID HOLD [ON/OFF/(0-180)]"
+        if (message_str.endsWith("OFF"))
+        {
+          if (pogoServo1.attached())
+            pogoServo1.detach();
+          if (pogoServo2.attached())
+            pogoServo2.detach();
+          client->println("0");
+        }
+        else
+        {
+          if (!pogoServo1.attached())
+            pogoServo1.attach(POGO_SERVO_1_PIN);
+          if (!pogoServo2.attached())
+            pogoServo2.attach(POGO_SERVO_2_PIN);
+          if (message_str.endsWith("ON"))
+          {
+            // start at open positions
+            pogoServo1.write(POS_OPENED_1);
+            pogoServo2.write(POS_OPENED_2);
+            client->println("1");
+          }
+          else
+          {
+            // move to user-defined position
+            int pos = message_str.substring(9).toInt();
+            if (pos >= 0 && pos <= 180)
+            {
+              pogoServo1.write(pos);
+              pogoServo2.write(pos);
+              client->print("LID HOLD @ ");
+              client->println(pos); // echo pos back to user
+            }
+            else
+            {
+              client->println("?"); // invalid pos
+            }
+          }
+        }
+      }
       else if (message_str.substring(4, 7) == "CAL")
       {
         if (message_str.endsWith("CAL")) {
