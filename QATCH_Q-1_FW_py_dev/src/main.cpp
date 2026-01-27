@@ -163,7 +163,7 @@
 // Serial baud rate
 #define BAUD 2000000
 
-// TFT screen resolution
+// TFT screen variables
 #define TFT_ROTATION 1
 #define TFT_WIDTH tft.width()
 #define TFT_HEIGHT tft.height()
@@ -171,6 +171,8 @@
 #define ICON_Y 32
 #define TEXT_X 32
 #define TEXT_Y 140
+#define TFT_MAX_ICONS 2
+#define TFT_ICON_WIDTH 30
 
 // TFT branding colors
 #define QATCH_GREY_BG CL(0xF6, 0xF6, 0xF6)
@@ -508,6 +510,9 @@ bool new_sample = false;
 bool net_error = false;
 bool hw_error = false;
 bool tft_error = false;
+
+// force flag, for testing only:
+bool force_hw_error = false;
 
 bool tft_msgbox = false;
 bool msgbox_visible = false; // only used in tft_tempcontrol
@@ -2321,6 +2326,50 @@ void QATCH_loop()
       return;
     }
 
+    if (message_str.startsWith("ERROR"))
+    {
+      // ex) "ERROR FORCE [1,2,3]" or "ERROR CLEAR [1,2,3]"
+      // where 1 = force_hw_error, 2 = hw_error, 3 = (both)
+      bool do_force_hw_error = false;
+      bool do_hw_error = false;
+      if (message_str.endsWith("1"))
+      {
+        do_force_hw_error = true;
+      }
+      else if (message_str.endsWith("2"))
+      {
+        do_hw_error = true;
+      }
+      else 
+      {
+        // endsWith("3"), default action
+        do_force_hw_error = do_hw_error = true;
+      }
+
+      if (message_str.indexOf("FORCE") > 0)
+      {
+        if (do_force_hw_error)
+          force_hw_error = true;
+        if (do_hw_error)
+          hw_error = true;
+        client->println("1"); // forced
+      }
+      else if (message_str.indexOf("CLEAR") > 0)
+      {
+        if (do_force_hw_error)
+          force_hw_error = false;
+        if (do_hw_error)
+          hw_error = false;
+        client->println("0"); // cleared
+      }
+      else
+      {
+        client->println("?"); // unknown
+      }
+      tft_idle(); // redraw errors and icons
+      return;
+    }
+
     // decode message
     byte params = 0;
     while ((str = strtok_r(p, " ,;", &p)) != NULL) // delimiter is the semicolon
@@ -3406,12 +3455,13 @@ void QATCH_loop()
       // Button is NOT actively being pressed
       // Time to fire POGO movement (if queued)
       lastInterruptHitTime = now;
-      if (pogo_pressed_flag)
-      {
+      if (pogo_pressed_flag) {
         // Ignore button press if running an active sweep:
-        if (!is_running) pogo_button_pressed(false);
-        pogo_pressed_flag = false; // Clear queue flag
-        tft_idle(); // update cartridge lock state
+        if (!is_running) {
+          pogo_button_pressed(false);
+          tft_idle(); // update cartridge lock state
+        }
+        pogo_pressed_flag = false; // Clear flag
       }
     }
   }
@@ -3931,7 +3981,11 @@ void tft_screensaver()
   //  tft.print("SLEEP MODE");
   x = random(TFT_WIDTH - qatch_icon.width);
   y = random(TFT_HEIGHT - qatch_icon.height);
-  tft.writeRect(x, y, qatch_icon.width, qatch_icon.height, (uint16_t *)(qatch_icon.pixel_data));
+
+  if (pogo_lid_opened)
+    tft.writeRect(x, y, unlocked_icon.width, unlocked_icon.height, (uint16_t *)(unlocked_icon.pixel_data));
+  else
+    tft.writeRect(x, y, locked_icon.width, locked_icon.height, (uint16_t *)(locked_icon.pixel_data));
 }
 
 void tft_splash(bool dp)
@@ -4002,11 +4056,14 @@ void tft_identify(bool identifying)
     return;
 
   tft_wakeup();
+  if (!identifying) 
+    tft.fillScreen(ILI9341_BLACK); // force full UI redraw on normal state resume
   tft_idle();
   if (identifying)
   {
     tft.invertDisplay(true);
-    tft.fillRect(0, 0, TFT_WIDTH, 20, ILI9341_BLACK);   // inverted, shows as WHITE
+    // NOTE: Height increased from 20 to 32 to hide icons (if any shown)
+    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK);   // inverted, shows as WHITE
     tft.drawFastHLine(0, 21, TFT_WIDTH, ILI9341_WHITE); // inverted, shows as BLACK
     tft.setTextColor(ILI9341_WHITE);                    // inverted, shows as BLACK
     tft.setFontAdafruit();                              // default console font
@@ -4103,8 +4160,10 @@ void tft_idle()
   // hw_error = true;
   // tft_error = true;
   bool transient_error = (max31855.error() != "OK[NONE]");
-  if (hw_error || tft_error || transient_error || tft_msgbox || PID_IS_SECONDARY(NVMEM.pid))
+  if (!pogo_lid_opened && (hw_error || tft_error || transient_error || tft_msgbox || PID_IS_SECONDARY(NVMEM.pid)))
   {
+    msgbox_visible = true;
+
     if (tft_msgbox && msgbox_icon == 2) // pass
       tft.setTextColor(ILI9341_GREEN);
     else if (tft_msgbox && msgbox_icon == 3) // info
@@ -4114,7 +4173,7 @@ void tft_idle()
 
     tft.setFont(Poppins_16_Bold);
 
-    String line1 = tft_msgbox ? String(msgbox_title) : "Hardware Error Detected"; // hw_error ? "Temp Sensor Error" : "TFT Display Error";
+    String line1 = tft_msgbox ? String(msgbox_title) : "Hardware Error"; // hw_error ? "Temp Sensor Error" : "TFT Display Error";
     char buff1[line1.length() + 1];                                               // trailing NULL
     line1.toCharArray(buff1, sizeof(buff1));
 
@@ -4176,6 +4235,22 @@ void tft_idle()
       // tft.drawPixel(x + 50, y + 35, ILI9341_BLACK);
     }
 
+    // NOTE: msgbox_icon 2 (pass) icon is animated
+    // To avoid partial UI, it is drawn last (below)
+
+    if (tft_msgbox && msgbox_icon == 3) // info
+    {
+      x = ICON_X;
+      y = ICON_Y;
+
+      // Info circle icon:
+      tft.fillCircle(x + 50, y + 35, 35, QATCH_BLUE_FG);
+      tft.setTextColor(QATCH_GREY_BG);
+      tft.setFont(Poppins_32_Bold);
+      tft.setCursor(x + 44, y + 22);
+      tft.print("i");
+    }
+
     if (tft_msgbox && msgbox_icon == 2) // pass
       tft.setTextColor(ILI9341_GREEN);
     else if (tft_msgbox && msgbox_icon == 3) // info
@@ -4217,7 +4292,114 @@ void tft_idle()
   {
     x = ICON_X;
     y = ICON_Y;
-    tft.writeRect(x, y, qatch_icon.width, qatch_icon.height, (uint16_t *)(qatch_icon.pixel_data));
+    if (pogo_lid_opened) {
+      msgbox_visible = true;
+
+      tft.writeRect(x, y, unlocked_icon.width, unlocked_icon.height, (uint16_t *)(unlocked_icon.pixel_data));
+
+      // clear hw error message on LCD
+      tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, ILI9341_BLACK);
+
+      if (pogo_lid_opened)
+        tft.setTextColor(QATCH_BLUE_FG);
+      else if (tft_msgbox && msgbox_icon == 2) // pass
+        tft.setTextColor(ILI9341_GREEN);
+      else if (tft_msgbox && msgbox_icon == 3) // info
+        tft.setTextColor(QATCH_BLUE_FG);
+      else
+        tft.setTextColor(ILI9341_RED);
+
+      tft.setFont(Poppins_16_Bold);
+
+      String line1 = pogo_lid_opened ? "NOT LOCKED" : (msgbox_title);
+      char buff1[line1.length() + 1]; // trailing NULL
+      line1.toCharArray(buff1, sizeof(buff1));
+
+      int msg_pad = 10;
+      int msg_w = tft.measureTextWidth(buff1);
+      //  msg_h = tft.measureTextHeight(buff1);
+      int msg_x = (TFT_WIDTH - msg_w) / 2;
+      int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+      tft.setCursor(msg_x, msg_y);
+      tft.print(line1);
+
+      // restore font and color to original values:
+      tft.setFont(Poppins_12_Bold);
+      tft.setTextColor(ILI9341_BLACK);
+
+    } else {
+      if (msgbox_visible) {
+        msgbox_visible = false;
+
+        // Clear message box text, excluding icons (if any shown)
+        tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, ILI9341_BLACK);
+      }
+
+      tft.writeRect(x, y, locked_icon.width, locked_icon.height, (uint16_t *)(locked_icon.pixel_data));
+    }
+  }
+
+  if (pogo_lid_opened && millis() < 10000) // 1st 10 secs only
+  {
+    tft.fillScreen(ILI9341_BLACK);
+    tft.setTextColor(QATCH_BLUE_FG);
+    tft.setFont(Poppins_16_Bold);
+
+    String line1 = "INSERT CARTRIDGE";
+    char buff1[line1.length() + 1]; // trailing NULL
+    line1.toCharArray(buff1, sizeof(buff1));
+
+    pad = 10;
+    w = tft.measureTextWidth(buff1);
+    //  h = tft.measureTextHeight(buff1);
+    x = (TFT_WIDTH - w) / 2;
+    y = pad; // (3 * TFT_HEIGHT / 4) + (h / 2) + pad; // middle-bottom
+    tft.setCursor(x, y);
+    tft.print(line1);
+
+    x = ICON_X;
+    y = ICON_Y;
+
+    // Cartridge circle icon:
+    tft.fillCircle(x + 50, y + 35, 35, QATCH_BLUE_FG);
+
+    // Calculate cartridge top-left position and size:
+    pad = 15;
+    x = x + 50 - pad;
+    y = y + 35 - 1.5*pad;
+    w = 2*pad;
+    h = 3*pad;
+
+    // Draw cartridge icon in parts
+    tft.fillRect(x, y, w+1, h, ILI9341_BLACK); // base rectangle
+    tft.fillTriangle(x+w-5, y, x+w, y+5, x+w, y, QATCH_BLUE_FG); // top-right corner notch
+    tft.fillRect(x+9, y+14, 13, 13, QATCH_GREY_BG); // metal block, middle
+    tft.fillRect(x+12, y+8, 7, 6, QATCH_GREY_BG); // metal block, top
+    tft.fillRect(x+7, y+20, 17, 3, QATCH_GREY_BG); // metal block, left and right notches
+    tft.fillCircle(x+15, y+20, 5, QATCH_BLUE_FG); // sensor circle, inside metal block
+    tft.drawCircle(x+15, y+h-7, 3, ILI9341_DARKGREY); // handle circle, bottom
+    tft.drawRect(x+4, y+34, 3, 6, ILI9341_DARKGREY); // left arrow
+    tft.drawTriangle(x+3, y+34, x+5, y+32, x+7, y+34, ILI9341_DARKGREY); // left arrowhead
+    tft.drawRect(x+w-6, y+34, 3, 6, ILI9341_DARKGREY); // right arrow
+    tft.drawTriangle(x+w-3, y+34, x+w-5, y+32, x+w-7, y+34, ILI9341_DARKGREY); // right arrowhead
+    tft.drawFastVLine(x+12, y, 8, ILI9341_DARKGREY); // left top slide line
+    tft.drawFastVLine(x+18, y, 8, ILI9341_DARKGREY); // right top slide line
+
+    tft.setFont(Poppins_11_Bold);
+
+    String line2 = "PRESS BUTTON TO LOCK";
+    if (l298nhb_auto_off_at != 0)
+      line2 = "";                   // in cooldown mode: wait to show msgbox text (title only)
+    char buff2[line2.length() + 1]; // trailing NULL
+    line2.toCharArray(buff2, sizeof(buff2));
+
+    pad = 80;
+    w = tft.measureTextWidth(buff2);
+    //  h = tft.measureTextHeight(buff2);
+    x = (TFT_WIDTH - w) / 2;
+    y = ICON_Y + pad; // (3 * TFT_HEIGHT / 4) + (h / 2) + pad; // middle-bottom
+    tft.setCursor(x, y);
+    tft.print(line2);
   }
 
   x = TEXT_X;
@@ -4227,22 +4409,22 @@ void tft_idle()
   tft.setTextColor(QATCH_BLUE_FG);
   tft.setFont(Poppins_16_Bold);
 
-  String line2 = "ID: [????????]";
-  char buff2[line2.length() + 1]; // trailing NULL
-  //  line2.toCharArray(buff2, sizeof(buff2));
-  sprintf(buff2, "ID: %lu", teensyUsbSN());
+  String line3 = "ID: [????????]";
+  char buff3[line3.length() + 1]; // trailing NULL
+  //  line3.toCharArray(buff3, sizeof(buff3));
+  sprintf(buff3, "ID: %lu", teensyUsbSN());
 
   pad = 10;
-  w = tft.measureTextWidth(buff2);
-  //  h = tft.measureTextHeight(buff2);
+  w = tft.measureTextWidth(buff3);
+  //  h = tft.measureTextHeight(buff3);
   x = (TFT_WIDTH - w) / 2;
   //  y = (3 * TFT_HEIGHT / 4) + (h / 2) + pad; // middle-bottom
   y = TEXT_Y + nanovisQ_black.height + pad;
 
   tft.setCursor(x, y);
-  tft.print(buff2);
+  tft.print(buff3);
 
-  if (tft_msgbox && msgbox_icon == 2) // pass
+  if (!pogo_lid_opened && tft_msgbox && msgbox_icon == 2) // pass
   {
     x = ICON_X;
     y = ICON_Y;
@@ -4272,36 +4454,8 @@ void tft_idle()
     }
   }
 
-  if (tft_msgbox && msgbox_icon == 3) // info
-  {
-    x = ICON_X;
-    y = ICON_Y;
-
-    // Cartridge circle icon:
-    tft.fillCircle(x + 50, y + 35, 35, QATCH_BLUE_FG);
-
-    // Calculate cartridge top-left position and size:
-    pad = 15;
-    x = x + 50 - pad;
-    y = y + 35 - 1.5*pad;
-    w = 2*pad;
-    h = 3*pad;
-
-    // Draw cartridge icon in parts
-    tft.fillRect(x, y, w+1, h, ILI9341_BLACK); // base rectangle
-    tft.fillTriangle(x+w-5, y, x+w, y+5, x+w, y, QATCH_BLUE_FG); // top-right corner notch
-    tft.fillRect(x+9, y+14, 13, 13, QATCH_GREY_BG); // metal block, middle
-    tft.fillRect(x+12, y+8, 7, 6, QATCH_GREY_BG); // metal block, top
-    tft.fillRect(x+7, y+20, 17, 3, QATCH_GREY_BG); // metal block, left and right notches
-    tft.fillCircle(x+15, y+20, 5, QATCH_BLUE_FG); // sensor circle, inside metal block
-    tft.drawCircle(x+15, y+h-7, 3, ILI9341_DARKGREY); // handle circle, bottom
-    tft.drawRect(x+4, y+34, 3, 6, ILI9341_DARKGREY); // left arrow
-    tft.drawTriangle(x+3, y+34, x+5, y+32, x+7, y+34, ILI9341_DARKGREY); // left arrowhead
-    tft.drawRect(x+w-6, y+34, 3, 6, ILI9341_DARKGREY); // right arrow
-    tft.drawTriangle(x+w-3, y+34, x+w-5, y+32, x+w-7, y+34, ILI9341_DARKGREY); // right arrowhead
-    tft.drawFastVLine(x+12, y, 8, ILI9341_DARKGREY); // left top slide line
-    tft.drawFastVLine(x+18, y, 8, ILI9341_DARKGREY); // right top slide line
-  }
+  // draw status icons for peristent errors & lid lock state
+  tft_draw_status_icons();
 }
 
 // void tft_testmode()
@@ -4748,8 +4902,36 @@ void tft_cooldown()
   // }
   // }
 
-  if (tft_msgbox) {
-    if (tft_msgbox && msgbox_icon == 2) // pass
+  // if (!tft_msgbox || msgbox_visible)
+  // {
+  //   // When no message to display, or there is already a message shown,
+  //   // the message box title area must be cleared to prevent overlap; else,
+  //   // No concerns about overwriting, and no need to blink when in cooldown
+
+  //   // clear out MSGBOX area at top (without requiring a full redraw)
+  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  // }
+  // if (!tft_msgbox) {
+  //     tft.setTextColor(QATCH_BLUE_FG); // TODO: indicate lid lock state
+  // }
+
+   /* INTENDED MESSAGE LINE BEHAVIOR (COOLDOWN MODE):
+  - HARDWARE ERROR icon should persist (if still true from TEMP CONTROL)
+  - However, the HARDWARE ERROR message text will be cleared in COOLDOWN
+  - Message box and lid unlocked text will blink in COOLDOWN mode
+  - Message line will be explicitly cleared when nothing is to be shown
+  */
+ 
+  if ((tft_msgbox || pogo_lid_opened)) {
+    // clear hw error message on LCD
+    tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, ILI9341_BLACK);
+
+    if (!msgbox_visible) {
+      msgbox_visible = true;
+
+      if (pogo_lid_opened)
+        tft.setTextColor(QATCH_BLUE_FG);
+      else if (tft_msgbox && msgbox_icon == 2) // pass
         tft.setTextColor(ILI9341_GREEN);
       else if (tft_msgbox && msgbox_icon == 3) // info
         tft.setTextColor(QATCH_BLUE_FG);
@@ -4758,7 +4940,7 @@ void tft_cooldown()
 
       tft.setFont(Poppins_16_Bold);
 
-    String line1 = String(msgbox_title);
+      String line1 = pogo_lid_opened ? "NOT LOCKED" : (msgbox_title);
       char buff1[line1.length() + 1]; // trailing NULL
       line1.toCharArray(buff1, sizeof(buff1));
 
@@ -4773,13 +4955,15 @@ void tft_cooldown()
       // restore font and color to original values:
       tft.setFont(Poppins_12_Bold);
       tft.setTextColor(ILI9341_BLACK);
-    }
-  else
-  {
-    // No concerns about overwriting, and no need to blink when in cooldown
 
-    // clear out MSGBOX area at top (without requiring a full redraw)
-    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+    } else {
+      msgbox_visible = false;
+    }
+  } else if (msgbox_visible) {
+    msgbox_visible = false;
+
+    // Clear message box text, excluding icons (if any shown)
+    tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, ILI9341_BLACK);
   }
 
   if (L298NHB_COOLDOWN / 1000 >= 100)
@@ -4826,6 +5010,9 @@ void tft_cooldown()
   // tft.printf("%u", rem_t);
 
   // tft.drawPixel(TEXT_X + 178, TEXT_Y + 5, ILI9341_RED);
+
+  // draw status icons for peristent errors & lid lock state
+  tft_draw_status_icons();
 }
 
 void tft_tempcontrol()
@@ -5106,44 +5293,49 @@ void tft_tempcontrol()
     //    tft.drawFastVLine(rect_x + 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
   }
   
-  if (tft_msgbox && !msgbox_visible) {
-    msgbox_visible = true;
+  // if (!tft_msgbox || msgbox_visible) {
+  //   // This will make the message title flash while in this mode
+  //   // which is required to prevent a new message from overdrawing 
+  //   // a prior message (i.e. "INITIALIZE SUCCESS" -> "CARTRIDGE UNLOCKED")
+  //   msgbox_visible = false;
 
-    if (tft_msgbox && msgbox_icon == 2) // pass
-      tft.setTextColor(ILI9341_GREEN);
-    else if (tft_msgbox && msgbox_icon == 3) // info
-      tft.setTextColor(QATCH_BLUE_FG);
-    else
-      tft.setTextColor(ILI9341_RED);
+  //   // clear out MSGBOX area at top (without requiring a full redraw)
+  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  // }
+  // if (tft_msgbox && !msgbox_visible) {
+  //   msgbox_visible = true;
 
-    tft.setFont(Poppins_16_Bold);
+  //   if (tft_msgbox && msgbox_icon == 2) // pass
+  //     tft.setTextColor(ILI9341_GREEN);
+  //   else if (tft_msgbox && msgbox_icon == 3) // info
+  //     tft.setTextColor(QATCH_BLUE_FG);
+  //   else
+  //     tft.setTextColor(ILI9341_RED);
 
-    String line1 = String(msgbox_title);
-    char buff1[line1.length() + 1]; // trailing NULL
-    line1.toCharArray(buff1, sizeof(buff1));
+  //   tft.setFont(Poppins_16_Bold);
 
-    int msg_pad = 10;
-    int msg_w = tft.measureTextWidth(buff1);
-    //  msg_h = tft.measureTextHeight(buff1);
-    int msg_x = (TFT_WIDTH - msg_w) / 2;
-    int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
-    tft.setCursor(msg_x, msg_y);
-    tft.print(line1);
+  //   String line1 = String(msgbox_title);
+  //   char buff1[line1.length() + 1]; // trailing NULL
+  //   line1.toCharArray(buff1, sizeof(buff1));
 
-    // restore font and color to original values:
-    tft.setFont(Poppins_10_Bold);
-    tft.setTextColor(QATCH_BLUE_FG);
-  }
-  else if (msgbox_visible)
-  {
-    // This will make the message title flash while in this mode
-    // which is required to prevent a new message from overdrawing 
-    // a prior message (i.e. "INITIALIZE SUCCESS" -> "CARTRIDGE UNLOCKED")
-    msgbox_visible = false;
+  //   int msg_pad = 10;
+  //   int msg_w = tft.measureTextWidth(buff1);
+  //   //  msg_h = tft.measureTextHeight(buff1);
+  //   int msg_x = (TFT_WIDTH - msg_w) / 2;
+  //   int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+  //   tft.setCursor(msg_x, msg_y);
+  //   tft.print(line1);
 
-    // clear out MSGBOX area at top (without requiring a full redraw)
-    tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
-  }
+  //   // restore font and color to original values:
+  //   tft.setFont(Poppins_10_Bold);
+  //   tft.setTextColor(QATCH_BLUE_FG);
+  // }
+  // if (!tft_msgbox && msgbox_visible) {
+  //   msgbox_visible = false;
+
+  //   // Hide message box text, excluding icons:
+  //   tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+  // }
 
   short pct;
   if (op == 0)
@@ -5168,12 +5360,89 @@ void tft_tempcontrol()
   //  tft.setTextSize(1);
 
   bool rewrite_PV_color = false;
-  if (max31855.status() != 0)
+  // if (pogo_lid_opened)
+  // {
+  //   // clear hw error message on LCD
+  //   tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+
+  //   tft.setTextColor(QATCH_BLUE_FG);
+  //   tft.setFont(Poppins_16_Bold);
+
+  //   String line0 = "NOT LOCKED";
+  //   char buff0[line0.length() + 1]; // trailing NULL
+  //   line0.toCharArray(buff0, sizeof(buff0));
+
+  //   uint16_t _pad = 10;
+  //   uint16_t _w = tft.measureTextWidth(buff0);
+  //   // uint16_t _h = tft.measureTextHeight(buff0);
+  //   uint16_t _x = (TFT_WIDTH - _w) / 2;
+  //   uint16_t _y = _pad;
+  //   //    Serial.printf("%u;%u;%u;%u", _x, _y, _w, _h);
+  //   tft.setCursor(_x, _y);
+  //   tft.print(line0);
+
+  //   tft.setFont(Poppins_10_Bold);
+  //   tft.setTextColor(QATCH_BLUE_FG); 
+  // }
+  // else if (tft_msgbox) {} // do nothing
+
+  /* INTENDED MESSAGE LINE BEHAVIOR (TEMP CONTROL MODE):
+  - HARDWARE ERROR will not blink (constantly shown while true)
+  - Message box and lid unlocked text will blink in TEMP CONTROL mode
+  - Message line will be explicitly cleared when nothing is to be shown
+  */
+
+  if ((tft_msgbox || pogo_lid_opened)) {
+    // clear hw error message on LCD
+    tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+
+    if (!msgbox_visible) {
+      msgbox_visible = true;
+
+      if (pogo_lid_opened)
+        tft.setTextColor(QATCH_BLUE_FG);
+      else if (tft_msgbox && msgbox_icon == 2) // pass
+        tft.setTextColor(ILI9341_GREEN);
+      else if (tft_msgbox && msgbox_icon == 3) // info
+        tft.setTextColor(QATCH_BLUE_FG);
+      else
+        tft.setTextColor(ILI9341_RED);
+
+      tft.setFont(Poppins_16_Bold);
+
+      String line1 = pogo_lid_opened ? "NOT LOCKED" : (msgbox_title);
+      char buff1[line1.length() + 1]; // trailing NULL
+      line1.toCharArray(buff1, sizeof(buff1));
+
+      int msg_pad = 10;
+      int msg_w = tft.measureTextWidth(buff1);
+      //  msg_h = tft.measureTextHeight(buff1);
+      int msg_x = (TFT_WIDTH - msg_w) / 2;
+      int msg_y = msg_pad; // (3 * TFT_HEIGHT / 4) + (msg_h / 2) + msg_pad; // middle-bottom
+      tft.setCursor(msg_x, msg_y);
+      tft.print(line1);
+
+      // restore font and color to original values:
+      tft.setFont(Poppins_10_Bold);
+      tft.setTextColor(QATCH_BLUE_FG);
+
+    } else {
+      msgbox_visible = false;
+    }
+  }
+  else if (max31855.status() != 0 || force_hw_error)
   {  
+    if (!msgbox_visible || !hw_error) {
+      msgbox_visible = true;
+      hw_error = true;
+
+      // clear hw error message on LCD
+      tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+      
       tft.setTextColor(ILI9341_RED);
       tft.setFont(Poppins_16_Bold);
       
-    String line0 = "Hardware Error Detected";
+      String line0 = "Hardware Error";
       char buff0[line0.length() + 1]; // trailing NULL
       line0.toCharArray(buff0, sizeof(buff0));
       
@@ -5185,18 +5454,26 @@ void tft_tempcontrol()
       //    Serial.printf("%u;%u;%u;%u", _x, _y, _w, _h);
       tft.setCursor(_x, _y);
       tft.print(line0);
-
-    hw_error = true;
+    }
 
     tft.setFont(Poppins_10_Bold);
     tft.setTextColor(QATCH_BLUE_FG);
   }
   else if (hw_error)
   {
-    // persist hw error message on LCD
-    //    tft.fillRect(19, 10, 282, 16, fillColor);
-    rewrite_PV_color = true;
+    // clear hw error message on LCD
+    tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+
+    msgbox_visible = false;
     hw_error = false;
+    rewrite_PV_color = true;
+  }
+  else
+  {
+    // clear message box text on LCD, excluding icons (if any):
+    tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
+
+    msgbox_visible = false;
   }
 
   int x = (TFT_WIDTH - w) / 2;
@@ -5473,6 +5750,9 @@ void tft_tempcontrol()
   }
   //    }
   //  }
+
+  // draw status icons for peristent errors & lid lock state
+  tft_draw_status_icons();
 }
 
 void tft_initialize()
@@ -5540,6 +5820,9 @@ void tft_initialize()
   // client->print("TFT Wakeup Duration: ");
   // client->print(stop - start);
   // client->println("us");
+
+  // draw status icons for peristent errors & lid lock state
+  tft_draw_status_icons();
 }
 
 void tft_measure()
@@ -5596,6 +5879,72 @@ void tft_measure()
   x = ICON_X;
   y = ICON_Y;
   tft.writeRect(x, y, measure_icon.width, measure_icon.height, (uint16_t *)(measure_icon.pixel_data));
+
+  // draw status icons for peristent errors & lid lock state
+  tft_draw_status_icons();
+}
+
+void tft_draw_status_icons()
+{
+  // Check screen pixels to prevent update flicker
+  // Only draw/clear icons when not already done.
+
+  uint16_t x, y, spacing;
+  x = TFT_WIDTH - 5;
+  y = 9;
+  spacing = 25;
+
+  uint16_t center_px_x, center_px_y;
+  uint16_t center_px_color;
+  
+  x -= spacing; // shift for next icon
+
+  center_px_x = x + (status_lock_icon.width / 2);
+  center_px_y = y + (status_lock_icon.height / 2);
+  center_px_color = tft.readPixel(center_px_x, center_px_y);
+
+  if (!pogo_lid_opened)
+  {
+    if (center_px_color == ILI9341_BLACK) {
+      tft.writeRect(x, y, status_lock_icon.width, status_lock_icon.height, (uint16_t *)(status_lock_icon.pixel_data));
+    } else {
+      // Do nothing. Icon already drawn.
+      // Serial.println("Not redrawing lock icon. Already drawn.");
+    }
+  }
+  else
+  {
+    if (center_px_color != ILI9341_BLACK) {
+      tft.fillRect(x, y, status_lock_icon.width, status_lock_icon.height, ILI9341_BLACK);
+    } else {
+      // Do nothing. Icon already cleared.
+    }
+  }
+  
+  x -= spacing; // shift for first icon
+  
+  center_px_x = x + (status_error_icon.width / 2);
+  center_px_y = y + (status_error_icon.height / 2);
+  center_px_color = tft.readPixel(center_px_x, center_px_y);
+
+  bool transient_error = (max31855.error() != "OK[NONE]");
+  if (hw_error || tft_error || transient_error || PID_IS_SECONDARY(NVMEM.pid))
+  {
+    if (center_px_color == ILI9341_BLACK) {
+      tft.writeRect(x, y, status_error_icon.width, status_error_icon.height, (uint16_t *)(status_error_icon.pixel_data));
+    } else {
+      // Do nothing. Icon already drawn.
+      // Serial.println("Not redrawing error icon. Already drawn.");
+    }
+  }
+  else
+  {
+    if (center_px_color != ILI9341_BLACK) {
+      tft.fillRect(x, y, status_error_icon.width, status_error_icon.height, ILI9341_BLACK);
+    } else {
+      // Do nothing. Icon already cleared.
+    }
+  }
 }
 
 #else // NOT USE_ILI9341
@@ -5613,6 +5962,7 @@ void tft_cooldown() {}
 void tft_tempcontrol() {}
 void tft_initialize() {}
 void tft_measure() {}
+void tft_draw_status_icons() {}
 
 #endif
 
