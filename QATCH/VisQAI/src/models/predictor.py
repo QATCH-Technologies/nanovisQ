@@ -694,7 +694,6 @@ class Predictor:
             n_epochs = 100
 
         Log.i(f"Predictor.learn(): data.shape={new_df.shape}, n_epochs={n_epochs}")
-        Log.i(f"ref_df: {reference_df.head()}")
         try:
             # Perform the training (updates weights/adapter in memory)
             self.predictor.learn(
