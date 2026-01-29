@@ -44,6 +44,7 @@ void tft_progress_show(float pct);
 void tft_tempcontrol();
 void tft_initialize();
 void tft_measure();
+void tft_draw_status_icons();
 
 void QATCH_setup();
 void QATCH_loop();
