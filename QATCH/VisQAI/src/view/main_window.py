@@ -818,14 +818,14 @@ class VisQAIWindow(BaseVisQAIWindow):
                 except Exception as e:
                     Log.e(
                         tag=self.TAG,
-                        msg="Failed to set active item in VisQ.AI Toolkit menu",
+                        msg="Failed to set active item in VisQ.AI menu",
                     )
                     Log.e(tag=self.TAG, msg=f"{e}")
             else:
                 # MainWin not ready yet
                 Log.d(
                     tag=self.TAG,
-                    msg="VisQ.AI Toolkit menu widget not found yet (startup initialization)",
+                    msg="VisQ.AI menu widget not found yet (startup initialization)",
                 )
 
         else:
