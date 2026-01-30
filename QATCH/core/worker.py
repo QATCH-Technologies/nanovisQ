@@ -233,10 +233,11 @@ class Worker:
                     ) = self._acquisition_process.get_frequencies(self._samples, 0)
 
                 # Setup QModelV6YOLO_LiveProcess live fill process.
-                self._forecaster_process = QModelV6YOLO_LiveProcess(
-                    self._queueLog, self._forecaster_in, self._forecaster_out
-                )
-                self._forecaster_process.start()
+                if Constants.USE_MULTIPROCESS_FILL_FORECASTER:
+                    self._forecaster_process = QModelV6YOLO_LiveProcess(
+                        self._queueLog, self._forecaster_in, self._forecaster_out
+                    )
+                    self._forecaster_process.start()
 
                 # Prepopulate frequency buffer before starting
                 for i in range(len(self._data0_buffer)):
@@ -250,15 +251,18 @@ class Worker:
                         self._overtone_name, int(self._overtone_value)
                     ),
                 )
-                Log.i(TAG, "Frequency start: {} Hz".format(int(self._readFREQ[0])))
-                Log.i(TAG, "Frequency stop:  {} Hz".format(int(self._readFREQ[-1])))
+                Log.i(TAG, "Frequency start: {} Hz".format(
+                    int(self._readFREQ[0])))
+                Log.i(TAG, "Frequency stop:  {} Hz".format(
+                    int(self._readFREQ[-1])))
                 Log.i(
                     TAG,
                     "Frequency range: {} Hz".format(
                         int(self._readFREQ[-1] - self._readFREQ[0])
                     ),
                 )
-                Log.i(TAG, "Number of samples: {}".format(int(self._samples - 1)))
+                Log.i(TAG, "Number of samples: {}".format(
+                    int(self._samples - 1)))
                 Log.i(TAG, "Sample rate: {} Hz".format(int(self._fStep)))
                 Log.i(TAG, "History buffer size: 5 min\n")
                 Log.i(TAG, "MAIN PROCESSING INFORMATION")
@@ -297,7 +301,8 @@ class Worker:
                     ),
                 )
                 Log.i(
-                    TAG, "Sample rate: {} Hz".format(int(Constants.calibration_fStep))
+                    TAG, "Sample rate: {} Hz".format(
+                        int(Constants.calibration_fStep))
                 )
             Log.i(TAG, "Starting processes...\n")
             # Starts processes
@@ -553,7 +558,7 @@ class Worker:
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0 : ports[i].index(":")])
+                    port_names.append(ports[i][0: ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
@@ -564,7 +569,7 @@ class Worker:
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0 : ports[i].index(":")])
+                    port_names.append(ports[i][0: ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
@@ -623,7 +628,8 @@ class Worker:
             self._d3_buffer.append(
                 RingBuffer(Constants.ring_buffer_samples)
             )  # temperature
-            self._d4_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # ambient
+            self._d4_buffer.append(RingBuffer(
+                Constants.ring_buffer_samples))  # ambient
             # time (Resonance frequency)
             self._t1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
             self._t2_buffer.append(

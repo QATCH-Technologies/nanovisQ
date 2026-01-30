@@ -175,8 +175,8 @@ class SerialProcess(multiprocessing.Process):
             self._overtone = float(speed)
         except:
             Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz Fundamental".format(
-                peaks_mag[0]))
-            self._overtone = peaks_mag[0]
+                peaks_mag[1]))
+            self._overtone = peaks_mag[1]
 
         self._overtone_int = None
         for x in range(len(self._serial)):
@@ -188,8 +188,8 @@ class SerialProcess(multiprocessing.Process):
         # Checks for correct frequency selection
         if self._overtone_int == None:
             Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz Fundamental".format(
-                peaks_mag[0]))
-            self._overtone_int = 0
+                peaks_mag[1]))
+            self._overtone_int = 1
 
         is_open = False  # default, fail
         num_ports = len(self._serial)
@@ -879,7 +879,8 @@ class SerialProcess(multiprocessing.Process):
                                 start = time()
                                 waitFor = 3
                                 while time() - start < waitFor:  # delay timeout
-                                    if self._serial[0].in_waiting > waitFor: # more than MSGBOX reply
+                                    # more than MSGBOX reply
+                                    if self._serial[0].in_waiting > waitFor:
                                         cmd = "STOP\n"
                                         break
 
@@ -895,7 +896,8 @@ class SerialProcess(multiprocessing.Process):
                                 # Proceed with streaming, regardless of success or timeout
                                 Log.i(TAG, "Starting data stream...")
                                 while time() - start < waitFor:  # delay timeout
-                                    buffer = self._serial[0].read_until().decode().strip().lower()
+                                    buffer = self._serial[0].read_until(
+                                    ).decode().strip().lower()
                                     if buffer in ["stop", ""]:
                                         break  # proceed on STOP or no reply
                                 cmd = "STREAM\n"  # start streaming
@@ -918,11 +920,11 @@ class SerialProcess(multiprocessing.Process):
                                 self._serial[0].write(cmd.encode())
                                 Log.d(
                                     TAG, "{} {} - Sending FREQ CMD {}".format(k, streaming, cmd))
-                                
+
                             # if buffer is pre-filled (even just once) we don't need to send CMD again (ever, this RUN)
                             if self._serial[0].in_waiting and elaborating:
                                 streaming = True
-                                
+
                             if not elaborating:
                                 k += 1  # next sweep step
                                 continue
