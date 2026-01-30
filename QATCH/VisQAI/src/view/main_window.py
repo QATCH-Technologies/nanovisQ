@@ -10,15 +10,19 @@ except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
+        @staticmethod
         def d(tag, msg=""):
             print("DEBUG:", tag, msg)
 
+        @staticmethod
         def i(tag, msg=""):
             print("INFO:", tag, msg)
 
+        @staticmethod
         def w(tag, msg=""):
             print("WARNING:", tag, msg)
 
+        @staticmethod
         def e(tag, msg=""):
             print("ERROR:", tag, msg)
 
@@ -222,7 +226,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             status = license_data.get("status", "unknown")
             if status == LicenseStatus.ADMIN:
                 self.setCentralWidget(self.tab_widget)
-                self._update_status_bar("Licensed: Administrator", permanent=True)
+                self._update_status_bar(
+                    "Licensed: Administrator", permanent=True)
 
             elif status == LicenseStatus.ACTIVE:
                 self.setCentralWidget(self.tab_widget)
@@ -231,12 +236,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                     try:
                         iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
-                        days_remaining = (expiration_date - dt.datetime.now()).days
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
                         self._update_status_bar(
                             f"Licensed: {days_remaining} days remaining", permanent=True
                         )
-                    except:
-                        self._update_status_bar("Licensed: Active", permanent=True)
+                    except (ValueError, TypeError):
+                        self._update_status_bar(
+                            "Licensed: Active", permanent=True)
 
             elif status == LicenseStatus.TRIAL:
                 self.setCentralWidget(self.tab_widget)
@@ -245,7 +252,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                     try:
                         iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
-                        days_remaining = (expiration_date - dt.datetime.now()).days
+                        days_remaining = (expiration_date -
+                                          dt.datetime.now()).days
 
                         if days_remaining <= 7:
                             self._update_status_bar(
@@ -258,14 +266,17 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                                 f"Trial: {days_remaining} days remaining",
                                 permanent=True,
                             )
-                    except:
-                        self._update_status_bar("Trial: Active", permanent=True)
+                    except (ValueError, TypeError):
+                        self._update_status_bar(
+                            "Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
                 status_text = (
-                    status.value if isinstance(status, LicenseStatus) else str(status)
+                    status.value if isinstance(
+                        status, LicenseStatus) else str(status)
                 )
-                self._update_status_bar(f"Licensed: {status_text}", permanent=True)
+                self._update_status_bar(
+                    f"Licensed: {status_text}", permanent=True)
 
             return True
 
@@ -279,8 +290,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         try:
             creation_ts = os.stat(DB_PATH).st_ctime
             creation_dt = dt.datetime.fromtimestamp(creation_ts)
-            time_ago_seconds = (dt.datetime.now() - creation_dt).total_seconds()
-            time_allowed_secs = dt.timedelta(days=free_preview_period).total_seconds()
+            time_ago_seconds = (dt.datetime.now() -
+                                creation_dt).total_seconds()
+            time_allowed_secs = dt.timedelta(
+                days=free_preview_period).total_seconds()
 
             if time_ago_seconds >= time_allowed_secs:
                 Log.w(f"Free preview period expired. {message}")
@@ -292,7 +305,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 )
 
                 if hasattr(self._expired_widget, "set_message"):
-                    days_over = int((time_ago_seconds - time_allowed_secs) / 86400)
+                    days_over = int(
+                        (time_ago_seconds - time_allowed_secs) / 86400)
                     self._expired_widget.set_message(
                         f"Your {free_preview_period}-day preview ended {days_over} days ago.\n"
                         f"Please contact support to purchase a license."
@@ -302,7 +316,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 days_elapsed = int(time_ago_seconds / 86400)
                 self.trial_left = free_preview_period - days_elapsed
 
-                Log.i(f"Free preview: {self.trial_left} days remaining. {message}")
+                Log.i(
+                    f"Free preview: {self.trial_left} days remaining. {message}")
 
                 self.setCentralWidget(self._trial_widget)
 
@@ -453,7 +468,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget.addTab(
             FrameStep1(self, 3), "\u2462 Import Experiments"
         )  # unicode circled 3
-        self.tab_widget.addTab(FrameStep2(self, 4), "\u2463 Learn")  # unicode circled 4
+        self.tab_widget.addTab(
+            FrameStep2(self, 4), "\u2463 Learn"
+        )  # unicode circled 4
         self.tab_widget.addTab(
             EvaluationUI(self), "\u2464 Evaluate"
         )  # unicode circled 5
@@ -488,7 +505,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.signForm.setWindowFlags(
             QtCore.Qt.Dialog
         )  # | QtCore.Qt.WindowStaysOnTopHint)
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/sign.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/sign.png")
         self.signForm.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         self.signForm.setWindowTitle("Signature")
         self.signForm.setModal(True)
@@ -515,7 +533,8 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.sign = QtWidgets.QLineEdit()
         self.sign.installEventFilter(self)
         layout_sign.addWidget(self.sign)
-        self.sign_do_not_ask = QtWidgets.QCheckBox("Do not ask again this session")
+        self.sign_do_not_ask = QtWidgets.QCheckBox(
+            "Do not ask again this session")
         self.sign_do_not_ask.setEnabled(False)
         if UserProfiles.checkDevMode()[0]:  # DevMode enabled
             auto_sign_key = None
@@ -523,7 +542,8 @@ class VisQAIWindow(BaseVisQAIWindow):
             if os.path.exists(Constants.auto_sign_key_path):
                 with open(Constants.auto_sign_key_path, "r") as f:
                     auto_sign_key = f.readline()
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
@@ -663,13 +683,15 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.sign.clear()
 
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
             else:
                 Log.d(
                     "User switched users to the same user profile. Nothing to change."
@@ -692,13 +714,15 @@ class VisQAIWindow(BaseVisQAIWindow):
                 )
             if new_username != None and UserProfiles.session_info()[0]:
                 Log.d("User name changed. Changing sign-in user info.")
-                self.parent.ControlsWin.username.setText(f"User: {new_username}")
+                self.parent.ControlsWin.username.setText(
+                    f"User: {new_username}")
                 self.parent.ControlsWin.userrole = UserRoles(new_userrole)
                 self.parent.ControlsWin.signinout.setText("&Sign Out")
                 self.parent.ControlsWin.ui1.tool_User.setText(new_username)
                 self.parent.AnalyzeProc.tool_User.setText(new_username)
                 if self.parent.ControlsWin.userrole != UserRoles.ADMIN:
-                    self.parent.ControlsWin.manage.setText("&Change Password...")
+                    self.parent.ControlsWin.manage.setText(
+                        "&Change Password...")
                 PopUp.warning(
                     self,
                     Constants.app_title,
@@ -714,13 +738,23 @@ class VisQAIWindow(BaseVisQAIWindow):
         elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
-        try:
-            # Highlight the selected toolkit item in the floating menu
-            self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
-
-        except Exception as e:
-            Log.e("Failed to set active item in VisQ.AI Toolkit menu")
-            Log.e(f"ERROR: {e}")
+        # Check if MainWin exists before accessing to prevent startup crash!
+        if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+            try:
+                # Highlight the selected toolkit item in the floating menu
+                self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+            except Exception as e:
+                Log.e(
+                    tag=self.TAG,
+                    msg="Failed to set active item in VisQ.AI menu",
+                )
+                Log.e(tag=self.TAG, msg=f"{e}")
+        else:
+            # MainWin not ready yet
+            Log.d(
+                tag=self.TAG,
+                msg="VisQ.AI menu widget not found yet (startup initialization)",
+            )
 
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
@@ -814,6 +848,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             # Check if MainWin exists before accessing to prevent startup crash!
             if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
                 try:
+                    # Remove highlighted tool item from floating menu widget
                     self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
                 except Exception as e:
                     Log.e(
@@ -937,7 +972,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                 self.signedInAs.setText(self.username)
                 self.signerInit.setText(f"Initials: <b>{self.initials}</b>")
                 screen = QtWidgets.QDesktopWidget().availableGeometry()
-                left = int((screen.width() - self.signForm.sizeHint().width()) / 2) + 50
+                left = int(
+                    (screen.width() - self.signForm.sizeHint().width()) / 2) + 50
                 top = (
                     int((screen.height() - self.signForm.sizeHint().height()) / 2) - 50
                 )
@@ -950,7 +986,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                     return
 
         if self.sign_do_not_ask.isChecked():
-            session_key_path = os.path.join(Constants.user_profiles_path, "session.key")
+            session_key_path = os.path.join(
+                Constants.user_profiles_path, "session.key")
             if os.path.exists(session_key_path):
                 with open(session_key_path, "r") as f:
                     session_key = f.readline()
