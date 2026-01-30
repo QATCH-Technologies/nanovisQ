@@ -1,53 +1,67 @@
 try:
     from typing import Optional, Tuple
-    from QATCH.ui.popUp import PopUp
-    from QATCH.core.constants import Constants
-    from QATCH.common.userProfiles import UserProfiles, UserRoles
-    from QATCH.common.logger import Logger as Log
+
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
+    from QATCH.common.userProfiles import UserProfiles, UserRoles
+    from QATCH.core.constants import Constants
+    from QATCH.ui.popUp import PopUp
 except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
-        def i(tag, msg=""): print("INFO:", tag, msg)
-        def w(tag, msg=""): print("WARNING:", tag, msg)
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        @staticmethod
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
 
-from xml.dom import minidom
-from numpy import loadtxt
-from PyQt5 import QtCore, QtGui, QtWidgets
+        @staticmethod
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
 
+        @staticmethod
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        @staticmethod
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
+
+import datetime as dt
+import hashlib
 import inspect
 import os
-import hashlib
-from scipy.optimize import curve_fit
-import datetime as dt
-from types import SimpleNamespace
 import webbrowser
+from types import SimpleNamespace
+from xml.dom import minidom
+
+from numpy import loadtxt
+from PyQt5 import QtCore, QtGui, QtWidgets
+from scipy.optimize import curve_fit
 
 try:
-    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
-    from src.models.formulation import Formulation
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
-    from src.db.db import Database, DB_PATH
+    from src.db.db import DB_PATH, Database
+    from src.models.formulation import Formulation
+    from src.view.evaluation_ui import EvaluationUI
     from src.view.frame_step1 import FrameStep1
     from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
-    from src.view.evaluation_ui import EvaluationUI
     from src.view.hypothesis_testing_ui import HypothesisTestingUI
     from src.view.optimize_ui import OptimizationUI
+
+    from QATCH.common.licenseManager import LicenseManager, LicenseStatus
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
-    from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.db.db import Database, DB_PATH
+    from QATCH.VisQAI.src.db.db import DB_PATH, Database
+    from QATCH.VisQAI.src.models.formulation import Formulation
+    from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
     from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
     from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
-    from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
     from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
     from QATCH.VisQAI.src.view.optimize_ui import OptimizationUI
 TRIAL_LABEL_TEXT = (
@@ -77,18 +91,21 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         # self.setCentralWidget(self._expired_widget)
 
         self.expired_label = QtWidgets.QLabel(
-            "<b>Your VisQ.AI preview period has ended.</b><br/><br/>" +
-            "Please subscribe to regain access on this system.<br/><br/>")
+            "<b>Your VisQ.AI preview period has ended.</b><br/><br/>"
+            + "Please subscribe to regain access on this system.<br/><br/>"
+        )
         self.expired_label.setAlignment(QtCore.Qt.AlignCenter)
         self.expired_label.setStyleSheet("font-size: 24px;")
 
         self.expired_subscribe = QtWidgets.QPushButton("Subscribe")
         self.expired_subscribe.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.expired_learnmore = QtWidgets.QPushButton("Learn more...")
         self.expired_learnmore.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.expired_buttons = QtWidgets.QHBoxLayout()
         self.expired_buttons.addStretch(3)
@@ -111,11 +128,13 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         self.trial_subscribe = QtWidgets.QPushButton("Subscribe")
         self.trial_subscribe.clicked.connect(
-            lambda: webbrowser.open("https://qatchtech.com"))
+            lambda: webbrowser.open("https://qatchtech.com")
+        )
 
         self.trial_dismiss = QtWidgets.QPushButton("Dismiss")
         self.trial_dismiss.clicked.connect(
-            lambda: self.setCentralWidget(self.tab_widget))
+            lambda: self.setCentralWidget(self.tab_widget)
+        )
 
         self.trial_buttons = QtWidgets.QHBoxLayout()
         self.trial_buttons.addStretch(3)
@@ -134,7 +153,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         self.setCentralWidget(self._super_widget)
 
     def setCentralWidget(self, widget):
-        if hasattr(self, '_super_widget') and widget is self._super_widget:
+        if hasattr(self, "_super_widget") and widget is self._super_widget:
             return super().setCentralWidget(widget)
 
         # Only show the set widget (hide all others)
@@ -155,8 +174,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
         license_data = {}
         if license_manager is not None:
             try:
-                is_valid_license, message, license_data = license_manager.validate_license()
-                status_raw = license_data.get('status', LicenseStatus.INACTIVE)
+                is_valid_license, message, license_data = (
+                    license_manager.validate_license()
+                )
+                status_raw = license_data.get("status", LicenseStatus.INACTIVE)
                 if isinstance(status_raw, str):
                     try:
                         status = LicenseStatus(status_raw)
@@ -164,10 +185,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         status = LicenseStatus.INACTIVE
                 else:
                     status = status_raw
-                expiration_str: str = license_data.get('expiration', '')
-                if is_valid_license and expiration_str and status != LicenseStatus.ADMIN:
+                expiration_str: str = license_data.get("expiration", "")
+                if (
+                    is_valid_license
+                    and expiration_str
+                    and status != LicenseStatus.ADMIN
+                ):
                     try:
-                        iso = expiration_str.replace('Z', '+00:00')
+                        iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
                         now = dt.datetime.now()
                         days_remaining = (expiration_date - now).days
@@ -180,9 +205,10 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         pass
                 if license_manager.cache_enabled:
                     cache_status = license_manager.get_cache_status()
-                    if cache_status.get('cache_expired', False):
+                    if cache_status.get("cache_expired", False):
                         Log.d(
-                            f"Cache expired, background refresh: {cache_status.get('refresh_thread_active', False)}")
+                            f"Cache expired, background refresh: {cache_status.get('refresh_thread_active', False)}"
+                        )
 
             except Exception as e:
                 Log.e(f"License validation error: {e}")
@@ -197,7 +223,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         # Handle valid license
         if is_valid_license:
-            status = license_data.get('status', 'unknown')
+            status = license_data.get("status", "unknown")
             if status == LicenseStatus.ADMIN:
                 self.setCentralWidget(self.tab_widget)
                 self._update_status_bar(
@@ -205,43 +231,50 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
             elif status == LicenseStatus.ACTIVE:
                 self.setCentralWidget(self.tab_widget)
-                expiration_str: str = license_data.get('expiration', '')
+                expiration_str: str = license_data.get("expiration", "")
                 if expiration_str:
                     try:
-                        iso = expiration_str.replace('Z', '+00:00')
+                        iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
                         days_remaining = (expiration_date -
                                           dt.datetime.now()).days
                         self._update_status_bar(
-                            f"Licensed: {days_remaining} days remaining", permanent=True)
-                    except:
+                            f"Licensed: {days_remaining} days remaining", permanent=True
+                        )
+                    except (ValueError, TypeError):
                         self._update_status_bar(
                             "Licensed: Active", permanent=True)
 
             elif status == LicenseStatus.TRIAL:
                 self.setCentralWidget(self.tab_widget)
-                expiration_str: str = license_data.get('expiration', '')
+                expiration_str: str = license_data.get("expiration", "")
                 if expiration_str:
                     try:
-                        iso = expiration_str.replace('Z', '+00:00')
+                        iso = expiration_str.replace("Z", "+00:00")
                         expiration_date = dt.datetime.fromisoformat(iso)
                         days_remaining = (expiration_date -
                                           dt.datetime.now()).days
 
                         if days_remaining <= 7:
-                            self._update_status_bar(f"Trial expires in {days_remaining} days!",
-                                                    permanent=True,
-                                                    style="color: orange;")
+                            self._update_status_bar(
+                                f"Trial expires in {days_remaining} days!",
+                                permanent=True,
+                                style="color: orange;",
+                            )
                         else:
-                            self._update_status_bar(f"Trial: {days_remaining} days remaining",
-                                                    permanent=True)
-                    except:
+                            self._update_status_bar(
+                                f"Trial: {days_remaining} days remaining",
+                                permanent=True,
+                            )
+                    except (ValueError, TypeError):
                         self._update_status_bar(
                             "Trial: Active", permanent=True)
             else:
                 self.setCentralWidget(self.tab_widget)
-                status_text = status.value if isinstance(
-                    status, LicenseStatus) else str(status)
+                status_text = (
+                    status.value if isinstance(
+                        status, LicenseStatus) else str(status)
+                )
                 self._update_status_bar(
                     f"Licensed: {status_text}", permanent=True)
 
@@ -251,7 +284,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             Log.e(f"No license found and no database exists. {message}")
             self.setCentralWidget(self._expired_widget)
             self._update_status_bar(
-                "License Required", permanent=True, style="color: red;")
+                "License Required", permanent=True, style="color: red;"
+            )
             return False
         try:
             creation_ts = os.stat(DB_PATH).st_ctime
@@ -264,11 +298,13 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             if time_ago_seconds >= time_allowed_secs:
                 Log.w(f"Free preview period expired. {message}")
                 self.setCentralWidget(self._expired_widget)
-                self._update_status_bar("Preview Expired - License Required",
-                                        permanent=True,
-                                        style="color: red;")
+                self._update_status_bar(
+                    "Preview Expired - License Required",
+                    permanent=True,
+                    style="color: red;",
+                )
 
-                if hasattr(self._expired_widget, 'set_message'):
+                if hasattr(self._expired_widget, "set_message"):
                     days_over = int(
                         (time_ago_seconds - time_allowed_secs) / 86400)
                     self._expired_widget.set_message(
@@ -286,39 +322,49 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 self.setCentralWidget(self._trial_widget)
 
                 if self.trial_left <= 3:
-                    self._update_status_bar(f"Preview expires in {self.trial_left} days!",
-                                            permanent=True,
-                                            style="color: orange; font-weight: bold;")
+                    self._update_status_bar(
+                        f"Preview expires in {self.trial_left} days!",
+                        permanent=True,
+                        style="color: orange; font-weight: bold;",
+                    )
                 elif self.trial_left <= 7:
-                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
-                                            permanent=True,
-                                            style="color: orange;")
+                    self._update_status_bar(
+                        f"Preview: {self.trial_left} days remaining",
+                        permanent=True,
+                        style="color: orange;",
+                    )
                 else:
-                    self._update_status_bar(f"Preview: {self.trial_left} days remaining",
-                                            permanent=True)
+                    self._update_status_bar(
+                        f"Preview: {self.trial_left} days remaining", permanent=True
+                    )
 
-                if hasattr(self, 'trial_label'):
-                    if '{}' in TRIAL_LABEL_TEXT:
+                if hasattr(self, "trial_label"):
+                    if "{}" in TRIAL_LABEL_TEXT:
                         self.trial_label.setText(
-                            TRIAL_LABEL_TEXT.format(self.trial_left))
+                            TRIAL_LABEL_TEXT.format(self.trial_left)
+                        )
                     else:
                         self.trial_label.setText(
-                            f"Free Preview: {self.trial_left} days remaining")
+                            f"Free Preview: {self.trial_left} days remaining"
+                        )
 
         except Exception as e:
             Log.e(f"Error calculating preview period: {e}")
             self.setCentralWidget(self._expired_widget)
             self._update_status_bar(
-                "License Error", permanent=True, style="color: red;")
+                "License Error", permanent=True, style="color: red;"
+            )
             return False
 
         return False
 
-    def _update_status_bar(self, message: str, permanent: bool = False, style: str = None):
-        if hasattr(self, 'statusBar'):
+    def _update_status_bar(
+        self, message: str, permanent: bool = False, style: str = None
+    ):
+        if hasattr(self, "statusBar"):
             status_bar = self.statusBar()
             if permanent:
-                if not hasattr(self, '_license_status_label'):
+                if not hasattr(self, "_license_status_label"):
                     self._license_status_label = QtWidgets.QLabel()
                     status_bar.addPermanentWidget(self._license_status_label)
                 self._license_status_label.setText(message)
@@ -336,13 +382,15 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             try:
                 # Update UI in main thread
                 QtCore.QTimer.singleShot(
-                    0, lambda lm=license_manager: self.check_license(lm))
+                    0, lambda lm=license_manager: self.check_license(lm)
+                )
 
             except Exception as e:
                 Log.e(f"Background license refresh failed: {e}")
 
         # Start background thread
         import threading
+
         thread = threading.Thread(target=check_callback, daemon=True)
         Log.d("Checking VisQAI license lease")
         thread.start()
@@ -373,11 +421,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
 
 class VisQAIWindow(BaseVisQAIWindow):
+    TAG = "[VisQAIWindow]"
+
     def __init__(self, parent=None):
         super(VisQAIWindow, self).__init__(parent)
 
         # import typing here to avoid circularity
         from QATCH.ui.mainWindow import MainWindow
+
         self.parent: MainWindow = parent
         self.setWindowTitle("VisQ.AI")
         self.setMinimumSize(900, 600)
@@ -387,11 +438,10 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.predict_formulation: Formulation = Formulation()
         self.init_ui()
         self.init_sign()
-        self.check_license(
-            self.parent._license_manager)
+        self.check_license(self.parent._license_manager)
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(False)  # repeat until stopped
-        self.timer.setInterval(1000*60*60)  # once an hour
+        self.timer.setInterval(1000 * 60 * 60)  # once an hour
         self.timer.timeout.connect(
             lambda: self.check_license_async(self.parent._license_manager)
         )
@@ -409,22 +459,30 @@ class VisQAIWindow(BaseVisQAIWindow):
         # Enable database objects for initial UI load.
         self.enable(True)
 
-        self.tab_widget.addTab(FrameStep1(self, 1),
-                               "\u2460 Select Run")  # unicode circled 1
-        self.tab_widget.addTab(FrameStep1(self, 2),
-                               "\u2461 Suggest Experiments")  # unicode circled 2
-        self.tab_widget.addTab(FrameStep1(self, 3),
-                               "\u2462 Import Experiments")  # unicode circled 3
-        self.tab_widget.addTab(FrameStep2(self, 4),
-                               "\u2463 Learn")  # unicode circled 4
-        self.tab_widget.addTab(EvaluationUI(self),
-                               "\u2464 Evaluate")  # unicode circled 5
-        self.tab_widget.addTab(FrameStep1(self, 5),
-                               "\u2465 Predict")  # unicode circled 6
-        self.tab_widget.addTab(OptimizationUI(self),
-                               "\u2466 Optimize")  # unicode circled 7
-        self.tab_widget.addTab(HypothesisTestingUI(self),
-                               "\u2467 Hypothesis Testing")  # unicode circled 8
+        self.tab_widget.addTab(
+            FrameStep1(self, 1), "\u2460 Select Run"
+        )  # unicode circled 1
+        self.tab_widget.addTab(
+            FrameStep1(self, 2), "\u2461 Suggest Experiments"
+        )  # unicode circled 2
+        self.tab_widget.addTab(
+            FrameStep1(self, 3), "\u2462 Import Experiments"
+        )  # unicode circled 3
+        self.tab_widget.addTab(
+            FrameStep2(self, 4), "\u2463 Learn"
+        )  # unicode circled 4
+        self.tab_widget.addTab(
+            EvaluationUI(self), "\u2464 Evaluate"
+        )  # unicode circled 5
+        self.tab_widget.addTab(
+            FrameStep1(self, 5), "\u2465 Predict"
+        )  # unicode circled 6
+        self.tab_widget.addTab(
+            OptimizationUI(self), "\u2466 Optimize"
+        )  # unicode circled 7
+        self.tab_widget.addTab(
+            HypothesisTestingUI(self), "\u2467 Hypothesis Testing"
+        )  # unicode circled 8
 
         # Disable database objects after initial UI load.
         self.enable(False)
@@ -536,14 +594,16 @@ class VisQAIWindow(BaseVisQAIWindow):
         ):
             # Disallow tab change if learning in-progress
             if self.isBusy():
-                PopUp.warning(self, "Learning In-Progress...",
-                              "Tab change is not allowed while learning.")
+                PopUp.warning(
+                    self,
+                    "Learning In-Progress...",
+                    "Tab change is not allowed while learning.",
+                )
                 return True  # ignore click
             now_step = self.tab_widget.currentIndex() + 1
             tab_step = obj.tabAt(event.pos()) + 1
             if tab_step > 0:
-                widget: FrameStep1 = self.tab_widget.widget(
-                    0)  # Select
+                widget: FrameStep1 = self.tab_widget.widget(0)  # Select
                 if tab_step == now_step + 1 and widget.run_file_run:
                     if hasattr(self.tab_widget.currentWidget(), "btn_next"):
                         self.tab_widget.currentWidget().btn_next.click()
@@ -552,9 +612,11 @@ class VisQAIWindow(BaseVisQAIWindow):
                 if tab_step in [3, 4, 7]:
                     if not widget.run_file_run:
                         QtWidgets.QMessageBox.information(
-                            None, Constants.app_title,
+                            None,
+                            Constants.app_title,
                             "Please select a run.",
-                            QtWidgets.QMessageBox.Ok)
+                            QtWidgets.QMessageBox.Ok,
+                        )
                         return True  # deny tab change
                     # NOTE: No longer a requirement, but can be added back if needed
                     # if tab_step == 4:
@@ -570,7 +632,10 @@ class VisQAIWindow(BaseVisQAIWindow):
                     # do not click next when user is going backwards
                     # (or nowhere) from the currently selected step.
                     pass
-                elif hasattr(self.tab_widget.currentWidget(), "btn_next") and widget.run_file_run:
+                elif (
+                    hasattr(self.tab_widget.currentWidget(), "btn_next")
+                    and widget.run_file_run
+                ):
                     # still perform click action
                     self.tab_widget.currentWidget().btn_next.click()
         return super().eventFilter(obj, event)
@@ -673,17 +738,29 @@ class VisQAIWindow(BaseVisQAIWindow):
         elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
-        try:
-            # Highlight the selected toolkit item in the floating menu
-            self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
-
-        except Exception as e:
-            Log.e("Failed to set active item in VisQ.AI Toolkit menu")
-            Log.e(f"ERROR: {e}")
+        # Check if MainWin exists before accessing to prevent startup crash!
+        if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+            try:
+                # Highlight the selected toolkit item in the floating menu
+                self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+            except Exception as e:
+                Log.e(
+                    tag=self.TAG,
+                    msg="Failed to set active item in VisQ.AI menu",
+                )
+                Log.e(tag=self.TAG, msg=f"{e}")
+        else:
+            # MainWin not ready yet
+            Log.d(
+                tag=self.TAG,
+                msg="VisQ.AI menu widget not found yet (startup initialization)",
+            )
 
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
-        if hasattr(current_widget, 'on_tab_selected') and callable(current_widget.on_tab_selected):
+        if hasattr(current_widget, "on_tab_selected") and callable(
+            current_widget.on_tab_selected
+        ):
             current_widget.on_tab_selected()
 
     def clear(self) -> None:
@@ -693,15 +770,17 @@ class VisQAIWindow(BaseVisQAIWindow):
         return self._unsaved_changes
 
     def isBusy(self) -> bool:
-        return hasattr(self.tab_widget.currentWidget(), "timer") and \
-            self.tab_widget.currentWidget().timer.isActive()
+        return (
+            hasattr(self.tab_widget.currentWidget(), "timer")
+            and self.tab_widget.currentWidget().timer.isActive()
+        )
 
     def getToolNames(self):
         tab_names = []
         for i in range(self.tab_widget.count()):
             tab_name = self.tab_widget.tabText(i)
             # drop the leading number in a circle, remove leading space
-            tab_name = tab_name.encode('ascii', 'ignore').decode().strip()
+            tab_name = tab_name.encode("ascii", "ignore").decode().strip()
             tab_names.append(tab_name)
         return tab_names
 
@@ -719,13 +798,36 @@ class VisQAIWindow(BaseVisQAIWindow):
         # Get each widget and call its model select handler (if exists)
         for index in range(self.tab_widget.count()):
             current_widget = self.tab_widget.widget(index)
-            if hasattr(current_widget, 'model_selected') and callable(current_widget.model_selected):
+            if hasattr(current_widget, "model_selected") and callable(
+                current_widget.model_selected
+            ):
                 current_widget.model_selected(model_path)
 
-    def enable(self, enable=False) -> None:
+    def enable(self, enable: bool = False) -> None:
+        """Toggles the active state of the VisQ.AI window resources.
+
+        Controls the initialization and teardown of background resources based on
+        whether the VisQ.AI tool is currently active.
+
+        When enabled:
+            - Starts the hourly license check timer.
+            - Initializes the SQLite database connection.
+            - Re-instantiates formulation and ingredient controllers.
+            - Synchronizes the active tab with the floating toolkit menu.
+
+        When disabled:
+            - Stops the license check timer.
+            - Safely closes the database connection.
+            - Disables controllers to prevent background operations.
+            - Clears the active selection in the floating toolkit menu (safely checks
+              for parent window existence to prevent startup crashes).
+
+        Args:
+            enable (bool, optional): The target state. Set to True to initialize resources
+                and False to release them. Defaults to False.
+        """
         if not enable:
-            # VisQ.AI UI is not in foreground, Mode not selected
-            # Do things here to shutdown resources and disable:
+            # If not enabled, VisQ.AI UI is not in foreground, Mode not selected
 
             # Disable hourly license check timer.
             if hasattr(self, "timer") and self.timer.isActive():
@@ -735,36 +837,34 @@ class VisQAIWindow(BaseVisQAIWindow):
             if self.database.is_open:
                 self.database.close()
             elif not isinstance(self.database, SimpleNamespace):
-                Log.w("Database closed: write failed")
+                Log.w(tag=self.TAG, msg="Database closed: write failed")
 
             # Disable database objects.
             self.database = SimpleNamespace(is_open=False, status="Disabled")
             self.form_ctrl = SimpleNamespace(db=None, status="Disabled")
             self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
-            Log.d("Database objects disabled on VisQ.AI not enabled.")
+            Log.d(tag=self.TAG, msg="Database objects disabled on VisQ.AI not enabled.")
 
-            try:
-                # Remove highlighted tool item from floating menu widget
-                self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
-
-            except AttributeError as e:
-                # This exception handler needs to know who called it
-                # to determine whether or not to suppress the error.
-                caller_frame = inspect.stack()[1]
-                caller_name = caller_frame.function
-                if caller_name == "init_ui":
-                    Log.d(
-                        "VisQ.AI Toolkit menu widget not found yet (normal once on init)")
-                else:
-                    raise e  # Throw error, this is not an expected exception
-
-            except Exception as e:
-                Log.e("Failed to set active item in VisQ.AI Toolkit menu")
-                Log.e(f"ERROR: {e}")
+            # Check if MainWin exists before accessing to prevent startup crash!
+            if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+                try:
+                    # Remove highlighted tool item from floating menu widget
+                    self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
+                except Exception as e:
+                    Log.e(
+                        tag=self.TAG,
+                        msg="Failed to set active item in VisQ.AI menu",
+                    )
+                    Log.e(tag=self.TAG, msg=f"{e}")
+            else:
+                # MainWin not ready yet
+                Log.d(
+                    tag=self.TAG,
+                    msg="VisQ.AI menu widget not found yet (startup initialization)",
+                )
 
         else:
-            # VisQ.AI UI is now in foreground, Mode is selected
-            # Do things here to initialize resources and enable:
+            # Else, VisQ.AI UI is in foreground, Mode is selected
 
             # Enable hourly license check timer.
             if hasattr(self, "timer") and not self.timer.isActive():
@@ -774,7 +874,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.database = Database(parse_file_key=True)
             self.form_ctrl = FormulationController(db=self.database)
             self.ing_ctrl = IngredientController(db=self.database)
-            Log.d("Database objects created on VisQ.AI enable.")
+            Log.d(tag=self.TAG, msg="Database objects created on VisQ.AI enable.")
 
             # Emit tab selected code for the currently active tab frame.
             # NOTE: This also calls `setActiveItem()` for the floating widget
@@ -790,16 +890,25 @@ class VisQAIWindow(BaseVisQAIWindow):
         # This will update the run info XML only if there are changes.
         # The user may be asked for an audit signature if required.
 
-        info_tags = ['protein_type', 'protein_concentration',
-                     'buffer_type', 'buffer_concentration',
-                     'surfactant_type', 'surfactant_concentration',
-                     'stabilizer_type', 'stabilizer_concentration',
-                     'salt_type', 'salt_concentration',
-                     'excipient_type', 'excipient_concentration']
+        info_tags = [
+            "protein_type",
+            "protein_concentration",
+            "buffer_type",
+            "buffer_concentration",
+            "surfactant_type",
+            "surfactant_concentration",
+            "stabilizer_type",
+            "stabilizer_concentration",
+            "salt_type",
+            "salt_concentration",
+            "excipient_type",
+            "excipient_concentration",
+        ]
         required_len = len(info_tags)
         if len(run_info) != required_len:
             Log.e(
-                f"There must be {required_len} run info parameters given. Received {len(run_info)}")
+                f"There must be {required_len} run info parameters given. Received {len(run_info)}"
+            )
             return
         if not os.path.exists(xml_path):
             Log.e(f"XML path not found: {xml_path}")
@@ -809,8 +918,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         xml = run.documentElement
 
         existing_params = []
-        params = xml.getElementsByTagName(
-            "params")[-1]  # most recent element
+        params = xml.getElementsByTagName("params")[-1]  # most recent element
         params = params.cloneNode(deep=True)
         for p in params.childNodes:
             if p.nodeType == p.TEXT_NODE:
@@ -827,9 +935,9 @@ class VisQAIWindow(BaseVisQAIWindow):
             name = info_tags[i]
             if name not in existing_params:
                 value = run_info[i]
-                p = run.createElement('param')
-                p.setAttribute('name', name)
-                p.setAttribute('value', value)
+                p = run.createElement("param")
+                p.setAttribute("name", name)
+                p.setAttribute("value", value)
                 params.appendChild(p)
                 self._unsaved_changes = True
 
@@ -841,14 +949,18 @@ class VisQAIWindow(BaseVisQAIWindow):
             result = QtWidgets.QMessageBox.question(
                 None,
                 Constants.app_title,
-                "You have unsaved changes!\n\nAre you sure you want to cancel without saving?")
+                "You have unsaved changes!\n\nAre you sure you want to cancel without saving?",
+            )
             if result == QtWidgets.QMessageBox.Yes:
                 self._unsaved_changes = False
                 return
 
         # Get audit signature from authorized user.
         if self.parent.signature_required and self._unsaved_changes:
-            if self.parent.signature_received == False and self.sign_do_not_ask.isChecked():
+            if (
+                self.parent.signature_received == False
+                and self.sign_do_not_ask.isChecked()
+            ):
                 Log.w(
                     f"Signing ANALYZE with initials {self.initials} (not asking again)"
                 )
@@ -893,7 +1005,8 @@ class VisQAIWindow(BaseVisQAIWindow):
                 userrole = infos[2]
             else:
                 Log.w(
-                    f"Found invalid session: searching for user ({self.username}, {self.initials})")
+                    f"Found invalid session: searching for user ({self.username}, {self.initials})"
+                )
                 username = self.username
                 initials = self.initials
                 salt = UserProfiles.find(username, initials)[1][:-4]
@@ -912,33 +1025,33 @@ class VisQAIWindow(BaseVisQAIWindow):
             hash.update(userrole.encode())
             signature = hash.hexdigest()
 
-            audit1 = run.createElement('audit')
-            audit1.setAttribute('profile', salt)
-            audit1.setAttribute('action', audit_action)
-            audit1.setAttribute('recorded', timestamp)
-            audit1.setAttribute('machine', machine)
-            audit1.setAttribute('username', username)
-            audit1.setAttribute('initials', initials)
-            audit1.setAttribute('role', userrole)
-            audit1.setAttribute('signature', signature)
+            audit1 = run.createElement("audit")
+            audit1.setAttribute("profile", salt)
+            audit1.setAttribute("action", audit_action)
+            audit1.setAttribute("recorded", timestamp)
+            audit1.setAttribute("machine", machine)
+            audit1.setAttribute("username", username)
+            audit1.setAttribute("initials", initials)
+            audit1.setAttribute("role", userrole)
+            audit1.setAttribute("signature", signature)
 
-            audits = xml.getElementsByTagName('audits')[-1]
+            audits = xml.getElementsByTagName("audits")[-1]
             audits.appendChild(audit1)
         else:
             pass  # leave 'audits' block as empty
 
         hash = hashlib.sha256()
-        params.setAttribute('recorded', timestamp)
+        params.setAttribute("recorded", timestamp)
         for p in params.childNodes:
             for name, value in p.attributes.items():
                 hash.update(name.encode())
                 hash.update(value.encode())
         signature = hash.hexdigest()
-        params.setAttribute('signature', signature)
+        params.setAttribute("signature", signature)
 
         xml.appendChild(params)
 
-        with open(xml_path, 'w') as f:
+        with open(xml_path, "w") as f:
             f.write(run.toxml())
 
         self._unsaved_changes = False
