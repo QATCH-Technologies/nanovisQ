@@ -1697,6 +1697,17 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
         self.tool_bar.setStyleSheet("color: #333333;")
 
+        # TODO: Only show these widgets when cam wheel device is detected
+        if True:
+            self.tool_NextPortRow = NumberIconButton()
+            self.tool_NextPortRow.setToolButtonStyle(
+                QtCore.Qt.ToolButtonTextUnderIcon)
+            self.tool_NextPortRow.setText("Next Port")
+            self.tool_NextPortRow.clicked.connect(self.action_next_port)
+            self.tool_bar.addWidget(self.tool_NextPortRow)
+
+            self.tool_bar.addSeparator()
+
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
 
         icon_init = QtGui.QIcon()
@@ -1954,6 +1965,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.chBox_MultiAuto.setText(
             _translate("MainWindow", "Auto-detect channel count")
         )
+
+    def action_next_port(self):
+        """Method to handle advancing to the next port."""
+        # TODO: Interact with cam wheel device to call STEP command
+        raise NotImplementedError("Next port row not implemented")
 
     def action_initialize(self):
         """Method to handle initalization UI actions."""
@@ -3005,3 +3021,48 @@ class RunControls(QWidget):
             percentage = 0
         self.btn.animate_progress(percentage)
         self.status_label.setText(f"{fill_type_text}")
+
+
+class NumberIconButton(QToolButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._value = 1
+        self._iconSize = QtCore.QSize(32, 32)
+
+        self.setIconSize(self._iconSize)
+        self.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+
+        self.updateIcon()
+        self.clicked.connect(self.advance)
+
+    def advance(self):
+        self._value += 1
+        if self._value > 6:
+            self._value = 1
+        self.updateIcon()
+
+    def updateIcon(self):
+        self.setIcon(self.makeIcon(self._value, self._iconSize))
+
+    def makeIcon(self, number, size):
+        pm = QtGui.QPixmap(size)
+        pm.fill(Qt.transparent)
+
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.Antialiasing)
+
+        # Circle
+        pen = QPen(QColor("#555555"), 2)
+        painter.setPen(pen)
+        painter.drawEllipse(pm.rect().adjusted(2, 2, -2, -2))
+
+        # Number
+        font = QtGui.QFont(self.font())
+        font.setBold(True)
+        font.setPointSize(int(size.height() * 0.35))
+        painter.setFont(font)
+        painter.drawText(pm.rect(), Qt.AlignCenter, str(number))
+
+        painter.end()
+
+        return QtGui.QIcon(pm)
