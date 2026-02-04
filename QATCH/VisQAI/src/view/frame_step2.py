@@ -104,8 +104,8 @@ class FrameStep2(QtWidgets.QDialog):
             # fallback to their local logged data folder
             self.model_dialog.setDirectory(Constants.log_prefer_path)
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.zip)")
-        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
+        self.model_dialog.setNameFilter("VisQ.AI Models (VisQAI-*.visq)")
+        self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.visq)")
 
         self.select_model_group = QtWidgets.QGroupBox("Select Model")
         select_model_layout = QtWidgets.QHBoxLayout(self.select_model_group)
@@ -509,7 +509,7 @@ class FrameStep2(QtWidgets.QDialog):
                 restored_path = self.mvc.get(sha, self.model_dialog.directory().path())
                 restored_path = Path(restored_path)
 
-                target_path = restored_path.with_name(f"VisQAI-{sha[:7]}.zip")
+                target_path = restored_path.with_name(f"VisQAI-{sha[:7]}.visq")
                 if target_path.exists():
                     target_path.unlink()
 

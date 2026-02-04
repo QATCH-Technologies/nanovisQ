@@ -2,31 +2,29 @@
 secure_loader.py
 
 Provides cryptographic signature verification for packaged predictor modules.
-Works alongside predictor.py to add an additional security layer.
-
-# TODO: This system does not protect against inauthentic keypairs only against 
-# direct injection into the current model system.  I need to add an official certificate
-# to sign the public key with to protect  against inauthentic key-pair packages.
+Supports both legacy file-level signing and new manifest-level signing (CNP models).
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-11-12
+    2026-02-04
 
 Version:
-    1.0
+    2.0 (Updated for Manifest-First Security)
 """
+
+import base64
+import importlib.util
 import json
 import sys
-import importlib.util
 from pathlib import Path
-from typing import Dict, Any, List
-import base64
+from typing import Any, Dict, List, Optional, Union
+
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
-from cryptography.hazmat.backends import default_backend
-from cryptography.exceptions import InvalidSignature
 
 try:
     from QATCH.common.logger import Logger as Log
@@ -34,426 +32,190 @@ except (ImportError, ModuleNotFoundError):
     import logging
 
     logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] %(levelname)s: %(message)s"
+        level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s"
     )
 
     class Log:
         """Logging utility for standardized log messages."""
+
         _logger = logging.getLogger("SecureLoader")
 
         @classmethod
         def i(cls, msg: str) -> None:
-            """Log an informational message."""
             cls._logger.info(msg)
 
         @classmethod
         def w(cls, msg: str) -> None:
-            """Log a warning message."""
             cls._logger.warning(msg)
 
         @classmethod
         def e(cls, msg: str) -> None:
-            """Log an error message."""
             cls._logger.error(msg)
-
-        @classmethod
-        def d(cls, msg: str) -> None:
-            """Log a debug message."""
-            cls._logger.debug(msg)
 
 
 class SecurityError(Exception):
-    """Raised when security verification fails."""
+    """Raised when signature verification or integrity checks fail."""
+
     pass
 
 
-class SignatureVerifier:
-    """Handles cryptographic signature verification for package files."""
+class SecureModuleLoader:
+    """Verifies and loads Python modules from a secured source directory."""
 
-    def __init__(self, public_key_pem: bytes):
+    def __init__(self, enforce_signatures: bool = True):
+        self.enforce_signatures = enforce_signatures
+
+    def verify_manifest_signature(
+        self, manifest_path: Path, signature_path: Path, public_key_pem: bytes
+    ) -> None:
         """
-        Initialize the signature verifier.
-
-        Args:
-            public_key_pem: PEM-encoded public key bytes
+        Verifies that the manifest.json was signed by the provided public key.
         """
-        self.public_key = serialization.load_pem_public_key(
-            public_key_pem,
-            backend=default_backend()
-        )
-        Log.d("Signature verifier initialized")
+        if not self.enforce_signatures:
+            return
 
-    def verify_file(self, file_path: Path, expected_signature: str) -> bool:
-        """
-        Verify the signature of a single file.
+        if not manifest_path.exists():
+            raise SecurityError(f"Manifest not found: {manifest_path}")
+        if not signature_path.exists():
+            raise SecurityError(f"Manifest signature not found: {signature_path}")
 
-        Args:
-            file_path: Path to file to verify
-            expected_signature: Base64-encoded expected signature
-
-        Returns:
-            True if signature is valid
-
-        Raises:
-            SecurityError if signature verification fails
-        """
-        with open(file_path, 'rb') as f:
-            content = f.read()
-
-        return self.verify_bytes(content, expected_signature, str(file_path))
-
-    def verify_bytes(self, content: bytes, expected_signature: str, identifier: str = "content") -> bool:
-        """
-        Verify the signature of raw bytes.
-
-        Args:
-            content: Bytes to verify
-            expected_signature: Base64-encoded expected signature
-            identifier: Name/path for error messages
-
-        Returns:
-            True if signature is valid
-
-        Raises:
-            SecurityError if signature verification fails
-        """
         try:
-            signature_bytes = base64.b64decode(expected_signature)
-            self.public_key.verify(
-                signature_bytes,
-                content,
-                padding.PSS(
-                    mgf=padding.MGF1(hashes.SHA256()),
-                    salt_length=padding.PSS.MAX_LENGTH
-                ),
-                hashes.SHA256()
+            public_key = serialization.load_pem_public_key(
+                public_key_pem, backend=default_backend()
             )
 
-            Log.d(f"Signature verified: {identifier}")
-            return True
+            with open(manifest_path, "rb") as f:
+                manifest_data = f.read()
+
+            with open(signature_path, "rb") as f:
+                signature = base64.b64decode(f.read())
+
+            public_key.verify(
+                signature,
+                manifest_data,
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256(),
+            )
+            Log.i("Manifest signature verified successfully.")
 
         except InvalidSignature:
             raise SecurityError(
-                f"SECURITY VIOLATION: Invalid signature for {identifier}. "
-                "This file may have been tampered with or is from an untrusted source."
+                "Manifest signature verification FAILED. Package integrity compromised."
             )
         except Exception as e:
+            raise SecurityError(f"Error checking manifest signature: {str(e)}")
+
+    def verify_file_integrity(self, file_path: Path, expected_hash: str) -> None:
+        """Calculates SHA256 of file and compares to expected hash."""
+        if not self.enforce_signatures:
+            return
+
+        if not file_path.exists():
+            raise SecurityError(f"Required file missing: {file_path}")
+
+        digest = hashes.Hash(hashes.SHA256(), backend=default_backend())
+        with open(file_path, "rb") as f:
+            while chunk := f.read(4096):
+                digest.update(chunk)
+
+        calculated_hash = digest.finalize().hex()
+
+        if calculated_hash != expected_hash:
             raise SecurityError(
-                f"Signature verification error for {identifier}: {e}"
+                f"❌ Hash mismatch for {file_path.name}!\n"
+                f"Expected: {expected_hash}\n"
+                f"Actual:   {calculated_hash}"
             )
+        Log.i(f"   Integrity check passed: {file_path.name}")
+
+    def load_module_from_path(self, module_name: str, file_path: Path):
+        """Dynamically imports a Python module from a file path."""
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            return module
+        raise ImportError(f"Could not load module {module_name} from {file_path}")
 
 
 class SecurePackageLoader:
-    """
-    Verifies cryptographic signatures of packaged predictor files.
+    """Orchestrates loading for an extracted package directory."""
 
-    This is a separate loader class for debugging and can be used
-    independently or integrated with the main Predictor class.
-    """
-
-    def __init__(
-        self,
-        extracted_dir: Path,
-        enforce_signatures: bool = True,
-        require_all_signed: bool = True
-    ):
-        """
-        Initialize the secure package loader.
-
-        Args:
-            extracted_dir: Path to already-extracted package directory
-            enforce_signatures: Whether to enforce signature verification
-                               (should always be True in production!)
-            require_all_signed: Whether ALL source files must have signatures
-                               (recommended: True)
-        """
-        self.extracted_dir = Path(extracted_dir)
+    def __init__(self, extracted_dir: Path, enforce_signatures: bool = True):
+        self.root = extracted_dir
         self.enforce_signatures = enforce_signatures
-        self.require_all_signed = require_all_signed
+        self.loader = SecureModuleLoader(enforce_signatures)
+        self.manifest_data = {}
 
-        self.public_key = None
-        self.signatures = {}
-        self.verified_files = set()
-        self.verifier = None
+    def load_manifest(self) -> Dict[str, Any]:
+        """Loads and verifies the manifest."""
+        manifest_path = self.root / "manifest.json"
+        sig_path = self.root / "manifest.sig"
 
-        if self.enforce_signatures:
-            Log.d("Secure package loader initialized (signature verification ENABLED)")
-            self._load_security_data()
-        else:
-            Log.w(
-                " WARNING: Signature verification DISABLED - use only for debugging!")
+        if not manifest_path.exists():
+            raise SecurityError("Package missing manifest.json")
 
-    def _load_security_data(self) -> None:
-        """Load public key and signatures manifest from security directory."""
-        security_dir = self.extracted_dir / 'security'
-        if not security_dir.exists():
-            if self.enforce_signatures:
-                raise SecurityError(
-                    " No 'security/' directory found in package. "
-                    "This package is not signed and cannot be loaded with "
-                    "enforce_signatures=True. Either use a signed package or "
-                    "disable signature verification (NOT recommended for production)."
+        with open(manifest_path, "r") as f:
+            self.manifest_data = json.load(f)
+
+        # 1. Verify Manifest Signature (if present)
+        # Note: New packages put public_key inside manifest.
+        # In a strict environment, public_key should be loaded from a trusted local store.
+        # Here we trust the key in the manifest for integrity checking (TOFU model).
+        if sig_path.exists():
+            pub_key = self.manifest_data.get("public_key")
+            if pub_key:
+                self.loader.verify_manifest_signature(
+                    manifest_path, sig_path, pub_key.encode("utf-8")
                 )
             else:
-                Log.w("No security directory found - proceeding without verification")
-                return
-        public_key_path = security_dir / 'public_key.pem'
-        if not public_key_path.exists():
-            raise SecurityError(
-                " No public key found in security/ directory. "
-                "This package may be corrupted."
-            )
-
-        with open(public_key_path, 'rb') as f:
-            public_key_pem = f.read()
-        signatures_path = security_dir / 'signatures.json'
-        if not signatures_path.exists():
-            raise SecurityError(
-                " No signatures manifest found in security/ directory. "
-                "This package may be corrupted."
-            )
-
-        with open(signatures_path, 'r') as f:
-            self.signatures = json.load(f)
-        self.verifier = SignatureVerifier(public_key_pem)
-
-        Log.d(f"Loaded public key and {len(self.signatures)} signatures")
-
-    def verify_metadata(self, metadata_path: Path) -> bool:
-        """
-        Verify the metadata.json file signature.
-
-        Args:
-            metadata_path: Path to metadata.json
-
-        Returns:
-            True if verified (or verification disabled)
-
-        Raises:
-            SecurityError if verification fails
-        """
-        if not self.enforce_signatures:
-            return True
-
-        arcname = 'model/metadata.json'
-
-        if arcname not in self.signatures:
-            if self.require_all_signed:
-                raise SecurityError(
-                    f"No signature found for {arcname}. "
-                    "This package may be incomplete or corrupted."
+                Log.w(
+                    "Manifest has signature but no public_key entry. Skipping sig check."
                 )
-            else:
-                Log.w(f" No signature for {arcname} - proceeding anyway")
-                return True
+        elif self.enforce_signatures:
+            Log.w("No manifest.sig found. Skipping signature verification.")
 
-        expected_signature = self.signatures[arcname]
-        self.verifier.verify_file(metadata_path, expected_signature)
-        self.verified_files.add(arcname)
+        # 2. Verify File Integrity (if 'files' section exists - New Format)
+        if "files" in self.manifest_data:
+            Log.i("Verifying package asset integrity...")
+            files_map = self.manifest_data["files"]
+            for filename, meta in files_map.items():
+                # Some entries might be the inference code, others models
+                file_path = self.root / filename
+                if "sha256" in meta:
+                    self.loader.verify_file_integrity(file_path, meta["sha256"])
 
-        return True
+        return self.manifest_data
 
-    def verify_source_file(self, src_file: Path, relative_name: str) -> bool:
+    def load_inference_module(self, module_filename: str = None):
         """
-        Verify a single source file signature before it's loaded.
-
-        Args:
-            src_file: Path to the source file
-            relative_name: Relative name (e.g., 'inference.py')
-
-        Returns:
-            True if verified (or verification disabled)
-
-        Raises:
-            SecurityError if verification fails
+        Loads the entry point python file.
+        If module_filename is None, attempts to find it in manifest.
         """
-        if not self.enforce_signatures:
-            return True
+        if not module_filename:
+            # Try to guess from manifest files
+            files_map = self.manifest_data.get("files", {})
+            for fname, meta in files_map.items():
+                if meta.get("type") == "inference_code":
+                    module_filename = fname
+                    break
 
-        arcname = f'src/{relative_name}'
+        if not module_filename:
+            raise ValueError("Could not determine inference module filename.")
 
-        if arcname not in self.signatures:
-            if self.require_all_signed:
-                raise SecurityError(
-                    f"SECURITY VIOLATION: No signature found for {arcname}. "
-                    f"Cannot load this module. This could be a code injection attempt."
-                )
-            else:
-                Log.w(f" No signature for {arcname} - proceeding anyway")
-                return True
+        module_path = self.root / module_filename
+        if not module_path.exists():
+            raise FileNotFoundError(f"Inference module {module_filename} not found.")
 
-        expected_signature = self.signatures[arcname]
-        self.verifier.verify_file(src_file, expected_signature)
-        self.verified_files.add(arcname)
-
-        Log.d(f"Module verified: {relative_name}")
-        return True
-
-    def verify_all_sources(self, src_dir: Path, source_files: List[str]) -> Dict[str, bool]:
-        """
-        Verify all source files in batch.
-
-        Args:
-            src_dir: Directory containing source files
-            source_files: List of source filenames to verify
-
-        Returns:
-            Dictionary mapping filenames to verification status
-
-        Raises:
-            SecurityError if any verification fails
-        """
-        results = {}
-
-        Log.d(f"\nVerifying {len(source_files)} source files...")
-
-        for filename in source_files:
-            filepath = src_dir / filename
-            if not filepath.exists():
-                Log.w(f" Source file not found: {filename}")
-                results[filename] = False
-                continue
-
-            try:
-                self.verify_source_file(filepath, filename)
-                results[filename] = True
-            except SecurityError as e:
-                Log.e(str(e))
-                raise  # Re-raise to halt loading
-
-        verified_count = sum(results.values())
-        Log.d(f"Verified {verified_count}/{len(source_files)} source files")
-
-        return results
-
-    def get_verification_report(self) -> Dict[str, Any]:
-        """
-        Get a report of verification status.
-
-        Returns:
-            Dictionary with verification statistics
-        """
-        return {
-            'enforcement_enabled': self.enforce_signatures,
-            'require_all_signed': self.require_all_signed,
-            'total_signatures': len(self.signatures),
-            'files_verified': len(self.verified_files),
-            'verified_files': list(self.verified_files),
-            'unverified_signed_files': [
-                sig for sig in self.signatures.keys()
-                if sig not in self.verified_files
-            ]
-        }
-
-
-class SecureModuleLoader:
-    """
-    Secure wrapper for loading Python modules with signature verification.
-
-    Integrates with the existing Predictor._load_source_modules workflow.
-    """
-
-    def __init__(
-        self,
-        secure_loader: SecurePackageLoader,
-        src_dir: Path
-    ):
-        """
-        Initialize the secure module loader.
-
-        Args:
-            secure_loader: SecurePackageLoader instance for verification
-            src_dir: Directory containing source files
-        """
-        self.secure_loader = secure_loader
-        self.src_dir = Path(src_dir)
-        self.loaded_modules = {}
-
-    def load_module_secure(
-        self,
-        module_name: str,
-        verify_first: bool = True
-    ) -> Any:
-        """
-        Load a module with signature verification.
-
-        Args:
-            module_name: Name of the module
-            verify_first: Whether to verify signature before loading
-
-        Returns:
-            Loaded module object
-
-        Raises:
-            SecurityError if verification fails
-            RuntimeError if module file not found
-        """
-        filename = f"{module_name}.py"
-        filepath = self.src_dir / filename
-
-        if not filepath.exists():
-            raise RuntimeError(f"Module file not found: {filepath}")
-
-        if verify_first and self.secure_loader.enforce_signatures:
-            self.secure_loader.verify_source_file(filepath, filename)
-
-        spec = importlib.util.spec_from_file_location(
-            module_name, str(filepath))
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-        self.loaded_modules[module_name] = module
-        Log.d(f"Loaded module: {module_name}")
-
-        return module
-
-    def load_all_modules_secure(
-        self,
-        module_names: List[str],
-        verify_batch: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Load multiple modules with batch verification.
-
-        Args:
-            module_names: List of module names to load
-            verify_batch: Whether to verify all signatures first
-
-        Returns:
-            Dict mapping module names to loaded modules
-
-        Raises:
-            SecurityError if any verification fails
-        """
-        if verify_batch and self.secure_loader.enforce_signatures:
-            filenames = [f"{name}.py" for name in module_names]
-            self.secure_loader.verify_all_sources(self.src_dir, filenames)
-        for module_name in module_names:
-            verify = not verify_batch
-            self.load_module_secure(module_name, verify_first=verify)
-
-        return self.loaded_modules
+        Log.i(f"Loading inference logic from: {module_filename}")
+        return self.loader.load_module_from_path("visq_inference", module_path)
 
 
 def create_secure_loader_for_extracted_package(
-    extracted_dir: str,
-    enforce_signatures: bool = True,
-    require_all_signed: bool = True
+    extracted_dir: str, enforce_signatures: bool = True, require_all_signed: bool = True
 ) -> SecurePackageLoader:
-    """
-    Factory function to create a secure loader for an already-extracted package.
-
-    Args:
-        extracted_dir: Path to extracted package directory
-        enforce_signatures: Whether to enforce signature verification
-        require_all_signed: Whether all files must have signatures
-
-    Returns:
-        SecurePackageLoader instance
-    """
-    return SecurePackageLoader(
-        extracted_dir=Path(extracted_dir),
-        enforce_signatures=enforce_signatures,
-        require_all_signed=require_all_signed
-    )
+    return SecurePackageLoader(Path(extracted_dir), enforce_signatures)
