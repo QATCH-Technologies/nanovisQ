@@ -62,6 +62,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
+        return ST1  # always
+
+        # NOTE: This function is not currently used; returning constant value above
         if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
