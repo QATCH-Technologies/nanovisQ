@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Optional
 from xml.dom import minidom
 
 import numpy as np
+import pandas as pd
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import FormatStrFormatter
@@ -1008,10 +1009,74 @@ class FrameStep1(QtWidgets.QDialog):
             Log.w("Aborting prediction. Failed to save formulation.")
             return
 
-        self.predictor = Predictor(zip_path=self.model_path)
+        # ---------------------------------------------------------
+        # UPDATE: Initialize the Predictor Wrapper (Handles Zip/Security)
+        # ---------------------------------------------------------
+        try:
+            # We use the Predictor wrapper to handle the zip extraction
+            # rather than instantiating the engine directly.
+            self.predictor = Predictor(zip_path=self.model_path)
+        except Exception as e:
+            Log.e(f"Failed to initialize predictor: {e}")
+            return
+
+        # Get the target formulation as a DataFrame
         predict_df = self.parent.predict_formulation.to_dataframe(
             encoded=False, training=False
         )
+
+        # ---------------------------------------------------------
+        # 1. Identify Target Protein Type
+        # ---------------------------------------------------------
+        target_protein = predict_df["Protein_type"].iloc[0]
+        Log.i(f"Target Protein Type: {target_protein}")
+
+        try:
+            all_formulations_df = self.parent.form_ctrl.get_all_as_dataframe(
+                encoded=False
+            )
+
+            # --- DEBUG: CHECK TYPES ---
+            if not all_formulations_df.empty:
+                # Check the first viscosity column type
+                visc_cols = [
+                    c for c in all_formulations_df.columns if "Viscosity_" in c
+                ]
+                if visc_cols:
+                    sample_val = all_formulations_df[visc_cols[0]].iloc[0]
+                    Log.d(
+                        f"DEBUG: Viscosity Value: {sample_val} | Type: {type(sample_val)}"
+                    )
+                    # Force conversion if necessary
+                    for c in visc_cols:
+                        all_formulations_df[c] = pd.to_numeric(
+                            all_formulations_df[c], errors="coerce"
+                        )
+            # --------------------------
+
+            # Filter in memory (replaces SQL WHERE clause)
+            if (
+                not all_formulations_df.empty
+                and "Protein_type" in all_formulations_df.columns
+            ):
+                history_df = all_formulations_df[
+                    all_formulations_df["Protein_type"] == target_protein
+                ].copy()
+            else:
+                history_df = pd.DataFrame()
+
+            # Filter out rows without viscosity targets
+            # (Ensures we don't train on empty data)
+            valid_cols = [c for c in history_df.columns if "Viscosity_" in c]
+            if valid_cols:
+                # dropna removes rows where ANY of the viscosity columns are NaN/NA
+                history_df = history_df.dropna(subset=valid_cols)
+
+            Log.i(f"Found {len(history_df)} historical samples for {target_protein}")
+
+        except Exception as e:
+            Log.e(f"Failed to query history via controller: {e}")
+            history_df = pd.DataFrame()
 
         self.progressBar = QtWidgets.QProgressDialog(
             "Updating...", "Cancel", 0, 0, self
@@ -1040,44 +1105,98 @@ class FrameStep1(QtWidgets.QDialog):
 
             if record and record.exception:
                 # NOTE: Progress bar and timer will end on next call to `check_finished()`
-                Log.e(f"Error occurred while updating the model: {record.exception}")
+                Log.e(
+                    f"Error occurred during fine-tuning/prediction: {record.exception}"
+                )
+                # Ensure cleanup happens on error
+                if hasattr(self, "predictor"):
+                    self.predictor.cleanup()
                 return
 
-            Log.d("Waiting for prediction results...")
-            self.progressBar.setLabelText("Predicting...")
+            # Check where we are in the chain
+            # If we just finished fine-tuning (record is present but not exception), move to predict
+            if record and not hasattr(self, "_prediction_launched"):
+                Log.d("Fine-tuning complete. Launching prediction...")
+                self.progressBar.setLabelText("Predicting...")
+                self._prediction_launched = True
 
-            self.executor.run(
-                self.predictor,
-                method_name="predict_uncertainty",
-                df=predict_df,
-                ci_range=self.get_ci_range(),
-                callback=get_prediction_result,
-            )
+                # UPDATE: Call 'predict_with_uncertainty' on the wrapper
+                self.executor.run(
+                    self.predictor,
+                    method_name="predict_with_uncertainty",
+                    df=predict_df,
+                    ci_range=self.get_ci_range(),
+                    callback=get_prediction_result,
+                )
+                return
+
+            # ---------------------------------------------------------
+            # 3. Launch Fine-Tuning First (If history exists)
+            # ---------------------------------------------------------
+            if not hasattr(self, "_tuning_launched"):
+                self._tuning_launched = True
+                if not history_df.empty:
+                    Log.i(f"Fine-tuning predictor on {len(history_df)} samples...")
+                    self.progressBar.setLabelText(f"Adapting to {target_protein}...")
+
+                    # UPDATE: Call learn on the wrapper
+                    self.executor.run(
+                        self.predictor,
+                        method_name="learn",
+                        df=history_df,
+                        steps=50,
+                        callback=run_prediction_result,  # Call self to proceed to predict step
+                    )
+                else:
+                    Log.w("No history found. Skipping fine-tuning.")
+                    # Skip directly to prediction
+                    self._prediction_launched = True
+                    # UPDATE: Call 'predict_with_uncertainty' on the wrapper
+                    self.executor.run(
+                        self.predictor,
+                        method_name="predict_with_uncertainty",
+                        df=predict_df,
+                        ci_range=self.get_ci_range(),
+                        callback=get_prediction_result,
+                    )
 
         def get_prediction_result(record: Optional[ExecutionRecord] = None):
+            # Clean up state flags
+            if hasattr(self, "_tuning_launched"):
+                del self._tuning_launched
+            if hasattr(self, "_prediction_launched"):
+                del self._prediction_launched
 
             if self.progressBar.wasCanceled():
                 Log.d("User canceled prediction. Ignoring results.")
+                if hasattr(self, "predictor"):
+                    self.predictor.cleanup()
                 return
 
             Log.d("Processing prediction results!")
 
-            # The returns from this are a predicted viscosity profile [val1,val2,...val5]
-            # predicted_vp = self.parent.predictor.predict(df=form_df)
-
-            # The returns from this are a predicted viscosity profile [val1,val2,...val5] and
-            # a series of standard deviations for each predicted value.
-
             if not record:
                 Log.e("ERROR: No `record` provided to `get_prediction_result(record)`")
+                if hasattr(self, "predictor"):
+                    self.predictor.cleanup()
                 return
 
             exception = record.exception
             if exception:
                 Log.e(f"ERROR: Prediction exception: {str(exception)}")
+                if hasattr(self, "predictor"):
+                    self.predictor.cleanup()
                 return
 
-            predicted_mean_vp, uncertainty_dict = record.result
+            # Note: record.result format depends on what method finished last.
+            try:
+                # Wrapper's predict_with_uncertainty returns (mean_pred, stats)
+                predicted_mean_vp, uncertainty_dict = record.result
+            except ValueError:
+                Log.e("Unexpected result format. Did fine-tuning return here?")
+                if hasattr(self, "predictor"):
+                    self.predictor.cleanup()
+                return
 
             # Helper functions for plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
@@ -1246,13 +1365,15 @@ class FrameStep1(QtWidgets.QDialog):
                 self.profile_shears,
                 predicted_mean_vp,
                 uncertainty_dict,
-                "Estimated Viscosity Profile",
+                f"Estimated Viscosity ({target_protein})",  # Updated Title
                 "blue",
             )
+            # UPDATE: Restored cleanup to remove temporary zip extraction folder
             self.predictor.cleanup()
 
         self.executor = Executor()
 
+        # Start the chain (Logic moved into run_prediction_result)
         run_prediction_result()
 
     def check_finished(self):
