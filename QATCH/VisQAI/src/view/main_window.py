@@ -10,6 +10,7 @@ except (ModuleNotFoundError, ImportError):
     print("Running VisQAI as standalone app")
 
     class Log:
+<<<<<<< 275-visqai-input-clamp
         def d(tag, msg=""):
             print("DEBUG:", tag, msg)
 
@@ -23,6 +24,25 @@ except (ModuleNotFoundError, ImportError):
             print("ERROR:", tag, msg)
 
 
+=======
+        @staticmethod
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
+        @staticmethod
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        @staticmethod
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        @staticmethod
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
+
+>>>>>>> main
 import datetime as dt
 import hashlib
 import inspect
@@ -235,8 +255,14 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                         self._update_status_bar(
                             f"Licensed: {days_remaining} days remaining", permanent=True
                         )
+<<<<<<< 275-visqai-input-clamp
                     except:
                         self._update_status_bar("Licensed: Active", permanent=True)
+=======
+                    except (ValueError, TypeError):
+                        self._update_status_bar(
+                            "Licensed: Active", permanent=True)
+>>>>>>> main
 
             elif status == LicenseStatus.TRIAL:
                 self.setCentralWidget(self.tab_widget)
@@ -258,6 +284,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                                 f"Trial: {days_remaining} days remaining",
                                 permanent=True,
                             )
+<<<<<<< 275-visqai-input-clamp
                     except:
                         self._update_status_bar("Trial: Active", permanent=True)
             else:
@@ -266,6 +293,19 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                     status.value if isinstance(status, LicenseStatus) else str(status)
                 )
                 self._update_status_bar(f"Licensed: {status_text}", permanent=True)
+=======
+                    except (ValueError, TypeError):
+                        self._update_status_bar(
+                            "Trial: Active", permanent=True)
+            else:
+                self.setCentralWidget(self.tab_widget)
+                status_text = (
+                    status.value if isinstance(
+                        status, LicenseStatus) else str(status)
+                )
+                self._update_status_bar(
+                    f"Licensed: {status_text}", permanent=True)
+>>>>>>> main
 
             return True
 
@@ -292,7 +332,12 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
                 )
 
                 if hasattr(self._expired_widget, "set_message"):
+<<<<<<< 275-visqai-input-clamp
                     days_over = int((time_ago_seconds - time_allowed_secs) / 86400)
+=======
+                    days_over = int(
+                        (time_ago_seconds - time_allowed_secs) / 86400)
+>>>>>>> main
                     self._expired_widget.set_message(
                         f"Your {free_preview_period}-day preview ended {days_over} days ago.\n"
                         f"Please contact support to purchase a license."
@@ -406,6 +451,7 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
 
 class VisQAIWindow(BaseVisQAIWindow):
+<<<<<<< 275-visqai-input-clamp
     IO_CLAMP_RANGE = {
         "Protein_conc": (0, 500),
         "Buffer_conc": (0, 150),
@@ -415,6 +461,9 @@ class VisQAIWindow(BaseVisQAIWindow):
         "Excipient_conc": (0, 300),
         "Temperature": (8, 40),
     }
+=======
+    TAG = "[VisQAIWindow]"
+>>>>>>> main
 
     def __init__(self, parent=None):
         super(VisQAIWindow, self).__init__(parent)
@@ -461,7 +510,13 @@ class VisQAIWindow(BaseVisQAIWindow):
         self.tab_widget.addTab(
             FrameStep1(self, 3), "\u2462 Import Experiments"
         )  # unicode circled 3
+<<<<<<< 275-visqai-input-clamp
         self.tab_widget.addTab(FrameStep2(self, 4), "\u2463 Learn")  # unicode circled 4
+=======
+        self.tab_widget.addTab(
+            FrameStep2(self, 4), "\u2463 Learn"
+        )  # unicode circled 4
+>>>>>>> main
         self.tab_widget.addTab(
             EvaluationUI(self), "\u2464 Evaluate"
         )  # unicode circled 5
@@ -722,13 +777,23 @@ class VisQAIWindow(BaseVisQAIWindow):
         elif not isinstance(self.database, SimpleNamespace):
             Log.w("Database closed: backup failed")
 
-        try:
-            # Highlight the selected toolkit item in the floating menu
-            self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
-
-        except Exception as e:
-            Log.e("Failed to set active item in VisQ.AI Toolkit menu")
-            Log.e(f"ERROR: {e}")
+        # Check if MainWin exists before accessing to prevent startup crash!
+        if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+            try:
+                # Highlight the selected toolkit item in the floating menu
+                self.parent.MainWin.ui0.floating_widget.setActiveItem(index)
+            except Exception as e:
+                Log.e(
+                    tag=self.TAG,
+                    msg="Failed to set active item in VisQ.AI menu",
+                )
+                Log.e(tag=self.TAG, msg=f"{e}")
+        else:
+            # MainWin not ready yet
+            Log.d(
+                tag=self.TAG,
+                msg="VisQ.AI menu widget not found yet (startup initialization)",
+            )
 
         # Get the current widget and call it's select handler (if exists)
         current_widget = self.tab_widget.widget(index)
@@ -777,10 +842,31 @@ class VisQAIWindow(BaseVisQAIWindow):
             ):
                 current_widget.model_selected(model_path)
 
-    def enable(self, enable=False) -> None:
+    def enable(self, enable: bool = False) -> None:
+        """Toggles the active state of the VisQ.AI window resources.
+
+        Controls the initialization and teardown of background resources based on
+        whether the VisQ.AI tool is currently active.
+
+        When enabled:
+            - Starts the hourly license check timer.
+            - Initializes the SQLite database connection.
+            - Re-instantiates formulation and ingredient controllers.
+            - Synchronizes the active tab with the floating toolkit menu.
+
+        When disabled:
+            - Stops the license check timer.
+            - Safely closes the database connection.
+            - Disables controllers to prevent background operations.
+            - Clears the active selection in the floating toolkit menu (safely checks
+              for parent window existence to prevent startup crashes).
+
+        Args:
+            enable (bool, optional): The target state. Set to True to initialize resources
+                and False to release them. Defaults to False.
+        """
         if not enable:
-            # VisQ.AI UI is not in foreground, Mode not selected
-            # Do things here to shutdown resources and disable:
+            # If not enabled, VisQ.AI UI is not in foreground, Mode not selected
 
             # Disable hourly license check timer.
             if hasattr(self, "timer") and self.timer.isActive():
@@ -790,12 +876,13 @@ class VisQAIWindow(BaseVisQAIWindow):
             if self.database.is_open:
                 self.database.close()
             elif not isinstance(self.database, SimpleNamespace):
-                Log.w("Database closed: write failed")
+                Log.w(tag=self.TAG, msg="Database closed: write failed")
 
             # Disable database objects.
             self.database = SimpleNamespace(is_open=False, status="Disabled")
             self.form_ctrl = SimpleNamespace(db=None, status="Disabled")
             self.ing_ctrl = SimpleNamespace(db=None, status="Disabled")
+<<<<<<< 275-visqai-input-clamp
             Log.d("Database objects disabled on VisQ.AI not enabled.")
 
             try:
@@ -817,10 +904,30 @@ class VisQAIWindow(BaseVisQAIWindow):
             except Exception as e:
                 Log.e("Failed to set active item in VisQ.AI Toolkit menu")
                 Log.e(f"ERROR: {e}")
+=======
+            Log.d(tag=self.TAG, msg="Database objects disabled on VisQ.AI not enabled.")
+
+            # Check if MainWin exists before accessing to prevent startup crash!
+            if hasattr(self.parent, "MainWin") and self.parent.MainWin is not None:
+                try:
+                    # Remove highlighted tool item from floating menu widget
+                    self.parent.MainWin.ui0.floating_widget.setActiveItem(-1)
+                except Exception as e:
+                    Log.e(
+                        tag=self.TAG,
+                        msg="Failed to set active item in VisQ.AI menu",
+                    )
+                    Log.e(tag=self.TAG, msg=f"{e}")
+            else:
+                # MainWin not ready yet
+                Log.d(
+                    tag=self.TAG,
+                    msg="VisQ.AI menu widget not found yet (startup initialization)",
+                )
+>>>>>>> main
 
         else:
-            # VisQ.AI UI is now in foreground, Mode is selected
-            # Do things here to initialize resources and enable:
+            # Else, VisQ.AI UI is in foreground, Mode is selected
 
             # Enable hourly license check timer.
             if hasattr(self, "timer") and not self.timer.isActive():
@@ -830,7 +937,7 @@ class VisQAIWindow(BaseVisQAIWindow):
             self.database = Database(parse_file_key=True)
             self.form_ctrl = FormulationController(db=self.database)
             self.ing_ctrl = IngredientController(db=self.database)
-            Log.d("Database objects created on VisQ.AI enable.")
+            Log.d(tag=self.TAG, msg="Database objects created on VisQ.AI enable.")
 
             # Emit tab selected code for the currently active tab frame.
             # NOTE: This also calls `setActiveItem()` for the floating widget
