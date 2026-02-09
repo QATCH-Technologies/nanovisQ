@@ -1068,10 +1068,19 @@ class FrameStep1(QtWidgets.QDialog):
             # Filter out rows without viscosity targets
             # (Ensures we don't train on empty data)
             valid_cols = [c for c in history_df.columns if "Viscosity_" in c]
-            if valid_cols:
-                # dropna removes rows where ANY of the viscosity columns are NaN/NA
+            if valid_cols and not history_df.empty:
+                # 1. Ensure numeric types (handle potential string formatting issues)
+                for col in valid_cols:
+                    history_df[col] = pd.to_numeric(history_df[col], errors="coerce")
+
+                # 2. Drop rows containing NaNs
                 history_df = history_df.dropna(subset=valid_cols)
 
+                # 3. Drop rows where ANY viscosity value is <= 0 (e.g. -1.00 placeholder)
+                #    This keeps only rows where ALL viscosity columns are positive.
+                if not history_df.empty:
+                    history_df = history_df[(history_df[valid_cols] > 0).all(axis=1)]
+            print(history_df.columns)
             Log.i(f"Found {len(history_df)} historical samples for {target_protein}")
 
         except Exception as e:
