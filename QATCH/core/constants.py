@@ -42,14 +42,10 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-<<<<<<< 275-visqai-input-clamp
-    app_version = "v2.6b68"
-    app_date = "2026-01-05"
-=======
     app_version = "v2.6b69"
     app_date = "2026-01-20"
->>>>>>> main
-    app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
+    app_sources = ["Calibration Qatch Q-1 Device",
+                   "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
     app_encoding = "utf-8"
@@ -253,7 +249,8 @@ class Constants:
 
     select_tag_prompt = "-- Select Tag --"
     subfolder_field = f"/ (Subfolder)"
-    valid_tags = ["Username", "Initials", "Device", "Runname", "Date", "Time", "Port"]
+    valid_tags = ["Username", "Initials", "Device",
+                  "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]
     date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
     time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
@@ -362,7 +359,8 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
+    list_predict_models = ["ModelData",
+                           "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
@@ -464,11 +462,13 @@ class Constants:
         try:
             # pull in lookup table from resources
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(
+                os.getcwd(), "QATCH/resources/")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
-            batch_params_file = os.path.join(resource_path, "lookup_batch_params.csv")
+            batch_params_file = os.path.join(
+                resource_path, "lookup_batch_params.csv")
             detected_delimeter = "\t"
             with open(batch_params_file, "r") as f:
                 first_line = f.readline()
@@ -552,8 +552,10 @@ class Constants:
             return str(default_val)
 
         # batch and param exists in lookup_BATCH, so return the lookup pair
-        idx_of_param = np.where(params == param_upper)[0]  # params.index(param)
-        idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
+        idx_of_param = np.where(params == param_upper)[
+            0]  # params.index(param)
+        idx_of_batch = np.where(batches == batch_upper)[
+            0]  # batches.index(batch)
         found_param = data[idx_of_batch[0], idx_of_param[0]]
 
         # check for dups and report the warning if so
