@@ -56,7 +56,6 @@ class QATCH:
                         os.chdir(docspath)
                     except Exception as e:
                         raise e
-
         self.win = None
         if USE_PYI_SPLASH:
             self.flashSplashShow()
