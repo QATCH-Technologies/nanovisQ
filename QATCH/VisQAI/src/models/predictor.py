@@ -15,13 +15,13 @@ Version:
 """
 
 import importlib.util
-import json
 import os
+import shutil
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -132,12 +132,10 @@ class Predictor:
         inference_module = None
 
         if local_code_path and local_code_path.exists():
-            Log.i(f"OVERRIDE: Loading local inference logic from {local_code_path}")
             inference_module = self._dynamic_load_from_path(
                 "visq_inference_local", local_code_path
             )
         elif extracted_code_path.exists():
-            Log.w("Using packaged inference logic (potentially stale).")
             inference_module = self._dynamic_load_from_path(
                 "visq_inference_pkg", extracted_code_path
             )
@@ -234,6 +232,22 @@ class Predictor:
             return
         Log.i(f"Learning from {len(df)} new samples...")
         self.engine.learn(df, steps=steps)
+
+    def reset(self):
+        """
+        Resets the model to its original state from the zip package.
+        This effectively discards any fine-tuning performed via learn().
+        """
+        Log.i("Resetting model state to original package version...")
+        if self.extracted_path.exists():
+            for child in self.extracted_path.iterdir():
+                if child.is_file():
+                    child.unlink()
+                elif child.is_dir():
+                    shutil.rmtree(child)
+
+        self.engine = None
+        self._load_package()
 
     def save(self, output_path: str):
         if self.model_type != "CNP":

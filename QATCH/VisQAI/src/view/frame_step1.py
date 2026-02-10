@@ -1121,7 +1121,7 @@ class FrameStep1(QtWidgets.QDialog):
                 if hasattr(self, "predictor"):
                     self.predictor.cleanup()
                 return
-
+            self.predictor.reset()
             # Check where we are in the chain
             # If we just finished fine-tuning (record is present but not exception), move to predict
             if record and not hasattr(self, "_prediction_launched"):
