@@ -143,7 +143,8 @@ class TableView(QtWidgets.QTableWidget):
             # Adjust headers
             header = self.horizontalHeader()
             if header:
-                header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+                header.setSectionResizeMode(
+                    QtWidgets.QHeaderView.ResizeToContents)
                 header.setStretchLastSection(False)
 
             # Show hidden rows if any were hidden previously
@@ -262,9 +263,11 @@ class TableView(QtWidgets.QTableWidget):
         else:
             combo.setCurrentIndex(-1)
         if isinstance(item_data, dict) and not selected:
-            combo.currentIndexChanged.connect(lambda idx, r=row: self._row_combo_set(r))
+            combo.currentIndexChanged.connect(
+                lambda idx, r=row: self._row_combo_set(r))
         elif isinstance(item_data, list):
-            combo.currentIndexChanged.connect(lambda idx, r=row: self._row_combo_set(r))
+            combo.currentIndexChanged.connect(
+                lambda idx, r=row: self._row_combo_set(r))
 
         combo.currentIndexChanged.connect(
             lambda idx, r=row: self._on_combo_change(idx, r)
@@ -477,7 +480,8 @@ class TableView(QtWidgets.QTableWidget):
 
             if type_combo and class_combo:
                 p_type = type_combo.currentText().casefold()
-                p_class = self._protein_type_to_class.get(p_type, "none").casefold()
+                p_class = self._protein_type_to_class.get(
+                    p_type, "none").casefold()
 
                 # Attempt to find the class in the second dropdown
                 found_idx = -1
@@ -490,7 +494,8 @@ class TableView(QtWidgets.QTableWidget):
                     class_combo.setCurrentIndex(found_idx)
                 else:
                     # Fallback logic: check for 'other' or reset
-                    Log.w(self.TAG, f'Entry "{p_class}" is not a known Protein Class.')
+                    Log.w(
+                        self.TAG, f'Entry "{p_class}" is not a known Protein Class.')
                     fallback_idx = -1
                     for i in range(class_combo.count()):
                         if class_combo.itemText(i).casefold() == "other":
@@ -503,15 +508,24 @@ class TableView(QtWidgets.QTableWidget):
         if conc_item and row != self.PROTEIN_CLASS_ROW:
 
             is_none_selected = idx == 0
-            is_exempt_row = row in [self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]
+            is_exempt_row = row in [
+                self.PROTEIN_TYPE_ROW, self.BUFFER_TYPE_ROW]
 
             if is_none_selected and not is_exempt_row:
-                conc_item.setText("0")
-                flags = conc_item.flags() & ~(
-                    QtCore.Qt.ItemFlag.ItemIsSelectable
-                    | QtCore.Qt.ItemFlag.ItemIsEditable
-                )
-                conc_item.setFlags(QtCore.Qt.ItemFlags(flags))  # type: ignore
+                self.blockSignals(True)
+                try:
+                    flags = conc_item.flags() & ~(
+                        QtCore.Qt.ItemFlag.ItemIsSelectable
+                        | QtCore.Qt.ItemFlag.ItemIsEditable
+                    )
+                    conc_item.setFlags(
+                        QtCore.Qt.ItemFlags(flags))  # type: ignore
+                    conc_item.setText("0")
+                    conc_item.setBackground(QtGui.QBrush(Color.white))
+                    conc_item.setForeground(QtGui.QBrush(Color.black))
+                    conc_item.setToolTip("")
+                finally:
+                    self.blockSignals(False)
             else:
                 flags = conc_item.flags() | (
                     QtCore.Qt.ItemFlag.ItemIsSelectable

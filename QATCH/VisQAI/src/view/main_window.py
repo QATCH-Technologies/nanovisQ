@@ -223,7 +223,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         # Handle valid license
         if is_valid_license:
-            status = license_data.get("status", "unknown")
+            # NOTE: `status` is already normalized above:
+            # status = license_data.get("status", "unknown")
             if status == LicenseStatus.ADMIN:
                 self.setCentralWidget(self.tab_widget)
                 self._update_status_bar(
