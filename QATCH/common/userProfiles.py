@@ -433,13 +433,19 @@ class UserProfilesManager(QtWidgets.QWidget):
         ts1.setAttribute('signature', signature)
 
         # append new secure_user_info to xml
-        xml_str = doc.toxml()  # indent ="\t")
         try:
             with open(file, "w") as f:
+                xml_str = doc.toxml(encoding='ascii').decode(
+                    encoding='utf-8', errors='ignore')
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
         except OSError as ose:  # FileNotFoundError
-            Log.e(f"Error writing '{ts_type}' record: {ose}")
+            Log.e(f"Error writing '{ts_type}' record: {file}")
+            Log.e("Error Details:", ose.strerror)
+            # continue, no return
+        except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+            Log.e(f"Unicode error writing XML: {file}")
+            Log.e("Error Details:", ue.reason)
             # continue, no return
 
         self.update_table_data()
@@ -1084,14 +1090,21 @@ class UserProfiles:
         ts1.setAttribute('signature', signature)
 
         # append new secure_user_info to xml
-        xml_str = doc.toxml()  # indent ="\t")
         try:
             with open(file, "w") as f:
+                xml_str = doc.toxml(encoding='ascii').decode(
+                    encoding='utf-8', errors='ignore')
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
         except OSError as ose:  # FileNotFoundError
-            Log.e(f"Error writing '{ts_type}' record: {ose}")
+            Log.e(f"Error writing '{ts_type}' record: {file}")
+            Log.e("Error Details:", ose.strerror)
             return
+        except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+            Log.e(f"Unicode error writing XML: {file}")
+            Log.e("Error Details:", ue.reason)
+            return
+
         Log.w("Password changed: " + ("*" * len(pwd)))
 
     @staticmethod
@@ -1298,13 +1311,19 @@ class UserProfiles:
             # ts2.setAttribute('value', ts)
 
             # Log.d(doc)
-            xml_str = doc.toxml()  # indent ="\t")
             try:
                 with open(file, "w") as f:
+                    xml_str = doc.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
                     f.write(xml_str)
                     Log.d(f"Saved XML file: {file}")
             except OSError as ose:  # FileNotFoundError
-                Log.e(f"Error writing '{ts_type}' record: {ose}")
+                Log.e(f"Error writing '{ts_type}' record: {file}")
+                Log.e("Error Details:", ose.strerror)
+                return
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {file}")
+                Log.e("Error Details:", ue.reason)
                 return
 
             if sign_in_user:

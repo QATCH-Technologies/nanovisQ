@@ -1051,7 +1051,17 @@ class VisQAIWindow(BaseVisQAIWindow):
 
         xml.appendChild(params)
 
-        with open(xml_path, "w") as f:
-            f.write(run.toxml())
+        try:
+            with open(xml_path, "w") as f:
+                xml_str = run.toxml(encoding='ascii').decode(
+                    encoding='utf-8', errors='ignore')
+                f.write(xml_str)
+                Log.d(f"Saved XML file: {xml_path}")
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Filesystem error writing XML: {xml_path}")
+            Log.e("Error Details:", ose.strerror)
+        except UnicodeError as ue:
+            Log.e(f"Unicode error writing XML: {xml_path}")
+            Log.e("Error Details:", ue.reason)
 
         self._unsaved_changes = False

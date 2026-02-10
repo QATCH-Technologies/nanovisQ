@@ -487,7 +487,8 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.notes.setTabChangesFocus(True)
         self.notes.setFixedHeight(100)
 
-        self.groupBioformulation = QtWidgets.QGroupBox("Is this a bioformulation?")
+        self.groupBioformulation = QtWidgets.QGroupBox(
+            "Is this a bioformulation?")
         self.groupBioformulation.setCheckable(False)
         self.q1 = QtWidgets.QHBoxLayout()
         self.groupBioformulation.setLayout(self.q1)
@@ -1686,11 +1687,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         globalPos_Window = winAnalyze.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Info = btnInfo.mapToGlobal(QtCore.QPoint(0, 0))
         globalPos_Close = btnClose.mapToGlobal(QtCore.QPoint(0, 0))
-        width = max(min_width, globalPos_Close.x() - 
+        width = max(min_width, globalPos_Close.x() -
                     globalPos_Info.x() - btnInfo.width() - 20)
         if width == min_width:
-            width = max(min_width, globalPos_Window.x() + winAnalyze.width() - 
-                    globalPos_Info.x() - btnInfo.width() - 30)
+            width = max(min_width, globalPos_Window.x() + winAnalyze.width() -
+                        globalPos_Info.x() - btnInfo.width() - 30)
         height = self.height()
         # area = QtWidgets.QDesktopWidget().availableGeometry() # todo
         left = globalPos_Info.x() + btnInfo.width() + 10
@@ -2381,9 +2382,9 @@ class QueryRunInfo(QtWidgets.QWidget):
 
         try:
             # Log.d(f"passing in {surfactant} and {concentration}")
-            surface_tension = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
+            surface_tension = AnalyzeProcess.Lookup_ST(surfactant=surfactant,
                                                        concentration=protein_concentration)
-            contact_angle = AnalyzeProcess.Lookup_CA(surfactant=surfactant, 
+            contact_angle = AnalyzeProcess.Lookup_CA(surfactant=surfactant,
                                                      concentration=protein_concentration)
             density = AnalyzeProcess.Lookup_DN(surfactant=surfactant,
                                                concentration=protein_concentration,
@@ -2435,8 +2436,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         surfactant = 0  # float(self.t3.text()) if len(self.t3.text()) else 0
         concentration = float(self.t4.text()) if len(self.t4.text()) else 0
         if self.b1.isChecked():  # IS bioformulation
-            protein_concentration = float(self.t12.text()) if len(self.t12.text()) else 0
-            st = AnalyzeProcess.Lookup_ST(surfactant=surfactant, 
+            protein_concentration = float(
+                self.t12.text()) if len(self.t12.text()) else 0
+            st = AnalyzeProcess.Lookup_ST(surfactant=surfactant,
                                           concentration=protein_concentration)
         else:  # NOT bioformulation
             st = float(self.t1.text()) if len(self.t1.text()) else 0
@@ -2661,8 +2663,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                     global_pos = self.mapToGlobal(QtCore.QPoint(0, 0))
                     center_x = global_pos.x() + (self.width() // 2)
                     center_y = global_pos.y() + (self.height() // 2)
-                    left = center_x - (self.signForm.sizeHint().width() // 2) - 10
-                    top = center_y - (self.signForm.sizeHint().height() // 2) - 10
+                    left = center_x - \
+                        (self.signForm.sizeHint().width() // 2) - 10
+                    top = center_y - \
+                        (self.signForm.sizeHint().height() // 2) - 10
                     self.signForm.move(left, top)
                     self.signForm.setVisible(True)
                     self.sign.setFocus()
@@ -3110,10 +3114,18 @@ class QueryRunInfo(QtWidgets.QWidget):
                 else:
                     Log.e(tag=TAG, msg="No 'name' field found.")
 
-        with open(self.xml_path, 'w') as f:
-            xml_str = run.toxml()  # .encode() #prettyxml(indent ="\t")
-            f.write(xml_str)
-            Log.i(f"Created XML file: {self.xml_path}")
+        try:
+            with open(self.xml_path, 'w') as f:
+                xml_str = run.toxml(encoding='ascii').decode(
+                    encoding='utf-8', errors='ignore')
+                f.write(xml_str)
+                Log.i(f"Saved XML file: {self.xml_path}")
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Filesystem error writing XML: {self.xml_path}")
+            Log.e("Error Details:", ose.strerror)
+        except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+            Log.e(f"Unicode error writing XML: {self.xml_path}")
+            Log.e("Error Details:", ue.reason)
 
         if self.q_recall.isEnabled():
             run = minidom.Document()
@@ -3125,10 +3137,21 @@ class QueryRunInfo(QtWidgets.QWidget):
             else:
                 params = run.createElement('params')  # blank it
             xml.appendChild(params)
-            os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
-            # secure_open(self.recall_xml, 'w') as f:
-            with open(self.recall_xml, 'w') as f:
-                f.write(run.toxml())
+
+            try:
+                os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
+                # secure_open(self.recall_xml, 'w') as f:
+                with open(self.recall_xml, 'w') as f:
+                    xml_str = run.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
+                    f.write(xml_str)
+                    Log.d(f"Saved XML file: {self.recall_xml}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Filesystem error writing XML: {self.recall_path}")
+                Log.e("Error Details:", ose.strerror)
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {self.recall_path}")
+                Log.e("Error Details:", ue.reason)
 
         if not self.post_run:
             if updated_name:
