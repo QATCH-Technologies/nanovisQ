@@ -4252,9 +4252,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             except OSError as ose:  # FileNotFoundError
                 Log.e(f"Filesystem error writing XML: {self.xml_path}")
                 Log.e("Error Details:", ose.strerror)
+                self.detect_change()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
                 Log.e(f"Unicode error writing XML: {self.xml_path}")
                 Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def appendPointsToXml(self, poi_vals):
         data_path = self.loaded_datapath
@@ -4303,9 +4305,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
             except OSError as ose:  # FileNotFoundError
                 Log.e(f"Filesystem error writing XML: {self.xml_path}")
                 Log.e("Error Details:", ose.strerror)
+                self.detect_change()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
                 Log.e(f"Unicode error writing XML: {self.xml_path}")
                 Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def markerMoveFinished(self, marker):
         ax = self.graphWidget
@@ -5890,7 +5894,7 @@ class AnalyzerWorker(QtCore.QObject):
 
                     try:
                         with open(self.xml_path, "w") as f:
-                            xml_str = run.toxml(encoding='ascii').decode(
+                            xml_str = doc.toxml(encoding='ascii').decode(
                                 encoding='utf-8', errors='ignore')
                             f.write(xml_str)
                             Log.d(

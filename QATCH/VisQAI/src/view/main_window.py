@@ -1057,11 +1057,10 @@ class VisQAIWindow(BaseVisQAIWindow):
                     encoding='utf-8', errors='ignore')
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {xml_path}")
+            self._unsaved_changes = False
         except OSError as ose:  # FileNotFoundError
             Log.e(f"Filesystem error writing XML: {xml_path}")
             Log.e("Error Details:", ose.strerror)
         except UnicodeError as ue:
             Log.e(f"Unicode error writing XML: {xml_path}")
             Log.e("Error Details:", ue.reason)
-
-        self._unsaved_changes = False

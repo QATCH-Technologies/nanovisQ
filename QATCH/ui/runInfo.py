@@ -1337,7 +1337,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                                     os.path.dirname(self.run_path), "notes.txt")
                                 notes_txt = self.notes.toPlainText()
                                 if os.path.exists(notes_path):
-                                    with open(notes_path, 'r') as f:
+                                    with open(notes_path, 'r', encoding='utf-8') as f:
                                         file_txt = "\n".join(
                                             f.read().splitlines())
                                     if file_txt != notes_txt:
@@ -2878,12 +2878,20 @@ class QueryRunInfo(QtWidgets.QWidget):
             if Constants.export_notes_to_txt_file:
                 notes_path = os.path.join(
                     os.path.dirname(self.run_path), "notes.txt")
-                notes_txt = self.notes.toPlainText()
+                notes_txt = self.notes.toPlainText()  # .encode(
+                    # encoding='ascii', errors='xmlcharrefreplace').decode(
+                    # encoding='utf-8', errors='ignore')
                 if notes_txt != self.notes.placeholderText() and len(notes_txt) > 0:
-                    with open(notes_path, 'w') as f:
+                    with open(notes_path, 'w', encoding='utf-8') as f:
                         f.write(notes_txt)
                 elif os.path.exists(notes_path):
                     os.remove(notes_path)
+        except OSError as ose:  # FileNotFoundError
+            Log.e(f"Filesystem error writing XML: {self.xml_path}")
+            Log.e("Error Details:", ose.strerror)
+        except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+            Log.e(f"Unicode error writing XML: {self.xml_path}")
+            Log.e("Error Details:", ue.reason)
         except Exception as e:
             Log.e("ERROR:", e)
 
@@ -3123,9 +3131,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         except OSError as ose:  # FileNotFoundError
             Log.e(f"Filesystem error writing XML: {self.xml_path}")
             Log.e("Error Details:", ose.strerror)
+            return False  # allow further changes
         except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
             Log.e(f"Unicode error writing XML: {self.xml_path}")
             Log.e("Error Details:", ue.reason)
+            return False  # allow further changes
 
         if self.q_recall.isEnabled():
             run = minidom.Document()
@@ -3147,10 +3157,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                     f.write(xml_str)
                     Log.d(f"Saved XML file: {self.recall_xml}")
             except OSError as ose:  # FileNotFoundError
-                Log.e(f"Filesystem error writing XML: {self.recall_path}")
+                Log.e(f"Filesystem error writing XML: {self.recall_xml}")
                 Log.e("Error Details:", ose.strerror)
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
-                Log.e(f"Unicode error writing XML: {self.recall_path}")
+                Log.e(f"Unicode error writing XML: {self.recall_xml}")
                 Log.e("Error Details:", ue.reason)
 
         if not self.post_run:
