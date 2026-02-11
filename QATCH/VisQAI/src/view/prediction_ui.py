@@ -57,6 +57,7 @@ class PredictionConfigCard(QtWidgets.QFrame):
     removed = QtCore.Signal(object)
     run_requested = QtCore.Signal(dict)
     save_requested = QtCore.Signal(dict)
+    expanded = QtCore.Signal(object)
 
     def __init__(
         self,
@@ -80,8 +81,12 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.is_expanded = True
         self.is_measured = False
         self.notes_visible = False
-
+        self.debounce_timer = QtCore.QTimer()
+        self.debounce_timer.setSingleShot(True)
+        self.debounce_timer.setInterval(300)
+        self.debounce_timer.timeout.connect(self.emit_run_request)
         self._init_ui(default_name)
+        self._connect_auto_updates()
 
     def _init_ui(self, default_name):
         layout = QtWidgets.QVBoxLayout(self)
@@ -250,16 +255,73 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self._add_divider(content_layout)
 
         action_layout = QtWidgets.QHBoxLayout()
-        self.btn_run_single = QtWidgets.QPushButton("Run")
-        self.btn_run_single.clicked.connect(self.on_run_clicked)
-        self.btn_save = QtWidgets.QPushButton("Save")
-        self.btn_save.clicked.connect(self.on_save_clicked)
-
-        action_layout.addWidget(self.btn_save)
-        action_layout.addWidget(self.btn_run_single)
         content_layout.addLayout(action_layout)
 
         layout.addWidget(self.content_frame)
+
+    def _connect_auto_updates(self):
+        # Text Inputs
+        self.name_input.textChanged.connect(self.trigger_update)
+        self.model_combo.currentTextChanged.connect(self.trigger_update)
+
+        # Spinners & Sliders
+        self.spin_temp.valueChanged.connect(self.trigger_update)
+        self.spin_lr.valueChanged.connect(self.trigger_update)
+        self.spin_steps.valueChanged.connect(self.trigger_update)
+        self.slider_ci.valueChanged.connect(self.trigger_update)
+
+    def set_measured_state(self, is_measured: bool):
+        """
+        Updates the UI to reflect measured state.
+
+        Locked (Immutable): Formulation (Ingredients), Environment (Temp), Name
+        Mutable (Editable): ML Hyperparams, Model, Notes
+        """
+        self.is_measured = is_measured
+        self.lbl_measured.setVisible(is_measured)
+
+        # 1. Visual Style
+        if is_measured:
+            self.setStyleSheet(
+                """
+                PredictionConfigCard {
+                    background-color: #F4F7F6; 
+                    border: 1px solid #2E7D32;
+                }
+            """
+            )
+        else:
+            self.setStyleSheet("")
+
+        # 2. Immutable Sections (Locked when measured)
+        # We disable interactions or set ReadOnly for these specific fields
+        lock_state = is_measured
+
+        # Name (Identity)
+        self.name_input.setReadOnly(lock_state)
+
+        # Formulation (Ingredients)
+        self.btn_add_ing.setEnabled(not lock_state)  # Cannot add new
+        for combo, spin in self.active_ingredients.values():
+            combo.setEnabled(not lock_state)  # Cannot change type
+            spin.setReadOnly(lock_state)  # Cannot change concentration
+
+        # Environment (Temperature)
+        self.slider_temp.setEnabled(not lock_state)
+        self.spin_temp.setReadOnly(lock_state)
+
+        # 3. Mutable Sections (Always Editable)
+        # We explicitly ensure these are enabled, even if is_measured is True
+        self.model_combo.setEnabled(True)
+
+        # ML Params
+        self.spin_lr.setReadOnly(False)
+        self.spin_steps.setReadOnly(False)
+        self.slider_ci.setEnabled(True)
+
+        # Notes
+        self.btn_toggle_notes.setEnabled(True)
+        self.notes_edit.setReadOnly(False)
 
     # --- NEW HELPER METHOD FOR HELP HEADERS ---
     def _add_header_with_help(self, layout, title, help_text):
@@ -313,10 +375,20 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.run_requested.emit(config)
 
     def toggle_content(self):
+        if not self.is_expanded:
+            self.expanded.emit(self)
+            self.emit_run_request()
+
         self.is_expanded = not self.is_expanded
         self.content_frame.setVisible(self.is_expanded)
         arrow = Qt.ArrowType.DownArrow if self.is_expanded else Qt.ArrowType.RightArrow
         self.btn_toggle.setArrowType(arrow)
+
+    def collapse(self):
+        if self.is_expanded:
+            self.is_expanded = False
+            self.content_frame.setVisible(False)
+            self.btn_toggle.setArrowType(Qt.ArrowType.RightArrow)
 
     def browse_model_file(self):
         fname, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -367,7 +439,8 @@ class PredictionConfigCard(QtWidgets.QFrame):
         spin.setSingleStep(1.0)
         spin.setSuffix(f" {self.INGREDIENT_UNITS.get(ing_type,'')}")
         spin.setFixedWidth(90)
-
+        combo.currentTextChanged.connect(self.trigger_update)
+        spin.valueChanged.connect(self.trigger_update)
         btn_rem = QtWidgets.QPushButton("Remove")
         btn_rem.clicked.connect(
             lambda: self.remove_ingredient_row(ing_type, row_widget)
@@ -380,6 +453,16 @@ class PredictionConfigCard(QtWidgets.QFrame):
 
         self.ing_container_layout.addWidget(row_widget)
         self.active_ingredients[ing_type] = (combo, spin)
+
+    def trigger_update(self):
+        """Called whenever a field changes. Restarts the debounce timer."""
+        # Only run if we are actually expanded (don't run background calculations for hidden cards)
+        if self.is_expanded:
+            self.debounce_timer.start()
+
+    def emit_run_request(self):
+        config = self.get_configuration()
+        self.run_requested.emit(config)
 
     def remove_ingredient_row(self, ing_type, widget):
         if ing_type in self.active_ingredients:
@@ -453,41 +536,34 @@ class VisualizationPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # --- Splitter for Graph and Table ---
+        # Splitter
         viz_splitter = QtWidgets.QSplitter(Qt.Vertical)
 
-        # --- Graph Area ---
+        # --- Graph Area Container ---
+        self.graph_container = QtWidgets.QWidget()
+        graph_layout = QtWidgets.QVBoxLayout(self.graph_container)
+        graph_layout.setContentsMargins(0, 0, 0, 0)
+
+        # 1. Hover Label (Top)
+        self.hover_label = QtWidgets.QLabel("Hover over graph")
+        self.hover_label.setStyleSheet("font-weight: bold; color: #333; padding: 2px;")
+        self.hover_label.setAlignment(Qt.AlignCenter)
+        graph_layout.addWidget(self.hover_label)
+
+        # 2. Stacked Plot Area (Plot + Overlay)
+        self.plot_stack = QtWidgets.QWidget()
+        self.stack_layout = QtWidgets.QGridLayout(self.plot_stack)
+        self.stack_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Layer A: The Plot
         self.plot_widget = pg.PlotWidget(title="Viscosity Profile")
         self.plot_widget.setLabel("left", "Viscosity", units="cP")
         self.plot_widget.setLabel("bottom", "Shear Rate", units="1/s")
         self.plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.plot_widget.addLegend()
 
-        # Install event filter to handle resize events for the overlay button
+        # [Re-add plot event filters and crosshairs here from previous code...]
         self.plot_widget.installEventFilter(self)
-
-        # --- Overlay Options Button ---
-        self.btn_opts = QtWidgets.QPushButton("⚙ Graph Options", self.plot_widget)
-        self.btn_opts.setCursor(Qt.ArrowCursor)
-        self.btn_opts.setStyleSheet(
-            """
-            QPushButton {
-                background-color: rgba(255, 255, 255, 230);
-                border: 1px solid #aaa;
-                border-radius: 4px;
-                padding: 6px 12px;
-                font-weight: bold;
-                color: #333;
-            }
-            QPushButton:hover { background-color: rgba(240, 240, 240, 255); }
-        """
-        )
-        self.btn_opts.clicked.connect(self.show_options_menu)
-
-        # Initialize Control State
-        self._init_controls()
-
-        # --- Crosshair / Hover ---
         self.vLine = pg.InfiniteLine(
             angle=90, movable=False, pen=pg.mkPen("k", style=Qt.DashLine)
         )
@@ -496,40 +572,65 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
         self.plot_widget.addItem(self.vLine, ignoreBounds=True)
         self.plot_widget.addItem(self.hLine, ignoreBounds=True)
-
         self.proxy = pg.SignalProxy(
             self.plot_widget.scene().sigMouseMoved, rateLimit=60, slot=self.mouse_moved
         )
 
-        self.hover_label = QtWidgets.QLabel("Hover over graph")
-        self.hover_label.setStyleSheet("font-weight: bold; color: #333; padding: 2px;")
-        self.hover_label.setAlignment(Qt.AlignCenter)
+        # [MODIFIED SECTION: Overlay & Progress Bar]
+        self.overlay_widget = QtWidgets.QFrame()
+        self.overlay_widget.setStyleSheet("background-color: rgba(255, 255, 255, 180);")
+        self.overlay_widget.setVisible(False)
 
-        graph_container = QtWidgets.QWidget()
-        graph_box = QtWidgets.QVBoxLayout(graph_container)
-        graph_box.setContentsMargins(0, 0, 0, 0)
-        graph_box.addWidget(self.hover_label)
-        graph_box.addWidget(self.plot_widget)
+        overlay_layout = QtWidgets.QVBoxLayout(self.overlay_widget)
+        overlay_layout.setAlignment(Qt.AlignCenter)
 
-        viz_splitter.addWidget(graph_container)
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setFixedWidth(300)
+        self.progress_bar.setFixedHeight(25)
+
+        # [NEW] Enable Text
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setAlignment(Qt.AlignCenter)
+        self.progress_bar.setFormat("Running Inference... %p%")  # T
+        self.progress_bar.setStyleSheet(
+            """
+            QProgressBar {
+                border: 1px solid #999;
+                border-radius: 4px;
+                background-color: #fff;
+                color: #333; /* Text color */
+                font-weight: bold;
+            }
+            QProgressBar::chunk {
+                background-color: #0078D7;
+                border-radius: 3px;
+            }
+        """
+        )
+        overlay_layout.addWidget(self.progress_bar)
+
+        # Add both to the same grid cell (0,0) so they stack
+        self.stack_layout.addWidget(self.plot_widget, 0, 0)
+        self.stack_layout.addWidget(self.overlay_widget, 0, 0)
+
+        graph_layout.addWidget(self.plot_stack)
+        viz_splitter.addWidget(self.graph_container)
 
         # --- Table Area ---
         self.results_table = QtWidgets.QTableWidget()
         self.results_table.setColumnCount(4)
-        self.results_table.setHorizontalHeaderLabels(
-            ["Shear Rate (1/s)", "Predicted (cP)", "Interval", "Measured (cP)"]
-        )
-        self.results_table.horizontalHeader().setSectionResizeMode(
-            QtWidgets.QHeaderView.Stretch
-        )
-        self.results_table.verticalHeader().setVisible(False)
-        self.results_table.setAlternatingRowColors(True)
 
         viz_splitter.addWidget(self.results_table)
         viz_splitter.setStretchFactor(0, 3)
         viz_splitter.setStretchFactor(1, 1)
 
         layout.addWidget(viz_splitter)
+
+        # [Re-add Option Button logic]
+        self.btn_opts = QtWidgets.QPushButton("⚙ Graph Options", self.plot_widget)
+        self.btn_opts.setCursor(Qt.ArrowCursor)
+        self.btn_opts.clicked.connect(self.show_options_menu)
+        self._init_controls()
 
     def _init_controls(self):
         """Initialize actions and widgets for the options menu."""
@@ -580,6 +681,32 @@ class VisualizationPanel(QtWidgets.QWidget):
         # Hypothesis Button
         self.btn_hypothesis = QtWidgets.QPushButton("Add Hypothesis")
         self.btn_hypothesis.clicked.connect(self.open_hypothesis_dialog)
+
+    def set_plot_title(self, title_text):
+        """Updates the title of the plot widget."""
+        # Check if plot_widget exists to avoid errors during init
+        if hasattr(self, "plot_widget"):
+            self.plot_widget.setTitle(f"Viscosity Profile: {title_text}")
+
+    def show_loading(self):
+        self.overlay_widget.setVisible(True)
+        self.progress_bar.setValue(0)
+
+        self.anim_timer = QtCore.QTimer()
+        self.anim_timer.timeout.connect(self._animate_step)
+        self.anim_timer.start(10)
+
+    def _animate_step(self):
+        """Increments progress bar."""
+        val = self.progress_bar.value()
+        if val < 90:  # Cap at 90% until process actually finishes
+            self.progress_bar.setValue(val + 1)
+
+    def hide_loading(self):
+        """Stops animation and hides overlay."""
+        if hasattr(self, "anim_timer"):
+            self.anim_timer.stop()
+        self.overlay_widget.setVisible(False)
 
     def eventFilter(self, source, event):
         """Handle resize events to keep the overlay button in the top right."""
@@ -678,7 +805,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         upper = np.array(self.last_data["upper"])[mask]
 
         if len(x) == 0:
-            # Handle empty plot gracefully
             return
 
         # 1. Plot CI
@@ -691,8 +817,13 @@ class VisualizationPanel(QtWidgets.QWidget):
             self.plot_widget.addItem(fill)
 
         # 2. Plot Measured
-        if self.act_measured.isChecked() and self.act_measured.isEnabled():
-            meas_y = np.array(self.last_data["measured_y"])[mask]
+        measured_data = self.last_data.get("measured_y")
+        if (
+            self.act_measured.isChecked()
+            and self.act_measured.isEnabled()
+            and measured_data is not None
+        ):
+            meas_y = np.array(measured_data)[mask]
             self.plot_widget.plot(
                 x,
                 meas_y,
@@ -726,27 +857,44 @@ class VisualizationPanel(QtWidgets.QWidget):
                 name="CP Measure",
             )
 
-        self.plot_widget.setLogMode(
-            x=self.act_log_x.isChecked(), y=self.act_log_y.isChecked()
+        # --- UPDATE AXIS SETTINGS ---
+        log_x = self.act_log_x.isChecked()
+        log_y = self.act_log_y.isChecked()
+
+        # 1. Set Log Mode first
+        self.plot_widget.setLogMode(x=log_x, y=log_y)
+
+        # 2. Define X Limits (Fixed Requirement)
+        limit_x_min = 100
+        limit_x_max = 15000000
+
+        if log_x:
+            vb_x_min = np.log10(limit_x_min)
+            vb_x_max = np.log10(limit_x_max)
+        else:
+            vb_x_min = limit_x_min
+            vb_x_max = limit_x_max
+
+        # 3. Define Y Limits (No Maximum)
+        # [FIX] We replace 'None' with concrete large numbers to avoid TypeError
+        if log_y:
+            # Log Mode:
+            # Min: -10 (corresponds to 1e-10, effectively 0)
+            # Max: 300 (corresponds to 1e300, near max float limit)
+            vb_y_min = -10.0
+            vb_y_max = 300.0
+        else:
+            # Linear Mode:
+            # Min: 0
+            # Max: 1e300 (Huge float, effectively infinite)
+            vb_y_min = 0.0
+            vb_y_max = 1e300
+
+        # 4. Apply Limits
+        # Explicitly pass all 4 values as floats. No 'None' allowed.
+        self.plot_widget.plotItem.vb.setLimits(
+            xMin=vb_x_min, xMax=vb_x_max, yMin=vb_y_min, yMax=vb_y_max
         )
-
-    def update_table(self):
-        if not self.last_data:
-            return
-        x, y = self.last_data["x"], self.last_data["y"]
-        l, u = self.last_data["lower"], self.last_data["upper"]
-        meas = self.last_data.get("measured_y", [None] * len(x)) or [None] * len(x)
-
-        self.results_table.setRowCount(len(x))
-        for i, (sr, visc, low, high, m_visc) in enumerate(zip(x, y, l, u, meas)):
-            sr_txt = f"{sr:.2e}" if sr >= 10000 else f"{sr:.1f}"
-            self.results_table.setItem(i, 0, QtWidgets.QTableWidgetItem(sr_txt))
-            self.results_table.setItem(i, 1, QtWidgets.QTableWidgetItem(f"{visc:.2f}"))
-            self.results_table.setItem(
-                i, 2, QtWidgets.QTableWidgetItem(f"{low:.2f} - {high:.2f}")
-            )
-            m_text = f"{m_visc:.2f}" if m_visc is not None else "-"
-            self.results_table.setItem(i, 3, QtWidgets.QTableWidgetItem(m_text))
 
     def mouse_moved(self, evt):
         pos = evt[0]
@@ -865,14 +1013,8 @@ class PredictionUI(QtWidgets.QWidget):
         scroll.setWidget(self.cards_container)
         left_layout.addWidget(scroll)
 
-        self.btn_run = QtWidgets.QPushButton("Run All Predictions")
-        self.btn_run.setMinimumHeight(40)
-        self.btn_run.clicked.connect(self.run_all_predictions)
-        left_layout.addWidget(self.btn_run)
-
         splitter.addWidget(left_widget)
 
-        # *** Integration Point: Use the new VisualizationPanel ***
         self.viz_panel = VisualizationPanel()
         splitter.addWidget(self.viz_panel)
 
@@ -881,14 +1023,49 @@ class PredictionUI(QtWidgets.QWidget):
         self.add_prediction_card()
 
     def add_prediction_card(self, data=None):
+        # 1. Determine name
         if data and "name" in data:
             name = data["name"]
         else:
             name = f"Prediction {self.cards_layout.count()}"
+
+        # 2. Create the card
         card = PredictionConfigCard(
             name, self.ingredients_by_type, self.INGREDIENT_TYPES, self.INGREDIENT_UNITS
         )
+
+        # 3. [NEW] Check for 'measured' flag in data and update card
+        if data and data.get("measured", False):
+            card.set_measured_state(True)
+
+        # ... existing signal connections (removed, run_requested, expanded, etc.) ...
+        card.removed.connect(self.remove_card)
+        card.run_requested.connect(self.run_prediction)
+        card.expanded.connect(self.on_card_expanded)
+
+        # 4. Add to layout
         self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
+
+        # 5. Collapse others
+        self.on_card_expanded(card)
+
+        if data:
+            card.load_data(data)
+            # If it's a measured run, set state
+            if data.get("measured"):
+                card.set_measured_state(True)
+            # Trigger initial run for this data
+            card.emit_run_request()
+
+    def on_card_expanded(self, active_card):
+        """[NEW] Slot to collapse all cards except the active one."""
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            # Check if it's a card and NOT the one currently expanding
+            if isinstance(widget, PredictionConfigCard) and widget is not active_card:
+                widget.collapse()
 
     def remove_card(self, card_widget):
         self.cards_layout.removeWidget(card_widget)
@@ -915,43 +1092,67 @@ class PredictionUI(QtWidgets.QWidget):
         imported_config = {
             "name": "Imported: Lab Run 23",
             "measured": True,
-            # Pass measured data in the config or store it to associate with the run
+            # In a real app, you would parse 'fname' here to get actual data
         }
+
+        # Add the card (this sets the UI state)
         self.add_prediction_card(imported_config)
 
         # Immediately run/display this imported data to show the feature
-        self.run_prediction(imported_config, has_measured=True)
+        self.run_prediction(imported_config)
 
-    def run_prediction(self, config=None, has_measured=False):
-        print("Running Prediction...")
+    def run_prediction(self, config=None):
+        """
+        Runs the prediction.
+        Note: In a real app, this should be done in a background thread
+        (QThread) to keep the UI responsive.
+        """
+        if config and "name" in config:
+            self.viz_panel.set_plot_title(config["name"])
+        else:
+            self.viz_panel.set_plot_title("Unknown Sample")
 
-        # Generate Log-spaced shear rates
-        shear_rates = np.logspace(1, 6, 20)  # 10 to 1,000,000
+        # 1. Start Visuals
+        self.viz_panel.show_loading()
 
-        # Simulated Viscosity (Shear Thinning)
-        # Power Law: eta = K * gamma^(n-1)
-        K = 50  # Consistency index
-        n = 0.6  # Flow behavior index
+        # 2. Schedule logic
+        QtCore.QTimer.singleShot(100, lambda: self._execute_prediction_logic(config))
+
+    def _execute_prediction_logic(self, config):
+        """Actual logic execution (formerly inside run_prediction)."""
+
+        # Simulate calculation time (now safe to sleep briefly for demo effect,
+        # though in production you'd use a QThread)
+        import time
+
+        time.sleep(0.5)
+
+        print("Auto-Running Prediction...")
+        shear_rates = np.logspace(1, 6, 20)
+        K = 50
+        n = 0.6
+
+        if config:
+            temp_mod = float(config.get("temp", 25)) / 25.0
+            K = K / temp_mod
+
         viscosity = K * np.power(shear_rates, n - 1)
 
-        # Generate Measured Data (Ground Truth) if applicable
         measured_y = None
-        if has_measured:
-            noise = np.random.normal(0, 2, len(shear_rates))
-            measured_y = viscosity + noise
-            # Ensure positive
-            measured_y = np.maximum(measured_y, 0.1)
+        if config and config.get("measured", False):
+            measured_y = viscosity + np.random.normal(0, 2, len(shear_rates))
 
         data_package = {
             "x": shear_rates,
             "y": viscosity,
             "upper": viscosity * 1.15,
             "lower": viscosity * 0.85,
-            "measured_y": measured_y,  # Can be None
+            "measured_y": measured_y,
         }
 
-        # *** Update the Visualization Panel ***
+        # 3. Finish
         self.viz_panel.set_data(data_package)
+        self.viz_panel.hide_loading()
 
 
 if __name__ == "__main__":
