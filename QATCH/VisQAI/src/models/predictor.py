@@ -14,6 +14,7 @@ Version:
     6.5 (Relative Path Search Fix)
 """
 
+import datetime
 import importlib.util
 import os
 import shutil
@@ -221,6 +222,7 @@ class Predictor:
             # Legacy shim
             if hasattr(self.engine, "predict_with_uncertainty"):
                 return self.engine.predict_with_uncertainty(df, n_samples=n_samples)
+
             mean = self.engine.predict(df).values.flatten()
             return mean, {}
 
@@ -231,7 +233,6 @@ class Predictor:
         if self.model_type != "CNP":
             return
         Log.i(f"Learning from {len(df)} new samples...")
-        self.engine.learn(df, steps=steps)
 
     def reset(self):
         """

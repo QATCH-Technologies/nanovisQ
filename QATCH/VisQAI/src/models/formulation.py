@@ -27,21 +27,35 @@ Version:
     1.5
     1.5
 """
+
+import bisect
 import math
+from typing import Any, Dict, List, Optional
+
+import numpy as np
 import pandas as pd
 from scipy.optimize import curve_fit
-import numpy as np
-import bisect
-from scipy.optimize import curve_fit
-import numpy as np
-import bisect
-from typing import Optional, Dict, Any, List
+
 try:
     from src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
-        Ingredient, Buffer, Protein, Stabilizer, Surfactant, Salt, Excipient)
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 
 TAG = "[Formulation]"
 
@@ -59,7 +73,9 @@ class ViscosityProfile:
         _is_measured (bool): Flag indicating whether this profile has been measured.
     """
 
-    def __init__(self, shear_rates: List[float], viscosities: List[float], units: str = "cP") -> None:
+    def __init__(
+        self, shear_rates: List[float], viscosities: List[float], units: str = "cP"
+    ) -> None:
         """Initialize a ViscosityProfile with shear rate–viscosity pairs.
 
         Validates and stores shear rates and viscosities in ascending order of shear rate.
@@ -75,10 +91,10 @@ class ViscosityProfile:
         """
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
             raise TypeError(
-                "shear_rates and viscosities must be lists of numeric values")
+                "shear_rates and viscosities must be lists of numeric values"
+            )
         if len(shear_rates) != len(viscosities):
-            raise ValueError(
-                "shear_rates and viscosities must have the same length")
+            raise ValueError("shear_rates and viscosities must have the same length")
         if any(not isinstance(sr, (int, float)) for sr in shear_rates):
             raise TypeError("all shear_rates must be numeric")
         if any(not isinstance(v, (int, float)) for v in viscosities):
@@ -87,7 +103,7 @@ class ViscosityProfile:
             raise ValueError("units must be a non-empty string")
         pairs = sorted(
             ((float(sr), float(v)) for sr, v in zip(shear_rates, viscosities)),
-            key=lambda x: x[0]
+            key=lambda x: x[0],
         )
         self.shear_rates: List[float] = [sr for sr, _ in pairs]
         self.viscosities: List[float] = [v for _, v in pairs]
@@ -159,10 +175,10 @@ class ViscosityProfile:
             return a * np.log10(np.maximum(x - c, 1e-8)) + b
 
         try:
-            bounds = ([-np.inf, -np.inf, -np.inf],
-                      [np.inf, np.inf, np.min(srs) * 0.9])
-            popt, _ = curve_fit(log_func, srs, vs_monotonic,
-                                p0=(2, 1, 0.1), bounds=bounds)
+            bounds = ([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.min(srs) * 0.9])
+            popt, _ = curve_fit(
+                log_func, srs, vs_monotonic, p0=(2, 1, 0.1), bounds=bounds
+            )
             a_fit, b_fit, c_fit = popt
             fitted_viscosity = log_func(sr, a_fit, b_fit, c_fit)
         except Exception:
@@ -172,8 +188,12 @@ class ViscosityProfile:
             elif idx == len(srs):
                 x0, x1, y0, y1 = srs[-2], srs[-1], vs_monotonic[-2], vs_monotonic[-1]
             else:
-                x0, x1, y0, y1 = srs[idx -
-                                     1], srs[idx], vs_monotonic[idx - 1], vs_monotonic[idx]
+                x0, x1, y0, y1 = (
+                    srs[idx - 1],
+                    srs[idx],
+                    vs_monotonic[idx - 1],
+                    vs_monotonic[idx],
+                )
 
             fitted_viscosity = y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
 
@@ -228,7 +248,9 @@ class Component:
         units (str): The units for the concentration (e.g., "mg/mL").
     """
 
-    def __init__(self, ingredient: Ingredient, concentration: float, units: str) -> None:
+    def __init__(
+        self, ingredient: Ingredient, concentration: float, units: str
+    ) -> None:
         """Initialize a Component with an ingredient and its concentration.
 
         Validates that the ingredient is of the correct type, the concentration is a non-negative numeric value,
@@ -245,7 +267,8 @@ class Component:
         """
         if not isinstance(ingredient, Ingredient):
             raise TypeError(
-                f"ingredient must be an Ingredient object found {ingredient}")
+                f"ingredient must be an Ingredient object found {ingredient}"
+            )
         if not isinstance(concentration, (int, float)):
             raise TypeError("concentration must be numeric")
         if concentration < 0:
@@ -274,8 +297,10 @@ class Component:
 
     def __repr__(self) -> str:
         cls = self.ingredient.__class__.__name__
-        return (f"Component({cls}={self.ingredient.name!r}, "
-                f"conc={self.concentration}, units={self.units!r})")
+        return (
+            f"Component({cls}={self.ingredient.name!r}, "
+            f"conc={self.concentration}, units={self.units!r})"
+        )
 
 
 class Formulation:
@@ -307,12 +332,12 @@ class Formulation:
         self._id: Optional[int] = id
 
         self._components: Dict[str, Optional[Component]] = {
-            "protein":    None,
-            "buffer":     None,
+            "protein": None,
+            "buffer": None,
             "stabilizer": None,
             "surfactant": None,
-            "salt":       None,
-            "excipient":  None,
+            "salt": None,
+            "excipient": None,
         }
         self._temperature: Optional[float] = None
         self._viscosity_profile: Optional[ViscosityProfile] = None
@@ -368,7 +393,9 @@ class Formulation:
         """
         self._components["buffer"] = Component(buffer, concentration, units)
 
-    def set_stabilizer(self, stabilizer: Stabilizer, concentration: float, units: str) -> None:
+    def set_stabilizer(
+        self, stabilizer: Stabilizer, concentration: float, units: str
+    ) -> None:
         """Assign a stabilizer component to the formulation.
 
         Args:
@@ -380,10 +407,11 @@ class Formulation:
             TypeError: If `stabilizer` is not a `Stabilizer`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["stabilizer"] = Component(
-            stabilizer, concentration, units)
+        self._components["stabilizer"] = Component(stabilizer, concentration, units)
 
-    def set_surfactant(self, surfactant: Surfactant, concentration: float, units: str) -> None:
+    def set_surfactant(
+        self, surfactant: Surfactant, concentration: float, units: str
+    ) -> None:
         """Assign a surfactant component to the formulation.
 
         Args:
@@ -395,8 +423,7 @@ class Formulation:
             TypeError: If `surfactant` is not a `Surfactant`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["surfactant"] = Component(
-            surfactant, concentration, units)
+        self._components["surfactant"] = Component(surfactant, concentration, units)
 
     def set_salt(self, salt: Salt, concentration: float, units: str) -> None:
         """Assign a salt component to the formulation.
@@ -412,7 +439,9 @@ class Formulation:
         """
         self._components["salt"] = Component(salt, concentration, units)
 
-    def set_excipient(self, excipient: Excipient, concentration: float, units: str) -> None:
+    def set_excipient(
+        self, excipient: Excipient, concentration: float, units: str
+    ) -> None:
         """Assign a excpient component to the formulation.
 
         Args:
@@ -427,8 +456,7 @@ class Formulation:
             TypeError: If `excipient` is not an `Excipient`, or if concentration is not numeric.
             ValueError: If concentration is negative, or if `units` is an empty string.
         """
-        self._components["excipient"] = Component(
-            excipient, concentration, units)
+        self._components["excipient"] = Component(excipient, concentration, units)
 
     @property
     def protein(self) -> Optional[Component]:
@@ -543,7 +571,7 @@ class Formulation:
             if comp is not None:
                 comp_dict = comp.to_dict()
                 # Remove any internal 'id' field if present in component dict
-                comp_dict.pop('id', None)
+                comp_dict.pop("id", None)
                 data[key] = comp_dict
         data["temperature"] = self.temperature
         data["viscosity_profile"] = (
@@ -557,113 +585,114 @@ class Formulation:
         """Convert this Formulation into a one-row pandas DataFrame.
 
         Args:
-            encoded (bool): If endocded is set to true, the enc_id's are returned
-                for each categorical feature of the dataframe.  If encoded is false, the
+            encoded (bool): If encoded is set to true, the enc_id's are returned
+                for each categorical feature of the dataframe. If encoded is false, the
                 name is returned instead of the enc_id.
+            training (bool): If true, viscosity columns are included (if available).
 
         Returns:
             pd.DataFrame: A DataFrame with exactly one row, containing the following
                 columns in this order:
-                    - "ID"
-                    - "Protein_type"
-                    - "Protein_class_type"
-                    - "MW"
-                    - "PI_mean"
-                    - "PI_range"
-                    - "Protein_conc"
-                    - "Temperature"
-                    - "Buffer_type"
-                    - "Buffer_pH"
-                    - "Buffer_conc"
-                    - "Salt_type"
-                    - "Salt_conc"
-                    - "Excipient_type"
-                    - "Excipient_conc
-                    - "Stabilizer_type"
-                    - "Stabilizer_conc"
-                    - "Surfactant_type"
-                    - "Surfactant_conc"
-                    - "Viscosity_100"
-                    - "Viscosity_1000"
-                    - "Viscosity_10000"
-                    - "Viscosity_100000"
-                    - "Viscosity_15000000"
+                    - ID
+                    - Protein_type, Protein_class_type, kP, MW, PI_mean, PI_range, Protein_conc
+                    - Temperature
+                    - Buffer_type, Buffer_pH, Buffer_conc
+                    - Salt_type, Salt_conc
+                    - Stabilizer_type, Stabilizer_conc
+                    - Surfactant_type, Surfactant_conc
+                    - Excipient_type, Excipient_conc
+                    - C_Class, HCI
+                    - Viscosity columns (if training=True)
         """
-        if encoded:
-            row = {
-                "ID":              self.id,
-                "Protein_type":    self.protein.ingredient.enc_id,
-                "Protein_class_type":   self.protein.ingredient.class_type,
-                "kP":              self.protein.ingredient.class_type.kP,
-                "HCI":              self.protein.ingredient.class_type.hci,
-                "C_Class":          self.protein.ingredient.class_type.c_class,
-                "MW":              self.protein.ingredient.molecular_weight,
-                "PI_mean":         self.protein.ingredient.pI_mean,
-                "PI_range":        self.protein.ingredient.pI_range,
-                "Protein_conc":    self.protein.concentration,
-                "Temperature":     getattr(self, "temperature", pd.NA),
-                "Buffer_type":     self.buffer.ingredient.enc_id,
-                "Buffer_pH":       self.buffer.ingredient.pH,
-                "Buffer_conc":     self.buffer.concentration,
-                "Salt_type":       self.salt.ingredient.enc_id,
-                "Salt_conc":       self.salt.concentration,
-                "Excipient_type":  self.excipient.ingredient.enc_id,
-                "Excipient_conc":  self.excipient.concentration,
-                "Stabilizer_type": self.stabilizer.ingredient.enc_id,
-                "Stabilizer_conc": self.stabilizer.concentration,
-                "Surfactant_type": self.surfactant.ingredient.enc_id,
-                "Surfactant_conc": self.surfactant.concentration,
-            }
-        else:
-            row = {
-                "ID":              self.id,
-                "Protein_type":    self.protein.ingredient.name,
-                "Protein_class_type":   self.protein.ingredient.class_type,
-                "kP":              self.protein.ingredient.class_type.kP,
-                "HCI":             self.protein.ingredient.class_type.hci,
-                "C_Class":         self.protein.ingredient.class_type.c_class,
-                "MW":              self.protein.ingredient.molecular_weight,
-                "PI_mean":         self.protein.ingredient.pI_mean,
-                "PI_range":        self.protein.ingredient.pI_range,
-                "Protein_conc":    self.protein.concentration,
-                "Temperature":     getattr(self, "temperature", pd.NA),
-                "Buffer_type":     self.buffer.ingredient.name,
-                "Buffer_pH":       self.buffer.ingredient.pH,
-                "Buffer_conc":     self.buffer.concentration,
-                "Salt_type":       self.salt.ingredient.name,
-                "Salt_conc":       self.salt.concentration,
-                "Excipient_type":  self.excipient.ingredient.name,
-                "Excipient_conc":  self.excipient.concentration,
-                "Stabilizer_type": self.stabilizer.ingredient.name,
-                "Stabilizer_conc": self.stabilizer.concentration,
-                "Surfactant_type": self.surfactant.ingredient.name,
-                "Surfactant_conc": self.surfactant.concentration,
-            }
-
-        if training:
-            shear_rates = [100, 1000, 10000, 100000, 15000000]
-            if self.viscosity_profile is not None:
-                for r in shear_rates:
-                    row[f"Viscosity_{int(r)}"] = self.viscosity_profile.get_viscosity(
-                        r)
-
-        df = pd.DataFrame([row])
-
+        # 1. Define the Strict Column Order
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
-            "C_Class", "HCI",
+            "Protein_type",
+            "Protein_class_type",
+            "kP",
+            "MW",
+            "PI_mean",
+            "PI_range",
+            "Protein_conc",
             "Temperature",
-            "Buffer_type", "Buffer_pH", "Buffer_conc",
-            "Salt_type", "Salt_conc",
-            "Excipient_type", "Excipient_conc",
-            "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc"]
+            "Buffer_type",
+            "Buffer_pH",
+            "Buffer_conc",
+            "Salt_type",
+            "Salt_conc",
+            "Stabilizer_type",
+            "Stabilizer_conc",
+            "Surfactant_type",
+            "Surfactant_conc",
+            "Excipient_type",
+            "Excipient_conc",
+            "C_Class",
+            "HCI",
+        ]
+
+        # 2. Build the Data Dictionary
+        # We build the common fields first
+        row = {
+            "ID": self.id,
+            "Protein_class_type": self.protein.ingredient.class_type.value,
+            "kP": self.protein.ingredient.class_type.kP,
+            "HCI": self.protein.ingredient.class_type.hci,
+            "C_Class": self.protein.ingredient.class_type.c_class,
+            "MW": self.protein.ingredient.molecular_weight,
+            "PI_mean": self.protein.ingredient.pI_mean,
+            "PI_range": self.protein.ingredient.pI_range,
+            "Protein_conc": self.protein.concentration,
+            "Temperature": getattr(self, "temperature", pd.NA),
+            "Buffer_pH": self.buffer.ingredient.pH,
+            "Buffer_conc": self.buffer.concentration,
+            "Salt_conc": self.salt.concentration,
+            "Excipient_conc": self.excipient.concentration,
+            "Stabilizer_conc": self.stabilizer.concentration,
+            "Surfactant_conc": self.surfactant.concentration,
+        }
+
+        # Handle Categorical Encoding
+        if encoded:
+            row.update(
+                {
+                    "Protein_type": self.protein.ingredient.enc_id,
+                    "Buffer_type": self.buffer.ingredient.enc_id,
+                    "Salt_type": self.salt.ingredient.enc_id,
+                    "Excipient_type": self.excipient.ingredient.enc_id,
+                    "Stabilizer_type": self.stabilizer.ingredient.enc_id,
+                    "Surfactant_type": self.surfactant.ingredient.enc_id,
+                }
+            )
+        else:
+            row.update(
+                {
+                    "Protein_type": self.protein.ingredient.name,
+                    "Buffer_type": self.buffer.ingredient.name,
+                    "Salt_type": self.salt.ingredient.name,
+                    "Excipient_type": self.excipient.ingredient.name,
+                    "Stabilizer_type": self.stabilizer.ingredient.name,
+                    "Surfactant_type": self.surfactant.ingredient.name,
+                }
+            )
+
+        # 3. Handle Viscosity (Training Data)
         if training:
-            expected.extend([
-                "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
-                "Viscosity_100000", "Viscosity_15000000"
-            ])
+            shear_rates = [100, 1000, 10000, 100000, 15000000]
+            visc_cols = [f"Viscosity_{r}" for r in shear_rates]
+            expected.extend(visc_cols)
+
+            if self.viscosity_profile is not None:
+                for r in shear_rates:
+                    row[f"Viscosity_{r}"] = self.viscosity_profile.get_viscosity(r)
+            else:
+                # Explicitly set to NA if profile is missing but training=True
+                for col in visc_cols:
+                    row[col] = pd.NA
+
+        # 4. Create DataFrame and Enforce Order
+        df = pd.DataFrame([row])
+
+        # Ensure all columns exist (adds NaNs for missing keys)
         for col in expected:
             if col not in df.columns:
                 df[col] = pd.NA

@@ -1,0 +1,2 @@
+ID,Protein_type,Protein_class_type,kP,MW,PI_mean,PI_range,Protein_conc,Temperature,Buffer_type,Buffer_pH,Buffer_conc,Salt_type,Salt_conc,Stabilizer_type,Stabilizer_conc,Surfactant_type,Surfactant_conc,Excipient_type,Excipient_conc,C_Class,HCI,Viscosity_100,Viscosity_1000,Viscosity_10000,Viscosity_100000,Viscosity_15000000
+488,Nivolumab,None,0.0,146.0,8.1,0.3,335.0,25.21,Histidine,6.0,15.0,none,0.0,none,0.0,none,0.0,none,0.0,0.0,0.0,108.62763247668865,110.48915866313887,113.44864108990167,112.93919802120153,28.598067758622932

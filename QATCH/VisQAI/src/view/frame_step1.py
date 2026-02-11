@@ -1009,12 +1009,8 @@ class FrameStep1(QtWidgets.QDialog):
             Log.w("Aborting prediction. Failed to save formulation.")
             return
 
-        # ---------------------------------------------------------
-        # UPDATE: Initialize the Predictor Wrapper (Handles Zip/Security)
-        # ---------------------------------------------------------
         try:
-            # We use the Predictor wrapper to handle the zip extraction
-            # rather than instantiating the engine directly.
+
             self.predictor = Predictor(zip_path=self.model_path)
         except Exception as e:
             Log.e(f"Failed to initialize predictor: {e}")
@@ -1121,7 +1117,7 @@ class FrameStep1(QtWidgets.QDialog):
                 if hasattr(self, "predictor"):
                     self.predictor.cleanup()
                 return
-            self.predictor.reset()
+            # self.predictor.reset()
             # Check where we are in the chain
             # If we just finished fine-tuning (record is present but not exception), move to predict
             if record and not hasattr(self, "_prediction_launched"):

@@ -1,4 +1,5 @@
 import sys
+import time
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -51,6 +52,193 @@ except (ModuleNotFoundError, ImportError):
 
 
 TAG = "[ViscosityUI]"
+LIGHT_STYLE_SHEET = """
+/* ---------------------------------------------------------------------------
+   1. Global Defaults & Main Containers
+   --------------------------------------------------------------------------- */
+* {
+    font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
+    font-size: 10pt;
+    color: #333333;
+    selection-background-color: #00adee;
+    selection-color: #ffffff;
+    outline: none;
+}
+
+QMainWindow, QDialog {
+    background-color: #f4f6f9;
+}
+
+QWidget {
+    background-color: transparent; 
+}
+
+/* The sidebar area containing the stack of cards */
+QWidget#leftPanel {
+    background-color: #f0f2f5; /* Muted gray-blue background to make white cards pop */
+}
+
+QWidget#scrollContent {
+    background-color: transparent;
+}
+
+/* ---------------------------------------------------------------------------
+   2. Prediction Cards (The "Stack")
+   --------------------------------------------------------------------------- */
+QFrame[class="card"] {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    margin-bottom: 12px; /* Vertical separation in the stack */
+    margin-left: 4px;
+    margin-right: 4px;
+}
+
+QFrame[class="card"]:hover {
+    border: 1px solid #00adee;
+    background-color: #fafafa; 
+}
+
+/* State: Measured (Tinted Green) */
+QFrame[class="card"][measured="true"] {
+    background-color: #f1f8e9;
+    border: 1px solid #66bb6a;
+}
+
+/* ---------------------------------------------------------------------------
+   3. Buttons & Toolbars
+   --------------------------------------------------------------------------- */
+QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #c0c0c0;
+    border-radius: 4px;
+    padding: 6px 15px;
+    font-weight: 500;
+}
+
+QPushButton:hover, QToolButton:hover {
+    background-color: #f0faff;
+    border-color: #00adee;
+    color: #00adee;
+}
+
+QPushButton:pressed {
+    background-color: #00adee;
+    color: #ffffff;
+}
+
+/* Primary Action Buttons */
+QPushButton[class="primary"] {
+    background-color: #00adee;
+    border: 1px solid #00adee;
+    color: #ffffff;
+}
+
+QPushButton[class="primary"]:hover {
+    background-color: #0093ca;
+}
+
+/* Link-style and Danger Buttons */
+QPushButton[class="link-button"] {
+    color: #00adee;
+    text-align: left;
+    border: none;
+    padding: 0;
+}
+
+QPushButton[class="icon-danger"] {
+    color: #999999;
+    border: none;
+}
+
+QPushButton[class="icon-danger"]:hover {
+    color: #d32f2f;
+    background-color: #ffebee;
+}
+
+/* ---------------------------------------------------------------------------
+   4. Input Fields (LineEdits, SpinBoxes, etc.)
+   --------------------------------------------------------------------------- */
+QLineEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {
+    background-color: #ffffff;
+    border: 1px solid #cfcfcf;
+    border-radius: 4px;
+    padding: 5px;
+}
+
+QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+    border: 1px solid #00adee;
+}
+
+/* Read-Only / Disabled States */
+QLineEdit[readOnly="true"], QDoubleSpinBox[readOnly="true"], QSpinBox[readOnly="true"],
+QLineEdit:disabled, QTextEdit:disabled {
+    background-color: #f0f0f0;
+    border: 1px dashed #cfcfcf;
+    color: #888888;
+}
+
+/* Specialized Card Title Input */
+QLineEdit[class="title-input"] {
+    background: transparent;
+    border: 1px solid transparent;
+    font-size: 12pt;
+    font-weight: bold;
+}
+
+/* ---------------------------------------------------------------------------
+   5. UI Decorators (Badges, Dividers, Headers)
+   --------------------------------------------------------------------------- */
+QLabel[class="header-title"] {
+    font-weight: bold;
+    color: #00adee;
+    padding-bottom: 2px;
+}
+
+QLabel[class="badge-success"] {
+    color: #2e7d32;
+    background-color: #e8f5e9;
+    border: 1px solid #a5d6a7;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 9pt;
+}
+
+QFrame[class="divider"] {
+    background-color: #e0e0e0;
+    max-height: 1px;
+    border: none;
+}
+
+/* ---------------------------------------------------------------------------
+   6. Scrollbars & Menus
+   --------------------------------------------------------------------------- */
+QScrollBar:vertical {
+    border: none;
+    background: #f4f6f9;
+    width: 10px;
+}
+
+QScrollBar::handle:vertical {
+    background: #d0d0d0;
+    border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background: #00adee;
+}
+
+QMenu {
+    background-color: #ffffff;
+    border: 1px solid #dce1e6;
+    border-radius: 6px;
+}
+
+QMenu::item:selected {
+    background-color: #e1f5fe;
+    color: #00adee;
+}
+"""
 
 
 class PredictionConfigCard(QtWidgets.QFrame):
@@ -68,11 +256,18 @@ class PredictionConfigCard(QtWidgets.QFrame):
         parent=None,
     ):
         super().__init__(parent)
-
-        # Native frame styling
-        self.setFrameStyle(QtWidgets.QFrame.StyledPanel | QtWidgets.QFrame.Raised)
-        self.setLineWidth(1)
-
+        self.setProperty("class", "card")
+        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(15)  # Soften the shadow
+        shadow.setXOffset(0)
+        shadow.setYOffset(2)  # Move shadow slightly down
+        shadow.setColor(
+            QtGui.QColor(0, 0, 0, 40)
+        )  # Slightly darker for better visibility
+        self.setGraphicsEffect(shadow)
+        self.animation = QtCore.QPropertyAnimation(self, b"maximumHeight")
+        self.animation.setDuration(300)
+        self.animation.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
         self.ingredients_master = ingredients_data
         self.INGREDIENT_TYPES = ingredient_types
         self.INGREDIENT_UNITS = ingredient_units
@@ -81,6 +276,7 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.is_expanded = True
         self.is_measured = False
         self.notes_visible = False
+
         self.debounce_timer = QtCore.QTimer()
         self.debounce_timer.setSingleShot(True)
         self.debounce_timer.setInterval(300)
@@ -89,31 +285,40 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self._connect_auto_updates()
 
     def _init_ui(self, default_name):
+        # Main vertical layout for the card
         layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)  # Add breathing room inside the card
+        layout.setSpacing(10)
 
         # --- 1. Header ---
         self.header_frame = QtWidgets.QFrame()
+        self.header_frame.setObjectName(
+            "headerFrame"
+        )  # Useful if specific targeting needed
         header_layout = QtWidgets.QHBoxLayout(self.header_frame)
         header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(10)
 
         # Toggle Arrow
         self.btn_toggle = QtWidgets.QToolButton()
-        self.btn_toggle.setArrowType(Qt.ArrowType.DownArrow)
+        self.btn_toggle.setArrowType(QtCore.Qt.ArrowType.DownArrow)
         self.btn_toggle.clicked.connect(self.toggle_content)
+        self.btn_toggle.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         # Name Input
         self.name_input = QtWidgets.QLineEdit(default_name)
         self.name_input.setPlaceholderText("Prediction Name")
+        self.name_input.setProperty("class", "title-input")
 
         # Measured Badge
         self.lbl_measured = QtWidgets.QLabel("✓ Measured Data")
-        self.lbl_measured.setStyleSheet(
-            "color: #2E7D32; font-weight: bold; border: 1px solid #2E7D32; border-radius: 4px; padding: 2px 6px; background-color: #E8F5E9;"
-        )
+        self.lbl_measured.setProperty("class", "badge-success")
         self.lbl_measured.setVisible(False)
 
         # Delete Button
         self.btn_delete = QtWidgets.QPushButton("Delete")
+        self.btn_delete.setProperty("class", "icon-danger")
+        self.btn_delete.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_delete.clicked.connect(lambda: self.removed.emit(self))
 
         header_layout.addWidget(self.btn_toggle)
@@ -122,25 +327,37 @@ class PredictionConfigCard(QtWidgets.QFrame):
         header_layout.addWidget(self.btn_delete)
         layout.addWidget(self.header_frame)
 
-        # --- 2. Content Body ---
+        # Content Body
         self.content_frame = QtWidgets.QFrame()
+        self.content_frame.setObjectName("contentFrame")  # (Already added previously)
+        self.content_frame.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_LayoutUsesWidgetRect
+        )
         content_layout = QtWidgets.QVBoxLayout(self.content_frame)
+        content_layout.setContentsMargins(20, 10, 5, 5)  # Indent content slightly
+        content_layout.setSpacing(15)
 
         # Model Selection
         model_layout = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
         self.model_combo.addItems(["VisQAI-ICL_v1_nightly", "VisQAI-ICL_v2_beta"])
+        self.model_combo.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
         btn_browse = QtWidgets.QPushButton("Browse...")
+        btn_browse.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         btn_browse.clicked.connect(self.browse_model_file)
 
-        model_layout.addWidget(QtWidgets.QLabel("Model:"))
+        model_label = QtWidgets.QLabel("Model:")
+        model_label.setStyleSheet("font-weight: bold; color: #555;")
+
+        model_layout.addWidget(model_label)
         model_layout.addWidget(self.model_combo, stretch=1)
         model_layout.addWidget(btn_browse)
         content_layout.addLayout(model_layout)
 
         self._add_divider(content_layout)
 
-        # --- INGREDIENTS SECTION (With Help) ---
+        # Ingredient section
         self._add_header_with_help(
             content_layout,
             "Formulation Composition",
@@ -150,15 +367,18 @@ class PredictionConfigCard(QtWidgets.QFrame):
         )
 
         self.ing_container_layout = QtWidgets.QVBoxLayout()
+        self.ing_container_layout.setSpacing(5)
         content_layout.addLayout(self.ing_container_layout)
 
-        self.btn_add_ing = QtWidgets.QPushButton("Add Component")
+        self.btn_add_ing = QtWidgets.QPushButton("+ Add Component")
+        self.btn_add_ing.setProperty("class", "primary")
+        self.btn_add_ing.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_add_ing.clicked.connect(self.show_add_menu)
         content_layout.addWidget(self.btn_add_ing)
 
         self._add_divider(content_layout)
 
-        # --- ENVIRONMENT SECTION (With Help) ---
+        # Environment Selection
         self._add_header_with_help(
             content_layout,
             "Environment",
@@ -167,17 +387,21 @@ class PredictionConfigCard(QtWidgets.QFrame):
         )
 
         temp_layout = QtWidgets.QHBoxLayout()
-        temp_layout.addWidget(QtWidgets.QLabel("Temperature:"))
+        temp_lbl = QtWidgets.QLabel("Temperature:")
+        temp_lbl.setFixedWidth(100)
+        temp_layout.addWidget(temp_lbl)
 
-        self.slider_temp = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+        self.slider_temp = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.slider_temp.setRange(0, 100)
         self.slider_temp.setValue(25)
+        self.slider_temp.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
 
         self.spin_temp = QtWidgets.QDoubleSpinBox()
         self.spin_temp.setRange(0.0, 100.0)
         self.spin_temp.setValue(25.0)
         self.spin_temp.setSuffix(" °C")
-        self.spin_temp.setFixedWidth(80)
+        self.spin_temp.setFixedWidth(90)
+        self.spin_temp.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         self.slider_temp.valueChanged.connect(
             lambda v: self.spin_temp.setValue(float(v))
@@ -190,7 +414,7 @@ class PredictionConfigCard(QtWidgets.QFrame):
 
         self._add_divider(content_layout)
 
-        # --- ML PARAMS SECTION (With Help) ---
+        # ML Params Section
         self._add_header_with_help(
             content_layout,
             "ML Hyperparameters",
@@ -201,9 +425,15 @@ class PredictionConfigCard(QtWidgets.QFrame):
         )
 
         params_grid = QtWidgets.QGridLayout()
-        params_grid.setVerticalSpacing(10)
+        params_grid.setVerticalSpacing(12)
+        params_grid.setHorizontalSpacing(15)
 
-        params_grid.addWidget(QtWidgets.QLabel("Learning Rate:"), 0, 0)
+        def create_param_label(text):
+            lbl = QtWidgets.QLabel(text)
+            lbl.setStyleSheet("color: #555;")
+            return lbl
+
+        params_grid.addWidget(create_param_label("Learning Rate:"), 0, 0)
         self.spin_lr = QtWidgets.QDoubleSpinBox()
         self.spin_lr.setRange(0.0001, 1.0)
         self.spin_lr.setSingleStep(0.001)
@@ -211,22 +441,30 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.spin_lr.setValue(0.01)
         params_grid.addWidget(self.spin_lr, 0, 1)
 
-        params_grid.addWidget(QtWidgets.QLabel("Steps:"), 1, 0)
+        params_grid.addWidget(create_param_label("Steps:"), 1, 0)
         self.spin_steps = QtWidgets.QSpinBox()
         self.spin_steps.setRange(1, 10000)
         self.spin_steps.setSingleStep(10)
         self.spin_steps.setValue(50)
         params_grid.addWidget(self.spin_steps, 1, 1)
 
-        params_grid.addWidget(QtWidgets.QLabel("Confidence Interval:"), 2, 0)
+        params_grid.addWidget(create_param_label("Confidence Interval:"), 2, 0)
+
         ci_container = QtWidgets.QWidget()
         ci_layout = QtWidgets.QHBoxLayout(ci_container)
         ci_layout.setContentsMargins(0, 0, 0, 0)
-        self.slider_ci = QtWidgets.QSlider(Qt.Orientation.Horizontal)
+
+        self.slider_ci = QtWidgets.QSlider(QtCore.Qt.Orientation.Horizontal)
         self.slider_ci.setRange(0, 100)
         self.slider_ci.setValue(95)
+        self.slider_ci.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
         self.lbl_ci_val = QtWidgets.QLabel("95%")
         self.lbl_ci_val.setFixedWidth(40)
+        self.lbl_ci_val.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
+
         self.slider_ci.valueChanged.connect(lambda v: self.lbl_ci_val.setText(f"{v}%"))
         ci_layout.addWidget(self.slider_ci)
         ci_layout.addWidget(self.lbl_ci_val)
@@ -236,19 +474,18 @@ class PredictionConfigCard(QtWidgets.QFrame):
 
         self._add_divider(content_layout)
 
-        # --- NOTES & ACTIONS ---
+        # Notes and actions section
         self.btn_toggle_notes = QtWidgets.QPushButton("Show Notes")
         self.btn_toggle_notes.setCheckable(True)
-        self.btn_toggle_notes.setStyleSheet(
-            "text-align: left; padding-left: 0px; border: none; color: #0078D7;"
-        )
+        self.btn_toggle_notes.setProperty("class", "link-button")
+        self.btn_toggle_notes.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_toggle_notes.clicked.connect(self.toggle_notes)
 
         self.notes_edit = QtWidgets.QTextEdit()
         self.notes_edit.setPlaceholderText("Enter notes about this run...")
-        self.notes_edit.setFixedHeight(80)
         self.notes_edit.setVisible(False)
-
+        self.notes_edit.setStyleSheet("border: 1px solid #e0e0e0; background: #fcfcfc;")
+        self.notes_edit.setMaximumHeight(0)
         content_layout.addWidget(self.btn_toggle_notes)
         content_layout.addWidget(self.notes_edit)
 
@@ -260,58 +497,99 @@ class PredictionConfigCard(QtWidgets.QFrame):
         layout.addWidget(self.content_frame)
 
     def _connect_auto_updates(self):
-        # Text Inputs
         self.name_input.textChanged.connect(self.trigger_update)
         self.model_combo.currentTextChanged.connect(self.trigger_update)
-
-        # Spinners & Sliders
         self.spin_temp.valueChanged.connect(self.trigger_update)
         self.spin_lr.valueChanged.connect(self.trigger_update)
         self.spin_steps.valueChanged.connect(self.trigger_update)
         self.slider_ci.valueChanged.connect(self.trigger_update)
 
-    def set_measured_state(self, is_measured: bool):
-        """
-        Updates the UI to reflect measured state.
+    def _add_divider(self, layout):
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        line.setLineWidth(1)
+        line.setProperty("class", "divider")
+        layout.addWidget(line)
 
-        Locked (Immutable): Formulation (Ingredients), Environment (Temp), Name
-        Mutable (Editable): ML Hyperparams, Model, Notes
-        """
+    def _add_header_with_help(self, layout, title, help_text):
+        container = QtWidgets.QWidget()
+        h_layout = QtWidgets.QHBoxLayout(container)
+        h_layout.setContentsMargins(0, 5, 0, 5)
+        h_layout.setSpacing(8)
+
+        # Label
+        lbl = QtWidgets.QLabel(title)
+        lbl.setProperty("class", "header-title")
+
+        # Help Button
+        btn_help = QtWidgets.QToolButton()
+        btn_help.setText("?")
+        btn_help.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        btn_help.setProperty("class", "help-btn")
+
+        # Show info box on click
+        btn_help.clicked.connect(
+            lambda: QtWidgets.QMessageBox.information(self, title, help_text)
+        )
+        h_layout.addWidget(lbl)
+        h_layout.addWidget(btn_help)
+        h_layout.addStretch()
+        layout.addWidget(container)
+
+    def toggle_notes(self):
+
+        self.notes_visible = not self.notes_visible
+        new_text = "Hide Notes" if self.notes_visible else "Show Notes"
+        self.btn_toggle_notes.setText(new_text)
+        if not hasattr(self, "_anim_notes"):
+            self._anim_notes = QtCore.QPropertyAnimation(
+                self.notes_edit, b"maximumHeight"
+            )
+            self._anim_notes.setDuration(200)
+            self._anim_notes.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
+        if self.notes_visible:
+            self.notes_edit.setVisible(True)
+            self._anim_notes.setStartValue(0)
+            self._anim_notes.setEndValue(80)
+        else:
+            self._anim_notes.setStartValue(80)
+            self._anim_notes.setEndValue(0)
+
+        self._anim_notes.start()
+
+    def set_measured(self, is_measured: bool):
         self.is_measured = is_measured
         self.lbl_measured.setVisible(is_measured)
+        self.setProperty("measured", is_measured)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
-        # 1. Visual Style
-        if is_measured:
-            self.setStyleSheet(
-                """
-                PredictionConfigCard {
-                    background-color: #F4F7F6; 
-                    border: 1px solid #2E7D32;
-                }
-            """
-            )
-        else:
-            self.setStyleSheet("")
+    def set_measured_state(self, is_measured: bool):
+        self.is_measured = is_measured
+        self.lbl_measured.setVisible(is_measured)
+        self.setProperty("measured", is_measured)
+        self.style().unpolish(self)
+        self.style().polish(self)
 
-        # 2. Immutable Sections (Locked when measured)
-        # We disable interactions or set ReadOnly for these specific fields
+        # Immutable Sections
         lock_state = is_measured
 
-        # Name (Identity)
+        # Name
         self.name_input.setReadOnly(lock_state)
 
-        # Formulation (Ingredients)
-        self.btn_add_ing.setEnabled(not lock_state)  # Cannot add new
-        for combo, spin in self.active_ingredients.values():
-            combo.setEnabled(not lock_state)  # Cannot change type
-            spin.setReadOnly(lock_state)  # Cannot change concentration
+        # Formulation
+        self.btn_add_ing.setVisible(not lock_state)
 
-        # Environment (Temperature)
+        for combo, spin in self.active_ingredients.values():
+            combo.setEnabled(not lock_state)
+            spin.setReadOnly(lock_state)
+
+        # Environment
         self.slider_temp.setEnabled(not lock_state)
         self.spin_temp.setReadOnly(lock_state)
 
-        # 3. Mutable Sections (Always Editable)
-        # We explicitly ensure these are enabled, even if is_measured is True
+        # Mutable Sections
         self.model_combo.setEnabled(True)
 
         # ML Params
@@ -323,102 +601,101 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.btn_toggle_notes.setEnabled(True)
         self.notes_edit.setReadOnly(False)
 
-    # --- NEW HELPER METHOD FOR HELP HEADERS ---
-    def _add_header_with_help(self, layout, title, help_text):
-        """Creates a bold header label with a small (?) info button."""
-        container = QtWidgets.QWidget()
-        h_layout = QtWidgets.QHBoxLayout(container)
-        h_layout.setContentsMargins(0, 0, 0, 0)
-        h_layout.setSpacing(5)
-
-        # Label
-        lbl = QtWidgets.QLabel(title)
-        font = lbl.font()
-        font.setBold(True)
-        lbl.setFont(font)
-
-        # Help Button
-        btn_help = QtWidgets.QToolButton()
-        btn_help.setText("?")
-        btn_help.setCursor(Qt.PointingHandCursor)
-        # Style it to look like a small circular badge or simple link
-        btn_help.setStyleSheet(
-            "QToolButton { border: 1px solid #CCC; border-radius: 10px; font-weight: bold; color: #555; background-color: #EEE; min-width: 20px; min-height: 20px; } QToolButton:hover { background-color: #DDD; color: #000; }"
-        )
-
-        btn_help.clicked.connect(
-            lambda: QtWidgets.QMessageBox.information(self, title, help_text)
-        )
-
-        h_layout.addWidget(lbl)
-        h_layout.addWidget(btn_help)
-        h_layout.addStretch()  # Push everything to the left
-
-        layout.addWidget(container)
-
-    def toggle_notes(self):
-        self.notes_visible = not self.notes_visible
-        self.notes_edit.setVisible(self.notes_visible)
-        text = "Hide Notes" if self.notes_visible else "Show Notes"
-        self.btn_toggle_notes.setText(text)
-
-    def on_save_clicked(self):
-        config = self.get_configuration()
-        self.save_requested.emit(config)
-
-    def set_measured(self, is_measured: bool):
-        self.is_measured = is_measured
-        self.lbl_measured.setVisible(is_measured)
-
-    def on_run_clicked(self):
-        config = self.get_configuration()
-        self.run_requested.emit(config)
-
     def toggle_content(self):
+
         if not self.is_expanded:
             self.expanded.emit(self)
             self.emit_run_request()
 
         self.is_expanded = not self.is_expanded
-        self.content_frame.setVisible(self.is_expanded)
-        arrow = Qt.ArrowType.DownArrow if self.is_expanded else Qt.ArrowType.RightArrow
+        arrow = (
+            QtCore.Qt.ArrowType.DownArrow
+            if self.is_expanded
+            else QtCore.Qt.ArrowType.RightArrow
+        )
         self.btn_toggle.setArrowType(arrow)
+        if not hasattr(self, "_anim_accordion"):
+            self._anim_accordion = QtCore.QPropertyAnimation(
+                self.content_frame, b"maximumHeight"
+            )
+            self._anim_accordion.setDuration(200)
+            self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
+
+        try:
+            self._anim_accordion.finished.disconnect()
+        except TypeError:
+            pass
+
+        if self.is_expanded:
+            self.content_frame.setVisible(True)
+            self.content_frame.setMaximumHeight(16777215)
+            target_height = self.content_frame.sizeHint().height()
+            self._anim_accordion.setStartValue(0)
+            self._anim_accordion.setEndValue(target_height)
+            self._anim_accordion.finished.connect(
+                lambda: self.content_frame.setMaximumHeight(16777215)
+            )
+
+        else:
+            self._anim_accordion.setStartValue(self.content_frame.height())
+            self._anim_accordion.setEndValue(0)
+            self._anim_accordion.finished.connect(
+                lambda: self.content_frame.setVisible(False)
+            )
+        self._anim_accordion.start()
 
     def collapse(self):
-        if self.is_expanded:
-            self.is_expanded = False
-            self.content_frame.setVisible(False)
-            self.btn_toggle.setArrowType(Qt.ArrowType.RightArrow)
+        if not self.is_expanded:
+            return
+        self.is_expanded = False
+        self.btn_toggle.setArrowType(QtCore.Qt.ArrowType.RightArrow)
+        if not hasattr(self, "_anim_accordion"):
+            self._anim_accordion = QtCore.QPropertyAnimation(
+                self.content_frame, b"maximumHeight"
+            )
+            self._anim_accordion.setDuration(300)
+            self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.InOutQuad)
+
+        try:
+            self._anim_accordion.finished.disconnect()
+        except TypeError:
+            pass
+        self._anim_accordion.setStartValue(self.content_frame.height())
+        self._anim_accordion.setEndValue(0)
+        self._anim_accordion.finished.connect(
+            lambda: self.content_frame.setVisible(False)
+        )
+        self._anim_accordion.start()
 
     def browse_model_file(self):
         fname, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Select Model", "", "Model Files (*.pt *.onnx)"
+            self,
+            "Select Model File",
+            "",
+            "VisQAI Models (*.visq)",
         )
         if fname:
-            self.model_combo.addItem(fname)
-            self.model_combo.setCurrentText(fname)
-
-    def _add_divider(self, layout):
-        line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
-        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
-        layout.addWidget(line)
+            file_info = QtCore.QFileInfo(fname)
+            display_name = file_info.fileName()
+            self.model_combo.addItem(display_name, fname)
+            self.model_combo.setCurrentIndex(self.model_combo.count() - 1)
 
     def show_add_menu(self):
         menu = QtWidgets.QMenu(self.btn_add_ing)
-        present = self.active_ingredients.keys()
-        available = [t for t in self.INGREDIENT_TYPES if t not in present]
+        menu.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        present_types = list(self.active_ingredients.keys())
+        available = [t for t in self.INGREDIENT_TYPES if t not in present_types]
         if not available:
-            menu.addAction("All types added").setEnabled(False)
+            action = menu.addAction("All types added")
+            action.setEnabled(False)
         else:
             for t in available:
                 action = menu.addAction(t)
                 action.triggered.connect(
-                    lambda checked, _t=t: self.add_ingredient_row(_t)
+                    lambda checked, type_name=t: self.add_ingredient_row(type_name)
                 )
-        menu.exec(
-            self.btn_add_ing.mapToGlobal(QtCore.QPoint(0, self.btn_add_ing.height()))
-        )
+        pos = self.btn_add_ing.mapToGlobal(QtCore.QPoint(0, self.btn_add_ing.height()))
+        menu.exec(pos)
 
     def add_ingredient_row(self, ing_type):
         row_widget = QtWidgets.QWidget()
@@ -455,8 +732,6 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.active_ingredients[ing_type] = (combo, spin)
 
     def trigger_update(self):
-        """Called whenever a field changes. Restarts the debounce timer."""
-        # Only run if we are actually expanded (don't run background calculations for hidden cards)
         if self.is_expanded:
             self.debounce_timer.start()
 
@@ -467,7 +742,14 @@ class PredictionConfigCard(QtWidgets.QFrame):
     def remove_ingredient_row(self, ing_type, widget):
         if ing_type in self.active_ingredients:
             del self.active_ingredients[ing_type]
-        widget.deleteLater()
+        self.trigger_update()
+        anim = QtCore.QPropertyAnimation(widget, b"maximumHeight", widget)
+        anim.setDuration(100)
+        anim.setEasingCurve(QtCore.QEasingCurve.InQuad)
+        anim.setStartValue(widget.height())
+        anim.setEndValue(0)
+        anim.finished.connect(widget.deleteLater)
+        anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def get_configuration(self):
         formulation = {}
@@ -687,6 +969,46 @@ class VisualizationPanel(QtWidgets.QWidget):
         # Check if plot_widget exists to avoid errors during init
         if hasattr(self, "plot_widget"):
             self.plot_widget.setTitle(f"Viscosity Profile: {title_text}")
+
+    def update_table(self):
+        if not self.last_data:
+            return
+
+        x, y = self.last_data["x"], self.last_data["y"]
+        l, u = self.last_data["lower"], self.last_data["upper"]
+
+        # Safe retrieval of measured data
+        meas = self.last_data.get("measured_y")
+        if meas is None:
+            meas = [None] * len(x)
+
+        self.results_table.setRowCount(len(x))
+
+        for i, (sr, visc, low, high, m_visc) in enumerate(zip(x, y, l, u, meas)):
+            # Format Shear Rate
+            sr_txt = f"{sr:.2e}" if sr >= 10000 else f"{sr:.1f}"
+            self.results_table.setItem(i, 0, QtWidgets.QTableWidgetItem(sr_txt))
+
+            # Format Predicted Viscosity
+            self.results_table.setItem(i, 1, QtWidgets.QTableWidgetItem(f"{visc:.2f}"))
+
+            # Format Interval
+            self.results_table.setItem(
+                i, 2, QtWidgets.QTableWidgetItem(f"{low:.2f} - {high:.2f}")
+            )
+
+            # Format Measured
+            if m_visc is not None:
+                # Handle potential numpy scalars or strings
+                try:
+                    val = float(m_visc)
+                    m_text = f"{val:.2f}"
+                except (ValueError, TypeError):
+                    m_text = "-"
+            else:
+                m_text = "-"
+
+            self.results_table.setItem(i, 3, QtWidgets.QTableWidgetItem(m_text))
 
     def show_loading(self):
         self.overlay_widget.setVisible(True)
@@ -993,6 +1315,7 @@ class PredictionUI(QtWidgets.QWidget):
         splitter = QtWidgets.QSplitter(Qt.Horizontal)
 
         left_widget = QtWidgets.QWidget()
+        left_widget.setObjectName("leftPanel")
         left_layout = QtWidgets.QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1005,14 +1328,18 @@ class PredictionUI(QtWidgets.QWidget):
         btn_layout.addWidget(btn_import)
         left_layout.addLayout(btn_layout)
 
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
+        self.scroll_area = QtWidgets.QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
         self.cards_container = QtWidgets.QWidget()
+        self.cards_container.setObjectName("scrollContent")
         self.cards_layout = QtWidgets.QVBoxLayout(self.cards_container)
+        self.cards_layout.setContentsMargins(15, 15, 15, 15)
+        self.cards_layout.setSpacing(10)
         self.cards_layout.addStretch()
-        scroll.setWidget(self.cards_container)
-        left_layout.addWidget(scroll)
 
+        self.scroll_area.setWidget(self.cards_container)
+        left_layout.addWidget(self.scroll_area)
         splitter.addWidget(left_widget)
 
         self.viz_panel = VisualizationPanel()
@@ -1020,127 +1347,184 @@ class PredictionUI(QtWidgets.QWidget):
 
         splitter.setSizes([450, 700])
         main_layout.addWidget(splitter)
+        self.current_task = None
+
         self.add_prediction_card()
 
     def add_prediction_card(self, data=None):
-        # 1. Determine name
         if data and "name" in data:
             name = data["name"]
         else:
-            name = f"Prediction {self.cards_layout.count()}"
-
-        # 2. Create the card
+            current_count = max(0, self.cards_layout.count() - 1)
+            name = f"Prediction {current_count + 1}"
         card = PredictionConfigCard(
-            name, self.ingredients_by_type, self.INGREDIENT_TYPES, self.INGREDIENT_UNITS
+            default_name=name,
+            ingredients_data=self.ingredients_by_type,
+            ingredient_types=self.INGREDIENT_TYPES,
+            ingredient_units=self.INGREDIENT_UNITS,
         )
-
-        # 3. [NEW] Check for 'measured' flag in data and update card
-        if data and data.get("measured", False):
-            card.set_measured_state(True)
-
-        # ... existing signal connections (removed, run_requested, expanded, etc.) ...
         card.removed.connect(self.remove_card)
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
-
-        # 4. Add to layout
-        self.cards_layout.insertWidget(self.cards_layout.count() - 1, card)
-
-        # 5. Collapse others
-        self.on_card_expanded(card)
-
+        insert_idx = max(0, self.cards_layout.count() - 1)
+        self.cards_layout.insertWidget(insert_idx, card)
         if data:
-            card.load_data(data)
-            # If it's a measured run, set state
-            if data.get("measured"):
+            if hasattr(card, "load_data"):
+                card.load_data(data)
+            if data.get("measured", False):
                 card.set_measured_state(True)
-            # Trigger initial run for this data
             card.emit_run_request()
+        self.on_card_expanded(card)
+        QtCore.QTimer.singleShot(100, lambda: self._scroll_to_card(card))
+
+    def _scroll_to_card(self, card_widget):
+        """Helper to ensure the new card is visible in the scroll area."""
+        self.scroll_area.ensureWidgetVisible(card_widget, 0, 0)
 
     def on_card_expanded(self, active_card):
-        """[NEW] Slot to collapse all cards except the active one."""
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
             widget = item.widget()
-
-            # Check if it's a card and NOT the one currently expanding
             if isinstance(widget, PredictionConfigCard) and widget is not active_card:
                 widget.collapse()
 
     def remove_card(self, card_widget):
-        self.cards_layout.removeWidget(card_widget)
-        card_widget.deleteLater()
+        card_widget.setDisabled(True)
+        anim = QtCore.QPropertyAnimation(card_widget, b"maximumHeight", card_widget)
+        anim.setDuration(200)
+        anim.setStartValue(card_widget.height())
+        anim.setEndValue(0)
+        anim.setEasingCurve(QtCore.QEasingCurve.InBack)
 
-    def handle_single_run(self, config):
-        self.run_prediction(config)
+        def cleanup():
+            self.cards_layout.removeWidget(card_widget)
+            card_widget.deleteLater()
 
-    def handle_save(self, config):
-        pass
-
-    def run_all_predictions(self):
-        self.run_prediction()
+        anim.finished.connect(cleanup)
+        anim.start()
 
     def import_data_file(self):
-        # Mock Import with Measured Data
         fname, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Import Run Data", "", "CSV Files (*.csv);;All Files (*)"
+            self,
+            "Import Run Data",
+            "",  # Default directory
+            "CSV Files (*.csv);;All Files (*)",
         )
         if not fname:
             return
+        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
 
-        # Simulating an imported config that HAS measured data
-        imported_config = {
-            "name": "Imported: Lab Run 23",
-            "measured": True,
-            # In a real app, you would parse 'fname' here to get actual data
-        }
+        try:
 
-        # Add the card (this sets the UI state)
-        self.add_prediction_card(imported_config)
+            imported_config = {
+                "name": f"Imported: {QtCore.QFileInfo(fname).baseName()}",
+                "measured": True,
+                # "data": parse_csv(fname) ...
+            }
+            self.add_prediction_card(imported_config)
+            self.run_prediction(imported_config)
 
-        # Immediately run/display this imported data to show the feature
-        self.run_prediction(imported_config)
+        finally:
+
+            QtWidgets.QApplication.restoreOverrideCursor()
 
     def run_prediction(self, config=None):
         """
-        Runs the prediction.
-        Note: In a real app, this should be done in a background thread
-        (QThread) to keep the UI responsive.
+        Runs prediction using the robust PredictionThread subclass.
         """
-        if config and "name" in config:
-            self.viz_panel.set_plot_title(config["name"])
-        else:
-            self.viz_panel.set_plot_title("Unknown Sample")
+        # 1. STOP existing thread if it exists
+        if self.current_task is not None and self.current_task.isRunning():
+            # Optional: You can return here to prevent double-clicking
+            # or force stop the old one. Let's force stop to be safe.
+            print("Stopping previous task...")
+            self.current_task.stop()
 
-        # 1. Start Visuals
+        # 2. Visual Feedback
+        name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
+        self.viz_panel.set_plot_title(f"Calculating: {name}...")
         self.viz_panel.show_loading()
 
-        # 2. Schedule logic
-        QtCore.QTimer.singleShot(100, lambda: self._execute_prediction_logic(config))
+        # 3. Create & Start New Thread
+        # We assign it to self.current_task to keep the Python object alive
+        self.current_task = PredictionThread(config)
 
-    def _execute_prediction_logic(self, config):
-        """Actual logic execution (formerly inside run_prediction)."""
+        # 4. Connect Signals
+        self.current_task.data_ready.connect(self._on_prediction_finished)
 
-        # Simulate calculation time (now safe to sleep briefly for demo effect,
-        # though in production you'd use a QThread)
+        # Clean up reference when done (Optional, but good for memory)
+        self.current_task.finished.connect(self._on_task_complete)
+
+        # 5. Start
+        self.current_task.start()
+
+    def _on_prediction_finished(self, data_package):
+        """Receives data from the thread."""
+        final_name = data_package.get("config_name", "Unknown")
+        self.viz_panel.set_plot_title(final_name)
+        self.viz_panel.set_data(data_package)
+        self.viz_panel.hide_loading()
+
+    def _on_task_complete(self):
+        """Called when thread naturally finishes."""
+        # We don't set self.current_task to None here immediately
+        # to avoid race conditions, but it's safe to leave it bound.
+        pass
+
+    def closeEvent(self, event):
+        """
+        Guaranteed cleanup on close.
+        """
+        if self.current_task is not None and self.current_task.isRunning():
+            print("Closing application: Stopping background thread...")
+            self.current_task.stop()
+
+        super().closeEvent(event)
+
+
+class PredictionThread(QtCore.QThread):
+    """
+    A robust QThread subclass.
+    Combines the thread and logic into one object to prevent Garbage Collection errors.
+    """
+
+    # Define the signal that sends data back to the main UI
+    data_ready = QtCore.Signal(dict)
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self._is_running = True  # Logic flag
+
+    def run(self):
+        """
+        The code that runs in the background.
+        """
         import time
 
-        time.sleep(0.5)
+        import numpy as np
 
-        print("Auto-Running Prediction...")
+        # 1. Simulate Calculation (Safe to sleep here)
+        time.sleep(0.8)
+
+        # 2. Check if we were told to stop during the sleep
+        if not self._is_running:
+            return
+
+        # 3. The Math Logic
         shear_rates = np.logspace(1, 6, 20)
-        K = 50
+        K = 50.0
         n = 0.6
 
-        if config:
-            temp_mod = float(config.get("temp", 25)) / 25.0
-            K = K / temp_mod
+        if self.config:
+            temp_mod = float(self.config.get("temp", 25)) / 25.0
+            K = K / max(0.1, temp_mod)
 
         viscosity = K * np.power(shear_rates, n - 1)
 
         measured_y = None
-        if config and config.get("measured", False):
-            measured_y = viscosity + np.random.normal(0, 2, len(shear_rates))
+        if self.config and self.config.get("measured", False):
+            noise = np.random.normal(0, 2, len(shear_rates))
+            measured_y = viscosity + noise
 
         data_package = {
             "x": shear_rates,
@@ -1148,11 +1532,20 @@ class PredictionUI(QtWidgets.QWidget):
             "upper": viscosity * 1.15,
             "lower": viscosity * 0.85,
             "measured_y": measured_y,
+            "config_name": (
+                self.config.get("name", "Unknown") if self.config else "Unknown"
+            ),
         }
 
-        # 3. Finish
-        self.viz_panel.set_data(data_package)
-        self.viz_panel.hide_loading()
+        # 4. Emit Data
+        if self._is_running:
+            self.data_ready.emit(data_package)
+
+    def stop(self):
+        """Call this to stop the thread gracefully."""
+        self._is_running = False
+        self.quit()
+        self.wait(1000)
 
 
 if __name__ == "__main__":
