@@ -11,25 +11,46 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-06-02
+    2026-02-11
 
 Version:
-    1.3
+    1.4
 """
 
-from typing import List
+import hashlib
+from typing import List, Optional
+
 import pandas as pd
 
 try:
-    from src.db.db import Database
     from src.controller.ingredient_controller import IngredientController
-    from src.models.formulation import Formulation, Component, ViscosityProfile
-    from src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass, Excipient
+    from src.db.db import Database
+    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 except (ModuleNotFoundError, ImportError):
-    from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.models.formulation import Formulation, Component, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Salt, Surfactant, ProteinClass, Excipient
+    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.formulation import (
+        Formulation,
+        ViscosityProfile,
+    )
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 
 
 class FormulationController:
@@ -53,8 +74,7 @@ class FormulationController:
                 and their related ingredients.
         """
         self.db: Database = db
-        self.ingredient_controller: IngredientController = IngredientController(
-            self.db)
+        self.ingredient_controller: IngredientController = IngredientController(self.db)
 
     def get_all_formulations(self) -> List[Formulation]:
         """Retrieve all stored formulations.
@@ -64,7 +84,7 @@ class FormulationController:
         """
         return self.db.get_all_formulations()
 
-    def get_formulation_by_id(self, id: int) -> Formulation:
+    def get_formulation_by_id(self, id: int) -> Optional[Formulation]:
         """Retrieve a single formulation by its database ID.
 
         Args:
@@ -74,6 +94,17 @@ class FormulationController:
             Formulation: The `Formulation` object with the given ID, or `None` if not found.
         """
         return self.db.get_formulation(id)
+
+    def get_formulation_by_name(self, name: str) -> Optional[Formulation]:
+        all_forms = self.get_all_formulations()
+        for form in all_forms:
+            if form.name == name:
+                return form
+
+    def get_formulation_by_signature(
+        self, signature: hashlib._Hash
+    ) -> Optional[Formulation]:
+        return self.db.get_formulation_by_signature(signature)
 
     def find_id(self, formulation: Formulation) -> int:
         """Find the database ID of a formulation matching the given object's data.
@@ -118,25 +149,24 @@ class FormulationController:
         """
         # Ensure each ingredient is persisted and update the formulation's component references
         buffer_ing = formulation.buffer.ingredient
-        formulation.buffer.ingredient = self.ingredient_controller.add(
-            buffer_ing)
+        formulation.buffer.ingredient = self.ingredient_controller.add(buffer_ing)
         protein_ing = formulation.protein.ingredient
-        formulation.protein.ingredient = self.ingredient_controller.add(
-            protein_ing)
+        formulation.protein.ingredient = self.ingredient_controller.add(protein_ing)
         salt_ing = formulation.salt.ingredient
         formulation.salt.ingredient = self.ingredient_controller.add(salt_ing)
 
         surfactant_ing = formulation.surfactant.ingredient
         formulation.surfactant.ingredient = self.ingredient_controller.add(
-            surfactant_ing)
+            surfactant_ing
+        )
 
         stabilizer_ing = formulation.stabilizer.ingredient
         formulation.stabilizer.ingredient = self.ingredient_controller.add(
-            stabilizer_ing)
+            stabilizer_ing
+        )
 
         excipient_ing = formulation.excipient.ingredient
-        formulation.excipient.ingredient = self.ingredient_controller.add(
-            excipient_ing)
+        formulation.excipient.ingredient = self.ingredient_controller.add(excipient_ing)
 
         # If an identical formulation already exists, return it
         existing = self.get_all_formulations()
@@ -168,6 +198,16 @@ class FormulationController:
         self.db.delete_formulation(id)
         return formulation
 
+    def delete_formulation_by_signature(
+        self, signature: hashlib._Hash
+    ) -> Optional[Formulation]:
+        return self.db.delete_formulation_by_signature(signature=signature)
+
+    def update_formulation_by_signature(
+        self, signature: hashlib._Hash, f_new: Formulation
+    ) -> Optional[Formulation]:
+        return self.db.update_formulation_by_signature(signature=signature, f_new=f_new)
+
     def update_formulation(self, id: int, f_new: Formulation) -> Formulation:
         """Update an existing formulation's data by replacing its record.
 
@@ -196,7 +236,9 @@ class FormulationController:
         self.db.add_formulation(f_new)
         return f_new
 
-    def add_all_from_dataframe(self, df: pd.DataFrame, verbose_print: bool = False) -> List[Formulation]:
+    def add_all_from_dataframe(
+        self, df: pd.DataFrame, verbose_print: bool = False
+    ) -> List[Formulation]:
         """Bulk import multiple formulations from a pandas DataFrame.
 
         The DataFrame must contain specific columns for each ingredient type,
@@ -226,14 +268,25 @@ class FormulationController:
         added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
         expected = {
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type",
+            "Protein_type",
+            "MW",
+            "PI_mean",
+            "PI_range",
+            "Protein_conc",
+            "Protein_class_type",
             "Temperature",
-            "Buffer_type", "Buffer_pH", "Buffer_conc",
-            "Salt_type", "Salt_conc",
-            "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc",
-            "Excipient_type", "Excipient_conc",
-            * {f"Viscosity_{r}" for r in shear_rates},
+            "Buffer_type",
+            "Buffer_pH",
+            "Buffer_conc",
+            "Salt_type",
+            "Salt_conc",
+            "Stabilizer_type",
+            "Stabilizer_conc",
+            "Surfactant_type",
+            "Surfactant_conc",
+            "Excipient_type",
+            "Excipient_conc",
+            *{f"Viscosity_{r}" for r in shear_rates},
         }
         missing = expected - set(df.columns)
         if missing:
@@ -241,6 +294,7 @@ class FormulationController:
 
         if verbose_print:
             from tqdm import tqdm
+
             p_bar = tqdm(total=len(df))
 
         for _, row in df.iterrows():
@@ -257,14 +311,11 @@ class FormulationController:
                     molecular_weight=float(row["MW"]),
                     pI_mean=float(row["PI_mean"]),
                     pI_range=float(row["PI_range"]),
-                    class_type=ProteinClass.from_value(row["Protein_class_type"]))
+                    class_type=ProteinClass.from_value(row["Protein_class_type"]),
+                )
             )
             buffer = self.ingredient_controller.add_buffer(
-                Buffer(
-                    enc_id=0,
-                    name=str(row["Buffer_type"]),
-                    pH=row["Buffer_pH"]
-                )
+                Buffer(enc_id=0, name=str(row["Buffer_type"]), pH=row["Buffer_pH"])
             )
             stabilizer = self.ingredient_controller.add_stabilizer(
                 Stabilizer(enc_id=0, name=str(row["Stabilizer_type"]))
@@ -282,47 +333,29 @@ class FormulationController:
             vis_values = [row[f"Viscosity_{r}"] for r in shear_rates]
             if any(pd.notna(v) for v in vis_values):
                 vp = ViscosityProfile(
-                    shear_rates=shear_rates,
-                    viscosities=vis_values,
-                    units="cP"
+                    shear_rates=shear_rates, viscosities=vis_values, units="cP"
                 )
             else:
                 vp = ViscosityProfile(
                     shear_rates=shear_rates,
                     viscosities=[-1, -1, -1, -1, -1],
-                    units="unset"
+                    units="unset",
                 )
 
             form = Formulation()
-            form.set_buffer(
-                buffer=buffer,
-                concentration=row["Buffer_conc"],
-                units="mM"
-            )
+            form.set_buffer(buffer=buffer, concentration=row["Buffer_conc"], units="mM")
             form.set_protein(
-                protein=protein,
-                concentration=row["Protein_conc"],
-                units="mg/mL"
+                protein=protein, concentration=row["Protein_conc"], units="mg/mL"
             )
             form.set_stabilizer(
-                stabilizer=stabilizer,
-                concentration=row["Stabilizer_conc"],
-                units="M"
+                stabilizer=stabilizer, concentration=row["Stabilizer_conc"], units="M"
             )
-            form.set_salt(
-                salt=salt,
-                concentration=row["Salt_conc"],
-                units="mM"
-            )
+            form.set_salt(salt=salt, concentration=row["Salt_conc"], units="mM")
             form.set_surfactant(
-                surfactant=surfactant,
-                concentration=row["Surfactant_conc"],
-                units="%w"
+                surfactant=surfactant, concentration=row["Surfactant_conc"], units="%w"
             )
             form.set_excipient(
-                excipient=excipient,
-                concentration=row["Excipient_conc"],
-                units="mM"
+                excipient=excipient, concentration=row["Excipient_conc"], units="mM"
             )
             form.set_temperature(temp=row["Temperature"])
             form.set_viscosity_profile(profile=vp)
@@ -361,15 +394,30 @@ class FormulationController:
         """
         expected = [
             "ID",
-            "Protein_type", "MW", "PI_mean", "PI_range", "Protein_conc", "Protein_class_type", "kP",
+            "Protein_type",
+            "MW",
+            "PI_mean",
+            "PI_range",
+            "Protein_conc",
+            "Protein_class_type",
+            "kP",
             "Temperature",
-            "Buffer_type", "Buffer_pH", "Buffer_conc",
-            "Salt_type", "Salt_conc",
-            "Stabilizer_type", "Stabilizer_conc",
-            "Surfactant_type", "Surfactant_conc",
-            "Excipient_type", "Excipient_conc",
-            "Viscosity_100", "Viscosity_1000", "Viscosity_10000",
-            "Viscosity_100000", "Viscosity_15000000"
+            "Buffer_type",
+            "Buffer_pH",
+            "Buffer_conc",
+            "Salt_type",
+            "Salt_conc",
+            "Stabilizer_type",
+            "Stabilizer_conc",
+            "Surfactant_type",
+            "Surfactant_conc",
+            "Excipient_type",
+            "Excipient_conc",
+            "Viscosity_100",
+            "Viscosity_1000",
+            "Viscosity_10000",
+            "Viscosity_100000",
+            "Viscosity_15000000",
         ]
 
         rows = []
