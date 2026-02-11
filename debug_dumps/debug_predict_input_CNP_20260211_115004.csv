@@ -1,2 +1,0 @@
-ID,Protein_type,Protein_class_type,kP,MW,PI_mean,PI_range,Protein_conc,Temperature,Buffer_type,Buffer_pH,Buffer_conc,Salt_type,Salt_conc,Stabilizer_type,Stabilizer_conc,Surfactant_type,Surfactant_conc,Excipient_type,Excipient_conc,C_Class,HCI
-487,Etanercept,Fc-Fusion,4.5,150.0,7.9,0.6,134.0,25.0,Histidine,6.0,15.0,none,0.0,none,0.0,none,0.0,none,0.0,1.4,1.5
