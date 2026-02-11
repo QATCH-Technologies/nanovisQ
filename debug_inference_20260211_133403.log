@@ -1,0 +1,599 @@
+2026-02-11 13:34:03,388 - VisQ_Inference - INFO - Initializing ViscosityPredictorCNP with model_dir: C:\Users\QATCH\AppData\Local\Temp\tmp8rwfh32s
+2026-02-11 13:34:03,388 - VisQ_Inference - INFO - Using device: cpu
+2026-02-11 13:34:03,388 - VisQ_Inference - DEBUG - Loading preprocessor and scaler...
+2026-02-11 13:34:03,393 - VisQ_Inference - DEBUG - Loading model checkpoint from C:\Users\QATCH\AppData\Local\Temp\tmp8rwfh32s\best_model.pth
+2026-02-11 13:34:03,403 - VisQ_Inference - DEBUG - Model config: {'hidden_dim': 192, 'latent_dim': 64, 'dropout': 0.13835056805261747, 'lr': 0.0002282939612972752}
+2026-02-11 13:34:03,403 - VisQ_Inference - DEBUG - Static dimension: 71
+2026-02-11 13:34:03,404 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-02-11 13:34:03,409 - QATCH.logger - INFO - Target Protein Type: Etanercept 
+2026-02-11 13:34:03,811 - QATCH.logger - DEBUG - DEBUG: Viscosity Value: 14.38 | Type: <class 'numpy.float64'> 
+2026-02-11 13:34:03,815 - QATCH.logger - INFO - Found 23 historical samples for Etanercept 
+2026-02-11 13:34:03,829 - QATCH.logger - INFO - Fine-tuning predictor on 23 samples... 
+2026-02-11 13:34:03,832 - QATCH.logger - INFO - Learning from 23 new samples... 
+2026-02-11 13:34:03,833 - QATCH.logger - DEBUG - Fine-tuning complete. Launching prediction... 
+2026-02-11 13:34:03,836 - VisQ_Inference - INFO - Predict with Uncertainty triggered. n_samples=20
+2026-02-11 13:34:03,836 - VisQ_Inference - DEBUG - --- PREPROCESSING START ---
+2026-02-11 13:34:03,836 - VisQ_Inference - DEBUG - Input DataFrame Shape: (1, 22)
+2026-02-11 13:34:03,837 - VisQ_Inference - DEBUG - Input DataFrame Columns: ['ID', 'Protein_type', 'Protein_class_type', 'kP', 'MW', 'PI_mean', 'PI_range', 'Protein_conc', 'Temperature', 'Buffer_type', 'Buffer_pH', 'Buffer_conc', 'Salt_type', 'Salt_conc', 'Stabilizer_type', 'Stabilizer_conc', 'Surfactant_type', 'Surfactant_conc', 'Excipient_type', 'Excipient_conc', 'C_Class', 'HCI']
+2026-02-11 13:34:03,837 - VisQ_Inference - DEBUG - Protein_conc stats - Min: 134.0, Max: 134.0, Dtype: float64
+2026-02-11 13:34:03,837 - VisQ_Inference - DEBUG - Protein_class_type sample: ['Fc-Fusion']
+2026-02-11 13:34:03,840 - VisQ_Inference - DEBUG - Computing physics features...
+2026-02-11 13:34:03,841 - VisQ_Inference - WARNING - Missing features filled with 0.0: ['ID', 'Viscosity_100', 'Viscosity_1000', 'Viscosity_10000', 'Viscosity_100000', 'Viscosity_15000000']
+2026-02-11 13:34:03,844 - VisQ_Inference - DEBUG - Static features transformed shape: (1, 71)
+2026-02-11 13:34:03,845 - VisQ_Inference - DEBUG - Final Tensor Shapes -> Static: torch.Size([1, 5, 71]), Shear: torch.Size([1, 5, 1]), Visc: torch.Size([1, 5, 1])
+2026-02-11 13:34:03,853 - VisQ_Inference - INFO - Uncertainty calculation complete.
+2026-02-11 13:34:03,853 - QATCH.logger - DEBUG - Processing prediction results! 
+2026-02-11 13:34:03,855 - QATCH.logger - DEBUG - VP=[     16.545      15.202      13.246      11.407      6.6435], {'std': array([     2.1156,      1.6911,      1.4481,      1.2154,      0.9452], dtype=float32), 'lower_ci': array([     13.083,      11.924,      10.871,      8.9049,      5.0535], dtype=float32), 'upper_ci': array([     20.117,      17.946,      16.218,      12.846,      8.5504], dtype=float32)} 
+2026-02-11 13:34:03,861 - QATCH.logger - DEBUG - Auto-calculated y-range limits for figure are: [1, 100] 
+2026-02-11 13:34:03,864 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,864 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,868 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,868 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:03,869 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,869 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,897 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,897 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,897 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,897 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:03,898 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,898 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,903 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,903 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,903 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,904 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:03,905 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,907 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,913 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,913 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,916 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,916 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,916 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,916 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,930 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,930 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,930 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,931 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,931 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,931 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,940 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,940 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,940 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,940 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,941 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,941 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,943 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,943 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,943 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,943 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,944 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,944 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,945 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,947 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,956 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,957 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,957 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,957 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,958 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,959 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,960 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,960 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,961 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,961 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:03,961 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,962 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,973 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,974 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,974 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,975 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,976 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,976 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,977 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,977 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,978 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,978 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,978 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,979 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,980 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,981 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,981 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,981 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:03,981 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:03,982 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:03,984 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,985 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:03,985 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,985 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:03,986 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:03,986 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:04,001 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,001 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:04,002 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,002 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:04,003 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,003 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:04,006 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,006 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:04,006 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,007 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:04,007 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:04,007 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:04,009 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,009 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:04,010 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,010 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:04,010 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,010 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:04,015 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,015 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:04,015 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,015 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:04,016 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,016 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:04,017 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,017 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:04,017 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,017 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:04,018 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:04,018 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,389 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,390 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,390 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,391 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,391 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,392 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,393 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,393 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,393 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,394 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,394 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,394 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,428 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,429 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,429 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,429 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,429 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,430 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,431 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,745 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,745 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,745 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,746 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,746 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,746 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,747 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,747 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,748 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,748 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,748 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,748 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,752 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,753 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,753 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,753 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,753 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,754 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,755 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,755 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,755 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,755 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,756 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,756 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,761 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,768 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,768 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,768 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,770 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,770 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,771 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,771 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,771 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,772 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,772 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,772 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,774 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,774 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,775 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,775 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,775 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,775 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,776 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,776 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,777 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,777 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,777 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,777 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,778 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,778 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,778 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,779 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:18,779 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:18,779 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:18,780 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,780 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:18,780 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,780 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:18,781 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:18,781 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,109 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,109 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,110 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,110 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,110 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,110 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,111 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,111 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,111 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,111 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,112 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,112 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,125 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,125 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,125 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,125 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,126 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,126 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,127 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,127 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,127 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,127 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,128 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,128 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,133 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,133 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,133 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,133 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,134 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,134 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,135 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,136 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,136 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,136 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,136 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,136 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,157 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,157 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,157 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,157 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,158 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,158 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,159 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,159 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,159 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,159 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,160 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,160 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,196 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,197 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,197 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,197 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,197 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,197 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,199 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,199 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,199 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,199 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,200 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,200 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,501 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,501 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,501 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,502 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:19,502 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:19,502 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:19,503 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,503 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:19,503 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,503 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:19,504 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:19,504 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,230 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,231 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,231 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,231 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,231 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,232 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,232 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,232 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,233 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,233 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,233 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,233 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,241 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,241 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,241 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,242 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,242 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,242 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,245 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,245 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,246 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,246 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,246 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,246 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,259 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,259 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,260 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,260 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,260 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,260 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,263 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,263 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,263 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,263 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,264 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,264 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,266 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,266 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,267 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,267 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,267 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,267 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,272 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,273 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,273 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,273 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,274 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,274 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,275 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,275 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,275 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,275 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,276 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,276 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,327 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,327 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,327 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,327 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,328 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,328 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,328 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,329 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,329 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,329 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,329 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,329 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,336 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,336 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,336 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,337 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,337 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,337 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,340 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,340 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,340 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,341 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,341 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,341 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,354 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,354 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,355 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,355 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,355 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,355 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,358 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,358 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,358 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,358 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,359 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,359 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,361 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,362 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,362 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,362 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,362 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,362 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,367 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,367 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,367 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,367 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,368 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,368 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,369 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,369 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,369 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,369 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,369 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,370 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,719 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,720 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,720 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,720 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,721 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,721 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,721 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,721 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,722 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,722 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,722 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,722 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,729 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,729 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,729 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,729 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,730 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,730 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,733 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,733 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,734 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,734 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,734 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,734 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,748 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,749 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,749 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,749 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,750 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,750 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,752 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,752 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,753 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,753 - matplotlib.ticker - DEBUG - ticklocs array([          2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,         200,         300,         400,         500,         600,         700,         800,         900,
+              2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000,       20000,       30000,       40000,       50000,       60000,       70000,       80000,       90000,       2e+05,       3e+05,       4e+05,       5e+05,       6e+05,       7e+05,       8e+05,       9e+05,
+             2e+06,       3e+06,       4e+06,       5e+06,       6e+06,       7e+06,       8e+06,       9e+06,       2e+07,       3e+07,       4e+07,       5e+07,       6e+07,       7e+07,       8e+07,       9e+07,       2e+08,       3e+08,       4e+08,       5e+08,       6e+08,       7e+08,       8e+08,       9e+08,
+             2e+09,       3e+09,       4e+09,       5e+09,       6e+09,       7e+09,       8e+09,       9e+09])
+2026-02-11 13:34:29,753 - matplotlib.ticker - DEBUG - vmin 44.08444971158315 vmax 32664579.22058724
+2026-02-11 13:34:29,753 - matplotlib.ticker - DEBUG - ticklocs array([          1,          10,         100,        1000,       10000,       1e+05,       1e+06,       1e+07,       1e+08,       1e+09])
+2026-02-11 13:34:29,756 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,756 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,756 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,756 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,756 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,757 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,761 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,761 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,761 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,762 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,762 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,762 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,763 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,763 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:34:29,763 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,764 - matplotlib.ticker - DEBUG - ticklocs array([        0.2,         0.3,         0.4,         0.5,         0.6,         0.7,         0.8,         0.9,           2,           3,           4,           5,           6,           7,           8,           9,          20,          30,          40,          50,          60,          70,          80,          90,
+               200,         300,         400,         500,         600,         700,         800,         900,        2000,        3000,        4000,        5000,        6000,        7000,        8000,        9000])
+2026-02-11 13:34:29,764 - matplotlib.ticker - DEBUG - vmin 1.0 vmax 100.0
+2026-02-11 13:34:29,764 - matplotlib.ticker - DEBUG - ticklocs array([        0.1,           1,          10,         100,        1000])
+2026-02-11 13:38:38,302 - QATCH.logger - INFO -  Finishing Application...
+2026-02-11 13:38:38,307 - QATCH.logger - INFO -  Application closed
+2026-02-11 13:38:38,379 - QATCH - INFO - Closed logging handlers

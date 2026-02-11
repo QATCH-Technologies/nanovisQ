@@ -210,7 +210,6 @@ class Predictor:
         n_samples: int = 20,
         ci_range: Tuple[float, float] = (2.5, 97.5),
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
-
         if self.engine is None:
             raise RuntimeError("Engine not initialized")
 
@@ -233,6 +232,7 @@ class Predictor:
         if self.model_type != "CNP":
             return
         Log.i(f"Learning from {len(df)} new samples...")
+        self.engine.learn(df, steps=50, lr=1e-3)
 
     def reset(self):
         """
