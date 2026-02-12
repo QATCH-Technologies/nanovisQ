@@ -4167,7 +4167,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4244,17 +4244,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 audits.setAttribute("signature", audits_signature)
 
             try:
-                with open(self.xml_path, "w") as f:
+                with open(xml_path, "w", encoding="utf-8") as f:
                     xml_str = run.toxml(encoding='ascii').decode(
                         encoding='utf-8', errors='ignore')
                     f.write(xml_str)
-                    Log.d(f"Added <audit> to XML file: {self.xml_path}")
+                    Log.d(f"Added <audit> to XML file: {xml_path}")
             except OSError as ose:  # FileNotFoundError
-                Log.e(f"Filesystem error writing XML: {self.xml_path}")
+                Log.e(f"Filesystem error writing XML: {xml_path}")
                 Log.e("Error Details:", ose.strerror)
                 self.detect_change()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
-                Log.e(f"Unicode error writing XML: {self.xml_path}")
+                Log.e(f"Unicode error writing XML: {xml_path}")
                 Log.e("Error Details:", ue.reason)
                 self.detect_change()
 
@@ -4265,7 +4265,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4297,17 +4297,17 @@ class AnalyzeProcess(QtWidgets.QWidget):
             points.setAttribute("signature", signature)
 
             try:
-                with open(self.xml_path, "w") as f:
+                with open(xml_path, "w", encoding="utf-8") as f:
                     xml_str = run.toxml(encoding='ascii').decode(
                         encoding='utf-8', errors='ignore')
                     f.write(xml_str)
-                    Log.d(f"Added <points> to XML file: {self.xml_path}")
+                    Log.d(f"Added <points> to XML file: {xml_path}")
             except OSError as ose:  # FileNotFoundError
-                Log.e(f"Filesystem error writing XML: {self.xml_path}")
+                Log.e(f"Filesystem error writing XML: {xml_path}")
                 Log.e("Error Details:", ose.strerror)
                 self.detect_change()
             except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
-                Log.e(f"Unicode error writing XML: {self.xml_path}")
+                Log.e(f"Unicode error writing XML: {xml_path}")
                 Log.e("Error Details:", ue.reason)
                 self.detect_change()
 
@@ -4458,7 +4458,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Read the XML file's content.
             xml_text = ""
-            with open(self.xml_path, "r") as f:
+            with open(self.xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
 
             # Decode if the content is in bytes format.
@@ -5893,7 +5893,7 @@ class AnalyzerWorker(QtCore.QObject):
                     batch_params.setAttribute("signature", signature)
 
                     try:
-                        with open(self.xml_path, "w") as f:
+                        with open(self.xml_path, "w", encoding="utf-8") as f:
                             xml_str = doc.toxml(encoding='ascii').decode(
                                 encoding='utf-8', errors='ignore')
                             f.write(xml_str)

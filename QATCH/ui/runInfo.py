@@ -1268,8 +1268,10 @@ class QueryRunInfo(QtWidgets.QWidget):
             if secure_open.file_exists(self.recall_xml):
                 xml_text = ""
                 # secure_open(self.recall_xml, 'r') as f:
-                with open(self.recall_xml, 'r') as f:
+                with open(self.recall_xml, 'r', encoding="utf-8") as f:
                     xml_text = f.read()
+                if isinstance(xml_text, bytes):
+                    xml_text = xml_text.decode()
                 doc = minidom.parseString(xml_text)
                 params = doc.getElementsByTagName(
                     "params")
@@ -1338,8 +1340,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                                 notes_txt = self.notes.toPlainText()
                                 if os.path.exists(notes_path):
                                     with open(notes_path, 'r', encoding='utf-8') as f:
-                                        file_txt = "\n".join(
-                                            f.read().splitlines())
+                                        file_txt = f.read()
+                                    if isinstance(file_txt, bytes):
+                                        file_txt = file_txt.decode()
+                                    file_txt = "\n".join(file_txt.splitlines())  # normalize line-endings
                                     if file_txt != notes_txt:
                                         if Constants.import_notes_from_txt_file:
                                             Log.w(
