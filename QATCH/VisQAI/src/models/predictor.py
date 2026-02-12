@@ -213,20 +213,302 @@ class Predictor:
         if self.engine is None:
             raise RuntimeError("Engine not initialized")
 
-        if self.model_type == "CNP":
-            return self.engine.predict_with_uncertainty(
-                df, n_samples=n_samples, ci_range=ci_range
-            )
-        else:
-            # Legacy shim
-            if hasattr(self.engine, "predict_with_uncertainty"):
-                return self.engine.predict_with_uncertainty(df, n_samples=n_samples)
-
-            mean = self.engine.predict(df).values.flatten()
-            return mean, {}
+        return self.engine.predict_with_uncertainty(
+            df, n_samples=n_samples, ci_range=ci_range
+        )
 
     def predict_uncertainty(self, *args, **kwargs):
         return self.predict_with_uncertainty(*args, **kwargs)
+
+    def evaluate(
+        self,
+        eval_data: pd.DataFrame,
+        targets: list[str],
+        n_samples: int = None,
+        fine_tune: bool = False,
+        history_df: pd.DataFrame = None,
+    ) -> pd.DataFrame:
+        """
+        Evaluates the model on the provided data and returns a DataFrame of metrics.
+        Supports optional fine-tuning per Protein_type using history_df.
+
+        Args:
+            eval_data: DataFrame containing input features and actual target values.
+            targets: List of column names representing the targets (e.g. 'Viscosity_100').
+            n_samples: Optional argument for consistency with UI signature.
+            fine_tune: If True, performs fine-tuning per Protein_type found in history_df.
+            history_df: DataFrame containing historical data for fine-tuning. Must contain
+                        'Protein_type' column if fine_tune is True.
+
+        Returns:
+            pd.DataFrame: Long-format DataFrame containing 'sample_idx', 'shear_rate',
+                          'actual', 'predicted', 'pct_error', 'abs_error',
+                          'lower_ci', 'upper_ci'.
+        """
+        if self.engine is None:
+            raise RuntimeError("Engine not initialized")
+
+        # --- Helper for Metrics Calculation ---
+        def calc_metrics(sub_df, sub_preds, sub_unc):
+            # 1. Map canonical targets (e.g. 'Viscosity_100') to Prediction columns
+            #    (e.g. 'Pred_Viscosity_100')
+            target_map = {}  # Canonical Name -> Prediction Column Name
+
+            for t in targets:
+                if t in sub_preds.columns:
+                    target_map[t] = t
+                elif f"Pred_{t}" in sub_preds.columns:
+                    target_map[t] = f"Pred_{t}"
+                elif f"Predicted_{t}" in sub_preds.columns:
+                    target_map[t] = f"Predicted_{t}"
+
+            # The list of targets we can actually evaluate (canonical names)
+            valid_targets = list(target_map.keys())
+
+            # Base columns required by UI
+            base_cols = [
+                "sample_idx",
+                "shear_rate",
+                "actual",
+                "predicted",
+                "pct_error",
+                "abs_error",
+                "lower_ci",
+                "upper_ci",
+            ]
+
+            if not valid_targets:
+                return pd.DataFrame(columns=base_cols)
+
+            # 2. Process Actuals (Ground Truth)
+            # Use valid_targets to pull from input data (sub_df)
+            y_true = sub_df.reindex(columns=valid_targets + ["sample_idx"])
+            y_true["sample_idx"] = sub_df.index
+
+            y_true_melt = y_true.melt(
+                id_vars=["sample_idx"],
+                value_vars=valid_targets,
+                var_name="shear_rate",
+                value_name="actual",
+            )
+
+            # 3. Process Predictions
+            # Extract specific prediction columns and RENAME them to canonical names
+            pred_cols = [target_map[t] for t in valid_targets]
+            y_pred = sub_preds[pred_cols].copy()
+
+            # Create rename dictionary: {'Pred_Viscosity_100': 'Viscosity_100'}
+            rename_dict = {v: k for k, v in target_map.items()}
+            y_pred = y_pred.rename(columns=rename_dict)
+
+            y_pred["sample_idx"] = sub_preds.index
+            y_pred_melt = y_pred.melt(
+                id_vars=["sample_idx"], var_name="shear_rate", value_name="predicted"
+            )
+
+            # 4. Merge Actuals and Predictions
+            # Use 'right' merge to keep predictions even if actuals are missing
+            results = pd.merge(
+                y_true_melt, y_pred_melt, on=["sample_idx", "shear_rate"], how="right"
+            )
+
+            # 5. Process Uncertainty (Lower/Upper CI)
+            if "lower" in sub_unc and "upper" in sub_unc:
+                try:
+                    # Uncertainty arrays usually match prediction column structure
+                    lower_df = pd.DataFrame(
+                        sub_unc["lower"],
+                        index=sub_preds.index,
+                        columns=sub_preds.columns,
+                    )
+                    upper_df = pd.DataFrame(
+                        sub_unc["upper"],
+                        index=sub_preds.index,
+                        columns=sub_preds.columns,
+                    )
+
+                    # Rename uncertainty columns to match canonical names using same map
+                    lower_df = lower_df.rename(columns=rename_dict)
+                    upper_df = upper_df.rename(columns=rename_dict)
+
+                    # Filter to valid targets only
+                    lower_df = lower_df.reindex(columns=valid_targets)
+                    upper_df = upper_df.reindex(columns=valid_targets)
+
+                    lower_df["sample_idx"] = lower_df.index
+                    upper_df["sample_idx"] = upper_df.index
+
+                    lower_melt = lower_df.melt(
+                        id_vars=["sample_idx"],
+                        var_name="shear_rate",
+                        value_name="lower_ci",
+                    )
+                    upper_melt = upper_df.melt(
+                        id_vars=["sample_idx"],
+                        var_name="shear_rate",
+                        value_name="upper_ci",
+                    )
+
+                    results = pd.merge(
+                        results, lower_melt, on=["sample_idx", "shear_rate"], how="left"
+                    )
+                    results = pd.merge(
+                        results, upper_melt, on=["sample_idx", "shear_rate"], how="left"
+                    )
+
+                except Exception as e:
+                    Log.w(f"Failed to process uncertainty arrays: {e}")
+                    results["lower_ci"] = np.nan
+                    results["upper_ci"] = np.nan
+            else:
+                results["lower_ci"] = np.nan
+                results["upper_ci"] = np.nan
+
+            # 6. Calculate Errors
+            results["error"] = results["predicted"] - results["actual"]
+            results["abs_error"] = results["error"].abs()
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                results["pct_error"] = (
+                    results["abs_error"] / np.abs(results["actual"])
+                ) * 100
+
+            results["pct_error"] = (
+                results["pct_error"].replace([np.inf, -np.inf], 0.0).fillna(0.0)
+            )
+
+            # Ensure all required columns exist
+            for col in base_cols:
+                if col not in results.columns:
+                    results[col] = np.nan
+
+            return results
+
+        # --- Helper: Prepare Prediction Input (Mask Targets) ---
+        def prepare_prediction_input(df_in, target_cols):
+            """Creates a copy of input and masks target columns with NaN."""
+            df_out = df_in.copy()
+            df_out.drop(
+                columns=[
+                    "Viscosity_100",
+                    "Viscosity_1000",
+                    "Viscosity_10000",
+                    "Viscosity_100000",
+                    "Viscosity_15000000",
+                ],
+                inplace=True,
+            )
+            return df_out
+
+        # --- Main Evaluation Logic ---
+        results_list = []
+
+        should_fine_tune = (
+            fine_tune
+            and history_df is not None
+            and not history_df.empty
+            and "Protein_type" in history_df.columns
+        )
+
+        if should_fine_tune:
+            if "Protein_type" not in eval_data.columns:
+                Log.w(
+                    "Fine-tune requested but 'Protein_type' missing in eval_data. Using base model."
+                )
+                should_fine_tune = False
+
+        if should_fine_tune:
+            processed_indices = set()
+            unique_types = eval_data["Protein_type"].unique()
+            eval_types = (
+                eval_data["Protein_type"].unique()
+                if "Protein_type" in eval_data.columns
+                else []
+            )
+            all_types = set(unique_types).union(eval_types)
+
+            Log.i(f"Starting evaluation with fine-tuning on {len(all_types)} types.")
+
+            for p_type in all_types:
+                hist_subset = history_df[history_df["Protein_type"] == p_type]
+                eval_subset = eval_data[eval_data["Protein_type"] == p_type]
+
+                if eval_subset.empty:
+                    continue
+
+                Log.i(
+                    f"Fine-tuning on protein type: {p_type} (History: {len(hist_subset)} + Eval: {len(eval_subset)})"
+                )
+
+                # -------------------------------------------------------------
+                # UPDATE: Merge history and eval samples for learning context
+                # -------------------------------------------------------------
+                combined_learning_set = pd.concat(
+                    [hist_subset, eval_subset], ignore_index=True
+                )
+                self.learn(combined_learning_set.copy())
+                # -------------------------------------------------------------
+
+                try:
+                    # For prediction, we MUST mask the targets
+                    pred_input = prepare_prediction_input(eval_subset, targets)
+                    preds = self.predict(pred_input)
+
+                    try:
+                        _, unc_dict = self.predict_with_uncertainty(pred_input)
+                    except Exception:
+                        unc_dict = {}
+
+                    # Use original eval_subset (with answers) for metric calc
+                    metrics = calc_metrics(eval_subset, preds, unc_dict)
+                    results_list.append(metrics)
+                    processed_indices.update(eval_subset.index)
+                except Exception as e:
+                    Log.e(f"Prediction failed for type {p_type}: {e}")
+
+                self.reset()
+
+            remaining_eval = eval_data.drop(
+                index=list(processed_indices), errors="ignore"
+            )
+            if not remaining_eval.empty:
+                Log.i(
+                    f"Predicting remaining {len(remaining_eval)} samples with base model."
+                )
+                pred_input = prepare_prediction_input(remaining_eval, targets)
+                preds = self.predict(pred_input)
+                try:
+                    _, unc_dict = self.predict_with_uncertainty(pred_input)
+                except Exception:
+                    unc_dict = {}
+                results_list.append(calc_metrics(remaining_eval, preds, unc_dict))
+
+        else:
+            # Standard evaluation (no fine-tuning)
+            pred_input = prepare_prediction_input(eval_data, targets)
+            preds = self.predict(pred_input)
+            try:
+                _, unc_dict = self.predict_with_uncertainty(pred_input)
+            except Exception:
+                unc_dict = {}
+
+            results_list.append(calc_metrics(eval_data, preds, unc_dict))
+
+        if not results_list:
+            return pd.DataFrame(
+                columns=[
+                    "sample_idx",
+                    "shear_rate",
+                    "actual",
+                    "predicted",
+                    "pct_error",
+                    "abs_error",
+                    "lower_ci",
+                    "upper_ci",
+                ]
+            )
+
+        return pd.concat(results_list, ignore_index=True)
 
     def learn(self, df: pd.DataFrame, fine_tune: bool = True, steps: int = 50):
         if self.model_type != "CNP":

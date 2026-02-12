@@ -1076,7 +1076,6 @@ class FrameStep1(QtWidgets.QDialog):
                 #    This keeps only rows where ALL viscosity columns are positive.
                 if not history_df.empty:
                     history_df = history_df[(history_df[valid_cols] > 0).all(axis=1)]
-            print(history_df.columns)
             Log.i(f"Found {len(history_df)} historical samples for {target_protein}")
 
         except Exception as e:
