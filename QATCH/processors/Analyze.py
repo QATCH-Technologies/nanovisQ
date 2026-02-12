@@ -5790,7 +5790,11 @@ class AnalyzerWorker(QtCore.QObject):
 
                     name = p.getAttribute("name")
                     value = p.getAttribute("value")
-                    xml_params[name] = value
+
+                    # Normalize file encoding so it can be logged as UTF-8
+                    xml_params[name] = value.encode(
+                        encoding='ascii', errors='xmlcharrefreplace').decode(
+                        encoding='utf-8', errors='ignore')
 
                     if name == "batch_number" and p.hasAttribute("input"):
                         batch_input_type = p.getAttribute("input")
