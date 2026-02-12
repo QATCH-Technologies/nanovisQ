@@ -1,5 +1,5 @@
+import os
 import sys
-import time
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -51,104 +51,18 @@ except (ModuleNotFoundError, ImportError):
             print(f"ERROR [{tag}]: {msg}")
 
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ICON_DOWN = os.path.join(BASE_DIR, "icons", "down-chevron-svgrepo-com.svg").replace(
+    "\\", "/"
+)
+ICON_UP = os.path.join(BASE_DIR, "icons", "up-chevron-svgrepo-com.svg").replace(
+    "\\", "/"
+)
+ICON_BROWSE_MODEL = os.path.join(
+    BASE_DIR, "icons", "machine-learning-01-svgrepo-com.svg"
+).replace("\\", "/")
 TAG = "[ViscosityUI]"
-# LIGHT_STYLE_SHEET = """
-# /* ---------------------------------------------------------------------------
-#    1. Container Styling (Seamless Integration)
-#    --------------------------------------------------------------------------- */
-# /* Set background to transparent so it matches the parent app's design */
-# QWidget#leftPanel {
-#     background-color: transparent;
-#     border-right: 1px solid #e1e4e8; /* Very subtle vertical separator line */
-# }
 
-# QScrollArea {
-#     background-color: transparent;
-#     border: none;
-# }
-
-# QWidget#scrollContent {
-#     background-color: transparent;
-# }
-
-# /* ---------------------------------------------------------------------------
-#    2. Prediction Cards (Clean "Card" Look)
-#    --------------------------------------------------------------------------- */
-# QFrame[class="card"] {
-#     background-color: #ffffff;
-#     border: 1px solid #d1d5db;      /* Soft grey border to define the card */
-#     border-radius: 6px;             /* Modern rounded corners */
-
-#     /* Spacing between cards */
-#     margin-top: 4px;
-#     margin-bottom: 8px;
-#     margin-left: 2px;
-#     margin-right: 4px; /* Slight right margin so it doesn't touch the scrollbar */
-# }
-
-# /* Hover Effect: Subtle blue highlight */
-# QFrame[class="card"]:hover {
-#     border: 1px solid #00adee;
-# }
-
-# /* Measured State: Subtle Green */
-# QFrame[class="card"][measured="true"] {
-#     background-color: #f6fffa;      /* Very faint green background */
-#     border: 1px solid #4caf50;
-# }
-
-# /* ---------------------------------------------------------------------------
-#    3. Inner Widget Styling (Scoped)
-#    --------------------------------------------------------------------------- */
-# /* Scoped to avoid messing up global app styles */
-# QFrame[class="card"] QLabel {
-#     color: #24292f;
-# }
-
-# QFrame[class="card"] QLineEdit,
-# QFrame[class="card"] QComboBox,
-# QFrame[class="card"] QSpinBox,
-# QFrame[class="card"] QDoubleSpinBox {
-#     background-color: #ffffff;
-#     border: 1px solid #d1d5db;
-#     border-radius: 4px;
-#     padding: 4px;
-#     color: #24292f;
-# }
-
-# /* Inputs on focus */
-# QFrame[class="card"] QLineEdit:focus,
-# QFrame[class="card"] QComboBox:focus,
-# QFrame[class="card"] QSpinBox:focus {
-#     border: 1px solid #00adee;
-# }
-
-# QFrame[class="card"] QPushButton {
-#     background-color: #ffffff;
-#     border: 1px solid #d1d5db;
-#     border-radius: 4px;
-#     padding: 5px 10px;
-#     font-weight: 500;
-# }
-
-# QFrame[class="card"] QPushButton:hover {
-#     background-color: #f6f8fa;
-#     border-color: #00adee;
-#     color: #00adee;
-# }
-
-# /* Header Text */
-# QLabel[class="header-title"] {
-#     font-weight: 600;
-#     color: #00adee;
-#     font-size: 10pt;
-# }
-
-# /* Divider Line */
-# QFrame[class="divider"] {
-#     color: #eaecef;
-# }
-# """
 LIGHT_STYLE_SHEET = """
 /* ---------------------------------------------------------------------------
    1. Container Styling
@@ -226,7 +140,7 @@ QFrame[class="card"] QSpinBox:focus {
     background-color: #ffffff;
 }
 
-/* -- ComboBox Arrow Fix (Using PNG) -- */
+/* -- ComboBox Arrow Fix -- */
 QFrame[class="card"] QComboBox {
     padding-right: 20px;
 }
@@ -237,20 +151,20 @@ QFrame[class="card"] QComboBox::drop-down {
     border-left: 1px solid #d1d5db;
     border-top-right-radius: 3px;
     border-bottom-right-radius: 3px;
-    background-color: #e9ecef; /* Visible Grey Background */
+    background-color: #e9ecef;
 }
 QFrame[class="card"] QComboBox::drop-down:hover {
     background-color: #d0e8ff;
 }
-/* Down Arrow (Base64 PNG) */
+
+/* Down Arrow - Using your SVG variable */
 QFrame[class="card"] QComboBox::down-arrow {
     width: 12px;
     height: 12px;
-    image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjYuMCwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy89olMNAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAp0lEQVR4nJWRQQ6CMBBFH41u3Gu8BxzFA6gRDwcXYMv+H8SgWwwhxrqZJhUBw0+aNJ3fmTczifeeJVoBZFm2C/cZvSQ1SZqmW+AG9MB7wuyANbB3ku5AZY+bieOAStLDWYYT0M3gdMA5lEJSA+TAc8TcAhfz4KJACdTWS1AP1JLKuBmsigeOA7TOcPn5EKFdDa0F8oASNDb7AjhYgmIYTJZu2v23fOsDkms9tVLaAEMAAAAASUVORK5CYII=);
+    image: url("__ICON_DOWN__");
 }
 
-
-/* -- SpinBox Arrow Fix (Using PNG) -- */
+/* -- SpinBox Arrow Fix -- */
 QFrame[class="card"] QDoubleSpinBox,
 QFrame[class="card"] QSpinBox {
     padding-right: 24px;
@@ -265,7 +179,7 @@ QFrame[class="card"] QSpinBox::up-button {
     border-left: 1px solid #d1d5db;
     border-bottom: 1px solid #d1d5db;
     border-top-right-radius: 3px;
-    background-color: #e9ecef; /* Visible Grey Background */
+    background-color: #e9ecef;
 }
 
 /* Down Button */
@@ -276,39 +190,32 @@ QFrame[class="card"] QSpinBox::down-button {
     width: 22px;
     border-left: 1px solid #d1d5db;
     border-bottom-right-radius: 3px;
-    background-color: #e9ecef; /* Visible Grey Background */
+    background-color: #e9ecef;
 }
 
-/* Hover Effects */
+/* Up Arrow - Using your SVG variable */
+QFrame[class="card"] QDoubleSpinBox::up-arrow, 
+/* Up Arrow */
+QFrame[class="card"] QDoubleSpinBox::up-arrow, 
+QFrame[class="card"] QSpinBox::up-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("__ICON_UP__");
+}
+
+/* Down Arrow */
+QFrame[class="card"] QDoubleSpinBox::down-arrow, 
+QFrame[class="card"] QSpinBox::down-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("__ICON_DOWN__");
+}
+/* Hover/Pressed Effects remain same... */
 QFrame[class="card"] QDoubleSpinBox::up-button:hover,
 QFrame[class="card"] QDoubleSpinBox::down-button:hover,
 QFrame[class="card"] QSpinBox::up-button:hover,
 QFrame[class="card"] QSpinBox::down-button:hover {
     background-color: #d0e8ff;
-}
-
-/* Pressed Effects */
-QFrame[class="card"] QDoubleSpinBox::up-button:pressed,
-QFrame[class="card"] QDoubleSpinBox::down-button:pressed,
-QFrame[class="card"] QSpinBox::up-button:pressed,
-QFrame[class="card"] QSpinBox::down-button:pressed {
-    background-color: #a6d4fa;
-}
-
-/* Up Arrow (Base64 PNG) */
-QFrame[class="card"] QDoubleSpinBox::up-arrow, 
-QFrame[class="card"] QSpinBox::up-arrow {
-    width: 12px;
-    height: 12px;
-    image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjYuMCwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy89olMNAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAn0lEQVR4nJWSsQ3CMBBFnyOIUlEhxAJM4KsRJQyQjAf0rHIbsABKSQvK0QTLuhAJ//L77P++zsHMKFFVNA0svCEiAbgBpqrtPwkdcAROItL5w5B3EJENcAdWo/UEdqraTxJGlCvQZA82wHkOqQX2QJ15NXAQkdQlmNkvFK+E9k24OBSvhBZijGvgAbyAYeZCBSyBbY402YnTW1X7UPo1Pp1RL5R2IHWwAAAAAElFTkSuQmCC);
-}
-
-/* Down Arrow (Base64 PNG) */
-QFrame[class="card"] QDoubleSpinBox::down-arrow, 
-QFrame[class="card"] QSpinBox::down-arrow {
-    width: 12px;
-    height: 12px;
-    image: url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAwAAAAMCAYAAABWdVznAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjYuMCwgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy89olMNAAAACXBIWXMAAAsTAAALEwEAmpwYAAAAp0lEQVR4nJWRQQ6CMBBFH41u3Gu8BxzFA6gRDwcXYMv+H8SgWwwhxrqZJhUBw0+aNJ3fmTczifeeJVoBZFm2C/cZvSQ1SZqmW+AG9MB7wuyANbB3ku5AZY+bieOAStLDWYYT0M3gdMA5lEJSA+TAc8TcAhfz4KJACdTWS1AP1JLKuBmsigeOA7TOcPn5EKFdDa0F8oASNDb7AjhYgmIYTJZu2v23fOsDkms9tVLaAEMAAAAASUVORK5CYII=);
 }
 
 /* ---------------------------------------------------------------------------
@@ -335,7 +242,72 @@ QFrame[class="card"] QPushButton[class="primary"]:hover {
     background-color: #00adee;
     color: #ffffff;
 }
+QPushButton#btnBrowseModel {
+    qproperty-icon: url("__BROWSE_MODEL__");
+    qproperty-iconSize: 18px 18px;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+
+QPushButton#btnBrowseModel:hover {
+    background-color: #f6f8fa;
+    border-color: #00adee;
+}
+QFrame[class="card"] QLineEdit[class="title-input"] {
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid #d1d5db; /* Standard underline */
+    border-radius: 0px;
+    padding: 2px 0px;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #24292f;
+}
+
+/* Change the underline color when the user clicks in to type */
+QFrame[class="card"] QLineEdit[class="title-input"]:focus {
+    border-bottom: 2px solid #00adee; /* Brand blue underline */
+    background-color: transparent;
+}
+/* ---------------------------------------------------------------------------
+    Temperature Slider
+   --------------------------------------------------------------------------- */
+QSlider::groove:horizontal {
+    border: 1px solid #d1d5db;
+    height: 6px;
+    background: #f3f4f6;
+    margin: 2px 0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #ffffff;
+    border: 2px solid #00adee;
+    width: 16px;
+    height: 16px;
+    margin: -6px 0; /* Centers handle vertically on the 6px groove */
+    border-radius: 9px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #00adee;
+    border: 2px solid #008fca;
+}
+
+QSlider::sub-page:horizontal {
+    background: #00adee;
+    border-radius: 3px;
+}
+
+QSlider::add-page:horizontal {
+    background: #e5e7eb;
+    border-radius: 3px;
+}
 """
+LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__ICON_DOWN__", ICON_DOWN)
+LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__ICON_UP__", ICON_UP)
+LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__BROWSE_MODEL__", ICON_BROWSE_MODEL)
 
 
 class ModelOptionsDialog(QtWidgets.QDialog):
@@ -464,33 +436,158 @@ class ModelOptionsDialog(QtWidgets.QDialog):
         }
 
 
+# Replace your existing DragHandle class with this one
 class DragHandle(QtWidgets.QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedWidth(20)
-        self.setFixedHeight(40)  # FIX: Lock height to match the header row
+        self.setFixedHeight(40)
         self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
         self.setStyleSheet("background: transparent;")
+        self._dragging = False
 
     def paintEvent(self, event):
+        # (Keep your existing paint logic here)
         painter = QtGui.QPainter(self)
         painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
-
         painter.setBrush(QtGui.QColor("#777777"))
         painter.setPen(QtCore.Qt.PenStyle.NoPen)
-
         dot_size = 4
         spacing = 4
-
-        # Center the dots within the fixed 40px height
         start_x = (self.width() - (dot_size * 2 + spacing)) / 2
         start_y = 15
-
         for row in range(3):
             for col in range(2):
                 x = start_x + col * (dot_size + spacing)
                 y = start_y + row * (dot_size + spacing)
                 painter.drawEllipse(int(x), int(y), dot_size, dot_size)
+
+    def mousePressEvent(self, event):
+        if event.button() == QtCore.Qt.LeftButton:
+            self._dragging = True
+            self.setCursor(QtCore.Qt.CursorShape.ClosedHandCursor)
+
+            # Walk up hierarchy: Handle -> Card -> Container
+            card = self.parent()
+            container = card.parent()
+
+            # Calculate where we clicked relative to the card's top-left
+            # mapTo(card, ...) ensures we grab the card exactly where the mouse is
+            offset = self.mapTo(card, event.pos())
+
+            if hasattr(container, "start_drag"):
+                container.start_drag(card, event.globalPos(), offset)
+
+    def mouseMoveEvent(self, event):
+        if self._dragging:
+            card = self.parent()
+            container = card.parent()
+            if hasattr(container, "update_drag"):
+                container.update_drag(event.globalPos())
+
+    def mouseReleaseEvent(self, event):
+        if self._dragging:
+            self._dragging = False
+            self.setCursor(QtCore.Qt.CursorShape.OpenHandCursor)
+            card = self.parent()
+            container = card.parent()
+            if hasattr(container, "finish_drag"):
+                container.finish_drag()
+
+
+class ReorderableCardContainer(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.main_layout = QtWidgets.QVBoxLayout(self)
+        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_layout.setSpacing(10)
+
+        # 1. Force items to stack at the top
+        self.main_layout.setAlignment(QtCore.Qt.AlignTop)
+
+        self.dragged_card = None
+        self.placeholder = None
+        self.drag_offset = QtCore.QPoint(0, 0)
+
+    def start_drag(self, card, global_mouse_pos, offset):
+        self.dragged_card = card
+        self.drag_offset = offset
+
+        # Create placeholder
+        self.placeholder = QtWidgets.QWidget()
+        self.placeholder.setFixedSize(card.size())
+        self.placeholder.setStyleSheet(
+            "background: rgba(0, 173, 238, 0.1); border: 1px dashed #00adee; border-radius: 6px;"
+        )
+
+        idx = self.main_layout.indexOf(card)
+        self.main_layout.takeAt(idx)
+        self.main_layout.insertWidget(idx, self.placeholder)
+
+        card.setParent(self)
+        card.raise_()
+        self.update_drag(global_mouse_pos)
+        card.show()
+
+    def update_drag(self, global_mouse_pos):
+        if not self.dragged_card:
+            return
+
+        # Move card
+        local_pos = self.mapFromGlobal(global_mouse_pos)
+        target_y = local_pos.y() - self.drag_offset.y()
+        target_x = self.main_layout.contentsMargins().left()
+        self.dragged_card.move(target_x, target_y)
+
+        # 2. Logic: Use the TOP of the dragged card (the handle position)
+        drag_focus_y = target_y
+
+        placeholder_idx = self.main_layout.indexOf(self.placeholder)
+        new_idx = placeholder_idx
+
+        count = self.main_layout.count()
+
+        for i in range(count):
+            item = self.main_layout.itemAt(i)
+            widget = item.widget()
+
+            if widget is None or widget == self.dragged_card:
+                continue
+
+            w_geo = widget.geometry()
+            w_center_y = w_geo.y() + w_geo.height() / 2
+
+            # If our handle is above the center of the target card, insert before it
+            if drag_focus_y < w_center_y:
+                # If we are currently "after" this slot, we need to move "up"
+                if i < placeholder_idx:
+                    new_idx = i
+                else:
+                    new_idx = i
+                break
+            else:
+                # If we are below the center, we belong after.
+                # If loop finishes without breaking, new_idx will stay at 'count' (handled below)
+                if i >= new_idx:
+                    new_idx = i + 1
+
+        # 3. Apply Move
+        if new_idx != placeholder_idx:
+            new_idx = max(0, min(new_idx, count))
+            self.main_layout.takeAt(placeholder_idx)
+            self.main_layout.insertWidget(new_idx, self.placeholder)
+
+    def finish_drag(self):
+        if not self.dragged_card:
+            return
+
+        final_idx = self.main_layout.indexOf(self.placeholder)
+        self.main_layout.takeAt(final_idx)
+        self.placeholder.deleteLater()
+        self.placeholder = None
+
+        self.main_layout.insertWidget(final_idx, self.dragged_card)
+        self.dragged_card = None
 
 
 class PredictionConfigCard(QtWidgets.QFrame):
@@ -653,7 +750,8 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.model_display.setReadOnly(True)
         self.model_display.setPlaceholderText("No model selected")
         self.model_display.setProperty("class", "sleek")
-        self.btn_select_model = QtWidgets.QPushButton("...")
+        self.btn_select_model = QtWidgets.QPushButton()
+        self.btn_select_model.setObjectName("btnBrowseModel")  # Matches the CSS ID
         self.btn_select_model.setFixedWidth(40)
         self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Select Model")
@@ -1073,7 +1171,6 @@ class PredictionConfigCard(QtWidgets.QFrame):
             self.ml_params["ci"] = int(data["ci"])
         if "use_in_icl" in data:
             self.use_in_icl = data["use_in_icl"]
-            print(self.use_in_icl)
         if "measured" in data:
             self.set_measured(data["measured"])
         if "notes" in data:
@@ -1754,12 +1851,20 @@ class PredictionUI(QtWidgets.QWidget):
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self.cards_container = QtWidgets.QWidget()
+
+        # --- CHANGED SECTION ---
+        # 1. Use the new custom container
+        self.cards_container = ReorderableCardContainer()
         self.cards_container.setObjectName("scrollContent")
-        self.cards_layout = QtWidgets.QVBoxLayout(self.cards_container)
+
+        # 2. Access the layout created inside the container
+        self.cards_layout = self.cards_container.main_layout
+        # -----------------------
+
+        self.scroll_area.setWidget(self.cards_container)
         self.cards_layout.setContentsMargins(15, 15, 15, 15)
         self.cards_layout.setSpacing(10)
-        self.cards_layout.addStretch()
+        # self.cards_layout.addStretch()
 
         self.scroll_area.setWidget(self.cards_container)
         left_layout.addWidget(self.scroll_area)
@@ -1778,8 +1883,10 @@ class PredictionUI(QtWidgets.QWidget):
         if data and "name" in data:
             name = data["name"]
         else:
-            current_count = max(0, self.cards_layout.count() - 1)
+            # FIX 1: Use actual count, do not subtract 1
+            current_count = self.cards_layout.count()
             name = f"Prediction {current_count + 1}"
+
         card = PredictionConfigCard(
             default_name=name,
             ingredients_data=self.ingredients_by_type,
@@ -1789,8 +1896,13 @@ class PredictionUI(QtWidgets.QWidget):
         card.removed.connect(self.remove_card)
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
-        insert_idx = max(0, self.cards_layout.count() - 1)
+
+        # --- FIX 2: Simplified Insertion ---
+        # Simply insert at the end. No math required.
+        insert_idx = self.cards_layout.count()
         self.cards_layout.insertWidget(insert_idx, card)
+        # -----------------------------------
+
         if data:
             if hasattr(card, "load_data"):
                 card.load_data(data)
