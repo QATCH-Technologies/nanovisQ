@@ -1,66 +1,94 @@
 try:
-    from QATCH.core.constants import Constants
-    from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
+    from QATCH.core.constants import Constants
 except:
     print("Running VisQAI as standalone app")
 
     class Log:
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
-        def i(tag, msg=""): print("INFO:", tag, msg)
-        def w(tag, msg=""): print("WARNING:", tag, msg)
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
 
-from xml.dom import minidom
-from PyQt5 import QtCore, QtGui, QtWidgets
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
+
 # from random import randint
 import copy
 import os
+import webbrowser
+from typing import TYPE_CHECKING, Optional
+from xml.dom import minidom
+
 import numpy as np
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.ticker import FormatStrFormatter
-from scipy.optimize import curve_fit
-import webbrowser
+from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtPrintSupport import QPrinter
 from scipy.interpolate import interp1d
-from typing import Optional
-from typing import TYPE_CHECKING
+from scipy.optimize import curve_fit
 
 try:
-    from src.io.file_storage import SecureOpen
-    from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
-    from src.models.predictor import Predictor
     from src.db.db import Database
+    from src.io.file_storage import SecureOpen
+    from src.io.parser import Parser
+    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from src.models.predictor import Predictor
     from src.processors.sampler import Sampler
-    from src.threads.executor import Executor, ExecutionRecord
+    from src.threads.executor import ExecutionRecord, Executor
     from src.utils.constraints import Constraints
     from src.utils.icon_utils import IconUtils
     from src.utils.list_utils import ListUtils
     from src.view.checkable_combo_box import CheckableComboBox
-    from src.view.table_view import TableView, Color
     from src.view.constraints_ui import ConstraintsUI
-    from src.io.parser import Parser
+    from src.view.table_view import Color, TableView
+
     if TYPE_CHECKING:
         from src.view.frame_step2 import FrameStep2
         from src.view.main_window import VisQAIWindow
 
 except (ModuleNotFoundError, ImportError):
-    from QATCH.VisQAI.src.io.file_storage import SecureOpen
-    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Surfactant, Stabilizer, Salt, Buffer, ProteinClass, Excipient
-    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.io.file_storage import SecureOpen
+    from QATCH.VisQAI.src.io.parser import Parser
+    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.processors.sampler import Sampler
-    from QATCH.VisQAI.src.threads.executor import Executor, ExecutionRecord
+    from QATCH.VisQAI.src.threads.executor import ExecutionRecord, Executor
     from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.utils.icon_utils import IconUtils
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
-    from QATCH.VisQAI.src.view.table_view import TableView, Color
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
-    from QATCH.VisQAI.src.io.parser import Parser
+    from QATCH.VisQAI.src.view.table_view import Color, TableView
+
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -117,10 +145,8 @@ class FrameStep1(QtWidgets.QDialog):
         if True:  # step == 5:
             # Browse model layout
             self.model_dialog = QtWidgets.QFileDialog()
-            self.model_dialog.setOption(
-                QtWidgets.QFileDialog.DontUseNativeDialog, True)
-            model_path = os.path.join(Architecture.get_path(),
-                                      "QATCH/VisQAI/assets")
+            self.model_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+            model_path = os.path.join(Architecture.get_path(), "QATCH/VisQAI/assets")
             if os.path.exists(model_path):
                 # working or bundled directory, if exists
                 self.model_dialog.setDirectory(model_path)
@@ -132,15 +158,13 @@ class FrameStep1(QtWidgets.QDialog):
             self.model_dialog.selectNameFilter("VisQ.AI Models (VisQAI-*.zip)")
 
             self.select_model_group = QtWidgets.QGroupBox("Select Model")
-            select_model_layout = QtWidgets.QHBoxLayout(
-                self.select_model_group)
+            select_model_layout = QtWidgets.QHBoxLayout(self.select_model_group)
             self.select_model_btn = QtWidgets.QPushButton("Browse...")
             self.select_model_label = QtWidgets.QLineEdit()
             self.select_model_label.setPlaceholderText("No model selected")
             self.select_model_label.setReadOnly(True)
             if step == 1:
-                predictor_path = os.path.join(model_path,
-                                              "VisQAI-base.zip")
+                predictor_path = os.path.join(model_path, "VisQAI-base.zip")
                 if os.path.exists(predictor_path):
                     # working or bundled predictor, if exists
                     self.model_selected(path=predictor_path)
@@ -153,7 +177,8 @@ class FrameStep1(QtWidgets.QDialog):
         left_layout.addWidget(left_group)
 
         self.select_run = QtWidgets.QPushButton(
-            "Add Run(s)..." if step == 3 else "Browse...")
+            "Add Run(s)..." if step == 3 else "Browse..."
+        )
         self.select_label = QtWidgets.QLineEdit()
         self.select_label.setPlaceholderText("No run selected")
         self.select_label.setReadOnly(True)
@@ -165,8 +190,7 @@ class FrameStep1(QtWidgets.QDialog):
             form_layout.addRow(self.select_run, self.select_label)
         elif step == 2 or step == 3 or step == 5:
             self.list_view = QtWidgets.QListView()
-            self.list_view.setEditTriggers(
-                QtWidgets.QAbstractItemView.NoEditTriggers)
+            self.list_view.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
             self.model = QtGui.QStandardItemModel()
             string_list = []
             if False:  # step == 2 or step == 5:
@@ -188,14 +212,21 @@ class FrameStep1(QtWidgets.QDialog):
             else:
                 # For steps 2 and 5, pull suggestions/predictions from model
                 self.list_view.clicked.connect(
-                    lambda: self.feature_table.setData(self.loaded_features[self.list_view.selectedIndexes()[0].row()]) if len(self.loaded_features) else None)
+                    lambda: (
+                        self.feature_table.setData(
+                            self.loaded_features[
+                                self.list_view.selectedIndexes()[0].row()
+                            ]
+                        )
+                        if len(self.loaded_features)
+                        else None
+                    )
+                )
                 self.list_view.clicked.connect(self.hide_extended_features)
-            self.list_view.clicked.connect(
-                lambda: self.btn_update.setEnabled(True))
+            self.list_view.clicked.connect(lambda: self.btn_update.setEnabled(True))
 
             add_remove_export_widget = QtWidgets.QWidget()
-            add_remove_export_layout = QtWidgets.QHBoxLayout(
-                add_remove_export_widget)
+            add_remove_export_layout = QtWidgets.QHBoxLayout(add_remove_export_widget)
             add_remove_export_layout.setContentsMargins(0, 0, 0, 0)
 
             if step in [2, 5]:
@@ -211,8 +242,7 @@ class FrameStep1(QtWidgets.QDialog):
 
             # Remove All Runs
             self.btn_remove_all = QtWidgets.QPushButton("Remove All")
-            self.btn_remove_all.clicked.connect(
-                self.user_all_runs_removed)
+            self.btn_remove_all.clicked.connect(self.user_all_runs_removed)
             add_remove_export_layout.addWidget(self.btn_remove_all)
 
             if step in [2, 5]:  # Suggest, Predict
@@ -259,17 +289,13 @@ class FrameStep1(QtWidgets.QDialog):
         btn_layout = QtWidgets.QHBoxLayout()
         self.btn_cancel = QtWidgets.QPushButton("Cancel")
         if step == 1:
-            self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Suggest Experiments")
+            self.btn_next = QtWidgets.QPushButton("Next Step: Suggest Experiments")
         elif step == 2:
-            self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Import Experiments")
+            self.btn_next = QtWidgets.QPushButton("Next Step: Import Experiments")
         elif step == 3:
-            self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Learn")
+            self.btn_next = QtWidgets.QPushButton("Next Step: Learn")
         elif step == 5:
-            self.btn_next = QtWidgets.QPushButton(
-                "Next Step: Optimize")
+            self.btn_next = QtWidgets.QPushButton("Next Step: Optimize")
         btn_layout.addWidget(self.btn_cancel)
         btn_layout.addWidget(self.btn_next)
         left_layout.addLayout(btn_layout)
@@ -311,46 +337,87 @@ class FrameStep1(QtWidgets.QDialog):
             right_group.addWidget(ci_widget)
             # Features table
         self.load_all_ingredients()
-        self.default_features = {"Feature": ["Protein Type", "Protein Concentration",
-                                             "Protein Class", "Protein Molecular Weight",  # not in Run Info
-                                             "Protein pI Mean", "Protein pI Range",  # not in Run Info
-                                             "Buffer Type", "Buffer Concentration",
-                                             "Buffer pH",  # not in Run Info
-                                             "Surfactant Type", "Surfactant Concentration",
-                                             "Stabilizer Type", "Stabilizer Concentration",
-                                             "Salt Type", "Salt Concentration",
-                                             "Excipient Type", "Excipient Concentration",
-                                             "Temperature"],  # only displayed on Predict tab (for now)
-                                 "Value": [{"choices": self.proteins, "selected": ""}, "",
-                                           # class, molecular weight, pI mean, pI range
-                                           {"choices": self.class_types,
-                                               "selected": ""}, "", "", "",
-                                           {"choices": self.buffers,
-                                               "selected": ""}, "",
-                                           "",  # buffer pH
-                                           {"choices": self.surfactants,
-                                               "selected": ""}, "",
-                                           {"choices": self.stabilizers,
-                                               "selected": ""}, "",
-                                           {"choices": self.salts,
-                                               "selected": ""}, "",
-                                           {"choices": self.excipients,
-                                               "selected": ""}, "",
-                                           ""],
-                                 "Units": ["", "mg/mL",
-                                           "", "kDa", "", "",  # pI
-                                           "", "mM",
-                                           "",  # pH
-                                           "", "%w",
-                                           "", "M",
-                                           "", "mM",
-                                           "", "mM",
-                                           "\u00b0C"]}  # degrees Celsius
-        self.default_rows, self.default_cols = (len(list(self.default_features.values())[0]),
-                                                len(list(self.default_features.keys())))
+        self.default_features = {
+            "Feature": [
+                "Protein Type",
+                "Protein Concentration",
+                "Protein Class",
+                "Protein Molecular Weight",  # not in Run Info
+                "Protein pI Mean",
+                "Protein pI Range",  # not in Run Info
+                "Buffer Type",
+                "Buffer Concentration",
+                "Buffer pH",  # not in Run Info
+                "Surfactant Type",
+                "Surfactant Concentration",
+                "Stabilizer Type",
+                "Stabilizer Concentration",
+                "Salt Type",
+                "Salt Concentration",
+                "Excipient Type",
+                "Excipient Concentration",
+                "Temperature",
+            ],  # only displayed on Predict tab (for now)
+            "Value": [
+                {"choices": self.proteins, "selected": ""},
+                "",
+                # class, molecular weight, pI mean, pI range
+                {"choices": self.class_types, "selected": ""},
+                "",
+                "",
+                "",
+                {"choices": self.buffers, "selected": ""},
+                "",
+                "",  # buffer pH
+                {"choices": self.surfactants, "selected": ""},
+                "",
+                {"choices": self.stabilizers, "selected": ""},
+                "",
+                {"choices": self.salts, "selected": ""},
+                "",
+                {"choices": self.excipients, "selected": ""},
+                "",
+                "",
+            ],
+            "Units": [
+                "",
+                "mg/mL",
+                "",
+                "kDa",
+                "",
+                "",  # pI
+                "",
+                "mM",
+                "",  # pH
+                "",
+                "%w",
+                "",
+                "M",
+                "",
+                "mM",
+                "",
+                "mM",
+                "\u00b0C",
+            ],
+        }  # degrees Celsius
+        self.default_rows, self.default_cols = (
+            len(list(self.default_features.values())[0]),
+            len(list(self.default_features.keys())),
+        )
 
-        self.feature_table = TableView(self.default_features,
-                                       self.default_rows, self.default_cols)
+        self.feature_table = TableView(
+            self.default_features, self.default_rows, self.default_cols
+        )
+        label_mapping = {
+            "Protein Concentration": "Protein_conc",
+            "Buffer Concentration": "Buffer_conc",
+            "Surfactant Concentration": "Surfactant_conc",
+            "Stabilizer Concentration": "Stabilizer_conc",
+            "Salt Concentration": "Salt_conc",
+            "Excipient Concentration": "Excipient_conc",
+            "Temperature": "Temperature",
+        }
+        self.feature_table.setLimits(self.parent.IO_CLAMP_RANGE, label_mapping)
         self.feature_table.clear()
         right_group.addWidget(self.feature_table)
 
@@ -434,13 +501,11 @@ class FrameStep1(QtWidgets.QDialog):
         layout_s.addStretch()
         self.btnCollapse = QtWidgets.QToolButton(handle)
         self.btnCollapse.setArrowType(QtCore.Qt.LeftArrow)
-        self.btnCollapse.clicked.connect(
-            lambda: self.handleSplitterButton(True))
+        self.btnCollapse.clicked.connect(lambda: self.handleSplitterButton(True))
         layout_s.addWidget(self.btnCollapse)
         self.btnExpand = QtWidgets.QToolButton(handle)
         self.btnExpand.setArrowType(QtCore.Qt.RightArrow)
-        self.btnExpand.clicked.connect(
-            lambda: self.handleSplitterButton(False))
+        self.btnExpand.clicked.connect(lambda: self.handleSplitterButton(False))
         layout_s.addWidget(self.btnExpand)
         layout_s.addStretch()
         handle.setLayout(layout_s)
@@ -449,17 +514,15 @@ class FrameStep1(QtWidgets.QDialog):
         self.h_splitter.splitterMoved.connect(self.handleSplitterMoved)
 
         # Signals
-        self.btn_cancel.clicked.connect(
-            lambda: self.file_selected(None, cancel=True))
-        self.btn_next.clicked.connect(
-            getattr(self, f"proceed_to_step_{self.step+1}"))
+        self.btn_cancel.clicked.connect(lambda: self.file_selected(None, cancel=True))
+        self.btn_next.clicked.connect(getattr(self, f"proceed_to_step_{self.step+1}"))
         self.select_run.clicked.connect(self.user_run_browse)
         if True:  # step == 5:
             self.select_model_btn.clicked.connect(self.model_dialog.show)
-            global_handler = getattr(
-                self.parent, 'set_global_model_path', None)
+            global_handler = getattr(self.parent, "set_global_model_path", None)
             self.model_dialog.fileSelected.connect(
-                global_handler if callable(global_handler) else self.model_selected)
+                global_handler if callable(global_handler) else self.model_selected
+            )
 
     def reload_all_ingredient_choices(self):
 
@@ -499,14 +562,17 @@ class FrameStep1(QtWidgets.QDialog):
                 learn_tab: FrameStep2 = self.parent.tab_widget.widget(3)
                 predict_tab: FrameStep1 = self.parent.tab_widget.widget(5)
                 optimize_tab: FrameStep2 = self.parent.tab_widget.widget(6)
-                all_model_paths = [select_tab.model_path,
-                                   suggest_tab.model_path,
-                                   import_tab.model_path,
-                                   learn_tab.model_path,
-                                   predict_tab.model_path,
-                                   optimize_tab.model_path]
+                all_model_paths = [
+                    select_tab.model_path,
+                    suggest_tab.model_path,
+                    import_tab.model_path,
+                    learn_tab.model_path,
+                    predict_tab.model_path,
+                    optimize_tab.model_path,
+                ]
                 found_model_path = next(
-                    (x for x in all_model_paths if x is not None), None)
+                    (x for x in all_model_paths if x is not None), None
+                )
                 if found_model_path:
                     self.model_selected(found_model_path)
 
@@ -549,10 +615,16 @@ class FrameStep1(QtWidgets.QDialog):
         self.class_types: list[str] = []
         self.proteins_by_class: dict[str, list[str]] = {}
 
-        self.proteins, self.buffers, self.surfactants, \
-            self.stabilizers, self.salts, self.excipients, \
-            self.class_types, self.proteins_by_class = ListUtils.load_all_ingredient_types(
-                self.parent.ing_ctrl)
+        (
+            self.proteins,
+            self.buffers,
+            self.surfactants,
+            self.stabilizers,
+            self.salts,
+            self.excipients,
+            self.class_types,
+            self.proteins_by_class,
+        ) = ListUtils.load_all_ingredient_types(self.parent.ing_ctrl)
 
         Log.d("Proteins:", self.proteins)
         Log.d("Buffers:", self.buffers)
@@ -584,9 +656,11 @@ class FrameStep1(QtWidgets.QDialog):
 
     def save_formulation(self, cancel: bool = False) -> bool:
         if not self.feature_table.allSet():
-            Log.e("Not all features have been set. " +
-                  "Cannot save formulation info. " +
-                  "Enter missing values and try again.")
+            Log.e(
+                "Not all features have been set. "
+                + "Cannot save formulation info. "
+                + "Enter missing values and try again."
+            )
             return False
 
         protein_type = self.feature_table.cellWidget(0, 1).currentText()
@@ -600,8 +674,7 @@ class FrameStep1(QtWidgets.QDialog):
         buffer_pH = self.feature_table.item(8, 1).text()
         surfactant_type = self.feature_table.cellWidget(9, 1).currentText()
         surfactant_conc = self.feature_table.item(10, 1).text()
-        stabilizer_type = self.feature_table.cellWidget(
-            11, 1).currentText()
+        stabilizer_type = self.feature_table.cellWidget(11, 1).currentText()
         stabilizer_conc = self.feature_table.item(12, 1).text()
         salt_type = self.feature_table.cellWidget(13, 1).currentText()
         salt_conc = self.feature_table.item(14, 1).text()
@@ -610,13 +683,24 @@ class FrameStep1(QtWidgets.QDialog):
         temp = self.feature_table.item(17, 1).text()
         # save run info to XML (if changed, request audit sign)
         if self.step in [1, 3]:  # Select, Import
-            self.parent.save_run_info(self.run_file_xml, [
-                protein_type, protein_conc,
-                buffer_type, buffer_conc,
-                surfactant_type, surfactant_conc,
-                stabilizer_type, stabilizer_conc,
-                salt_type, salt_conc,
-                excipient_type, excipient_conc], cancel)
+            self.parent.save_run_info(
+                self.run_file_xml,
+                [
+                    protein_type,
+                    protein_conc,
+                    buffer_type,
+                    buffer_conc,
+                    surfactant_type,
+                    surfactant_conc,
+                    stabilizer_type,
+                    stabilizer_conc,
+                    salt_type,
+                    salt_conc,
+                    excipient_type,
+                    excipient_conc,
+                ],
+                cancel,
+            )
             if self.parent.hasUnsavedChanges():
                 if cancel:
                     Log.w("Unsaved changes lost, per user discretion.")
@@ -625,9 +709,10 @@ class FrameStep1(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.information(
                     None,
                     Constants.app_title,
-                    "There are still unsaved changes!\n\n" +
-                    "To save: Try again and sign when prompted.\n" +
-                    "Click \"Cancel\" to discard these changes.")
+                    "There are still unsaved changes!\n\n"
+                    + "To save: Try again and sign when prompted.\n"
+                    + 'Click "Cancel" to discard these changes.',
+                )
                 return False
             elif cancel:
                 Log.d("User canceled with nothing to save.")
@@ -656,44 +741,41 @@ class FrameStep1(QtWidgets.QDialog):
             feature["Value"][16] = excipient_conc
             feature["Value"][17] = temp
 
-            self.loaded_features[self.list_view.selectedIndexes()[
-                0].row()] = feature
+            self.loaded_features[self.list_view.selectedIndexes()[0].row()] = feature
 
-        protein = self.parent.ing_ctrl.get_protein_by_name(
-            name=protein_type)
+        protein = self.parent.ing_ctrl.get_protein_by_name(name=protein_type)
         if protein is None:
             protein = self.parent.ing_ctrl.add_protein(
-                Protein(enc_id=-1, name=protein_type))
+                Protein(enc_id=-1, name=protein_type)
+            )
 
-        buffer = self.parent.ing_ctrl.get_buffer_by_name(
-            name=buffer_type)
+        buffer = self.parent.ing_ctrl.get_buffer_by_name(name=buffer_type)
         if buffer is None:
             buffer = self.parent.ing_ctrl.add_buffer(
-                Buffer(enc_id=-1, name=buffer_type))
+                Buffer(enc_id=-1, name=buffer_type)
+            )
 
-        surfactant = self.parent.ing_ctrl.get_surfactant_by_name(
-            name=surfactant_type)
+        surfactant = self.parent.ing_ctrl.get_surfactant_by_name(name=surfactant_type)
         if surfactant is None:
             surfactant = self.parent.ing_ctrl.add_surfactant(
-                Surfactant(enc_id=-1, name=surfactant_type))
+                Surfactant(enc_id=-1, name=surfactant_type)
+            )
 
-        stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(
-            name=stabilizer_type)
+        stabilizer = self.parent.ing_ctrl.get_stabilizer_by_name(name=stabilizer_type)
         if stabilizer is None:
             stabilizer = self.parent.ing_ctrl.add_stabilizer(
-                Stabilizer(enc_id=-1, name=stabilizer_type))
+                Stabilizer(enc_id=-1, name=stabilizer_type)
+            )
 
-        salt = self.parent.ing_ctrl.get_salt_by_name(
-            name=salt_type)
+        salt = self.parent.ing_ctrl.get_salt_by_name(name=salt_type)
         if salt is None:
-            salt = self.parent.ing_ctrl.add_salt(
-                Salt(enc_id=-1, name=salt_type))
+            salt = self.parent.ing_ctrl.add_salt(Salt(enc_id=-1, name=salt_type))
 
-        excipient = self.parent.ing_ctrl.get_excipient_by_name(
-            name=excipient_type)
+        excipient = self.parent.ing_ctrl.get_excipient_by_name(name=excipient_type)
         if excipient is None:
             excipient = self.parent.ing_ctrl.add_excipient(
-                Excipient(enc_id=-1, name=excipient_type))
+                Excipient(enc_id=-1, name=excipient_type)
+            )
 
         def is_number(s: str):
             try:
@@ -738,9 +820,9 @@ class FrameStep1(QtWidgets.QDialog):
             self.profile_viscos.append(-1)
 
         # pull in viscosity profile from run load
-        vp = ViscosityProfile(shear_rates=self.profile_shears,
-                              viscosities=self.profile_viscos,
-                              units='cP')
+        vp = ViscosityProfile(
+            shear_rates=self.profile_shears, viscosities=self.profile_viscos, units="cP"
+        )
         vp.is_measured = self.run_figure_valid
 
         # pull temperaure (already pulled from feature table)
@@ -753,26 +835,29 @@ class FrameStep1(QtWidgets.QDialog):
             # Predict tab can specify custom Temperature target
             if float(temp) < 0 or float(temp) > 100:
                 Log.e(
-                    f"Temperature input {temp}\u00b0C is out-of-range! (Allowed: 0 - 100)")
+                    f"Temperature input {temp}\u00b0C is out-of-range! (Allowed: 0 - 100)"
+                )
                 return False
 
         form = Formulation()
         form.set_protein(
-            protein=protein, concentration=float(protein_conc), units='mg/mL')
-        form.set_buffer(buffer, concentration=float(
-            buffer_conc), units='mM')
-        form.set_surfactant(surfactant=surfactant,
-                            concentration=float(surfactant_conc), units='%w')
-        form.set_stabilizer(stabilizer=stabilizer,
-                            concentration=float(stabilizer_conc), units='M')
-        form.set_salt(salt, concentration=float(salt_conc), units='mM')
-        form.set_excipient(excipient=excipient, concentration=float(
-            excipient_conc), units="mM")
+            protein=protein, concentration=float(protein_conc), units="mg/mL"
+        )
+        form.set_buffer(buffer, concentration=float(buffer_conc), units="mM")
+        form.set_surfactant(
+            surfactant=surfactant, concentration=float(surfactant_conc), units="%w"
+        )
+        form.set_stabilizer(
+            stabilizer=stabilizer, concentration=float(stabilizer_conc), units="M"
+        )
+        form.set_salt(salt, concentration=float(salt_conc), units="mM")
+        form.set_excipient(
+            excipient=excipient, concentration=float(excipient_conc), units="mM"
+        )
         form.set_viscosity_profile(profile=vp)
         form.set_temperature(float(temp))
 
-        form_saved = self.parent.form_ctrl.add_formulation(
-            formulation=form)
+        form_saved = self.parent.form_ctrl.add_formulation(formulation=form)
 
         if self.step == 1:
             Log.d("Saving selected formulation to parent for later")
@@ -780,8 +865,7 @@ class FrameStep1(QtWidgets.QDialog):
             # print(self.parent.form_ctrl.get_all_as_dataframe())
         if self.step == 3 and form_saved not in self.parent.import_formulations:
             num_forms = len(self.parent.import_formulations)
-            Log.d(
-                f"Saving imported formulation #{num_forms+1} to parent for later")
+            Log.d(f"Saving imported formulation #{num_forms+1} to parent for later")
             self.parent.import_formulations.append(form_saved)
             # Store the same label used in the left list (select_label),
             # so FrameStep2 can resolve indices reliably.
@@ -808,20 +892,19 @@ class FrameStep1(QtWidgets.QDialog):
             return
 
         self.progressBar = QtWidgets.QProgressDialog(
-            "Suggesting...", "Cancel", 0, 0, self)
+            "Suggesting...", "Cancel", 0, 0, self
+        )
         # Disable auto-reset and auto-close to retain `wasCanceled()` state
         self.progressBar.setAutoReset(False)
         self.progressBar.setAutoClose(False)
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/reset.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
         self.progressBar.setWindowTitle("Busy")
-        self.progressBar.setWindowFlag(
-            QtCore.Qt.WindowContextHelpButtonHint, False)
-        self.progressBar.setWindowFlag(
-            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self.progressBar.setFixedSize(
-            int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+            int(self.progressBar.width() * 1.5), int(self.progressBar.height() * 1.1)
+        )
         self.progressBar.setModal(True)
         self.progressBar.show()
 
@@ -845,8 +928,7 @@ class FrameStep1(QtWidgets.QDialog):
             exception = record.exception
             traceback = record.traceback
             if exception:
-                Log.e(
-                    f"ERROR: Failed to suggest: {str(exception)}, {str(traceback)}")
+                Log.e(f"ERROR: Failed to suggest: {str(exception)}, {str(traceback)}")
                 return
 
             form = record.result
@@ -860,14 +942,15 @@ class FrameStep1(QtWidgets.QDialog):
             method_name="get_new_suggestion",
             asset_name=model_name,
             constraints=copy.deepcopy(constraints),
-            callback=add_new_suggestion)
+            callback=add_new_suggestion,
+        )
 
     def get_new_suggestion(self, asset_name, constraints: Constraints | None = None):
         database = Database(parse_file_key=True)
         constraints.set_db(database)  # Needed for cross-threading
-        sampler = Sampler(asset_name=asset_name,
-                          database=database,
-                          constraints=constraints)
+        sampler = Sampler(
+            asset_name=asset_name, database=database, constraints=constraints
+        )
         form = sampler.get_next_sample()
         database.close()
         return form
@@ -878,8 +961,11 @@ class FrameStep1(QtWidgets.QDialog):
             # NOTE: combobox items are `dict[choices: list[str], selected: str]`
             feature["Value"][0]["selected"] = form.protein.ingredient.name
             feature["Value"][1] = form.protein.concentration
-            feature["Value"][2]["selected"] = form.protein.ingredient.class_type.value \
-                if form.protein.ingredient.class_type else "None"  # class_type could be None
+            feature["Value"][2]["selected"] = (
+                form.protein.ingredient.class_type.value
+                if form.protein.ingredient.class_type
+                else "None"
+            )  # class_type could be None
             feature["Value"][3] = form.protein.ingredient.molecular_weight
             feature["Value"][4] = form.protein.ingredient.pI_mean
             feature["Value"][5] = form.protein.ingredient.pI_range
@@ -924,7 +1010,8 @@ class FrameStep1(QtWidgets.QDialog):
         if not self.feature_table.allSet():
             message = "Please correct the highlighted fields first."
             QtWidgets.QMessageBox.information(
-                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok
+            )
             return
 
         if not self.save_formulation():
@@ -933,23 +1020,23 @@ class FrameStep1(QtWidgets.QDialog):
 
         self.predictor = Predictor(zip_path=self.model_path)
         predict_df = self.parent.predict_formulation.to_dataframe(
-            encoded=False, training=False)
+            encoded=False, training=False
+        )
 
         self.progressBar = QtWidgets.QProgressDialog(
-            "Updating...", "Cancel", 0, 0, self)
+            "Updating...", "Cancel", 0, 0, self
+        )
         # Disable auto-reset and auto-close to retain `wasCanceled()` state
         self.progressBar.setAutoReset(False)
         self.progressBar.setAutoClose(False)
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/reset.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
         self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
         self.progressBar.setWindowTitle("Busy")
-        self.progressBar.setWindowFlag(
-            QtCore.Qt.WindowContextHelpButtonHint, False)
-        self.progressBar.setWindowFlag(
-            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self.progressBar.setFixedSize(
-            int(self.progressBar.width()*1.5), int(self.progressBar.height()*1.1))
+            int(self.progressBar.width() * 1.5), int(self.progressBar.height() * 1.1)
+        )
         self.progressBar.setModal(True)
         self.progressBar.show()
 
@@ -963,8 +1050,7 @@ class FrameStep1(QtWidgets.QDialog):
 
             if record and record.exception:
                 # NOTE: Progress bar and timer will end on next call to `check_finished()`
-                Log.e(
-                    f"Error occurred while updating the model: {record.exception}")
+                Log.e(f"Error occurred while updating the model: {record.exception}")
                 return
 
             Log.d("Waiting for prediction results...")
@@ -975,7 +1061,8 @@ class FrameStep1(QtWidgets.QDialog):
                 method_name="predict_uncertainty",
                 df=predict_df,
                 ci_range=self.get_ci_range(),
-                callback=get_prediction_result)
+                callback=get_prediction_result,
+            )
 
         def get_prediction_result(record: Optional[ExecutionRecord] = None):
 
@@ -1006,13 +1093,12 @@ class FrameStep1(QtWidgets.QDialog):
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
                 xlog = np.log10(x)
                 ylog = np.log10(y)
-                f_interp = interp1d(xlog, ylog, kind='linear',
-                                    fill_value='extrapolate')
+                f_interp = interp1d(xlog, ylog, kind="linear", fill_value="extrapolate")
                 xlog_min, xlog_max = xlog.min(), xlog.max()
                 margin = (xlog_max - xlog_min) * expand_factor
                 xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
                 xs = 10**xs_log
-                ys = 10**f_interp(xs_log)
+                ys = 10 ** f_interp(xs_log)
                 return xs, ys
 
             def make_plot(name, shear, mean_arr, uncertainty_dict, title, color):
@@ -1021,101 +1107,158 @@ class FrameStep1(QtWidgets.QDialog):
                 self.run_canvas.draw()
                 shear = np.asarray(shear)
                 mean_arr = np.asarray(mean_arr)
-                lower_ci = uncertainty_dict['lower_ci']
-                upper_ci = uncertainty_dict['upper_ci']
+                lower_ci = uncertainty_dict["lower_ci"]
+                upper_ci = uncertainty_dict["upper_ci"]
                 if lower_ci.ndim > 1:
                     lower_ci = lower_ci.flatten()
                 if upper_ci.ndim > 1:
                     upper_ci = upper_ci.flatten()
                 ax = self.run_figure.add_subplot(111)
-                ax.set_facecolor('#ffffff')
-                self.run_figure.patch.set_facecolor('#ffffff')
+                ax.set_facecolor("#ffffff")
+                self.run_figure.patch.set_facecolor("#ffffff")
                 xs, ys = smooth_log_interpolate(shear, mean_arr)
                 xs_up, ys_up = smooth_log_interpolate(shear, upper_ci)
                 xs_dn, ys_dn = smooth_log_interpolate(shear, lower_ci)
 
                 # Updated color scheme - teal/cyan palette
-                main_color = '#00A3DA'  # Deep cyan
-                ci_color = '#69EAC5'    # Light teal
+                main_color = "#00A3DA"  # Deep cyan
+                ci_color = "#69EAC5"  # Light teal
 
-                ax.fill_between(xs_up, ys_dn, ys_up, alpha=0.15, color=ci_color,
-                                linewidth=0, label=f'{self.ci_value_label.text()} CI')
-                ax.plot(xs, ys, '-', lw=2.5, color=main_color,
-                        label='Estimated Viscosity', zorder=3, alpha=0.95)
-                ax.plot(xs_up, ys_up, '-', lw=1,
-                        color=ci_color, alpha=0.7, zorder=2)
-                ax.plot(xs_dn, ys_dn, '-', lw=1,
-                        color=ci_color, alpha=0.7, zorder=2)
-                ax.scatter(shear, mean_arr, s=80, color=main_color, zorder=5,
-                           edgecolors='white', linewidths=2.5, alpha=1)
+                ax.fill_between(
+                    xs_up,
+                    ys_dn,
+                    ys_up,
+                    alpha=0.15,
+                    color=ci_color,
+                    linewidth=0,
+                    label=f"{self.ci_value_label.text()} CI",
+                )
+                ax.plot(
+                    xs,
+                    ys,
+                    "-",
+                    lw=2.5,
+                    color=main_color,
+                    label="Estimated Viscosity",
+                    zorder=3,
+                    alpha=0.95,
+                )
+                ax.plot(xs_up, ys_up, "-", lw=1, color=ci_color, alpha=0.7, zorder=2)
+                ax.plot(xs_dn, ys_dn, "-", lw=1, color=ci_color, alpha=0.7, zorder=2)
+                ax.scatter(
+                    shear,
+                    mean_arr,
+                    s=80,
+                    color=main_color,
+                    zorder=5,
+                    edgecolors="white",
+                    linewidths=2.5,
+                    alpha=1,
+                )
                 ax.set_xscale("log")
                 ax.set_yscale("log")
                 ax.set_xlim(xs.min() * 0.8, xs.max() * 1.2)
-                ax.set_ylim(self.calc_limits(
-                    yall=np.concatenate((ys_dn, ys_up))))
-                ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
-                              color='#2d3436')
-                ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
-                              color='#2d3436')
-                ax.set_title(title, fontsize=13, fontweight='600', pad=15,
-                             color='#2d3436')
-                ax.grid(True, which="major", ls='-',
-                        alpha=0.15, color='#636e72', lw=0.8)
-                ax.grid(True, which="minor", ls='-',
-                        alpha=0.07, color='#b2bec3', lw=0.5)
-                ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
-                ax.tick_params(axis='both', which='major', labelsize=9,
-                               colors='#2d3436', width=1)
-                ax.tick_params(axis='both', which='minor', labelsize=8,
-                               colors='#636e72', width=0.5)
-                ax.spines['top'].set_visible(False)
-                ax.spines['right'].set_visible(False)
-                ax.spines['left'].set_color('#dfe6e9')
-                ax.spines['bottom'].set_color('#dfe6e9')
-                ax.spines['left'].set_linewidth(1.5)
-                ax.spines['bottom'].set_linewidth(1.5)
-                legend = ax.legend(loc='best', frameon=True, fancybox=False,
-                                   shadow=False, fontsize=9, framealpha=1,
-                                   edgecolor='#dfe6e9', borderpad=1)
-                legend.get_frame().set_facecolor('#ffffff')
+                ax.set_ylim(self.calc_limits(yall=np.concatenate((ys_dn, ys_up))))
+                ax.set_xlabel(
+                    "Shear Rate (s⁻¹)", fontsize=11, fontweight="600", color="#2d3436"
+                )
+                ax.set_ylabel(
+                    "Viscosity (cP)", fontsize=11, fontweight="600", color="#2d3436"
+                )
+                ax.set_title(
+                    title, fontsize=13, fontweight="600", pad=15, color="#2d3436"
+                )
+                ax.grid(
+                    True, which="major", ls="-", alpha=0.15, color="#636e72", lw=0.8
+                )
+                ax.grid(
+                    True, which="minor", ls="-", alpha=0.07, color="#b2bec3", lw=0.5
+                )
+                ax.xaxis.set_major_formatter(FormatStrFormatter("%.0e"))
+                ax.tick_params(
+                    axis="both", which="major", labelsize=9, colors="#2d3436", width=1
+                )
+                ax.tick_params(
+                    axis="both", which="minor", labelsize=8, colors="#636e72", width=0.5
+                )
+                ax.spines["top"].set_visible(False)
+                ax.spines["right"].set_visible(False)
+                ax.spines["left"].set_color("#dfe6e9")
+                ax.spines["bottom"].set_color("#dfe6e9")
+                ax.spines["left"].set_linewidth(1.5)
+                ax.spines["bottom"].set_linewidth(1.5)
+                legend = ax.legend(
+                    loc="best",
+                    frameon=True,
+                    fancybox=False,
+                    shadow=False,
+                    fontsize=9,
+                    framealpha=1,
+                    edgecolor="#dfe6e9",
+                    borderpad=1,
+                )
+                legend.get_frame().set_facecolor("#ffffff")
                 legend.get_frame().set_linewidth(1)
                 ylim = ax.get_ylim()
                 y_range = np.log10(ylim[1]) - np.log10(ylim[0])
                 for i in range(len(mean_arr)):
-                    annotation = f'{mean_arr[i]:.1f}\n[{lower_ci[i]:.1f}-{upper_ci[i]:.1f}]'
+                    annotation = (
+                        f"{mean_arr[i]:.1f}\n[{lower_ci[i]:.1f}-{upper_ci[i]:.1f}]"
+                    )
                     y_offset = mean_arr[i] * (10 ** (y_range * 0.06))
-                    ax.annotate(annotation,
-                                xy=(shear[i], mean_arr[i]),
-                                xytext=(shear[i], y_offset),
-                                ha='center', va='bottom',
-                                fontsize=8,
-                                color='#2d3436',
-                                weight='500',
-                                bbox=dict(boxstyle='round,pad=0.4',
-                                          facecolor='white',
-                                          edgecolor=main_color,
-                                          alpha=0.95,
-                                          linewidth=1.2),
-                                arrowprops=dict(arrowstyle='-',
-                                                connectionstyle='arc3,rad=0',
-                                                color=main_color,
-                                                alpha=0.4,
-                                                lw=1.2))
+                    ax.annotate(
+                        annotation,
+                        xy=(shear[i], mean_arr[i]),
+                        xytext=(shear[i], y_offset),
+                        ha="center",
+                        va="bottom",
+                        fontsize=8,
+                        color="#2d3436",
+                        weight="500",
+                        bbox=dict(
+                            boxstyle="round,pad=0.4",
+                            facecolor="white",
+                            edgecolor=main_color,
+                            alpha=0.95,
+                            linewidth=1.2,
+                        ),
+                        arrowprops=dict(
+                            arrowstyle="-",
+                            connectionstyle="arc3,rad=0",
+                            color=main_color,
+                            alpha=0.4,
+                            lw=1.2,
+                        ),
+                    )
                 from datetime import datetime
+
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-                ax.text(0.98, 0.02, timestamp,
-                        transform=ax.transAxes, fontsize=7,
-                        verticalalignment='bottom', horizontalalignment='right',
-                        alpha=0.4, style='italic', color='#636e72')
+                ax.text(
+                    0.98,
+                    0.02,
+                    timestamp,
+                    transform=ax.transAxes,
+                    fontsize=7,
+                    verticalalignment="bottom",
+                    horizontalalignment="right",
+                    alpha=0.4,
+                    style="italic",
+                    color="#636e72",
+                )
                 self.run_figure.tight_layout()
 
                 self.run_figure_valid = True
                 self.run_canvas.draw()
 
             Log.d(f"VP={predicted_mean_vp}, {uncertainty_dict}")
-            make_plot("Viscosity Profile", self.profile_shears,
-                      predicted_mean_vp[0], uncertainty_dict,
-                      "Estimated Viscosity Profile", "blue")
+            make_plot(
+                "Viscosity Profile",
+                self.profile_shears,
+                predicted_mean_vp[0],
+                uncertainty_dict,
+                "Estimated Viscosity Profile",
+                "blue",
+            )
             self.predictor.cleanup()
 
         self.executor = Executor()
@@ -1125,7 +1268,10 @@ class FrameStep1(QtWidgets.QDialog):
     def check_finished(self):
         # at least 1 record expected, but may be more based on task count
         expect_record_count = max(1, self.executor.task_count())
-        if self.executor.active_count() == 0 and len(self.executor.get_task_records()) == expect_record_count:
+        if (
+            self.executor.active_count() == 0
+            and len(self.executor.get_task_records()) == expect_record_count
+        ):
             # finished, but keep the dialog open to retain `wasCanceled()` state
             self.progressBar.hide()
             self.timer.stop()
@@ -1139,35 +1285,38 @@ class FrameStep1(QtWidgets.QDialog):
         #   2. All initial features are set
         #   3. Analyze results are valid
         #   4. All formulations saved, and XMLs up-to-date
-        if (len(self.run_captured.text()) and
-            len(self.run_updated.text()) and
-            len(self.run_analyzed.text()) and
-                self.feature_table.allSet() and
-                self.run_figure_valid):
+        if (
+            len(self.run_captured.text())
+            and len(self.run_updated.text())
+            and len(self.run_analyzed.text())
+            and self.feature_table.allSet()
+            and self.run_figure_valid
+        ):
             # ready to proceed
             if not self.save_formulation():
                 return
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
-                self.parent.tab_widget.setCurrentIndex(i+1)
+                self.parent.tab_widget.setCurrentIndex(i + 1)
                 # next_widget: FrameStep1 = self.parent.tab_widget.currentWidget()
                 # next_widget.load_suggestions()
             else:
                 self.run_notes.setText(
-                    "ERROR: self.parent is None.\n" +
-                    "Cannot proceed to next step!")
+                    "ERROR: self.parent is None.\n" + "Cannot proceed to next step!"
+                )
         else:  # not ready
             message = "Please select a run."
             if self.select_label.text():
                 message = "Please correct the highlighted fields first."
             QtWidgets.QMessageBox.information(
-                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok)
+                None, Constants.app_title, message, QtWidgets.QMessageBox.Ok
+            )
 
     def proceed_to_step_3(self):
         # ready to proceed
         if self.parent is not None:
             i = self.parent.tab_widget.currentIndex()
-            self.parent.tab_widget.setCurrentIndex(i+1)
+            self.parent.tab_widget.setCurrentIndex(i + 1)
 
     def proceed_to_step_4(self):
         # First of all, there must be at least 1 imported experiment (no longer a requirement)
@@ -1187,20 +1336,20 @@ class FrameStep1(QtWidgets.QDialog):
 
         # Show progress bar while loading imported experiments for learning
         self.progressBarDiag = QtWidgets.QProgressDialog(
-            "Preparing...", "Cancel", 0, len(self.all_files), self)
+            "Preparing...", "Cancel", 0, len(self.all_files), self
+        )
         # Disable auto-reset and auto-close to retain `wasCanceled()` state
         self.progressBarDiag.setAutoReset(False)
         self.progressBarDiag.setAutoClose(False)
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/reset.png')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/reset.png")
         self.progressBarDiag.setWindowIcon(QtGui.QIcon(icon_path))
         self.progressBarDiag.setWindowTitle("Busy")
-        self.progressBarDiag.setWindowFlag(
-            QtCore.Qt.WindowContextHelpButtonHint, False)
-        self.progressBarDiag.setWindowFlag(
-            QtCore.Qt.WindowStaysOnTopHint, True)
+        self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.progressBarDiag.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
         self.progressBarDiag.setFixedSize(
-            int(self.progressBarDiag.width()*1.5), int(self.progressBarDiag.height()*1.1))
+            int(self.progressBarDiag.width() * 1.5),
+            int(self.progressBarDiag.height() * 1.1),
+        )
         self.progressBarDiag.setModal(True)
         if len(self.all_files):
             self.progressBarDiag.show()
@@ -1228,11 +1377,13 @@ class FrameStep1(QtWidgets.QDialog):
 
                 self.file_selected(file_path, loading=True)  # load each run
                 QtCore.QCoreApplication.processEvents()  # redraw plot now
-                if (len(self.run_captured.text()) and
-                    len(self.run_updated.text()) and
-                    len(self.run_analyzed.text()) and
-                        self.feature_table.allSet() and
-                        self.run_figure_valid):
+                if (
+                    len(self.run_captured.text())
+                    and len(self.run_updated.text())
+                    and len(self.run_analyzed.text())
+                    and self.feature_table.allSet()
+                    and self.run_figure_valid
+                ):
                     if not self.save_formulation():
                         Log.w("Unable to save formulation while preparing!")
                         self.progressBarDiag.close()  # close it
@@ -1248,16 +1399,20 @@ class FrameStep1(QtWidgets.QDialog):
             # ready to proceed
             if self.parent is not None:
                 i = self.parent.tab_widget.currentIndex()
-                self.parent.tab_widget.setCurrentIndex(i+1)
+                self.parent.tab_widget.setCurrentIndex(i + 1)
                 # next_widget: FrameStep2 = self.parent.tab_widget.currentWidget()
                 # next_widget.learn()
             else:
                 self.run_notes.setText(
-                    "ERROR: self.parent is None.\n" +
-                    "Cannot proceed to next step!")
+                    "ERROR: self.parent is None.\n" + "Cannot proceed to next step!"
+                )
         else:  # not ready
             QtWidgets.QMessageBox.information(
-                None, Constants.app_title, "Please correct the highlighted fields first.", QtWidgets.QMessageBox.Ok)
+                None,
+                Constants.app_title,
+                "Please correct the highlighted fields first.",
+                QtWidgets.QMessageBox.Ok,
+            )
 
     # NOTE: step_5 would be handled in FrameStep2
 
@@ -1265,16 +1420,19 @@ class FrameStep1(QtWidgets.QDialog):
         # ready to proceed
         if self.parent is not None:
             i = self.parent.tab_widget.currentIndex()
-            self.parent.tab_widget.setCurrentIndex(i+1)
+            self.parent.tab_widget.setCurrentIndex(i + 1)
         else:
             self.run_notes.setText(
-                "ERROR: self.parent is None.\n" +
-                "Cannot proceed to next step!")
+                "ERROR: self.parent is None.\n" + "Cannot proceed to next step!"
+            )
 
     def user_run_clicked(self):
         try:
-            self.file_selected(self.all_files[self.model.itemFromIndex(
-                self.list_view.selectedIndexes()[0]).text()])
+            self.file_selected(
+                self.all_files[
+                    self.model.itemFromIndex(self.list_view.selectedIndexes()[0]).text()
+                ]
+            )
         except IndexError as e:
             if len(self.all_files):
                 raise e
@@ -1305,7 +1463,7 @@ class FrameStep1(QtWidgets.QDialog):
             "Confirm Remove All Runs",
             "Are you sure you want to remove all runs?",
             QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-            QtWidgets.QMessageBox.No
+            QtWidgets.QMessageBox.No,
         )
 
         if reply == QtWidgets.QMessageBox.Yes:
@@ -1343,8 +1501,14 @@ class FrameStep1(QtWidgets.QDialog):
         info_on_success = False
         open_on_success = True
 
-        default_export_folder = os.path.expanduser(os.path.join(
-            "~", "Documents", f"{Constants.app_publisher} {Constants.app_name}", "exported_pdfs"))
+        default_export_folder = os.path.expanduser(
+            os.path.join(
+                "~",
+                "Documents",
+                f"{Constants.app_publisher} {Constants.app_name}",
+                "exported_pdfs",
+            )
+        )
         if os.path.exists(os.path.dirname(default_export_folder)):
             os.makedirs(default_export_folder, exist_ok=True)
         else:
@@ -1366,8 +1530,12 @@ class FrameStep1(QtWidgets.QDialog):
                 # left, top, right, bottom
                 margins = QtCore.QMarginsF(1.0, 1.0, 1.0, 1.0)
                 printer.setPageMargins(
-                    margins.left(), margins.top(), margins.right(), margins.bottom(),
-                    QPrinter.Inch)
+                    margins.left(),
+                    margins.top(),
+                    margins.right(),
+                    margins.bottom(),
+                    QPrinter.Inch,
+                )
                 painter = QtGui.QPainter(printer)
 
                 # Set font
@@ -1380,7 +1548,8 @@ class FrameStep1(QtWidgets.QDialog):
                     index = self.model.index(i, 0)
                     self.list_view.setCurrentIndex(index)
                     self.list_view.selectionModel().select(
-                        index, QtCore.QItemSelectionModel.ClearAndSelect)
+                        index, QtCore.QItemSelectionModel.ClearAndSelect
+                    )
                     self.list_view.clicked.emit(index)
 
                     if i > 0:
@@ -1403,8 +1572,11 @@ class FrameStep1(QtWidgets.QDialog):
                     # Draw page header/title
                     font.setBold(True)
                     painter.setFont(font)
-                    title = "Suggested Experiment" if self.step == 2 else (
-                        "Prediction" if self.step == 5 else "Formulation")
+                    title = (
+                        "Suggested Experiment"
+                        if self.step == 2
+                        else ("Prediction" if self.step == 5 else "Formulation")
+                    )
                     painter.drawText(cell_pad_left, y, f"{title} {i+1}")
                     y += row_height
 
@@ -1413,7 +1585,8 @@ class FrameStep1(QtWidgets.QDialog):
                         header = table_widget.horizontalHeaderItem(col)
                         text = header.text() if header else f"Column {col}"
                         border_rect = QtCore.QRect(
-                            col * col_width, y, col_width, row_height)
+                            col * col_width, y, col_width, row_height
+                        )
                         text_rect = QtCore.QRect(border_rect)
                         text_rect.adjust(cell_pad_left, cell_pad_top, 0, 0)
                         painter.drawText(text_rect, 0, text)
@@ -1439,10 +1612,10 @@ class FrameStep1(QtWidgets.QDialog):
                                 continue  # skip hidden rows
                             skip = False
                             border_rect = QtCore.QRect(
-                                col * col_width, y, col_width, row_height)
+                                col * col_width, y, col_width, row_height
+                            )
                             text_rect = QtCore.QRect(border_rect)
-                            text_rect.adjust(
-                                cell_pad_left, cell_pad_top, 0, 0)
+                            text_rect.adjust(cell_pad_left, cell_pad_top, 0, 0)
                             painter.drawText(text_rect, 0, text)
                             painter.drawRect(border_rect)
                         if not skip:
@@ -1452,14 +1625,16 @@ class FrameStep1(QtWidgets.QDialog):
 
                 if info_on_success:
                     QtWidgets.QMessageBox.information(
-                        None, "Success", "PDF exported successfully!")
+                        None, "Success", "PDF exported successfully!"
+                    )
 
                 if open_on_success:
                     webbrowser.open(file_path)
 
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
-                    None, "Error", f"Failed to export PDF: {str(e)}")
+                    None, "Error", f"Failed to export PDF: {str(e)}"
+                )
 
     def user_run_browse(self) -> None:
         """Open a dialog to browse and add run capture files or directories.
@@ -1473,15 +1648,13 @@ class FrameStep1(QtWidgets.QDialog):
         dir_dialog.setFileMode(QtWidgets.QFileDialog.Directory)
         dir_dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
         dir_dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
-        file_view = dir_dialog.findChild(QtWidgets.QListView, 'listView')
+        file_view = dir_dialog.findChild(QtWidgets.QListView, "listView")
         if file_view:
-            file_view.setSelectionMode(
-                QtWidgets.QAbstractItemView.ExtendedSelection)
+            file_view.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
 
         tree_view = dir_dialog.findChild(QtWidgets.QTreeView)
         if tree_view:
-            tree_view.setSelectionMode(
-                QtWidgets.QAbstractItemView.ExtendedSelection)
+            tree_view.setSelectionMode(QtWidgets.QAbstractItemView.ExtendedSelection)
         prefer_abs = os.path.abspath(Constants.log_prefer_path)
         dir_dialog.setDirectory(prefer_abs)
 
@@ -1506,7 +1679,7 @@ class FrameStep1(QtWidgets.QDialog):
             QtWidgets.QMessageBox.information(
                 self,
                 "No Capture Files Found",
-                f"No capture.zip files found in {len(directories)} selected {directory_ies}."
+                f"No capture.zip files found in {len(directories)} selected {directory_ies}.",
             )
             return
         dir_summary = f"{len(directories)} {directory_ies}"
@@ -1521,7 +1694,7 @@ class FrameStep1(QtWidgets.QDialog):
                 f"However, this step only supports loading a single run.\n"
                 f"Please select a directory containing only one run.",
                 QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Cancel,
-                QtWidgets.QMessageBox.Retry
+                QtWidgets.QMessageBox.Retry,
             )
             if reply == QtWidgets.QMessageBox.Retry:
                 # Try again, using a timer, to prevent stack overflow.
@@ -1537,7 +1710,7 @@ class FrameStep1(QtWidgets.QDialog):
                 f"Found {len(all_capture_files)} run file(s) in {dir_summary}.\n"
                 f"Do you want to load {'all of them' if len(all_capture_files) > 1 else 'it'}?",
                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                QtWidgets.QMessageBox.Yes
+                QtWidgets.QMessageBox.Yes,
             )
             if reply == QtWidgets.QMessageBox.No:
                 return
@@ -1582,11 +1755,7 @@ class FrameStep1(QtWidgets.QDialog):
         # Show progress dialog for batch loading
         file_s = f"file{'s' if len(file_paths) > 1 else ''}"
         progress = QtWidgets.QProgressDialog(
-            f"Loading run {file_s}...",
-            "Cancel",
-            0,
-            len(file_paths),
-            self
+            f"Loading run {file_s}...", "Cancel", 0, len(file_paths), self
         )
         progress.setWindowModality(QtCore.Qt.WindowModal)
         progress.setMinimumDuration(0)
@@ -1600,7 +1769,8 @@ class FrameStep1(QtWidgets.QDialog):
 
             progress.setValue(i)
             progress.setLabelText(
-                f"Loading: {os.path.basename(os.path.dirname(file_path))}")
+                f"Loading: {os.path.basename(os.path.dirname(file_path))}"
+            )
             QtWidgets.QApplication.processEvents()
 
             self.file_selected(file_path, loading=True)
@@ -1613,7 +1783,9 @@ class FrameStep1(QtWidgets.QDialog):
         progress.setValue(len(file_paths))
 
         # Show summary
-        summary_msg = f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        summary_msg = (
+            f"Successfully loaded {loaded_count} of {len(file_paths)} run file(s)."
+        )
         if failed_files:
             summary_msg += f"\n\nFailed to load {len(failed_files)} file(s):"
             for failed in failed_files[:5]:  # Show first 5 failures
@@ -1623,26 +1795,21 @@ class FrameStep1(QtWidgets.QDialog):
                 summary_msg += f"\n  ... and {len(failed_files) - 5} more"
 
         if failed_files:
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Batch Load Complete",
-                summary_msg
-            )
+            QtWidgets.QMessageBox.warning(self, "Batch Load Complete", summary_msg)
         elif loaded_count > 0:
-            QtWidgets.QMessageBox.information(
-                self,
-                "Batch Load Complete",
-                summary_msg
-            )
+            QtWidgets.QMessageBox.information(self, "Batch Load Complete", summary_msg)
 
-    def file_selected(self, path: str | None, cancel: bool = False, loading: bool = False):
+    def file_selected(
+        self, path: str | None, cancel: bool = False, loading: bool = False
+    ):
         # If run already loaded, try saving formulation to write any changed Run Info to XML
         if self.run_file_xml and self.step in [1, 3] and not loading:
             if not self.feature_table.allSet():
                 result = QtWidgets.QMessageBox.question(
                     None,
                     Constants.app_title,
-                    "You have missing feature values.\n\nAre you sure you want to reload the features table?")
+                    "You have missing feature values.\n\nAre you sure you want to reload the features table?",
+                )
                 if result != QtWidgets.QMessageBox.Yes:
                     return
             elif not self.feature_table.isEmpty():
@@ -1691,7 +1858,9 @@ class FrameStep1(QtWidgets.QDialog):
         except ValueError:
             inside = False
         if not inside:
-            Log.e("The selected run is not in your working directory and cannot be used.")
+            Log.e(
+                "The selected run is not in your working directory and cannot be used."
+            )
             Log.e("If desired, please change your working directory to use this run.")
             # deselect file run, will show log_prefer_path next time
             self.run_file_run = None
@@ -1703,22 +1872,26 @@ class FrameStep1(QtWidgets.QDialog):
         for file in namelist:
             if file.endswith(".csv"):
                 self.run_file_run = os.path.join(
-                    os.path.dirname(self.run_file_run), file)
+                    os.path.dirname(self.run_file_run), file
+                )
                 break
 
-        self.select_label.setText(
-            os.path.basename(os.path.dirname(self.run_file_run)))
+        self.select_label.setText(os.path.basename(os.path.dirname(self.run_file_run)))
 
         if self.step == 3:
             item = QtGui.QStandardItem(self.select_label.text())
 
             # Disallow user from selecting same run for Step 1 and Step 3.
             if item.text() == self.parent.tab_widget.widget(0).select_label.text():
-                QtCore.QTimer.singleShot(100, lambda: QtWidgets.QMessageBox.information(
-                    None,
-                    Constants.app_title,
-                    "The selected run from Step 1 cannot also be an imported experiment run.",
-                    QtWidgets.QMessageBox.Ok))
+                QtCore.QTimer.singleShot(
+                    100,
+                    lambda: QtWidgets.QMessageBox.information(
+                        None,
+                        Constants.app_title,
+                        "The selected run from Step 1 cannot also be an imported experiment run.",
+                        QtWidgets.QMessageBox.Ok,
+                    ),
+                )
                 return
 
             found = self.model.findItems(item.text())
@@ -1747,8 +1920,10 @@ class FrameStep1(QtWidgets.QDialog):
             return
         if self.run_file_analyze is None:
             self.run_notes.setTextBackgroundColor(Color.light_yellow)
-            self.run_notes.setText("This run has not been analyzed yet.\n" +
-                                   "Please Analyze and try again!")
+            self.run_notes.setText(
+                "This run has not been analyzed yet.\n"
+                + "Please Analyze and try again!"
+            )
             return
 
         # Initialize Parser object
@@ -1756,8 +1931,7 @@ class FrameStep1(QtWidgets.QDialog):
             xml_parser = Parser(self.run_file_xml)
         except Exception as e:
             self.run_notes.setTextBackgroundColor(Color.light_red)
-            self.run_notes.setText(
-                f"ERROR: Failed to parse XML file!\n{str(e)}")
+            self.run_notes.setText(f"ERROR: Failed to parse XML file!\n{str(e)}")
             Log.e(f"Parser initialization failed: {e}")
             return
 
@@ -1778,13 +1952,15 @@ class FrameStep1(QtWidgets.QDialog):
             self.run_notes.setPlainText(notes if notes else "")
 
             run_name = xml_parser.get_run_name()
-            self.run_name.setText(
-                run_name if run_name else self.select_label.text())
+            self.run_name.setText(run_name if run_name else self.select_label.text())
 
             # Set date/time
             start_time = xml_metrics.get("start", "(Unknown)")
-            self.run_date_time.setText(start_time.replace(
-                "T", " ") if start_time != "(Unknown)" else start_time)
+            self.run_date_time.setText(
+                start_time.replace("T", " ")
+                if start_time != "(Unknown)"
+                else start_time
+            )
 
             # Set duration
             duration = xml_metrics.get("duration", "(Unknown)")
@@ -1804,26 +1980,28 @@ class FrameStep1(QtWidgets.QDialog):
                     username, timestamp = audit_tuple
                     # Remove milliseconds from timestamp
                     if "." in timestamp:
-                        timestamp = timestamp[:timestamp.index(".")]
+                        timestamp = timestamp[: timestamp.index(".")]
                     timestamp = timestamp.replace("T", " ")
                     return f"{username} at {timestamp}"
                 return "(Not Performed)"
 
-            capture_audit = xml_audits.get('CAPTURE', None)
+            capture_audit = xml_audits.get("CAPTURE", None)
             self.run_captured.setText(format_audit(capture_audit))
 
-            params_audit = xml_audits.get('PARAMS', None)
+            params_audit = xml_audits.get("PARAMS", None)
             # If no PARAMS audit, use CAPTURE timestamp
-            self.run_updated.setText(format_audit(
-                params_audit) if params_audit else self.run_captured.text())
+            self.run_updated.setText(
+                format_audit(params_audit) if params_audit else self.run_captured.text()
+            )
 
-            analyze_audit = xml_audits.get('ANALYZE', None)
+            analyze_audit = xml_audits.get("ANALYZE", None)
             self.run_analyzed.setText(format_audit(analyze_audit))
 
         except Exception as e:
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText(
-                f"ERROR: Failed to extract run information!\n{str(e)}")
+                f"ERROR: Failed to extract run information!\n{str(e)}"
+            )
             Log.e(f"Failed to extract run info: {e}")
             return
 
@@ -1841,7 +2019,8 @@ class FrameStep1(QtWidgets.QDialog):
         except Exception as e:
             self.run_notes.setTextBackgroundColor(Color.light_red)
             self.run_notes.setText(
-                f"ERROR: Failed to parse formulation data!\n{str(e)}")
+                f"ERROR: Failed to parse formulation data!\n{str(e)}"
+            )
             Log.e(f"Failed to parse formulation: {e}")
             return
 
@@ -1874,13 +2053,15 @@ class FrameStep1(QtWidgets.QDialog):
                 run_features["Value"][0] = protein_name
 
             # Protein concentration
-            if formulation_obj.protein.concentration is not None and found_protein.get("conc", True):
-                run_features["Value"][1] = str(
-                    formulation_obj.protein.concentration)
+            if formulation_obj.protein.concentration is not None and found_protein.get(
+                "conc", True
+            ):
+                run_features["Value"][1] = str(formulation_obj.protein.concentration)
 
             # Protein characteristics from database
             db_protein = self.parent.ing_ctrl.get_protein_by_name(
-                name=protein.ingredient.name)
+                name=protein.ingredient.name
+            )
             if db_protein:
                 if db_protein.class_type:
                     run_features["Value"][2]["selected"] = db_protein.class_type.value
@@ -1901,38 +2082,54 @@ class FrameStep1(QtWidgets.QDialog):
 
             # Buffer concentration
             if formulation_obj.buffer.concentration and found_buffer.get("conc", True):
-                run_features["Value"][7] = str(
-                    formulation_obj.buffer.concentration)
+                run_features["Value"][7] = str(formulation_obj.buffer.concentration)
 
             # Buffer pH from database
             db_buffer = self.parent.ing_ctrl.get_buffer_by_name(
-                name=buffer.ingredient.name)
+                name=buffer.ingredient.name
+            )
             if db_buffer and db_buffer.pH:
                 run_features["Value"][8] = db_buffer.pH
 
         # Surfactant (indices 9-10)
-        if surfactant and surfactant.ingredient.name and found_surfactant.get("name", True):
+        if (
+            surfactant
+            and surfactant.ingredient.name
+            and found_surfactant.get("name", True)
+        ):
             surfactant_name = normalize_name(surfactant.ingredient.name)
             if isinstance(run_features["Value"][9], dict):
                 run_features["Value"][9]["selected"] = surfactant_name
             else:
                 run_features["Value"][9] = surfactant_name
 
-            if formulation_obj.surfactant.concentration is not None and found_surfactant.get("conc", True):
+            if (
+                formulation_obj.surfactant.concentration is not None
+                and found_surfactant.get("conc", True)
+            ):
                 run_features["Value"][10] = str(
-                    formulation_obj.surfactant.concentration)
+                    formulation_obj.surfactant.concentration
+                )
 
         # Stabilizer (indices 11-12)
-        if stabilizer and stabilizer.ingredient.name and found_stabilizer.get("name", True):
+        if (
+            stabilizer
+            and stabilizer.ingredient.name
+            and found_stabilizer.get("name", True)
+        ):
             stabilizer_name = normalize_name(stabilizer.ingredient.name)
             if isinstance(run_features["Value"][11], dict):
                 run_features["Value"][11]["selected"] = stabilizer_name
             else:
                 run_features["Value"][11] = stabilizer_name
 
-            if formulation_obj.stabilizer.concentration is not None and found_stabilizer.get("conc", True):
+            if (
+                formulation_obj.stabilizer.concentration is not None
+                and found_stabilizer.get("conc", True)
+            ):
                 run_features["Value"][12] = str(
-                    formulation_obj.stabilizer.concentration)
+                    formulation_obj.stabilizer.concentration
+                )
 
         # Salt (indices 13-14)
         if salt and salt.ingredient.name and found_salt.get("name", True):
@@ -1942,21 +2139,28 @@ class FrameStep1(QtWidgets.QDialog):
             else:
                 run_features["Value"][13] = salt_name
 
-            if formulation_obj.salt.concentration is not None and found_salt.get("conc", True):
-                run_features["Value"][14] = str(
-                    formulation_obj.salt.concentration)
+            if formulation_obj.salt.concentration is not None and found_salt.get(
+                "conc", True
+            ):
+                run_features["Value"][14] = str(formulation_obj.salt.concentration)
 
         # Excipient (indices 15-16)
-        if excipient and excipient.ingredient.name and found_excipient.get("name", True):
+        if (
+            excipient
+            and excipient.ingredient.name
+            and found_excipient.get("name", True)
+        ):
             excipient_name = normalize_name(excipient.ingredient.name)
             if isinstance(run_features["Value"][15], dict):
                 run_features["Value"][15]["selected"] = excipient_name
             else:
                 run_features["Value"][15] = excipient_name
 
-            if formulation_obj.excipient.concentration is not None and found_excipient.get("conc", True):
-                run_features["Value"][16] = str(
-                    formulation_obj.excipient.concentration)
+            if (
+                formulation_obj.excipient.concentration is not None
+                and found_excipient.get("conc", True)
+            ):
+                run_features["Value"][16] = str(formulation_obj.excipient.concentration)
 
         # Temperature (index 17)
         if temp and not np.isnan(temp):
@@ -1974,7 +2178,7 @@ class FrameStep1(QtWidgets.QDialog):
             (9, surfactant, "Surfactant Type", Surfactant),
             (11, stabilizer, "Stabilizer Type", Stabilizer),
             (13, salt, "Salt Type", Salt),
-            (15, excipient, "Excipient Type", Excipient)
+            (15, excipient, "Excipient Type", Excipient),
         ]
 
         for idx, ing, label, ingredient_class in ingredient_checks:
@@ -1989,17 +2193,21 @@ class FrameStep1(QtWidgets.QDialog):
                     choices = []
 
                 value = str(selected).strip()
-                if value.casefold() not in [str(c).casefold() for c in choices] and \
-                   value.casefold() != "none" and len(value) != 0:
+                if (
+                    value.casefold() not in [str(c).casefold() for c in choices]
+                    and value.casefold() != "none"
+                    and len(value) != 0
+                ):
                     reload_ingredients = True
 
                     # Skip protein class check (idx 2) as it's handled separately
                     if idx == 2:
-                        Log.w(f"Unknown Protein Class Type: \"{value}\"")
+                        Log.w(f'Unknown Protein Class Type: "{value}"')
                     else:
-                        Log.w(f"Adding new {label}: \"{value}\"")
+                        Log.w(f'Adding new {label}: "{value}"')
                         self.parent.ing_ctrl.add(
-                            ingredient_class(enc_id=-1, name=value))
+                            ingredient_class(enc_id=-1, name=value)
+                        )
 
         # Reload ingredient choices if needed
         if reload_ingredients:
@@ -2026,25 +2234,25 @@ class FrameStep1(QtWidgets.QDialog):
             minidx = np.argmin(self.profile_viscos)
             maxidx = np.argmax(self.profile_viscos)
             Log.i(
-                f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP.")
+                f"Viscosity profile ranges from {self.profile_viscos[minidx]:.2f} to {self.profile_viscos[maxidx]:.2f} cP."
+            )
 
             # Helper function for smooth plotting
             def smooth_log_interpolate(x, y, num=200, expand_factor=0.05):
                 xlog = np.log10(x)
                 ylog = np.log10(y)
-                f_interp = interp1d(xlog, ylog, kind='linear',
-                                    fill_value='extrapolate')
+                f_interp = interp1d(xlog, ylog, kind="linear", fill_value="extrapolate")
                 xlog_min, xlog_max = xlog.min(), xlog.max()
                 margin = (xlog_max - xlog_min) * expand_factor
                 xs_log = np.linspace(xlog_min - margin, xlog_max + margin, num)
                 xs = 10**xs_log
-                ys = 10**f_interp(xs_log)
+                ys = 10 ** f_interp(xs_log)
                 return xs, ys
 
             # Create plot with modern styling
             ax = self.run_figure.add_subplot(111)
-            ax.set_facecolor('#ffffff')
-            self.run_figure.patch.set_facecolor('#ffffff')
+            ax.set_facecolor("#ffffff")
+            self.run_figure.patch.set_facecolor("#ffffff")
 
             # Smooth interpolation for plotting
             shear_arr = np.asarray(self.profile_shears)
@@ -2052,13 +2260,29 @@ class FrameStep1(QtWidgets.QDialog):
             xs, ys = smooth_log_interpolate(shear_arr, viscos_arr)
 
             # Color scheme - teal/cyan palette
-            main_color = '#00A3DA'  # Deep cyan
+            main_color = "#00A3DA"  # Deep cyan
 
             # Plot the viscosity profile
-            ax.plot(xs, ys, '-', lw=2.5, color=main_color,
-                    label='Measured Viscosity', zorder=3, alpha=0.95)
-            ax.scatter(shear_arr, viscos_arr, s=80, color=main_color, zorder=5,
-                       edgecolors='white', linewidths=2.5, alpha=1)
+            ax.plot(
+                xs,
+                ys,
+                "-",
+                lw=2.5,
+                color=main_color,
+                label="Measured Viscosity",
+                zorder=3,
+                alpha=0.95,
+            )
+            ax.scatter(
+                shear_arr,
+                viscos_arr,
+                s=80,
+                color=main_color,
+                zorder=5,
+                edgecolors="white",
+                linewidths=2.5,
+                alpha=1,
+            )
 
             # Set scales and limits
             ax.set_xscale("log")
@@ -2067,39 +2291,53 @@ class FrameStep1(QtWidgets.QDialog):
             ax.set_ylim(self.calc_limits(yall=viscos_arr))
 
             # Labels and title with modern styling
-            ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, fontweight='600',
-                          color='#2d3436')
-            ax.set_ylabel("Viscosity (cP)", fontsize=11, fontweight='600',
-                          color='#2d3436')
-            ax.set_title("Viscosity Profile", fontsize=13, fontweight='600', pad=15,
-                         color='#2d3436')
+            ax.set_xlabel(
+                "Shear Rate (s⁻¹)", fontsize=11, fontweight="600", color="#2d3436"
+            )
+            ax.set_ylabel(
+                "Viscosity (cP)", fontsize=11, fontweight="600", color="#2d3436"
+            )
+            ax.set_title(
+                "Viscosity Profile",
+                fontsize=13,
+                fontweight="600",
+                pad=15,
+                color="#2d3436",
+            )
 
             # Grid styling
-            ax.grid(True, which="major", ls='-',
-                    alpha=0.15, color='#636e72', lw=0.8)
-            ax.grid(True, which="minor", ls='-',
-                    alpha=0.07, color='#b2bec3', lw=0.5)
+            ax.grid(True, which="major", ls="-", alpha=0.15, color="#636e72", lw=0.8)
+            ax.grid(True, which="minor", ls="-", alpha=0.07, color="#b2bec3", lw=0.5)
 
             # Axis formatting
-            ax.xaxis.set_major_formatter(FormatStrFormatter('%.0e'))
-            ax.tick_params(axis='both', which='major', labelsize=9,
-                           colors='#2d3436', width=1)
-            ax.tick_params(axis='both', which='minor', labelsize=8,
-                           colors='#636e72', width=0.5)
+            ax.xaxis.set_major_formatter(FormatStrFormatter("%.0e"))
+            ax.tick_params(
+                axis="both", which="major", labelsize=9, colors="#2d3436", width=1
+            )
+            ax.tick_params(
+                axis="both", which="minor", labelsize=8, colors="#636e72", width=0.5
+            )
 
             # Spine styling - hide top and right, style left and bottom
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_color('#dfe6e9')
-            ax.spines['bottom'].set_color('#dfe6e9')
-            ax.spines['left'].set_linewidth(1.5)
-            ax.spines['bottom'].set_linewidth(1.5)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["left"].set_color("#dfe6e9")
+            ax.spines["bottom"].set_color("#dfe6e9")
+            ax.spines["left"].set_linewidth(1.5)
+            ax.spines["bottom"].set_linewidth(1.5)
 
             # Legend with modern styling
-            legend = ax.legend(loc='best', frameon=True, fancybox=False,
-                               shadow=False, fontsize=9, framealpha=1,
-                               edgecolor='#dfe6e9', borderpad=1)
-            legend.get_frame().set_facecolor('#ffffff')
+            legend = ax.legend(
+                loc="best",
+                frameon=True,
+                fancybox=False,
+                shadow=False,
+                fontsize=9,
+                framealpha=1,
+                edgecolor="#dfe6e9",
+                borderpad=1,
+            )
+            legend.get_frame().set_facecolor("#ffffff")
             legend.get_frame().set_linewidth(1)
 
             # Add value annotations with modern styling
@@ -2107,33 +2345,49 @@ class FrameStep1(QtWidgets.QDialog):
             y_range = np.log10(ylim[1]) - np.log10(ylim[0])
 
             for i in range(len(viscos_arr)):
-                annotation = f'{viscos_arr[i]:.1f}'
+                annotation = f"{viscos_arr[i]:.1f}"
                 y_offset = viscos_arr[i] * (10 ** (y_range * 0.06))
-                ax.annotate(annotation,
-                            xy=(shear_arr[i], viscos_arr[i]),
-                            xytext=(shear_arr[i], y_offset),
-                            ha='center', va='bottom',
-                            fontsize=8,
-                            color='#2d3436',
-                            weight='500',
-                            bbox=dict(boxstyle='round,pad=0.4',
-                                      facecolor='white',
-                                      edgecolor=main_color,
-                                      alpha=0.95,
-                                      linewidth=1.2),
-                            arrowprops=dict(arrowstyle='-',
-                                            connectionstyle='arc3,rad=0',
-                                            color=main_color,
-                                            alpha=0.4,
-                                            lw=1.2))
+                ax.annotate(
+                    annotation,
+                    xy=(shear_arr[i], viscos_arr[i]),
+                    xytext=(shear_arr[i], y_offset),
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="#2d3436",
+                    weight="500",
+                    bbox=dict(
+                        boxstyle="round,pad=0.4",
+                        facecolor="white",
+                        edgecolor=main_color,
+                        alpha=0.95,
+                        linewidth=1.2,
+                    ),
+                    arrowprops=dict(
+                        arrowstyle="-",
+                        connectionstyle="arc3,rad=0",
+                        color=main_color,
+                        alpha=0.4,
+                        lw=1.2,
+                    ),
+                )
 
             # Add timestamp in corner
             from datetime import datetime
+
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-            ax.text(0.98, 0.02, timestamp,
-                    transform=ax.transAxes, fontsize=7,
-                    verticalalignment='bottom', horizontalalignment='right',
-                    alpha=0.4, style='italic', color='#636e72')
+            ax.text(
+                0.98,
+                0.02,
+                timestamp,
+                transform=ax.transAxes,
+                fontsize=7,
+                verticalalignment="bottom",
+                horizontalalignment="right",
+                alpha=0.4,
+                style="italic",
+                color="#636e72",
+            )
 
             self.run_figure.tight_layout()
             self.run_figure_valid = True
@@ -2141,20 +2395,30 @@ class FrameStep1(QtWidgets.QDialog):
         else:
             # No valid data - show error message
             ax = self.run_figure.add_subplot(111)
-            ax.set_facecolor('#ffffff')
-            self.run_figure.patch.set_facecolor('#ffffff')
-            ax.text(0.5, 0.5, "Invalid Results",
-                    transform=ax.transAxes,
-                    ha='center', va='center',
-                    fontsize=12, fontweight='600',
-                    bbox=dict(facecolor='#fff3cd', edgecolor='#856404',
-                              boxstyle='round,pad=0.8', linewidth=2))
+            ax.set_facecolor("#ffffff")
+            self.run_figure.patch.set_facecolor("#ffffff")
+            ax.text(
+                0.5,
+                0.5,
+                "Invalid Results",
+                transform=ax.transAxes,
+                ha="center",
+                va="center",
+                fontsize=12,
+                fontweight="600",
+                bbox=dict(
+                    facecolor="#fff3cd",
+                    edgecolor="#856404",
+                    boxstyle="round,pad=0.8",
+                    linewidth=2,
+                ),
+            )
             ax.set_xticks([])
             ax.set_yticks([])
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_visible(False)
-            ax.spines['bottom'].set_visible(False)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["left"].set_visible(False)
+            ax.spines["bottom"].set_visible(False)
 
         self.run_canvas.draw()
 
@@ -2207,4 +2471,5 @@ class FrameStep1(QtWidgets.QDialog):
             return
 
         self.select_model_label.setText(
-            path.split('\\')[-1].split('/')[-1].split('.')[0])
+            path.split("\\")[-1].split("/")[-1].split(".")[0]
+        )

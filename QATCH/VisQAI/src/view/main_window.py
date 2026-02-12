@@ -223,7 +223,8 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
         # Handle valid license
         if is_valid_license:
-            status = license_data.get("status", "unknown")
+            # NOTE: `status` is already normalized above:
+            # status = license_data.get("status", "unknown")
             if status == LicenseStatus.ADMIN:
                 self.setCentralWidget(self.tab_widget)
                 self._update_status_bar(
@@ -421,6 +422,15 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
 
 
 class VisQAIWindow(BaseVisQAIWindow):
+    IO_CLAMP_RANGE = {
+        "Protein_conc": (0, 500),
+        "Buffer_conc": (0, 150),
+        "Surfactant_conc": (0, 0.30),
+        "Stabilizer_conc": (0, 0.15),
+        "Salt_conc": (0, 300),
+        "Excipient_conc": (0, 300),
+        "Temperature": (8, 40),
+    }
     TAG = "[VisQAIWindow]"
 
     def __init__(self, parent=None):
