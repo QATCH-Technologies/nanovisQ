@@ -49,12 +49,11 @@ class QATCH:
             userpath = os.path.expandvars("%USERPROFILE%")
             docspath = os.path.join(userpath, "Documents", "QATCH nanovisQ")
             if os.path.isdir(docspath):
-                current_cwd = os.getcwd()
-                if current_cwd != docspath:
+                if os.path.normcase(os.getcwd()) != os.path.normcase(docspath):
                     try:
                         os.chdir(docspath)
-                    except Exception as e:
-                        raise e
+                    except OSError as ose:
+                        raise ose
 
         self.win = None
         if USE_PYI_SPLASH:
