@@ -4170,7 +4170,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4246,10 +4246,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             else:
                 audits.setAttribute("signature", audits_signature)
 
-            with open(self.xml_path, "w") as f:
-                xml_str = run.toxml()
-                f.write(xml_str)
-                Log.d(f"Added <audit> to XML file: {self.xml_path}")
+            try:
+                with open(xml_path, "w", encoding="utf-8") as f:
+                    xml_str = run.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
+                    f.write(xml_str)
+                    Log.d(f"Added <audit> to XML file: {xml_path}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Filesystem error writing XML: {xml_path}")
+                Log.e("Error Details:", ose.strerror)
+                self.detect_change()
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {xml_path}")
+                Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def appendPointsToXml(self, poi_vals):
         data_path = self.loaded_datapath
@@ -4258,7 +4268,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4289,10 +4299,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             signature = hash.hexdigest()
             points.setAttribute("signature", signature)
 
-            with open(self.xml_path, "w") as f:
-                xml_str = run.toxml()
-                f.write(xml_str)
-                Log.d(f"Added <points> to XML file: {self.xml_path}")
+            try:
+                with open(xml_path, "w", encoding="utf-8") as f:
+                    xml_str = run.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
+                    f.write(xml_str)
+                    Log.d(f"Added <points> to XML file: {xml_path}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Filesystem error writing XML: {xml_path}")
+                Log.e("Error Details:", ose.strerror)
+                self.detect_change()
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {xml_path}")
+                Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def markerMoveFinished(self, marker):
         ax = self.graphWidget
@@ -4441,7 +4461,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Read the XML file's content.
             xml_text = ""
-            with open(self.xml_path, "r") as f:
+            with open(self.xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
 
             # Decode if the content is in bytes format.
@@ -5875,11 +5895,19 @@ class AnalyzerWorker(QtCore.QObject):
                     signature = hash.hexdigest()
                     batch_params.setAttribute("signature", signature)
 
-                    with open(self.xml_path, "w") as f:
-                        xml_str = doc.toxml()
-                        f.write(xml_str)
-                        Log.d(
-                            f"Added <batch_params> to XML file: {self.xml_path}")
+                    try:
+                        with open(self.xml_path, "w", encoding="utf-8") as f:
+                            xml_str = doc.toxml(encoding='ascii').decode(
+                                encoding='utf-8', errors='ignore')
+                            f.write(xml_str)
+                            Log.d(
+                                f"Added <batch_params> to XML file: {self.xml_path}")
+                    except OSError as ose:  # FileNotFoundError
+                        Log.e(f"Filesystem error writing XML: {self.xml_path}")
+                        Log.e("Error Details:", ose.strerror)
+                    except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                        Log.e(f"Unicode error writing XML: {self.xml_path}")
+                        Log.e("Error Details:", ue.reason)
                 # END BATCH PARAMS INSERT #
 
             self.update(status_label)
