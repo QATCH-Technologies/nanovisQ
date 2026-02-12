@@ -2891,10 +2891,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                 elif os.path.exists(notes_path):
                     os.remove(notes_path)
         except OSError as ose:  # FileNotFoundError
-            Log.e(f"Filesystem error writing XML: {self.xml_path}")
+            Log.e(f"Filesystem error writing XML: {notes_path}")
             Log.e("Error Details:", ose.strerror)
         except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
-            Log.e(f"Unicode error writing XML: {self.xml_path}")
+            Log.e(f"Unicode error writing XML: {notes_path}")
             Log.e("Error Details:", ue.reason)
         except Exception as e:
             Log.e("ERROR:", e)
