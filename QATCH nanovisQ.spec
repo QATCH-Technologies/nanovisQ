@@ -43,6 +43,11 @@ upx_exclude = [
     'Qt5Multimedia.dll',
     'PyQt5',
 
+# Torch and ultralytics YOLO dependencies (fail when compressed)
+    'torch.dll',
+    'torch_global_deps.dll',
+    'c10.dll',
+
 # TensorFlow and dependencies (very sensitive to compression)
     'tensorflow',
     'tensorflow_intel',
@@ -88,7 +93,8 @@ a = Analysis(
     binaries=[
         ( ".venv\\Lib\\site-packages\\py4j\\*.py", "py4j" ),
         ( ".venv\\Lib\\site-packages\\xgboost\\lib\\xgboost.dll", "xgboost\\lib" ),
-        ( ".venv\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" )
+        ( ".venv\\Lib\\site-packages\\xgboost\\VERSION", "xgboost" ),
+        ( ".venv\\Lib\\site-packages\\yaml\\*.py", "yaml" )
     ],
     datas=data_files,
 # Hidden imports may be required for PyInstaller to identify deeply nested or runtime-loaded modules
