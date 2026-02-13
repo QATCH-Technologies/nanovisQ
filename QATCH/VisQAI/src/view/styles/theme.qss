@@ -1,0 +1,703 @@
+/* ===========================================================================
+   VISCOSITY AI - LIGHT THEME STYLESHEET
+   A clean, professional Qt stylesheet for prediction UI components
+   =========================================================================== */
+
+/* ===========================================================================
+   COLOR PALETTE
+   ===========================================================================
+   Primary Blues (Main Brand Colors):
+   - #2596be - Deep Blue (primary text, borders, main actions)
+   - #13B5F0 - Bright Blue (pressed states, active elements)
+   - #17C4F3 - Cyan Bright (primary buttons, focus states)
+   - #4EC4EB - Cyan Medium (hover states, selections)
+   - #64CDF5 - Cyan Light (hover backgrounds, subtle highlights)
+   - #8DD9F7 - Cyan Pale (backgrounds, cards, soft accents)
+   
+   Supporting Colors:
+   - #4caf50 - Success Green (measured data, positive actions)
+   - #ff9800 - Warning Orange (caution states)
+   - #f44336 - Error Red (destructive actions)
+   
+   Neutrals:
+   - #24292f - Text Dark
+   - #6b7280 - Text Muted
+   - #d1d5db - Border Light
+   - #e5e7eb - Border Lighter
+   - #f3f4f6 - Background Light
+   - #f9fafb - Background Lightest
+   - #ffffff - White
+   =========================================================================== */
+
+/* ===========================================================================
+   1. CONTAINER STYLING
+   =========================================================================== */
+QWidget#leftPanel {
+    background-color: transparent; 
+    border-right: 1px solid #e5e7eb;
+}
+
+QScrollArea {
+    background-color: transparent;
+    border: none;
+}
+
+QWidget#scrollContent {
+    background-color: transparent;
+}
+
+/* Top Bar */
+QWidget#topBar {
+    background-color: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+/* ===========================================================================
+   2. PREDICTION CARDS
+   =========================================================================== */
+QFrame[class="card"] {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    margin-top: 4px;
+    margin-bottom: 8px;
+    margin-left: 2px;
+    margin-right: 4px;
+}
+
+QFrame[class="card"]:hover {
+    border: 1px solid #4EC4EB;
+    background-color: #f9fafb;
+}
+
+/* Measured Data State */
+QFrame[class="card"][measured="true"] {
+    background-color: #f0fdf4;
+    border: 1px solid #4caf50;
+}
+
+QFrame[class="card"][measured="true"]:hover {
+    border: 1px solid #22c55e;
+}
+
+/* Selected State */
+QFrame[class="card"][selected="true"] {
+    background-color: #e6f7fd;
+    border: 2px solid #2596be;
+}
+
+/* ===========================================================================
+   3. TYPOGRAPHY & HEADERS
+   =========================================================================== */
+QFrame[class="card"] QLabel {
+    color: #24292f;
+}
+
+QLabel[class="header-title"] {
+    font-weight: 600;
+    color: #2596be;
+    font-size: 10pt;
+}
+
+QFrame[class="divider"] {
+    color: #e5e7eb;
+}
+
+/* ===========================================================================
+   4. INPUT CONTROLS (LineEdit, ComboBox, SpinBoxes)
+   =========================================================================== */
+
+/* --- Common Input Styling --- */
+QFrame[class="card"] QLineEdit, 
+QFrame[class="card"] QComboBox, 
+QFrame[class="card"] QDoubleSpinBox,
+QFrame[class="card"] QSpinBox {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px 8px;
+    min-height: 24px;
+    color: #24292f;
+    selection-background-color: #4EC4EB;
+}
+
+/* Focus State */
+QFrame[class="card"] QLineEdit:focus, 
+QFrame[class="card"] QComboBox:focus, 
+QFrame[class="card"] QDoubleSpinBox:focus,
+QFrame[class="card"] QSpinBox:focus {
+    border: 1px solid #17C4F3;
+    background-color: #ffffff;
+}
+
+/* --- ComboBox Specific --- */
+QFrame[class="card"] QComboBox {
+    padding-right: 20px;
+}
+
+QFrame[class="card"] QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+    width: 24px;
+    border-left: 1px solid #d1d5db;
+    border-top-right-radius: 3px;
+    border-bottom-right-radius: 3px;
+    background-color: #f3f4f6;
+}
+
+QFrame[class="card"] QComboBox::drop-down:hover {
+    background-color: #e6f7fd;
+    border-left-color: #4EC4EB;
+}
+
+QFrame[class="card"] QComboBox::down-arrow {
+    width: 12px;
+    height: 12px;
+    image: url("{{ICON_DOWN}}");
+}
+
+/* --- SpinBox Specific --- */
+QFrame[class="card"] QDoubleSpinBox,
+QFrame[class="card"] QSpinBox {
+    padding-right: 24px;
+}
+
+/* Up Button */
+QFrame[class="card"] QDoubleSpinBox::up-button, 
+QFrame[class="card"] QSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    border-left: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+    border-top-right-radius: 3px;
+    background-color: #f3f4f6;
+}
+
+/* Down Button */
+QFrame[class="card"] QDoubleSpinBox::down-button, 
+QFrame[class="card"] QSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 22px;
+    border-left: 1px solid #d1d5db;
+    border-bottom-right-radius: 3px;
+    background-color: #f3f4f6;
+}
+
+/* Up Arrow */
+QFrame[class="card"] QDoubleSpinBox::up-arrow, 
+QFrame[class="card"] QSpinBox::up-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("{{ICON_UP}}");
+}
+
+/* Down Arrow */
+QFrame[class="card"] QDoubleSpinBox::down-arrow, 
+QFrame[class="card"] QSpinBox::down-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("{{ICON_DOWN}}");
+}
+
+/* Hover Effects */
+QFrame[class="card"] QDoubleSpinBox::up-button:hover,
+QFrame[class="card"] QDoubleSpinBox::down-button:hover,
+QFrame[class="card"] QSpinBox::up-button:hover,
+QFrame[class="card"] QSpinBox::down-button:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
+}
+
+/* ===========================================================================
+   5. BUTTONS
+   =========================================================================== */
+QFrame[class="card"] QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-weight: 500;
+    color: #24292f;
+}
+
+QFrame[class="card"] QPushButton:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
+    color: #2596be;
+}
+
+QFrame[class="card"] QPushButton:pressed {
+    background-color: #d1f2fc;
+    border-color: #13B5F0;
+}
+
+QFrame[class="card"] QPushButton[class="primary"] {
+    background-color: #e6f7fd;
+    color: #2596be;
+    border: 1px solid #4EC4EB;
+}
+
+QFrame[class="card"] QPushButton[class="primary"]:hover {
+    background-color: #17C4F3;
+    color: #ffffff;
+    border-color: #17C4F3;
+}
+
+QFrame[class="card"] QPushButton[class="primary"]:pressed {
+    background-color: #13B5F0;
+    border-color: #13B5F0;
+}
+
+/* Browse Model Button */
+QPushButton#btnBrowseModel {
+    qproperty-icon: url("{{ICON_BROWSE_MODEL}}");
+    qproperty-iconSize: 18px 18px;
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+}
+
+QPushButton#btnBrowseModel:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
+}
+
+/* ===========================================================================
+   6. SPECIAL INPUTS
+   =========================================================================== */
+
+/* Title Input (Underline Style) */
+QFrame[class="card"] QLineEdit[class="title-input"] {
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid #d1d5db;
+    border-radius: 0px;
+    padding: 2px 0px;
+    font-size: 10pt;
+    font-weight: 500;
+    color: #24292f;
+}
+
+QFrame[class="card"] QLineEdit[class="title-input"]:focus {
+    border-bottom: 2px solid #17C4F3;
+    background-color: transparent;
+}
+
+/* ===========================================================================
+   7. SLIDERS
+   =========================================================================== */
+
+/* Temperature Slider */
+QSlider::groove:horizontal {
+    border: 1px solid #d1d5db;
+    height: 6px;
+    background: #f3f4f6;
+    margin: 2px 0;
+    border-radius: 3px;
+}
+
+QSlider::handle:horizontal {
+    background: #ffffff;
+    border: 2px solid #17C4F3;
+    width: 16px;
+    height: 16px;
+    margin: -6px 0;
+    border-radius: 9px;
+}
+
+QSlider::handle:horizontal:hover {
+    background: #17C4F3;
+    border: 2px solid #13B5F0;
+}
+
+QSlider::sub-page:horizontal {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                                stop:0 #17C4F3, stop:1 #4EC4EB);
+    border-radius: 3px;
+}
+
+QSlider::add-page:horizontal {
+    background: #e5e7eb;
+    border-radius: 3px;
+}
+
+/* ===========================================================================
+   8. TOOLBAR BUTTONS (Top Bar)
+   =========================================================================== */
+
+/* Circle Toolbar Buttons */
+QToolButton {
+    border: 1px solid transparent;
+    border-radius: 16px;
+    background: transparent;
+}
+
+QToolButton:hover {
+    background-color: #e6f7fd;
+}
+
+QToolButton:pressed {
+    background-color: #d1f2fc;
+}
+
+QToolButton:checked {
+    background-color: #d1f2fc;
+    border: 1px solid #4EC4EB;
+}
+
+/* Active State (for filter button) */
+QToolButton[active="true"] {
+    background-color: #d1f2fc;
+    border: 1px solid #2596be;
+}
+
+/* Delete Button (Red Hover) */
+QToolButton#btnDelete {
+    border: 1px solid transparent;
+    border-radius: 16px;
+    background: transparent;
+}
+
+QToolButton#btnDelete:hover {
+    background-color: #ffebee;
+    color: #d32f2f;
+}
+
+QToolButton#btnDelete:pressed {
+    background-color: #ffcdd2;
+}
+
+/* ===========================================================================
+   9. SEARCH BAR
+   =========================================================================== */
+QLineEdit#searchBar {
+    border: 1px solid #d1d5db;
+    border-radius: 16px;
+    padding: 0 12px;
+    background: #ffffff;
+    height: 32px;
+}
+
+QLineEdit#searchBar:focus {
+    border: 1px solid #17C4F3;
+    background-color: #f9fafb;
+}
+
+/* ===========================================================================
+   10. SEPARATORS & DIVIDERS
+   =========================================================================== */
+QFrame[frameShape="4"] {  /* VLine */
+    color: #e0e0e0;
+}
+
+QFrame[frameShape="5"] {  /* HLine */
+    color: #e0e0e0;
+}
+
+/* ===========================================================================
+   11. PLACEHOLDER / EMPTY STATE
+   =========================================================================== */
+QWidget#placeholderWidget {
+    background-color: transparent;
+}
+
+QLabel#placeholderIcon {
+    /* Icon styling handled by code - this ensures no conflicts */
+}
+
+QLabel#placeholderText {
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 10px 20px;
+}
+
+/* ===========================================================================
+   12. DRAG & DROP PLACEHOLDER
+   =========================================================================== */
+QWidget#dragPlaceholder {
+    background-color: rgba(78, 196, 235, 0.1);  /* Cyan medium with 10% opacity */
+    border: 1px dashed #4EC4EB;
+    border-radius: 6px;
+}
+
+/* ===========================================================================
+   13. FILTER WIDGET (Dropdown Panel)
+   =========================================================================== */
+PredictionFilterWidget {
+    background-color: #ffffff;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    border: 1px solid #d1d5db;
+    border-top: none;
+}
+
+/* Filter Widget Labels */
+PredictionFilterWidget QLabel {
+    font-weight: 600;
+    color: #6b7280;
+    font-size: 11px;
+}
+
+/* Filter Widget GroupBoxes */
+PredictionFilterWidget QGroupBox {
+    font-weight: bold;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    margin-top: 6px;
+    padding-top: 10px;
+}
+
+PredictionFilterWidget QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 3px;
+    color: #2596be;
+    font-weight: 600;
+}
+
+/* Filter Model Input */
+QLineEdit#filterModelInput {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px 8px;
+    background-color: #ffffff;
+}
+
+QLineEdit#filterModelInput:focus {
+    border: 1px solid #17C4F3;
+}
+
+/* Reset Filters Button */
+QPushButton#btnResetFilters {
+    color: #6b7280;
+    border: none;
+    font-weight: 500;
+    background-color: transparent;
+    padding: 6px 12px;
+}
+
+QPushButton#btnResetFilters:hover {
+    color: #2596be;
+    background-color: #f9fafb;
+    border-radius: 4px;
+}
+
+/* Apply Filters Button */
+QPushButton#btnApplyFilters {
+    background-color: #17C4F3;
+    color: white;
+    font-weight: bold;
+    border-radius: 4px;
+    padding: 6px 20px;
+    border: none;
+}
+
+QPushButton#btnApplyFilters:hover {
+    background-color: #4EC4EB;
+}
+
+QPushButton#btnApplyFilters:pressed {
+    background-color: #13B5F0;
+}
+
+/* ===========================================================================
+   14. FORMULATION CARD COMPONENTS
+   =========================================================================== */
+
+/* Drag Handle */
+QFrame[class="card"] DragHandle {
+    background: transparent;
+    margin-top: 5px;
+}
+
+/* Card Delete Button */
+QFrame[class="card"] QPushButton#btnCardDelete {
+    border-radius: 16px;
+    background-color: transparent;
+    border: 1px solid transparent;
+}
+
+QFrame[class="card"] QPushButton#btnCardDelete:hover {
+    background-color: #ffebee;
+    color: #d32f2f;
+}
+
+QFrame[class="card"] QPushButton#btnCardDelete:pressed {
+    background-color: #ffcdd2;
+}
+
+/* Card Options Button */
+QFrame[class="card"] QPushButton#btnCardOptions {
+    border-radius: 16px;
+    background-color: transparent;
+    color: #6b7280;
+    font-size: 16px;
+    font-weight: bold;
+    border: 1px solid transparent;
+    padding-bottom: 2px;
+}
+
+QFrame[class="card"] QPushButton#btnCardOptions::menu-indicator {
+    image: none;  /* Hide default triangle */
+}
+
+QFrame[class="card"] QPushButton#btnCardOptions:hover {
+    background-color: #e6f7fd;
+    color: #2596be;
+}
+
+QFrame[class="card"] QPushButton#btnCardOptions:pressed {
+    background-color: #d1f2fc;
+}
+
+/* Card Labels - Section Headers */
+QFrame[class="card"] QLabel#cardSectionLabel {
+    font-weight: bold;
+    color: #6b7280;
+}
+
+/* Card Ingredient Row Labels */
+QFrame[class="card"] QLabel#ingredientLabel {
+    color: #6b7280;
+    font-weight: 500;
+}
+
+/* Card Notes Text Edit */
+QFrame[class="card"] QTextEdit#notesEdit {
+    border: 1px solid #d1d5db;
+    background: #fcfcfc;
+    border-radius: 4px;
+}
+
+QFrame[class="card"] QTextEdit#notesEdit:focus {
+    border: 1px solid #17C4F3;
+}
+
+/* Card Toggle Button */
+QFrame[class="card"] QToolButton#btnCardToggle {
+    border: none;
+    background: transparent;
+}
+
+/* Ingredient Configure Button (Edit/Add) */
+QFrame[class="card"] QPushButton#btnIngredientConfigure {
+    border: none;
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+QFrame[class="card"] QPushButton#btnIngredientConfigure:hover {
+    background-color: #e6f7fd;
+    border: 1px solid #d1f2fc;
+}
+
+/* Ingredient Remove Button */
+QFrame[class="card"] QPushButton#btnIngredientRemove {
+    border: none;
+    background-color: transparent;
+    border-radius: 4px;
+}
+
+QFrame[class="card"] QPushButton#btnIngredientRemove:hover {
+    background-color: #ffebee;
+    border: 1px solid #ffcdd2;
+}
+
+/* ===========================================================================
+   15. CARD MENUS (Add Component Menu)
+   =========================================================================== */
+QMenu#cardComponentMenu {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 6px;
+}
+
+QMenu#cardComponentMenu::scroller {
+    height: 0px;
+}
+
+QMenu#cardComponentMenu::item {
+    padding: 8px 16px;
+    border-radius: 4px;
+    color: #24292f;
+    font-size: 10pt;
+    min-width: 120px;
+    background-color: transparent;
+}
+
+QMenu#cardComponentMenu::item:first {
+    margin-top: 2px;
+}
+
+QMenu#cardComponentMenu::item:last {
+    margin-bottom: 2px;
+}
+
+QMenu#cardComponentMenu::item:selected {
+    background-color: #e6f7fd;
+    color: #2596be;
+}
+
+QMenu#cardComponentMenu::item:disabled {
+    color: #9ca3af;
+    background-color: transparent;
+}
+
+QMenu#cardComponentMenu::separator {
+    height: 1px;
+    background: #e5e7eb;
+    margin: 4px 8px;
+}
+
+/* Success Badge (Measured Data) */
+QFrame[class="card"] QLabel[class="badge-success"] {
+    color: #4caf50;
+    font-weight: 600;
+}
+
+/* Help Button */
+QFrame[class="card"] QToolButton[class="help-btn"] {
+    border: none;
+    background-color: transparent;
+    color: #6b7280;
+    border-radius: 10px;
+    width: 20px;
+    height: 20px;
+}
+
+QFrame[class="card"] QToolButton[class="help-btn"]:hover {
+    background-color: #e6f7fd;
+    color: #2596be;
+}
+
+/* ===========================================================================
+   16. FLOATING ACTION BUTTON (FAB)
+   =========================================================================== */
+QPushButton#fabAdd {
+    background-color: #17C4F3;
+    color: white;
+    border-radius: 25px;  /* Perfect circle for 50px button */
+    font-size: 30px;
+    font-weight: 300;
+    padding-bottom: 4px;
+    border: none;
+}
+
+QPushButton#fabAdd:hover {
+    background-color: #4EC4EB;
+    /* Note: transform: scale() is not supported in QSS */
+    /* Use QPushButton properties or animations in Python for scaling effects */
+}
+
+QPushButton#fabAdd:pressed {
+    background-color: #13B5F0;
+}
+
+QPushButton#fabAdd:disabled {
+    background-color: #d1d5db;
+    color: #9ca3af;
+}
