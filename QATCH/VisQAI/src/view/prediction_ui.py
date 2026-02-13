@@ -696,37 +696,33 @@ class PredictionUI(QtWidgets.QWidget):
         try:
 
             imported_config = {
-                # Basic Info
-                "name": "High Concentration mAb Formulation Study",
+                "name": "High Concentration Etanercept",
                 "measured": True,
                 "use_in_icl": True,
-                "notes": "Stability study at 25°C for 6 months. Sample showed good viscosity profile with minimal aggregation.",
-                # Model
-                "model": "VisQAI-ICL_v1_nightly",
-                # Environment
+                "notes": "Some notes about formulation components here",
+                "model": "VisQ.AI 1.3.1 (Base)",
                 "temperature": 25.0,  # °C
-                # Formulation Components
                 # Format: "ingredient_type": {"name": "ingredient_name", "concentration": value}
                 "ingredients": {
                     "Protein": {
-                        "name": "mAb-1",
-                        "concentration": 150.0,  # mg/mL
+                        "name": "Etanercept",
+                        "concentration": 300,  # mg/mL
                         "class": "IgG1",
-                        "mw": 148.5,  # kDa
-                        "pi_mean": 8.5,
-                        "pi_range": 0.3,
+                        "mw": 150,
+                        "pi_mean": 7.9,
+                        "pi_range": 0.8,
                     },
                     "Buffer": {
-                        "name": "Phosphate",
+                        "name": "Histidine",
                         "concentration": 20.0,  # mM
-                        "ph": 7.4,
+                        "ph": 6.0,
                     },
                     "Surfactant": {
-                        "name": "Polysorbate 80",
+                        "name": "Tween-80",
                         "concentration": 0.05,  # %w
                     },
-                    "Stabilizer": {"name": "Trehalose", "concentration": 0.2},  # M
-                    "Excipient": {"name": "Arginine", "concentration": 50.0},  # mM
+                    "Stabilizer": {"name": "Sucrose", "concentration": 0.2},  # M
+                    "Excipient": {"name": "Lysin", "concentration": 50.0},  # mM
                     "Salt": {"name": "NaCl", "concentration": 150.0},  # mM
                 },
                 # ML Parameters (optional, for model options)
