@@ -1,3 +1,5 @@
+import csv
+import difflib  # Add to imports
 import os
 import sys
 from typing import Dict, List, Optional
@@ -97,6 +99,12 @@ QFrame[class="card"]:hover {
 QFrame[class="card"][measured="true"] {
     background-color: #f6fffa;
     border: 1px solid #4caf50;
+}
+
+/* --- INSERT THIS BLOCK --- */
+QFrame[class="card"][selected="true"] {
+    background-color: #eff6fc; /* Light Blue Background */
+    border: 2px solid #0078D4; /* Strong Blue Border */
 }
 
 /* ---------------------------------------------------------------------------
@@ -308,6 +316,527 @@ QSlider::add-page:horizontal {
 LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__ICON_DOWN__", ICON_DOWN)
 LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__ICON_UP__", ICON_UP)
 LIGHT_STYLE_SHEET = LIGHT_STYLE_SHEET.replace("__BROWSE_MODEL__", ICON_BROWSE_MODEL)
+
+
+class PlaceholderWidget(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        layout.setSpacing(10)
+
+        # Icon (Optional: Use a custom SVG if you have one)
+        self.lbl_icon = QtWidgets.QLabel()
+        self.lbl_icon.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+
+        # Replace 'icons/empty_state.svg' with your actual file path
+        icon_path = "QATCH/VisQAI/src/view/icons/info-circle-svgrepo-com.svg"
+
+        pixmap = QtGui.QPixmap(icon_path)
+        self.lbl_icon.setPixmap(
+            pixmap.scaled(
+                48,
+                48,
+                QtCore.Qt.AspectRatioMode.KeepAspectRatio,
+                QtCore.Qt.TransformationMode.SmoothTransformation,
+            )
+        )
+
+        layout.addWidget(self.lbl_icon)
+
+        # Message
+        self.lbl_text = QtWidgets.QLabel(
+            "No data yet.\nImport or add data to continue."
+        )
+        self.lbl_text.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_text.setStyleSheet("color: #888; font-size: 14px; font-weight: 500;")
+        layout.addWidget(self.lbl_text)
+
+
+class RangeSlider(QtWidgets.QWidget):
+    """A simple double-ended slider for selecting a range."""
+
+    rangeChanged = QtCore.Signal(float, float)
+
+    def __init__(self, min_val=0, max_val=100, parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(30)
+        self._min = min_val
+        self._max = max_val
+        self._low = min_val
+        self._high = max_val
+        self._pressed_handle = None  # 'low', 'high', or None
+        self._handle_radius = 8
+        self._groove_height = 4
+
+    def setRange(self, min_val, max_val):
+        self._min = min_val
+        self._max = max_val
+        self.update()
+
+    def setValues(self, low, high):
+        self._low = max(self._min, min(low, self._high))
+        self._high = min(self._max, max(high, self._low))
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.RenderHint.Antialiasing)
+
+        # Geometry
+        w = self.width()
+        h = self.height()
+        cy = h / 2
+        available_w = w - 2 * self._handle_radius
+
+        def val_to_x(v):
+            if self._max == self._min:
+                return 0
+            ratio = (v - self._min) / (self._max - self._min)
+            return self._handle_radius + ratio * available_w
+
+        x_low = val_to_x(self._low)
+        x_high = val_to_x(self._high)
+
+        # Draw Groove (Background)
+        painter.setPen(QtCore.Qt.PenStyle.NoPen)
+        painter.setBrush(QtGui.QColor("#e0e0e0"))
+        painter.drawRoundedRect(
+            QtCore.QRectF(
+                self._handle_radius,
+                cy - self._groove_height / 2,
+                available_w,
+                self._groove_height,
+            ),
+            2,
+            2,
+        )
+
+        # Draw Selected Range (Blue)
+        painter.setBrush(QtGui.QColor("#0078D4"))
+        rect_range = QtCore.QRectF(
+            x_low, cy - self._groove_height / 2, x_high - x_low, self._groove_height
+        )
+        painter.drawRect(rect_range)
+
+        # Draw Handles
+        painter.setBrush(QtGui.QColor("#ffffff"))
+        painter.setPen(QtGui.QPen(QtGui.QColor("#0078D4"), 2))
+
+        painter.drawEllipse(
+            QtCore.QPointF(x_low, cy), self._handle_radius, self._handle_radius
+        )
+        painter.drawEllipse(
+            QtCore.QPointF(x_high, cy), self._handle_radius, self._handle_radius
+        )
+
+    def mousePressEvent(self, event):
+        w = self.width()
+        available_w = w - 2 * self._handle_radius
+
+        def val_to_x(v):
+            if self._max == self._min:
+                return 0
+            return (
+                self._handle_radius
+                + ((v - self._min) / (self._max - self._min)) * available_w
+            )
+
+        # FIX: Use event.pos().x() for PyQt5 compatibility
+        pos_x = event.pos().x()
+        dist_low = abs(pos_x - val_to_x(self._low))
+        dist_high = abs(pos_x - val_to_x(self._high))
+
+        if dist_low < dist_high:
+            self._pressed_handle = "low"
+        else:
+            self._pressed_handle = "high"
+
+        self.mouseMoveEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if not self._pressed_handle:
+            return
+
+        w = self.width()
+        available_w = w - 2 * self._handle_radius
+
+        # FIX: Use event.pos().x() for PyQt5 compatibility
+        pos_x = max(self._handle_radius, min(event.pos().x(), w - self._handle_radius))
+
+        ratio = (pos_x - self._handle_radius) / available_w
+        val = self._min + ratio * (self._max - self._min)
+
+        if self._pressed_handle == "low":
+            self._low = min(val, self._high)
+        else:
+            self._high = max(val, self._low)
+
+        self.update()
+        self.rangeChanged.emit(self._low, self._high)
+
+    def mouseReleaseEvent(self, event):
+        self._pressed_handle = None
+
+
+class FilterMenuButton(QtWidgets.QPushButton):
+    """Button that opens a checkbox menu for multi-selection."""
+
+    selectionChanged = QtCore.Signal()
+
+    def __init__(self, title, items, parent=None):
+        super().__init__(title, parent)
+        self.items_map = {}  # name -> Action
+        self.menu = QtWidgets.QMenu(self)
+        self.menu.setStyleSheet("QMenu { menu-scrollable: 1; }")
+
+        # 'All' Action
+        self.act_all = self.menu.addAction("Select All")
+        self.act_all.triggered.connect(self.select_all)
+        self.menu.addSeparator()
+
+        for item in items:
+            name = item.name if hasattr(item, "name") else str(item)
+            act = self.menu.addAction(name)
+            act.setCheckable(True)
+            act.setChecked(True)  # Default to all selected
+            act.toggled.connect(self._on_item_toggled)
+            self.items_map[name] = act
+
+        self.setMenu(self.menu)
+        self.update_text()
+
+        # Style
+        self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            """
+            QPushButton {
+                text-align: left;
+                padding: 5px 10px;
+                border: 1px solid #d1d5db;
+                border-radius: 4px;
+                background-color: white;
+            }
+            QPushButton::menu-indicator {
+                subcontrol-origin: padding;
+                subcontrol-position: center right;
+                padding-right: 10px; 
+            }
+        """
+        )
+
+    def _on_item_toggled(self):
+        self.update_text()
+        self.selectionChanged.emit()
+
+    def select_all(self):
+        self.menu.blockSignals(True)
+        for act in self.items_map.values():
+            act.setChecked(True)
+        self.menu.blockSignals(False)
+        self._on_item_toggled()
+
+    def update_text(self):
+        selected = [name for name, act in self.items_map.items() if act.isChecked()]
+        total = len(self.items_map)
+
+        if len(selected) == 0:
+            self.setText("None selected")
+            self.setStyleSheet(
+                self.styleSheet().replace(
+                    "border: 1px solid #d1d5db", "border: 1px solid #e57373"
+                )
+            )  # Red border warning
+        elif len(selected) == total:
+            self.setText("All selected")
+            self.setStyleSheet(
+                self.styleSheet().replace(
+                    "border: 1px solid #e57373", "border: 1px solid #d1d5db"
+                )
+            )
+        else:
+            self.setText(f"{len(selected)} selected")
+            self.setStyleSheet(
+                self.styleSheet().replace(
+                    "border: 1px solid #e57373", "border: 1px solid #d1d5db"
+                )
+            )
+
+    def get_selected_items(self):
+        return [name for name, act in self.items_map.items() if act.isChecked()]
+
+
+class PredictionFilterWidget(QtWidgets.QWidget):
+    filter_changed = QtCore.Signal(dict)
+
+    def __init__(self, ingredients_data, parent=None):
+        super().__init__(parent)
+        self.ingredients_data = ingredients_data
+
+        # Overlay Styling
+        self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(
+            """
+            PredictionFilterWidget {
+                background-color: #ffffff;
+                border-bottom-left-radius: 8px;
+                border-bottom-right-radius: 8px;
+                border: 1px solid #d1d5db;
+                border-top: none;
+            }
+            QLabel { font-weight: 600; color: #555; font-size: 11px; }
+            QGroupBox { font-weight: bold; border: 1px solid #d1d5db; border-radius: 4px; margin-top: 6px; }
+            QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 3px; color: #0078D4; }
+        """
+        )
+
+        shadow = QtWidgets.QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setYOffset(10)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 60))
+        self.setGraphicsEffect(shadow)
+
+        self.setVisible(False)
+        self._init_ui()
+
+    def _init_ui(self):
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(15)
+
+        # --- Row 1: State & Model ---
+        row1_layout = QtWidgets.QHBoxLayout()
+        row1_layout.setSpacing(15)
+
+        # State
+        grp_state = QtWidgets.QGroupBox("State")
+        state_layout = QtWidgets.QHBoxLayout(grp_state)
+        self.chk_measured = QtWidgets.QCheckBox("Measured")
+        self.chk_measured.setChecked(True)
+        self.chk_predicted = QtWidgets.QCheckBox("Predicted")
+        self.chk_predicted.setChecked(True)
+        state_layout.addWidget(self.chk_measured)
+        state_layout.addWidget(self.chk_predicted)
+        row1_layout.addWidget(grp_state)
+
+        # Model
+        grp_model = QtWidgets.QGroupBox("Model")
+        model_layout = QtWidgets.QVBoxLayout(grp_model)
+        self.txt_model = QtWidgets.QLineEdit()
+        self.txt_model.setPlaceholderText("Name contains...")
+        self.txt_model.setStyleSheet(
+            "border: 1px solid #ccc; border-radius: 3px; padding: 4px;"
+        )
+        model_layout.addWidget(self.txt_model)
+        row1_layout.addWidget(grp_model)
+
+        layout.addLayout(row1_layout)
+
+        # --- Row 2: Temperature (Double-Ended Slider) ---
+        grp_temp = QtWidgets.QGroupBox("Temperature Range (°C)")
+        temp_layout = QtWidgets.QHBoxLayout(grp_temp)
+        temp_layout.setSpacing(10)
+
+        self.spin_temp_min = QtWidgets.QDoubleSpinBox()
+        self.spin_temp_min.setRange(0, 100)
+        self.spin_temp_min.setValue(0)
+        self.spin_temp_min.setFixedWidth(60)
+
+        self.range_slider = RangeSlider(0, 100)
+
+        self.spin_temp_max = QtWidgets.QDoubleSpinBox()
+        self.spin_temp_max.setRange(0, 100)
+        self.spin_temp_max.setValue(100)
+        self.spin_temp_max.setFixedWidth(60)
+
+        # Connect Sliders <-> Spins
+        self.range_slider.rangeChanged.connect(self._on_slider_changed)
+        self.spin_temp_min.valueChanged.connect(self._on_spin_changed)
+        self.spin_temp_max.valueChanged.connect(self._on_spin_changed)
+
+        temp_layout.addWidget(self.spin_temp_min)
+        temp_layout.addWidget(self.range_slider)
+        temp_layout.addWidget(self.spin_temp_max)
+
+        layout.addWidget(grp_temp)
+
+        # --- Row 3: Ingredients (Multi-Select) ---
+        grp_comp = QtWidgets.QGroupBox("Composition Ingredients")
+        self.comp_layout = QtWidgets.QGridLayout(grp_comp)
+        self.comp_layout.setVerticalSpacing(10)
+        self.comp_layout.setHorizontalSpacing(15)
+
+        self.ing_buttons = {}
+        row, col = 0, 0
+        MAX_COLS = 3
+
+        for ing_type, items in self.ingredients_data.items():
+            container = QtWidgets.QWidget()
+            c_layout = QtWidgets.QVBoxLayout(container)
+            c_layout.setContentsMargins(0, 0, 0, 0)
+            c_layout.setSpacing(4)
+
+            lbl = QtWidgets.QLabel(f"{ing_type}")
+
+            # Custom Multi-Select Button
+            btn = FilterMenuButton("All selected", items)
+            self.ing_buttons[ing_type] = btn
+
+            c_layout.addWidget(lbl)
+            c_layout.addWidget(btn)
+
+            self.comp_layout.addWidget(container, row, col)
+
+            col += 1
+            if col >= MAX_COLS:
+                col = 0
+                row += 1
+
+        layout.addWidget(grp_comp)
+
+        # --- Footer ---
+        footer_layout = QtWidgets.QHBoxLayout()
+
+        self.btn_reset = QtWidgets.QPushButton("Reset Filters")
+        self.btn_reset.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_reset.setStyleSheet("color: #666; border: none; font-weight: 500;")
+        self.btn_reset.clicked.connect(self.reset_filters)
+
+        self.btn_apply = QtWidgets.QPushButton("Apply Filters")
+        self.btn_apply.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_apply.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #0078D4; 
+                color: white; 
+                font-weight: bold; 
+                border-radius: 4px; 
+                padding: 6px 20px;
+            }
+            QPushButton:hover { background-color: #106EBE; }
+        """
+        )
+        self.btn_apply.clicked.connect(self.emit_filter)
+
+        footer_layout.addWidget(self.btn_reset)
+        footer_layout.addStretch()
+        footer_layout.addWidget(self.btn_apply)
+
+        layout.addLayout(footer_layout)
+
+    def emit_filter(self):
+        filters = {
+            "show_measured": self.chk_measured.isChecked(),
+            "show_predicted": self.chk_predicted.isChecked(),
+            "model_text": self.txt_model.text().lower(),
+            "temp_min": self.spin_temp_min.value(),
+            "temp_max": self.spin_temp_max.value(),
+            "ingredients": {},
+        }
+
+        for ing_type, btn in self.ing_buttons.items():
+            selected_items = btn.get_selected_items()
+            total_items = len(btn.items_map)
+
+            # OPTIMIZATION: Only add to filters if NOT "All Selected"
+            # This makes the "is_default" check in the main UI much easier
+            if len(selected_items) < total_items:
+                filters["ingredients"][ing_type] = selected_items
+
+        self.filter_changed.emit(filters)
+
+    def _on_slider_changed(self, low, high):
+        self.spin_temp_min.blockSignals(True)
+        self.spin_temp_max.blockSignals(True)
+        self.spin_temp_min.setValue(low)
+        self.spin_temp_max.setValue(high)
+        self.spin_temp_min.blockSignals(False)
+        self.spin_temp_max.blockSignals(False)
+
+    def _on_spin_changed(self):
+        low = self.spin_temp_min.value()
+        high = self.spin_temp_max.value()
+        if low > high:
+            low = high  # clamp
+            self.spin_temp_min.setValue(low)
+
+        self.range_slider.setValues(low, high)
+
+    def reset_filters(self):
+        """Resets all UI elements to default and emits the update."""
+        # Block signals to prevent intermediate updates if you have auto-triggering on
+        self.blockSignals(True)
+
+        # 1. Reset UI Components
+        self.chk_measured.setChecked(True)
+        self.chk_predicted.setChecked(True)
+        self.txt_model.clear()
+        self.spin_temp_min.setValue(0)
+        self.spin_temp_max.setValue(100)
+        self.range_slider.setValues(0, 100)
+
+        # Reset custom multi-select buttons
+        for btn in self.ing_buttons.values():
+            btn.select_all()
+
+        self.blockSignals(False)
+
+        # 2. CRITICAL: Emit the filter signal so the parent UI knows we reset
+        self.emit_filter()
+
+    def apply_filters(self, filter_data):
+        """
+        1. Filters the cards.
+        2. Updates the 'active' style of the top bar button.
+        3. Closes the menu.
+        """
+        search_text = self.search_bar.text().lower()
+
+        # --- 1. Filter Logic ---
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            if widget and isinstance(widget, PredictionConfigCard):
+                matches_complex = widget.matches_filter(filter_data)
+                matches_search = True
+                if search_text:
+                    matches_search = search_text in widget.get_searchable_text()
+
+                if matches_complex and matches_search:
+                    widget.show()
+                else:
+                    widget.hide()
+
+        self.update_placeholder_visibility()
+
+        # --- 2. Check if Default (Reset) ---
+        # A filter is 'default' if it matches the reset state (everything allowed)
+        is_default = (
+            filter_data["show_measured"]
+            and filter_data["show_predicted"]
+            and filter_data["model_text"] == ""
+            and filter_data["temp_min"] == 0
+            and filter_data["temp_max"] == 100
+            and
+            # Check if all ingredient filters are either empty or "All Selected"
+            # (Note: Your filter widget might send specific lists even for 'All'.
+            #  We need to check if the filter effectively restricts anything.)
+            #  For now, let's assume if the ingredients dict is empty it's default.
+            not any(filter_data["ingredients"].values())
+        )
+
+        # --- 3. Update Button Style ---
+        # Set "active" property: True if filtering, False if default
+        self.btn_filter.setProperty("active", not is_default)
+
+        # Force style refresh so the color changes immediately
+        self.btn_filter.style().unpolish(self.btn_filter)
+        self.btn_filter.style().polish(self.btn_filter)
+
+        # --- 4. Hide Menu ---
+        # This closes the dropdown immediately after clicking Reset or Apply
+        self.filter_widget.hide()
 
 
 class ModelOptionsDialog(QtWidgets.QDialog):
@@ -595,6 +1124,7 @@ class PredictionConfigCard(QtWidgets.QFrame):
     run_requested = QtCore.Signal(dict)
     save_requested = QtCore.Signal(dict)
     expanded = QtCore.Signal(object)
+    selection_changed = QtCore.Signal(bool)
 
     def __init__(
         self,
@@ -631,7 +1161,8 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.is_expanded = True
         self.is_measured = False
         self.notes_visible = False
-
+        self.is_selectable = False
+        self.is_selected = False
         self.debounce_timer = QtCore.QTimer()
         self.debounce_timer.setSingleShot(True)
         self.debounce_timer.setInterval(300)
@@ -644,7 +1175,6 @@ class PredictionConfigCard(QtWidgets.QFrame):
         root_layout = QtWidgets.QHBoxLayout(self)
         root_layout.setContentsMargins(5, 5, 15, 5)
         root_layout.setSpacing(5)
-
         # 1. Left Drag Handle
         self.drag_handle = DragHandle()
         root_layout.addWidget(self.drag_handle, 0, QtCore.Qt.AlignmentFlag.AlignTop)
@@ -674,33 +1204,58 @@ class PredictionConfigCard(QtWidgets.QFrame):
         # Delete Button
         self.btn_delete = QtWidgets.QPushButton()
         self.btn_delete.setIcon(
-            self.style().standardIcon(QtWidgets.QStyle.StandardPixmap.SP_TrashIcon)
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/delete-2-svgrepo-com.svg")
         )
-        self.btn_delete.setFixedWidth(30)
-        self.btn_delete.setFlat(True)
+        self.btn_delete.setFixedSize(32, 32)
         self.btn_delete.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_delete.setToolTip("Delete Prediction")
+
+        # Style: Circular with Red Hover
         self.btn_delete.setStyleSheet(
             """
-            QPushButton { border: none; background: transparent; padding: 4px; border-radius: 4px; }
-            QPushButton:hover { background: #ffebee; border: 1px solid #ffcdd2; }
+            QPushButton {
+                border-radius: 16px; /* Perfect circle */
+                background-color: transparent;
+                border: 1px solid transparent;
+            }
+            QPushButton:hover {
+                background-color: #ffebee; /* Light Red */
+                color: #d32f2f;
+            }
+            QPushButton:pressed {
+                background-color: #ffcdd2;
+            }
         """
         )
         self.btn_delete.clicked.connect(lambda: self.removed.emit(self))
-
         # Hamburger Menu
-        self.btn_options = QtWidgets.QPushButton("☰")
-        self.btn_options.setFixedWidth(30)
-        self.btn_options.setFlat(True)
+        self.btn_options = QtWidgets.QPushButton()
+        self.btn_options.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/options-svgrepo-com.svg")
+        )
+        self.btn_options.setFixedSize(32, 32)
         self.btn_options.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+
+        # Style: Circular with Blue Hover, hide menu indicator
         self.btn_options.setStyleSheet(
             """
-            QPushButton::menu-indicator { image: none; }
-            QPushButton { 
-                border: none; background: transparent; color: #555; 
-                font-size: 16px; font-weight: bold; padding-bottom: 3px; border-radius: 4px;
+            QPushButton {
+                border-radius: 16px;
+                background-color: transparent;
+                color: #555;
+                font-size: 16px;
+                font-weight: bold;
+                border: 1px solid transparent;
+                padding-bottom: 2px; /* Center text vertically */
             }
-            QPushButton:hover { color: #00adee; background: #e3f2fd; }
+            QPushButton::menu-indicator { image: none; } /* Hide default triangle */
+            QPushButton:hover {
+                background-color: #e3f2fd; /* Light Blue */
+                color: #0078D4;
+            }
+            QPushButton:pressed {
+                background-color: #bbdefb;
+            }
         """
         )
 
@@ -850,6 +1405,26 @@ class PredictionConfigCard(QtWidgets.QFrame):
         footer_layout.addWidget(self.btn_toggle)
         center_layout.addWidget(self.footer_frame)
 
+    def get_searchable_text(self):
+        """Returns a single lowercase string containing all card data."""
+        # 1. Basic Fields
+        parts = [
+            self.name_input.text(),
+            self.model_display.text(),
+            self.notes_edit.toPlainText(),
+            "Measured" if self.is_measured else "Predicted",
+        ]
+
+        # 2. Ingredient Values
+        for ing_type, (combo, spin) in self.active_ingredients.items():
+            parts.append(ing_type)  # e.g. "Protein"
+            parts.append(combo.currentText())  # e.g. "mAb-1"
+            # Optional: Add concentration if you want to search by numbers
+            parts.append(str(spin.value()))
+
+        # Join and normalize
+        return " ".join(parts).lower()
+
     def _update_clear_state(self):
         """Disables Clear action if data is imported OR if no ingredients exist."""
         # Safety check in case UI isn't fully init yet
@@ -974,6 +1549,61 @@ class PredictionConfigCard(QtWidgets.QFrame):
                 lambda: self.content_frame.setVisible(False)
             )
         self._anim_accordion.start()
+
+    def matches_filter(self, filters):
+        """Checks if card configuration matches the filter criteria."""
+
+        # 1. State Filter
+        if self.is_measured and not filters["show_measured"]:
+            return False
+        if not self.is_measured and not filters["show_predicted"]:
+            return False
+
+        # 2. Model Name Filter
+        if filters["model_text"]:
+            txt = filters["model_text"]
+            if (
+                txt not in self.name_input.text().lower()
+                and txt not in self.model_display.text().lower()
+            ):
+                return False
+
+        # 3. Temperature Filter
+        current_temp = self.spin_temp.value()
+        if not (filters["temp_min"] <= current_temp <= filters["temp_max"]):
+            return False
+
+        # 4. Ingredient Composition Filter (Multi-Select Support)
+        if filters["ingredients"]:
+            for type_filter, allowed_names in filters["ingredients"].items():
+
+                # A. If the filter has NO items selected for this type, it excludes everything
+                if not allowed_names:
+                    # Special case: If card has NO ingredient of this type, does it pass?
+                    # Usually "Selected: None" means "Show nothing".
+                    # But if the card doesn't use this ingredient type at all, it's irrelevant.
+                    # Let's assume strict filtering:
+                    # If user unchecked all "Buffers", show only cards that have one of the (0) selected buffers.
+                    # Which is impossible, unless the card has NO buffer?
+                    if type_filter in self.active_ingredients:
+                        return False
+                    continue
+
+                # B. If card HAS this ingredient type, check if value is in allowed list
+                if type_filter in self.active_ingredients:
+                    combo, _ = self.active_ingredients[type_filter]
+                    current_name = combo.currentText()
+                    if current_name not in allowed_names:
+                        return False
+
+                # C. If card DOES NOT have this ingredient type
+                # (e.g. Card has no Buffer, but Filter says "Histidine" is allowed)
+                # Typically we don't filter out cards that lack the ingredient entirely
+                # unless we are enforcing "Must have Buffer".
+                # For now, we assume if the ingredient isn't present, the filter for that type is ignored.
+                pass
+
+        return True
 
     def collapse(self):
         if not self.is_expanded:
@@ -1134,6 +1764,13 @@ class PredictionConfigCard(QtWidgets.QFrame):
             anim.finished.connect(widget.deleteLater)
             anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
+    def on_selected_toggled(self, checked):
+        """Updates the card style when selected."""
+        self.setProperty("selected", checked)
+        # Refresh style to apply the border change
+        self.style().unpolish(self)
+        self.style().polish(self)
+
     def get_configuration(self):
         formulation = {}
         for t, (combo, spin) in self.active_ingredients.items():
@@ -1187,6 +1824,47 @@ class PredictionConfigCard(QtWidgets.QFrame):
                         if idx >= 0:
                             combo.setCurrentIndex(idx)
 
+    def set_selectable(self, active: bool):
+        """
+        Enables Selection Mode.
+        Disables editing inputs but keeps the expand/collapse button active.
+        """
+        self.is_selectable = active
+
+        # 1. Visual Cue: Change cursor for the whole card
+        if active:
+            self.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
+            # Optional: Deselect when exiting mode
+            if self.is_selected:
+                self.toggle_selection()
+
+        # 2. Selectively disable inputs so clicks fall through to the card,
+        #    BUT keep the footer (expand button) enabled.
+        self.header_frame.setEnabled(not active)
+        self.content_frame.setEnabled(not active)
+
+    def toggle_selection(self):
+        """Toggles the selected state and updates the style."""
+        self.is_selected = not self.is_selected
+        self.setProperty("selected", self.is_selected)
+
+        # Force style refresh
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self.selection_changed.emit(self.is_selected)
+
+    def mousePressEvent(self, event):
+        """Intercept clicks to toggle selection if in Selection Mode."""
+        if self.is_selectable:
+            if event.button() == QtCore.Qt.MouseButton.LeftButton:
+                self.toggle_selection()
+                return  # Consume event
+
+        # Otherwise, behave normally
+        super().mousePressEvent(event)
+
     def clear_formulation(self):
         """Clears all ingredients and resets environment to default."""
         if self.is_measured:
@@ -1206,9 +1884,7 @@ class PredictionConfigCard(QtWidgets.QFrame):
         self.trigger_update()
 
     def export_formulation(self):
-        """Exports the formulation and results to a CSV file."""
-        import csv
-
+        """UI Trigger: Validates data and opens a file dialog to save a single CSV."""
         # 1. Validation
         if not self.last_results:
             QtWidgets.QMessageBox.warning(
@@ -1219,112 +1895,85 @@ class PredictionConfigCard(QtWidgets.QFrame):
             return
 
         # 2. Get Filename
+        default_path = f"{self.name_input.text()}.csv"
         fname, _ = QtWidgets.QFileDialog.getSaveFileName(
             self,
             "Export Formulation",
-            f"{self.name_input.text()}.csv",
+            default_path,
             "CSV Files (*.csv)",
         )
-        if not fname:
-            return
 
-        try:
-            with open(fname, "w", newline="") as f:
-                writer = csv.writer(f)
-
-                # --- HEADER / METADATA ---
-                writer.writerow(["--- Metadata ---"])
-                writer.writerow(["Name", self.name_input.text()])
-                writer.writerow(["Model", self.model_combo.currentText()])
-                writer.writerow(["Temperature (C)", self.spin_temp.value()])
-                writer.writerow(
-                    ["Confidence Interval (%)", self.ml_params.get("ci", 95)]
+        if fname:
+            try:
+                self.save_to_csv(fname)
+                QtWidgets.QMessageBox.information(
+                    self, "Export Successful", f"Successfully exported to:\n{fname}"
                 )
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    self, "Export Error", f"Failed to export file:\n{str(e)}"
+                )
+
+    def save_to_csv(self, filepath):
+        """The functional logic: Writes the current card data to a specific path."""
+        import csv
+
+        with open(filepath, "w", newline="") as f:
+            writer = csv.writer(f)
+
+            # --- HEADER / METADATA ---
+            writer.writerow(["--- Viscosity Profile ---"])
+            xs = self.last_results.get("x", [])
+
+            if self.is_measured:
                 writer.writerow(
                     [
-                        "Date",
-                        QtCore.QDateTime.currentDateTime().toString(
-                            QtCore.Qt.DateFormat.ISODate
-                        ),
+                        "Shear Rate (1/s)",
+                        "Measured Viscosity (cP)",
+                        "Lower CI (cP)",
+                        "Upper CI (cP)",
                     ]
                 )
-                writer.writerow(["Notes", self.notes_edit.toPlainText()])
-                writer.writerow([])  # Spacer
 
-                # --- FORMULATION ---
-                writer.writerow(["--- Formulation Composition ---"])
-                writer.writerow(["Type", "Component", "Concentration", "Unit"])
+                # FIX: Explicitly check for None instead of using 'or'
+                meas_y = self.last_results.get("measured_y")
+                if meas_y is None:
+                    meas_y = [0] * len(xs)
 
-                for ing_type, (combo, spin) in self.active_ingredients.items():
-                    unit = self.INGREDIENT_UNITS.get(ing_type, "")
-                    writer.writerow(
-                        [ing_type, combo.currentText(), f"{spin.value():.2f}", unit]
-                    )
-                writer.writerow([])  # Spacer
+                lower = self.last_results.get("lower")
+                if lower is None:
+                    lower = [0] * len(xs)
 
-                # --- VISCOSITY PROFILE ---
-                writer.writerow(["--- Viscosity Profile ---"])
+                upper = self.last_results.get("upper")
+                if upper is None:
+                    upper = [0] * len(xs)
 
-                # Retrieve Data arrays
-                xs = self.last_results.get("x", [])
+                for x, m, l, u in zip(xs, meas_y, lower, upper):
+                    writer.writerow([f"{x:.4f}", f"{m:.4f}", f"{l:.4f}", f"{u:.4f}"])
+            else:
+                writer.writerow(
+                    [
+                        "Shear Rate (1/s)",
+                        "Predicted Viscosity (cP)",
+                        "Lower CI (cP)",
+                        "Upper CI (cP)",
+                    ]
+                )
 
-                # Columns depend on state (Measured vs Predicted)
-                if self.is_measured:
-                    # Case: Imported/Measured Data
-                    writer.writerow(
-                        [
-                            "Shear Rate (1/s)",
-                            "Measured Viscosity (cP)",
-                            "Lower CI (cP)",
-                            "Upper CI (cP)",
-                        ]
-                    )
+                pred_y = self.last_results.get("y")
+                if pred_y is None:
+                    pred_y = [0] * len(xs)
 
-                    meas_y = self.last_results.get("measured_y", [])
-                    lower = self.last_results.get("lower", [])
-                    upper = self.last_results.get("upper", [])
+                lower = self.last_results.get("lower")
+                if lower is None:
+                    lower = [0] * len(xs)
 
-                    # Handle missing CI in pure imports if necessary
-                    if len(lower) != len(xs):
-                        lower = [0] * len(xs)
-                    if len(upper) != len(xs):
-                        upper = [0] * len(xs)
-                    if meas_y is None:
-                        meas_y = [0] * len(xs)
+                upper = self.last_results.get("upper")
+                if upper is None:
+                    upper = [0] * len(xs)
 
-                    for x, m, l, u in zip(xs, meas_y, lower, upper):
-                        writer.writerow(
-                            [f"{x:.4f}", f"{m:.4f}", f"{l:.4f}", f"{u:.4f}"]
-                        )
-
-                else:
-                    # Case: Prediction
-                    writer.writerow(
-                        [
-                            "Shear Rate (1/s)",
-                            "Predicted Viscosity (cP)",
-                            "Lower CI (cP)",
-                            "Upper CI (cP)",
-                        ]
-                    )
-
-                    pred_y = self.last_results.get("y", [])
-                    lower = self.last_results.get("lower", [])
-                    upper = self.last_results.get("upper", [])
-
-                    for x, y, l, u in zip(xs, pred_y, lower, upper):
-                        writer.writerow(
-                            [f"{x:.4f}", f"{y:.4f}", f"{l:.4f}", f"{u:.4f}"]
-                        )
-
-            QtWidgets.QMessageBox.information(
-                self, "Export Successful", f"Successfully exported to:\n{fname}"
-            )
-
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(
-                self, "Export Error", f"Failed to export file:\n{str(e)}"
-            )
+                for x, y, l, u in zip(xs, pred_y, lower, upper):
+                    writer.writerow([f"{x:.4f}", f"{y:.4f}", f"{l:.4f}", f"{u:.4f}"])
 
 
 class VisualizationPanel(QtWidgets.QWidget):
@@ -1800,6 +2449,7 @@ class PredictionUI(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.ingredients_by_type = {}
+        self.selection_mode_active = False  # Track selection state
         self._load_mock_data()
         self.init_ui()
         self.setStyleSheet(LIGHT_STYLE_SHEET)
@@ -1832,60 +2482,610 @@ class PredictionUI(QtWidgets.QWidget):
 
     def init_ui(self):
         main_layout = QtWidgets.QVBoxLayout(self)
-        splitter = QtWidgets.QSplitter(Qt.Horizontal)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
 
-        left_widget = QtWidgets.QWidget()
-        left_widget.setObjectName("leftPanel")
-        left_layout = QtWidgets.QVBoxLayout(left_widget)
+        # --- LEFT PANEL ---
+        self.left_widget = QtWidgets.QWidget()
+        self.left_widget.setObjectName("leftPanel")
+        left_layout = QtWidgets.QVBoxLayout(self.left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)  # Remove spacing between toolbar and list
 
-        btn_layout = QtWidgets.QHBoxLayout()
-        btn_add = QtWidgets.QPushButton("New Prediction")
-        btn_add.clicked.connect(lambda: self.add_prediction_card(None))
-        btn_import = QtWidgets.QPushButton("Import Data...")
-        btn_import.clicked.connect(self.import_data_file)
-        btn_layout.addWidget(btn_add)
-        btn_layout.addWidget(btn_import)
-        left_layout.addLayout(btn_layout)
+        # 1. New Top Toolbar
+        top_bar = self._create_top_bar()
+        left_layout.addWidget(top_bar)
+        # Parent it to left_widget so it sits inside that container
+        self.filter_widget = PredictionFilterWidget(
+            self.ingredients_by_type, parent=self.left_widget
+        )
+        self.filter_widget.filter_changed.connect(self.apply_filters)
+        self.filter_widget.hide()  # Start hidden
 
+        # Connect the Top Bar Filter Button
+        # self.btn_filter.toggled.connect(self.toggle_filter_menu_manual())
+
+        # Install event filter to track resize
+        self.left_widget.installEventFilter(self)
+        # 2. Scroll Area
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
 
-        # --- CHANGED SECTION ---
-        # 1. Use the new custom container
+        # Custom Container
+        # Assuming ReorderableCardContainer is defined in your project
         self.cards_container = ReorderableCardContainer()
         self.cards_container.setObjectName("scrollContent")
-
-        # 2. Access the layout created inside the container
         self.cards_layout = self.cards_container.main_layout
-        # -----------------------
 
         self.scroll_area.setWidget(self.cards_container)
         self.cards_layout.setContentsMargins(15, 15, 15, 15)
         self.cards_layout.setSpacing(10)
-        # self.cards_layout.addStretch()
-
-        self.scroll_area.setWidget(self.cards_container)
+        self.placeholder = PlaceholderWidget()
+        self.cards_layout.addWidget(self.placeholder)
+        self.placeholder.hide()  # Hidden initially if you add a default card
         left_layout.addWidget(self.scroll_area)
-        splitter.addWidget(left_widget)
+        self._create_fab()
+        self.left_widget.installEventFilter(self)
+        splitter.addWidget(self.left_widget)
 
+        # --- RIGHT PANEL ---
+        # Assuming VisualizationPanel is defined in your project
         self.viz_panel = VisualizationPanel()
         splitter.addWidget(self.viz_panel)
 
         splitter.setSizes([450, 700])
         main_layout.addWidget(splitter)
-        self.current_task = None
 
+        self.current_task = None
         self.add_prediction_card()
+
+    def _create_top_bar(self):
+        container = QtWidgets.QWidget()
+        container.setObjectName("topBar")
+        container.setFixedHeight(50)
+        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
+        container.setStyleSheet(
+            """
+            QWidget#topBar {
+                background-color: #ffffff;
+                border-bottom: 1px solid #e0e0e0;
+            }
+        """
+        )
+
+        # Optional: Add a subtle drop shadow for depth
+        shadow = QtWidgets.QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(10)
+        shadow.setXOffset(0)
+        shadow.setYOffset(2)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 25))
+        container.setGraphicsEffect(shadow)
+        layout = QtWidgets.QHBoxLayout(container)
+        layout.setContentsMargins(15, 5, 15, 5)  # Increased side margins
+        layout.setSpacing(10)
+
+        # Search Bar
+        self.search_bar = QtWidgets.QLineEdit()
+        self.search_bar.setPlaceholderText("Search...")
+        self.search_bar.setClearButtonEnabled(True)
+        self.search_bar.addAction(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/search-svgrepo-com.svg"),
+            QtWidgets.QLineEdit.ActionPosition.LeadingPosition,
+        )
+        self.search_bar.setStyleSheet(
+            """
+            QLineEdit {
+                border: 1px solid #D1D1D1;
+                border-radius: 16px;
+                padding: 0 12px;
+                background: #FFFFFF;
+                height: 32px;
+            }
+            QLineEdit:focus { border: 1px solid #0078D4; }
+        """
+        )
+        self.search_bar.textChanged.connect(self.filter_cards)
+        layout.addWidget(self.search_bar, stretch=1)
+
+        # Shared Button Style
+        circle_btn_style = """
+            QToolButton { border: 1px solid transparent; border-radius: 16px; background: transparent; }
+            QToolButton:hover { background-color: #E1E1E1; }
+            QToolButton:pressed { background-color: #D0D0D0; }
+            QToolButton:checked { background-color: #CCE4F7; border: 1px solid #005A9E; }
+        """
+
+        # Filter
+        self.btn_filter = QtWidgets.QToolButton()
+        self.btn_filter.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/filter-svgrepo-com.svg")
+        )
+        self.btn_filter.setToolTip("Filter Options")
+        self.btn_filter.setCheckable(True)
+        self.btn_filter.setFixedSize(32, 32)
+
+        # CHANGE 2: Update Stylesheet to use [active="true"] for the blue state
+        self.btn_filter.setStyleSheet(
+            """
+            QToolButton { border: 1px solid transparent; border-radius: 16px; background: transparent; }
+            QToolButton:hover { background-color: #E1E1E1; }
+            QToolButton:pressed { background-color: #D0D0D0; }
+            
+            /* New Active State Style */
+            QToolButton[active="true"] { 
+                background-color: #CCE4F7; 
+                border: 1px solid #005A9E; 
+            }
+        """
+        )
+
+        # CHANGE 3: Connect clicked instead of toggled
+        self.btn_filter.clicked.connect(self.toggle_filter_menu_manual)
+
+        layout.addWidget(self.btn_filter)
+
+        # Select Mode
+        self.btn_select_mode = QtWidgets.QToolButton()
+        self.btn_select_mode.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/select-svgrepo-com.svg")
+        )
+        self.btn_select_mode.setToolTip("Enter Selection Mode")
+        self.btn_select_mode.setCheckable(True)
+        self.btn_select_mode.setFixedSize(32, 32)
+        self.btn_select_mode.setStyleSheet(circle_btn_style)
+        self.btn_select_mode.toggled.connect(self.toggle_selection_mode)
+        layout.addWidget(self.btn_select_mode)
+
+        # Add Menu for "Select All"
+        self.btn_select_all = QtWidgets.QToolButton()
+        self.btn_select_all.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/select-multiple-svgrepo-com.svg")
+        )  # Or SP_DialogApplyButton
+        self.btn_select_all.setToolTip("Select All")
+        self.btn_select_all.setFixedSize(32, 32)
+        self.btn_select_all.setStyleSheet(circle_btn_style)
+        self.btn_select_all.clicked.connect(self.select_all_cards)
+
+        # Start disabled (only active in selection mode)
+        self.btn_select_all.setEnabled(False)
+        layout.addWidget(self.btn_select_all)
+
+        # Import
+        self.btn_import = QtWidgets.QToolButton()
+
+        self.btn_import.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/import-content-svgrepo-com.svg")
+        )
+        self.btn_import.setToolTip("Import Data")
+        self.btn_import.setFixedSize(32, 32)
+        self.btn_import.setStyleSheet(circle_btn_style)
+        self.btn_import.clicked.connect(self.import_data_file)
+        layout.addWidget(self.btn_import)
+        # Export
+        self.btn_export_top = QtWidgets.QToolButton()
+        self.btn_export_top.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/export-content-svgrepo-com.svg")
+        )  # Replace with your icon path
+        self.btn_export_top.setToolTip("Export Selected (or Open Card)")
+        self.btn_export_top.setFixedSize(32, 32)
+        self.btn_export_top.setStyleSheet(circle_btn_style)
+        self.btn_export_top.clicked.connect(self.export_analysis)
+        layout.addWidget(self.btn_export_top)
+        # Separator
+        line = QtWidgets.QFrame()
+        line.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
+        line.setFixedHeight(20)
+        layout.addWidget(line)
+
+        # --- NEW: Run Button ---
+        self.btn_run_top = QtWidgets.QToolButton()
+        self.btn_run_top.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/play-svgrepo-com.svg")
+        )
+        self.btn_run_top.setToolTip("Run Inference (Selected or Open Card)")
+        self.btn_run_top.setFixedSize(32, 32)
+        self.btn_run_top.setStyleSheet(circle_btn_style)
+        self.btn_run_top.clicked.connect(self.run_analysis)
+        layout.addWidget(self.btn_run_top)
+
+        # --- NEW: Delete Button ---
+        self.btn_delete_top = QtWidgets.QToolButton()
+        self.btn_delete_top.setIcon(
+            QtGui.QIcon("QATCH/VisQAI/src/view/icons/delete-2-svgrepo-com.svg")
+        )
+        self.btn_delete_top.setToolTip("Delete (Selected or Open Card)")
+        self.btn_delete_top.setFixedSize(32, 32)
+        self.btn_delete_top.setStyleSheet(
+            """
+            QToolButton { border: 1px solid transparent; border-radius: 16px; background: transparent; }
+            QToolButton:hover { background-color: #ffebee; color: #d32f2f; }
+            QToolButton:pressed { background-color: #ffcdd2; }
+            """
+        )
+        self.btn_delete_top.clicked.connect(self.delete_analysis)
+        layout.addWidget(self.btn_delete_top)
+
+        return container
+
+    def _on_card_selection_changed(self):
+        """
+        Called whenever a card is selected/deselected.
+        Auto-exits selection mode if the last item is deselected.
+        """
+        # Only perform this check if we are currently IN selection mode
+        if not self.selection_mode_active:
+            return
+
+        selected_count = 0
+        for i in range(self.cards_layout.count()):
+            widget = self.cards_layout.itemAt(i).widget()
+            if isinstance(widget, PredictionConfigCard) and widget.is_selected:
+                selected_count += 1
+
+        # If user deselected the last item, turn off the button
+        if selected_count == 0:
+            self.btn_select_mode.setChecked(False)
+            # setChecked(False) triggers toggle_selection_mode(False) automatically
+
+    def _create_fab(self):
+        """Creates the Floating Action Button for Adding Cards."""
+        self.btn_add_fab = QtWidgets.QPushButton("+", self.left_widget)
+        self.btn_add_fab.setToolTip("New Prediction")
+        self.btn_add_fab.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_add_fab.resize(50, 50)
+
+        # Shadow Effect
+        shadow = QtWidgets.QGraphicsDropShadowEffect(self.btn_add_fab)
+        shadow.setBlurRadius(15)
+        shadow.setXOffset(0)
+        shadow.setYOffset(4)
+        shadow.setColor(QtGui.QColor(0, 0, 0, 80))
+        self.btn_add_fab.setGraphicsEffect(shadow)
+
+        self.btn_add_fab.setStyleSheet(
+            """
+            QPushButton {
+                background-color: #0078D4;
+                color: white;
+                border-radius: 25px; /* Perfect Circle (50/2) */
+                font-size: 30px;
+                font-weight: 300;
+                padding-bottom: 4px;
+                border: none;
+            }
+            QPushButton:hover { background-color: #106EBE; transform: scale(1.05); }
+            QPushButton:pressed { background-color: #005A9E; }
+            QPushButton:disabled { background-color: #ccc; }
+        """
+        )
+        self.btn_add_fab.clicked.connect(lambda: self.add_prediction_card(None))
+        self.btn_add_fab.show()
+
+    def eventFilter(self, source, event):
+        """
+        Handle resize events for the left panel to resize the filter overlay
+        and reposition the Floating Action Button (FAB).
+        """
+        if source == self.left_widget and event.type() == QtCore.QEvent.Type.Resize:
+            # 1. Update Filter Menu Geometry
+            self._update_filter_geometry()
+
+            # 2. Update FAB Geometry (Bottom Right Corner)
+            fab_size = self.btn_add_fab.size()
+            margin = 20
+
+            # X = Width - ButtonWidth - Margin
+            x = self.left_widget.width() - fab_size.width() - margin
+
+            # Y = Height - ButtonHeight - Margin
+            y = self.left_widget.height() - fab_size.height() - margin
+
+            self.btn_add_fab.move(x, y)
+            self.btn_add_fab.raise_()
+
+        return super().eventFilter(source, event)
+
+    def update_placeholder_visibility(self):
+        """
+        Updates the placeholder state based on visible cards.
+        """
+        visible_count = 0
+        total_cards = 0
+
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            if isinstance(widget, PredictionConfigCard):
+                total_cards += 1
+                # Check actual visibility attribute
+                if not widget.isHidden():
+                    visible_count += 1
+
+        # Logic to show/hide placeholder
+        if visible_count > 0:
+            self.placeholder.hide()
+        else:
+            self.placeholder.show()
+
+            if total_cards == 0:
+                self.placeholder.lbl_text.setText(
+                    "No predictions yet.\nClick the + button to add one."
+                )
+            else:
+                self.placeholder.lbl_text.setText(
+                    "No results found.\nTry adjusting your filters or search."
+                )
+
+    def _is_filter_default(self, filters):
+        """Checks if the provided filter dict matches the default state."""
+        # 1. Check Booleans
+        if not filters["show_measured"] or not filters["show_predicted"]:
+            return False
+
+        # 2. Check Text/Numbers
+        if filters["model_text"] != "":
+            return False
+        if filters["temp_min"] != 0 or filters["temp_max"] != 100:
+            return False
+
+        # 3. Check Ingredients (Should be empty or all empty lists)
+        # The widget sends: {'Protein': ['mAb1'], ...}. Default is {} or keys with None/Empty.
+        if filters["ingredients"]:
+            for selected_list in filters["ingredients"].values():
+                if (
+                    selected_list
+                ):  # If any list has items, it's not default (assuming "Select All" logic passes empty or specific list)
+                    # Wait, in our logic "All Selected" usually passes a full list.
+                    # Let's check against the "Reset" behavior of the widget.
+                    # The widget's emit_filter sends specific items.
+                    # If we simply want to close when "Reset" is clicked, we can check
+                    # if the user manually cleared everything.
+                    # BUT: The simplest way is to rely on the Reset Button explicitly closing it?
+                    # No, the user said "un-press if no filter is applied".
+                    return False
+        return True
+
+    def apply_filters(self, filter_data):
+        """Iterates over cards and toggles visibility based on match."""
+        search_text = self.search_bar.text().lower()
+
+        # 1. Apply Filtering Logic
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            if widget and isinstance(widget, PredictionConfigCard):
+                matches_complex = widget.matches_filter(filter_data)
+                matches_search = True
+                if search_text:
+                    matches_search = search_text in widget.get_searchable_text()
+
+                if matches_complex and matches_search:
+                    widget.show()
+                else:
+                    widget.hide()
+
+        self.update_placeholder_visibility()
+
+        # 2. Check if filters are currently default (Inactive)
+        self.update_placeholder_visibility()
+
+        # 1. Check if filters are default (Inactive)
+        is_default = (
+            filter_data["show_measured"]
+            and filter_data["show_predicted"]
+            and filter_data["model_text"] == ""
+            and filter_data["temp_min"] == 0
+            and filter_data["temp_max"] == 100
+            and not any(filter_data["ingredients"].values())
+        )
+
+        # 2. Update Button Style (Blue if filters are active)
+        # We use a custom property so it persists regardless of clicks
+        self.btn_filter.setProperty("active", not is_default)
+
+        # Force style refresh
+        self.btn_filter.style().unpolish(self.btn_filter)
+        self.btn_filter.style().polish(self.btn_filter)
+
+        # 3. Always close the menu when "Apply" is clicked
+        self.filter_widget.hide()
+
+    def toggle_filter_menu_manual(self):
+        """Toggles filter menu visibility on click."""
+        if self.filter_widget.isVisible():
+            self.filter_widget.hide()
+        else:
+            self.filter_widget.show()
+            self.filter_widget.raise_()
+            self._update_filter_geometry()
+
+    # def toggle_filter_menu(self, checked):
+    #     """Shows/Hides the filter menu and ensures it stays on top."""
+    #     self.filter_widget.setVisible(checked)
+    #     if checked:
+    #         self.filter_widget.raise_()
+    #         self._update_filter_geometry()
+
+    def _update_filter_geometry(self):
+        """Positions the filter widget directly below the top bar."""
+        if self.filter_widget.isVisible():
+            # Geometry: x=0, y=50 (height of top bar), width=panel width
+            self.filter_widget.setGeometry(
+                0, 50, self.left_widget.width(), self.filter_widget.sizeHint().height()
+            )
+
+    def run_analysis(self):
+        """Runs inference on Selected cards (if any) or the currently Open card."""
+        target_cards = []
+
+        if self.selection_mode_active:
+            # Gather all selected cards
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_selected:
+                    target_cards.append(widget)
+        else:
+            # Find the expanded card
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_expanded:
+                    target_cards.append(widget)
+                    break
+
+        if not target_cards:
+            QtWidgets.QMessageBox.information(
+                self, "Run Inference", "No cards selected or open to run."
+            )
+            return
+
+        # Trigger Run
+        # Note: In a real app, you might want to queue these.
+        # Here we trigger them, which calls run_prediction logic.
+        for card in target_cards:
+            card.emit_run_request()
+
+    def delete_analysis(self):
+        """Deletes Selected cards (if any) or the currently Open card."""
+        target_cards = []
+
+        if self.selection_mode_active:
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_selected:
+                    target_cards.append(widget)
+        else:
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_expanded:
+                    target_cards.append(widget)
+                    break
+
+        if not target_cards:
+            return
+
+        # Confirm deletion
+        count = len(target_cards)
+        msg = f"Are you sure you want to delete {count} prediction(s)?"
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Confirm Delete",
+            msg,
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            for card in target_cards:
+                self.remove_card(card)
+
+            # --- NEW: Turn off selection mode if we just deleted selected items ---
+            if self.selection_mode_active:
+                self.btn_select_mode.setChecked(False)
+            # ----------------------------------------------------------------------
+
+            # If we deleted the expanded card in normal mode, expand the last one
+            elif self.cards_layout.count() > 0:
+                last_item = self.cards_layout.itemAt(self.cards_layout.count() - 1)
+                if last_item and last_item.widget():
+                    last_item.widget().toggle_content()
+
+    def toggle_selection_mode(self, active):
+        """Toggles selection mode and handles FAB state."""
+        self.selection_mode_active = active
+
+        # Disable Add FAB and Import when selecting
+        self.btn_add_fab.setEnabled(not active)
+        self.btn_import.setEnabled(not active)
+        self.btn_select_all.setEnabled(active)
+        # Dim the FAB visually if disabled
+        opacity = 0.5 if active else 1.0
+        effect = QtWidgets.QGraphicsOpacityEffect(self.btn_add_fab)
+        effect.setOpacity(opacity)
+        self.btn_add_fab.setGraphicsEffect(effect)
+
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+            if widget and isinstance(widget, PredictionConfigCard):
+                if hasattr(widget, "set_selectable"):
+                    widget.set_selectable(active)
+
+    def select_all_cards(self):
+        """Selects all visible cards. If all are already selected, deselects all."""
+        visible_cards = []
+        for i in range(self.cards_layout.count()):
+            w = self.cards_layout.itemAt(i).widget()
+            if isinstance(w, PredictionConfigCard) and not w.isHidden():
+                visible_cards.append(w)
+
+        if not visible_cards:
+            return
+
+        selected_visible = [w for w in visible_cards if w.is_selected]
+
+        # If everything visible is already selected, deselect them all
+        should_select = len(selected_visible) < len(visible_cards)
+
+        for widget in visible_cards:
+            if widget.is_selected != should_select:
+                widget.toggle_selection()
+
+    def filter_cards(self, text):
+        """Filters cards based on search text and updates placeholder."""
+        search_text = text.lower().strip()
+        search_tokens = search_text.split()
+
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            if widget and isinstance(widget, PredictionConfigCard):
+                # 1. Get content
+                card_content = widget.get_searchable_text()
+
+                # 2. Check Search Match
+                matches_search = True
+                if search_tokens:
+                    for token in search_tokens:
+                        if token not in card_content:
+                            matches_search = False
+                            break
+
+                # 3. Check Filter Widget Match (if active)
+                # We need to respect the filter menu even when searching
+                matches_filter = True
+                if hasattr(self, "filter_widget") and self.filter_widget.isVisible():
+                    # We can't easily access the raw filter dict here without storing it,
+                    # but typically search narrows down the *current* view.
+                    # If you want strict intersection, you'd need to store 'self.current_filters'
+                    pass
+
+                # Apply Visibility
+                if matches_search:
+                    widget.show()
+                else:
+                    widget.hide()
+
+        # --- CRITICAL FIX: Update placeholder after loop ---
+        self.update_placeholder_visibility()
 
     def add_prediction_card(self, data=None):
         if data and "name" in data:
             name = data["name"]
         else:
-            # FIX 1: Use actual count, do not subtract 1
-            current_count = self.cards_layout.count()
-            name = f"Prediction {current_count + 1}"
+            # Optional: Fix naming count to ignore placeholder/other widgets
+            # (Currently counts placeholder as 1, so first card is "Prediction 2")
+            count = 0
+            for i in range(self.cards_layout.count()):
+                if isinstance(
+                    self.cards_layout.itemAt(i).widget(), PredictionConfigCard
+                ):
+                    count += 1
+            name = f"Prediction {count + 1}"
 
         card = PredictionConfigCard(
             default_name=name,
@@ -1896,12 +3096,16 @@ class PredictionUI(QtWidgets.QWidget):
         card.removed.connect(self.remove_card)
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
-
+        card.selection_changed.connect(self._on_card_selection_changed)
         # --- FIX 2: Simplified Insertion ---
-        # Simply insert at the end. No math required.
         insert_idx = self.cards_layout.count()
         self.cards_layout.insertWidget(insert_idx, card)
-        # -----------------------------------
+
+        # --- CRITICAL FIX: Explicitly show card so visibility check passes ---
+        card.show()
+        # --------------------------------------------------------------------
+
+        self.update_placeholder_visibility()
 
         if data:
             if hasattr(card, "load_data"):
@@ -1909,8 +3113,12 @@ class PredictionUI(QtWidgets.QWidget):
             if data.get("measured", False):
                 card.set_measured_state(True)
             card.emit_run_request()
+
         self.on_card_expanded(card)
         QtCore.QTimer.singleShot(100, lambda: self._scroll_to_card(card))
+
+        # Update again just in case data loading changed visibility state
+        self.update_placeholder_visibility()
 
     def _scroll_to_card(self, card_widget):
         """Helper to ensure the new card is visible in the scroll area."""
@@ -1934,6 +3142,7 @@ class PredictionUI(QtWidgets.QWidget):
         def cleanup():
             self.cards_layout.removeWidget(card_widget)
             card_widget.deleteLater()
+            QtCore.QTimer.singleShot(10, self.update_placeholder_visibility)
 
         anim.finished.connect(cleanup)
         anim.start()
@@ -1963,6 +3172,70 @@ class PredictionUI(QtWidgets.QWidget):
         finally:
 
             QtWidgets.QApplication.restoreOverrideCursor()
+
+    def get_target_cards(self):
+        """
+        Returns a list of cards to act upon.
+        Priority:
+        1. All cards marked 'is_selected' if selection_mode is active.
+        2. The single 'is_expanded' card if not in selection mode.
+        """
+        targets = []
+
+        if self.selection_mode_active:
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_selected:
+                    targets.append(widget)
+        else:
+            # Fallback to the currently open/expanded card
+            for i in range(self.cards_layout.count()):
+                widget = self.cards_layout.itemAt(i).widget()
+                if isinstance(widget, PredictionConfigCard) and widget.is_expanded:
+                    targets.append(widget)
+                    break  # Only one can be expanded at a time
+
+        if not targets:
+            QtWidgets.QMessageBox.information(
+                self,
+                "No Selection",
+                "Please select cards or expand one to perform this action.",
+            )
+
+        return targets
+
+    def export_analysis(self):
+        """Batch export logic for the top bar."""
+        target_cards = self.get_target_cards()  # Helper to get selected or expanded
+
+        if not target_cards:
+            return
+
+        if len(target_cards) == 1:
+            target_cards[0].export_formulation()
+        else:
+            folder = QtWidgets.QFileDialog.getExistingDirectory(
+                self, "Select Export Directory"
+            )
+            if folder:
+                success = 0
+                for card in target_cards:
+                    if not card.last_results:
+                        continue
+
+                    # Clean filename
+                    base_name = card.name_input.text().replace(" ", "_")
+                    file_path = os.path.join(folder, f"{base_name}.csv")
+
+                    try:
+                        card.save_to_csv(file_path)
+                        success += 1
+                    except Exception as e:
+                        print(f"Error exporting {base_name}: {e}")
+
+                QtWidgets.QMessageBox.information(
+                    self, "Batch Export", f"Exported {success} files to {folder}"
+                )
 
     def run_prediction(self, config=None):
         """
