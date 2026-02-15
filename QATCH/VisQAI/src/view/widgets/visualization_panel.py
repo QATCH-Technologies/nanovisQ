@@ -6,7 +6,6 @@ from architecture import Architecture
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from scipy import interpolate
-from scipy.ndimage import gaussian_filter1d
 from styles.style_loader import load_stylesheet
 
 
@@ -20,11 +19,17 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.predicted_scatter_items = []
         self.measured_text_annotations = {}
         self.predicted_text_annotations = {}
-        self.axis_text_items = []  # Store custom axis labels
+
+        self.axis_text_pool = []
         self.hovered_scatter = None
 
         self.setStyleSheet(load_stylesheet())
         pg.setConfigOptions(antialias=True)
+
+        self.axis_debounce = QtCore.QTimer()
+        self.axis_debounce.setSingleShot(True)
+        self.axis_debounce.setInterval(50)
+        self.axis_debounce.timeout.connect(self.update_internal_axes)
 
         self.init_ui()
 
@@ -32,7 +37,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
-        # Container
         self.graph_container = QtWidgets.QFrame()
         self.graph_container.setStyleSheet(
             "background-color: transparent; border: none;"
@@ -42,7 +46,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         graph_layout.setContentsMargins(0, 0, 0, 0)
         graph_layout.setSpacing(0)
 
-        # Stacked Layout
         self.plot_stack = QtWidgets.QWidget()
         self.stack_layout = QtWidgets.QGridLayout(self.plot_stack)
         self.stack_layout.setContentsMargins(0, 0, 0, 0)
@@ -52,27 +55,21 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.plot_widget.setBackground(None)
         self.plot_widget.getPlotItem().setMenuEnabled(False)
 
-        # 1. Remove standard borders/axes to get full bleed
         self.plot_widget.plotItem.showAxis("top", False)
         self.plot_widget.plotItem.showAxis("right", False)
-        self.plot_widget.plotItem.showAxis("left", False)  # Hiding standard Left
-        self.plot_widget.plotItem.showAxis("bottom", False)  # Hiding standard Bottom
-
-        # 2. Set margins to 0 to touch edges
+        self.plot_widget.plotItem.showAxis("left", False)
+        self.plot_widget.plotItem.showAxis("bottom", False)
         self.plot_widget.getPlotItem().setContentsMargins(0, 0, 0, 0)
 
-        # 3. Grid (Subtle)
         self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
 
-        # Legend
         self.legend = self.plot_widget.addLegend(offset=(20, 20))
-        self.legend.setBrush(pg.mkBrush(255, 255, 255, 150))
+        self.legend.setBrush(pg.mkBrush(255, 255, 255, 255))
         self.legend.setPen(pg.mkPen(None))
         self.legend.labelTextSize = "9pt"
 
         self.plot_widget.installEventFilter(self)
 
-        # Crosshairs
         self.vLine = pg.InfiniteLine(
             angle=90, movable=False, pen=pg.mkPen("#6b7280", width=1, style=Qt.DashLine)
         )
@@ -89,8 +86,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
         self.plot_widget.scene().sigMouseClicked.connect(self.on_plot_click)
 
-        # Connect zoom/pan events to update internal axis labels
-        self.plot_widget.sigRangeChanged.connect(self.update_internal_axes)
+        self.plot_widget.sigRangeChanged.connect(lambda: self.axis_debounce.start())
 
         # --- OVERLAY ---
         self.overlay_widget = QtWidgets.QFrame()
@@ -122,23 +118,65 @@ class VisualizationPanel(QtWidgets.QWidget):
         graph_layout.addWidget(self.plot_stack)
         layout.addWidget(self.graph_container)
 
-        # Options Button
-        self.btn_opts = QtWidgets.QPushButton("", self.plot_widget)
-        self.btn_opts.setFixedSize(36, 36)
-        self.btn_opts.setCursor(Qt.PointingHandCursor)
-        self.btn_opts.setToolTip("Graph Options")
-        icon_path = os.path.join(
-            Architecture.get_path(), "icons/configure-svgrepo-com.svg"
+        # --- FLOATING CONTROLS ---
+        # 1. Options Button
+        self.btn_opts = self._create_floating_button(
+            "icons/configure-svgrepo-com.svg", "Graph Options"
         )
-        self.btn_opts.setIcon(QtGui.QIcon(icon_path))
-        self.btn_opts.setIconSize(QtCore.QSize(20, 20))
-        self.btn_opts.setStyleSheet(
+        self.btn_opts.clicked.connect(self.show_options_menu)
+
+        # 2. Home Button (Reset View)
+        self.btn_home = self._create_floating_button(
+            "icons/home2-svgrepo-com.svg", "Reset View"
+        )
+        self.btn_home.clicked.connect(self.reset_view)
+
+        # 3. Zoom In
+        self.btn_zoom_in = self._create_floating_button(
+            "icons/add-plus-svgrepo-com.svg", "Zoom In"
+        )
+        self.btn_zoom_in.clicked.connect(self.zoom_in)
+
+        # 4. Zoom Out
+        self.btn_zoom_out = self._create_floating_button(
+            "icons/minus-svgrepo-com.svgg", "Zoom Out"
+        )
+        self.btn_zoom_out.clicked.connect(self.zoom_out)
+
+        self._init_controls()
+
+    def _create_floating_button(self, icon_name, tooltip):
+        """Helper to create consistent floating buttons."""
+        btn = QtWidgets.QPushButton("", self.plot_widget)
+        btn.setFixedSize(36, 36)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip(tooltip)
+
+        # Try to load icon, fallback to text if missing
+        icon_path = os.path.join(Architecture.get_path(), icon_name)
+        if os.path.exists(icon_path):
+            btn.setIcon(QtGui.QIcon(icon_path))
+            btn.setIconSize(QtCore.QSize(20, 20))
+        else:
+            # Simple text fallback if icon missing
+            if "plus" in icon_name:
+                btn.setText("+")
+            elif "minus" in icon_name:
+                btn.setText("-")
+            elif "home" in icon_name:
+                btn.setText("⌂")
+            elif "configure" in icon_name:
+                btn.setText("⚙")
+
+        btn.setStyleSheet(
             """
             QPushButton {
                 background-color: #ffffff;
                 border: 1px solid #e5e7eb;
                 border-radius: 18px;
                 color: #555;
+                font-weight: bold;
+                font-size: 16px;
             }
             QPushButton:hover {
                 background-color: #f9fafb;
@@ -147,18 +185,15 @@ class VisualizationPanel(QtWidgets.QWidget):
             }
             """
         )
-        shadow = QtWidgets.QGraphicsDropShadowEffect(self.btn_opts)
+        shadow = QtWidgets.QGraphicsDropShadowEffect(btn)
         shadow.setBlurRadius(8)
         shadow.setXOffset(0)
         shadow.setYOffset(2)
         shadow.setColor(QtGui.QColor(0, 0, 0, 20))
-        self.btn_opts.setGraphicsEffect(shadow)
-        self.btn_opts.clicked.connect(self.show_options_menu)
-
-        self._init_controls()
+        btn.setGraphicsEffect(shadow)
+        return btn
 
     def _init_controls(self):
-        # 1. Scale
         self.act_log_x = QtWidgets.QAction("Log Scale X", self, checkable=True)
         self.act_log_x.setChecked(True)
         self.act_log_x.toggled.connect(self.update_plot)
@@ -167,12 +202,11 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.act_log_y.setChecked(False)
         self.act_log_y.toggled.connect(self.update_plot)
 
-        # 2. Visibility
         self.act_axis_labels = QtWidgets.QAction(
             "Show Axis Labels", self, checkable=True
         )
         self.act_axis_labels.setChecked(True)
-        self.act_axis_labels.toggled.connect(self.update_internal_axes)
+        self.act_axis_labels.toggled.connect(lambda: self.axis_debounce.start())
 
         self.act_crosshairs = QtWidgets.QAction("Show Crosshairs", self, checkable=True)
         self.act_crosshairs.setChecked(False)
@@ -195,20 +229,10 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.act_measured.setEnabled(False)
         self.act_measured.toggled.connect(self.update_plot)
 
-        # 3. Smoothing
         self.act_smooth = QtWidgets.QAction("Smooth Curves", self, checkable=True)
         self.act_smooth.setChecked(False)
         self.act_smooth.toggled.connect(self.update_plot)
 
-        self.slider_smooth = QtWidgets.QSlider(Qt.Horizontal)
-        self.slider_smooth.setRange(1, 50)
-        self.slider_smooth.setValue(10)
-        self.slider_smooth.setFixedWidth(120)
-        self.slider_smooth.valueChanged.connect(
-            lambda: self.update_plot() if self.act_smooth.isChecked() else None
-        )
-
-        # 4. Ranges
         self.spin_min_shear = QtWidgets.QDoubleSpinBox()
         self.spin_min_shear.setRange(0, 15000000)
         self.spin_min_shear.setValue(100)
@@ -233,32 +257,45 @@ class VisualizationPanel(QtWidgets.QWidget):
     def show_options_menu(self):
         menu = QtWidgets.QMenu(self)
 
-        # Scaling
+        # Apply consistent styling to match the theme
+        menu.setStyleSheet(
+            """
+            QMenu {
+                background-color: #ffffff;
+                border: 1px solid #d1d5db;
+                border-radius: 8px;
+                padding: 6px;
+            }
+            QMenu::item {
+                padding: 8px 16px;
+                border-radius: 4px;
+                color: #24292f;
+                background-color: transparent;
+            }
+            QMenu::item:selected {
+                background-color: #e6f7fd;
+                color: #2596be;
+            }
+            QMenu::separator {
+                height: 1px;
+                background: #e5e7eb;
+                margin: 4px 8px;
+            }
+        """
+        )
+
         menu.addAction(self.act_log_x)
         menu.addAction(self.act_log_y)
         menu.addSeparator()
-
-        # Visuals
-        menu.addAction(self.act_axis_labels)  # NEW OPTION
+        menu.addAction(self.act_axis_labels)
         menu.addAction(self.act_crosshairs)
         menu.addAction(self.act_ci)
         menu.addAction(self.act_cp)
         menu.addAction(self.act_measured)
         menu.addSeparator()
-
-        # Smoothing
         menu.addAction(self.act_smooth)
-        smooth_widget = QtWidgets.QWidget()
-        smooth_layout = QtWidgets.QHBoxLayout(smooth_widget)
-        smooth_layout.setContentsMargins(20, 0, 20, 0)
-        smooth_layout.addWidget(QtWidgets.QLabel("Strength:"))
-        smooth_layout.addWidget(self.slider_smooth)
-        smooth_action = QtWidgets.QWidgetAction(menu)
-        smooth_action.setDefaultWidget(smooth_widget)
-        menu.addAction(smooth_action)
         menu.addSeparator()
 
-        # Ranges
         range_widget = QtWidgets.QWidget()
         range_layout = QtWidgets.QGridLayout(range_widget)
         range_layout.setContentsMargins(10, 2, 10, 2)
@@ -271,7 +308,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         menu.addAction(range_action)
         menu.addSeparator()
 
-        # Actions
         hyp_action = QtWidgets.QWidgetAction(menu)
         hyp_btn_widget = QtWidgets.QWidget()
         hyp_layout = QtWidgets.QVBoxLayout(hyp_btn_widget)
@@ -283,16 +319,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         menu.exec_(self.btn_opts.mapToGlobal(QtCore.QPoint(0, self.btn_opts.height())))
 
     def update_internal_axes(self):
-        """Draws axis labels inside the plot area."""
-        # 1. Clear old labels
-        for item in self.axis_text_items:
-            self.plot_widget.removeItem(item)
-        self.axis_text_items.clear()
+        # 1. Hide all existing items in the pool
+        for item in self.axis_text_pool:
+            item.hide()
 
         if not self.act_axis_labels.isChecked():
             return
 
-        # 2. Get current visible range
         vb = self.plot_widget.plotItem.vb
         x_range = vb.viewRange()[0]
         y_range = vb.viewRange()[1]
@@ -300,30 +333,48 @@ class VisualizationPanel(QtWidgets.QWidget):
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
 
-        # 3. Helper to determine tick spacing
         def get_tick_values(min_v, max_v, is_log):
             if is_log:
-                # For log scale, ticks at powers of 10
                 start_exp = int(np.floor(min_v))
                 end_exp = int(np.ceil(max_v))
+                if end_exp - start_exp > 20:
+                    step = int((end_exp - start_exp) / 10)
+                    return [float(i) for i in range(start_exp, end_exp + 1, step)]
                 return [float(i) for i in range(start_exp, end_exp + 1)]
             else:
-                # Linear scale ticks
                 span = max_v - min_v
-                if span == 0:
+                if span <= 1e-9:
                     return []
                 step = 10 ** int(np.floor(np.log10(span)) - 1)
-                if span / step < 5:
-                    step /= 2
+                if span / step > 15:
+                    step *= 2
+                if span / step > 15:
+                    step *= 2.5
                 start = np.ceil(min_v / step) * step
-                return np.arange(start, max_v, step * 2)  # *2 for cleaner look
+                return np.arange(start, max_v, step * 2)
 
         x_ticks = get_tick_values(x_range[0], x_range[1], log_x)
         y_ticks = get_tick_values(y_range[0], y_range[1], log_y)
 
-        # 4. Draw X-Axis Labels (Bottom)
-        # Position them slightly above the bottom edge of the view
         y_pos_for_x_labels = y_range[0] + (y_range[1] - y_range[0]) * 0.02
+        x_pos_for_y_labels = x_range[0] + (x_range[1] - x_range[0]) * 0.02
+
+        pool_index = 0
+
+        def get_item():
+            nonlocal pool_index
+            if pool_index < len(self.axis_text_pool):
+                item = self.axis_text_pool[pool_index]
+                item.show()
+                pool_index += 1
+                return item
+            else:
+                item = pg.TextItem("", color="#9ca3af", anchor=(0.5, 1))
+                item.setFont(QtGui.QFont("Arial", 8))
+                self.plot_widget.addItem(item, ignoreBounds=True)
+                self.axis_text_pool.append(item)
+                pool_index += 1
+                return item
 
         for x_val in x_ticks:
             if x_val < x_range[0] or x_val > x_range[1]:
@@ -335,21 +386,14 @@ class VisualizationPanel(QtWidgets.QWidget):
                 if abs(val_display) >= 1000 or abs(val_display) < 0.01
                 else f"{val_display:.1f}"
             )
-
-            # Clean up 1e+02 -> 100 style if preferred, or keep scientific
             if "e" in text:
                 base, power = text.split("e")
                 text = f"10^{int(power)}" if base == "1" else text
 
-            label = pg.TextItem(text, color="#9ca3af", anchor=(0.5, 1))
+            label = get_item()
+            label.setText(text)
+            label.setAnchor((0.5, 1))
             label.setPos(x_val, y_pos_for_x_labels)
-            label.setFont(QtGui.QFont("Arial", 8))
-            self.plot_widget.addItem(label)
-            self.axis_text_items.append(label)
-
-        # 5. Draw Y-Axis Labels (Left)
-        # Position slightly to the right of the left edge
-        x_pos_for_y_labels = x_range[0] + (x_range[1] - x_range[0]) * 0.02
 
         for y_val in y_ticks:
             if y_val < y_range[0] or y_val > y_range[1]:
@@ -358,19 +402,13 @@ class VisualizationPanel(QtWidgets.QWidget):
             val_display = 10**y_val if log_y else y_val
             text = f"{val_display:.1f}"
 
-            label = pg.TextItem(text, color="#9ca3af", anchor=(0, 0.5))
+            label = get_item()
+            label.setText(text)
+            label.setAnchor((0, 0.5))
             label.setPos(x_pos_for_y_labels, y_val)
-            label.setFont(QtGui.QFont("Arial", 8))
-            self.plot_widget.addItem(label)
-            self.axis_text_items.append(label)
-
-    # ... (Rest of show_loading, hide_loading, eventFilter, set_plot_title same as before) ...
 
     def set_plot_title(self, title_text):
         if hasattr(self, "plot_widget"):
-            # Overlay title inside top-left if possible, or keep as standard title
-            # Standard title adds a margin. For full bleed, we might prefer a TextItem.
-            # For now, let's keep standard title but styled minimally.
             self.plot_widget.setTitle(
                 f"<span style='color: #374151; font-size: 11pt; font-weight: 600;'>{title_text}</span>"
             )
@@ -394,19 +432,66 @@ class VisualizationPanel(QtWidgets.QWidget):
 
     def eventFilter(self, source, event):
         if source == self.plot_widget and event.type() == QtCore.QEvent.Resize:
-            self._reposition_overlay_button()
-            self.update_internal_axes()  # Re-calc labels on resize
+            self._reposition_overlay_buttons()
+            self.axis_debounce.start()
         return super().eventFilter(source, event)
 
-    def _reposition_overlay_button(self):
+    def _reposition_overlay_buttons(self):
+        """Stacks floating buttons vertically on the right side."""
         margin_right = 20
         margin_top = 20
+        spacing = 10
+        btn_height = 36
+
+        # Base X coordinate (aligned to right)
         x = self.plot_widget.width() - self.btn_opts.width() - margin_right
+
+        # 1. Options (Top)
         y = margin_top
         self.btn_opts.move(max(0, x), y)
 
+        # 2. Home (Below Options)
+        y += btn_height + spacing
+        self.btn_home.move(max(0, x), y)
+
+        # 3. Zoom In (Below Home)
+        y += btn_height + spacing
+        self.btn_zoom_in.move(max(0, x), y)
+
+        # 4. Zoom Out (Below Zoom In)
+        y += btn_height + spacing
+        self.btn_zoom_out.move(max(0, x), y)
+
     def open_hypothesis_dialog(self):
         QtWidgets.QMessageBox.information(self, "Add Hypothesis", "Placeholder")
+
+    def zoom_in(self):
+        """Zooms in by 20%."""
+        self.plot_widget.plotItem.vb.scaleBy((0.8, 0.8))
+
+    def zoom_out(self):
+        """Zooms out by 25%."""
+        self.plot_widget.plotItem.vb.scaleBy((1.25, 1.25))
+
+    def reset_view(self):
+        """Resets the view to fit the current data."""
+        if not self.last_data:
+            return
+
+        x_full = np.array(self.last_data["x"])
+        mask = (x_full >= self.spin_min_shear.value()) & (
+            x_full <= self.spin_max_shear.value()
+        )
+        x = x_full[mask]
+        y = np.array(self.last_data["y"])[mask]
+        lower = np.array(self.last_data["lower"])[mask]
+        upper = np.array(self.last_data["upper"])[mask]
+
+        log_x = self.act_log_x.isChecked()
+        log_y = self.act_log_y.isChecked()
+
+        self._apply_axis_limits(log_x, log_y, y, lower, upper)
+        self.axis_debounce.start()
 
     def set_data(self, data):
         self.last_data = data
@@ -421,20 +506,22 @@ class VisualizationPanel(QtWidgets.QWidget):
             return
 
         self.plot_widget.clear()
-        # IMPORTANT: Clearing removes axis labels, so we must add specific lists to be managed
-        # But clear() removes TextItems too.
-        self.axis_text_items = []
 
-        # Re-add crosshairs
-        self.plot_widget.addItem(self.vLine, ignoreBounds=True)
-        self.plot_widget.addItem(self.hLine, ignoreBounds=True)
-        self.vLine.setVisible(self.act_crosshairs.isChecked())
-        self.hLine.setVisible(self.act_crosshairs.isChecked())
-
+        # Reset items
         self.measured_scatter_items = []
         self.predicted_scatter_items = []
         self.measured_text_annotations = {}
         self.predicted_text_annotations = {}
+
+        # Hide pool items
+        for item in self.axis_text_pool:
+            item.hide()
+        self.axis_text_pool = []
+
+        self.plot_widget.addItem(self.vLine, ignoreBounds=True)
+        self.plot_widget.addItem(self.hLine, ignoreBounds=True)
+        self.vLine.setVisible(self.act_crosshairs.isChecked())
+        self.hLine.setVisible(self.act_crosshairs.isChecked())
 
         raw_color = self.last_data.get("color")
         main_color = raw_color if raw_color else "#2596be"
@@ -444,25 +531,118 @@ class VisualizationPanel(QtWidgets.QWidget):
         max_shear = self.spin_max_shear.value()
         mask = (x_full >= min_shear) & (x_full <= max_shear)
 
-        x = x_full[mask]
-        y = np.array(self.last_data["y"])[mask]
-        lower = np.array(self.last_data["lower"])[mask]
-        upper = np.array(self.last_data["upper"])[mask]
+        x_original = x_full[mask]
+        y_original = np.array(self.last_data["y"])[mask]
+        lower_original = np.array(self.last_data["lower"])[mask]
+        upper_original = np.array(self.last_data["upper"])[mask]
 
-        if len(x) == 0:
+        if len(x_original) == 0:
             return
 
-        if self.act_smooth.isChecked():
-            sigma = self.slider_smooth.value() / 10.0
-            y = gaussian_filter1d(y, sigma)
-            lower = gaussian_filter1d(lower, sigma)
-            upper = gaussian_filter1d(upper, sigma)
+        # Extend the range slightly for interpolation to prevent edge cutoff
+        # Use logarithmic extension since we're dealing with log-scale shear rates
+        log_min = np.log10(min_shear)
+        log_max = np.log10(max_shear)
+        log_range = log_max - log_min
+        extension = log_range * 0.05  # 5% extension on each side in log space
+
+        extended_min = 10 ** (log_min - extension)
+        extended_max = 10 ** (log_max + extension)
+
+        # Create extended x range for plotting
+        num_points = len(x_original)
+        x_extended = np.logspace(
+            np.log10(extended_min), np.log10(extended_max), num_points + 10
+        )
+
+        # For smoothing, we'll work with original data then extrapolate
+        x = x_original.copy()
+        y = y_original.copy()
+        lower = lower_original.copy()
+        upper = upper_original.copy()
+
+        # Apply smoothing if enabled - use spline interpolation through 5 standard points
+        if self.act_smooth.isChecked() and len(x) > 1:
+            # Get values at the 5 standard shear rates that fall within our range
+            standard_points_x = []
+            standard_points_y = []
+            standard_points_lower = []
+            standard_points_upper = []
+
+            # Make sure x is sorted for interpolation
+            sort_idx = np.argsort(x)
+            x_sorted = x[sort_idx]
+            y_sorted = y[sort_idx]
+            lower_sorted = lower[sort_idx]
+            upper_sorted = upper[sort_idx]
+
+            for shear_rate in self.STANDARD_SHEAR_RATES:
+                if min_shear <= shear_rate <= max_shear:
+                    # Check if shear_rate is within the data range
+                    if x_sorted[0] <= shear_rate <= x_sorted[-1]:
+                        # Interpolate at this shear rate
+                        val_y = np.interp(shear_rate, x_sorted, y_sorted)
+                        val_lower = np.interp(shear_rate, x_sorted, lower_sorted)
+                        val_upper = np.interp(shear_rate, x_sorted, upper_sorted)
+
+                        standard_points_x.append(shear_rate)
+                        standard_points_y.append(val_y)
+                        standard_points_lower.append(val_lower)
+                        standard_points_upper.append(val_upper)
+
+            # If we have at least 2 points, create smooth spline through them
+            if len(standard_points_x) >= 2:
+                # Convert to numpy arrays
+                sp_x = np.array(standard_points_x)
+                sp_y = np.array(standard_points_y)
+                sp_lower = np.array(standard_points_lower)
+                sp_upper = np.array(standard_points_upper)
+
+                try:
+                    # Create cubic splines through the standard points with extrapolation
+                    if len(sp_x) == 2:
+                        # For 2 points, use linear interpolation
+                        spline_y = interpolate.interp1d(
+                            sp_x, sp_y, kind="linear", fill_value="extrapolate"
+                        )
+                        spline_lower = interpolate.interp1d(
+                            sp_x, sp_lower, kind="linear", fill_value="extrapolate"
+                        )
+                        spline_upper = interpolate.interp1d(
+                            sp_x, sp_upper, kind="linear", fill_value="extrapolate"
+                        )
+                    else:
+                        # For 3+ points, use cubic spline
+                        spline_y = interpolate.CubicSpline(
+                            sp_x, sp_y, bc_type="natural", extrapolate=True
+                        )
+                        spline_lower = interpolate.CubicSpline(
+                            sp_x, sp_lower, bc_type="natural", extrapolate=True
+                        )
+                        spline_upper = interpolate.CubicSpline(
+                            sp_x, sp_upper, bc_type="natural", extrapolate=True
+                        )
+
+                    # Evaluate the splines at extended x positions for smooth plotting
+                    y_new = spline_y(x_extended)
+                    lower_new = spline_lower(x_extended)
+                    upper_new = spline_upper(x_extended)
+
+                    # Only use smoothed values if they're reasonable (no NaN or inf)
+                    if not (np.any(np.isnan(y_new)) or np.any(np.isinf(y_new))):
+                        x = x_extended
+                        y = y_new
+                        lower = lower_new
+                        upper = upper_new
+                except Exception as e:
+                    # If spline fails, fall back to original data
+                    print(f"Smoothing failed: {e}")
 
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
         self.plot_widget.setLogMode(x=log_x, y=log_y)
 
-        # 1. Confidence Interval
+        # 1. CI
         if self.act_ci.isChecked():
             if log_x or log_y:
                 x_ci = np.log10(np.maximum(x, 1e-10)) if log_x else x
@@ -489,45 +669,92 @@ class VisualizationPanel(QtWidgets.QWidget):
             and self.act_measured.isEnabled()
             and measured_data is not None
         ):
-            meas_y = np.array(measured_data)[mask]
-            if self.act_smooth.isChecked():
-                sigma = self.slider_smooth.value() / 10.0
-                meas_y = gaussian_filter1d(meas_y, sigma)
+            meas_y_original = np.array(measured_data)[mask]
+            meas_y = meas_y_original.copy()
+            meas_x = x_original.copy()
+
+            # Apply smoothing if enabled
+            if self.act_smooth.isChecked() and len(meas_x) > 1:
+                standard_points_x = []
+                standard_points_meas_y = []
+
+                # Get sorted data for interpolation
+                sort_idx = np.argsort(meas_x)
+                x_sorted = meas_x[sort_idx]
+                meas_y_sorted = meas_y[sort_idx]
+
+                for shear_rate in self.STANDARD_SHEAR_RATES:
+                    if min_shear <= shear_rate <= max_shear:
+                        if x_sorted[0] <= shear_rate <= x_sorted[-1]:
+                            val_meas = np.interp(shear_rate, x_sorted, meas_y_sorted)
+                            standard_points_x.append(shear_rate)
+                            standard_points_meas_y.append(val_meas)
+
+                if len(standard_points_x) >= 2:
+                    sp_x = np.array(standard_points_x)
+                    sp_meas = np.array(standard_points_meas_y)
+
+                    try:
+                        if len(sp_x) == 2:
+                            spline_meas = interpolate.interp1d(
+                                sp_x, sp_meas, kind="linear", fill_value="extrapolate"
+                            )
+                        else:
+                            spline_meas = interpolate.CubicSpline(
+                                sp_x, sp_meas, bc_type="natural", extrapolate=True
+                            )
+
+                        # Evaluate at extended x positions
+                        meas_y_new = spline_meas(x_extended)
+
+                        if not (
+                            np.any(np.isnan(meas_y_new)) or np.any(np.isinf(meas_y_new))
+                        ):
+                            meas_x = x_extended
+                            meas_y = meas_y_new
+                    except Exception as e:
+                        print(f"Measured smoothing failed: {e}")
 
             self.plot_widget.plot(
-                x,
+                meas_x,
                 meas_y,
                 pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
                 name="Measured",
             )
             self._generate_scatter_points(
-                x, meas_y, min_shear, max_shear, log_x, log_y, main_color, "measured"
+                x_original,
+                meas_y_original,
+                min_shear,
+                max_shear,
+                log_x,
+                log_y,
+                main_color,
+                "measured",
             )
 
         # 3. Predicted
         self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3), name="Predicted")
         self._generate_scatter_points(
-            x, y, min_shear, max_shear, log_x, log_y, main_color, "predicted"
+            x_original,
+            y_original,
+            min_shear,
+            max_shear,
+            log_x,
+            log_y,
+            main_color,
+            "predicted",
         )
 
-        # 4. CP Overlay
+        # 4. CP Overlay - Show labels for scatter points
         if self.act_cp.isChecked():
-            cp_y = y * (1 + (np.random.rand(len(y)) - 0.5) * 0.05)
-            if self.act_smooth.isChecked():
-                sigma = self.slider_smooth.value() / 10.0
-                cp_y = gaussian_filter1d(cp_y, sigma)
-            self.plot_widget.plot(
-                x,
-                cp_y,
-                pen=None,
-                symbol="t1",
-                symbolSize=10,
-                symbolBrush="#4caf50",
-                name="CP Measure",
-            )
+            # Show all text annotations for scatter points
+            for text_item in self.measured_text_annotations.values():
+                text_item.show()
+            for text_item in self.predicted_text_annotations.values():
+                text_item.show()
 
         self._apply_axis_limits(log_x, log_y, y, lower, upper)
-        self.update_internal_axes()  # Draw labels after plot update
+        self.axis_debounce.start()
 
     def _generate_scatter_points(
         self, x, y_curve, min_shear, max_shear, log_x, log_y, color, point_type
@@ -554,7 +781,6 @@ class VisualizationPanel(QtWidgets.QWidget):
             return
 
         base_qcolor = QtGui.QColor(color)
-        hover_qcolor = base_qcolor.lighter(150)
 
         for shear_rate, viscosity in zip(target_shear_rates, target_viscosities):
             scatter_x = np.log10(max(shear_rate, 1e-10)) if log_x else shear_rate
@@ -611,11 +837,20 @@ class VisualizationPanel(QtWidgets.QWidget):
                 self.predicted_text_annotations[shear_rate] = text_item
 
     def _apply_axis_limits(self, log_x, log_y, y, lower, upper):
-        # Limits setup...
         limit_x_min = 100
         limit_x_max = 15000000
-        vb_x_min = np.log10(limit_x_min) if log_x else limit_x_min
-        vb_x_max = np.log10(limit_x_max) if log_x else limit_x_max
+
+        # Add 5% padding in log space to prevent edge cutoff
+        log_min = np.log10(limit_x_min)
+        log_max = np.log10(limit_x_max)
+        log_range = log_max - log_min
+        padding = log_range * 0.05
+
+        padded_min = 10 ** (log_min - padding)
+        padded_max = 10 ** (log_max + padding)
+
+        vb_x_min = np.log10(padded_min) if log_x else padded_min
+        vb_x_max = np.log10(padded_max) if log_x else padded_max
 
         vb_y_min = -10.0 if log_y else 0.0
         vb_y_max = 300.0 if log_y else 1e300
@@ -640,7 +875,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         else:
             self.plot_widget.plotItem.vb.enableAutoRange(axis="y")
 
-    # ... (mouse_moved, _check_scatter_hover*, on_plot_click unchanged) ...
     def mouse_moved(self, evt):
         if not self.act_crosshairs.isChecked():
             self._check_scatter_hover_event(evt)
