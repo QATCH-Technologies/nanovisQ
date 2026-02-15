@@ -37,6 +37,7 @@ class PredictionUI(QtWidgets.QWidget):
         super().__init__(parent)
         self.ingredients_by_type = {}
         self.selection_mode_active = False
+        self._pending_color = None  # Store color during thread execution
         self._load_mock_data()
         self.init_ui()
         self.setStyleSheet(load_stylesheet())
@@ -648,6 +649,7 @@ class PredictionUI(QtWidgets.QWidget):
                 card.load_data(data)
             if data.get("measured", False):
                 card.set_measured_state(True)
+            # This triggers the run via signal, which includes the color from card config
             card.emit_run_request()
 
         self.on_card_expanded(card)
@@ -728,8 +730,12 @@ class PredictionUI(QtWidgets.QWidget):
                 # ML Parameters (optional, for model options)
                 "ml_params": {"lr": 0.01, "steps": 100, "ci": 95},
             }
+            # Add card logic calls emit_run_request which handles color correctly
             self.add_prediction_card(imported_config)
-            self.run_prediction(imported_config)
+
+            # REMOVED: self.run_prediction(imported_config)
+            # Reason: Duplicate call. add_prediction_card already triggers a run,
+            # and passing the raw dict here bypasses the color assignment in the card.
 
         finally:
 
@@ -804,6 +810,15 @@ class PredictionUI(QtWidgets.QWidget):
             self.running_card = sender_card
         else:
             self.running_card = None
+
+        # --- FIX START: Capture Color ---
+        self._pending_color = None
+        if config and "color" in config and config["color"]:
+            self._pending_color = config["color"]
+        elif self.running_card:
+            self._pending_color = self.running_card.plot_color
+        # --- FIX END ---
+
         if self.current_task is not None and self.current_task.isRunning():
             print("Stopping previous task...")
             self.current_task.stop()
@@ -820,6 +835,11 @@ class PredictionUI(QtWidgets.QWidget):
         self.current_task.start()
 
     def _on_prediction_finished(self, data_package):
+        # --- FIX START: Restore Color if Missing ---
+        if self._pending_color and "color" not in data_package:
+            data_package["color"] = self._pending_color
+        # --- FIX END ---
+
         final_name = data_package.get("config_name", "Unknown")
         self.viz_panel.set_plot_title(final_name)
         self.viz_panel.set_data(data_package)
