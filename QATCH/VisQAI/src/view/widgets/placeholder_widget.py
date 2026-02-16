@@ -7,8 +7,12 @@ visual feedback and instructions to the user.
 
 import os
 
-from architecture import Architecture
 from PyQt5 import QtCore, QtGui, QtWidgets
+
+try:
+    from architecture import Architecture
+except (ModuleNotFoundError, ImportError):
+    from QATCH.common.architecture import Architecture
 
 
 class PlaceholderWidget(QtWidgets.QWidget):
@@ -38,7 +42,15 @@ class PlaceholderWidget(QtWidgets.QWidget):
 
         # Load and display icon
         pixmap = QtGui.QPixmap(
-            os.path.join(Architecture.get_path(), "icons/info-circle-svgrepo-com.svg")
+            os.path.join(
+                Architecture.get_path(),
+                "QATCH",
+                "VisQAI",
+                "src",
+                "view",
+                "icons",
+                "info-circle-svgrepo-com.svg",
+            )
         )
 
         if not pixmap.isNull():

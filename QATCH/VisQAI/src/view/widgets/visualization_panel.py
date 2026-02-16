@@ -2,11 +2,16 @@ import os
 
 import numpy as np
 import pyqtgraph as pg
-from architecture import Architecture
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 from scipy import interpolate
-from styles.style_loader import load_stylesheet
+
+try:
+    from architecture import Architecture
+    from styles.style_loader import load_stylesheet
+except (ModuleNotFoundError, ImportError):
+    from QATCH.common.architecture import Architecture
+    from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
 
 
 class VisualizationPanel(QtWidgets.QWidget):
@@ -14,7 +19,7 @@ class VisualizationPanel(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.last_data = None
+        self.data_series = []
         self.measured_scatter_items = []
         self.predicted_scatter_items = []
         self.measured_text_annotations = {}
@@ -121,25 +126,37 @@ class VisualizationPanel(QtWidgets.QWidget):
         # --- FLOATING CONTROLS ---
         # 1. Options Button
         self.btn_opts = self._create_floating_button(
-            "icons/configure-svgrepo-com.svg", "Graph Options"
+            os.path.join(
+                "QATCH", "VisQAI", "view", "src", "icons", "configure-svgrepo-com.svg"
+            ),
+            "Graph Options",
         )
         self.btn_opts.clicked.connect(self.show_options_menu)
 
         # 2. Home Button (Reset View)
         self.btn_home = self._create_floating_button(
-            "icons/home2-svgrepo-com.svg", "Reset View"
+            os.path.join(
+                "QATCH", "VisQAI", "view", "src", "icons", "home2-svgrepo-com.svg"
+            ),
+            "Reset View",
         )
         self.btn_home.clicked.connect(self.reset_view)
 
         # 3. Zoom In
         self.btn_zoom_in = self._create_floating_button(
-            "icons/add-plus-svgrepo-com.svg", "Zoom In"
+            os.path.join(
+                "QATCH", "VisQAI", "view", "src", "icons", "add-plus-svgrepo-com.svg"
+            ),
+            "Zoom In",
         )
         self.btn_zoom_in.clicked.connect(self.zoom_in)
 
         # 4. Zoom Out
         self.btn_zoom_out = self._create_floating_button(
-            "icons/minus-svgrepo-com.svgg", "Zoom Out"
+            os.path.join(
+                "QATCH", "VisQAI", "view", "src", "icons", "minus-svgrepo-com.svg"
+            ),
+            "Zoom Out",
         )
         self.btn_zoom_out.clicked.connect(self.zoom_out)
 
@@ -475,39 +492,38 @@ class VisualizationPanel(QtWidgets.QWidget):
 
     def reset_view(self):
         """Resets the view to fit the current data."""
-        if not self.last_data:
-            return
-
-        x_full = np.array(self.last_data["x"])
-        mask = (x_full >= self.spin_min_shear.value()) & (
-            x_full <= self.spin_max_shear.value()
-        )
-        x = x_full[mask]
-        y = np.array(self.last_data["y"])[mask]
-        lower = np.array(self.last_data["lower"])[mask]
-        upper = np.array(self.last_data["upper"])[mask]
-
-        log_x = self.act_log_x.isChecked()
-        log_y = self.act_log_y.isChecked()
-
-        self._apply_axis_limits(log_x, log_y, y, lower, upper)
+        self._apply_global_limits()
         self.axis_debounce.start()
 
     def set_data(self, data):
-        self.last_data = data
-        has_measured = "measured_y" in data and data["measured_y"] is not None
+        """
+        Sets the data for the visualization.
+        Can accept a single dictionary (legacy) or a list of dictionaries (multi-plot).
+        """
+        if isinstance(data, list):
+            self.data_series = [d for d in data if d is not None]
+        elif data is not None:
+            self.data_series = [data]
+        else:
+            self.data_series = []
+
+        # Check if ANY series has measured data to enable the toggle
+        has_measured = any(
+            "measured_y" in d and d["measured_y"] is not None for d in self.data_series
+        )
         self.act_measured.setEnabled(has_measured)
         if not has_measured:
             self.act_measured.setChecked(False)
+
         self.update_plot()
 
     def update_plot(self):
-        if not self.last_data:
-            return
-
+        """
+        Main render loop. Iterates through all stored series and plots them.
+        """
         self.plot_widget.clear()
 
-        # Reset items
+        # Reset item trackers
         self.measured_scatter_items = []
         self.predicted_scatter_items = []
         self.measured_text_annotations = {}
@@ -518,143 +534,81 @@ class VisualizationPanel(QtWidgets.QWidget):
             item.hide()
         self.axis_text_pool = []
 
+        # Re-add crosshairs
         self.plot_widget.addItem(self.vLine, ignoreBounds=True)
         self.plot_widget.addItem(self.hLine, ignoreBounds=True)
         self.vLine.setVisible(self.act_crosshairs.isChecked())
         self.hLine.setVisible(self.act_crosshairs.isChecked())
 
-        raw_color = self.last_data.get("color")
-        main_color = raw_color if raw_color else "#2596be"
+        if not self.data_series:
+            return
 
-        x_full = np.array(self.last_data["x"])
+        # Plot every series in the list
+        for i, data_package in enumerate(self.data_series):
+            self._plot_single_series(data_package, index=i)
+
+        # Recalculate limits based on all visible data
+        self._apply_global_limits()
+        self.axis_debounce.start()
+
+    def _plot_single_series(self, data, index):
+        """
+        Helper to plot a single dataset.
+        """
+        # 1. Resolve Color and Name
+        raw_color = data.get("color")
+        # Cycle through a palette if no specific color is provided
+        default_colors = ["#2596be", "#be4d25", "#25be4d", "#be2596", "#96be25"]
+        main_color = (
+            raw_color if raw_color else default_colors[index % len(default_colors)]
+        )
+        series_name = data.get("config_name", f"Series {index + 1}")
+
+        # 2. Filter Data by X-Range (Shear Rate)
+        x_full = np.array(data["x"])
         min_shear = self.spin_min_shear.value()
         max_shear = self.spin_max_shear.value()
         mask = (x_full >= min_shear) & (x_full <= max_shear)
 
-        x_original = x_full[mask]
-        y_original = np.array(self.last_data["y"])[mask]
-        lower_original = np.array(self.last_data["lower"])[mask]
-        upper_original = np.array(self.last_data["upper"])[mask]
+        x = x_full[mask]
+        y = np.array(data["y"])[mask]
+        lower = np.array(data["lower"])[mask]
+        upper = np.array(data["upper"])[mask]
 
-        if len(x_original) == 0:
+        if len(x) == 0:
             return
 
-        # Extend the range slightly for interpolation to prevent edge cutoff
-        # Use logarithmic extension since we're dealing with log-scale shear rates
-        log_min = np.log10(min_shear)
-        log_max = np.log10(max_shear)
-        log_range = log_max - log_min
-        extension = log_range * 0.05  # 5% extension on each side in log space
+        # 3. Apply Smoothing (Savgol Filter)
+        if self.act_smooth.isChecked() and len(x) > 5:
+            try:
+                # Window length must be odd and <= len(x)
+                window_length = min(len(x) if len(x) % 2 == 1 else len(x) - 1, 7)
+                polyorder = 2
+                if window_length > polyorder:
+                    y = savgol_filter(y, window_length, polyorder)
+                    lower = savgol_filter(lower, window_length, polyorder)
+                    upper = savgol_filter(upper, window_length, polyorder)
+            except Exception as e:
+                print(f"Smoothing failed for {series_name}: {e}")
 
-        extended_min = 10 ** (log_min - extension)
-        extended_max = 10 ** (log_max + extension)
-
-        # Create extended x range for plotting
-        num_points = len(x_original)
-        x_extended = np.logspace(
-            np.log10(extended_min), np.log10(extended_max), num_points + 10
-        )
-
-        # For smoothing, we'll work with original data then extrapolate
-        x = x_original.copy()
-        y = y_original.copy()
-        lower = lower_original.copy()
-        upper = upper_original.copy()
-
-        # Apply smoothing if enabled - use spline interpolation through 5 standard points
-        if self.act_smooth.isChecked() and len(x) > 1:
-            # Get values at the 5 standard shear rates that fall within our range
-            standard_points_x = []
-            standard_points_y = []
-            standard_points_lower = []
-            standard_points_upper = []
-
-            # Make sure x is sorted for interpolation
-            sort_idx = np.argsort(x)
-            x_sorted = x[sort_idx]
-            y_sorted = y[sort_idx]
-            lower_sorted = lower[sort_idx]
-            upper_sorted = upper[sort_idx]
-
-            for shear_rate in self.STANDARD_SHEAR_RATES:
-                if min_shear <= shear_rate <= max_shear:
-                    # Check if shear_rate is within the data range
-                    if x_sorted[0] <= shear_rate <= x_sorted[-1]:
-                        # Interpolate at this shear rate
-                        val_y = np.interp(shear_rate, x_sorted, y_sorted)
-                        val_lower = np.interp(shear_rate, x_sorted, lower_sorted)
-                        val_upper = np.interp(shear_rate, x_sorted, upper_sorted)
-
-                        standard_points_x.append(shear_rate)
-                        standard_points_y.append(val_y)
-                        standard_points_lower.append(val_lower)
-                        standard_points_upper.append(val_upper)
-
-            # If we have at least 2 points, create smooth spline through them
-            if len(standard_points_x) >= 2:
-                # Convert to numpy arrays
-                sp_x = np.array(standard_points_x)
-                sp_y = np.array(standard_points_y)
-                sp_lower = np.array(standard_points_lower)
-                sp_upper = np.array(standard_points_upper)
-
-                try:
-                    # Create cubic splines through the standard points with extrapolation
-                    if len(sp_x) == 2:
-                        # For 2 points, use linear interpolation
-                        spline_y = interpolate.interp1d(
-                            sp_x, sp_y, kind="linear", fill_value="extrapolate"
-                        )
-                        spline_lower = interpolate.interp1d(
-                            sp_x, sp_lower, kind="linear", fill_value="extrapolate"
-                        )
-                        spline_upper = interpolate.interp1d(
-                            sp_x, sp_upper, kind="linear", fill_value="extrapolate"
-                        )
-                    else:
-                        # For 3+ points, use cubic spline
-                        spline_y = interpolate.CubicSpline(
-                            sp_x, sp_y, bc_type="natural", extrapolate=True
-                        )
-                        spline_lower = interpolate.CubicSpline(
-                            sp_x, sp_lower, bc_type="natural", extrapolate=True
-                        )
-                        spline_upper = interpolate.CubicSpline(
-                            sp_x, sp_upper, bc_type="natural", extrapolate=True
-                        )
-
-                    # Evaluate the splines at extended x positions for smooth plotting
-                    y_new = spline_y(x_extended)
-                    lower_new = spline_lower(x_extended)
-                    upper_new = spline_upper(x_extended)
-
-                    # Only use smoothed values if they're reasonable (no NaN or inf)
-                    if not (np.any(np.isnan(y_new)) or np.any(np.isinf(y_new))):
-                        x = x_extended
-                        y = y_new
-                        lower = lower_new
-                        upper = upper_new
-                except Exception as e:
-                    # If spline fails, fall back to original data
-                    print(f"Smoothing failed: {e}")
-
+        # 4. Handle Log Scaling
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
         self.plot_widget.setLogMode(x=log_x, y=log_y)
 
-        # 1. CI
+        # 5. Plot Confidence Interval
         if self.act_ci.isChecked():
+            # Prepare data for log plotting manually if needed for fill item
             if log_x or log_y:
                 x_ci = np.log10(np.maximum(x, 1e-10)) if log_x else x
                 lower_ci = np.log10(np.maximum(lower, 1e-10)) if log_y else lower
                 upper_ci = np.log10(np.maximum(upper, 1e-10)) if log_y else upper
             else:
-                x_ci = x
-                lower_ci = lower
-                upper_ci = upper
+                x_ci, lower_ci, upper_ci = x, lower, upper
 
             ci_color = QtGui.QColor(main_color)
-            ci_color.setAlpha(40)
+            # Reduce opacity if multiple plots are present to avoid visual clutter
+            ci_color.setAlpha(20 if len(self.data_series) > 1 else 40)
             fill = pg.FillBetweenItem(
                 pg.PlotDataItem(x_ci, lower_ci),
                 pg.PlotDataItem(x_ci, upper_ci),
@@ -662,68 +616,34 @@ class VisualizationPanel(QtWidgets.QWidget):
             )
             self.plot_widget.addItem(fill)
 
-        # 2. Measured
-        measured_data = self.last_data.get("measured_y")
+        # 6. Plot Measured Data
+        measured_data = data.get("measured_y")
         if (
             self.act_measured.isChecked()
             and self.act_measured.isEnabled()
             and measured_data is not None
         ):
-            meas_y_original = np.array(measured_data)[mask]
-            meas_y = meas_y_original.copy()
-            meas_x = x_original.copy()
+            meas_y = np.array(measured_data)[mask]
 
-            # Apply smoothing if enabled
-            if self.act_smooth.isChecked() and len(meas_x) > 1:
-                standard_points_x = []
-                standard_points_meas_y = []
-
-                # Get sorted data for interpolation
-                sort_idx = np.argsort(meas_x)
-                x_sorted = meas_x[sort_idx]
-                meas_y_sorted = meas_y[sort_idx]
-
-                for shear_rate in self.STANDARD_SHEAR_RATES:
-                    if min_shear <= shear_rate <= max_shear:
-                        if x_sorted[0] <= shear_rate <= x_sorted[-1]:
-                            val_meas = np.interp(shear_rate, x_sorted, meas_y_sorted)
-                            standard_points_x.append(shear_rate)
-                            standard_points_meas_y.append(val_meas)
-
-                if len(standard_points_x) >= 2:
-                    sp_x = np.array(standard_points_x)
-                    sp_meas = np.array(standard_points_meas_y)
-
-                    try:
-                        if len(sp_x) == 2:
-                            spline_meas = interpolate.interp1d(
-                                sp_x, sp_meas, kind="linear", fill_value="extrapolate"
-                            )
-                        else:
-                            spline_meas = interpolate.CubicSpline(
-                                sp_x, sp_meas, bc_type="natural", extrapolate=True
-                            )
-
-                        # Evaluate at extended x positions
-                        meas_y_new = spline_meas(x_extended)
-
-                        if not (
-                            np.any(np.isnan(meas_y_new)) or np.any(np.isinf(meas_y_new))
-                        ):
-                            meas_x = x_extended
-                            meas_y = meas_y_new
-                    except Exception as e:
-                        print(f"Measured smoothing failed: {e}")
+            # Optional: Smooth measured data too
+            if self.act_smooth.isChecked() and len(meas_y) > 5:
+                try:
+                    w_len = min(
+                        len(meas_y) if len(meas_y) % 2 == 1 else len(meas_y) - 1, 5
+                    )
+                    meas_y = savgol_filter(meas_y, w_len, 2)
+                except:
+                    pass
 
             self.plot_widget.plot(
-                meas_x,
+                x,
                 meas_y,
                 pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
-                name="Measured",
+                name=f"{series_name} (Meas)",
             )
             self._generate_scatter_points(
-                x_original,
-                meas_y_original,
+                x,
+                meas_y,
                 min_shear,
                 max_shear,
                 log_x,
@@ -732,11 +652,11 @@ class VisualizationPanel(QtWidgets.QWidget):
                 "measured",
             )
 
-        # 3. Predicted
-        self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3), name="Predicted")
+        # 7. Plot Predicted Curve
+        self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3), name=series_name)
         self._generate_scatter_points(
-            x_original,
-            y_original,
+            x,
+            y,
             min_shear,
             max_shear,
             log_x,
@@ -744,17 +664,6 @@ class VisualizationPanel(QtWidgets.QWidget):
             main_color,
             "predicted",
         )
-
-        # 4. CP Overlay - Show labels for scatter points
-        if self.act_cp.isChecked():
-            # Show all text annotations for scatter points
-            for text_item in self.measured_text_annotations.values():
-                text_item.show()
-            for text_item in self.predicted_text_annotations.values():
-                text_item.show()
-
-        self._apply_axis_limits(log_x, log_y, y, lower, upper)
-        self.axis_debounce.start()
 
     def _generate_scatter_points(
         self, x, y_curve, min_shear, max_shear, log_x, log_y, color, point_type
@@ -835,6 +744,68 @@ class VisualizationPanel(QtWidgets.QWidget):
                 self.measured_text_annotations[shear_rate] = text_item
             else:
                 self.predicted_text_annotations[shear_rate] = text_item
+
+    def _apply_global_limits(self):
+        """Calculates limits across ALL series."""
+        if not self.data_series:
+            return
+
+        log_x = self.act_log_x.isChecked()
+        log_y = self.act_log_y.isChecked()
+
+        # X Limits are usually fixed by the spinners, but we calculate them for consistency
+        limit_x_min = 100
+        limit_x_max = 15000000
+
+        # [Existing X padding logic...]
+        log_min = np.log10(limit_x_min)
+        log_max = np.log10(limit_x_max)
+        log_range = log_max - log_min
+        padding = log_range * 0.05
+        padded_min = 10 ** (log_min - padding)
+        padded_max = 10 ** (log_max + padding)
+        vb_x_min = np.log10(padded_min) if log_x else padded_min
+        vb_x_max = np.log10(padded_max) if log_x else padded_max
+
+        # Calculate Y Limits across all data
+        global_min_y = float("inf")
+        global_max_y = float("-inf")
+
+        found_data = False
+        for data in self.data_series:
+            y = np.array(data["y"])
+            if len(y) == 0:
+                continue
+            found_data = True
+
+            # Check basic predicted
+            global_min_y = min(global_min_y, np.min(y))
+            global_max_y = max(global_max_y, np.max(y))
+
+            # Check CI if enabled
+            if self.act_ci.isChecked() and "lower" in data:
+                global_min_y = min(global_min_y, np.min(data["lower"]))
+                global_max_y = max(global_max_y, np.max(data["upper"]))
+
+        vb_y_min = -10.0 if log_y else 0.0
+        vb_y_max = 300.0 if log_y else 1e300  # Default fallback
+
+        self.plot_widget.plotItem.vb.setLimits(
+            xMin=vb_x_min, xMax=vb_x_max, yMin=vb_y_min, yMax=vb_y_max
+        )
+
+        if not log_y and found_data:
+            y_range = global_max_y - global_min_y
+            if y_range > 0:
+                self.plot_widget.plotItem.vb.setYRange(
+                    max(0, global_min_y - y_range * 0.1),
+                    global_max_y + y_range * 0.1,
+                    padding=0,
+                )
+            else:
+                self.plot_widget.plotItem.vb.enableAutoRange(axis="y")
+        else:
+            self.plot_widget.plotItem.vb.enableAutoRange(axis="y")
 
     def _apply_axis_limits(self, log_x, log_y, y, lower, upper):
         limit_x_min = 100

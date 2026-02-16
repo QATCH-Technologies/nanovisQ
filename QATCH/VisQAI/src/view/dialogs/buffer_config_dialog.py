@@ -1,11 +1,17 @@
 from PyQt5 import QtWidgets
 
+try:
+    from src.models.ingredient import Buffer
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import Buffer
+
 
 class BufferConfigDialog(QtWidgets.QDialog):
     """Dialog for configuring buffer ingredients."""
 
     def __init__(self, existing_buffer=None, parent=None):
         super().__init__(parent)
+        self.existing_buffer = existing_buffer
         is_edit = existing_buffer is not None
         self.setWindowTitle("Edit Buffer" if is_edit else "Add New Buffer")
         self.resize(350, 200)
@@ -53,10 +59,9 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         layout.addLayout(form_layout)
 
-        # Load existing data if provided
+        # Load existing data
         if existing_buffer:
-            self.edit_name.setText(existing_buffer.get("name", ""))
-            self.spin_ph.setValue(existing_buffer.get("ph", 7.4))
+            self._populate_fields(existing_buffer)
 
         # Buttons
         layout.addStretch()
@@ -88,6 +93,21 @@ class BufferConfigDialog(QtWidgets.QDialog):
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
+
+    def _populate_fields(self, data):
+        """Populate fields from either a Buffer object or a dictionary."""
+        name = ""
+        ph = 7.4
+
+        if isinstance(data, Buffer):
+            name = data.name
+            ph = data.pH if data.pH is not None else 7.4
+        elif isinstance(data, dict):
+            name = data.get("name", "")
+            ph = data.get("ph", 7.4)
+
+        self.edit_name.setText(name)
+        self.spin_ph.setValue(ph)
 
     def get_data(self):
         """Returns the buffer configuration as a dictionary."""

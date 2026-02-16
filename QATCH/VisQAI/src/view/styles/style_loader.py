@@ -17,7 +17,14 @@ Usage:
     my_widget.setStyleSheet(loader.get_stylesheet())
 """
 
+import os
+from ast import Import
 from pathlib import Path
+
+try:
+    from architecture import Architecture
+except (ImportError, ModuleNotFoundError):
+    from QATCH.common.architecture import Architecture
 
 
 class StyleLoader:
@@ -27,9 +34,33 @@ class StyleLoader:
 
     # Default icon paths (relative to the base directory)
     DEFAULT_ICONS = {
-        "ICON_DOWN": "icons/down-chevron-svgrepo-com.svg",
-        "ICON_UP": "icons/up-chevron-svgrepo-com.svg",
-        "ICON_BROWSE_MODEL": "icons/machine-learning-01-svgrepo-com.svg",
+        "ICON_DOWN": os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "VisQAI",
+            "src",
+            "view",
+            "icons",
+            "down-chevron-svgrepo-com.svg",
+        ),
+        "ICON_UP": os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "VisQAI",
+            "src",
+            "view",
+            "icons",
+            "up-chevron-svgrepo-com.svg",
+        ),
+        "ICON_BROWSE_MODEL": os.path.join(
+            Architecture.get_path(),
+            "QATCH",
+            "VisQAI",
+            "src",
+            "view",
+            "icons",
+            "machine-learning-01-svgrepo-com.svg",
+        ),
     }
 
     def __init__(self, base_dir=None, theme_file="theme.qss", icon_paths=None):

@@ -5,9 +5,14 @@ Provides comprehensive filtering options including state, model, temperature,
 and ingredient composition. Styling handled by theme.qss.
 """
 
-from components.filter_menu_button import FilterMenuButton
-from components.range_slider import RangeSlider
 from PyQt5 import QtCore, QtGui, QtWidgets
+
+try:
+    from components.filter_menu_button import FilterMenuButton
+    from components.range_slider import RangeSlider
+except (ImportError, ModuleNotFoundError):
+    from QATCH.VisQAI.src.view.components.filter_menu_button import FilterMenuButton
+    from QATCH.VisQAI.src.view.components.range_slider import RangeSlider
 
 
 class PredictionFilterWidget(QtWidgets.QWidget):

@@ -1,18 +1,48 @@
 import os
 import sys
 
-from architecture import Architecture
+import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
-from styles.style_loader import load_stylesheet
-from widgets.formulation_config_card_widget import (
-    FormulationConfigCard,
-)
-from widgets.placeholder_widget import PlaceholderWidget
-from widgets.prediction_filter_widget import PredictionFilterWidget
-from widgets.reordable_container_widget import ReorderableCardContainer
-from widgets.visualization_panel import VisualizationPanel
-from workers.prediction_worker import PredictionThread
+
+# --- 1. NEW IMPORTS ADDED HERE ---
+try:
+    from architecture import Architecture
+    from src.controller.ingredient_controller import IngredientController
+
+    # Database Integration Imports
+    from src.db.db import Database
+    from styles.style_loader import load_stylesheet
+    from widgets.evaluation_widget import EvaluationWidget
+    from widgets.formulation_config_card_widget import (
+        FormulationConfigCard,
+    )
+    from widgets.placeholder_widget import PlaceholderWidget
+    from widgets.prediction_filter_widget import PredictionFilterWidget
+    from widgets.reordable_container_widget import ReorderableCardContainer
+    from widgets.visualization_panel import VisualizationPanel
+    from workers.prediction_worker import PredictionThread
+
+except (ImportError, ModuleNotFoundError):
+    from QATCH.common.architecture import Architecture
+    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+
+    # Database Integration Imports (Fallback Path)
+    from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
+    from QATCH.VisQAI.src.view.widgets.evaluation_widget import EvaluationWidget
+    from QATCH.VisQAI.src.view.widgets.formulation_config_card_widget import (
+        FormulationConfigCard,
+    )
+    from QATCH.VisQAI.src.view.widgets.placeholder_widget import PlaceholderWidget
+    from QATCH.VisQAI.src.view.widgets.prediction_filter_widget import (
+        PredictionFilterWidget,
+    )
+    from QATCH.VisQAI.src.view.widgets.reordable_container_widget import (
+        ReorderableCardContainer,
+    )
+    from QATCH.VisQAI.src.view.widgets.visualization_panel import VisualizationPanel
+    from QATCH.VisQAI.src.view.workers.prediction_worker import PredictionThread
 
 
 class PredictionUI(QtWidgets.QWidget):
@@ -37,54 +67,45 @@ class PredictionUI(QtWidgets.QWidget):
         super().__init__(parent)
         self.ingredients_by_type = {}
         self.selection_mode_active = False
-        self._pending_color = None  # Store color during thread execution
-        self._load_mock_data()
+        self._pending_color = None
+
+        self.db = Database(parse_file_key=True)
+        self.ing_ctrl = IngredientController(self.db)
+        self._load_database_data()
+
         self.init_ui()
         self.setStyleSheet(load_stylesheet())
+        self._batch_queue = []
+        self._batch_results = []
+        self._is_batch_collecting = False
+        self._is_batch_running = False
 
-    def _load_mock_data(self):
-        mk_obj = lambda n, t: type("obj", (object,), {"name": n, "type": t})
-        self.ingredients_by_type["Protein"] = [
-            mk_obj("Ibalizumab", "Protein"),
-            mk_obj("mAb-1", "Protein"),
-        ]
-        self.ingredients_by_type["Buffer"] = [
-            mk_obj("Histidine", "Buffer"),
-            mk_obj("Acetate", "Buffer"),
-        ]
-        self.ingredients_by_type["Salt"] = [
-            mk_obj("NaCl", "Salt"),
-            mk_obj("KCl", "Salt"),
-        ]
-        self.ingredients_by_type["Surfactant"] = [
-            mk_obj("PS20", "Surfactant"),
-            mk_obj("PS80", "Surfactant"),
-        ]
-        self.ingredients_by_type["Excipient"] = [
-            mk_obj("Sucrose", "Excipient"),
-            mk_obj("Arginine", "Excipient"),
-        ]
-        for t in self.INGREDIENT_TYPES:
-            if t not in self.ingredients_by_type:
-                self.ingredients_by_type[t] = []
+    def _load_database_data(self):
+        """Initializes DB connection and fetches ingredients for dropdowns."""
+
+        # Fetch lists for each ingredient type
+        self.ingredients_by_type["Protein"] = self.ing_ctrl.get_all_proteins()
+        self.ingredients_by_type["Buffer"] = self.ing_ctrl.get_all_buffers()
+        self.ingredients_by_type["Salt"] = self.ing_ctrl.get_all_salts()
+        self.ingredients_by_type["Surfactant"] = self.ing_ctrl.get_all_surfactants()
+        self.ingredients_by_type["Stabilizer"] = self.ing_ctrl.get_all_stabilizers()
+        self.ingredients_by_type["Excipient"] = self.ing_ctrl.get_all_excipients()
 
     def init_ui(self):
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
 
-        # Splitter Configuration
+        # 1. Create Top Bar (Buttons Only)
+        # Note: We do NOT create eval_widget here anymore
+        top_bar = self._create_unified_top_bar()
+        main_layout.addWidget(top_bar)
+
+        # 2. Splitter Configuration
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(1)  # Thin line to avoid covering content
-        splitter.setChildrenCollapsible(False)  # Prevent full collapse
-
-        # Style the splitter handle to look like a clean border
-        splitter.setStyleSheet(
-            """
-            QSplitter::handle {
-                background-color: #d1d5db;
-            }
-        """
-        )
+        splitter.setHandleWidth(1)
+        splitter.setChildrenCollapsible(False)
+        splitter.setStyleSheet("QSplitter::handle { background-color: #d1d5db; }")
 
         # --- Left Panel ---
         self.left_widget = QtWidgets.QWidget()
@@ -93,19 +114,22 @@ class PredictionUI(QtWidgets.QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        # Left Toolbar
-        top_bar = self._create_top_bar()
-        left_layout.addWidget(top_bar)
+        # --- OVERLAY WIDGETS (Created NOW, parenting to left_widget) ---
 
+        # 1. Filter Widget
         self.filter_widget = PredictionFilterWidget(
             self.ingredients_by_type, parent=self.left_widget
         )
         self.filter_widget.filter_changed.connect(self.apply_filters)
         self.filter_widget.hide()
 
-        self.left_widget.installEventFilter(self)
+        # 2. Evaluation Widget (Fixed: Created here, safely parenting to left_widget)
+        self.eval_widget = EvaluationWidget(parent=self)
+        self.eval_widget.run_requested.connect(self.run_evaluation_analysis)
+        self.eval_widget.closed.connect(self.exit_evaluation_mode)
+        self.eval_widget.hide()
 
-        # Scroll Area
+        # --- Content ---
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -124,44 +148,35 @@ class PredictionUI(QtWidgets.QWidget):
 
         left_layout.addWidget(self.scroll_area)
         self._create_fab()
+
+        # Install Event Filter for Resizing Overlays
         self.left_widget.installEventFilter(self)
         splitter.addWidget(self.left_widget)
 
         # --- Right Panel ---
         self.right_widget = QtWidgets.QWidget()
         self.right_widget.setObjectName("rightPanel")
-
-        # Ensure right panel has a white background so splitter doesn't look like a gap
         self.right_widget.setStyleSheet("background-color: #ffffff;")
-
         right_layout = QtWidgets.QVBoxLayout(self.right_widget)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(0)
 
-        # Right Toolbar
-        right_top_bar = self._create_right_top_bar()
-        right_layout.addWidget(right_top_bar)
-
-        # Visualization Panel
         self.viz_panel = VisualizationPanel()
         right_layout.addWidget(self.viz_panel)
 
         splitter.addWidget(self.right_widget)
-
         splitter.setSizes([450, 700])
         main_layout.addWidget(splitter)
 
         self.current_task = None
-        self.add_prediction_card()
+        self.update_placeholder_visibility()
 
-    def _create_top_bar(self):
-        """Creates the top toolbar (search + action buttons)"""
+    def _create_unified_top_bar(self):
+        """Creates the single unified top toolbar."""
         container = QtWidgets.QWidget()
         container.setObjectName("topBar")
         container.setFixedHeight(50)
         container.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
 
-        # Drop shadow effect
         shadow = QtWidgets.QGraphicsDropShadowEffect(container)
         shadow.setBlurRadius(10)
         shadow.setXOffset(0)
@@ -173,14 +188,22 @@ class PredictionUI(QtWidgets.QWidget):
         layout.setContentsMargins(15, 5, 15, 5)
         layout.setSpacing(10)
 
-        # Search Bar
+        # --- Left Side Controls ---
         self.search_bar = QtWidgets.QLineEdit()
         self.search_bar.setObjectName("searchBar")
         self.search_bar.setPlaceholderText("Search...")
         self.search_bar.setClearButtonEnabled(True)
         self.search_bar.addAction(
             QtGui.QIcon(
-                os.path.join(Architecture.get_path(), "icons/search-svgrepo-com.svg")
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "search-svgrepo-com.svg",
+                )
             ),
             QtWidgets.QLineEdit.ActionPosition.LeadingPosition,
         )
@@ -191,12 +214,20 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_filter = QtWidgets.QToolButton()
         self.btn_filter.setIcon(
             QtGui.QIcon(
-                os.path.join(Architecture.get_path(), "icons/filter-svgrepo-com.svg")
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "filter-svgrepo-com.svg",
+                )
             )
         )
         self.btn_filter.setToolTip("Filter Options")
         self.btn_filter.setCheckable(True)
-        self.btn_filter.setFixedSize(32, 32)
+        self.btn_filter.setFixedSize(32, 32)  # <--- Added to match others
         self.btn_filter.clicked.connect(self.toggle_filter_menu_manual)
         layout.addWidget(self.btn_filter)
 
@@ -204,21 +235,34 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_select_mode = QtWidgets.QToolButton()
         self.btn_select_mode.setIcon(
             QtGui.QIcon(
-                os.path.join(Architecture.get_path(), "icons/select-svgrepo-com.svg")
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "select-svgrepo-com.svg",
+                )
             )
         )
         self.btn_select_mode.setToolTip("Enter Selection Mode")
         self.btn_select_mode.setCheckable(True)
-        self.btn_select_mode.setFixedSize(32, 32)
+        self.btn_select_mode.setFixedSize(32, 32)  # <--- Added to match others
         self.btn_select_mode.toggled.connect(self.toggle_selection_mode)
         layout.addWidget(self.btn_select_mode)
 
-        # Select All Button
         self.btn_select_all = QtWidgets.QToolButton()
         self.btn_select_all.setIcon(
             QtGui.QIcon(
                 os.path.join(
-                    Architecture.get_path(), "icons/select-multiple-svgrepo-com.svg"
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "select-multiple-svgrepo-com.svg",
                 )
             )
         )
@@ -228,12 +272,17 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_select_all.setEnabled(False)
         layout.addWidget(self.btn_select_all)
 
-        # Import Button
         self.btn_import = QtWidgets.QToolButton()
         self.btn_import.setIcon(
             QtGui.QIcon(
                 os.path.join(
-                    Architecture.get_path(), "icons/import-content-svgrepo-com.svg"
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "import-content-svgrepo-com.svg",
                 )
             )
         )
@@ -242,32 +291,132 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_import.clicked.connect(self.import_data_file)
         layout.addWidget(self.btn_import)
 
-        # Export Button
         self.btn_export_top = QtWidgets.QToolButton()
         self.btn_export_top.setIcon(
             QtGui.QIcon(
                 os.path.join(
-                    Architecture.get_path(), "icons/export-content-svgrepo-com.svg"
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "export-content-svgrepo-com.svg",
                 )
             )
         )
-        self.btn_export_top.setToolTip("Export Selected (or Open Card)")
+        self.btn_export_top.setToolTip("Export Selected")
         self.btn_export_top.setFixedSize(32, 32)
         self.btn_export_top.clicked.connect(self.export_analysis)
         layout.addWidget(self.btn_export_top)
 
-        # Separator
+        # --- NEW BUTTONS (Inline Styles Removed to use theme.qss) ---
+
+        # Generate Sample
+        self.btn_generate = QtWidgets.QToolButton()
+        self.btn_generate.setIcon(
+            QtGui.QIcon(
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "flask-sample-test-svgrepo-com.svg",
+                )
+            )
+        )
+        self.btn_generate.setToolTip("Generate Sample")
+        self.btn_generate.setFixedSize(32, 32)
+        # No setStyleSheet here; QToolButton in theme.qss handles radius & hover
+        self.btn_generate.clicked.connect(self.handle_generate_sample)
+        layout.addWidget(self.btn_generate)
+
+        # Evaluate
+        self.btn_evaluate = QtWidgets.QToolButton()
+        self.btn_evaluate.setIcon(
+            QtGui.QIcon(
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "scorecard-svgrepo-com.svg",
+                )
+            )
+        )
+        self.btn_evaluate.setToolTip("Evaluate")
+        self.btn_evaluate.setFixedSize(32, 32)
+        self.btn_evaluate.setCheckable(True)
+        # No setStyleSheet here; theme.qss handles Checked state styling
+        self.btn_evaluate.clicked.connect(self.handle_evaluate)
+        layout.addWidget(self.btn_evaluate)
+
+        # Hypothesis
+        self.btn_hypothesis = QtWidgets.QToolButton()
+        self.btn_hypothesis.setIcon(
+            QtGui.QIcon(
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "dice-svgrepo-com.svg",
+                )
+            )
+        )
+        self.btn_hypothesis.setToolTip("Hypothesis")
+        self.btn_hypothesis.setFixedSize(32, 32)
+        # No setStyleSheet here
+        self.btn_hypothesis.clicked.connect(self.handle_hypothesis)
+        layout.addWidget(self.btn_hypothesis)
+
+        # Optimize
+        self.btn_optimize = QtWidgets.QToolButton()
+        self.btn_optimize.setIcon(
+            QtGui.QIcon(
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "optimize-svgrepo-com.svg",
+                )
+            )
+        )
+        self.btn_optimize.setToolTip("Optimize")
+        self.btn_optimize.setFixedSize(32, 32)
+        # No setStyleSheet here
+        self.btn_optimize.clicked.connect(self.handle_optimize)
+        layout.addWidget(self.btn_optimize)
+
+        # --- Separator ---
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         line.setFixedHeight(20)
         layout.addWidget(line)
 
-        # Run Button
+        # Run & Delete
         self.btn_run_top = QtWidgets.QToolButton()
         self.btn_run_top.setIcon(
             QtGui.QIcon(
-                os.path.join(Architecture.get_path(), "icons/play-svgrepo-com.svg")
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "play-svgrepo-com.svg",
+                )
             )
         )
         self.btn_run_top.setToolTip("Run Inference (Selected or Open Card)")
@@ -275,12 +424,19 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_run_top.clicked.connect(self.run_analysis)
         layout.addWidget(self.btn_run_top)
 
-        # Delete Button
         self.btn_delete_top = QtWidgets.QToolButton()
         self.btn_delete_top.setObjectName("btnDelete")
         self.btn_delete_top.setIcon(
             QtGui.QIcon(
-                os.path.join(Architecture.get_path(), "icons/delete-2-svgrepo-com.svg")
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "delete-2-svgrepo-com.svg",
+                )
             )
         )
         self.btn_delete_top.setToolTip("Delete (Selected or Open Card)")
@@ -288,37 +444,21 @@ class PredictionUI(QtWidgets.QWidget):
         self.btn_delete_top.clicked.connect(self.delete_analysis)
         layout.addWidget(self.btn_delete_top)
 
-        return container
-
-    def _create_right_top_bar(self):
-        """Creates the right-side top toolbar."""
-        # Same ObjectName 'topBar' to inherit the exact same CSS
-        container = QtWidgets.QWidget()
-        container.setObjectName("topBar")
-        container.setFixedHeight(50)
-        container.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-
-        # Same drop shadow effect
-        shadow = QtWidgets.QGraphicsDropShadowEffect(container)
-        shadow.setBlurRadius(10)
-        shadow.setXOffset(0)
-        shadow.setYOffset(2)
-        shadow.setColor(QtGui.QColor(0, 0, 0, 25))
-        container.setGraphicsEffect(shadow)
-
-        layout = QtWidgets.QHBoxLayout(container)
-        layout.setContentsMargins(15, 5, 15, 5)
-        layout.setSpacing(10)
-
-        # Push items to the right
+        # --- Spacer ---
         layout.addStretch(1)
 
-        # Single Icon Button on the right
+        # Options
         self.btn_right_options = QtWidgets.QToolButton()
         self.btn_right_options.setIcon(
             QtGui.QIcon(
                 os.path.join(
-                    Architecture.get_path(), "icons/three-dots-svgrepo-com.svg"
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "three-dots-svgrepo-com.svg",
                 )
             )
         )
@@ -344,6 +484,87 @@ class PredictionUI(QtWidgets.QWidget):
 
         if selected_count == 0:
             self.btn_select_mode.setChecked(False)
+
+    def handle_generate_sample(self):
+        """Handler for the Generate Sample button."""
+        # TODO: Replace with: dialog = GenerateSampleDialog(self); dialog.exec_()
+        QtWidgets.QMessageBox.information(
+            self,
+            "Generate Sample",
+            "Opening Sample Generation Wizard...\n\n(This feature is under construction)",
+        )
+
+    def handle_evaluate(self):
+        """
+        Toggles the Evaluation Widget and applies 'Measured Data Only' filter.
+        """
+        is_active = self.btn_evaluate.isChecked()
+
+        if is_active:
+            # 1. Show Evaluation Widget
+            self.eval_widget.show()
+            self.eval_widget.raise_()
+            self._update_overlay_geometry()
+
+            # 2. Hide Filter Widget if open
+            if self.filter_widget.isVisible():
+                self.filter_widget.hide()
+                self.btn_filter.setChecked(False)
+
+            # 3. Apply Filter: Show ONLY cards with measured data
+            visible_count = 0
+            for i in range(self.cards_layout.count()):
+                item = self.cards_layout.itemAt(i)
+                widget = item.widget()
+                if isinstance(widget, FormulationConfigCard):
+                    # Logic: Check if card has measured data marked
+                    # Assuming card has a method/property or we check internal state
+                    # Here we check if the 'measured' toggle is True in the card config
+                    # OR if the card has loaded imported data.
+                    has_data = widget.is_measured  # Using UI state as proxy
+
+                    if has_data:
+                        widget.show()
+                        visible_count += 1
+                    else:
+                        widget.hide()
+
+            self.viz_panel.set_plot_title(
+                f"Evaluation Mode: {visible_count} Datasets Ready"
+            )
+
+        else:
+            self.exit_evaluation_mode()
+
+        self.update_placeholder_visibility()
+
+    def handle_hypothesis(self):
+        """Handler for the Hypothesis button."""
+        # TODO: Replace with: dialog = HypothesisInputDialog(self); dialog.exec_()
+        text, ok = QtWidgets.QInputDialog.getText(
+            self, "Hypothesis Testing", "Enter hypothesis name or ID:"
+        )
+        if ok and text:
+            print(f"Hypothesis '{text}' initialized.")
+
+    def handle_optimize(self):
+        """Handler for the Optimize button."""
+        target_cards = self.get_target_cards()
+        if not target_cards:
+            return
+
+        # TODO: Replace with: dialog = OptimizerConfigDialog(target_cards[0], self); dialog.exec_()
+        reply = QtWidgets.QMessageBox.question(
+            self,
+            "Optimize Formulation",
+            "Run Bayesian Optimization on the selected formulation to minimize viscosity?",
+            QtWidgets.QMessageBox.StandardButton.Yes
+            | QtWidgets.QMessageBox.StandardButton.No,
+        )
+
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self.viz_panel.set_plot_title("Optimization Initialized...")
+            # Trigger your optimization worker here
 
     def _create_fab(self):
         """Creates the Floating Action Button for Adding Cards."""
@@ -409,6 +630,34 @@ class PredictionUI(QtWidgets.QWidget):
                     "No results found.\nTry adjusting your filters or search."
                 )
 
+    def check_evaluation_eligibility(self):
+        """
+        Checks if any card has measured data enabled.
+        Enables/Disables the Evaluate button accordingly.
+        """
+        has_measured_data = False
+
+        # Iterate over all cards in the layout
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+
+            if isinstance(widget, FormulationConfigCard):
+                # FIX: Check the internal boolean property instead of a checkbox
+                if widget.is_measured:
+                    has_measured_data = True
+                    break
+
+        # Update Button State
+        if hasattr(self, "btn_evaluate"):
+            self.btn_evaluate.setEnabled(has_measured_data)
+
+            # If we just disabled the button and it was currently active (checked),
+            # we must force exit the evaluation mode to restore the UI.
+            if not has_measured_data and self.btn_evaluate.isChecked():
+                self.btn_evaluate.setChecked(False)
+                self.exit_evaluation_mode()
+
     def _is_filter_default(self, filters):
         """Checks if the provided filter dict matches the default state."""
         if not filters["show_measured"] or not filters["show_predicted"]:
@@ -422,6 +671,115 @@ class PredictionUI(QtWidgets.QWidget):
                 if selected_list:
                     return False
         return True
+
+    def exit_evaluation_mode(self):
+        """Restores UI to normal state."""
+        self.eval_widget.hide()
+        self.btn_evaluate.setChecked(False)
+
+        # Restore all cards visibility (or re-apply standard filters)
+        # For simplicity, show all, or trigger re-filter
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            widget = item.widget()
+            if isinstance(widget, FormulationConfigCard):
+                widget.show()
+
+        self.viz_panel.set_plot_title("")
+        self.update_placeholder_visibility()
+
+    def run_evaluation_analysis(self, config):
+        """
+        Calculates metrics for visible cards and updates the plot.
+        """
+        metric_name = config["metric"]
+        shear_min = config["shear_min"]
+        shear_max = config["shear_max"]
+
+        results_to_plot = []
+        scores = []
+
+        # Iterate over visible cards (which we know are the Measured ones)
+        for i in range(self.cards_layout.count()):
+            item = self.cards_layout.itemAt(i)
+            card = item.widget()
+
+            # Skip hidden or non-card widgets
+            if not isinstance(card, FormulationConfigCard) or card.isHidden():
+                continue
+
+            # Access stored results in the card (populated by previous runs)
+            if not hasattr(card, "last_results") or not card.last_results:
+                continue
+
+            data = card.last_results
+
+            # Ensure we have both predicted and measured data
+            # Data format assumption: {'shear_rate': [], 'viscosity': [], 'measured_viscosity': []}
+            if "measured_viscosity" not in data or "viscosity" not in data:
+                continue
+
+            shear = np.array(data["shear_rate"])
+            y_pred = np.array(data["viscosity"])
+            y_true = np.array(data["measured_viscosity"])
+
+            # Filter by Shear Range
+            mask = (shear >= shear_min) & (shear <= shear_max)
+            if not np.any(mask):
+                continue
+
+            y_p_filt = y_pred[mask]
+            y_t_filt = y_true[mask]
+
+            # Calculate Metric
+            score = 0.0
+            if "RMSE" in metric_name:
+                score = np.sqrt(np.mean((y_p_filt - y_t_filt) ** 2))
+            elif "MAE" in metric_name:
+                score = np.mean(np.abs(y_p_filt - y_t_filt))
+            elif "MAPE" in metric_name:
+                # Avoid division by zero
+                valid = y_t_filt != 0
+                score = (
+                    np.mean(
+                        np.abs((y_t_filt[valid] - y_p_filt[valid]) / y_t_filt[valid])
+                    )
+                    * 100
+                )
+            elif "R²" in metric_name or "R-Squared" in metric_name:
+                ss_res = np.sum((y_t_filt - y_p_filt) ** 2)
+                ss_tot = np.sum((y_t_filt - np.mean(y_t_filt)) ** 2)
+                score = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+
+            scores.append(f"{card.get_config()['name']}: {score:.4f}")
+
+            # Add to plot list (we re-send the data to VizPanel)
+            # We modify the name to include the score for the legend
+            data_copy = data.copy()
+            data_copy["config_name"] = (
+                f"{data['config_name']} ({metric_name}={score:.2f})"
+            )
+            results_to_plot.append(data_copy)
+
+        if not results_to_plot:
+            QtWidgets.QMessageBox.warning(
+                self, "Evaluation Failed", "No valid data found in range."
+            )
+            return
+
+        # Update Visualization
+        self.viz_panel.set_data(results_to_plot)
+
+        # Calculate Average Score for Title
+        avg_score = 0
+        if scores:
+            # Simple parsing for display
+            vals = [float(s.split(": ")[1]) for s in scores]
+            avg_score = sum(vals) / len(vals)
+
+        self.viz_panel.set_plot_title(
+            f"Evaluation Results: Avg {metric_name} = {avg_score:.4f}"
+        )
 
     def apply_filters(self, filter_data):
         """Iterates over cards and toggles visibility based on match."""
@@ -470,42 +828,78 @@ class PredictionUI(QtWidgets.QWidget):
             self._update_filter_geometry()
 
     def _update_filter_geometry(self):
-        """Positions the filter widget directly below the top bar."""
+        """Positions the filter widget directly below the top bar (which is outside the panel now)."""
         if self.filter_widget.isVisible():
+            # Coordinate 0,0 is now the top of the left_widget (content area)
             self.filter_widget.setGeometry(
-                0, 50, self.left_widget.width(), self.filter_widget.sizeHint().height()
+                0, 0, self.left_widget.width(), self.filter_widget.sizeHint().height()
             )
 
     def run_analysis(self):
-        """Runs inference on Selected cards (if any) or the currently Open card."""
-        target_cards = []
-
-        if self.selection_mode_active:
-            for i in range(self.cards_layout.count()):
-                widget = self.cards_layout.itemAt(i).widget()
-                if isinstance(widget, FormulationConfigCard) and widget.is_selected:
-                    target_cards.append(widget)
-        else:
-            for i in range(self.cards_layout.count()):
-                widget = self.cards_layout.itemAt(i).widget()
-                if isinstance(widget, FormulationConfigCard) and widget.is_expanded:
-                    target_cards.append(widget)
-                    break
-
+        """
+        Modified to support Batch Analysis of selected cards.
+        """
+        target_cards = self.get_target_cards()
         if not target_cards:
-            QtWidgets.QMessageBox.information(
-                self, "Run Inference", "No cards selected or open to run."
-            )
             return
 
-        # Trigger Run
+        # 1. Initialize Batch State
+        self._batch_queue = []
+        self._batch_results = []
+        self._is_batch_collecting = True  # Start listening for run requests
+
+        # 2. Trigger requests from cards (which call run_prediction via signals)
+        # Because _is_batch_collecting is True, run_prediction will Queue them instead of running.
         for card in target_cards:
             card.emit_run_request()
 
+        self._is_batch_collecting = False  # Stop listening
+
+        # 3. Start processing the queue
+        if self._batch_queue:
+            self._is_batch_running = True
+            self.viz_panel.set_plot_title("Initializing Batch Analysis...")
+            self.viz_panel.show_loading()
+            self._process_next_in_batch()
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "Error", "Failed to collect configuration data."
+            )
+
+    def _process_next_in_batch(self):
+        """
+        Pops the next item from the batch queue and runs it.
+        """
+        if not self._batch_queue:
+            # --- BATCH COMPLETE ---
+            self._is_batch_running = False
+            self.viz_panel.hide_loading()
+
+            # Summarize
+            count = len(self._batch_results)
+            self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
+
+            # Send LIST of results to panel (triggers multi-plot)
+            self.viz_panel.set_data(self._batch_results)
+            return
+
+        # Get next item
+        card, config = self._batch_queue.pop(0)
+
+        # Manually set the running card so results go back to the correct UI card
+        self.running_card = card
+
+        # Update Title for progress
+        self.viz_panel.set_plot_title(f"Calculating: {config.get('name')}...")
+
+        # Run specific card (batch collecting is False, so this will actually run)
+        self.run_prediction(config)
+
     def delete_analysis(self):
-        """Deletes Selected cards (if any) or the currently Open card."""
+        """Deletes Selected cards (if any) or the currently Open card and updates the plot."""
         target_cards = []
 
+        # 1. Identify Target Cards
         if self.selection_mode_active:
             for i in range(self.cards_layout.count()):
                 widget = self.cards_layout.itemAt(i).widget()
@@ -521,7 +915,7 @@ class PredictionUI(QtWidgets.QWidget):
         if not target_cards:
             return
 
-        # Confirm deletion
+        # 2. Confirm Deletion
         count = len(target_cards)
         msg = f"Are you sure you want to delete {count} prediction(s)?"
         reply = QtWidgets.QMessageBox.question(
@@ -533,14 +927,47 @@ class PredictionUI(QtWidgets.QWidget):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            # --- UPDATE PLOT: Remove data associated with deleted cards ---
+
+            # Gather references to the data objects and names from the cards being deleted
+            results_to_remove = []
+            names_to_remove = []
+
+            for card in target_cards:
+                # If the card has a stored result object, we target that specific object
+                if hasattr(card, "last_results") and card.last_results:
+                    results_to_remove.append(card.last_results)
+                # We also track the name as a fallback
+                names_to_remove.append(card.name_input.text())
+
+            # Filter the current data series in the Visualization Panel
+            current_series = self.viz_panel.data_series
+            new_series = []
+
+            for data_pkg in current_series:
+                # FIX: Use 'is' identity check to avoid numpy array comparison errors
+                # Replaces: if data_pkg in results_to_remove:
+                if any(data_pkg is res for res in results_to_remove):
+                    continue
+
+                # Exclude if the name matches (fallback if object identity fails)
+                if data_pkg.get("config_name") in names_to_remove:
+                    continue
+
+                new_series.append(data_pkg)
+
+            # Update the visualization with the filtered list
+            self.viz_panel.set_data(new_series)
+
+            # --- REMOVE WIDGETS ---
             for card in target_cards:
                 self.remove_card(card)
+
+            # Cleanup selection state
             if self.selection_mode_active:
                 self.btn_select_mode.setChecked(False)
             elif self.cards_layout.count() > 0:
-                last_item = self.cards_layout.itemAt(self.cards_layout.count() - 1)
-                if last_item and last_item.widget():
-                    last_item.widget().toggle_content()
+                pass
 
     def toggle_selection_mode(self, active):
         """Toggles selection mode and handles FAB state."""
@@ -639,6 +1066,8 @@ class PredictionUI(QtWidgets.QWidget):
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
         card.selection_changed.connect(self._on_card_selection_changed)
+        if card.is_measured:
+            self.check_evaluation_eligibility()
         insert_idx = self.cards_layout.count()
         self.cards_layout.insertWidget(insert_idx, card)
         card.show()
@@ -656,6 +1085,7 @@ class PredictionUI(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(100, lambda: self._scroll_to_card(card))
 
         self.update_placeholder_visibility()
+        self.check_evaluation_eligibility()
 
     def _scroll_to_card(self, card_widget):
         """Helper to ensure the new card is visible in the scroll area."""
@@ -680,6 +1110,7 @@ class PredictionUI(QtWidgets.QWidget):
             self.cards_layout.removeWidget(card_widget)
             card_widget.deleteLater()
             QtCore.QTimer.singleShot(10, self.update_placeholder_visibility)
+            self.check_evaluation_eligibility()
 
         anim.finished.connect(cleanup)
         anim.start()
@@ -803,49 +1234,67 @@ class PredictionUI(QtWidgets.QWidget):
 
     def run_prediction(self, config=None):
         """
-        Runs prediction using the robust PredictionThread subclass.
+        Handles requests. Now supports Queuing.
         """
         sender_card = self.sender()
+
+        # INTERCEPTION: If in batch collection mode, just queue and return
+        if self._is_batch_collecting:
+            if isinstance(sender_card, FormulationConfigCard) and config:
+                # Store tuple of (card_reference, config_data)
+                self._batch_queue.append((sender_card, config))
+            return
+
+        # Standard Execution Logic starts here
         if isinstance(sender_card, FormulationConfigCard):
             self.running_card = sender_card
         else:
             self.running_card = None
 
-        # --- FIX START: Capture Color ---
+        # Determine Color
         self._pending_color = None
         if config and "color" in config and config["color"]:
             self._pending_color = config["color"]
         elif self.running_card:
             self._pending_color = self.running_card.plot_color
-        # --- FIX END ---
 
         if self.current_task is not None and self.current_task.isRunning():
-            print("Stopping previous task...")
             self.current_task.stop()
 
-        # Visual Feedback
+        # Update Visuals (Only if not in the middle of a batch loop controlled elsewhere)
+        # If we are simply running one card (not batch mode), show specific loading
         name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
-        self.viz_panel.set_plot_title(f"Calculating: {name}...")
-        self.viz_panel.show_loading()
 
-        # Create & Start New Thread
+        if not self._is_batch_running:
+            self.viz_panel.set_plot_title(f"Calculating: {name}...")
+            self.viz_panel.show_loading()
+
+        # Create & Start Thread
         self.current_task = PredictionThread(config)
         self.current_task.data_ready.connect(self._on_prediction_finished)
         self.current_task.finished.connect(self._on_task_complete)
         self.current_task.start()
 
     def _on_prediction_finished(self, data_package):
-        # --- FIX START: Restore Color if Missing ---
+        # Restore color
         if self._pending_color and "color" not in data_package:
             data_package["color"] = self._pending_color
-        # --- FIX END ---
 
-        final_name = data_package.get("config_name", "Unknown")
-        self.viz_panel.set_plot_title(final_name)
-        self.viz_panel.set_data(data_package)
-        self.viz_panel.hide_loading()
+        # Update the specific card that requested this
         if hasattr(self, "running_card") and self.running_card:
             self.running_card.set_results(data_package)
+
+        # Branch logic: Batch vs Single
+        if self._is_batch_running:
+            # Accumulate and continue
+            self._batch_results.append(data_package)
+            self._process_next_in_batch()
+        else:
+            # Standard single run: Update Viz Panel immediately
+            final_name = data_package.get("config_name", "Unknown")
+            self.viz_panel.set_plot_title(final_name)
+            self.viz_panel.set_data(data_package)
+            self.viz_panel.hide_loading()
 
     def _on_task_complete(self):
         """Called when thread naturally finishes."""
@@ -860,6 +1309,45 @@ class PredictionUI(QtWidgets.QWidget):
             self.current_task.stop()
 
         super().closeEvent(event)
+
+    def _update_overlay_geometry(self):
+        """Updates positions of overlay widgets."""
+
+        # 1. Filter Widget (Relative to Left Panel)
+        if hasattr(self, "filter_widget") and self.filter_widget.isVisible():
+            self.filter_widget.setGeometry(
+                0, 0, self.left_widget.width(), self.filter_widget.sizeHint().height()
+            )
+
+        # 2. Evaluation Widget (Relative to Toolbar Button)
+        if hasattr(self, "eval_widget") and self.eval_widget.isVisible():
+            # Calculate Global Position of the Button's bottom-left corner
+            btn_geo = self.btn_evaluate.geometry()
+            global_pos = self.btn_evaluate.mapToGlobal(
+                QtCore.QPoint(0, btn_geo.height())
+            )
+
+            # Map back to PredictionUI (self) coordinates
+            local_pos = self.mapFromGlobal(global_pos)
+
+            # Set Width (e.g., 300px standard dropdown width)
+            menu_width = 300
+
+            # Ensure it doesn't go off the right side of the screen
+            x = local_pos.x()
+            if x + menu_width > self.width():
+                x = self.width() - menu_width - 10
+
+            self.eval_widget.setGeometry(
+                x, local_pos.y(), menu_width, self.eval_widget.sizeHint().height()
+            )
+
+            # Ensure it sits on top of everything (splitter, right panel, etc.)
+            self.eval_widget.raise_()
+
+    def resizeEvent(self, event):
+        self._update_overlay_geometry()
+        super().resizeEvent(event)
 
 
 if __name__ == "__main__":

@@ -1,13 +1,39 @@
-from PyQt5 import QtWidgets
+from PyQt5 import QtCore, QtWidgets
+
+try:
+    from src.models.ingredient import (
+        Excipient,
+        Ingredient,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import (
+        Excipient,
+        Ingredient,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 
 
 class GenericIngredientDialog(QtWidgets.QDialog):
     """Dialog for configuring generic ingredients (Surfactant, Stabilizer, Excipient, Salt)."""
 
-    def __init__(self, ingredient_type, existing_ingredient=None, parent=None):
+    def __init__(
+        self, ingredient_type, ing_ctrl, existing_ingredient=None, parent=None
+    ):
         super().__init__(parent)
+        self._parent = parent
         self.ingredient_type = ingredient_type
+        self.controller = ing_ctrl
+        self.existing_ingredient = existing_ingredient
         is_edit = existing_ingredient is not None
+
+        # Attribute to store result for the caller if needed
+        self.result_ingredient = None
+
         self.setWindowTitle(
             f"Edit {ingredient_type}" if is_edit else f"Add New {ingredient_type}"
         )
@@ -45,14 +71,15 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        self.edit_name.setPlaceholderText(f"Enter {ingredient_type.lower()} name")
+        placeholder = self._get_placeholder(ingredient_type)
+        self.edit_name.setPlaceholderText(f"e.g., {placeholder}")
         form_layout.addRow("Name*:", self.edit_name)
 
         layout.addLayout(form_layout)
 
         # Load existing data if provided
         if existing_ingredient:
-            self.edit_name.setText(existing_ingredient.get("name", ""))
+            self._populate_fields(existing_ingredient)
 
         # Buttons
         layout.addStretch()
@@ -80,11 +107,88 @@ class GenericIngredientDialog(QtWidgets.QDialog):
             }
         """
         )
-        btn_save.clicked.connect(self.accept)
+        # Connect to custom save handler instead of default accept
+        btn_save.clicked.connect(self.save_and_accept)
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
 
+    def _get_placeholder(self, ing_type):
+        """Returns a helpful placeholder based on type."""
+        placeholders = {
+            "Salt": "NaCl",
+            "Surfactant": "PS80",
+            "Stabilizer": "Sucrose",
+            "Excipient": "Mannitol",
+        }
+        return placeholders.get(ing_type, "Component Name")
+
+    def _populate_fields(self, data):
+        """Populate fields from either an Ingredient object or a dictionary."""
+        name = ""
+        if isinstance(data, Ingredient):
+            name = data.name
+        elif isinstance(data, dict):
+            name = data.get("name", "")
+        self.edit_name.setText(name)
+
+    def _create_instance(self, name):
+        """Factory to create the specific Ingredient subclass instance."""
+        # Use -1 for enc_id; controller will assign the correct one on add()
+        if self.ingredient_type == "Salt":
+            return Salt(enc_id=-1, name=name)
+        elif self.ingredient_type == "Surfactant":
+            return Surfactant(enc_id=-1, name=name)
+        elif self.ingredient_type == "Stabilizer":
+            return Stabilizer(enc_id=-1, name=name)
+        elif self.ingredient_type == "Excipient":
+            return Excipient(enc_id=-1, name=name)
+        else:
+            raise ValueError(f"Unknown ingredient type: {self.ingredient_type}")
+
+    def save_and_accept(self):
+        """Validates input, updates database via controller, and closes dialog."""
+        name = self.edit_name.text().strip()
+
+        # 1. Validation
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            return
+
+        try:
+            if self.existing_ingredient and isinstance(
+                self.existing_ingredient, Ingredient
+            ):
+                # --- UPDATE EXISTING ---
+                # Update the object's local state
+                self.existing_ingredient.name = name
+
+                # Persist to DB using the controller
+                # Controller.update() takes (id, ingredient_object)
+                self.controller.update(
+                    self.existing_ingredient.id, self.existing_ingredient
+                )
+                self.result_ingredient = self.existing_ingredient
+
+            else:
+                # --- ADD NEW ---
+                new_ing = self._create_instance(name)
+                # Controller.add() handles enc_id assignment and DB insertion
+                self.result_ingredient = self.controller.add(new_ing)
+
+            # Close dialog with Accepted status
+            self.accept()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Database Error",
+                f"Failed to save {self.ingredient_type}:\n{str(e)}",
+            )
+
     def get_data(self):
-        """Returns the ingredient configuration as a dictionary."""
+        """Returns the updated/created ingredient object."""
+        # Return the actual object if available, otherwise fallback to dict
+        if self.result_ingredient:
+            return self.result_ingredient
         return {"name": self.edit_name.text().strip()}
