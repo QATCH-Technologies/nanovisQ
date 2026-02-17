@@ -8,6 +8,7 @@ from PyQt5.QtCore import Qt
 # --- 1. NEW IMPORTS ADDED HERE ---
 try:
     from architecture import Architecture
+    from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
 
     # Database Integration Imports
@@ -25,9 +26,8 @@ try:
 
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.architecture import Architecture
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-
-    # Database Integration Imports (Fallback Path)
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
     from QATCH.VisQAI.src.view.widgets.evaluation_widget import EvaluationWidget
@@ -71,6 +71,7 @@ class PredictionUI(QtWidgets.QWidget):
 
         self.db = Database(parse_file_key=True)
         self.ing_ctrl = IngredientController(self.db)
+        self.form_ctrl = FormulationController(self.db)
         self._load_database_data()
 
         self.init_ui()
@@ -1061,6 +1062,7 @@ class PredictionUI(QtWidgets.QWidget):
             ingredients_data=self.ingredients_by_type,
             ingredient_types=self.INGREDIENT_TYPES,
             ingredient_units=self.INGREDIENT_UNITS,
+            parent=self,
         )
         card.removed.connect(self.remove_card)
         card.run_requested.connect(self.run_prediction)
@@ -1307,7 +1309,7 @@ class PredictionUI(QtWidgets.QWidget):
         if self.current_task is not None and self.current_task.isRunning():
             print("Closing application: Stopping background thread...")
             self.current_task.stop()
-
+        self.db.close()
         super().closeEvent(event)
 
     def _update_overlay_geometry(self):

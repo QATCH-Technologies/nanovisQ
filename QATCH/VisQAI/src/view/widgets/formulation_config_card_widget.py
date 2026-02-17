@@ -114,10 +114,12 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
     @property
     def controller(self):
-        """Retrieves the IngredientController from the parent PredictionUI window."""
-        window = self.window()
-        if hasattr(window, "ing_ctrl"):
-            return window.ing_ctrl
+        """Walks up the parent chain to find the IngredientController."""
+        widget = self.parent()
+        while widget is not None:
+            if hasattr(widget, "ing_ctrl"):
+                return widget.ing_ctrl
+            widget = widget.parent()
         return None
 
     def _init_ui(self, default_name):
@@ -812,31 +814,33 @@ class FormulationConfigCard(QtWidgets.QFrame):
         current_ingredient = None
         is_edit_mode = False
 
-        # 1. Determine Context and Get Current Object
         if btn_configure and btn_configure.property("mode") == "edit":
             is_edit_mode = True
             current_ingredient = combo.currentData()
 
-        # 2. Open Specific Dialog (Passing the Object directly)
+        controller = self.controller
+        if not controller:
+            QtWidgets.QMessageBox.critical(
+                self, "Error", "Database controller not found."
+            )
+            return
+
         if ing_type == "Protein":
             dialog = ProteinConfigDialog(
-                existing_protein=current_ingredient, parent=self
+                ing_ctrl=controller,  # ← add this
+                existing_protein=current_ingredient,
+                parent=self,
             )
         elif ing_type == "Buffer":
-            dialog = BufferConfigDialog(existing_buffer=current_ingredient, parent=self)
+            dialog = BufferConfigDialog(
+                ing_ctrl=controller,  # ← add this
+                existing_buffer=current_ingredient,
+                parent=self,
+            )
         else:
-            # Access Controller from Parent Window
-            controller = self.ing_ctrl
-            if not controller:
-                QtWidgets.QMessageBox.critical(
-                    self, "Error", "Database controller not found."
-                )
-                return
-
-            # Pass controller and the object directly
             dialog = GenericIngredientDialog(
                 ingredient_type=ing_type,
-                controller=controller,
+                ing_ctrl=controller,
                 existing_ingredient=current_ingredient,
                 parent=self,
             )

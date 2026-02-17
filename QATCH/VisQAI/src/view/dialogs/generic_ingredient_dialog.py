@@ -169,7 +169,7 @@ class GenericIngredientDialog(QtWidgets.QDialog):
                     self.existing_ingredient.id, self.existing_ingredient
                 )
                 self.result_ingredient = self.existing_ingredient
-
+                print(self.controller.get_all_ingredients())
             else:
                 # --- ADD NEW ---
                 new_ing = self._create_instance(name)

@@ -281,8 +281,6 @@ class FormulationController:
             if verbose_print:
                 p_bar.update()
 
-            # TODO: Add class_type as not none from this.
-
             protein = self.ingredient_controller.add_protein(
                 Protein(
                     enc_id=0,

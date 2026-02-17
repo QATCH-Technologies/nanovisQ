@@ -9,10 +9,13 @@ except (ModuleNotFoundError, ImportError):
 class ProteinConfigDialog(QtWidgets.QDialog):
     """Dialog for configuring protein ingredients."""
 
-    def __init__(self, existing_protein=None, parent=None):
+    def __init__(self, ing_ctrl, existing_protein=None, parent=None):
         super().__init__(parent)
+        self.controller = ing_ctrl
         self.existing_protein = existing_protein
+        self.result_ingredient = None
         is_edit = existing_protein is not None
+
         self.setWindowTitle("Edit Protein" if is_edit else "Add New Protein")
         self.resize(400, 380)
         self.setModal(True)
@@ -107,7 +110,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
             }
         """
         )
-        btn_save.clicked.connect(self.accept)
+        btn_save.clicked.connect(self.save_and_accept)
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
@@ -154,6 +157,44 @@ class ProteinConfigDialog(QtWidgets.QDialog):
         self.spin_mw.setValue(mw)
         self.spin_pi_mean.setValue(pi_mean)
         self.spin_pi_range.setValue(pi_range)
+
+    def save_and_accept(self):
+        name = self.edit_name.text().strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            return
+
+        try:
+            class_str = self.combo_class.currentText()
+            class_type = ProteinClass.from_value(class_str)
+
+            if self.existing_protein and isinstance(self.existing_protein, Protein):
+                # UPDATE
+                self.existing_protein.name = name
+                self.existing_protein.class_type = class_type
+                self.existing_protein.molecular_weight = self.spin_mw.value()
+                self.existing_protein.pI_mean = self.spin_pi_mean.value()
+                self.existing_protein.pI_range = self.spin_pi_range.value()
+                self.controller.update(self.existing_protein.id, self.existing_protein)
+                self.result_ingredient = self.existing_protein
+            else:
+                # ADD NEW
+                new_protein = Protein(
+                    enc_id=-1,
+                    name=name,
+                    class_type=class_type,
+                    molecular_weight=self.spin_mw.value(),
+                    pI_mean=self.spin_pi_mean.value(),
+                    pI_range=self.spin_pi_range.value(),
+                )
+                self.result_ingredient = self.controller.add(new_protein)
+
+            self.accept()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Database Error", f"Failed to save Protein:\n{str(e)}"
+            )
 
     def get_data(self):
         """Returns the protein configuration as a dictionary matching Protein attributes."""

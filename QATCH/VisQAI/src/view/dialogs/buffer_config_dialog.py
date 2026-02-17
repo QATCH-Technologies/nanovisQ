@@ -9,9 +9,11 @@ except (ModuleNotFoundError, ImportError):
 class BufferConfigDialog(QtWidgets.QDialog):
     """Dialog for configuring buffer ingredients."""
 
-    def __init__(self, existing_buffer=None, parent=None):
+    def __init__(self, ing_ctrl, existing_buffer=None, parent=None):
         super().__init__(parent)
+        self.controller = ing_ctrl
         self.existing_buffer = existing_buffer
+        self.result_ingredient = None
         is_edit = existing_buffer is not None
         self.setWindowTitle("Edit Buffer" if is_edit else "Add New Buffer")
         self.resize(350, 200)
@@ -89,7 +91,7 @@ class BufferConfigDialog(QtWidgets.QDialog):
             }
         """
         )
-        btn_save.clicked.connect(self.accept)
+        btn_save.clicked.connect(self.save_and_accept)
         btn_layout.addWidget(btn_save)
 
         layout.addLayout(btn_layout)
@@ -108,6 +110,31 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         self.edit_name.setText(name)
         self.spin_ph.setValue(ph)
+
+    def save_and_accept(self):
+        name = self.edit_name.text().strip()
+        if not name:
+            QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            return
+
+        try:
+            if self.existing_buffer and isinstance(self.existing_buffer, Buffer):
+                # UPDATE
+                self.existing_buffer.name = name
+                self.existing_buffer.pH = self.spin_ph.value()
+                self.controller.update(self.existing_buffer.id, self.existing_buffer)
+                self.result_ingredient = self.existing_buffer
+            else:
+                # ADD NEW
+                new_buffer = Buffer(enc_id=-1, name=name, pH=self.spin_ph.value())
+                self.result_ingredient = self.controller.add(new_buffer)
+
+            self.accept()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(
+                self, "Database Error", f"Failed to save Buffer:\n{str(e)}"
+            )
 
     def get_data(self):
         """Returns the buffer configuration as a dictionary."""
