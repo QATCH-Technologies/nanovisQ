@@ -95,6 +95,40 @@ class FormulationController:
         """
         return self.db.get_formulation(id)
 
+    def get_formulation_by_signature(self, signature: str) -> Formulation:
+        """Retrieve a formulation by its unique SHA256 signature.
+
+        Args:
+            signature (str): The SHA256 signature string.
+
+        Returns:
+            Formulation: The matching Formulation object, or None if not found.
+        """
+        return self.db.get_formulation_by_signature(signature)
+
+    def delete_formulation_by_signature(self, signature: str) -> bool:
+        """Delete a formulation identified by its signature.
+
+        Args:
+            signature (str): The SHA256 signature string.
+
+        Returns:
+            bool: True if deleted, False if not found.
+        """
+        return self.db.delete_formulation_by_signature(signature)
+
+    def update_formulation_name_by_signature(self, signature: str, name: str) -> bool:
+        """Update the name of a formulation identified by its signature.
+
+        Args:
+            signature (str): The SHA256 signature.
+            name (str): The new name.
+
+        Returns:
+            bool: True if updated, False if signature not found.
+        """
+        return self.db.update_formulation_name_by_signature(signature, name)
+
     def find_id(self, formulation: Formulation) -> int:
         """Find the database ID of a formulation matching the given object's data.
 
@@ -246,6 +280,8 @@ class FormulationController:
         """
         added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
+
+        # Define minimum expected columns (excluding optional name/signature)
         expected = {
             "Protein_type",
             "MW",
@@ -267,6 +303,7 @@ class FormulationController:
             "Excipient_conc",
             *{f"Viscosity_{r}" for r in shear_rates},
         }
+
         missing = expected - set(df.columns)
         if missing:
             raise ValueError(f"DataFrame is missing columns: `{missing}`")
@@ -277,10 +314,18 @@ class FormulationController:
             p_bar = tqdm(total=len(df))
 
         for _, row in df.iterrows():
-
             if verbose_print:
                 p_bar.update()
+            f_name = (
+                row["name"] if "name" in df.columns and pd.notna(row["name"]) else None
+            )
+            f_sig = (
+                row["signature"]
+                if "signature" in df.columns and pd.notna(row["signature"])
+                else None
+            )
 
+            form = Formulation(name=f_name, signature=f_sig)
             protein = self.ingredient_controller.add_protein(
                 Protein(
                     enc_id=0,
@@ -307,6 +352,7 @@ class FormulationController:
                 Excipient(enc_id=0, name=str(row["Excipient_type"]))
             )
 
+            # BUILD VISCOSITY PROFILE
             vis_values = [row[f"Viscosity_{r}"] for r in shear_rates]
             if any(pd.notna(v) for v in vis_values):
                 vp = ViscosityProfile(
@@ -319,7 +365,7 @@ class FormulationController:
                     units="unset",
                 )
 
-            form = Formulation()
+            # SET COMPONENTS
             form.set_buffer(buffer=buffer, concentration=row["Buffer_conc"], units="mM")
             form.set_protein(
                 protein=protein, concentration=row["Protein_conc"], units="mg/mL"

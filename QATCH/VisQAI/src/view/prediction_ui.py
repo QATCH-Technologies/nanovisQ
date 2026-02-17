@@ -13,6 +13,7 @@ try:
 
     # Database Integration Imports
     from src.db.db import Database
+    from src.io.parser import Parser
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
     from widgets.formulation_config_card_widget import (
@@ -22,13 +23,17 @@ try:
     from widgets.prediction_filter_widget import PredictionFilterWidget
     from widgets.reordable_container_widget import ReorderableCardContainer
     from widgets.visualization_panel import VisualizationPanel
+    from workers.import_worker import ImportWorker
     from workers.prediction_worker import PredictionThread
-
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
+    from QATCH.common.userProfiles import UserPreferences, UserProfiles
+    from QATCH.core.constants import Constants
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.io.parser import Parser
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
     from QATCH.VisQAI.src.view.widgets.evaluation_widget import EvaluationWidget
     from QATCH.VisQAI.src.view.widgets.formulation_config_card_widget import (
@@ -42,7 +47,10 @@ except (ImportError, ModuleNotFoundError):
         ReorderableCardContainer,
     )
     from QATCH.VisQAI.src.view.widgets.visualization_panel import VisualizationPanel
+    from QATCH.VisQAI.src.view.workers.import_worker import ImportWorker
     from QATCH.VisQAI.src.view.workers.prediction_worker import PredictionThread
+
+TAG = "[VisQ.AI]"
 
 
 class PredictionUI(QtWidgets.QWidget):
@@ -289,7 +297,7 @@ class PredictionUI(QtWidgets.QWidget):
         )
         self.btn_import.setToolTip("Import Data")
         self.btn_import.setFixedSize(32, 32)
-        self.btn_import.clicked.connect(self.import_data_file)
+        self.btn_import.clicked.connect(self.import_run)
         layout.addWidget(self.btn_import)
 
         self.btn_export_top = QtWidgets.QToolButton()
@@ -1077,11 +1085,15 @@ class PredictionUI(QtWidgets.QWidget):
 
         if data:
             if hasattr(card, "load_data"):
+                # load_data handles ingredient population if data['ingredients'] is a dict
                 card.load_data(data)
+
             if data.get("measured", False):
                 card.set_measured_state(True)
-            # This triggers the run via signal, which includes the color from card config
-            card.emit_run_request()
+
+            # Only trigger a run if it's a prediction (not measured data)
+            if not data.get("measured", False):
+                card.emit_run_request()
 
         self.on_card_expanded(card)
         QtCore.QTimer.singleShot(100, lambda: self._scroll_to_card(card))
@@ -1089,16 +1101,33 @@ class PredictionUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
         self.check_evaluation_eligibility()
 
+        return card  # <--- CRITICAL: Return the card instance
+
     def _scroll_to_card(self, card_widget):
         """Helper to ensure the new card is visible in the scroll area."""
         self.scroll_area.ensureWidgetVisible(card_widget, 0, 0)
 
     def on_card_expanded(self, active_card):
+        """
+        Handles card expansion: collapses others and updates the visualization
+        with the active card's data (including measured profiles).
+        """
+        # 1. Collapse other cards
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
             widget = item.widget()
             if isinstance(widget, FormulationConfigCard) and widget is not active_card:
                 widget.collapse()
+
+        # 2. Automatically plot data if available (Fixes missing plot on open)
+        if hasattr(active_card, "last_results") and active_card.last_results:
+            # Sync name in case it changed
+            data = active_card.last_results
+            data["config_name"] = active_card.name_input.text()
+
+            # Send to Visualization Panel immediately
+            self.viz_panel.set_plot_title(data["config_name"])
+            self.viz_panel.set_data(data)
 
     def remove_card(self, card_widget):
         card_widget.setDisabled(True)
@@ -1117,62 +1146,205 @@ class PredictionUI(QtWidgets.QWidget):
         anim.finished.connect(cleanup)
         anim.start()
 
-    def import_data_file(self):
-        fname, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Import Run Data",
-            "",
-            "CSV Files (*.csv);;All Files (*)",
-        )
-        if not fname:
-            return
-        QtWidgets.QApplication.setOverrideCursor(QtCore.Qt.CursorShape.WaitCursor)
-
+    def import_run(self):
+        """
+        Initiates the background import process for one or multiple directories.
+        """
+        # 1. Retrieve Load Path from Preferences
         try:
+            if (
+                not hasattr(UserProfiles, "user_preferences")
+                or UserProfiles.user_preferences is None
+            ):
+                UserProfiles.user_preferences = UserPreferences(
+                    UserProfiles.get_session_file()
+                )
 
-            imported_config = {
-                "name": "High Concentration Etanercept",
-                "measured": True,
-                "use_in_icl": True,
-                "notes": "Some notes about formulation components here",
-                "model": "VisQ.AI 1.3.1 (Base)",
-                "temperature": 25.0,  # °C
-                # Format: "ingredient_type": {"name": "ingredient_name", "concentration": value}
-                "ingredients": {
-                    "Protein": {
-                        "name": "Etanercept",
-                        "concentration": 300,  # mg/mL
-                        "class": "IgG1",
-                        "mw": 150,
-                        "pi_mean": 7.9,
-                        "pi_range": 0.8,
-                    },
-                    "Buffer": {
-                        "name": "Histidine",
-                        "concentration": 20.0,  # mM
-                        "ph": 6.0,
-                    },
-                    "Surfactant": {
-                        "name": "Tween-80",
-                        "concentration": 0.05,  # %w
-                    },
-                    "Stabilizer": {"name": "Sucrose", "concentration": 0.2},  # M
-                    "Excipient": {"name": "Lysin", "concentration": 50.0},  # mM
-                    "Salt": {"name": "NaCl", "concentration": 150.0},  # mM
-                },
-                # ML Parameters (optional, for model options)
-                "ml_params": {"lr": 0.01, "steps": 100, "ci": 95},
-            }
-            # Add card logic calls emit_run_request which handles color correctly
-            self.add_prediction_card(imported_config)
+            prefs = UserProfiles.user_preferences.get_preferences()
+            path_from_prefs = prefs.get("load_data_path")
 
-            # REMOVED: self.run_prediction(imported_config)
-            # Reason: Duplicate call. add_prediction_card already triggers a run,
-            # and passing the raw dict here bypasses the color assignment in the card.
+            if (
+                path_from_prefs
+                and isinstance(path_from_prefs, str)
+                and path_from_prefs.strip()
+            ):
+                self.load_data_path = path_from_prefs
+            else:
+                self.load_data_path = Constants.working_logged_data_path
 
-        finally:
+        except Exception as e:
+            Log.e(TAG, f"Error reading load path from preferences: {e}")
+            self.load_data_path = Constants.working_logged_data_path
 
-            QtWidgets.QApplication.restoreOverrideCursor()
+        # 2. Open Directory Selection Dialog
+        dialog = QtWidgets.QFileDialog(
+            self, "Select Run Directory(s)", self.load_data_path
+        )
+        dialog.setFileMode(QtWidgets.QFileDialog.Directory)
+        dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
+
+        # Try to enable multi-selection for directories if the OS supports it
+        # (Note: On standard Windows native dialogs, this often restricts to single folder,
+        # but using the QFileDialog non-native view can allow multiple)
+        # dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
+        # dialog.setViewMode(QtWidgets.QFileDialog.List)
+
+        if dialog.exec_():
+            fnames = dialog.selectedFiles()
+        else:
+            return
+
+        if not fnames:
+            return
+
+        # 3. Setup Progress Dialog
+        self.progress_dialog = QtWidgets.QProgressDialog(
+            "Scanning directories...", "Cancel", 0, 100, self
+        )
+        self.progress_dialog.setWindowTitle("Importing Data")
+        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setAutoClose(True)
+        self.progress_dialog.setAutoReset(True)
+
+        # 4. Configure and Start Worker
+        # Pass directory paths; worker will discover files inside
+        self.worker = ImportWorker(fnames)
+
+        # Connect Worker Signals
+        self.worker.progress_changed.connect(self.progress_dialog.setValue)
+        self.worker.status_changed.connect(self.progress_dialog.setLabelText)
+        self.worker.import_finished.connect(self._on_import_finished)
+        self.worker.import_error.connect(self._on_import_error)
+
+        self.progress_dialog.canceled.connect(self.worker.stop)
+        self.worker.start()
+
+    def _on_import_finished(self, results):
+        """
+        Callback when the import worker finishes successfully.
+        Creates cards for each imported formulation and populates ingredients.
+        """
+        if not results:
+            return
+
+        if not hasattr(self, "imported_runs"):
+            self.imported_runs = []
+        self.imported_runs.extend(results)
+
+        count = 0
+        for formulation in results:
+            try:
+                # [Ingredient Mapping Logic Omitted for Brevity - Same as before]
+                ingredients_map = {}
+                attr_map = {
+                    "protein": "Protein",
+                    "buffer": "Buffer",
+                    "surfactant": "Surfactant",
+                    "stabilizer": "Stabilizer",
+                    "excipient": "Excipient",
+                    "salt": "Salt",
+                }
+                for attr_name, type_name in attr_map.items():
+                    if hasattr(formulation, attr_name):
+                        component = getattr(formulation, attr_name)
+                        if (
+                            component
+                            and hasattr(component, "ingredient")
+                            and component.ingredient
+                        ):
+                            ing_obj = component.ingredient
+                            name = getattr(ing_obj, "name", "None")
+                            conc = getattr(component, "concentration", 0.0)
+                            units = getattr(component, "units", "")
+                            if name and name != "None":
+                                ingredients_map[type_name] = {
+                                    "name": name,
+                                    "component": name,
+                                    "concentration": float(conc) if conc else 0.0,
+                                    "units": units,
+                                }
+
+                # 2. Extract Viscosity Data
+                shear_rates = []
+                viscosities = []
+                temp = 25.0
+
+                if (
+                    hasattr(formulation, "viscosity_profile")
+                    and formulation.viscosity_profile
+                ):
+                    if hasattr(formulation.viscosity_profile, "shear_rates"):
+                        shear_rates = formulation.viscosity_profile.shear_rates
+                    if hasattr(formulation.viscosity_profile, "viscosities"):
+                        viscosities = formulation.viscosity_profile.viscosities
+
+                if hasattr(formulation, "temperature"):
+                    temp = float(formulation.temperature)
+
+                # Extract Notes & Missing Fields
+                notes = getattr(formulation, "notes", "")
+                missing_fields = getattr(formulation, "missing_fields", [])
+
+                card_data = {
+                    "name": (
+                        formulation.name
+                        if formulation.name
+                        else f"Imported Run {len(self.imported_runs)}"
+                    ),
+                    "ingredients": ingredients_map,
+                    "measured": True,
+                    "temperature": temp,
+                    "notes": notes,
+                    "missing_fields": missing_fields,
+                }
+
+                card = self.add_prediction_card(card_data)
+
+                if card:
+                    data_package = {
+                        "config_name": card_data["name"],
+                        "shear_rate": shear_rates,
+                        "viscosity": viscosities,  # Line Plot (Predicted/Reference)
+                        "measured_viscosity": viscosities,  # For Evaluation Metric Calc
+                        "measured_y": viscosities,  # <--- CRITICAL: Key for VisualizationPanel Dash Line
+                        "y": viscosities,  # Fallback for main plot line
+                        "x": shear_rates,  # Key for X-axis
+                        "temperature": temp,
+                        "color": card.plot_color,
+                        "measured": True,
+                    }
+
+                    card.set_results(data_package)
+                    self.viz_panel.set_plot_title(f"Imported: {card_data['name']}")
+                    self.viz_panel.set_data(data_package)
+                    count += 1
+
+            except Exception as e:
+                Log.e(TAG, f"Error creating card for imported run: {e}")
+
+        if count > 0:
+            QtWidgets.QMessageBox.information(
+                self,
+                "Import Complete",
+                f"Successfully created {count} formulation cards.",
+            )
+        else:
+            QtWidgets.QMessageBox.warning(
+                self, "Import Warning", "No valid formulations could be processed."
+            )
+
+    def _on_import_error(self, error_msg):
+        """
+        Callback when the import worker encounters an error.
+        """
+        # Ensure progress dialog is closed
+        if hasattr(self, "progress_dialog") and self.progress_dialog.isVisible():
+            self.progress_dialog.cancel()
+
+        QtWidgets.QMessageBox.critical(
+            self, "Import Failed", f"An error occurred during import:\n{error_msg}"
+        )
 
     def get_target_cards(self):
         """

@@ -1116,9 +1116,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
         if "use_in_icl" in data:
             self.use_in_icl = data["use_in_icl"]
 
+        # Populate Notes
         if "notes" in data:
             self.notes_edit.setText(data["notes"])
 
+        # Populate Ingredients
         ingredients_data = data.get("formulation") or data.get("ingredients")
         if ingredients_data:
             for ing_type, details in ingredients_data.items():
@@ -1152,8 +1154,47 @@ class FormulationConfigCard(QtWidgets.QFrame):
         if "measured" in data:
             self.set_measured(data["measured"])
 
+        # --- NEW: Handle Missing Fields ---
+        if "missing_fields" in data:
+            self.mark_missing_fields(data["missing_fields"])
+
         # Sync the internal formulation object after loading
         self._update_internal_formulation()
+
+    def mark_missing_fields(self, missing_list):
+        """Visually indicates missing information on the card."""
+        if not missing_list:
+            return
+
+        for field in missing_list:
+            # Handle Ingredients (e.g., "Protein Type" missing)
+            if "Type" in field:
+                ing_type = field.replace(" Type", "")
+
+                # If the row was not created because data was missing, create it now
+                if ing_type not in self.active_ingredients:
+                    if ing_type in self.INGREDIENT_TYPES:
+                        self.add_ingredient_row(ing_type)
+
+                # Apply Error Styling to the Combo Box
+                if ing_type in self.active_ingredients:
+                    combo, spin, _, _ = self.active_ingredients[ing_type]
+                    combo.setStyleSheet(
+                        "border: 1px solid #e53935; background-color: #ffebee;"
+                    )
+                    combo.setToolTip(
+                        f"Missing {ing_type} in imported file. Please select."
+                    )
+
+            # Handle Missing Viscosity Data
+            elif field == "Viscosity Data":
+                self.lbl_measured.setText("No Viscosity Data")
+                self.lbl_measured.setProperty("class", "badge-warning")
+                self.lbl_measured.style().unpolish(self.lbl_measured)
+                self.lbl_measured.style().polish(self.lbl_measured)
+                self.lbl_measured.setToolTip(
+                    "Viscosity profile could not be loaded from the import source."
+                )
 
     def set_selectable(self, active: bool):
         self.is_selectable = active

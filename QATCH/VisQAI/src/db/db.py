@@ -218,14 +218,18 @@ class Database:
             )
         """
         )
-        # Formulation and components
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS formulation (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                signature TEXT UNIQUE,
                 temperature REAL
             )
         """
+        )
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)"
         )
         c.execute(
             rf"""
@@ -501,7 +505,12 @@ class Database:
         """
         c = self.conn.cursor()
         c.execute(
-            "INSERT INTO formulation (temperature) VALUES (?)", (form.temperature,)
+            "INSERT INTO formulation (name, signature, temperature) VALUES (?, ?, ?)",
+            (
+                form.name,
+                form.signature,
+                form.temperature,
+            ),
         )
         fid = c.lastrowid
 
@@ -550,38 +559,31 @@ class Database:
                 temperature, and viscosity profile, or `None` if not found.
         """
         c = self.conn.cursor()
-        c.execute("SELECT temperature FROM formulation WHERE id = ?", (id,))
+        c.execute(
+            "SELECT name, signature, temperature FROM formulation WHERE id = ?", (id,)
+        )
         row = c.fetchone()
         if not row:
             return None
-        (temp,) = row
 
-        form = Formulation(id)
-        form.id = id
+        name, signature, temp = row
+        form = Formulation(id=id, name=name, signature=signature)
         form.set_temperature(temp)
 
-        # Load component rows and set each on the Formulation
         c.execute(
             "SELECT component_type, ingredient_id, concentration, units "
             "FROM formulation_component WHERE formulation_id = ?",
             (id,),
         )
-        for comp_type, comp in form._components.items():
-            if comp is None:
-                continue
-            iid = comp.ingredient.id  # ← already set by ingredient_controller.add()
-            if not iid:
-                raise ValueError(
-                    f"Ingredient '{comp.ingredient.name}' has no DB id. "
-                    "Ensure ingredient_controller.add() was called before add_formulation()."
-                )
-            c.execute(
-                "INSERT INTO formulation_component "
-                "(formulation_id, component_type, ingredient_id, concentration, units) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (fid, comp_type, iid, comp.concentration, comp.units),
-            )
-        # Load viscosity profile if present
+        rows = c.fetchall()
+
+        for r in rows:
+            comp_type, iid, conc, units = r
+            ingredient = self.get_ingredient(iid)
+            if ingredient:
+                if comp_type in form._components:
+                    form._components[comp_type] = Component(ingredient, conc, units)
+
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
             "FROM viscosity_profile WHERE formulation_id = ?",
@@ -613,6 +615,68 @@ class Database:
                 formulations.append(form)
 
         return formulations
+
+    def get_formulation_by_signature(self, signature: str) -> Optional[Formulation]:
+        """Retrieve a formulation by its SHA256 signature.
+
+        Args:
+            signature (str): The unique SHA256 signature string.
+
+        Returns:
+            Optional[Formulation]: The matching Formulation object, or None if not found.
+        """
+        c = self.conn.cursor()
+        # Find the ID associated with this signature
+        c.execute("SELECT id FROM formulation WHERE signature = ?", (signature,))
+        row = c.fetchone()
+
+        if row:
+            # Reuse the existing get_formulation method to handle component reconstruction
+            return self.get_formulation(row[0])
+        return None
+
+    def delete_formulation_by_signature(self, signature: str) -> bool:
+        """Delete a formulation identified by its signature.
+
+        Args:
+            signature (str): The unique SHA256 signature string.
+
+        Returns:
+            bool: True if a formulation was deleted, False if no match was found.
+        """
+        c = self.conn.cursor()
+        c.execute("DELETE FROM formulation WHERE signature = ?", (signature,))
+
+        if c.rowcount > 0:
+            self._commit()
+            if self.use_encryption:
+                self.backup()
+            return True
+        return False
+
+    def update_formulation_name_by_signature(
+        self, signature: str, new_name: str
+    ) -> bool:
+        """Update the name of a formulation identified by its signature.
+
+        Args:
+            signature (str): The unique SHA256 signature of the formulation to update.
+            new_name (str): The new name to assign.
+
+        Returns:
+            bool: True if the update was successful, False if the signature was not found.
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature)
+        )
+
+        if c.rowcount > 0:
+            self._commit()
+            if self.use_encryption:
+                self.backup()
+            return True
+        return False
 
     def delete_formulation(self, id: int) -> bool:
         """Delete a formulation and all linked components and viscosity profile.

@@ -316,19 +316,29 @@ class Formulation:
         _viscosity_profile (Optional[ViscosityProfile]): Viscosity profile associated with the formulation.
     """
 
-    def __init__(self, id: Optional[int] = None) -> None:
-        """Initialize a Formulation, optionally with a preset ID.
+    def __init__(
+        self,
+        id: Optional[int] = None,
+        name: Optional[str] = None,
+        signature: Optional[str] = None,
+    ) -> None:
+        """Initialize a Formulation, optionally with ID, name, and signature.
 
         Args:
-            id (Optional[int]): Integer identifier for the formulation. If None, ID is unset.
-
-        Raises:
-            TypeError: If `id` is not an integer or None.
+            id (Optional[int]): Integer identifier for the formulation.
+            name (Optional[str]): Human-readable name for the formulation.
+            signature (Optional[str]): SHA256 hash signature for DB recall.
         """
         if id is not None and not isinstance(id, int):
             raise TypeError("`id` must be an integer or None")
-        self._id: Optional[int] = id
+        if name is not None and not isinstance(name, str):
+            raise TypeError("`name` must be a string or None")
+        if signature is not None and not isinstance(signature, str):
+            raise TypeError("`signature` must be a string or None")
 
+        self._id: Optional[int] = id
+        self._name: Optional[str] = name
+        self._signature: Optional[str] = signature
         self._components: Dict[str, Optional[Component]] = {
             "protein": None,
             "buffer": None,
@@ -339,6 +349,8 @@ class Formulation:
         }
         self._temperature: Optional[float] = None
         self._viscosity_profile: Optional[ViscosityProfile] = None
+        self.missing_fields = []
+        self.notes = ""
 
     @property
     def id(self) -> Optional[int]:
@@ -362,6 +374,30 @@ class Formulation:
         if not isinstance(value, int):
             raise TypeError("`id` must be an integer")
         self._id = value
+
+    @property
+    def name(self) -> Optional[str]:
+        """Get the formulation name."""
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        """Set the formulation name."""
+        if not isinstance(value, str):
+            raise TypeError("name must be a string")
+        self._name = value
+
+    @property
+    def signature(self) -> Optional[str]:
+        """Get the formulation SHA256 signature."""
+        return self._signature
+
+    @signature.setter
+    def signature(self, value: str) -> None:
+        """Set the formulation SHA256 signature."""
+        if not isinstance(value, str):
+            raise TypeError("signature must be a string")
+        self._signature = value
 
     def set_protein(self, protein: Protein, concentration: float, units: str) -> None:
         """Assign a protein component to the formulation.
@@ -557,6 +593,8 @@ class Formulation:
 
         The dictionary includes:
             - "id": Formulation ID (or None).
+            - "name": Formulation name (or None).
+            - "signature": Formulation signature (or None).
             - Each component (protein, buffer, stabilizer, surfactant, salt) if set, as a nested dict.
             - "temperature": The formulation temperature (or None).
             - "viscosity_profile": Dictionary representation of the `ViscosityProfile` (or None).
@@ -564,7 +602,11 @@ class Formulation:
         Returns:
             Dict[str, Any]: A dictionary capturing all set attributes of the formulation.
         """
-        data: Dict[str, Any] = {"id": self.id}
+        data: Dict[str, Any] = {
+            "id": self.id,
+            "name": self.name,
+            "signature": self.signature,
+        }
         for key, comp in self._components.items():
             if comp is not None:
                 comp_dict = comp.to_dict()
@@ -577,7 +619,7 @@ class Formulation:
             if self.viscosity_profile is not None
             else None
         )
-        return data
+        return data  # <--- Make sure this is present and indented correctly!
 
     def to_dataframe(self, encoded: bool = True, training: bool = True) -> pd.DataFrame:
         """Convert this Formulation into a one-row pandas DataFrame.
@@ -706,7 +748,11 @@ class Formulation:
         parts = [f"{k}={v!r}" for k, v in self._components.items()]
         parts.append(f"temperature={self.temperature!r}")
         parts.append(f"viscosity_profile={self.viscosity_profile!r}")
-        return f"Formulation(id={self.id}, " + ", ".join(parts) + ")"
+
+        return (
+            f"Formulation(id={self.id}, name={self.name!r}, "
+            f"signature={self.signature!r}, " + ", ".join(parts) + ")"
+        )
 
     def __eq__(self, other: Any) -> bool:
         """Compare two formulations for equality, ignoring their IDs.

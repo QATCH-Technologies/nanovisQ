@@ -520,7 +520,7 @@ class IngredientController:
             return existing
 
         protein.enc_id = self._get_next_enc_id(
-            is_user=protein.is_user, ing_type="Protein"
+            is_user=self._user_mode, ing_type="Protein"
         )
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
@@ -544,7 +544,9 @@ class IngredientController:
                 return self.update_buffer(existing.id, buffer)
             return existing
 
-        buffer.enc_id = self._get_next_enc_id(is_user=buffer.is_user, ing_type="Buffer")
+        buffer.enc_id = self._get_next_enc_id(
+            is_user=self._user_mode, ing_type="Buffer"
+        )
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
 
@@ -567,7 +569,7 @@ class IngredientController:
                 return self.update_salt(existing.id, salt)
             return existing
 
-        salt.enc_id = self._get_next_enc_id(is_user=salt.is_user, ing_type="Salt")
+        salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
 
@@ -591,7 +593,7 @@ class IngredientController:
             return existing
 
         stabilizer.enc_id = self._get_next_enc_id(
-            is_user=stabilizer.is_user, ing_type="Stabilizer"
+            is_user=self._user_mode, ing_type="Stabilizer"
         )
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
@@ -616,7 +618,7 @@ class IngredientController:
             return existing
 
         surfactant.enc_id = self._get_next_enc_id(
-            is_user=surfactant.is_user, ing_type="Surfactant"
+            is_user=self._user_mode, ing_type="Surfactant"
         )
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
@@ -641,7 +643,7 @@ class IngredientController:
             return existing
 
         excipient.enc_id = self._get_next_enc_id(
-            is_user=excipient.is_user, ing_type="Excipient"
+            is_user=self._user_mode, ing_type="Excipient"
         )
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
