@@ -12,5 +12,5 @@
 **/assets/**
 
 # But explicitly include "VisQAI-base.zip" and "app.db" assets
-!**/assets/VisQAI-base.zip
+!**/assets/VisQAI-base.visq
 !**/assets/app.db
