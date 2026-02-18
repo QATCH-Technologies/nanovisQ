@@ -1,5 +1,6 @@
-import csv
+import glob  # <--- NEW
 import os
+import shutil  # <--- NEW
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
@@ -87,7 +88,12 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         self.active_ingredients = {}
         # Store ML Params in memory since widgets are gone
-        self.ml_params = {"lr": 0.01, "steps": 50, "ci": 95}
+        self.ml_params = {
+            "lr": 0.01,
+            "steps": 50,
+            "ci": 95,
+            "icl_filter": {"logic": "AND", "fields": ["Protein_type"]},
+        }
         self.use_in_icl = True
         self.last_results = None
         self.is_expanded = True
@@ -105,6 +111,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.debounce_timer.setSingleShot(True)
         self.debounce_timer.setInterval(300)
         self.debounce_timer.timeout.connect(self.emit_run_request)
+        self._loading = False
         self.setStyleSheet(load_stylesheet())
         self._init_ui(default_name)
         self._connect_auto_updates()
@@ -119,6 +126,16 @@ class FormulationConfigCard(QtWidgets.QFrame):
         while widget is not None:
             if hasattr(widget, "ing_ctrl"):
                 return widget.ing_ctrl
+            widget = widget.parent()
+        return None
+
+    @property
+    def formulation_controller(self):
+        """Walks up the parent chain to find the FormulationController."""
+        widget = self.parent()
+        while widget is not None:
+            if hasattr(widget, "form_ctrl"):
+                return widget.form_ctrl
             widget = widget.parent()
         return None
 
@@ -244,25 +261,43 @@ class FormulationConfigCard(QtWidgets.QFrame):
         content_layout.setContentsMargins(5, 0, 5, 0)
         content_layout.setSpacing(15)
         content_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-
+        self.assets_path = os.path.join(
+            Architecture.get_path(), "QATCH", "VisQAI", "assets"
+        )
+        if not os.path.exists(self.assets_path):
+            os.makedirs(self.assets_path, exist_ok=True)
         # Model Selection
         model_layout = QtWidgets.QHBoxLayout()
         model_label = QtWidgets.QLabel("Model:")
         model_label.setObjectName("cardSectionLabel")
+        self.model_combo = QtWidgets.QComboBox()
+        self.model_combo.setProperty("class", "sleek")
+        self.model_combo.setToolTip("Select a prediction model from assets")
+        self._populate_model_list()  # Call the new helper method
 
-        self.model_display = QtWidgets.QLineEdit("VisQAI-ICL_v1_nightly")
-        self.model_display.setReadOnly(True)
-        self.model_display.setPlaceholderText("No model selected")
-        self.model_display.setProperty("class", "sleek")
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setObjectName("btnBrowseModel")
         self.btn_select_model.setFixedWidth(40)
         self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_select_model.setToolTip("Select Model")
+        self.btn_select_model.setToolTip("Import New Model (.visq)")
+        # Optional: Change icon to import/upload style if available
+        self.btn_select_model.setIcon(
+            QtGui.QIcon(
+                os.path.join(
+                    Architecture.get_path(),
+                    "QATCH",
+                    "VisQAI",
+                    "src",
+                    "view",
+                    "icons",
+                    "import-content-svgrepo-com.svg",  # Use existing import icon
+                )
+            )
+        )
         self.btn_select_model.clicked.connect(self.browse_model_file)
 
         model_layout.addWidget(model_label)
-        model_layout.addWidget(self.model_display, stretch=1)
+        model_layout.addWidget(self.model_combo, stretch=1)
         model_layout.addWidget(self.btn_select_model)
 
         content_layout.addLayout(model_layout)
@@ -353,6 +388,32 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         footer_layout.addWidget(self.btn_toggle)
         center_layout.addWidget(self.footer_frame)
+        self.add_ingredient_row("Buffer", deletable=False)
+
+    def _populate_model_list(self):
+        """Scans the assets directory for .visq files and populates the dropdown."""
+        self.model_combo.clear()
+
+        # Find all .visq files
+        pattern = os.path.join(self.assets_path, "*.visq")
+        files = glob.glob(pattern)
+        files.sort()
+
+        if not files:
+            self.model_combo.addItem("No models found")
+            self.model_combo.setEnabled(False)
+        else:
+            # [UPDATED] Always enable the combo box so users can select models for history
+            self.model_combo.setEnabled(True)
+
+            for f in files:
+                filename = os.path.basename(f)
+                self.model_combo.addItem(filename, f)
+
+            # Optional: Default logic can stay here, but load_data overrides it
+            index = self.model_combo.findText("VisQAI(base).visq")
+            if index >= 0:
+                self.model_combo.setCurrentIndex(index)
 
     def _generate_auto_color(self):
         """Generates a unique color using the Golden Angle approximation."""
@@ -381,7 +442,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         # 1. Basic Fields
         parts = [
             self.name_input.text(),
-            self.model_display.text(),
+            self.model_combo.currentText(),
             self.notes_edit.toPlainText(),
             "Measured" if self.is_measured else "Predicted",
         ]
@@ -417,12 +478,27 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
     def _connect_auto_updates(self):
         self.name_input.textChanged.connect(self.trigger_update)
-        self.model_display.textChanged.connect(self.trigger_update)
+        self.model_combo.currentTextChanged.connect(self._on_model_changed)
         self.spin_temp.valueChanged.connect(self.trigger_update)
 
-    def set_icl_usage(self, checked):
-        self.use_in_icl = checked
+    def _on_model_changed(self, text):
+        """Handle model selection changes."""
         self.trigger_update()
+        self._save_metadata_to_db()
+
+    def set_icl_usage(self, checked, save_db=True):
+        self.use_in_icl = checked
+
+        # Update the UI Action check state (in case this was called programmatically)
+        if hasattr(self, "act_use_icl") and self.act_use_icl.isChecked() != checked:
+            self.act_use_icl.blockSignals(True)
+            self.act_use_icl.setChecked(checked)
+            self.act_use_icl.blockSignals(False)
+
+        self.trigger_update()  # Updates internal object
+
+        if save_db:
+            self._save_metadata_to_db()
 
     def _add_divider(self, layout):
         line = QtWidgets.QFrame()
@@ -466,14 +542,32 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.name_input.setReadOnly(lock_state)
         self.btn_add_ing.setVisible(not lock_state)
 
-        for combo, spin, _, btn_rem in self.active_ingredients.values():
+        # Ingredients Locking
+        for ing_type, (combo, spin, _, btn_rem) in self.active_ingredients.items():
             combo.setEnabled(not lock_state)
             spin.setReadOnly(lock_state)
-            btn_rem.setEnabled(not lock_state)
+            if ing_type == "Buffer":
+                btn_rem.setEnabled(False)
+            else:
+                btn_rem.setEnabled(not lock_state)
+
         self.slider_temp.setEnabled(not lock_state)
         self.spin_temp.setReadOnly(lock_state)
-        self.btn_select_model.setEnabled(not lock_state)
         self.notes_edit.setReadOnly(lock_state)
+
+        # [UPDATED] Model Selection & ICL Logic
+        # 1. Model Selection: ALWAYS Enabled (User wants to select model for imported runs)
+        if hasattr(self, "model_combo"):
+            self.model_combo.setEnabled(True)
+        if hasattr(self, "btn_select_model"):
+            self.btn_select_model.setEnabled(True)
+
+        # 2. ICL Option: Enabled ONLY for Measured data; Disabled for Predictions
+        if hasattr(self, "act_use_icl"):
+            self.act_use_icl.setEnabled(is_measured)
+            # If this is a prediction card (not measured), we usually force unchecked
+            if not is_measured:
+                self.act_use_icl.setChecked(False)
 
     def toggle_content(self):
         if not self.is_expanded:
@@ -601,18 +695,39 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self._update_internal_formulation()
 
     def browse_model_file(self):
+        """Imports a new model file into the assets directory."""
         fname, _ = QtWidgets.QFileDialog.getOpenFileName(
             self,
-            "Select Model File",
+            "Import Model File",
             "",
             "VisQAI Models (*.visq)",
         )
         if fname:
-            file_info = QtCore.QFileInfo(fname)
-            display_name = file_info.fileName()
-            self.model_display.setText(display_name)
-            self.selected_model_path = fname
-            self.trigger_update()
+            try:
+                # 1. Define destination
+                filename = os.path.basename(fname)
+                dest_path = os.path.join(self.assets_path, filename)
+
+                # 2. Copy file if it's not already there
+                if os.path.abspath(fname) != os.path.abspath(dest_path):
+                    shutil.copy2(fname, dest_path)
+
+                # 3. Refresh list and select the new item
+                self._populate_model_list()
+                index = self.model_combo.findText(filename)
+                if index >= 0:
+                    self.model_combo.setCurrentIndex(index)
+
+                self.trigger_update()
+
+                QtWidgets.QMessageBox.information(
+                    self, "Import Successful", f"Model '{filename}' imported to assets."
+                )
+
+            except Exception as e:
+                QtWidgets.QMessageBox.critical(
+                    self, "Import Failed", f"Could not import model:\n{str(e)}"
+                )
 
     def show_add_menu(self):
         menu = QtWidgets.QMenu(self)
@@ -645,11 +760,15 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         menu.exec(pos)
 
-    def add_ingredient_row(self, ing_type):
+    def add_ingredient_row(self, ing_type, deletable=True):
         """
         Adds a row for an ingredient type.
-        Updated to dynamically size the spinbox based on unit text length.
+        Updated to remove 'None' option and handle button state accordingly.
         """
+        # Idempotency Check
+        if ing_type in self.active_ingredients:
+            return
+
         row_widget = QtWidgets.QWidget()
         row_layout = QtWidgets.QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
@@ -662,7 +781,9 @@ class FormulationConfigCard(QtWidgets.QFrame):
         combo = QtWidgets.QComboBox()
         combo.setProperty("class", "sleek")
         items = self.ingredients_master.get(ing_type, [])
-        combo.addItem("None", None)
+
+        # [UPDATED] Removed "None" option for ALL types.
+        # Users must remove the row to deselect/remove an ingredient.
         for item in items:
             combo.addItem(item.name, item)
 
@@ -686,7 +807,9 @@ class FormulationConfigCard(QtWidgets.QFrame):
         )
 
         def update_configure_button():
-            if combo.currentIndex() > 0:
+            # [UPDATED] Check is now >= 0 because "None" (index 0) is gone.
+            # If any item is selected, we are in Edit mode.
+            if combo.currentIndex() >= 0:
                 btn_configure.setToolTip(f"Edit {combo.currentText()}")
                 btn_configure.setProperty("mode", "edit")
                 btn_configure.setIcon(
@@ -703,6 +826,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     )
                 )
             else:
+                # Only if list is empty or nothing selected
                 btn_configure.setToolTip(f"Add new {ing_type}")
                 btn_configure.setProperty("mode", "add")
                 btn_configure.setIcon(
@@ -730,23 +854,12 @@ class FormulationConfigCard(QtWidgets.QFrame):
         spin.setRange(0, 1000)
         spin.setSingleStep(1.0)
 
-        # --- DYNAMIC WIDTH CALCULATION START ---
-        # Get the suffix string (e.g., " mg/mL")
         suffix_str = f" {self.INGREDIENT_UNITS.get(ing_type, '')}"
         spin.setSuffix(suffix_str)
-
-        # Calculate width dynamically based on font metrics
         fm = spin.fontMetrics()
-        # Measure a string that represents the widest likely value + suffix
-        # "999.9" is a safe width estimation for range 0-1000
         text_width = fm.horizontalAdvance(f"999.9{suffix_str}")
-
-        # Set Minimum Width: Text width + 40px padding for buttons/frame
         spin.setMinimumWidth(text_width + 40)
-
-        # Optional: Set a max width to keep it tidy
         spin.setMaximumWidth(text_width + 60)
-        # --- DYNAMIC WIDTH CALCULATION END ---
 
         combo.currentTextChanged.connect(self.trigger_update)
         spin.valueChanged.connect(self.trigger_update)
@@ -770,6 +883,10 @@ class FormulationConfigCard(QtWidgets.QFrame):
         btn_rem.setToolTip("Remove Component")
         btn_rem.setObjectName("btnIngredientRemove")
 
+        if not deletable:
+            btn_rem.setEnabled(False)
+            btn_rem.setToolTip("This component is mandatory")
+
         btn_rem.clicked.connect(
             lambda: self.remove_ingredient_row(ing_type, row_widget)
         )
@@ -783,7 +900,19 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.ing_container_layout.addWidget(row_widget)
         self.active_ingredients[ing_type] = (combo, spin, btn_configure, btn_rem)
 
+        # Ensure button state is correct immediately after population
+        update_configure_button()
         self._update_clear_state()
+
+        # Flag button red if the currently-selected ingredient needs completion
+        self._refresh_configure_button(ing_type, combo, btn_configure)
+
+        # Re-check whenever the user picks a different ingredient from the combo
+        combo.currentIndexChanged.connect(
+            lambda _idx, t=ing_type, c=combo, b=btn_configure: (
+                self._refresh_configure_button(t, c, b)
+            )
+        )
 
     def _create_ingredient_instance(self, ing_type, name, **kwargs):
         """Factory method to create the correct Ingredient subclass."""
@@ -808,6 +937,40 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     self.__dict__.update(k)
 
             return SimpleIngredient(name, **kwargs)
+
+    def _refresh_configure_button(self, ing_type, combo, btn_configure):
+        """Apply or clear the 'needs completion' red highlight on *btn_configure*.
+
+        Checks the currently-selected ingredient in *combo* against the
+        type-specific completion rules (Protein / Buffer).  For all other
+        ingredient types no completion check is needed.
+        """
+        ingredient = combo.currentData()
+        needs_work = False
+
+        if ing_type == "Protein" and ingredient is not None:
+            needs_work = ProteinConfigDialog.protein_needs_completion(ingredient)
+        elif ing_type == "Buffer" and ingredient is not None:
+            needs_work = BufferConfigDialog.buffer_needs_completion(ingredient)
+
+        if needs_work:
+            btn_configure.setStyleSheet(
+                "QPushButton#btnIngredientConfigure {"
+                "  border: 1.5px solid #e53935;"
+                "  border-radius: 4px;"
+                "  background-color: #fff5f5;"
+                "}"
+                "QPushButton#btnIngredientConfigure:hover {"
+                "  background-color: #ffcdd2;"
+                "}"
+            )
+            btn_configure.setToolTip(
+                f"⚠ {combo.currentText()} has required fields that are not set — click to complete"
+            )
+        else:
+            btn_configure.setStyleSheet("")  # restore theme default
+            if combo.currentIndex() >= 0:
+                btn_configure.setToolTip(f"Edit {combo.currentText()}")
 
     def open_ingredient_config_dialog(self, ing_type, combo, btn_configure=None):
         dialog = None
@@ -884,6 +1047,10 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 self.trigger_update()
 
+            # Always re-evaluate the button highlight after any accepted save
+            if btn_configure:
+                self._refresh_configure_button(ing_type, combo, btn_configure)
+
     def _handle_legacy_dialog_result(self, ing_type, combo, data, is_edit_mode):
         """
         Handles results from dialogs that still return dictionaries (Protein/Buffer).
@@ -944,16 +1111,20 @@ class FormulationConfigCard(QtWidgets.QFrame):
         Reconstructs or updates self.formulation based on current UI state.
         Mapping:
           Protein -> set_protein
-          Buffer -> set_buffer
-          Stabilizer -> set_stabilizer
-          Surfactant -> set_surfactant
-          Salt -> set_salt
-          Excipient -> set_excipient
+          ...
         """
-        # Create a clean formulation to ensure no stale data
-        # Retain ID if it exists (though usually handled externally)
         old_id = self.formulation.id if self.formulation else None
-        self.formulation = Formulation(id=old_id)
+        old_name = self.formulation.name if self.formulation else None
+        old_signature = self.formulation.signature if self.formulation else None
+        self.formulation = Formulation(
+            id=old_id, name=old_name, signature=old_signature
+        )
+        self.formulation.icl = self.use_in_icl
+
+        current_model = self.model_combo.currentText()
+        if " (Missing)" in current_model:
+            current_model = current_model.replace(" (Missing)", "")
+        self.formulation.last_model = current_model
 
         # Setters mapping
         setters = {
@@ -967,15 +1138,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         # 1. Update Ingredients
         for ing_type, (combo, spin, _, _) in self.active_ingredients.items():
-            ingredient = combo.currentData()  # The actual object (Protein, Buffer, etc)
+            ingredient = combo.currentData()
             concentration = spin.value()
-            # Determine unit string, fallback to empty string if not found
             units = self.INGREDIENT_UNITS.get(ing_type, "")
 
-            # Ensure we have a valid ingredient and a corresponding setter
             if ingredient and ing_type in setters:
-                # Strict check in Formulation requires correct types.
-                # ingredients_master and _create_ingredient_instance ensure this.
                 try:
                     setters[ing_type](ingredient, concentration, units)
                 except TypeError as e:
@@ -988,13 +1155,6 @@ class FormulationConfigCard(QtWidgets.QFrame):
         # 3. Update Viscosity Profile (if results exist)
         if self.last_results:
             try:
-                # Extract data for ViscosityProfile
-                # Prefer measured data if available, otherwise prediction
-                # However, usually ViscosityProfile implies measured data attached to a formulation
-                # If we are in "Predicted" mode, we might not want to attach it as "measured"
-                # But for exporting, we might want the profile.
-
-                # Check for measured data specifically
                 if self.is_measured and "measured_y" in self.last_results:
                     y_vals = self.last_results["measured_y"]
                     is_meas = True
@@ -1007,8 +1167,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 x_vals = self.last_results.get("x", [])
 
-                if x_vals and y_vals and len(x_vals) == len(y_vals):
-                    # Filter out Nones if any
+                if len(x_vals) > 0 and len(y_vals) > 0 and len(x_vals) == len(y_vals):
                     clean_pairs = [
                         (x, y)
                         for x, y in zip(x_vals, y_vals)
@@ -1033,7 +1192,50 @@ class FormulationConfigCard(QtWidgets.QFrame):
             print(f"Error converting formulation to dataframe: {e}")
             return None
 
+    def is_valid(self):
+        """
+        Checks if the formulation configuration is valid for running.
+        Requirements:
+        1. Internal formulation object exists.
+        2. Mandatory Buffer is present.
+        3. Card is visible (not being deleted).
+        4. All active ingredients must have concentration > 0.
+        5. No active ingredient may have incomplete required fields
+           (e.g. Protein missing MW / pI, Buffer missing pH).
+        """
+        if self.formulation is None:
+            return False
+        if "Buffer" not in self.active_ingredients:
+            return False
+        if not self.isVisible():
+            return False
+        for ing_type, (
+            combo,
+            spin,
+            btn_configure,
+            _,
+        ) in self.active_ingredients.items():
+            ingredient = combo.currentData()
+            if ingredient is not None:
+                if spin.value() <= 0.0:
+                    return False
+                # Block prediction when required fields are not yet filled in
+                if (
+                    ing_type == "Protein"
+                    and ProteinConfigDialog.protein_needs_completion(ingredient)
+                ):
+                    return False
+                if ing_type == "Buffer" and BufferConfigDialog.buffer_needs_completion(
+                    ingredient
+                ):
+                    return False
+        return True
+
+    # Update this existing method
     def emit_run_request(self):
+        if not self.is_valid():
+            return
+
         config = self.get_configuration()
         self.run_requested.emit(config)
 
@@ -1069,7 +1271,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         config = {
             "name": self.name_input.text(),
-            "model": self.model_display.text(),
+            "model": self.model_combo.currentText(),
             "temp": self.spin_temp.value(),
             "formulation": formulation_data,
             "measured": self.is_measured,
@@ -1083,6 +1285,17 @@ class FormulationConfigCard(QtWidgets.QFrame):
         return config
 
     def load_data(self, data):
+        self._loading = True
+        try:
+            self._load_data_impl(data)
+        finally:
+            self._loading = False
+            # Sync formulation after all fields are populated
+            self._update_internal_formulation()
+
+    def _load_data_impl(self, data):
+        if "id" in data:
+            self.formulation.id = data["id"]
         if "name" in data:
             self.name_input.setText(data["name"])
         if "color" in data:
@@ -1091,30 +1304,57 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 self.color_swatch.setStyleSheet(
                     f"background-color: {self.plot_color}; border-radius: 3px;"
                 )
-        if "model" in data:
-            self.model_display.setText(data["model"])
-        if "temp" in data or "temperature" in data:
-            temp_val = data.get("temp") or data.get("temperature")
-            self.spin_temp.setValue(float(temp_val))
+        target_model = data.get("last_model") or data.get("model")
+        if target_model:
+            index = self.model_combo.findText(target_model)
+            if index >= 0:
+                self.model_combo.setCurrentIndex(index)
+            else:
+                self.model_combo.addItem(f"{target_model} (Missing)", None)
+                self.model_combo.setCurrentIndex(self.model_combo.count() - 1)
+        else:
+            if self.model_combo.count() > 0:
+                self.model_combo.setCurrentIndex(0)
 
+        # --- ML Params Loading ---
         ml_params = data.get("ml_params", {})
+
+        # 1. Load LR
         if "lr" in ml_params:
             self.ml_params["lr"] = float(ml_params["lr"])
         elif "lr" in data:
             self.ml_params["lr"] = float(data["lr"])
 
+        # 2. Load Steps
         if "steps" in ml_params:
             self.ml_params["steps"] = int(ml_params["steps"])
         elif "steps" in data:
             self.ml_params["steps"] = int(data["steps"])
 
+        # 3. Load CI
         if "ci" in ml_params:
             self.ml_params["ci"] = int(ml_params["ci"])
         elif "ci" in data:
             self.ml_params["ci"] = int(data["ci"])
 
-        if "use_in_icl" in data:
-            self.use_in_icl = data["use_in_icl"]
+        # 4. [FIX] Load ICL Filter
+        if "icl_filter" in ml_params:
+            self.ml_params["icl_filter"] = ml_params["icl_filter"]
+        elif "icl_filter" in data:
+            self.ml_params["icl_filter"] = data["icl_filter"]
+
+        # --- End ML Params ---
+
+        icl_state = data.get("icl", data.get("use_in_icl", True))
+        self.use_in_icl = icl_state
+        if hasattr(self, "act_use_icl"):
+            self.act_use_icl.blockSignals(True)
+            self.act_use_icl.setChecked(icl_state)
+            self.act_use_icl.blockSignals(False)
+
+        if "temp" in data or "temperature" in data:
+            temp_val = data.get("temp") or data.get("temperature")
+            self.spin_temp.setValue(float(temp_val))
 
         # Populate Notes
         if "notes" in data:
@@ -1124,42 +1364,33 @@ class FormulationConfigCard(QtWidgets.QFrame):
         ingredients_data = data.get("formulation") or data.get("ingredients")
         if ingredients_data:
             for ing_type, details in ingredients_data.items():
-                self.add_ingredient_row(ing_type)
+                is_mandatory = ing_type == "Buffer"
+                self.add_ingredient_row(ing_type, deletable=not is_mandatory)
 
                 if ing_type in self.active_ingredients:
                     combo, spin, _, _ = self.active_ingredients[ing_type]
 
                     spin.setValue(float(details.get("concentration", 0.0)))
-
                     comp_name = details.get("component") or details.get("name")
 
                     if comp_name:
                         idx = combo.findText(comp_name)
-
                         if idx >= 0:
                             combo.setCurrentIndex(idx)
                         else:
-                            # Use factory to create correct class instance
                             new_ingredient = self._create_ingredient_instance(
                                 ing_type, **details
                             )
-
                             if ing_type not in self.ingredients_master:
                                 self.ingredients_master[ing_type] = []
-
                             self.ingredients_master[ing_type].append(new_ingredient)
                             combo.addItem(new_ingredient.name, new_ingredient)
                             combo.setCurrentIndex(combo.count() - 1)
-
         if "measured" in data:
             self.set_measured(data["measured"])
 
-        # --- NEW: Handle Missing Fields ---
         if "missing_fields" in data:
             self.mark_missing_fields(data["missing_fields"])
-
-        # Sync the internal formulation object after loading
-        self._update_internal_formulation()
 
     def mark_missing_fields(self, missing_list):
         """Visually indicates missing information on the card."""
@@ -1229,10 +1460,19 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 self, "Action Denied", "Cannot clear imported data."
             )
             return
+
         for ing_type in list(self.active_ingredients.keys()):
-            combo, _, _, _ = self.active_ingredients[ing_type]
-            row_widget = combo.parentWidget()
-            self.remove_ingredient_row(ing_type, row_widget)
+            # [UPDATED] Protect Buffer: Reset instead of remove
+            if ing_type == "Buffer":
+                combo, spin, _, _ = self.active_ingredients[ing_type]
+                if combo.count() > 0:
+                    combo.setCurrentIndex(0)
+                spin.setValue(0.0)
+            else:
+                combo, _, _, _ = self.active_ingredients[ing_type]
+                row_widget = combo.parentWidget()
+                self.remove_ingredient_row(ing_type, row_widget)
+
         self.slider_temp.setValue(25)
         self.spin_temp.setValue(25.0)
 
@@ -1323,3 +1563,33 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 for x, y, l, u in zip(xs, pred_y, lower, upper):
                     writer.writerow([f"{x:.4f}", f"{y:.4f}", f"{l:.4f}", f"{u:.4f}"])
+
+    def _save_metadata_to_db(self):
+        """Persists ICL and last_model to the database for an imported/measured record.
+
+        Intentionally uses update_formulation_metadata so that only these two
+        fields are written.  The full-record update_formulation must never be
+        called from here because it deletes and re-inserts the row, replacing
+        the persisted name, signature, and ingredient data with whatever
+        happens to be in the in-memory Formulation object at call time.
+        """
+        # Suppress saves while load_data is still populating the card
+        if self._loading:
+            return
+
+        # Only save if we have a valid DB ID (i.e., it's an imported/measured record)
+        if not self.formulation or not self.formulation.id:
+            return
+
+        ctrl = self.formulation_controller
+        if ctrl:
+            try:
+                current_model = self.model_combo.currentText().replace(" (Missing)", "")
+                ctrl.update_formulation_metadata(
+                    self.formulation.id,
+                    icl=self.use_in_icl,
+                    last_model=current_model or None,
+                )
+                print(f"Saved metadata for formulation {self.formulation.id}")
+            except Exception as e:
+                print(f"Failed to auto-save formulation metadata: {e}")

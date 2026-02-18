@@ -59,7 +59,7 @@ class StyleLoader:
             "src",
             "view",
             "icons",
-            "machine-learning-01-svgrepo-com.svg",
+            "file-plus-2-svgrepo-com.svg",
         ),
     }
 

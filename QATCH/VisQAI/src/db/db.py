@@ -224,7 +224,9 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT,
                 signature TEXT UNIQUE,
-                temperature REAL
+                temperature REAL,
+                icl INTEGER DEFAULT 1,
+                last_model TEXT
             )
         """
         )
@@ -504,12 +506,16 @@ class Database:
             int: The database-assigned primary key (`id`) of the newly inserted formulation.
         """
         c = self.conn.cursor()
+
+        # [FIXED] SQL string now matches the 5 values provided
         c.execute(
-            "INSERT INTO formulation (name, signature, temperature) VALUES (?, ?, ?)",
+            "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
             (
                 form.name,
                 form.signature,
                 form.temperature,
+                int(form.icl),
+                form.last_model,
             ),
         )
         fid = c.lastrowid
@@ -559,16 +565,31 @@ class Database:
                 temperature, and viscosity profile, or `None` if not found.
         """
         c = self.conn.cursor()
-        c.execute(
-            "SELECT name, signature, temperature FROM formulation WHERE id = ?", (id,)
-        )
-        row = c.fetchone()
+
+        try:
+            c.execute(
+                "SELECT name, signature, temperature, icl, last_model FROM formulation WHERE id = ?",
+                (id,),
+            )
+            row = c.fetchone()
+        except sqlite3.OperationalError:
+            c.execute(
+                "SELECT name, signature, temperature FROM formulation WHERE id = ?",
+                (id,),
+            )
+            row = c.fetchone()
+            if row:
+                row = row + (1, None)
+
         if not row:
             return None
 
-        name, signature, temp = row
+        name, signature, temp, icl, last_model = row
+
         form = Formulation(id=id, name=name, signature=signature)
         form.set_temperature(temp)
+        form.icl = bool(icl) if icl is not None else True
+        form.last_model = last_model
 
         c.execute(
             "SELECT component_type, ingredient_id, concentration, units "
@@ -615,6 +636,38 @@ class Database:
                 formulations.append(form)
 
         return formulations
+
+    def update_formulation_metadata(
+        self, f_id: int, icl: bool = None, last_model: str = None
+    ) -> bool:
+        """
+        Updates lightweight metadata (ICL flag, Last Model) without deleting/re-inserting the record.
+        This preserves the ID and component links.
+        """
+        try:
+            c = self.conn.cursor()
+
+            if icl is not None:
+                c.execute(
+                    "UPDATE formulation SET icl = ? WHERE id = ?",
+                    (1 if icl else 0, f_id),
+                )
+
+            if last_model is not None:
+                c.execute(
+                    "UPDATE formulation SET last_model = ? WHERE id = ?",
+                    (last_model, f_id),
+                )
+
+            if c.rowcount > 0:
+                self._commit()
+                if self.use_encryption:
+                    self.backup()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error updating metadata: {e}")
+            return False
 
     def get_formulation_by_signature(self, signature: str) -> Optional[Formulation]:
         """Retrieve a formulation by its SHA256 signature.

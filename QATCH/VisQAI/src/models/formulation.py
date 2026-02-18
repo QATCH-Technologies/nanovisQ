@@ -351,6 +351,32 @@ class Formulation:
         self._viscosity_profile: Optional[ViscosityProfile] = None
         self.missing_fields = []
         self.notes = ""
+        self._icl: bool = True
+        self._last_model: Optional[str] = None
+
+    @property
+    def icl(self) -> bool:
+        """Get the In-Context Learning inclusion flag."""
+        return self._icl
+
+    @icl.setter
+    def icl(self, value: bool) -> None:
+        """Set the In-Context Learning inclusion flag."""
+        if not isinstance(value, bool):
+            raise TypeError("icl must be a boolean")
+        self._icl = value
+
+    @property
+    def last_model(self) -> Optional[str]:
+        """Get the name of the last model used for prediction."""
+        return self._last_model
+
+    @last_model.setter
+    def last_model(self, value: str) -> None:
+        """Set the name of the last model used for prediction."""
+        if value is not None and not isinstance(value, str):
+            raise TypeError("last_model must be a string or None")
+        self._last_model = value
 
     @property
     def id(self) -> Optional[int]:
@@ -603,14 +629,15 @@ class Formulation:
             Dict[str, Any]: A dictionary capturing all set attributes of the formulation.
         """
         data: Dict[str, Any] = {
-            "id": self.id,
+            # "id": self.id,
             "name": self.name,
             "signature": self.signature,
+            # "icl": self.icl,
+            # "last_model": self.last_model,
         }
         for key, comp in self._components.items():
             if comp is not None:
                 comp_dict = comp.to_dict()
-                # Remove any internal 'id' field if present in component dict
                 comp_dict.pop("id", None)
                 data[key] = comp_dict
         data["temperature"] = self.temperature
@@ -619,7 +646,7 @@ class Formulation:
             if self.viscosity_profile is not None
             else None
         )
-        return data  # <--- Make sure this is present and indented correctly!
+        return data
 
     def to_dataframe(self, encoded: bool = True, training: bool = True) -> pd.DataFrame:
         """Convert this Formulation into a one-row pandas DataFrame.
@@ -670,48 +697,90 @@ class Formulation:
             "HCI",
         ]
 
+        # --- Helper: Safe Attribute Access ---
+        def safe_get(component, attr_path, default=0):
+            """Safely retrieves nested attributes, returning default if any step is None."""
+            if component is None or component.ingredient is None:
+                return default
+
+            obj = component.ingredient
+            try:
+                for attr in attr_path.split("."):
+                    obj = getattr(obj, attr, default)
+                    if obj is None:
+                        return default
+            except Exception:
+                return default
+            return obj
+
+        # --- Helper: Get Component Data ---
+        def get_comp_data(comp_name):
+            comp = getattr(self, comp_name, None)
+            if comp and comp.ingredient:
+                return comp, comp.ingredient
+            return None, None
+
+        # Resolve Components
+        prot, prot_ing = get_comp_data("protein")
+        buff, buff_ing = get_comp_data("buffer")
+        salt, salt_ing = get_comp_data("salt")
+        stab, stab_ing = get_comp_data("stabilizer")
+        surf, surf_ing = get_comp_data("surfactant")
+        exc, exc_ing = get_comp_data("excipient")
+
         # 2. Build the Data Dictionary
-        # We build the common fields first
+        # Note: We use 0.0 for concentrations of missing components
         row = {
             "ID": self.id,
-            "Protein_class_type": self.protein.ingredient.class_type.value,
-            "kP": self.protein.ingredient.class_type.kP,
-            "HCI": self.protein.ingredient.class_type.hci,
-            "C_Class": self.protein.ingredient.class_type.c_class,
-            "MW": self.protein.ingredient.molecular_weight,
-            "PI_mean": self.protein.ingredient.pI_mean,
-            "PI_range": self.protein.ingredient.pI_range,
-            "Protein_conc": self.protein.concentration,
-            "Temperature": getattr(self, "temperature", pd.NA),
-            "Buffer_pH": self.buffer.ingredient.pH,
-            "Buffer_conc": self.buffer.concentration,
-            "Salt_conc": self.salt.concentration,
-            "Excipient_conc": self.excipient.concentration,
-            "Stabilizer_conc": self.stabilizer.concentration,
-            "Surfactant_conc": self.surfactant.concentration,
+            "Temperature": (
+                getattr(self, "temperature", 25.0)
+                if self.temperature is not None
+                else 25.0
+            ),
+            # Protein Defaults (using safe_get to avoid NoneType errors)
+            "Protein_class_type": safe_get(prot, "class_type.value", 0),
+            "kP": safe_get(prot, "class_type.kP", 0),
+            "HCI": safe_get(prot, "class_type.hci", 0),
+            "C_Class": safe_get(prot, "class_type.c_class", 0),
+            "MW": safe_get(prot, "molecular_weight", 0),
+            "PI_mean": safe_get(prot, "pI_mean", 0),
+            "PI_range": safe_get(prot, "pI_range", 0),
+            "Protein_conc": prot.concentration if prot else 0.0,
+            # Buffer Defaults
+            "Buffer_pH": safe_get(buff, "pH", 0),
+            "Buffer_conc": buff.concentration if buff else 0.0,
+            # Other Components
+            "Salt_conc": salt.concentration if salt else 0.0,
+            "Excipient_conc": exc.concentration if exc else 0.0,
+            "Stabilizer_conc": stab.concentration if stab else 0.0,
+            "Surfactant_conc": surf.concentration if surf else 0.0,
         }
 
-        # Handle Categorical Encoding
+        # Handle Categorical Encoding (Name vs Encoded ID)
         if encoded:
             row.update(
                 {
-                    "Protein_type": self.protein.ingredient.enc_id,
-                    "Buffer_type": self.buffer.ingredient.enc_id,
-                    "Salt_type": self.salt.ingredient.enc_id,
-                    "Excipient_type": self.excipient.ingredient.enc_id,
-                    "Stabilizer_type": self.stabilizer.ingredient.enc_id,
-                    "Surfactant_type": self.surfactant.ingredient.enc_id,
+                    "Protein_type": getattr(prot_ing, "enc_id", 0) if prot_ing else 0,
+                    "Buffer_type": getattr(buff_ing, "enc_id", 0) if buff_ing else 0,
+                    "Salt_type": getattr(salt_ing, "enc_id", 0) if salt_ing else 0,
+                    "Excipient_type": getattr(exc_ing, "enc_id", 0) if exc_ing else 0,
+                    "Stabilizer_type": (
+                        getattr(stab_ing, "enc_id", 0) if stab_ing else 0
+                    ),
+                    "Surfactant_type": (
+                        getattr(surf_ing, "enc_id", 0) if surf_ing else 0
+                    ),
                 }
             )
         else:
             row.update(
                 {
-                    "Protein_type": self.protein.ingredient.name,
-                    "Buffer_type": self.buffer.ingredient.name,
-                    "Salt_type": self.salt.ingredient.name,
-                    "Excipient_type": self.excipient.ingredient.name,
-                    "Stabilizer_type": self.stabilizer.ingredient.name,
-                    "Surfactant_type": self.surfactant.ingredient.name,
+                    "Protein_type": prot_ing.name if prot_ing else "None",
+                    "Buffer_type": buff_ing.name if buff_ing else "None",
+                    "Salt_type": salt_ing.name if salt_ing else "None",
+                    "Excipient_type": exc_ing.name if exc_ing else "None",
+                    "Stabilizer_type": stab_ing.name if stab_ing else "None",
+                    "Surfactant_type": surf_ing.name if surf_ing else "None",
                 }
             )
 
@@ -725,14 +794,13 @@ class Formulation:
                 for r in shear_rates:
                     row[f"Viscosity_{r}"] = self.viscosity_profile.get_viscosity(r)
             else:
-                # Explicitly set to NA if profile is missing but training=True
                 for col in visc_cols:
                     row[col] = pd.NA
 
         # 4. Create DataFrame and Enforce Order
         df = pd.DataFrame([row])
 
-        # Ensure all columns exist (adds NaNs for missing keys)
+        # Ensure all columns exist (fill missing with NA)
         for col in expected:
             if col not in df.columns:
                 df[col] = pd.NA

@@ -249,6 +249,11 @@ class FormulationController:
         self.db.add_formulation(f_new)
         return f_new
 
+    def update_formulation_metadata(
+        self, id: int, icl: bool = None, last_model: str = None
+    ):
+        return self.db.update_formulation_metadata(id, icl, last_model)
+
     def add_all_from_dataframe(
         self, df: pd.DataFrame, verbose_print: bool = False
     ) -> List[Formulation]:
@@ -325,7 +330,20 @@ class FormulationController:
                 else None
             )
 
+            # Skip rows whose signature is already present in the database
+            if (
+                f_sig is not None
+                and self.get_formulation_by_signature(f_sig) is not None
+            ):
+                continue
+
             form = Formulation(name=f_name, signature=f_sig)
+            if "icl" in df.columns and pd.notna(row["icl"]):
+                form.icl = bool(row["icl"])
+
+            if "last_model" in df.columns and pd.notna(row["last_model"]):
+                form.last_model = str(row["last_model"])
+
             protein = self.ingredient_controller.add_protein(
                 Protein(
                     enc_id=0,

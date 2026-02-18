@@ -39,6 +39,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
+SOURCE_CSV = "formulation_data_02162026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
@@ -60,7 +61,7 @@ def get_project_paths() -> Tuple[Path, Path]:
 
     base_path = root / "VisQAI" / "assets"
     db_path = base_path / "app.db"
-    csv_path = base_path / "formulation_data_02122026.csv"
+    csv_path = base_path / SOURCE_CSV
 
     return db_path.resolve(), csv_path.resolve()
 
@@ -147,7 +148,11 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 normalized_classes.append(val_str)
         df["Protein_class_type"] = normalized_classes
+    if "icl" not in df.columns:
+        df["icl"] = True  # Default ICL behavior is True
 
+    if "last_model" not in df.columns:
+        df["last_model"] = None  # Default is empty/None
     return df
 
 

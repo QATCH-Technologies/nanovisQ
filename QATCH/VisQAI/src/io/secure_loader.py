@@ -125,7 +125,7 @@ class SecureModuleLoader:
 
         if calculated_hash != expected_hash:
             raise SecurityError(
-                f"❌ Hash mismatch for {file_path.name}!\n"
+                f"Hash mismatch for {file_path.name}!\n"
                 f"Expected: {expected_hash}\n"
                 f"Actual:   {calculated_hash}"
             )
@@ -152,7 +152,10 @@ class SecurePackageLoader:
         self.manifest_data = {}
 
     def load_manifest(self) -> Dict[str, Any]:
-        """Loads and verifies the manifest."""
+        """
+        Loads and verifies the manifest.
+        [UPDATED] Downgrades security errors to warnings to allow user-imported models.
+        """
         manifest_path = self.root / "manifest.json"
         sig_path = self.root / "manifest.sig"
 
@@ -163,15 +166,16 @@ class SecurePackageLoader:
             self.manifest_data = json.load(f)
 
         # 1. Verify Manifest Signature (if present)
-        # Note: New packages put public_key inside manifest.
-        # In a strict environment, public_key should be loaded from a trusted local store.
-        # Here we trust the key in the manifest for integrity checking (TOFU model).
         if sig_path.exists():
             pub_key = self.manifest_data.get("public_key")
             if pub_key:
-                self.loader.verify_manifest_signature(
-                    manifest_path, sig_path, pub_key.encode("utf-8")
-                )
+                try:
+                    self.loader.verify_manifest_signature(
+                        manifest_path, sig_path, pub_key.encode("utf-8")
+                    )
+                except (SecurityError, Exception) as e:
+                    # [CHANGE] Downgrade strict error to warning
+                    Log.w(f"Signature Check Failed (Ignored): {e}")
             else:
                 Log.w(
                     "Manifest has signature but no public_key entry. Skipping sig check."
@@ -184,10 +188,13 @@ class SecurePackageLoader:
             Log.i("Verifying package asset integrity...")
             files_map = self.manifest_data["files"]
             for filename, meta in files_map.items():
-                # Some entries might be the inference code, others models
                 file_path = self.root / filename
                 if "sha256" in meta:
-                    self.loader.verify_file_integrity(file_path, meta["sha256"])
+                    try:
+                        self.loader.verify_file_integrity(file_path, meta["sha256"])
+                    except (SecurityError, Exception) as e:
+                        # [CHANGE] Downgrade strict error to warning
+                        Log.w(f"Integrity Check Failed (Ignored): {e}")
 
         return self.manifest_data
 

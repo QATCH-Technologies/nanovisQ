@@ -127,7 +127,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         # 1. Options Button
         self.btn_opts = self._create_floating_button(
             os.path.join(
-                "QATCH", "VisQAI", "view", "src", "icons", "configure-svgrepo-com.svg"
+                Architecture.get_path(),
+                "QATCH",
+                "VisQAI",
+                "src",
+                "view",
+                "icons",
+                "configure-svgrepo-com.svg",
             ),
             "Graph Options",
         )
@@ -136,7 +142,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         # 2. Home Button (Reset View)
         self.btn_home = self._create_floating_button(
             os.path.join(
-                "QATCH", "VisQAI", "view", "src", "icons", "home2-svgrepo-com.svg"
+                Architecture.get_path(),
+                "QATCH",
+                "VisQAI",
+                "src",
+                "view",
+                "icons",
+                "home2-svgrepo-com.svg",
             ),
             "Reset View",
         )
@@ -145,7 +157,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         # 3. Zoom In
         self.btn_zoom_in = self._create_floating_button(
             os.path.join(
-                "QATCH", "VisQAI", "view", "src", "icons", "add-plus-svgrepo-com.svg"
+                Architecture.get_path(),
+                "QATCH",
+                "VisQAI",
+                "src",
+                "view",
+                "icons",
+                "add-plus-svgrepo-com.svg",
             ),
             "Zoom In",
         )
@@ -154,7 +172,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         # 4. Zoom Out
         self.btn_zoom_out = self._create_floating_button(
             os.path.join(
-                "QATCH", "VisQAI", "view", "src", "icons", "minus-svgrepo-com.svg"
+                Architecture.get_path(),
+                "QATCH",
+                "VisQAI",
+                "src",
+                "view",
+                "icons",
+                "minus-svgrepo-com.svg",
             ),
             "Zoom Out",
         )
@@ -498,7 +522,6 @@ class VisualizationPanel(QtWidgets.QWidget):
     def set_data(self, data):
         """
         Sets the data for the visualization.
-        Can accept a single dictionary (legacy) or a list of dictionaries (multi-plot).
         """
         if isinstance(data, list):
             self.data_series = [d for d in data if d is not None]
@@ -507,12 +530,19 @@ class VisualizationPanel(QtWidgets.QWidget):
         else:
             self.data_series = []
 
-        # Check if ANY series has measured data to enable the toggle
+        # Check if ANY series has measured data
         has_measured = any(
             "measured_y" in d and d["measured_y"] is not None for d in self.data_series
         )
+
+        # Enable the action if data exists
         self.act_measured.setEnabled(has_measured)
-        if not has_measured:
+
+        # [FIX] Auto-enable the checkbox if measured data is found
+        # This ensures the user sees the profile immediately without digging into menus
+        if has_measured:
+            self.act_measured.setChecked(True)
+        else:
             self.act_measured.setChecked(False)
 
         self.update_plot()
@@ -572,8 +602,9 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         x = x_full[mask]
         y = np.array(data["y"])[mask]
-        lower = np.array(data["lower"])[mask]
-        upper = np.array(data["upper"])[mask]
+        has_ci = "lower" in data and "upper" in data
+        lower = np.array(data["lower"])[mask] if has_ci else np.array([])
+        upper = np.array(data["upper"])[mask] if has_ci else np.array([])
 
         if len(x) == 0:
             return
@@ -597,7 +628,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.plot_widget.setLogMode(x=log_x, y=log_y)
 
         # 5. Plot Confidence Interval
-        if self.act_ci.isChecked():
+        if self.act_ci.isChecked() and has_ci:
             # Prepare data for log plotting manually if needed for fill item
             if log_x or log_y:
                 x_ci = np.log10(np.maximum(x, 1e-10)) if log_x else x
@@ -623,47 +654,68 @@ class VisualizationPanel(QtWidgets.QWidget):
             and self.act_measured.isEnabled()
             and measured_data is not None
         ):
-            meas_y = np.array(measured_data)[mask]
+            try:
+                # Safely convert to float array (handles lists or existing arrays)
+                # Using dtype=float ensures None becomes NaN if present
+                meas_arr = np.array(measured_data, dtype=float)
 
-            # Optional: Smooth measured data too
-            if self.act_smooth.isChecked() and len(meas_y) > 5:
-                try:
-                    w_len = min(
-                        len(meas_y) if len(meas_y) % 2 == 1 else len(meas_y) - 1, 5
+                # Verify length matches mask before slicing
+                if len(meas_arr) == len(mask):
+                    meas_y = meas_arr[mask]
+
+                    # Optional: Smooth measured data too
+                    if self.act_smooth.isChecked() and len(meas_y) > 5:
+                        try:
+                            w_len = min(
+                                (
+                                    len(meas_y)
+                                    if len(meas_y) % 2 == 1
+                                    else len(meas_y) - 1
+                                ),
+                                5,
+                            )
+                            meas_y = savgol_filter(meas_y, w_len, 2)
+                        except:
+                            pass
+
+                    self.plot_widget.plot(
+                        x,
+                        meas_y,
+                        pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
+                        name=f"{series_name} (Meas)",
                     )
-                    meas_y = savgol_filter(meas_y, w_len, 2)
-                except:
-                    pass
+                    self._generate_scatter_points(
+                        x,
+                        meas_y,
+                        min_shear,
+                        max_shear,
+                        self.act_log_x.isChecked(),
+                        self.act_log_y.isChecked(),
+                        main_color,
+                        "measured",
+                    )
+            except Exception as e:
+                print(f"Error plotting measured data: {e}")
 
+        # 7. Plot Predicted Curve
+        # Skip when the package is purely measured (no real prediction has run yet).
+        # A real prediction always populates CI bands; imported-only data does not.
+        # This prevents the measured dashed line from being overdrawn as a solid line.
+        is_measured_only = data.get("measured", False) and not has_ci
+        if not is_measured_only:
             self.plot_widget.plot(
-                x,
-                meas_y,
-                pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
-                name=f"{series_name} (Meas)",
+                x, y, pen=pg.mkPen(main_color, width=3), name=series_name
             )
             self._generate_scatter_points(
                 x,
-                meas_y,
+                y,
                 min_shear,
                 max_shear,
                 log_x,
                 log_y,
                 main_color,
-                "measured",
+                "predicted",
             )
-
-        # 7. Plot Predicted Curve
-        self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3), name=series_name)
-        self._generate_scatter_points(
-            x,
-            y,
-            min_shear,
-            max_shear,
-            log_x,
-            log_y,
-            main_color,
-            "predicted",
-        )
 
     def _generate_scatter_points(
         self, x, y_curve, min_shear, max_shear, log_x, log_y, color, point_type

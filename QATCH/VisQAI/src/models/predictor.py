@@ -108,17 +108,12 @@ class Predictor:
         # ---------------------------------------------------------
         # 1. ROBUST PATH SEARCH for Local Code
         # ---------------------------------------------------------
-        # Instead of guessing "src/...", we look relative to THIS file (predictor.py).
         current_dir = Path(__file__).resolve().parent
 
         candidate_paths = [
-            # 1. Same directory (e.g. if everything is in src/)
             current_dir / "inference_o_net.py",
-            # 2. Parent directory (e.g. if predictor is in src/io/)
             current_dir.parent / "inference_o_net.py",
-            # 3. Two levels up + src (e.g. if predictor is in src/utils/)
             current_dir.parent.parent / "src" / "inference_o_net.py",
-            # 4. Standard Project Root assumption
             Path("src/inference_o_net.py").resolve(),
         ]
 
@@ -128,7 +123,6 @@ class Predictor:
                 local_code_path = p
                 break
 
-        # Define where the ZIPPED (stale) code lives
         extracted_code_path = self.extracted_path / "inference_o_net.py"
         inference_module = None
 
@@ -143,18 +137,42 @@ class Predictor:
         else:
             Log.w("No inference logic found. Attempting legacy fallback.")
 
+        # =========================================================
+        # [NEW] Monkey-patch sklearn for legacy model compatibility
+        # =========================================================
+        # Fixes: AttributeError: Can't get attribute '_RemainderColsList'
+        try:
+            import sklearn.compose._column_transformer
+
+            if not hasattr(sklearn.compose._column_transformer, "_RemainderColsList"):
+
+                class _RemainderColsList(list):
+                    """Stub for legacy pickle compatibility (sklearn < 1.2)."""
+
+                    pass
+
+                sklearn.compose._column_transformer._RemainderColsList = (
+                    _RemainderColsList
+                )
+                Log.w(
+                    "Applied sklearn._RemainderColsList monkey-patch for legacy model support."
+                )
+        except ImportError:
+            pass
+        except Exception as e:
+            Log.w(f"Failed to apply sklearn patch: {e}")
+        # =========================================================
+
         # 2. Initialize Engine
         if inference_module and hasattr(inference_module, "ViscosityPredictorCNP"):
             self.model_type = "CNP"
-            # Initialize the class with the path to the WEIGHTS (extracted zip)
-            # This uses the NEW code (inference_module) with the OLD weights (extracted_path)
             self.engine = inference_module.ViscosityPredictorCNP(
                 model_dir=str(self.extracted_path)
             )
             Log.i("CNP Engine initialized successfully.")
             return
 
-        # 3. Fallback to Secure Loader / Legacy if manual dynamic load failed/skipped
+        # 3. Fallback to Secure Loader / Legacy
         if SECURITY_AVAILABLE:
             try:
                 loader = create_secure_loader_for_extracted_package(
@@ -164,7 +182,6 @@ class Predictor:
                 arch = self.manifest.get("architecture", "LegacyEnsemble")
 
                 if arch == "CrossSampleCNP":
-                    # We already tried loading above, but if secure loader does something special:
                     mod = loader.load_inference_module()
                     self.model_type = "CNP"
                     self.engine = mod.ViscosityPredictorCNP(
@@ -510,11 +527,12 @@ class Predictor:
 
         return pd.concat(results_list, ignore_index=True)
 
-    def learn(self, df: pd.DataFrame, fine_tune: bool = True, steps: int = 50):
+    def learn(self, df: pd.DataFrame, lr: int = 1e-3, steps: int = 50):
         if self.model_type != "CNP":
             return
+
         Log.i(f"Learning from {len(df)} new samples...")
-        self.engine.learn(df, steps=50, lr=1e-3)
+        self.engine.learn(df, steps=steps, lr=lr)
 
     def reset(self):
         """

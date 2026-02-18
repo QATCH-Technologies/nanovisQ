@@ -8,12 +8,12 @@ from PyQt5.QtCore import Qt
 # --- 1. NEW IMPORTS ADDED HERE ---
 try:
     from architecture import Architecture
+    from dialogs.database_table_dialog import DatabaseTableDialog
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
 
     # Database Integration Imports
     from src.db.db import Database
-    from src.io.parser import Parser
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
     from widgets.formulation_config_card_widget import (
@@ -33,7 +33,7 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.io.parser import Parser
+    from QATCH.VisQAI.src.view.dialogs.database_table_dialog import DatabaseTableDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
     from QATCH.VisQAI.src.view.widgets.evaluation_widget import EvaluationWidget
     from QATCH.VisQAI.src.view.widgets.formulation_config_card_widget import (
@@ -455,8 +455,6 @@ class PredictionUI(QtWidgets.QWidget):
 
         # --- Spacer ---
         layout.addStretch(1)
-
-        # Options
         self.btn_right_options = QtWidgets.QToolButton()
         self.btn_right_options.setIcon(
             QtGui.QIcon(
@@ -473,9 +471,300 @@ class PredictionUI(QtWidgets.QWidget):
         )
         self.btn_right_options.setToolTip("More Options")
         self.btn_right_options.setFixedSize(32, 32)
+        # Options
+        self.btn_right_options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
+        self.btn_right_options.setStyleSheet(
+            "QToolButton::menu-indicator { image: none; }"
+        )  # Hide small triangle
+
+        self.top_options_menu = QtWidgets.QMenu(self.btn_right_options)
+
+        # Action: View Ingredients
+        act_view_ing = self.top_options_menu.addAction("View Ingredients")
+        act_view_ing.triggered.connect(self.show_ingredients_view)
+
+        # Action: View Formulations
+        act_view_form = self.top_options_menu.addAction("View Formulations")
+        act_view_form.triggered.connect(self.show_formulations_view)
+
+        self.btn_right_options.setMenu(self.top_options_menu)
+
         layout.addWidget(self.btn_right_options)
 
         return container
+
+    def show_ingredients_view(self):
+        """Opens a dialog listing all unique ingredients with detailed columns."""
+        # 1. Define Headers
+        headers = [
+            "Type",
+            "Name",
+            "ID",
+            "Class Type",
+            "C-Class",
+            "MW (Da)",
+            "pH",
+            "pI Mean",
+            "pI Range",
+            "kP",
+            "HCI",
+        ]
+        rows = []
+
+        # 2. Iterate and Populate
+        for ing_type, ingredients in self.ingredients_by_type.items():
+            for ing in ingredients:
+                row = []
+
+                # Basic Info
+                row.append(ing_type)
+                row.append(getattr(ing, "name", "Unknown"))
+                row.append(str(getattr(ing, "id", "")))
+
+                # --- Detailed Attributes with Nested Class_Type Check ---
+
+                # Defaults
+                c_type_val = "-"
+                c_class = "-"
+                kp_val = "-"
+                hci_val = "-"
+
+                # Check for nested class_type object (common in Proteins)
+                if hasattr(ing, "class_type") and ing.class_type:
+                    ct = ing.class_type
+                    # Access nested attributes safely
+                    c_type_val = str(getattr(ct, "value", getattr(ct, "name", str(ct))))
+                    c_class = str(getattr(ct, "c_class", "-"))
+                    kp_val = str(getattr(ct, "kP", "-"))
+                    hci_val = str(getattr(ct, "hci", "-"))
+                elif hasattr(ing, "group"):
+                    # Fallback for Surfactants/etc that might use 'group'
+                    c_type_val = str(ing.group)
+
+                row.append(c_type_val)  # Class Type
+                row.append(c_class)  # C-Class
+
+                # Standard Attributes
+                row.append(str(getattr(ing, "molecular_weight", "-")))
+                row.append(str(getattr(ing, "pH", "-")))
+                row.append(str(getattr(ing, "pI_mean", "-")))
+                row.append(str(getattr(ing, "pI_range", "-")))
+
+                # Nested Attributes
+                row.append(kp_val)  # kP
+                row.append(hci_val)  # HCI
+
+                rows.append(row)
+
+        # 3. Show Dialog
+        dlg = DatabaseTableDialog("Ingredient Database", headers, rows, self)
+        dlg.resize(1200, 600)
+        dlg.exec_()
+
+    def show_formulations_view(self):
+        """Opens a dialog listing all formulations with delete support and ICL toggles."""
+        try:
+            # 1. Fetch Formulations
+            formulations = self.form_ctrl.get_all_formulations()
+
+            # --- Handlers ---
+            def delete_handler(f_id):
+                target_f = next(
+                    (f for f in formulations if str(f.id) == str(f_id)), None
+                )
+                if not target_f:
+                    return False
+
+                if not (target_f.name and target_f.signature):
+                    QtWidgets.QMessageBox.warning(
+                        self,
+                        "Deletion Denied",
+                        "Only imported formulations can be deleted.",
+                    )
+                    return False
+
+                reply = QtWidgets.QMessageBox.question(
+                    self,
+                    "Confirm Delete",
+                    f"Are you sure you want to delete formulation '{target_f.name}'?",
+                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                )
+                if reply == QtWidgets.QMessageBox.Yes:
+                    try:
+                        self.form_ctrl.delete_formulation_by_id(target_f.id)
+                        return True
+                    except Exception as e:
+                        QtWidgets.QMessageBox.critical(
+                            self, "Error", f"Could not delete formulation:\n{e}"
+                        )
+                return False
+
+            def icl_toggled(f_id, state):
+                """Updates the ICL flag safely using the new Controller method."""
+                try:
+                    # 1. Update DB safely (Preserves ID)
+                    success = self.form_ctrl.update_formulation_metadata(
+                        int(f_id), icl=state
+                    )
+
+                    if success:
+                        # 2. Update local list object
+                        local_f = next(
+                            (f for f in formulations if str(f.id) == str(f_id)), None
+                        )
+                        if local_f:
+                            local_f.icl = state
+
+                        # 3. Synchronize Active UI Cards
+                        for i in range(self.cards_layout.count()):
+                            item = self.cards_layout.itemAt(i)
+                            widget = item.widget()
+                            if isinstance(widget, FormulationConfigCard):
+                                card_id = getattr(widget.formulation, "id", None)
+                                if card_id is not None and str(card_id) == str(f_id):
+                                    widget.set_icl_usage(state, save_db=False)
+                                    break
+                    else:
+                        print(f"Warning: Could not update ICL for ID {f_id}")
+
+                except Exception as e:
+                    print(f"Error updating ICL state: {e}")
+
+            # ----------------
+
+            # 2. Define Headers
+            headers = [
+                "ID",
+                "Name",
+                "Temp (°C)",
+                "ICL",
+                "Last Model",
+                "Protein Type",
+                "Class",
+                "MW (Da)",
+                "pI Mean",
+                "pI Range",
+                "Conc (mg/mL)",
+                "Buffer",
+                "pH",
+                "Conc (mM)",
+                "Stabilizer",
+                "Conc (mM)",
+                "Surfactant",
+                "Conc (%)",
+                "Salt",
+                "Conc (mM)",
+                "Excipient",
+                "Conc (mM)",
+                "η @ 100",
+                "η @ 1k",
+                "η @ 10k",
+                "η @ 100k",
+                "η @ 15m",
+            ]
+
+            rows = []
+            shear_rates = [100, 1000, 10000, 100000, 15000000]
+
+            for f in formulations:
+                row = []
+                # Basic Info
+                row.append(str(getattr(f, "id", "") or ""))
+                row.append(str(f.name or "Unnamed"))
+                row.append(str(f.temperature if f.temperature is not None else "25.0"))
+                row.append(str(getattr(f, "icl", True)))
+                row.append(str(getattr(f, "last_model", "-") or "-"))
+
+                # Protein
+                if hasattr(f, "protein") and f.protein and f.protein.ingredient:
+                    p = f.protein
+                    ing = p.ingredient
+                    class_name = "-"
+                    if hasattr(ing, "class_type") and ing.class_type:
+                        class_name = str(
+                            getattr(
+                                ing.class_type,
+                                "value",
+                                getattr(ing.class_type, "name", "-"),
+                            )
+                        )
+                    row.extend(
+                        [
+                            str(ing.name or "-"),
+                            class_name,
+                            str(getattr(ing, "molecular_weight", "")),
+                            str(getattr(ing, "pI_mean", "")),
+                            str(getattr(ing, "pI_range", "")),
+                            str(p.concentration),
+                        ]
+                    )
+                else:
+                    row.extend(["-", "-", "-", "-", "-", "-"])
+
+                # Buffer
+                if hasattr(f, "buffer") and f.buffer and f.buffer.ingredient:
+                    b = f.buffer
+                    ing = b.ingredient
+                    row.extend(
+                        [
+                            str(ing.name or "-"),
+                            str(getattr(ing, "pH", "")),
+                            str(b.concentration),
+                        ]
+                    )
+                else:
+                    row.extend(["-", "-", "-"])
+
+                # Others (Stabilizer, Surfactant, Salt, Excipient)
+                def add_simple_comp(comp_attr):
+                    if hasattr(f, comp_attr):
+                        c = getattr(f, comp_attr)
+                        if c and c.ingredient:
+                            row.extend(
+                                [str(c.ingredient.name or "-"), str(c.concentration)]
+                            )
+                            return
+                    row.extend(["-", "-"])
+
+                add_simple_comp("stabilizer")
+                add_simple_comp("surfactant")
+                add_simple_comp("salt")
+                add_simple_comp("excipient")
+
+                # Viscosity
+                if hasattr(f, "viscosity_profile") and f.viscosity_profile:
+                    vp = f.viscosity_profile
+                    for sr in shear_rates:
+                        try:
+                            val = vp.get_viscosity(sr)
+                            row.append(f"{val:.2f}")
+                        except Exception:
+                            row.append("-")
+                else:
+                    row.extend(["-"] * 5)
+
+                rows.append(row)
+
+            # 3. Show Dialog
+            dlg = DatabaseTableDialog(
+                "Formulation Database",
+                headers,
+                rows,
+                self,
+                delete_callback=delete_handler,
+                check_col_idx=3,  # ICL Column
+                check_callback=icl_toggled,
+            )
+            dlg.resize(1500, 600)
+            dlg.exec_()
+
+        except Exception as e:
+            import traceback
+
+            traceback.print_exc()
+            QtWidgets.QMessageBox.critical(
+                self, "Error", f"Failed to load formulations:\n{e}"
+            )
 
     def _on_card_selection_changed(self):
         """
@@ -1159,10 +1448,8 @@ class PredictionUI(QtWidgets.QWidget):
                 UserProfiles.user_preferences = UserPreferences(
                     UserProfiles.get_session_file()
                 )
-
             prefs = UserProfiles.user_preferences.get_preferences()
             path_from_prefs = prefs.get("load_data_path")
-
             if (
                 path_from_prefs
                 and isinstance(path_from_prefs, str)
@@ -1171,23 +1458,15 @@ class PredictionUI(QtWidgets.QWidget):
                 self.load_data_path = path_from_prefs
             else:
                 self.load_data_path = Constants.working_logged_data_path
-
         except Exception as e:
             Log.e(TAG, f"Error reading load path from preferences: {e}")
             self.load_data_path = Constants.working_logged_data_path
 
-        # 2. Open Directory Selection Dialog
         dialog = QtWidgets.QFileDialog(
             self, "Select Run Directory(s)", self.load_data_path
         )
         dialog.setFileMode(QtWidgets.QFileDialog.Directory)
         dialog.setOption(QtWidgets.QFileDialog.ShowDirsOnly, True)
-
-        # Try to enable multi-selection for directories if the OS supports it
-        # (Note: On standard Windows native dialogs, this often restricts to single folder,
-        # but using the QFileDialog non-native view can allow multiple)
-        # dialog.setOption(QtWidgets.QFileDialog.DontUseNativeDialog, True)
-        # dialog.setViewMode(QtWidgets.QFileDialog.List)
 
         if dialog.exec_():
             fnames = dialog.selectedFiles()
@@ -1197,7 +1476,6 @@ class PredictionUI(QtWidgets.QWidget):
         if not fnames:
             return
 
-        # 3. Setup Progress Dialog
         self.progress_dialog = QtWidgets.QProgressDialog(
             "Scanning directories...", "Cancel", 0, 100, self
         )
@@ -1207,23 +1485,51 @@ class PredictionUI(QtWidgets.QWidget):
         self.progress_dialog.setAutoClose(True)
         self.progress_dialog.setAutoReset(True)
 
-        # 4. Configure and Start Worker
-        # Pass directory paths; worker will discover files inside
         self.worker = ImportWorker(fnames)
 
         # Connect Worker Signals
         self.worker.progress_changed.connect(self.progress_dialog.setValue)
         self.worker.status_changed.connect(self.progress_dialog.setLabelText)
-        self.worker.import_finished.connect(self._on_import_finished)
+
+        # [UPDATED] Store results temporarily, process only when thread is completely done
+        self.worker.import_finished.connect(self._on_import_data_received)
+        self.worker.finished.connect(self._on_import_thread_finished)
         self.worker.import_error.connect(self._on_import_error)
 
         self.progress_dialog.canceled.connect(self.worker.stop)
         self.worker.start()
 
-    def _on_import_finished(self, results):
+        # Reset pending results
+        self._pending_results = []
+
+    def _on_import_data_received(self, results):
+        """Buffer results until thread finishes cleanup."""
+        self._pending_results = results
+
+    def _on_import_thread_finished(self):
         """
-        Callback when the import worker finishes successfully.
-        Creates cards for each imported formulation and populates ingredients.
+        Called when the import thread has fully exited (database closed).
+        Now safe to reload DB and process UI.
+        """
+        # 1. Reload Database (Critical Step)
+        try:
+            self.db.close()
+            self.db = Database(parse_file_key=True)
+            self.ing_ctrl = IngredientController(self.db)
+            self.form_ctrl = FormulationController(self.db)
+            self._load_database_data()  # Refresh ingredient dropdowns
+        except Exception as e:
+            print(f"Error reloading database after import: {e}")
+
+        # 2. Process Results
+        if hasattr(self, "_pending_results") and self._pending_results:
+            self._process_imported_results(self._pending_results)
+            self._pending_results = []  # Clear buffer
+
+    def _process_imported_results(self, results):
+        """
+        Creates cards for each imported formulation.
+        (Formerly _on_import_finished, DB reload logic removed)
         """
         if not results:
             return
@@ -1235,7 +1541,7 @@ class PredictionUI(QtWidgets.QWidget):
         count = 0
         for formulation in results:
             try:
-                # [Ingredient Mapping Logic Omitted for Brevity - Same as before]
+                # [Ingredient Mapping Logic]
                 ingredients_map = {}
                 attr_map = {
                     "protein": "Protein",
@@ -1265,7 +1571,7 @@ class PredictionUI(QtWidgets.QWidget):
                                     "units": units,
                                 }
 
-                # 2. Extract Viscosity Data
+                # Viscosity Data
                 shear_rates = []
                 viscosities = []
                 temp = 25.0
@@ -1282,11 +1588,11 @@ class PredictionUI(QtWidgets.QWidget):
                 if hasattr(formulation, "temperature"):
                     temp = float(formulation.temperature)
 
-                # Extract Notes & Missing Fields
                 notes = getattr(formulation, "notes", "")
                 missing_fields = getattr(formulation, "missing_fields", [])
 
                 card_data = {
+                    "id": formulation.id,
                     "name": (
                         formulation.name
                         if formulation.name
@@ -1297,6 +1603,8 @@ class PredictionUI(QtWidgets.QWidget):
                     "temperature": temp,
                     "notes": notes,
                     "missing_fields": missing_fields,
+                    "icl": formulation.icl,
+                    "last_model": formulation.last_model,
                 }
 
                 card = self.add_prediction_card(card_data)
@@ -1305,11 +1613,11 @@ class PredictionUI(QtWidgets.QWidget):
                     data_package = {
                         "config_name": card_data["name"],
                         "shear_rate": shear_rates,
-                        "viscosity": viscosities,  # Line Plot (Predicted/Reference)
-                        "measured_viscosity": viscosities,  # For Evaluation Metric Calc
-                        "measured_y": viscosities,  # <--- CRITICAL: Key for VisualizationPanel Dash Line
-                        "y": viscosities,  # Fallback for main plot line
-                        "x": shear_rates,  # Key for X-axis
+                        "viscosity": viscosities,
+                        "measured_viscosity": viscosities,
+                        "measured_y": viscosities,
+                        "y": viscosities,
+                        "x": shear_rates,
                         "temperature": temp,
                         "color": card.plot_color,
                         "measured": True,
@@ -1321,7 +1629,8 @@ class PredictionUI(QtWidgets.QWidget):
                     count += 1
 
             except Exception as e:
-                Log.e(TAG, f"Error creating card for imported run: {e}")
+                # Log.e(TAG, f"Error creating card for imported run: {e}")
+                print(f"Error creating card: {e}")
 
         if count > 0:
             QtWidgets.QMessageBox.information(
@@ -1406,6 +1715,8 @@ class PredictionUI(QtWidgets.QWidget):
                     self, "Batch Export", f"Exported {success} files to {folder}"
                 )
 
+    # In prediction_ui.py
+
     def run_prediction(self, config=None):
         """
         Handles requests. Now supports Queuing.
@@ -1420,10 +1731,19 @@ class PredictionUI(QtWidgets.QWidget):
             return
 
         # Standard Execution Logic starts here
+
+        # [FIX] Only update running_card if triggered by a signal (sender exists).
+        # Do NOT reset to None, as the batch processor sets this manually before calling.
         if isinstance(sender_card, FormulationConfigCard):
             self.running_card = sender_card
-        else:
-            self.running_card = None
+
+        # [CRITICAL] Inject existing Shear Rates (X-axis) from imported data
+        # This ensures the worker predicts at the exact same points as the measured data.
+        if self.running_card and hasattr(self.running_card, "last_results"):
+            last_res = self.running_card.last_results
+            if last_res and "x" in last_res and len(last_res["x"]) > 0:
+                if config:
+                    config["shear_rates"] = last_res["x"]
 
         # Determine Color
         self._pending_color = None
@@ -1435,10 +1755,8 @@ class PredictionUI(QtWidgets.QWidget):
         if self.current_task is not None and self.current_task.isRunning():
             self.current_task.stop()
 
-        # Update Visuals (Only if not in the middle of a batch loop controlled elsewhere)
-        # If we are simply running one card (not batch mode), show specific loading
+        # Update Visuals (Only show loading if NOT in batch mode)
         name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
-
         if not self._is_batch_running:
             self.viz_panel.set_plot_title(f"Calculating: {name}...")
             self.viz_panel.show_loading()
@@ -1449,10 +1767,31 @@ class PredictionUI(QtWidgets.QWidget):
         self.current_task.finished.connect(self._on_task_complete)
         self.current_task.start()
 
+    # In prediction_ui.py
+
     def _on_prediction_finished(self, data_package):
         # Restore color
         if self._pending_color and "color" not in data_package:
             data_package["color"] = self._pending_color
+
+        # [FIXED] Robust Restoration of Measured Data
+        if hasattr(self, "running_card") and self.running_card:
+            existing_results = self.running_card.last_results
+
+            # 1. Check if we have valid existing measured data (Not None)
+            if existing_results and existing_results.get("measured_y") is not None:
+
+                # 2. Only restore if the NEW result doesn't have measured data
+                if data_package.get("measured_y") is None:
+
+                    # 3. Get the data arrays safely
+                    old_measured = existing_results["measured_y"]
+                    new_x = data_package.get("x")
+
+                    # 4. Compare lengths (ensure new_x is valid list/array)
+                    if new_x is not None and len(old_measured) == len(new_x):
+                        data_package["measured_y"] = old_measured
+                        data_package["measured"] = True  # Enable VizPanel toggle
 
         # Update the specific card that requested this
         if hasattr(self, "running_card") and self.running_card:

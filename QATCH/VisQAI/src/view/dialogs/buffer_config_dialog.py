@@ -5,9 +5,27 @@ try:
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import Buffer
 
+_STYLE_UNSET = (
+    "border: 1.5px solid #e53935; "
+    "border-radius: 4px; "
+    "padding: 6px; "
+    "min-height: 24px; "
+    "background-color: #fff5f5;"
+)
+_STYLE_NORMAL = (
+    "border: 1px solid #d1d5db; "
+    "border-radius: 4px; "
+    "padding: 6px; "
+    "min-height: 24px; "
+    "background-color: #ffffff;"
+)
+
 
 class BufferConfigDialog(QtWidgets.QDialog):
     """Dialog for configuring buffer ingredients."""
+
+    # pH of None / missing is tracked via self._ph_unset rather than a numeric
+    # sentinel.  This keeps the full 0–14 range typeable in the spinbox.
 
     def __init__(self, ing_ctrl, existing_buffer=None, parent=None):
         super().__init__(parent)
@@ -16,7 +34,7 @@ class BufferConfigDialog(QtWidgets.QDialog):
         self.result_ingredient = None
         is_edit = existing_buffer is not None
         self.setWindowTitle("Edit Buffer" if is_edit else "Add New Buffer")
-        self.resize(350, 200)
+        self.resize(350, 230)
         self.setModal(True)
 
         self.setStyleSheet(
@@ -45,6 +63,18 @@ class BufferConfigDialog(QtWidgets.QDialog):
         lbl_header.setStyleSheet("font-weight: bold; font-size: 11pt; color: #00adee;")
         layout.addWidget(lbl_header)
 
+        # Incomplete-fields banner
+        self.lbl_incomplete = QtWidgets.QLabel(
+            "\u26a0  Some fields are required. Please fill in the highlighted fields below."
+        )
+        self.lbl_incomplete.setStyleSheet(
+            "color: #b71c1c; background-color: #ffebee; "
+            "border: 1px solid #ef9a9a; border-radius: 4px; padding: 6px;"
+        )
+        self.lbl_incomplete.setWordWrap(True)
+        self.lbl_incomplete.setVisible(False)
+        layout.addWidget(self.lbl_incomplete)
+
         # Form
         form_layout = QtWidgets.QFormLayout()
         form_layout.setSpacing(10)
@@ -56,10 +86,13 @@ class BufferConfigDialog(QtWidgets.QDialog):
         self.spin_ph = QtWidgets.QDoubleSpinBox()
         self.spin_ph.setRange(0, 14)
         self.spin_ph.setDecimals(2)
-        self.spin_ph.setValue(7.4)
-        form_layout.addRow("pH:", self.spin_ph)
+        form_layout.addRow("pH*:", self.spin_ph)
 
         layout.addLayout(form_layout)
+
+        # Clear the red style as soon as the user moves away from the sentinel
+        self._ph_unset = True  # True until the user provides or loads a real pH
+        self.spin_ph.valueChanged.connect(lambda v: self._on_ph_changed(v))
 
         # Load existing data
         if existing_buffer:
@@ -96,25 +129,86 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         layout.addLayout(btn_layout)
 
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def buffer_needs_completion(buffer) -> bool:
+        """Return True if *buffer* has an unset pH.
+
+        Can be called by the card widget to decide whether to highlight
+        the edit-pen button in red without opening the dialog.
+        """
+        if not isinstance(buffer, Buffer):
+            return False
+        return buffer.pH is None
+
+    def has_incomplete_fields(self) -> bool:
+        """Return True if pH has not yet been provided."""
+        return self._ph_unset
+
+    def _mark_unset(self) -> None:
+        self.spin_ph.setStyleSheet(_STYLE_UNSET)
+        self.lbl_incomplete.setVisible(True)
+
+    def _mark_set(self) -> None:
+        self.spin_ph.setStyleSheet(_STYLE_NORMAL)
+        self.lbl_incomplete.setVisible(False)
+
+    def _on_ph_changed(self, value: float) -> None:
+        # Any explicit user interaction clears the unset flag
+        self._ph_unset = False
+        self._mark_set()
+
+    # ------------------------------------------------------------------
+    # Population
+    # ------------------------------------------------------------------
+
     def _populate_fields(self, data):
-        """Populate fields from either a Buffer object or a dictionary."""
+        """Populate fields from either a Buffer object or a dictionary.
+
+        A None pH is flagged as unset with red styling.
+        A real pH value (including 0.0) is filled normally.
+        """
         name = ""
-        ph = 7.4
+        ph = None
 
         if isinstance(data, Buffer):
-            name = data.name
-            ph = data.pH if data.pH is not None else 7.4
+            name = data.name or ""
+            ph = data.pH  # may be None
         elif isinstance(data, dict):
             name = data.get("name", "")
-            ph = data.get("ph", 7.4)
+            ph = data.get("ph")  # intentionally no default
 
         self.edit_name.setText(name)
-        self.spin_ph.setValue(ph)
+
+        if ph is None:
+            self._ph_unset = True
+            self.spin_ph.setValue(0.0)
+            self._mark_unset()
+        else:
+            self._ph_unset = False
+            self.spin_ph.setValue(float(ph))
+            self._mark_set()
+
+    # ------------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------------
 
     def save_and_accept(self):
         name = self.edit_name.text().strip()
         if not name:
             QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
+            return
+
+        if self.has_incomplete_fields():
+            self._mark_unset()
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Incomplete Fields",
+                "Please provide a pH value for this buffer.",
+            )
             return
 
         try:
@@ -138,4 +232,7 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
     def get_data(self):
         """Returns the buffer configuration as a dictionary."""
-        return {"name": self.edit_name.text().strip(), "ph": self.spin_ph.value()}
+        return {
+            "name": self.edit_name.text().strip(),
+            "ph": self.spin_ph.value() if not self.has_incomplete_fields() else None,
+        }
