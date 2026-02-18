@@ -450,31 +450,31 @@ class VisQAIWindow(BaseVisQAIWindow):
         # Enable database objects for initial UI load.
         self.enable(True)
 
+        # self.tab_widget.addTab(
+        #     FrameStep1(self, 1), "\u2460 Select Run"
+        # )  # unicode circled 1
+        # self.tab_widget.addTab(
+        #     FrameStep1(self, 2), "\u2461 Suggest Experiments"
+        # )  # unicode circled 2
+        # self.tab_widget.addTab(
+        #     FrameStep1(self, 3), "\u2462 Import Experiments"
+        # )  # unicode circled 3
+        # self.tab_widget.addTab(FrameStep2(self, 4), "\u2463 Learn")  # unicode circled 4
+        # self.tab_widget.addTab(
+        #     EvaluationUI(self), "\u2464 Evaluate"
+        # )  # unicode circled 5
+        # self.tab_widget.addTab(
+        #     FrameStep1(self, 5), "\u2465 Predict"
+        # )  # unicode circled 6
         self.tab_widget.addTab(
-            FrameStep1(self, 1), "\u2460 Select Run"
-        )  # unicode circled 1
-        self.tab_widget.addTab(
-            FrameStep1(self, 2), "\u2461 Suggest Experiments"
-        )  # unicode circled 2
-        self.tab_widget.addTab(
-            FrameStep1(self, 3), "\u2462 Import Experiments"
-        )  # unicode circled 3
-        self.tab_widget.addTab(FrameStep2(self, 4), "\u2463 Learn")  # unicode circled 4
-        self.tab_widget.addTab(
-            EvaluationUI(self), "\u2464 Evaluate"
-        )  # unicode circled 5
-        self.tab_widget.addTab(
-            FrameStep1(self, 5), "\u2465 Predict"
+            PredictionUI(self), "\u2460 Dashboard"
         )  # unicode circled 6
-        self.tab_widget.addTab(
-            PredictionUI(self), "\u2465 New Predict"
-        )  # unicode circled 6
-        self.tab_widget.addTab(
-            OptimizationUI(self), "\u2466 Optimize"
-        )  # unicode circled 7
-        self.tab_widget.addTab(
-            HypothesisTestingUI(self), "\u2467 Hypothesis Testing"
-        )  # unicode circled 8
+        # self.tab_widget.addTab(
+        #     OptimizationUI(self), "\u2466 Optimize"
+        # )  # unicode circled 7
+        # self.tab_widget.addTab(
+        #     HypothesisTestingUI(self), "\u2467 Hypothesis Testing"
+        # )  # unicode circled 8
 
         # Disable database objects after initial UI load.
         self.enable(False)
