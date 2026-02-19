@@ -26,13 +26,12 @@ Version:
     1.5
 """
 
-import bisect
 import math
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import curve_fit
+from scipy.interpolate import PchipInterpolator
 
 try:
     from src.models.ingredient import (
@@ -56,12 +55,6 @@ except (ModuleNotFoundError, ImportError):
     )
 
 TAG = "[Formulation]"
-
-
-from typing import Any, Dict, List
-
-import numpy as np
-from scipy.interpolate import PchipInterpolator
 
 
 class ViscosityProfile:
@@ -102,19 +95,14 @@ class ViscosityProfile:
         self.viscosities: List[float] = [v for _, v in pairs]
         self.units: str = units.strip()
         self._is_measured: bool = False
-
-        # Build the interpolator once upon instantiation
         self._build_interpolator()
 
     def _build_interpolator(self, std_tol: float = 0.1):
-        """Pre-computes a PCHIP interpolator for performance and stability."""
         if not self.shear_rates:
             self._interpolator = None
             return
 
         vs_monotonic = np.array(self.viscosities)
-
-        # Apply monotonic constraint with tolerance to smooth measurement noise
         if len(vs_monotonic) > 1:
             visc_diffs = np.diff(vs_monotonic)
             std_dev = np.std(visc_diffs) if len(visc_diffs) > 0 else 0.0
@@ -125,8 +113,6 @@ class ViscosityProfile:
                     vs_monotonic[i] = vs_monotonic[i - 1] + tolerance
 
         self._vs_monotonic = vs_monotonic
-
-        # Use PCHIP in log10 space for shear rates to ensure smooth rheology curves
         if len(self.shear_rates) > 1:
             log_srs = np.log10(np.maximum(self.shear_rates, 1e-10))
             self._interpolator = PchipInterpolator(log_srs, self._vs_monotonic)
@@ -159,14 +145,10 @@ class ViscosityProfile:
             return 0.0
 
         sr = float(shear_rate)
-
-        # Clean flatline extrapolation for out-of-bounds bounds (Fixes the tail spikes)
         if sr <= self.shear_rates[0]:
             return float(self._vs_monotonic[0])
         if sr >= self.shear_rates[-1]:
             return float(self._vs_monotonic[-1])
-
-        # Evaluate the interpolator (Fixes the disconnected points)
         if self._interpolator is not None:
             log_sr = np.log10(max(sr, 1e-10))
             return float(self._interpolator(log_sr))
