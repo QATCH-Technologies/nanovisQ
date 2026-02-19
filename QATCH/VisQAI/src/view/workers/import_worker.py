@@ -94,9 +94,32 @@ class ImportWorker(QThread):
                             )
 
                             if existing_form:
-                                # Found in DB, but if the local parse showed missing fields,
-                                # we might want to attach them to the existing object wrapper for UI notification.
-                                final_formulation = existing_form
+                                # Check if the parsed formulation differs from the stored one
+                                if existing_form != formulation:
+                                    # Preserve local metadata (like UI toggles) before updating
+                                    formulation.icl = getattr(
+                                        existing_form, "icl", True
+                                    )
+                                    formulation.last_model = getattr(
+                                        existing_form, "last_model", None
+                                    )
+
+                                    try:
+                                        # Update the formulation in the database
+                                        final_formulation = (
+                                            controller.update_formulation(
+                                                existing_form.id, formulation
+                                            )
+                                        )
+                                    except Exception as e:
+                                        print(
+                                            f"Failed to update existing formulation {filename}: {e}"
+                                        )
+                                        final_formulation = existing_form
+                                else:
+                                    final_formulation = existing_form
+
+                                # Attach any missing fields for UI notification
                                 if hasattr(formulation, "missing_fields"):
                                     final_formulation.missing_fields = (
                                         formulation.missing_fields

@@ -44,15 +44,19 @@ class GenericIngredientDialog(QtWidgets.QDialog):
             """
             QDialog { background-color: #ffffff; }
             QLabel { color: #333; }
-            QLineEdit { 
+            QLineEdit, QDoubleSpinBox, QComboBox { 
                 border: 1px solid #d1d5db; 
                 border-radius: 4px; 
                 padding: 6px; 
                 min-height: 24px;
                 background-color: #ffffff;
             }
-            QLineEdit:focus {
+            QLineEdit:focus, QDoubleSpinBox:focus, QComboBox:focus {
                 border: 1px solid #00adee;
+            }
+            QLineEdit[readOnly="true"] {
+                background-color: #f3f4f6;
+                color: #6b7280;
             }
         """
         )
@@ -71,8 +75,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        placeholder = self._get_placeholder(ingredient_type)
-        self.edit_name.setPlaceholderText(f"e.g., {placeholder}")
+        self.edit_name.setPlaceholderText("Component name...")
+        self.edit_name.setReadOnly(True)
         form_layout.addRow("Name*:", self.edit_name)
 
         layout.addLayout(form_layout)

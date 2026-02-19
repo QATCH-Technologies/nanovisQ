@@ -57,6 +57,10 @@ class ProteinConfigDialog(QtWidgets.QDialog):
             QLineEdit:focus, QDoubleSpinBox:focus, QComboBox:focus {
                 border: 1px solid #00adee;
             }
+            QLineEdit[readOnly="true"] {
+                background-color: #f3f4f6;
+                color: #6b7280;
+            }
         """
         )
 
@@ -86,7 +90,8 @@ class ProteinConfigDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        self.edit_name.setPlaceholderText("e.g., mAb-1")
+        self.edit_name.setPlaceholderText("Protein name...")
+        self.edit_name.setReadOnly(True)
         form_layout.addRow("Name*:", self.edit_name)
 
         self.combo_class = QtWidgets.QComboBox()

@@ -177,6 +177,17 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.lbl_measured.setProperty("class", "badge-success")
         self.lbl_measured.setVisible(False)
 
+        # Warning Indicator for Incomplete Data
+        self.lbl_warning = QtWidgets.QLabel("⚠ Incomplete")
+        self.lbl_warning.setStyleSheet(
+            "color: #c62828; background-color: #ffcdd2; "
+            "border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;"
+        )
+        self.lbl_warning.setVisible(False)
+        self.lbl_warning.setToolTip(
+            "Missing required ingredient information or valid concentrations. Inference is blocked."
+        )
+
         # Delete Button
         self.btn_delete = QtWidgets.QPushButton()
         self.btn_delete.setObjectName("btnCardDelete")
@@ -243,6 +254,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.btn_options.setMenu(self.options_menu)
 
         header_layout.addWidget(self.name_input, stretch=1)
+        header_layout.addWidget(self.lbl_warning)
         header_layout.addWidget(self.lbl_measured)
         header_layout.addWidget(self.btn_delete)
         header_layout.addWidget(self.btn_options)
@@ -1106,6 +1118,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         then starts the debounce timer for emitting the run request.
         """
         self._update_internal_formulation()
+        self._update_warning_indicator()
         if self.is_expanded:
             self.debounce_timer.start()
 
@@ -1215,6 +1228,46 @@ class FormulationConfigCard(QtWidgets.QFrame):
             print(f"Error converting formulation to dataframe: {e}")
             return None
 
+    def _update_warning_indicator(self):
+        """Checks if the formulation is ready for inference and updates the warning badge."""
+        if not hasattr(self, "lbl_warning"):
+            return
+
+        is_ready = True
+        msg = ""
+
+        if "Buffer" not in self.active_ingredients:
+            is_ready = False
+            msg = "Missing Buffer"
+        else:
+            for ing_type, (combo, spin, _, _) in self.active_ingredients.items():
+                ingredient = combo.currentData()
+                if ingredient is not None:
+                    if spin.value() <= 0.0:
+                        is_ready = False
+                        msg = "Check Conc."
+                        break
+                    if (
+                        ing_type == "Protein"
+                        and ProteinConfigDialog.protein_needs_completion(ingredient)
+                    ):
+                        is_ready = False
+                        msg = "Incomplete Data"
+                        break
+                    if (
+                        ing_type == "Buffer"
+                        and BufferConfigDialog.buffer_needs_completion(ingredient)
+                    ):
+                        is_ready = False
+                        msg = "Incomplete Data"
+                        break
+
+        if is_ready:
+            self.lbl_warning.setVisible(False)
+        else:
+            self.lbl_warning.setText(f"⚠ {msg}")
+            self.lbl_warning.setVisible(True)
+
     def is_valid(self):
         """
         Checks if the formulation configuration is valid for running.
@@ -1313,8 +1366,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
             self._load_data_impl(data)
         finally:
             self._loading = False
-            # Sync formulation after all fields are populated
             self._update_internal_formulation()
+            self._update_warning_indicator()
 
     def _load_data_impl(self, data):
         if "id" in data:

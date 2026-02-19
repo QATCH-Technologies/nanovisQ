@@ -233,7 +233,7 @@ class FormulationController:
                 Its components and viscosity profile should be set.
 
         Returns:
-            Formulation: The updated `Formulation` instance (whose `.id` is set to `id`).
+            Formulation: The updated `Formulation` instance.
 
         Raises:
             ValueError: If no formulation with the given ID exists.
@@ -243,6 +243,24 @@ class FormulationController:
             raise ValueError(f"Formulation with id '{id}' does not exist.")
         if f_fetch == f_new:
             return f_new
+
+        # Ensure each ingredient is persisted before saving the updated formulation
+        f_new.buffer.ingredient = self.ingredient_controller.add(
+            f_new.buffer.ingredient
+        )
+        f_new.protein.ingredient = self.ingredient_controller.add(
+            f_new.protein.ingredient
+        )
+        f_new.salt.ingredient = self.ingredient_controller.add(f_new.salt.ingredient)
+        f_new.surfactant.ingredient = self.ingredient_controller.add(
+            f_new.surfactant.ingredient
+        )
+        f_new.stabilizer.ingredient = self.ingredient_controller.add(
+            f_new.stabilizer.ingredient
+        )
+        f_new.excipient.ingredient = self.ingredient_controller.add(
+            f_new.excipient.ingredient
+        )
 
         # Delete the old formulation and re-add the new data
         self.db.delete_formulation(id)

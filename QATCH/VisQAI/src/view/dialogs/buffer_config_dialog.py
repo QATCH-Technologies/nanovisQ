@@ -51,6 +51,10 @@ class BufferConfigDialog(QtWidgets.QDialog):
             QLineEdit:focus, QDoubleSpinBox:focus {
                 border: 1px solid #00adee;
             }
+            QLineEdit[readOnly="true"] {
+                background-color: #f3f4f6;
+                color: #6b7280;
+            }
         """
         )
 
@@ -80,7 +84,8 @@ class BufferConfigDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        self.edit_name.setPlaceholderText("e.g., Phosphate")
+        self.edit_name.setPlaceholderText("Buffer name...")
+        self.edit_name.setReadOnly(True)
         form_layout.addRow("Name*:", self.edit_name)
 
         self.spin_ph = QtWidgets.QDoubleSpinBox()
@@ -135,18 +140,15 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
     @staticmethod
     def buffer_needs_completion(buffer) -> bool:
-        """Return True if *buffer* has an unset pH.
-
-        Can be called by the card widget to decide whether to highlight
-        the edit-pen button in red without opening the dialog.
-        """
+        """Return True if *buffer* has an unset pH."""
         if not isinstance(buffer, Buffer):
             return False
-        return buffer.pH is None
+        # Treat 0.0 as the missing/sentinel value
+        return buffer.pH is None or buffer.pH == 0.0
 
     def has_incomplete_fields(self) -> bool:
         """Return True if pH has not yet been provided."""
-        return self._ph_unset
+        return self.spin_ph.value() == 0.0
 
     def _mark_unset(self) -> None:
         self.spin_ph.setStyleSheet(_STYLE_UNSET)
@@ -157,9 +159,11 @@ class BufferConfigDialog(QtWidgets.QDialog):
         self.lbl_incomplete.setVisible(False)
 
     def _on_ph_changed(self, value: float) -> None:
-        # Any explicit user interaction clears the unset flag
-        self._ph_unset = False
-        self._mark_set()
+        # Clear the unset flag only when the user moves above 0.0
+        if value > 0.0:
+            self._mark_set()
+        else:
+            self._mark_unset()
 
     # ------------------------------------------------------------------
     # Population
@@ -168,8 +172,8 @@ class BufferConfigDialog(QtWidgets.QDialog):
     def _populate_fields(self, data):
         """Populate fields from either a Buffer object or a dictionary.
 
-        A None pH is flagged as unset with red styling.
-        A real pH value (including 0.0) is filled normally.
+        A None or 0.0 pH is flagged as unset with red styling.
+        A real pH value is filled normally.
         """
         name = ""
         ph = None
@@ -183,13 +187,13 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         self.edit_name.setText(name)
 
-        if ph is None:
-            self._ph_unset = True
-            self.spin_ph.setValue(0.0)
+        # Check if missing or matching the 0.0 sentinel
+        is_unset = ph is None or float(ph) == 0.0
+        self.spin_ph.setValue(0.0 if is_unset else float(ph))
+
+        if is_unset:
             self._mark_unset()
         else:
-            self._ph_unset = False
-            self.spin_ph.setValue(float(ph))
             self._mark_set()
 
     # ------------------------------------------------------------------

@@ -1,6 +1,5 @@
 /* ===========================================================================
-   VISCOSITY AI - LIGHT THEME STYLESHEET
-   A clean, professional Qt stylesheet for prediction UI components
+   VISQ.AI - STYLESHEET
    =========================================================================== */
 
 /* ===========================================================================
@@ -155,7 +154,41 @@ QFrame[class="card"] QComboBox::down-arrow {
     height: 12px;
     image: url("{{ICON_DOWN}}");
 }
+/* --- Global ComboBox Dropdown List & Scrollbar --- */
+QComboBox QAbstractItemView {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background-color: #ffffff;
+    selection-background-color: #e6f7fd;
+    selection-color: #2596be;
+    outline: none;
+    padding: 4px;
+}
 
+QComboBox QScrollBar:vertical {
+    border: none;
+    background: transparent;
+    width: 8px;
+    margin: 2px 2px 2px 0px;
+}
+
+QComboBox QScrollBar::handle:vertical {
+    background: #d1d5db;
+    min-height: 20px;
+    border-radius: 4px;
+}
+
+QComboBox QScrollBar::handle:vertical:hover {
+    background: #9ca3af;
+}
+
+QComboBox QScrollBar::add-line:vertical, 
+QComboBox QScrollBar::sub-line:vertical,
+QComboBox QScrollBar::add-page:vertical, 
+QComboBox QScrollBar::sub-page:vertical {
+    height: 0px;
+    background: none;
+}
 /* --- SpinBox Specific --- */
 QFrame[class="card"] QDoubleSpinBox,
 QFrame[class="card"] QSpinBox {
@@ -700,4 +733,74 @@ QPushButton#fabAdd:pressed {
 QPushButton#fabAdd:disabled {
     background-color: #d1d5db;
     color: #9ca3af;
+}
+/* ===========================================================================
+   17. EVALUATION WIDGET
+   =========================================================================== */
+EvaluationWidget {
+    background-color: #ffffff;
+    border-radius: 8px; /* Apply rounding to all corners now that it has a top border */
+    border: 1px solid #d1d5db;
+}
+
+EvaluationWidget[class="card"]:hover {
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+}
+EvaluationWidget QLabel {
+    color: #374151;
+    font-weight: 500;
+}
+
+EvaluationWidget QLabel#evalTitle {
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+EvaluationWidget QToolButton#btnEvalClose {
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+}
+
+EvaluationWidget QToolButton#btnEvalClose:hover {
+    background-color: #ffebee;
+}
+
+EvaluationWidget QToolButton#btnEvalClose:pressed {
+    background-color: #ffcdd2;
+}
+
+EvaluationWidget QGroupBox {
+    font-weight: 600;
+    color: #2596be;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 15px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #f9fafb;
+}
+
+EvaluationWidget QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+EvaluationWidget QDoubleSpinBox {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px;
+    background-color: #ffffff;
+}
+
+EvaluationWidget QDoubleSpinBox:focus {
+    border: 1px solid #2596be;
 }

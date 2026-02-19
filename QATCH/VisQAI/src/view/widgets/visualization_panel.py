@@ -21,6 +21,7 @@ except (ModuleNotFoundError, ImportError):
 
 class VisualizationPanel(QtWidgets.QWidget):
     STANDARD_SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
+    eval_point_clicked = QtCore.pyqtSignal(dict)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -124,7 +125,20 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.loading_label.setAlignment(Qt.AlignCenter)
         overlay_layout.addWidget(self.loading_label)
 
+        # --- PLACEHOLDER ---
+        self.placeholder_label = QtWidgets.QLabel(
+            "No data to display.\nRun a prediction or import data to view profiles."
+        )
+        self.placeholder_label.setAlignment(Qt.AlignCenter)
+        self.placeholder_label.setStyleSheet(
+            "color: #9ca3af; font-size: 13pt; font-weight: 500; background-color: transparent;"
+        )
+        self.placeholder_label.setAttribute(
+            Qt.WA_TransparentForMouseEvents
+        )  # Prevents blocking plot interactions
+
         self.stack_layout.addWidget(self.plot_widget, 0, 0)
+        self.stack_layout.addWidget(self.placeholder_label, 0, 0)
         self.stack_layout.addWidget(self.overlay_widget, 0, 0)
 
         graph_layout.addWidget(self.plot_stack)
@@ -473,9 +487,24 @@ class VisualizationPanel(QtWidgets.QWidget):
             label.setPos(x_pos_for_y_labels, y_val)
 
         # Labels positioned nicely inside view ranges
+        # Labels positioned nicely inside view ranges
         if self.act_axis_labels.isChecked():
             x_center = (x_range[0] + x_range[1]) / 2
-            x_label_text = "Log Shear Rate (1/s)" if log_x else "Shear Rate (1/s)"
+
+            mode = getattr(self, "plot_mode", "standard")
+            if mode == "parity":
+                x_label_text = (
+                    "Log True Viscosity (cP)" if log_x else "True Viscosity (cP)"
+                )
+                y_label_text = (
+                    "Log Predicted Viscosity (cP)"
+                    if log_y
+                    else "Predicted Viscosity (cP)"
+                )
+            else:
+                x_label_text = "Log Shear Rate (1/s)" if log_x else "Shear Rate (1/s)"
+                y_label_text = "Log Viscosity (cP)" if log_y else "Viscosity (cP)"
+
             x_name = get_item()
             x_name.setText(x_label_text)
             x_name.setAnchor((0.5, 0))
@@ -557,6 +586,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.axis_debounce.start()
 
     def set_data(self, data):
+        self.plot_mode = "standard"
         if isinstance(data, list):
             self.data_series = [d for d in data if d is not None]
         elif data is not None:
@@ -564,8 +594,10 @@ class VisualizationPanel(QtWidgets.QWidget):
         else:
             self.data_series = []
 
-        self.series_hidden = [False] * len(self.data_series)
+        if not self.data_series:
+            self.set_plot_title("")
 
+        self.series_hidden = [False] * len(self.data_series)
         has_measured = any(
             "measured_y" in d and d["measured_y"] is not None for d in self.data_series
         )
@@ -577,6 +609,12 @@ class VisualizationPanel(QtWidgets.QWidget):
         else:
             self.act_measured.setChecked(False)
 
+        self.update_plot()
+
+    def set_parity_data(self, parity_data, log_visc):
+        self.plot_mode = "parity"
+        self.parity_data = parity_data
+        self.parity_log_visc = log_visc
         self.update_plot()
 
     def update_plot(self):
@@ -597,8 +635,23 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.vLine.setVisible(self.act_crosshairs.isChecked())
         self.hLine.setVisible(self.act_crosshairs.isChecked())
 
-        if not self.data_series:
+        # Always clear the legend so old labels don't persist on clear
+        # Always clear the legend so old labels don't persist on clear
+        self.legend.clear()
+
+        mode = getattr(self, "plot_mode", "standard")
+        if mode == "parity":
+            self.placeholder_label.hide()
+            self._plot_parity()
+            self.axis_debounce.start()
+            self._make_legend_clickable()
             return
+
+        if not self.data_series:
+            self.placeholder_label.show()
+            return
+
+        self.placeholder_label.hide()
 
         while len(self.series_hidden) < len(self.data_series):
             self.series_hidden.append(False)
@@ -616,6 +669,104 @@ class VisualizationPanel(QtWidgets.QWidget):
         self._apply_global_limits()
         self.axis_debounce.start()
         self._make_legend_clickable()
+
+    def _plot_parity(self):
+        # 1. Setup logs (X and Y are both viscosity in a parity plot)
+        self.plot_widget.setLogMode(x=self.parity_log_visc, y=self.parity_log_visc)
+
+        # 2. Sync hidden state list for legend
+        while len(self.series_hidden) < len(self.parity_data):
+            self.series_hidden.append(False)
+        self.series_hidden = self.series_hidden[: len(self.parity_data)]
+
+        # 3. Get global min/max for y=x line
+        min_val = float("inf")
+        max_val = float("-inf")
+        for series in self.parity_data:
+            for pt in series["points"]:
+                min_val = min(min_val, pt["true"], pt["pred"])
+                max_val = max(max_val, pt["true"], pt["pred"])
+
+        if min_val == float("inf"):
+            return
+
+        # 4. Plot y=x parity line
+        line_min = max(min_val * 0.8, 1e-10) if self.parity_log_visc else min_val * 0.8
+        line_max = max_val * 1.2
+        val_min = np.log10(line_min) if self.parity_log_visc else line_min
+        val_max = np.log10(line_max) if self.parity_log_visc else line_max
+
+        parity_line = self.plot_widget.plot(
+            [val_min, val_max],
+            [val_min, val_max],
+            pen=pg.mkPen("#9ca3af", width=2, style=Qt.DashLine),
+            name="y = x",
+        )
+
+        # Start series plot items with the parity line (non-hideable)
+        self.series_plot_items.append(
+            {"lines": [parity_line], "fills": [], "scatters": [], "texts": []}
+        )
+
+        # 5. Plot scattered points per series
+        for i, series in enumerate(self.parity_data):
+            spots = []
+            for pt in series["points"]:
+                px = (
+                    np.log10(max(pt["true"], 1e-10))
+                    if self.parity_log_visc
+                    else pt["true"]
+                )
+                py = (
+                    np.log10(max(pt["pred"], 1e-10))
+                    if self.parity_log_visc
+                    else pt["pred"]
+                )
+                spots.append({"pos": (px, py), "data": pt})
+
+            if spots:
+                scatter = pg.ScatterPlotItem(
+                    spots=spots,
+                    symbol="o",
+                    size=14,
+                    brush=pg.mkBrush("w"),
+                    pen=pg.mkPen(series["color"], width=2),
+                    name=series["config_name"],
+                    hoverable=True,
+                    hoverSize=20,
+                    hoverBrush=pg.mkBrush(series["color"]),
+                    hoverPen=pg.mkPen(series["color"], width=2),
+                )
+
+                # Connect click event
+                scatter.sigClicked.connect(self._on_parity_scatter_clicked)
+
+                self.plot_widget.addItem(scatter)
+
+                items_dict = {
+                    "lines": [],
+                    "fills": [],
+                    "scatters": [scatter],
+                    "texts": [],
+                }
+                self.series_plot_items.append(items_dict)
+
+                if self.series_hidden[i]:
+                    self._set_series_items_visible(items_dict, False)
+
+        self.plot_widget.plotItem.vb.setLimits(
+            xMin=val_min, xMax=val_max, yMin=val_min, yMax=val_max
+        )
+        self.plot_widget.plotItem.vb.setRange(
+            xRange=[val_min, val_max], yRange=[val_min, val_max], padding=0.05
+        )
+
+    def _on_parity_scatter_clicked(self, plot, points):
+        """Passes the clicked point dictionary back to the Dashboard."""
+        if points:
+            data = points[0].data()
+            if data:
+                self.eval_point_clicked.emit(data)
 
     def _plot_single_series(self, data, index):
         series_items = {
@@ -1067,6 +1218,9 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.plot_widget.setCursor(Qt.ArrowCursor)
 
     def on_plot_click(self, event):
+        if getattr(self, "plot_mode", "standard") == "parity":
+            return
+
         if event.button() != Qt.LeftButton:
             return
         pos = event.scenePos()

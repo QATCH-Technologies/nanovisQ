@@ -69,7 +69,7 @@ class PlaceholderWidget(QtWidgets.QWidget):
 
         # Message text
         self.lbl_text = QtWidgets.QLabel(
-            "No predictions yet.\nClick the + button to add a new prediction."
+            "No data yet.\nClick the + button to add new data."
         )
         self.lbl_text.setObjectName("placeholderText")
         self.lbl_text.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)

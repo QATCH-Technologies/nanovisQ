@@ -131,10 +131,11 @@ class DashboardUI(QtWidgets.QWidget):
         self.filter_widget.filter_changed.connect(self.apply_filters)
         self.filter_widget.hide()
 
-        # 2. Evaluation Widget (Fixed: Created here, safely parenting to left_widget)
+        # Evaluation Widget
         self.eval_widget = EvaluationWidget(parent=self)
         self.eval_widget.run_requested.connect(self.run_evaluation_analysis)
         self.eval_widget.closed.connect(self.exit_evaluation_mode)
+        self.eval_widget.clear_requested.connect(self.exit_evaluation_mode)
         self.eval_widget.hide()
 
         # --- Content ---
@@ -169,6 +170,7 @@ class DashboardUI(QtWidgets.QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
 
         self.viz_panel = VisualizationPanel()
+        self.viz_panel.eval_point_clicked.connect(self.on_eval_point_clicked)
         right_layout.addWidget(self.viz_panel)
 
         splitter.addWidget(self.right_widget)
@@ -920,7 +922,7 @@ class DashboardUI(QtWidgets.QWidget):
 
             if total_cards == 0:
                 self.placeholder.lbl_text.setText(
-                    "No predictions yet.\nClick the + button to add one."
+                    "No data yet.\nClick the + button to add new data."
                 )
             else:
                 self.placeholder.lbl_text.setText(
@@ -985,98 +987,206 @@ class DashboardUI(QtWidgets.QWidget):
         self.viz_panel.set_plot_title("")
         self.update_placeholder_visibility()
 
-    def run_evaluation_analysis(self, config):
-        """
-        Calculates metrics for visible cards and updates the plot.
-        """
-        metric_name = config["metric"]
-        shear_min = config["shear_min"]
-        shear_max = config["shear_max"]
+    def exit_evaluation_mode(self):
+        """Restores UI to normal state."""
+        self.eval_widget.hide()
+        self.btn_evaluate.setChecked(False)
 
-        results_to_plot = []
-        scores = []
-
-        # Iterate over visible cards (which we know are the Measured ones)
+        # Repopulate regular plot
+        results = []
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
-            card = item.widget()
+            widget = item.widget()
+            if isinstance(widget, FormulationConfigCard):
+                widget.show()
+                if hasattr(widget, "last_results") and widget.last_results:
+                    # Sync config name directly from input
+                    data = widget.last_results.copy()
+                    data["config_name"] = widget.name_input.text()
+                    results.append(data)
 
-            # Skip hidden or non-card widgets
-            if not isinstance(card, FormulationConfigCard) or card.isHidden():
-                continue
+        self.viz_panel.set_data(results)
+        self.viz_panel.set_plot_title("")
+        self.update_placeholder_visibility()
 
-            # Access stored results in the card (populated by previous runs)
-            if not hasattr(card, "last_results") or not card.last_results:
-                continue
-
-            data = card.last_results
-
-            # Ensure we have both predicted and measured data
-            # Data format assumption: {'shear_rate': [], 'viscosity': [], 'measured_viscosity': []}
-            if "measured_viscosity" not in data or "viscosity" not in data:
-                continue
-
-            shear = np.array(data["shear_rate"])
-            y_pred = np.array(data["viscosity"])
-            y_true = np.array(data["measured_viscosity"])
-
-            # Filter by Shear Range
-            mask = (shear >= shear_min) & (shear <= shear_max)
-            if not np.any(mask):
-                continue
-
-            y_p_filt = y_pred[mask]
-            y_t_filt = y_true[mask]
-
-            # Calculate Metric
-            score = 0.0
-            if "RMSE" in metric_name:
-                score = np.sqrt(np.mean((y_p_filt - y_t_filt) ** 2))
-            elif "MAE" in metric_name:
-                score = np.mean(np.abs(y_p_filt - y_t_filt))
-            elif "MAPE" in metric_name:
-                # Avoid division by zero
-                valid = y_t_filt != 0
-                score = (
-                    np.mean(
-                        np.abs((y_t_filt[valid] - y_p_filt[valid]) / y_t_filt[valid])
-                    )
-                    * 100
-                )
-            elif "R²" in metric_name or "R-Squared" in metric_name:
-                ss_res = np.sum((y_t_filt - y_p_filt) ** 2)
-                ss_tot = np.sum((y_t_filt - np.mean(y_t_filt)) ** 2)
-                score = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
-
-            scores.append(f"{card.get_config()['name']}: {score:.4f}")
-
-            # Add to plot list (we re-send the data to VizPanel)
-            # We modify the name to include the score for the legend
-            data_copy = data.copy()
-            data_copy["config_name"] = (
-                f"{data['config_name']} ({metric_name}={score:.2f})"
-            )
-            results_to_plot.append(data_copy)
-
-        if not results_to_plot:
-            QtWidgets.QMessageBox.warning(
-                self, "Evaluation Failed", "No valid data found in range."
-            )
+    def on_eval_point_clicked(self, point_data):
+        """Handles clicks on the parity plot scatter points."""
+        card = point_data.get("card")
+        if not card:
             return
 
-        # Update Visualization
-        self.viz_panel.set_data(results_to_plot)
+        # Show and Ensure card is expanded
+        card.show()
+        if not card.is_expanded:
+            card.toggle_content()
 
-        # Calculate Average Score for Title
-        avg_score = 0
-        if scores:
-            # Simple parsing for display
-            vals = [float(s.split(": ")[1]) for s in scores]
-            avg_score = sum(vals) / len(vals)
+        # Scroll to card
+        self._scroll_to_card(card)
 
-        self.viz_panel.set_plot_title(
-            f"Evaluation Results: Avg {metric_name} = {avg_score:.4f}"
+        # Show Info Window
+        shear = point_data.get("shear")
+        t_val = point_data.get("true")
+        p_val = point_data.get("pred")
+
+        msg = (
+            f"Formulation: {card.name_input.text()}\n"
+            f"Shear Rate: {shear:g} 1/s\n"
+            f"True Viscosity: {t_val:.4f} cP\n"
+            f"Predicted Viscosity: {p_val:.4f} cP"
         )
+        QtWidgets.QMessageBox.information(self, "Prediction Details", msg)
+
+    def run_evaluation_analysis(self, config):
+        """Calculates metrics and sets data to Visualization Panel."""
+        metric_key = config.get("metric", "rmse")
+        metric_name = config.get("metric_name", metric_key)
+        shear_min = config.get("shear_min", 100)
+        shear_max = config.get("shear_max", 15000000)
+        log_visc = config.get("log_viscosity", False)
+
+        if metric_key == "true_vs_pred":
+            parity_data = []
+            for i in range(self.cards_layout.count()):
+                item = self.cards_layout.itemAt(i)
+                card = item.widget()
+
+                if not isinstance(card, FormulationConfigCard) or card.isHidden():
+                    continue
+                if not hasattr(card, "last_results") or not card.last_results:
+                    continue
+                data = card.last_results
+                if (
+                    "measured_y" not in data
+                    or "y" not in data
+                    or data["measured_y"] is None
+                ):
+                    continue
+
+                shear = np.array(data["x"])
+                y_pred = np.array(data["y"])
+                y_true = np.array(data["measured_y"])
+
+                mask = (shear >= shear_min) & (shear <= shear_max)
+                if not np.any(mask):
+                    continue
+
+                s_filt = shear[mask]
+                yp_filt = y_pred[mask]
+                yt_filt = y_true[mask]
+
+                points = []
+                for s_val, yt, yp in zip(s_filt, yt_filt, yp_filt):
+                    points.append(
+                        {
+                            "shear": float(s_val),
+                            "true": float(yt),
+                            "pred": float(yp),
+                            "card": card,  # Attach card reference for clicking
+                        }
+                    )
+
+                parity_data.append(
+                    {
+                        "config_name": card.name_input.text(),
+                        "color": card.plot_color,
+                        "points": points,
+                    }
+                )
+
+            if not parity_data:
+                QtWidgets.QMessageBox.warning(
+                    self, "Evaluation Failed", "No valid data found in range."
+                )
+                return
+
+            self.viz_panel.set_parity_data(parity_data, log_visc)
+            self.viz_panel.set_plot_title("Evaluation: True vs. Predicted Viscosity")
+
+        else:
+            # --- Other Metrics Evaluation using Metrics Class ---
+            try:
+                from src.utils.metrics import Metrics
+            except (ImportError, ModuleNotFoundError):
+                from QATCH.VisQAI.src.utils.metrics import Metrics
+
+            metrics_engine = Metrics()
+
+            results_to_plot = []
+            scores = []
+
+            for i in range(self.cards_layout.count()):
+                item = self.cards_layout.itemAt(i)
+                card = item.widget()
+
+                if not isinstance(card, FormulationConfigCard) or card.isHidden():
+                    continue
+                if not hasattr(card, "last_results") or not card.last_results:
+                    continue
+
+                data = card.last_results
+                if (
+                    "measured_y" not in data
+                    or "y" not in data
+                    or data["measured_y"] is None
+                ):
+                    continue
+
+                shear = np.array(data["x"])
+                y_pred = np.array(data["y"])
+                y_true = np.array(data["measured_y"])
+
+                mask = (shear >= shear_min) & (shear <= shear_max)
+                if not np.any(mask):
+                    continue
+
+                y_p_filt = y_pred[mask]
+                y_t_filt = y_true[mask]
+
+                # Construct DataFrame expected by the Metrics engine
+                df = pd.DataFrame(
+                    {
+                        "actual": y_t_filt,
+                        "predicted": y_p_filt,
+                        "residual": y_t_filt - y_p_filt,
+                        "abs_error": np.abs(y_t_filt - y_p_filt),
+                        "percentage_error": np.abs((y_t_filt - y_p_filt) / y_t_filt)
+                        * 100,
+                    }
+                )
+
+                try:
+                    score = metrics_engine.metrics[metric_key](df)
+                    scores.append(f"{card.name_input.text()}: {score:.4f}")
+
+                    data_copy = data.copy()
+                    data_copy["config_name"] = (
+                        f"{card.name_input.text()} ({metric_name}={score:.2f})"
+                    )
+                    results_to_plot.append(data_copy)
+                except Exception as e:
+                    print(
+                        f"Failed to calculate {metric_key} for {card.name_input.text()}: {e}"
+                    )
+                    continue
+
+            if not results_to_plot:
+                QtWidgets.QMessageBox.warning(
+                    self, "Evaluation Failed", "No valid data found in range."
+                )
+                return
+
+            self.viz_panel.set_data(results_to_plot)
+
+            # Title averaging
+            if scores:
+                try:
+                    vals = [float(s.split(": ")[1]) for s in scores]
+                    avg_score = sum(vals) / len(vals)
+                    self.viz_panel.set_plot_title(
+                        f"Evaluation Results: Avg {metric_name} = {avg_score:.4f}"
+                    )
+                except:
+                    self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
 
     def apply_filters(self, filter_data):
         """Iterates over cards and toggles visibility based on match."""
@@ -1408,6 +1518,20 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_data(data)
 
     def remove_card(self, card_widget):
+        # --- Remove associated plot data from the visualization panel ---
+        if hasattr(card_widget, "last_results"):
+            target_result = card_widget.last_results
+            target_name = card_widget.name_input.text()
+            current_series = getattr(self.viz_panel, "data_series", [])
+            new_series = []
+            for data_pkg in current_series:
+                if target_result and data_pkg is target_result:
+                    continue
+                if data_pkg.get("config_name") == target_name:
+                    continue
+                new_series.append(data_pkg)
+            self.viz_panel.set_data(new_series)
+
         card_widget.setDisabled(True)
         anim = QtCore.QPropertyAnimation(card_widget, b"maximumHeight", card_widget)
         anim.setDuration(200)
