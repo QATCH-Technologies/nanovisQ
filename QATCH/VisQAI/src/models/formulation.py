@@ -58,11 +58,17 @@ except (ModuleNotFoundError, ImportError):
 TAG = "[Formulation]"
 
 
+from typing import Any, Dict, List
+
+import numpy as np
+from scipy.interpolate import PchipInterpolator
+
+
 class ViscosityProfile:
     """Represents a viscosity profile as a function of shear rate.
 
     This class stores matched pairs of shear rates and viscosities, ensuring
-    the data is validated and sorted by ascending shear rate.
+    the data is validated, sorted by ascending shear rate, and smoothly interpolated.
 
     Attributes:
         shear_rates (List[float]): Sorted list of shear rates.
@@ -74,19 +80,6 @@ class ViscosityProfile:
     def __init__(
         self, shear_rates: List[float], viscosities: List[float], units: str = "cP"
     ) -> None:
-        """Initialize a ViscosityProfile with shear rate–viscosity pairs.
-
-        Validates and stores shear rates and viscosities in ascending order of shear rate.
-
-        Args:
-            shear_rates (List[float]): A list of numeric shear rates.
-            viscosities (List[float]): A list of numeric viscosities corresponding to each shear rate.
-            units (str): The units of the viscosity values (e.g., "cP").
-
-        Raises:
-            TypeError: If `shear_rates` or `viscosities` is not a list, or contains non-numeric values.
-            ValueError: If the lengths of `shear_rates` and `viscosities` differ, or if `units` is an empty string.
-        """
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
             raise TypeError(
                 "shear_rates and viscosities must be lists of numeric values"
@@ -99,121 +92,88 @@ class ViscosityProfile:
             raise TypeError("all viscosities must be numeric")
         if not isinstance(units, str) or not units.strip():
             raise ValueError("units must be a non-empty string")
+
         pairs = sorted(
             ((float(sr), float(v)) for sr, v in zip(shear_rates, viscosities)),
             key=lambda x: x[0],
         )
+
         self.shear_rates: List[float] = [sr for sr, _ in pairs]
         self.viscosities: List[float] = [v for _, v in pairs]
         self.units: str = units.strip()
         self._is_measured: bool = False
 
+        # Build the interpolator once upon instantiation
+        self._build_interpolator()
+
+    def _build_interpolator(self, std_tol: float = 0.1):
+        """Pre-computes a PCHIP interpolator for performance and stability."""
+        if not self.shear_rates:
+            self._interpolator = None
+            return
+
+        vs_monotonic = np.array(self.viscosities)
+
+        # Apply monotonic constraint with tolerance to smooth measurement noise
+        if len(vs_monotonic) > 1:
+            visc_diffs = np.diff(vs_monotonic)
+            std_dev = np.std(visc_diffs) if len(visc_diffs) > 0 else 0.0
+            tolerance = std_tol * std_dev
+
+            for i in range(1, len(vs_monotonic)):
+                if vs_monotonic[i] > vs_monotonic[i - 1] + tolerance:
+                    vs_monotonic[i] = vs_monotonic[i - 1] + tolerance
+
+        self._vs_monotonic = vs_monotonic
+
+        # Use PCHIP in log10 space for shear rates to ensure smooth rheology curves
+        if len(self.shear_rates) > 1:
+            log_srs = np.log10(np.maximum(self.shear_rates, 1e-10))
+            self._interpolator = PchipInterpolator(log_srs, self._vs_monotonic)
+        else:
+            self._interpolator = None
+
     @property
     def is_measured(self) -> bool:
-        """Indicates whether the viscosity profile has been flagged as measured.
-
-        Returns:
-            bool: True if the profile has been measured, False otherwise.
-        """
         return self._is_measured
 
     @is_measured.setter
     def is_measured(self, value: bool) -> None:
-        """Set the measurement status of the viscosity profile.
-
-        Args:
-            value (bool): True to mark the profile as measured, False to mark it as unmeasured.
-        """
         self._is_measured = value
 
     def get_viscosity(self, shear_rate: float, std_tol: float = 0.1) -> float:
-        """Retrieve viscosity at a given shear rate using logarithmic interpolation,
-        enforcing a monotonic (non-increasing) relationship with tolerance.
-
-        The logarithmic model is fitted to (shear_rate, viscosity) data as:
-            η = a * log10(y - c) + b
+        """Retrieve viscosity at a given shear rate using a PCHIP interpolator.
 
         Args:
             shear_rate (float): Shear rate at which to compute viscosity.
-            std_tol (float): Allowed standard deviation tolerance for monotonic deviation.
-                            e.g., 1.0 allows deviations up to 1 std dev of viscosity differences.
+            std_tol (float): Kept for backward compatibility.
+                             (Monotonic adjustment is now handled at instantiation).
 
         Returns:
-            float: The estimated viscosity at the specified shear rate.
             float: The estimated viscosity at the specified shear rate.
         """
         if not isinstance(shear_rate, (int, float)):
             raise TypeError("shear_rate must be numeric")
 
+        if not self.shear_rates:
+            return 0.0
+
         sr = float(shear_rate)
-        srs = np.asarray(self.shear_rates, dtype=float)
-        vs = np.asarray(self.viscosities, dtype=float)
 
-        exact_match = np.where(np.isclose(srs, sr))[0]
-        if len(exact_match) > 0:
-            return float(vs[exact_match[0]])
+        # Clean flatline extrapolation for out-of-bounds bounds (Fixes the tail spikes)
+        if sr <= self.shear_rates[0]:
+            return float(self._vs_monotonic[0])
+        if sr >= self.shear_rates[-1]:
+            return float(self._vs_monotonic[-1])
 
-        vs_monotonic = vs.copy()
+        # Evaluate the interpolator (Fixes the disconnected points)
+        if self._interpolator is not None:
+            log_sr = np.log10(max(sr, 1e-10))
+            return float(self._interpolator(log_sr))
 
-        # Calculate tolerance based on standard deviation of viscosity differences
-        if len(vs) > 1:
-            visc_diffs = np.diff(vs)
-            std_dev = np.std(visc_diffs) if len(visc_diffs) > 0 else 0.0
-            tolerance = std_tol * std_dev
-        else:
-            tolerance = 0.0
-
-        # Apply monotonic constraint with tolerance
-        # Allow increases up to 'tolerance' to account for measurement noise
-        for i in range(1, len(vs_monotonic)):
-            if vs_monotonic[i] > vs_monotonic[i - 1] + tolerance:
-                vs_monotonic[i] = vs_monotonic[i - 1] + tolerance
-
-        def log_func(x, a, b, c):
-            return a * np.log10(np.maximum(x - c, 1e-8)) + b
-
-        try:
-            bounds = ([-np.inf, -np.inf, -np.inf], [np.inf, np.inf, np.min(srs) * 0.9])
-            popt, _ = curve_fit(
-                log_func, srs, vs_monotonic, p0=(2, 1, 0.1), bounds=bounds
-            )
-            a_fit, b_fit, c_fit = popt
-            fitted_viscosity = log_func(sr, a_fit, b_fit, c_fit)
-        except Exception:
-            idx = bisect.bisect_left(srs, sr)
-            if idx == 0:
-                x0, x1, y0, y1 = srs[0], srs[1], vs_monotonic[0], vs_monotonic[1]
-            elif idx == len(srs):
-                x0, x1, y0, y1 = srs[-2], srs[-1], vs_monotonic[-2], vs_monotonic[-1]
-            else:
-                x0, x1, y0, y1 = (
-                    srs[idx - 1],
-                    srs[idx],
-                    vs_monotonic[idx - 1],
-                    vs_monotonic[idx],
-                )
-
-            fitted_viscosity = y0 + (sr - x0) * (y1 - y0) / (x1 - x0)
-
-        fitted_viscosity = max(fitted_viscosity, 0.0)
-
-        if sr <= srs[0]:
-            fitted_viscosity = vs_monotonic[0]
-        elif sr >= srs[-1]:
-            fitted_viscosity = vs_monotonic[-1]
-
-        return fitted_viscosity
+        return float(self._vs_monotonic[0])
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the viscosity profile to a dictionary representation.
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the following keys:
-                - "shear_rates" (List[float]): The list of shear rates.
-                - "viscosities" (List[float]): The list of viscosities.
-                - "units" (str): The units of measurement for the viscosities.
-                - "is_measured" (bool): Flag indicating whether this profile has been marked as measured.
-        """
         return {
             "shear_rates": self.shear_rates,
             "viscosities": self.viscosities,

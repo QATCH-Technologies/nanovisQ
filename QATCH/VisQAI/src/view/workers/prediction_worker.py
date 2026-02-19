@@ -210,29 +210,14 @@ class PredictionThread(QtCore.QThread):
             return None
 
         logic = icl_filter.get("logic", "AND")  # AND / OR
-
-        # 1. Fetch all formulations from DB
         all_forms = form_ctrl.get_all_formulations()
         if not all_forms:
             return None
-
-        # 2. Generate Human-Readable DataFrames for Filtering
-        # We use encoded=False so we can compare strings like 'mAb', 'Histidine'
-        # rather than opaque one-hot vectors.
-
-        # Current formulation (Reference)
         df_curr_readable = current_formulation.to_dataframe(
             encoded=False, training=False
         )
 
-        # History formulations (Candidates)
-        # Note: We filter FIRST before converting everything to encoded,
-        # because encoded conversion might be expensive or opaque.
-
-        # We'll iterate objects for filtering to avoid creating a massive DF first
         matching_forms = []
-
-        # Extract reference values from current formulation
         ref_values = {}
         for field in filter_fields:
             if field in df_curr_readable.columns:
@@ -241,12 +226,10 @@ class PredictionThread(QtCore.QThread):
                 ref_values[field] = None
 
         for f in all_forms:
-            # Skip if no viscosity profile (cannot learn without targets)
+            if not getattr(f, "_icl", False):
+                continue
             if not f.viscosity_profile or not f.viscosity_profile.viscosities:
                 continue
-
-            # Quick conversion for comparison
-            # (In a production system, you might cache these or query SQL directly)
             f_df = f.to_dataframe(encoded=False, training=False)
 
             matches = []
@@ -254,17 +237,11 @@ class PredictionThread(QtCore.QThread):
                 if field not in f_df.columns:
                     matches.append(False)
                     continue
-
                 val = f_df.iloc[0][field]
                 ref = ref_values.get(field)
-
-                # Loose equality check (string comparison)
                 matches.append(str(val) == str(ref))
-
             if not matches:
                 continue
-
-            # Apply Logic
             is_match = False
             if logic == "AND":
                 is_match = all(matches)
@@ -275,11 +252,9 @@ class PredictionThread(QtCore.QThread):
                 matching_forms.append(f)
 
         if not matching_forms:
-            print("[Worker] No historical data found matching ICL filter.")
+            print("[Worker] No historical data found matching ICL filter and flag.")
             return None
 
-        # 3. Convert Matches to Encoded Training Data
-        # Now we need encoded=True and training=True (to include Viscosity targets)
         dfs = []
         for f in matching_forms:
             try:

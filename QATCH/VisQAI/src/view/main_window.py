@@ -29,43 +29,30 @@ except (ModuleNotFoundError, ImportError):
 
 import datetime as dt
 import hashlib
-import inspect
 import os
 import webbrowser
 from types import SimpleNamespace
 from xml.dom import minidom
 
-from numpy import loadtxt
 from PyQt5 import QtCore, QtGui, QtWidgets
-from scipy.optimize import curve_fit
 
 try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import DB_PATH, Database
     from src.models.formulation import Formulation
-    from src.view.evaluation_ui import EvaluationUI
-    from src.view.frame_step1 import FrameStep1
-    from src.view.frame_step2 import FrameStep2
     from src.view.horizontal_tab_bar import HorizontalTabBar
-    from src.view.hypothesis_testing_ui import HypothesisTestingUI
-    from src.view.optimize_ui import OptimizationUI
-    from src.view.prediction_ui import PredictionUI
 
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
+    from QATCH.VisQAI.src.view.dashboard import DashboardUI
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.licenseManager import LicenseManager, LicenseStatus
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import DB_PATH, Database
     from QATCH.VisQAI.src.models.formulation import Formulation
-    from QATCH.VisQAI.src.view.evaluation_ui import EvaluationUI
-    from QATCH.VisQAI.src.view.frame_step1 import FrameStep1
-    from QATCH.VisQAI.src.view.frame_step2 import FrameStep2
+    from QATCH.VisQAI.src.view.dashboard import DashboardUI
     from QATCH.VisQAI.src.view.horizontal_tab_bar import HorizontalTabBar
-    from QATCH.VisQAI.src.view.hypothesis_testing_ui import HypothesisTestingUI
-    from QATCH.VisQAI.src.view.optimize_ui import OptimizationUI
-    from QATCH.VisQAI.src.view.prediction_ui import PredictionUI
 TRIAL_LABEL_TEXT = (
     "<b>Your VisQ.AI preview has {} days remaining.</b><br/><br/>"
     "Please subscribe to retain access on this system.<br/><br/>"
@@ -467,7 +454,7 @@ class VisQAIWindow(BaseVisQAIWindow):
         #     FrameStep1(self, 5), "\u2465 Predict"
         # )  # unicode circled 6
         self.tab_widget.addTab(
-            PredictionUI(self), "\u2460 Dashboard"
+            DashboardUI(self), "\u2460 Dashboard"
         )  # unicode circled 6
         # self.tab_widget.addTab(
         #     OptimizationUI(self), "\u2466 Optimize"

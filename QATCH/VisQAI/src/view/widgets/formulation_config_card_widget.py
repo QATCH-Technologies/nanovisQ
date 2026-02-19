@@ -939,12 +939,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
             return SimpleIngredient(name, **kwargs)
 
     def _refresh_configure_button(self, ing_type, combo, btn_configure):
-        """Apply or clear the 'needs completion' red highlight on *btn_configure*.
-
-        Checks the currently-selected ingredient in *combo* against the
-        type-specific completion rules (Protein / Buffer).  For all other
-        ingredient types no completion check is needed.
-        """
+        """Apply or clear the 'needs completion' red highlight on *btn_configure* and *combo*."""
         ingredient = combo.currentData()
         needs_work = False
 
@@ -967,8 +962,15 @@ class FormulationConfigCard(QtWidgets.QFrame):
             btn_configure.setToolTip(
                 f"⚠ {combo.currentText()} has required fields that are not set — click to complete"
             )
+            # Add matching error style to the combo box
+            combo.setStyleSheet(
+                "border: 1.5px solid #e53935;"
+                "border-radius: 4px;"
+                "background-color: #fff5f5;"
+            )
         else:
             btn_configure.setStyleSheet("")  # restore theme default
+            combo.setStyleSheet("")  # restore combo theme default
             if combo.currentIndex() >= 0:
                 btn_configure.setToolTip(f"Edit {combo.currentText()}")
 
@@ -1047,9 +1049,10 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 self.trigger_update()
 
-            # Always re-evaluate the button highlight after any accepted save
-            if btn_configure:
-                self._refresh_configure_button(ing_type, combo, btn_configure)
+            # # Always re-evaluate the button highlight after any accepted save
+            # if btn_configure:
+            #     self._refresh_configure_button(ing_type, combo, btn_configure)
+            self.broadcast_ingredient_update()
 
     def _handle_legacy_dialog_result(self, ing_type, combo, data, is_edit_mode):
         """
@@ -1105,6 +1108,26 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self._update_internal_formulation()
         if self.is_expanded:
             self.debounce_timer.start()
+
+    def broadcast_ingredient_update(self):
+        """Tells all sibling cards to refresh their UI since a shared ingredient was updated."""
+        parent = self.parentWidget()
+        if parent:
+            # findChildren targets all cards loaded in the dashboard container
+            for child in parent.findChildren(FormulationConfigCard):
+                if hasattr(child, "refresh_ingredient_ui"):
+                    child.refresh_ingredient_ui()
+
+    def refresh_ingredient_ui(self):
+        """Re-evaluates the validation styling for all active ingredients on this card."""
+        for ing_type, (
+            combo,
+            spin,
+            btn_configure,
+            _,
+        ) in self.active_ingredients.items():
+            self._refresh_configure_button(ing_type, combo, btn_configure)
+        self.trigger_update()
 
     def _update_internal_formulation(self):
         """

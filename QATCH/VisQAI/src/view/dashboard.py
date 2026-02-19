@@ -5,14 +5,11 @@ import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 
-# --- 1. NEW IMPORTS ADDED HERE ---
 try:
     from architecture import Architecture
     from dialogs.database_table_dialog import DatabaseTableDialog
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
-
-    # Database Integration Imports
     from src.db.db import Database
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
@@ -53,7 +50,7 @@ except (ImportError, ModuleNotFoundError):
 TAG = "[VisQ.AI]"
 
 
-class PredictionUI(QtWidgets.QWidget):
+class DashboardUI(QtWidgets.QWidget):
     INGREDIENT_TYPES = [
         "Protein",
         "Buffer",
@@ -88,6 +85,8 @@ class PredictionUI(QtWidgets.QWidget):
         self._batch_results = []
         self._is_batch_collecting = False
         self._is_batch_running = False
+        self._is_silencing_runs = False
+        self._zombie_tasks = []
 
     def _load_database_data(self):
         """Initializes DB connection and fetches ingredients for dropdowns."""
@@ -1166,32 +1165,22 @@ class PredictionUI(QtWidgets.QWidget):
 
     def _process_next_in_batch(self):
         """
-        Pops the next item from the batch queue and runs it.
+        Pops the next item from the batch queue and runs it safely decoupled.
         """
         if not self._batch_queue:
-            # --- BATCH COMPLETE ---
             self._is_batch_running = False
             self.viz_panel.hide_loading()
-
-            # Summarize
             count = len(self._batch_results)
             self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
-
-            # Send LIST of results to panel (triggers multi-plot)
             self.viz_panel.set_data(self._batch_results)
             return
 
-        # Get next item
         card, config = self._batch_queue.pop(0)
-
-        # Manually set the running card so results go back to the correct UI card
         self.running_card = card
-
-        # Update Title for progress
         self.viz_panel.set_plot_title(f"Calculating: {config.get('name')}...")
 
-        # Run specific card (batch collecting is False, so this will actually run)
-        self.run_prediction(config)
+        # --- DECOUPLE EXECUTION ---
+        QtCore.QTimer.singleShot(0, lambda: self.run_prediction(config))
 
     def delete_analysis(self):
         """Deletes Selected cards (if any) or the currently Open card and updates the plot."""
@@ -1533,6 +1522,7 @@ class PredictionUI(QtWidgets.QWidget):
         """
         if not results:
             return
+        self._is_silencing_runs = True
 
         if not hasattr(self, "imported_runs"):
             self.imported_runs = []
@@ -1643,6 +1633,9 @@ class PredictionUI(QtWidgets.QWidget):
                 self, "Import Warning", "No valid formulations could be processed."
             )
 
+        # --- UNMUTE RUNS ---
+        self._is_silencing_runs = False
+
     def _on_import_error(self, error_msg):
         """
         Callback when the import worker encounters an error.
@@ -1719,49 +1712,46 @@ class PredictionUI(QtWidgets.QWidget):
 
     def run_prediction(self, config=None):
         """
-        Handles requests. Now supports Queuing.
+        Handles requests. Now supports Queuing and Zombie Task protection.
         """
+        # --- BLOCK SPAM DURING IMPORT ---
+        if self._is_silencing_runs:
+            return
+
         sender_card = self.sender()
 
         # INTERCEPTION: If in batch collection mode, just queue and return
         if self._is_batch_collecting:
             if isinstance(sender_card, FormulationConfigCard) and config:
-                # Store tuple of (card_reference, config_data)
                 self._batch_queue.append((sender_card, config))
             return
 
-        # Standard Execution Logic starts here
-
-        # [FIX] Only update running_card if triggered by a signal (sender exists).
-        # Do NOT reset to None, as the batch processor sets this manually before calling.
         if isinstance(sender_card, FormulationConfigCard):
             self.running_card = sender_card
 
-        # [CRITICAL] Inject existing Shear Rates (X-axis) from imported data
-        # This ensures the worker predicts at the exact same points as the measured data.
         if self.running_card and hasattr(self.running_card, "last_results"):
             last_res = self.running_card.last_results
             if last_res and "x" in last_res and len(last_res["x"]) > 0:
                 if config:
                     config["shear_rates"] = last_res["x"]
 
-        # Determine Color
         self._pending_color = None
         if config and "color" in config and config["color"]:
             self._pending_color = config["color"]
         elif self.running_card:
             self._pending_color = self.running_card.plot_color
 
+        # --- ZOMBIE TASK MANAGEMENT ---
         if self.current_task is not None and self.current_task.isRunning():
             self.current_task.stop()
+            # Append to zombie list to prevent Python GC from destroying the C++ thread
+            self._zombie_tasks.append(self.current_task)
 
-        # Update Visuals (Only show loading if NOT in batch mode)
         name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
         if not self._is_batch_running:
             self.viz_panel.set_plot_title(f"Calculating: {name}...")
             self.viz_panel.show_loading()
 
-        # Create & Start Thread
         self.current_task = PredictionThread(config)
         self.current_task.data_ready.connect(self._on_prediction_finished)
         self.current_task.finished.connect(self._on_task_complete)
@@ -1810,8 +1800,10 @@ class PredictionUI(QtWidgets.QWidget):
             self.viz_panel.hide_loading()
 
     def _on_task_complete(self):
-        """Called when thread naturally finishes."""
-        pass
+        """Called when thread naturally finishes. Cleans up zombie references."""
+        sender = self.sender()
+        if sender in self._zombie_tasks:
+            self._zombie_tasks.remove(sender)
 
     def closeEvent(self, event):
         """
@@ -1867,7 +1859,7 @@ if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
     app.setStyleSheet(load_stylesheet())
 
-    win = PredictionUI()
+    win = DashboardUI()
     win.setWindowTitle("Viscosity AI - Hyperparameter Tuning")
     win.resize(1200, 800)
     win.show()

@@ -247,10 +247,7 @@ class Parser:
         """Construct and return a `Protein` object with concentration and units from `<params>`."""
         try:
             name = self.get_param("protein_type", str, required=True)
-            protein_obj = self.ing_ctrl.get_protein_by_name(name)
-            if protein_obj is None:
-                raise ValueError("Protein could not be fetched from persistent store.")
-        except:
+        except Exception:
             Log.w(
                 TAG,
                 f"<protein_type> param could not be found in run XML; returning default.",
@@ -271,17 +268,36 @@ class Parser:
                     "units": False,
                 },
             }
-        conc = self.get_param("protein_concentration", float)
 
-        molecular_weight = protein_obj.molecular_weight
-        pI_mean = protein_obj.pI_mean
-        pI_range = protein_obj.pI_range
-        units = self.get_param_attr("protein_concentration", "units", required=True)
+        protein_obj = self.ing_ctrl.get_protein_by_name(name)
+
+        # If unseen in DB, create a placeholder with 0s to force user completion
+        if protein_obj is None:
+            molecular_weight = 0.0
+            pI_mean = 0.0
+            pI_range = 0.0
+            class_type = None
+        else:
+            molecular_weight = protein_obj.molecular_weight
+            pI_mean = protein_obj.pI_mean
+            pI_range = protein_obj.pI_range
+            class_type = protein_obj.class_type
+
+        try:
+            conc = self.get_param("protein_concentration", float)
+        except Exception:
+            conc = 0.0
+
+        units = self.get_param_attr("protein_concentration", "units", required=False)
+        if units is None:
+            units = "mg/mL"
+
         found = {
             "name": name is not None,
             "conc": conc is not None,
             "units": units is not None,
         }
+
         return {
             "protein": Protein(
                 enc_id=-1,
@@ -289,7 +305,7 @@ class Parser:
                 molecular_weight=molecular_weight,
                 pI_mean=pI_mean,
                 pI_range=pI_range,
-                class_type=protein_obj.class_type,
+                class_type=class_type,
             ),
             "concentration": conc,
             "units": units,
@@ -300,8 +316,7 @@ class Parser:
         """Construct and return a `Buffer` object with concentration and units from `<params>`."""
         try:
             name = self.get_param("buffer_type", str, required=True)
-            conc = self.get_param("buffer_concentration", float, required=True)
-        except:
+        except Exception:
             Log.w(
                 TAG,
                 f"<buffer_type> param could not be found in XML; returning default.",
@@ -314,15 +329,28 @@ class Parser:
             }
 
         buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
+
+        # If unseen in DB, create a placeholder with 0.0 to force user completion
+        if buffer_obj is None:
+            buffer_ph = 0.0
+        else:
+            buffer_ph = buffer_obj.pH if buffer_obj.pH is not None else 0.0
+
+        try:
+            conc = self.get_param("buffer_concentration", float, required=True)
+        except Exception:
+            conc = 0.0
+
         units = self.get_param_attr("buffer_concentration", "units")
         if units is None:
-            units = "pH"
-        buffer_ph = buffer_obj.pH if buffer_obj is not None else 0.0
+            units = "mM"
+
         found = {
             "name": name is not None,
             "conc": conc is not None,
             "units": units is not None,
         }
+
         return {
             "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),
             "concentration": conc,
