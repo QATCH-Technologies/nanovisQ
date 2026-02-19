@@ -2277,14 +2277,16 @@ void QATCH_loop()
 #if USE_TEMP_CORRECTION
       if (l298nhb.active())
       {
+        if (temp_correct_auto_off_at == 0) // only if NOT in cooldown from prior run
+          starting_ambient = ambient;
+        else
+          temp_correct_auto_off_at = 0; // turn on, use prior base, prevent auto-off
         if (DEBUG)
         {
           Serial.println("CORRECTION ON!");
           Serial.print("Ambient: ");
-          Serial.println(ambient);
+          Serial.println(starting_ambient);
         }
-        starting_ambient = ambient;
-        temp_correct_auto_off_at = 0; // turn on, prevent auto-off
       }
 #endif
       return;
