@@ -804,3 +804,75 @@ EvaluationWidget QDoubleSpinBox {
 EvaluationWidget QDoubleSpinBox:focus {
     border: 1px solid #2596be;
 }
+
+/* ===========================================================================
+   18. GENERATE SAMPLE WIDGET
+   =========================================================================== */
+GenerateSampleWidget {
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+}
+
+GenerateSampleWidget[class="card"]:hover {
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+}
+
+GenerateSampleWidget QLabel {
+    color: #374151;
+    font-weight: 500;
+}
+
+GenerateSampleWidget QLabel#evalTitle {
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+GenerateSampleWidget QToolButton#btnEvalClose {
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+}
+
+GenerateSampleWidget QToolButton#btnEvalClose:hover {
+    background-color: #ffebee;
+}
+
+GenerateSampleWidget QToolButton#btnEvalClose:pressed {
+    background-color: #ffcdd2;
+}
+
+GenerateSampleWidget QGroupBox {
+    font-weight: 600;
+    color: #2596be;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 15px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #f9fafb;
+}
+
+GenerateSampleWidget QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+GenerateSampleWidget QSpinBox {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px;
+    background-color: #ffffff;
+}
+
+GenerateSampleWidget QSpinBox:focus {
+    border: 1px solid #2596be;
+}

@@ -2,6 +2,7 @@ import os
 import sys
 
 import numpy as np
+import pandas as pd
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 
@@ -11,17 +12,20 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.utils.metrics import Metrics
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
     from widgets.formulation_config_card_widget import (
         FormulationConfigCard,
     )
+    from widgets.generate_sample_widget import GenerateSampleWidget
     from widgets.placeholder_widget import PlaceholderWidget
     from widgets.prediction_filter_widget import PredictionFilterWidget
     from widgets.reordable_container_widget import ReorderableCardContainer
     from widgets.visualization_panel import VisualizationPanel
     from workers.import_worker import ImportWorker
     from workers.prediction_worker import PredictionThread
+    from workers.sample_generation_worker import SampleGenerationWorker
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
@@ -30,11 +34,15 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.utils.metrics import Metrics
     from QATCH.VisQAI.src.view.dialogs.database_table_dialog import DatabaseTableDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
     from QATCH.VisQAI.src.view.widgets.evaluation_widget import EvaluationWidget
     from QATCH.VisQAI.src.view.widgets.formulation_config_card_widget import (
         FormulationConfigCard,
+    )
+    from QATCH.VisQAI.src.view.widgets.generate_sample_widget import (
+        GenerateSampleWidget,
     )
     from QATCH.VisQAI.src.view.widgets.placeholder_widget import PlaceholderWidget
     from QATCH.VisQAI.src.view.widgets.prediction_filter_widget import (
@@ -46,6 +54,9 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.view.widgets.visualization_panel import VisualizationPanel
     from QATCH.VisQAI.src.view.workers.import_worker import ImportWorker
     from QATCH.VisQAI.src.view.workers.prediction_worker import PredictionThread
+    from QATCH.VisQAI.src.view.workers.sample_generation_worker import (
+        SampleGenerationWorker,
+    )
 
 TAG = "[VisQ.AI]"
 
@@ -87,6 +98,8 @@ class DashboardUI(QtWidgets.QWidget):
         self._is_batch_running = False
         self._is_silencing_runs = False
         self._zombie_tasks = []
+        self._is_evaluation_mode = False
+        self._pending_eval_config = None
 
     def _load_database_data(self):
         """Initializes DB connection and fetches ingredients for dropdowns."""
@@ -134,9 +147,17 @@ class DashboardUI(QtWidgets.QWidget):
         # Evaluation Widget
         self.eval_widget = EvaluationWidget(parent=self)
         self.eval_widget.run_requested.connect(self.run_evaluation_analysis)
-        self.eval_widget.closed.connect(self.exit_evaluation_mode)
         self.eval_widget.clear_requested.connect(self.exit_evaluation_mode)
         self.eval_widget.hide()
+
+        # Generate Widget
+        self.generate_widget = GenerateSampleWidget(
+            self.ingredients_by_type, parent=self
+        )
+        self.generate_widget.generate_requested.connect(self.run_sample_generation)
+        self.generate_widget.closed.connect(lambda: self.btn_generate.setChecked(False))
+        self.generate_widget.resized.connect(self._update_overlay_geometry)
+        self.generate_widget.hide()
 
         # --- Content ---
         self.scroll_area = QtWidgets.QScrollArea()
@@ -339,7 +360,7 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_generate.setToolTip("Generate Sample")
         self.btn_generate.setFixedSize(32, 32)
-        # No setStyleSheet here; QToolButton in theme.qss handles radius & hover
+        self.btn_generate.setCheckable(True)
         self.btn_generate.clicked.connect(self.handle_generate_sample)
         layout.addWidget(self.btn_generate)
 
@@ -785,44 +806,49 @@ class DashboardUI(QtWidgets.QWidget):
             self.btn_select_mode.setChecked(False)
 
     def handle_generate_sample(self):
-        """Handler for the Generate Sample button."""
-        # TODO: Replace with: dialog = GenerateSampleDialog(self); dialog.exec_()
-        QtWidgets.QMessageBox.information(
-            self,
-            "Generate Sample",
-            "Opening Sample Generation Wizard...\n\n(This feature is under construction)",
-        )
+        """Toggles the Sample Generation overlay widget."""
+        # Ensure eval widget is closed to prevent overlapping
+        if self._is_evaluation_mode:
+            self.exit_evaluation_mode()
+
+        if self.generate_widget.isVisible():
+            self.generate_widget.hide()
+            self.btn_generate.setChecked(False)
+        else:
+            self.generate_widget.show()
+            self.generate_widget.raise_()
+            self.btn_generate.setChecked(True)
+            self._update_overlay_geometry()
 
     def handle_evaluate(self):
         """
-        Toggles the Evaluation Widget and applies 'Measured Data Only' filter.
+        First click: enters evaluation mode, shows the eval widget menu, and
+        keeps the button visually active (checked/colored) for the duration.
+
+        Subsequent clicks while eval mode is active: toggle the menu open/closed
+        WITHOUT exiting eval mode — the button stays active-colored either way.
+
+        Eval mode is only exited by the Clear button on the eval widget, which
+        fires clear_requested -> exit_evaluation_mode().
         """
-        is_active = self.btn_evaluate.isChecked()
+        if not self._is_evaluation_mode:
+            # ── Enter eval mode ──────────────────────────────────────────────
+            self._is_evaluation_mode = True
+            # Keep the button forced-checked so its QSS active/checked color
+            # stays on regardless of future clicks.
+            self.btn_evaluate.setChecked(True)
 
-        if is_active:
-            # 1. Show Evaluation Widget
-            self.eval_widget.show()
-            self.eval_widget.raise_()
-            self._update_overlay_geometry()
-
-            # 2. Hide Filter Widget if open
+            # Hide the filter widget if it's open
             if self.filter_widget.isVisible():
                 self.filter_widget.hide()
                 self.btn_filter.setChecked(False)
 
-            # 3. Apply Filter: Show ONLY cards with measured data
+            # Show only cards that have measured data
             visible_count = 0
             for i in range(self.cards_layout.count()):
-                item = self.cards_layout.itemAt(i)
-                widget = item.widget()
+                widget = self.cards_layout.itemAt(i).widget()
                 if isinstance(widget, FormulationConfigCard):
-                    # Logic: Check if card has measured data marked
-                    # Assuming card has a method/property or we check internal state
-                    # Here we check if the 'measured' toggle is True in the card config
-                    # OR if the card has loaded imported data.
-                    has_data = widget.is_measured  # Using UI state as proxy
-
-                    if has_data:
+                    if widget.is_measured:
                         widget.show()
                         visible_count += 1
                     else:
@@ -832,8 +858,23 @@ class DashboardUI(QtWidgets.QWidget):
                 f"Evaluation Mode: {visible_count} Datasets Ready"
             )
 
+            # Show the eval menu
+            self.eval_widget.show()
+            self.eval_widget.raise_()
+            self._update_overlay_geometry()
+
         else:
-            self.exit_evaluation_mode()
+            # ── Eval mode already active — just toggle the menu ──────────────
+            # Qt toggled the checked state on click; force it back on so the
+            # button stays colored as long as eval mode is active.
+            self.btn_evaluate.setChecked(True)
+
+            if self.eval_widget.isVisible():
+                self.eval_widget.hide()
+            else:
+                self.eval_widget.show()
+                self.eval_widget.raise_()
+                self._update_overlay_geometry()
 
         self.update_placeholder_visibility()
 
@@ -972,35 +1013,22 @@ class DashboardUI(QtWidgets.QWidget):
         return True
 
     def exit_evaluation_mode(self):
-        """Restores UI to normal state."""
+        """Restores UI to normal state and re-runs prediction for the open card."""
+        self._is_evaluation_mode = False
         self.eval_widget.hide()
         self.btn_evaluate.setChecked(False)
 
-        # Restore all cards visibility (or re-apply standard filters)
-        # For simplicity, show all, or trigger re-filter
-        for i in range(self.cards_layout.count()):
-            item = self.cards_layout.itemAt(i)
-            widget = item.widget()
-            if isinstance(widget, FormulationConfigCard):
-                widget.show()
-
-        self.viz_panel.set_plot_title("")
-        self.update_placeholder_visibility()
-
-    def exit_evaluation_mode(self):
-        """Restores UI to normal state."""
-        self.eval_widget.hide()
-        self.btn_evaluate.setChecked(False)
-
-        # Repopulate regular plot
+        # Repopulate regular plot and track which card is currently expanded
         results = []
+        expanded_card = None
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
             widget = item.widget()
             if isinstance(widget, FormulationConfigCard):
                 widget.show()
+                if widget.is_expanded:
+                    expanded_card = widget
                 if hasattr(widget, "last_results") and widget.last_results:
-                    # Sync config name directly from input
                     data = widget.last_results.copy()
                     data["config_name"] = widget.name_input.text()
                     results.append(data)
@@ -1009,35 +1037,73 @@ class DashboardUI(QtWidgets.QWidget):
         self.viz_panel.set_plot_title("")
         self.update_placeholder_visibility()
 
+        # Re-run prediction for the currently expanded card so the plot reflects
+        # its inference curve (not the evaluation overlay that was just cleared).
+        if expanded_card is not None:
+            self.running_card = expanded_card
+            expanded_card.emit_run_request()
+
     def on_eval_point_clicked(self, point_data):
         """Handles clicks on the parity plot scatter points."""
         card = point_data.get("card")
         if not card:
             return
 
-        # Show and Ensure card is expanded
         card.show()
         if not card.is_expanded:
-            card.toggle_content()
+            card.expand_silent()  # <-- was: card.toggle_content()
 
-        # Scroll to card
         self._scroll_to_card(card)
 
-        # Show Info Window
-        shear = point_data.get("shear")
-        t_val = point_data.get("true")
-        p_val = point_data.get("pred")
-
-        msg = (
-            f"Formulation: {card.name_input.text()}\n"
-            f"Shear Rate: {shear:g} 1/s\n"
-            f"True Viscosity: {t_val:.4f} cP\n"
-            f"Predicted Viscosity: {p_val:.4f} cP"
-        )
-        QtWidgets.QMessageBox.information(self, "Prediction Details", msg)
-
     def run_evaluation_analysis(self, config):
-        """Calculates metrics and sets data to Visualization Panel."""
+        """
+        Step 1: Batch-predict all visible measured cards.
+        Step 2: After batch completes, compute and display the selected metric.
+        """
+        # Collect all visible measured cards
+        target_cards = []
+        for i in range(self.cards_layout.count()):
+            card = self.cards_layout.itemAt(i).widget()
+            if not isinstance(card, FormulationConfigCard) or card.isHidden():
+                continue
+            if not card.is_measured:
+                continue
+            target_cards.append(card)
+
+        if not target_cards:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Evaluation Failed",
+                "No cards with measured data are currently visible.",
+            )
+            return
+
+        # Store config for use after batch completes
+        self._pending_eval_config = config
+
+        # Collect prediction configs via the existing batch-collection mechanism
+        self._batch_queue = []
+        self._batch_results = []
+        self._is_batch_collecting = True
+        for card in target_cards:
+            card.emit_run_request()
+        self._is_batch_collecting = False
+
+        if self._batch_queue:
+            self._is_batch_running = True
+            metric_name = config.get("metric_name", config.get("metric", ""))
+            self.viz_panel.set_plot_title(
+                f"Running predictions for evaluation ({len(self._batch_queue)} cards)..."
+            )
+            self.viz_panel.show_loading()
+            self._process_next_in_batch()
+        else:
+            # Cards may have emitted nothing (e.g., incomplete configs); try computing directly
+            self._compute_evaluation(config)
+
+    def _compute_evaluation(self, config):
+        """Performs metric computation and updates the visualization panel."""
+
         metric_key = config.get("metric", "rmse")
         metric_name = config.get("metric_name", metric_key)
         shear_min = config.get("shear_min", 100)
@@ -1047,9 +1113,7 @@ class DashboardUI(QtWidgets.QWidget):
         if metric_key == "true_vs_pred":
             parity_data = []
             for i in range(self.cards_layout.count()):
-                item = self.cards_layout.itemAt(i)
-                card = item.widget()
-
+                card = self.cards_layout.itemAt(i).widget()
                 if not isinstance(card, FormulationConfigCard) or card.isHidden():
                     continue
                 if not hasattr(card, "last_results") or not card.last_results:
@@ -1070,21 +1134,15 @@ class DashboardUI(QtWidgets.QWidget):
                 if not np.any(mask):
                     continue
 
-                s_filt = shear[mask]
-                yp_filt = y_pred[mask]
-                yt_filt = y_true[mask]
-
-                points = []
-                for s_val, yt, yp in zip(s_filt, yt_filt, yp_filt):
-                    points.append(
-                        {
-                            "shear": float(s_val),
-                            "true": float(yt),
-                            "pred": float(yp),
-                            "card": card,  # Attach card reference for clicking
-                        }
-                    )
-
+                points = [
+                    {
+                        "shear": float(s),
+                        "true": float(yt),
+                        "pred": float(yp),
+                        "card": card,
+                    }
+                    for s, yt, yp in zip(shear[mask], y_true[mask], y_pred[mask])
+                ]
                 parity_data.append(
                     {
                         "config_name": card.name_input.text(),
@@ -1103,26 +1161,17 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_plot_title("Evaluation: True vs. Predicted Viscosity")
 
         else:
-            # --- Other Metrics Evaluation using Metrics Class ---
-            try:
-                from src.utils.metrics import Metrics
-            except (ImportError, ModuleNotFoundError):
-                from QATCH.VisQAI.src.utils.metrics import Metrics
 
             metrics_engine = Metrics()
-
             results_to_plot = []
             scores = []
 
             for i in range(self.cards_layout.count()):
-                item = self.cards_layout.itemAt(i)
-                card = item.widget()
-
+                card = self.cards_layout.itemAt(i).widget()
                 if not isinstance(card, FormulationConfigCard) or card.isHidden():
                     continue
                 if not hasattr(card, "last_results") or not card.last_results:
                     continue
-
                 data = card.last_results
                 if (
                     "measured_y" not in data
@@ -1139,25 +1188,22 @@ class DashboardUI(QtWidgets.QWidget):
                 if not np.any(mask):
                     continue
 
-                y_p_filt = y_pred[mask]
-                y_t_filt = y_true[mask]
-
-                # Construct DataFrame expected by the Metrics engine
                 df = pd.DataFrame(
                     {
-                        "actual": y_t_filt,
-                        "predicted": y_p_filt,
-                        "residual": y_t_filt - y_p_filt,
-                        "abs_error": np.abs(y_t_filt - y_p_filt),
-                        "percentage_error": np.abs((y_t_filt - y_p_filt) / y_t_filt)
+                        "actual": y_true[mask],
+                        "predicted": y_pred[mask],
+                        "residual": y_true[mask] - y_pred[mask],
+                        "abs_error": np.abs(y_true[mask] - y_pred[mask]),
+                        "percentage_error": np.abs(
+                            (y_true[mask] - y_pred[mask]) / y_true[mask]
+                        )
                         * 100,
                     }
                 )
 
                 try:
                     score = metrics_engine.metrics[metric_key](df)
-                    scores.append(f"{card.name_input.text()}: {score:.4f}")
-
+                    scores.append(score)
                     data_copy = data.copy()
                     data_copy["config_name"] = (
                         f"{card.name_input.text()} ({metric_name}={score:.2f})"
@@ -1167,7 +1213,6 @@ class DashboardUI(QtWidgets.QWidget):
                     print(
                         f"Failed to calculate {metric_key} for {card.name_input.text()}: {e}"
                     )
-                    continue
 
             if not results_to_plot:
                 QtWidgets.QMessageBox.warning(
@@ -1176,17 +1221,96 @@ class DashboardUI(QtWidgets.QWidget):
                 return
 
             self.viz_panel.set_data(results_to_plot)
-
-            # Title averaging
             if scores:
-                try:
-                    vals = [float(s.split(": ")[1]) for s in scores]
-                    avg_score = sum(vals) / len(vals)
-                    self.viz_panel.set_plot_title(
-                        f"Evaluation Results: Avg {metric_name} = {avg_score:.4f}"
-                    )
-                except:
-                    self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
+                avg = sum(scores) / len(scores)
+                self.viz_panel.set_plot_title(
+                    f"Evaluation Results: Avg {metric_name} = {avg:.4f}"
+                )
+            else:
+                self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
+
+    def run_sample_generation(self, num_samples, model_file, constraints_data):
+        self.generate_widget.hide()
+        self.btn_generate.setChecked(False)
+
+        self.progress_dialog = QtWidgets.QProgressDialog(
+            "Starting generation...", "Cancel", 0, 100, self
+        )
+        self.progress_dialog.setWindowTitle("Generating Samples")
+        self.progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        self.progress_dialog.setAutoClose(True)
+        self.progress_dialog.setAutoReset(True)
+        self.progress_dialog.setMinimumDuration(0)
+        self.progress_dialog.setValue(0)
+
+        worker = SampleGenerationWorker(
+            num_samples=num_samples,
+            model_file=model_file,
+            constraints_data=constraints_data,
+            # parent=self,
+        )
+
+        # --- THE FIX: Anchor the thread so it avoids garbage collection ---
+        if not hasattr(self, "_active_workers"):
+            self._active_workers = []
+        self._active_workers.append(worker)
+
+        worker.progress_update.connect(self._on_generation_progress)
+        worker.generation_complete.connect(self._on_generation_complete)
+        worker.generation_error.connect(self._on_generation_error)
+
+        # Safely detach and delete the worker when it naturally finishes
+        worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
+        self.progress_dialog.canceled.connect(worker.stop)
+
+        worker.start()
+
+    def _cleanup_worker(self, worker):
+        if not worker.wait(5000):  # 5 second timeout
+            import warnings
+
+            warnings.warn("Worker thread did not finish in time during cleanup.")
+        if hasattr(self, "_active_workers") and worker in self._active_workers:
+            self._active_workers.remove(worker)
+
+    def _on_generation_progress(self, value, text):
+        if hasattr(self, "progress_dialog"):
+            self.progress_dialog.setValue(value)
+            self.progress_dialog.setLabelText(text)
+
+    def _on_generation_complete(self, generated_cards_data):
+        if hasattr(self, "progress_dialog"):
+            self.progress_dialog.close()
+
+        if not generated_cards_data:
+            return
+
+        self._is_batch_collecting = True
+        self._batch_queue = []
+        self._batch_results = []
+
+        for card_data in generated_cards_data:
+            self.add_prediction_card(card_data)
+
+        self._is_batch_collecting = False
+
+        if self._batch_queue:
+            self._is_batch_running = True
+            self._process_next_in_batch()
+
+        QtWidgets.QMessageBox.information(
+            self,
+            "Success",
+            f"Successfully generated {len(generated_cards_data)} samples.",
+        )
+
+    def _on_generation_error(self, error_msg):
+        if hasattr(self, "progress_dialog"):
+            self.progress_dialog.close()
+
+        QtWidgets.QMessageBox.critical(
+            self, "Generation Error", f"Failed to generate samples:\n{error_msg}"
+        )
 
     def apply_filters(self, filter_data):
         """Iterates over cards and toggles visibility based on match."""
@@ -1274,22 +1398,24 @@ class DashboardUI(QtWidgets.QWidget):
             )
 
     def _process_next_in_batch(self):
-        """
-        Pops the next item from the batch queue and runs it safely decoupled.
-        """
         if not self._batch_queue:
             self._is_batch_running = False
             self.viz_panel.hide_loading()
-            count = len(self._batch_results)
-            self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
-            self.viz_panel.set_data(self._batch_results)
+
+            if self._is_evaluation_mode and self._pending_eval_config is not None:
+                # Batch was for evaluation — now compute the metric
+                config = self._pending_eval_config
+                self._pending_eval_config = None
+                self._compute_evaluation(config)  # <-- NEW BRANCH
+            else:
+                count = len(self._batch_results)
+                self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
+                self.viz_panel.set_data(self._batch_results)
             return
 
         card, config = self._batch_queue.pop(0)
         self.running_card = card
         self.viz_panel.set_plot_title(f"Calculating: {config.get('name')}...")
-
-        # --- DECOUPLE EXECUTION ---
         QtCore.QTimer.singleShot(0, lambda: self.run_prediction(config))
 
     def delete_analysis(self):
@@ -1464,6 +1590,7 @@ class DashboardUI(QtWidgets.QWidget):
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
         card.selection_changed.connect(self._on_card_selection_changed)
+        card.visibility_toggled.connect(self._on_card_visibility_toggled)
         if card.is_measured:
             self.check_evaluation_eligibility()
         insert_idx = self.cards_layout.count()
@@ -1489,11 +1616,24 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
         self.check_evaluation_eligibility()
 
-        return card  # <--- CRITICAL: Return the card instance
+        return card
 
     def _scroll_to_card(self, card_widget):
         """Helper to ensure the new card is visible in the scroll area."""
         self.scroll_area.ensureWidgetVisible(card_widget, 0, 0)
+
+    def _on_card_visibility_toggled(self, card):
+        """
+        Called when a card's 'Hide from Plot' menu action is toggled.
+        Forwards the request to the viz panel and keeps the action's
+        check-state in sync with the actual hidden state.
+        """
+        card_name = card.name_input.text()
+        new_hidden = self.viz_panel.toggle_card_series(card_name)
+        # Sync the checkmark without re-firing the signal
+        card.act_hide_series.blockSignals(True)
+        card.act_hide_series.setChecked(new_hidden)
+        card.act_hide_series.blockSignals(False)
 
     def on_card_expanded(self, active_card):
         """
@@ -1506,6 +1646,10 @@ class DashboardUI(QtWidgets.QWidget):
             widget = item.widget()
             if isinstance(widget, FormulationConfigCard) and widget is not active_card:
                 widget.collapse()
+
+        # Block the individual card from hijacking the plot if we are in Evaluation Mode
+        if hasattr(self, "btn_evaluate") and self.btn_evaluate.isChecked():
+            return
 
         # 2. Automatically plot data if available (Fixes missing plot on open)
         if hasattr(active_card, "last_results") and active_card.last_results:
@@ -1911,13 +2055,14 @@ class DashboardUI(QtWidgets.QWidget):
         if hasattr(self, "running_card") and self.running_card:
             self.running_card.set_results(data_package)
 
-        # Branch logic: Batch vs Single
         if self._is_batch_running:
-            # Accumulate and continue
             self._batch_results.append(data_package)
             self._process_next_in_batch()
+        elif self._is_evaluation_mode:
+            # In eval mode but not a batch run (e.g., a single card re-run from expand).
+            # Card results are updated above; don't clobber the eval/parity plot.
+            pass
         else:
-            # Standard single run: Update Viz Panel immediately
             final_name = data_package.get("config_name", "Unknown")
             self.viz_panel.set_plot_title(final_name)
             self.viz_panel.set_data(data_package)
@@ -1973,6 +2118,23 @@ class DashboardUI(QtWidgets.QWidget):
 
             # Ensure it sits on top of everything (splitter, right panel, etc.)
             self.eval_widget.raise_()
+        # 3. Generate Widget (Relative to Toolbar Button)
+        if hasattr(self, "generate_widget") and self.generate_widget.isVisible():
+            btn_geo = self.btn_generate.geometry()
+            global_pos = self.btn_generate.mapToGlobal(
+                QtCore.QPoint(0, btn_geo.height())
+            )
+            local_pos = self.mapFromGlobal(global_pos)
+
+            menu_width = 550
+            x = local_pos.x()
+            if x + menu_width > self.width():
+                x = self.width() - menu_width - 10
+
+            self.generate_widget.setGeometry(
+                x, local_pos.y(), menu_width, self.generate_widget.sizeHint().height()
+            )
+            self.generate_widget.raise_()
 
     def resizeEvent(self, event):
         self._update_overlay_geometry()

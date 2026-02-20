@@ -57,6 +57,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
     expanded = QtCore.pyqtSignal(object)
     selection_changed = QtCore.pyqtSignal(bool)
     color_changed = QtCore.pyqtSignal(str)
+    visibility_toggled = QtCore.pyqtSignal(object)  # emits self
     _card_counter = 0
 
     def __init__(
@@ -232,6 +233,12 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.options_menu.addAction("Save model")
         self.options_menu.addAction("Save model as...")
         self.options_menu.addSeparator()
+        self.act_hide_series = self.options_menu.addAction("Hide from Plot")
+        self.act_hide_series.setCheckable(True)
+        self.act_hide_series.setChecked(False)
+        self.act_hide_series.toggled.connect(
+            lambda _: self.visibility_toggled.emit(self)
+        )
         self.act_pick_color = self.options_menu.addAction("Select Plot Color...")
         self.act_pick_color.triggered.connect(self.select_plot_color)
         self.options_menu.addSeparator()
@@ -1553,6 +1560,41 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.spin_temp.setValue(25.0)
 
         self.trigger_update()
+
+    def expand_silent(self):
+        """Expand the card UI without triggering a prediction run.
+        Used during evaluation mode so clicking a parity point doesn't clobber the eval plot.
+        """
+        if self.is_expanded:
+            return
+
+        self.expanded.emit(self)
+        self.is_expanded = True
+        self.btn_toggle.setArrowType(QtCore.Qt.ArrowType.UpArrow)
+
+        if not hasattr(self, "_anim_accordion"):
+            self._anim_accordion = QtCore.QPropertyAnimation(
+                self.content_frame, b"maximumHeight"
+            )
+            self._anim_accordion.setDuration(250)
+            self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.OutCubic)
+
+        try:
+            self._anim_accordion.finished.disconnect()
+        except TypeError:
+            pass
+
+        self.content_frame.setVisible(True)
+        self.content_frame.setMaximumHeight(0)
+        QtWidgets.QApplication.processEvents()
+        target_height = self.content_frame.sizeHint().height()
+
+        self._anim_accordion.setStartValue(0)
+        self._anim_accordion.setEndValue(target_height)
+        self._anim_accordion.finished.connect(
+            lambda: self.content_frame.setMaximumHeight(16777215)
+        )
+        self._anim_accordion.start()
 
     def export_formulation(self):
         if not self.last_results:

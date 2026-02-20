@@ -410,6 +410,13 @@ class VisualizationPanel(QtWidgets.QWidget):
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
 
+        # In parity mode, coords are pre-logged using parity_log_visc — use that
+        # flag for tick display and axis name text, not the standard act_log_x/y.
+        _mode = getattr(self, "plot_mode", "standard")
+        if _mode == "parity":
+            log_x = getattr(self, "parity_log_visc", False)
+            log_y = getattr(self, "parity_log_visc", False)
+
         def get_tick_values(min_v, max_v, is_log):
             if is_log:
                 start_exp = int(np.floor(min_v))
@@ -636,15 +643,14 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.hLine.setVisible(self.act_crosshairs.isChecked())
 
         # Always clear the legend so old labels don't persist on clear
-        # Always clear the legend so old labels don't persist on clear
         self.legend.clear()
 
         mode = getattr(self, "plot_mode", "standard")
         if mode == "parity":
             self.placeholder_label.hide()
             self._plot_parity()
+            # Legend already contains only "y = x" from the line's name= argument
             self.axis_debounce.start()
-            self._make_legend_clickable()
             return
 
         if not self.data_series:
@@ -668,11 +674,13 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         self._apply_global_limits()
         self.axis_debounce.start()
-        self._make_legend_clickable()
+        # Add fixed type-indicator legend entries (Predicted / Measured only)
+        self._rebuild_standard_legend()
 
     def _plot_parity(self):
-        # 1. Setup logs (X and Y are both viscosity in a parity plot)
-        self.plot_widget.setLogMode(x=self.parity_log_visc, y=self.parity_log_visc)
+        # 1. Parity coordinates are pre-logged manually below, so setLogMode must
+        #    stay OFF to prevent pyqtgraph from double-transforming them.
+        self.plot_widget.setLogMode(x=False, y=False)
 
         # 2. Sync hidden state list for legend
         while len(self.series_hidden) < len(self.parity_data):
@@ -711,6 +719,8 @@ class VisualizationPanel(QtWidgets.QWidget):
         # 5. Plot scattered points per series
         for i, series in enumerate(self.parity_data):
             spots = []
+            annotations = []  # one TextItem per point, toggled on click
+
             for pt in series["points"]:
                 px = (
                     np.log10(max(pt["true"], 1e-10))
@@ -724,6 +734,35 @@ class VisualizationPanel(QtWidgets.QWidget):
                 )
                 spots.append({"pos": (px, py), "data": pt})
 
+                # Build label — mirrors the standard scatter annotation style
+                shear_label = (
+                    f"{int(pt['shear']):,}"
+                    if pt["shear"] < 1e6
+                    else f"{pt['shear']:.2e}"
+                )
+                label_text = (
+                    f"{series['config_name']}\n"
+                    f"Shear: {shear_label} 1/s\n"
+                    f"True:  {pt['true']:.4f} cP\n"
+                    f"Pred:  {pt['pred']:.4f} cP"
+                )
+                text_item = pg.TextItem(
+                    label_text,
+                    color=series["color"],
+                    anchor=(0.0, 1.0),
+                    border=pg.mkPen(series["color"], width=1),
+                    fill=pg.mkBrush(255, 255, 255, 220),
+                )
+                text_item.setPos(px, py)
+                text_item.setZValue(20)
+                text_item.setVisible(False)
+                self.plot_widget.addItem(text_item)
+                annotations.append(text_item)
+
+                # Attach annotation reference to the point dict so the click
+                # handler can reach it without any extra lookup structure.
+                pt["_annotation"] = text_item
+
             if spots:
                 scatter = pg.ScatterPlotItem(
                     spots=spots,
@@ -731,7 +770,6 @@ class VisualizationPanel(QtWidgets.QWidget):
                     size=14,
                     brush=pg.mkBrush("w"),
                     pen=pg.mkPen(series["color"], width=2),
-                    name=series["config_name"],
                     hoverable=True,
                     hoverSize=20,
                     hoverBrush=pg.mkBrush(series["color"]),
@@ -747,7 +785,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                     "lines": [],
                     "fills": [],
                     "scatters": [scatter],
-                    "texts": [],
+                    "texts": annotations,
                 }
                 self.series_plot_items.append(items_dict)
 
@@ -762,11 +800,23 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
 
     def _on_parity_scatter_clicked(self, plot, points):
-        """Passes the clicked point dictionary back to the Dashboard."""
-        if points:
-            data = points[0].data()
-            if data:
-                self.eval_point_clicked.emit(data)
+        """Toggle inline annotation box on the point — mirrors standard scatter
+        click behavior.  Also emits eval_point_clicked so the dashboard can
+        silently expand the corresponding card."""
+        if len(points) == 0:
+            return
+        # When multiple overlapping points are clicked, act on the first one only
+        data = points[0].data()
+        if not data:
+            return
+
+        # Toggle the annotation TextItem that was embedded in the point dict
+        ann = data.get("_annotation")
+        if ann is not None:
+            ann.setVisible(not ann.isVisible())
+
+        # Notify dashboard (for silent card-expand + scroll) — no QMessageBox there
+        self.eval_point_clicked.emit(data)
 
     def _plot_single_series(self, data, index):
         series_items = {
@@ -897,7 +947,6 @@ class VisualizationPanel(QtWidgets.QWidget):
                     meas_x,
                     meas_y,
                     pen=pg.mkPen(main_color, width=2, style=Qt.DashLine),
-                    name=f"{series_name} (Meas)",
                 )
                 series_items["lines"].append(meas_line)
 
@@ -919,9 +968,7 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         is_measured_only = data.get("measured", False) and not has_ci
         if not is_measured_only:
-            pred_line = self.plot_widget.plot(
-                x, y, pen=pg.mkPen(main_color, width=3), name=series_name
-            )
+            pred_line = self.plot_widget.plot(x, y, pen=pg.mkPen(main_color, width=3))
             series_items["lines"].append(pred_line)
 
             sc, tx = self._generate_scatter_points(
@@ -1057,27 +1104,39 @@ class VisualizationPanel(QtWidgets.QWidget):
         for tx in items_dict.get("texts", []):
             tx.setVisible(visible and cp_on)
 
-    def _make_legend_clickable(self):
-        legend = self.legend
-        try:
-            for i, (sample, label) in enumerate(legend.items):
-                sample._series_index = i
-                label._series_index = i
+    def _rebuild_standard_legend(self):
+        """Adds exactly two fixed type-indicator entries to the legend:
+        'Predicted' (thick solid) and 'Measured' (thinner dashed), using a
+        neutral color.  No per-sample names are shown."""
+        self.legend.clear()
 
-                def _make_handler(idx):
-                    def handler(event):
-                        self._toggle_series_visibility(idx)
-                        event.accept()
+        # Predicted swatch — solid, thick
+        pred_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=3))
+        self.legend.addItem(pred_item, "Predicted")
 
-                    return handler
+        # Measured swatch — dashed, only when measured data is being shown
+        if self.act_measured.isChecked() and self.act_measured.isEnabled():
+            meas_item = pg.PlotDataItem(
+                pen=pg.mkPen("#555555", width=2, style=Qt.DashLine)
+            )
+            self.legend.addItem(meas_item, "Measured")
 
-                sample.mousePressEvent = _make_handler(i)
-                label.mousePressEvent = _make_handler(i)
-
-                is_hidden = i < len(self.series_hidden) and self.series_hidden[i]
-                label.setAttr("color", "#9ca3af" if is_hidden else "#24292f")
-        except Exception as e:
-            print(f"Could not make legend clickable: {e}")
+    def toggle_card_series(self, card_name: str) -> bool:
+        """Toggle the visibility of the series whose config_name matches
+        *card_name*.  Returns the new hidden state (True = hidden).
+        Called by the dashboard when a card's 'Hide from Plot' action fires."""
+        for i, data in enumerate(self.data_series):
+            if data.get("config_name", "") == card_name:
+                while len(self.series_hidden) <= i:
+                    self.series_hidden.append(False)
+                new_hidden = not self.series_hidden[i]
+                self.series_hidden[i] = new_hidden
+                if i < len(self.series_plot_items):
+                    self._set_series_items_visible(
+                        self.series_plot_items[i], not new_hidden
+                    )
+                return new_hidden
+        return False
 
     def _toggle_series_visibility(self, series_index):
         if series_index >= len(self.series_plot_items):
