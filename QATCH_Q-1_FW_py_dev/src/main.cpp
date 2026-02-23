@@ -55,7 +55,7 @@
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
 #define CODE_VERSION "v2.6b69"
-#define RELEASE_DATE "2026-02-12"
+#define RELEASE_DATE "2026-02-20"
 
 /************************** LIBRARIES **************************/
 
@@ -233,7 +233,8 @@ double freq_factor = 1.0;
 // use Ambient temperature to correct external K-probe temperature readings
 // NOTE: This correction only applies during active measurement runs
 #define USE_TEMP_CORRECTION true
-#define TEMP_CORRECT_COOLDOWN (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_INTERVAL (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_DELTA 0.25
 #else
 // no MAX31855 support, no ambient correction available
 #define USE_TEMP_CORRECTION false
@@ -368,7 +369,7 @@ float ambient = NAN;
 
 #if USE_TEMP_CORRECTION
 float starting_ambient = NAN;
-unsigned long temp_correct_auto_off_at = 0; // time to auto-off (after last run stop)
+unsigned long temp_correct_adjust_delta_at = 0; // time to auto-adjust (after last run stop)
 #endif
 
 // Create servo object for POGO lid
@@ -1598,10 +1599,8 @@ void QATCH_loop()
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
 #if USE_TEMP_CORRECTION
-        if (DEBUG) {
-          client->printf("CORR. TEMP: %f\n", starting_ambient); // DEBUG ONLY
-          client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DEBUG ONLY
-        }
+        client->printf("CORR. TEMP: %f\n", starting_ambient);
+        client->printf("CORR. TIME: %u\n", temp_correct_adjust_delta_at);
 #endif
       }
       return;
@@ -1648,13 +1647,7 @@ void QATCH_loop()
           //        tft_tempcontrol(); // draw "OFF" state
           tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-          if (temp_correct_auto_off_at != 0)
-          {
-            if (DEBUG)
-              Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-            temp_correct_auto_off_at = 0; // off
-            starting_ambient = NAN;
-          }
+          temp_correct_adjust(true); // force off immediately
 #endif
         }
 #else
@@ -2277,10 +2270,10 @@ void QATCH_loop()
 #if USE_TEMP_CORRECTION
       if (l298nhb.active())
       {
-        if (temp_correct_auto_off_at == 0) // only if NOT in cooldown from prior run
+        if (temp_correct_adjust_delta_at == 0) // only if NOT in cooldown from prior run
           starting_ambient = ambient;
         else
-          temp_correct_auto_off_at = 0; // turn on, use prior base, prevent auto-off
+          temp_correct_adjust_delta_at = 0; // turn on, use prior base, prevent auto-adjust
         if (DEBUG)
         {
           Serial.println("CORRECTION ON!");
@@ -2506,14 +2499,8 @@ void QATCH_loop()
 #if USE_MAX31855
         float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-        // check for auto-off, stop if due
-        if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-        {
-          if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-          temp_correct_auto_off_at = 0; // off
-          starting_ambient = NAN;
-        }
+        // check for auto-off, adjust and/or stop if due
+        temp_correct_adjust(false);
         if (!isnan(starting_ambient)) // active
         {
           if (DEBUG)
@@ -3042,14 +3029,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3270,14 +3251,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3317,13 +3292,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
 
@@ -3394,13 +3363,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
   }
@@ -3782,15 +3745,15 @@ void stopStreaming(void)
 #if USE_TEMP_CORRECTION
   if (l298nhb.active() && !isnan(starting_ambient))
   {
-    temp_correct_auto_off_at = millis() + TEMP_CORRECT_COOLDOWN; // calculate time to reset
+    temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
     // special case in event of rollover in prior line math
-    if (temp_correct_auto_off_at == 0) 
+    if (temp_correct_adjust_delta_at == 0) 
     {
-      temp_correct_auto_off_at = 1;
+      temp_correct_adjust_delta_at = 1;
     }
-    if (DEBUG) 
+    if (DEBUG)
     {
-      Serial.printf("CORRECTION off @ t = %u\n", temp_correct_auto_off_at);
+      Serial.printf("CORRECTION adjust @ t = %u\n", temp_correct_adjust_delta_at);
     }
   }
 #endif
@@ -3943,6 +3906,55 @@ void setLidCalibration(byte opened_1, byte closed_1,
     nv.save();
   else
     client->println("ERROR: Failed to save lid calibration in EEPROM. NVMEM struct is invalid.");
+}
+
+void temp_correct_adjust(bool force_off)
+{
+#if !USE_TEMP_CORRECTION
+  return; // skip it
+#endif
+
+  // check for auto-off, adjust and/or stop if due
+  if ((force_off) || (last_temp > 
+    temp_correct_adjust_delta_at && temp_correct_adjust_delta_at != 0))
+  {
+    float now_ambient = max31855.readInternal(false);
+    if ((!force_off) && (abs(now_ambient - starting_ambient) > 
+      TEMP_CORRECT_COOLDOWN_DELTA))
+    {
+      // kick adjust timer for another interval:
+      temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
+      // special case in event of rollover in prior line math
+      if (temp_correct_adjust_delta_at == 0) 
+      {
+        temp_correct_adjust_delta_at = 1;
+      }
+
+      // adjust starting ambient closer to actual ambient by delta temp:
+      if (DEBUG)
+      {
+        Serial.print("CORRECTION adjust: ");
+        Serial.print(starting_ambient);
+      }
+      if (now_ambient > starting_ambient)
+        starting_ambient += TEMP_CORRECT_COOLDOWN_DELTA;
+      else
+        starting_ambient -= TEMP_CORRECT_COOLDOWN_DELTA;
+      if (DEBUG)
+      {
+        Serial.print(" -> ");
+        Serial.println(starting_ambient);
+      }
+      
+    } else if (temp_correct_adjust_delta_at != 0) { 
+      // fall here immediately if `force_off` set, or
+      // stop the adjustment timer when delta is minimized:
+      if (DEBUG)
+        Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+      temp_correct_adjust_delta_at = 0; // off
+      starting_ambient = NAN;
+    }
+  }
 }
 
 /************************** ILI9341 ****************************/
