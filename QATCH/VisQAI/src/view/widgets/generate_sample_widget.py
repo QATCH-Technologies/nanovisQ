@@ -7,9 +7,11 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 try:
     from src.view.architecture import Architecture
     from src.view.checkable_combo_box import CheckableComboBox
+    from src.view.model_selection_dialog import ModelSelectionDialog
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.architecture import Architecture
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
 
 
 class CompactCheckableComboBox(CheckableComboBox):
@@ -113,14 +115,16 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         # 1. Model Selector
         model_layout = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setStyleSheet("background-color: #ffffff; height: 26px;")
+        self.model_combo.setStyleSheet(
+            "background-color: #ffffff; height: 26px;")
         self.model_combo.setToolTip("Select a prediction model from assets")
         self._populate_model_list()
 
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setFixedWidth(40)
         self.btn_select_model.setFixedHeight(26)
-        self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_select_model.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Import New Model (.visq)")
         self.btn_select_model.setIcon(
             QtGui.QIcon(
@@ -131,7 +135,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                     "src",
                     "view",
                     "icons",
-                    "import-content-svgrepo-com.svg",
+                    "file-plus-2-svgrepo-com.svg",
                 )
             )
         )
@@ -165,7 +169,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         )
 
         self.constraints_container = QtWidgets.QWidget()
-        self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_container)
+        self.constraints_layout = QtWidgets.QVBoxLayout(
+            self.constraints_container)
         self.constraints_layout.setContentsMargins(0, 0, 5, 0)
         self.constraints_layout.setSpacing(8)
 
@@ -184,7 +189,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         btn_layout = QtWidgets.QHBoxLayout()
 
         self.btn_add_constraint = QtWidgets.QPushButton("+ Add Constraint")
-        self.btn_add_constraint.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_add_constraint.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_add_constraint.setFixedHeight(34)
         self.btn_add_constraint.clicked.connect(self.add_constraint_row)
 
@@ -222,9 +228,32 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 self.model_combo.setCurrentIndex(index)
 
     def browse_model_file(self):
-        fname, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Import Model File", "", "VisQAI Models (*.visq)"
-        )
+        fname = None
+        try:
+            """Initialize file dialog for model selection."""
+            model_dialog = ModelSelectionDialog()
+            model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+            model_dialog.setNameFilter(
+                "VisQAI Models (*.visq)")
+            model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
+
+            # Set default directory
+            model_path = os.path.join(
+                Architecture.get_path(), "QATCH/VisQAI/assets")
+            if os.path.exists(model_path):
+                model_dialog.setDirectory(model_path)
+            # else:
+            #     model_dialog.setDirectory(Constants.log_prefer_path)
+
+            """Open a file dialog to select a VisQAI model."""
+            if model_dialog.exec_():
+                selected_files = model_dialog.selectedFiles()
+                if selected_files:
+                    fname = selected_files[0]
+        except:
+            fname, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self, "Import Model File", "", "VisQAI Models (*.visq)"
+            )
         if fname:
             try:
                 filename = os.path.basename(fname)
@@ -285,7 +314,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 break
 
         self.btn_add_constraint.setEnabled(all_complete)
-        self.btn_generate.setEnabled(all_complete and self.model_combo.isEnabled())
+        self.btn_generate.setEnabled(
+            all_complete and self.model_combo.isEnabled())
 
     def add_constraint_row(self):
         self.lbl_none.hide()
@@ -325,7 +355,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         spin_value = QtWidgets.QDoubleSpinBox()
         spin_value.setStyleSheet(combo_style)
-        spin_value.setRange(0.0, 10000.0)  # Generous upper bound for concentrations
+        # Generous upper bound for concentrations
+        spin_value.setRange(0.0, 10000.0)
         spin_value.setDecimals(3)
         spin_value.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
 
@@ -355,7 +386,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         row_layout.addWidget(val_stack, stretch=1)
         row_layout.addWidget(btn_delete)
 
-        self.constraints_layout.insertWidget(len(self.constraint_rows), row_widget)
+        self.constraints_layout.insertWidget(
+            len(self.constraint_rows), row_widget)
 
         row_data = {
             "widget": row_widget,
@@ -369,7 +401,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.constraint_rows.append(row_data)
 
         # Cascading Logic
-        btn_delete.clicked.connect(lambda: self.remove_constraint_row(row_data))
+        btn_delete.clicked.connect(
+            lambda: self.remove_constraint_row(row_data))
         cb_ingredient.currentIndexChanged.connect(
             lambda: self._on_ingredient_changed(row_data)
         )
@@ -419,7 +452,8 @@ class GenerateSampleWidget(QtWidgets.QFrame):
             if attr_type == "Concentration":
                 # Included the requested "!=" operator
                 cb_condition.addItems([">", ">=", "=", "!=", "<=", "<"])
-                val_stack.setCurrentIndex(1)  # Switch to numeric QDoubleSpinBox
+                # Switch to numeric QDoubleSpinBox
+                val_stack.setCurrentIndex(1)
             elif attr_type in ["Type", "Class"]:
                 cb_condition.addItems(["is", "is not"])
                 val_stack.setCurrentIndex(0)  # Switch to dropdown
@@ -457,14 +491,16 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                             getattr(
                                 p.class_type,
                                 "value",
-                                getattr(p.class_type, "name", str(p.class_type)),
+                                getattr(p.class_type, "name",
+                                        str(p.class_type)),
                             )
                         )
                         if c_val != "-":
                             classes.add(c_val)
                 items = sorted(list(classes))
             else:
-                items = [obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
+                items = [
+                    obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
                 if ing_type not in ["Protein", "Buffer"]:
                     if "None" not in items:
                         items.insert(0, "None")

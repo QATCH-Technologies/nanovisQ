@@ -12,6 +12,7 @@ try:
     from dialogs.generic_ingredient_dialog import GenericIngredientDialog
     from dialogs.model_options_dialog import ModelOptionsDialog
     from dialogs.protein_config_dialog import ProteinConfigDialog
+    from src.view.model_selection_dialog import ModelSelectionDialog
 
     # Import Formulation and Ingredient Models
     from src.models.formulation import Formulation, ViscosityProfile
@@ -28,6 +29,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.architecture import Architecture
+    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
 
     # Import Formulation and Ingredient Models (Fallback path)
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
@@ -146,7 +148,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         root_layout.setSpacing(5)
         # 1. Left Drag Handle
         self.drag_handle = DragHandle()
-        root_layout.addWidget(self.drag_handle, 0, QtCore.Qt.AlignmentFlag.AlignTop)
+        root_layout.addWidget(self.drag_handle, 0,
+                              QtCore.Qt.AlignmentFlag.AlignTop)
 
         # 2. Central Container
         self.center_widget = QtWidgets.QWidget()
@@ -239,7 +242,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.act_hide_series.toggled.connect(
             lambda _: self.visibility_toggled.emit(self)
         )
-        self.act_pick_color = self.options_menu.addAction("Select Plot Color...")
+        self.act_pick_color = self.options_menu.addAction(
+            "Select Plot Color...")
         self.act_pick_color.triggered.connect(self.select_plot_color)
         self.options_menu.addSeparator()
         self.options_menu.addAction("Export Formulation").triggered.connect(
@@ -297,7 +301,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setObjectName("btnBrowseModel")
         self.btn_select_model.setFixedWidth(40)
-        self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_select_model.setCursor(
+            QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Import New Model (.visq)")
         # Optional: Change icon to import/upload style if available
         self.btn_select_model.setIcon(
@@ -309,7 +314,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     "src",
                     "view",
                     "icons",
-                    "import-content-svgrepo-com.svg",  # Use existing import icon
+                    "file-plus-2-svgrepo-com.svg",  # Use existing import icon
                 )
             )
         )
@@ -371,7 +376,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.slider_temp.valueChanged.connect(
             lambda v: self.spin_temp.setValue(float(v))
         )
-        self.spin_temp.valueChanged.connect(lambda v: self.slider_temp.setValue(int(v)))
+        self.spin_temp.valueChanged.connect(
+            lambda v: self.slider_temp.setValue(int(v)))
 
         temp_layout.addWidget(self.slider_temp)
         temp_layout.addWidget(self.spin_temp)
@@ -444,7 +450,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
     def select_plot_color(self):
         """Opens a color picker dialog."""
         current = QtGui.QColor(self.plot_color)
-        color = QtWidgets.QColorDialog.getColor(current, self, "Select Plot Color")
+        color = QtWidgets.QColorDialog.getColor(
+            current, self, "Select Plot Color")
 
         if color.isValid():
             self.plot_color = color.name()
@@ -715,12 +722,35 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
     def browse_model_file(self):
         """Imports a new model file into the assets directory."""
-        fname, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self,
-            "Import Model File",
-            "",
-            "VisQAI Models (*.visq)",
-        )
+        fname = None
+        try:
+            """Initialize file dialog for model selection."""
+            model_dialog = ModelSelectionDialog()
+            model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+            model_dialog.setNameFilter(
+                "VisQAI Models (*.visq)")
+            model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
+
+            # Set default directory
+            model_path = os.path.join(
+                Architecture.get_path(), "QATCH/VisQAI/assets")
+            if os.path.exists(model_path):
+                model_dialog.setDirectory(model_path)
+            # else:
+            #     model_dialog.setDirectory(Constants.log_prefer_path)
+
+            """Open a file dialog to select a VisQAI model."""
+            if model_dialog.exec_():
+                selected_files = model_dialog.selectedFiles()
+                if selected_files:
+                    fname = selected_files[0]
+        except:
+            fname, _ = QtWidgets.QFileDialog.getOpenFileName(
+                self,
+                "Import Model File",
+                "",
+                "VisQAI Models (*.visq)",
+            )
         if fname:
             try:
                 # 1. Define destination
@@ -751,11 +781,13 @@ class FormulationConfigCard(QtWidgets.QFrame):
     def show_add_menu(self):
         menu = QtWidgets.QMenu(self)
         menu.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        menu.setAttribute(QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        menu.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_TranslucentBackground, False)
         menu.setObjectName("cardComponentMenu")
 
         present_types = list(self.active_ingredients.keys())
-        available = [t for t in self.INGREDIENT_TYPES if t not in present_types]
+        available = [
+            t for t in self.INGREDIENT_TYPES if t not in present_types]
 
         if not available:
             action = menu.addAction("✓ All components added")
@@ -768,7 +800,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
             for t in available:
                 action = menu.addAction(t)
                 action.triggered.connect(
-                    lambda checked, type_name=t: self.add_ingredient_row(type_name)
+                    lambda checked, type_name=t: self.add_ingredient_row(
+                        type_name)
                 )
 
         button_global_pos = self.btn_add_ing.mapToGlobal(QtCore.QPoint(0, 0))
@@ -865,7 +898,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         btn_configure.setFixedSize(32, 32)
         combo.currentIndexChanged.connect(update_configure_button)
         btn_configure.clicked.connect(
-            lambda: self.open_ingredient_config_dialog(ing_type, combo, btn_configure)
+            lambda: self.open_ingredient_config_dialog(
+                ing_type, combo, btn_configure)
         )
 
         spin = QtWidgets.QDoubleSpinBox()
@@ -917,7 +951,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         row_layout.addWidget(btn_rem)
 
         self.ing_container_layout.addWidget(row_widget)
-        self.active_ingredients[ing_type] = (combo, spin, btn_configure, btn_rem)
+        self.active_ingredients[ing_type] = (
+            combo, spin, btn_configure, btn_rem)
 
         # Ensure button state is correct immediately after population
         update_configure_button()
@@ -963,7 +998,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         needs_work = False
 
         if ing_type == "Protein" and ingredient is not None:
-            needs_work = ProteinConfigDialog.protein_needs_completion(ingredient)
+            needs_work = ProteinConfigDialog.protein_needs_completion(
+                ingredient)
         elif ing_type == "Buffer" and ingredient is not None:
             needs_work = BufferConfigDialog.buffer_needs_completion(ingredient)
 
@@ -1036,7 +1072,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
             # Case A: Dictionary (Legacy / Protein / Buffer)
             if isinstance(result, dict):
-                self._handle_legacy_dialog_result(ing_type, combo, result, is_edit_mode)
+                self._handle_legacy_dialog_result(
+                    ing_type, combo, result, is_edit_mode)
 
             # Case B: Ingredient Object (Generic - Already Saved to DB)
             elif isinstance(result, Ingredient):
@@ -1057,7 +1094,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                             combo.setCurrentIndex(index)
                     else:
                         # Add new item
-                        self.ingredients_master[ing_type].append(new_ingredient)
+                        self.ingredients_master[ing_type].append(
+                            new_ingredient)
                         combo.addItem(new_ingredient.name, new_ingredient)
                         combo.setCurrentIndex(combo.count() - 1)
                 else:
@@ -1102,7 +1140,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
             if ing_type not in self.ingredients_master:
                 self.ingredients_master[ing_type] = []
 
-            existing_names = [ing.name for ing in self.ingredients_master[ing_type]]
+            existing_names = [
+                ing.name for ing in self.ingredients_master[ing_type]]
             if data["name"] in existing_names:
                 QtWidgets.QMessageBox.information(
                     self,
@@ -1189,7 +1228,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 try:
                     setters[ing_type](ingredient, concentration, units)
                 except TypeError as e:
-                    print(f"Warning: Could not set {ing_type} in formulation: {e}")
+                    print(
+                        f"Warning: Could not set {ing_type} in formulation: {e}")
 
         # 2. Update Temperature
         temp = self.spin_temp.value()
@@ -1334,7 +1374,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
             anim.setStartValue(widget.height())
             anim.setEndValue(0)
             anim.finished.connect(widget.deleteLater)
-            anim.start(QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
+            anim.start(
+                QtCore.QAbstractAnimation.DeletionPolicy.DeleteWhenStopped)
 
     def on_selected_toggled(self, checked):
         self.setProperty("selected", checked)
@@ -1466,7 +1507,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                             )
                             if ing_type not in self.ingredients_master:
                                 self.ingredients_master[ing_type] = []
-                            self.ingredients_master[ing_type].append(new_ingredient)
+                            self.ingredients_master[ing_type].append(
+                                new_ingredient)
                             combo.addItem(new_ingredient.name, new_ingredient)
                             combo.setCurrentIndex(combo.count() - 1)
         if "measured" in data:
@@ -1656,7 +1698,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     upper = [0] * len(xs)
 
                 for x, m, l, u in zip(xs, meas_y, lower, upper):
-                    writer.writerow([f"{x:.4f}", f"{m:.4f}", f"{l:.4f}", f"{u:.4f}"])
+                    writer.writerow(
+                        [f"{x:.4f}", f"{m:.4f}", f"{l:.4f}", f"{u:.4f}"])
             else:
                 writer.writerow(
                     [
@@ -1680,7 +1723,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     upper = [0] * len(xs)
 
                 for x, y, l, u in zip(xs, pred_y, lower, upper):
-                    writer.writerow([f"{x:.4f}", f"{y:.4f}", f"{l:.4f}", f"{u:.4f}"])
+                    writer.writerow(
+                        [f"{x:.4f}", f"{y:.4f}", f"{l:.4f}", f"{u:.4f}"])
 
     def _save_metadata_to_db(self):
         """Persists ICL and last_model to the database for an imported/measured record.
