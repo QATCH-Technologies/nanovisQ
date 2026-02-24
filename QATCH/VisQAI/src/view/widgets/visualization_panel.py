@@ -76,13 +76,14 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         self.plot_widget.showGrid(x=True, y=True, alpha=0.15)
 
-        self.legend = self.plot_widget.addLegend(offset=(20, 20))
+        self.legend = self.plot_widget.addLegend()
+        self.legend.anchor((1, 0), (1, 0), offset=(-70, 20))
+
         self.legend.setBrush(pg.mkBrush(255, 255, 255, 255))
         self.legend.setPen(pg.mkPen(None))
         self.legend.labelTextSize = "9pt"
 
         self.plot_widget.installEventFilter(self)
-
         self.vLine = pg.InfiniteLine(
             angle=90, movable=False, pen=pg.mkPen("#6b7280", width=1, style=Qt.DashLine)
         )
@@ -1161,54 +1162,138 @@ class VisualizationPanel(QtWidgets.QWidget):
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
 
+        # --- X Axis Boundaries ---
         limit_x_min = 100
         limit_x_max = 15000000
 
         log_min = np.log10(limit_x_min)
         log_max = np.log10(limit_x_max)
         log_range = log_max - log_min
-        padding = log_range * 0.05
-        padded_min = 10 ** (log_min - padding)
-        padded_max = 10 ** (log_max + padding)
+        padding_x = log_range * 0.05
+        padded_min = 10 ** (log_min - padding_x)
+        padded_max = 10 ** (log_max + padding_x)
         vb_x_min = np.log10(padded_min) if log_x else padded_min
         vb_x_max = np.log10(padded_max) if log_x else padded_max
 
+        # Hard limits for panning/zooming to prevent PyQtGraph NoneType errors
+        vb_y_min = -10.0 if log_y else 0.0
+        vb_y_max = 300.0 if log_y else 1e300
+
+        # --- Y Axis Boundaries ---
         global_min_y = float("inf")
         global_max_y = float("-inf")
-
         found_data = False
+
         for data in self.data_series:
             y = np.array(data["y"])
             if len(y) == 0:
                 continue
+
+            # In log scale, we must filter out values <= 0 before getting min/max
+            if log_y:
+                y_valid = y[y > 0]
+                if len(y_valid) > 0:
+                    global_min_y = min(global_min_y, np.min(y_valid))
+                    global_max_y = max(global_max_y, np.max(y_valid))
+            else:
+                global_min_y = min(global_min_y, np.min(y))
+                global_max_y = max(global_max_y, np.max(y))
+
             found_data = True
 
-            global_min_y = min(global_min_y, np.min(y))
-            global_max_y = max(global_max_y, np.max(y))
-
+            # Factor in Confidence Intervals
             if self.act_ci.isChecked() and "lower" in data:
-                global_min_y = min(global_min_y, np.min(data["lower"]))
-                global_max_y = max(global_max_y, np.max(data["upper"]))
+                if log_y:
+                    low_valid = np.array(data["lower"])[np.array(data["lower"]) > 0]
+                    up_valid = np.array(data["upper"])[np.array(data["upper"]) > 0]
+                    if len(low_valid) > 0:
+                        global_min_y = min(global_min_y, np.min(low_valid))
+                    if len(up_valid) > 0:
+                        global_max_y = max(global_max_y, np.max(up_valid))
+                else:
+                    global_min_y = min(global_min_y, np.min(data["lower"]))
+                    global_max_y = max(global_max_y, np.max(data["upper"]))
 
-        vb_y_min = -10.0 if log_y else 0.0
-        vb_y_max = 300.0 if log_y else 1e300
+            # Factor in Measured Points
+            if (
+                self.act_measured.isChecked()
+                and "measured_y" in data
+                and data["measured_y"] is not None
+            ):
+                meas = np.array(data["measured_y"])
+                if log_y:
+                    meas_valid = meas[meas > 0]
+                    if len(meas_valid) > 0:
+                        global_min_y = min(global_min_y, np.min(meas_valid))
+                        global_max_y = max(global_max_y, np.max(meas_valid))
+                else:
+                    global_min_y = min(global_min_y, np.min(meas))
+                    global_max_y = max(global_max_y, np.max(meas))
 
+        # Disable Pyqtgraph's auto-ranging since we are overriding it with custom snaps
+        self.plot_widget.plotItem.vb.disableAutoRange(axis="y")
+
+        # Safely apply panning bounds so internal constraints have mathematical anchors
         self.plot_widget.plotItem.vb.setLimits(
             xMin=vb_x_min, xMax=vb_x_max, yMin=vb_y_min, yMax=vb_y_max
         )
 
-        if not log_y and found_data:
-            y_range = global_max_y - global_min_y
-            if y_range > 0:
-                self.plot_widget.plotItem.vb.setYRange(
-                    max(0, global_min_y - y_range * 0.1),
-                    global_max_y + y_range * 0.1,
-                    padding=0,
-                )
-            else:
-                self.plot_widget.plotItem.vb.enableAutoRange(axis="y")
+        # Fallback if no valid Y data was found
+        if not found_data:
+            fallback_y_min = -1.0 if log_y else 0.0
+            fallback_y_max = 3.0 if log_y else 100.0
+            self.plot_widget.plotItem.vb.setYRange(
+                fallback_y_min, fallback_y_max, padding=0
+            )
+            return
+
+        # --- Intelligent View Range Snapping ---
+        if log_y:
+            # Snap to the nearest integer powers of 10
+            y_min_target = np.floor(np.log10(global_min_y))
+            y_max_target = np.ceil(np.log10(global_max_y))
+
+            # Prevent a 0-height range if data is perfectly flat
+            if y_max_target == y_min_target:
+                y_max_target += 1
+                y_min_target -= 1
+
+            self.plot_widget.plotItem.vb.setYRange(
+                y_min_target, y_max_target, padding=0
+            )
+
         else:
-            self.plot_widget.plotItem.vb.enableAutoRange(axis="y")
+            # Calculate the Order of Magnitude (oom) of the data spread to find a clean step interval
+            span = global_max_y - global_min_y
+            if span == 0:
+                span = abs(global_max_y) if global_max_y != 0 else 1.0
+
+            oom = 10 ** np.floor(np.log10(span))
+            step = oom
+
+            # Refine the step down if the span is relatively small compared to the order of magnitude
+            if span / step <= 2:
+                step /= 5
+            elif span / step <= 5:
+                step /= 2
+
+            # Snap to linear demarcations
+            y_min_target = np.floor(global_min_y / step) * step
+            y_max_target = np.ceil(global_max_y / step) * step
+
+            # Expand by one interval if the data perfectly hits the boundary so it doesn't get visually clipped
+            if y_min_target == global_min_y:
+                y_min_target -= step
+            if y_max_target == global_max_y:
+                y_max_target += step
+
+            # A common-sense visual lock: if data is positive, don't let the snapping push the axis into the negatives
+            if global_min_y >= 0 and y_min_target < 0:
+                y_min_target = 0
+
+            self.plot_widget.plotItem.vb.setYRange(
+                y_min_target, y_max_target, padding=0
+            )
 
     def mouse_moved(self, evt):
         if not self.act_crosshairs.isChecked():
