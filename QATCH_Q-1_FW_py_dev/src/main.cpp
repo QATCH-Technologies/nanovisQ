@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b69"
-#define RELEASE_DATE "2026-02-12"
+#define CODE_VERSION "v2.6r69"
+#define RELEASE_DATE "2026-02-24"
 
 /************************** LIBRARIES **************************/
 
