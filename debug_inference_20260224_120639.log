@@ -1,0 +1,33 @@
+2026-02-24 12:06:39,507 - QATCH.logger - WARNING - Applied sklearn._RemainderColsList monkey-patch for legacy model support. 
+2026-02-24 12:06:39,507 - VisQ_Inference - INFO - Initializing ViscosityPredictorCNP with model_dir: C:\Users\QATCH\AppData\Local\Temp\tmpjlr65nc8
+2026-02-24 12:06:39,508 - VisQ_Inference - INFO - Using device: cpu
+2026-02-24 12:06:39,508 - VisQ_Inference - DEBUG - Loading preprocessor and scaler...
+2026-02-24 12:06:39,511 - VisQ_Inference - DEBUG - Loading model checkpoint from C:\Users\QATCH\AppData\Local\Temp\tmpjlr65nc8\best_model.pth
+2026-02-24 12:06:39,532 - VisQ_Inference - INFO - VisQ Inference Predictor initialized successfully.
+2026-02-24 12:06:39,532 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-02-24 12:06:39,545 - VisQ_Inference - WARNING - No context available. Falling back to Monte Carlo Dropout.
+2026-02-24 12:06:39,582 - QATCH.logger - ERROR - ERROR Traceback (most recent call last):
+2026-02-24 12:06:39,583 - QATCH.logger - ERROR - ERROR File "c:\Users\QATCH\dev\nanovisQ\QATCH\VisQAI\src\view\workers\prediction_worker.py", line 181, in run
+    final_y = np.array(y_pred, dtype=float)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-02-24 12:06:39,586 - QATCH.logger - ERROR - ERROR ValueError: could not convert string to float: 'None'
+2026-02-24 12:10:15,851 - QATCH.logger - INFO - Extracting package: C:\Users\QATCH\dev\nanovisQ\QATCH\VisQAI\assets\VisQ-new-inf.visq 
+2026-02-24 12:10:15,876 - VisQ_Inference - INFO - Initializing ViscosityPredictorCNP with model_dir: C:\Users\QATCH\AppData\Local\Temp\tmp79a4j9oq
+2026-02-24 12:10:15,876 - VisQ_Inference - INFO - Using device: cpu
+2026-02-24 12:10:15,877 - VisQ_Inference - DEBUG - Loading preprocessor and scaler...
+2026-02-24 12:10:15,880 - VisQ_Inference - DEBUG - Loading model checkpoint from C:\Users\QATCH\AppData\Local\Temp\tmp79a4j9oq\best_model.pth
+2026-02-24 12:10:15,894 - VisQ_Inference - INFO - VisQ Inference Predictor initialized successfully.
+2026-02-24 12:10:15,894 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-02-24 12:10:15,908 - VisQ_Inference - WARNING - No context available. Falling back to Monte Carlo Dropout.
+2026-02-24 12:10:15,940 - QATCH.logger - ERROR - ERROR Traceback (most recent call last):
+2026-02-24 12:10:15,941 - QATCH.logger - ERROR - ERROR File "c:\Users\QATCH\dev\nanovisQ\QATCH\VisQAI\src\view\workers\prediction_worker.py", line 181, in run
+    final_y = np.array(y_pred, dtype=float)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-02-24 12:10:15,945 - QATCH.logger - ERROR - ERROR ValueError: could not convert string to float: 'None'
+2026-02-24 12:26:58,921 - QATCH.logger - ERROR - ERROR Traceback (most recent call last):
+2026-02-24 12:26:58,927 - QATCH.logger - ERROR - ERROR File "c:\Users\QATCH\dev\nanovisQ\QATCH\ui\mainWindow.py", line 85, in eventFilter
+2026-02-24 12:26:58,931 - QATCH.logger - ERROR - ERROR def eventFilter(self, obj, event):
+2026-02-24 12:26:58,936 - QATCH.logger - ERROR - ERROR KeyboardInterrupt
+2026-02-24 12:27:02,323 - QATCH.logger - INFO -  Finishing Application...
+2026-02-24 12:27:02,328 - QATCH.logger - INFO -  Application closed
+2026-02-24 12:27:02,332 - QATCH - INFO - Closed logging handlers

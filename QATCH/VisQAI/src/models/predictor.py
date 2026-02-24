@@ -224,15 +224,34 @@ class Predictor:
     def predict_with_uncertainty(
         self,
         df: pd.DataFrame,
-        n_samples: int = 20,
+        n_samples: int = 50,
         ci_range: Tuple[float, float] = (2.5, 97.5),
+        k: int = 8,
     ) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        """
+        Returns (mean_pred_linear_cP, stats) where stats contains:
+            'mean_log10'  – mean prediction in log10 units (model-native space)
+            'std_log10'   – std in log10 units; 0.1 ≈ ±26% factor error
+            'lower_ci'    – lower percentile bound in linear cP
+            'upper_ci'    – upper percentile bound in linear cP
+
+        The 'k' parameter controls the context subset size per draw and should
+        match the few-shot elbow from evaluation (default 8).
+        """
         if self.engine is None:
             raise RuntimeError("Engine not initialized")
 
-        return self.engine.predict_with_uncertainty(
-            df, n_samples=n_samples, ci_range=ci_range
+        mean_pred, stats = self.engine.predict_with_uncertainty(
+            df, n_samples=n_samples, ci_range=ci_range, k=k
         )
+
+        # Normalise stats keys so callers that used the old 'lower'/'upper'
+        # names still work — expose both spellings.
+        stats.setdefault("lower", stats.get("lower_ci"))
+        stats.setdefault("upper", stats.get("upper_ci"))
+        stats.setdefault("std", stats.get("std_log10"))
+
+        return mean_pred, stats
 
     def predict_uncertainty(self, *args, **kwargs):
         return self.predict_with_uncertainty(*args, **kwargs)
@@ -330,27 +349,36 @@ class Predictor:
             )
 
             # 5. Process Uncertainty (Lower/Upper CI)
-            if "lower" in sub_unc and "upper" in sub_unc:
+            # The new engine returns flat 1D arrays of shape (n_samples * n_shears,).
+            # We reshape them back to (n_samples, n_shears) before building the DataFrame.
+            # Both new key names ('lower_ci'/'upper_ci') and legacy names ('lower'/'upper')
+            # are accepted so this works with old and new engine versions.
+            lower_arr = sub_unc.get("lower_ci", sub_unc.get("lower"))
+            upper_arr = sub_unc.get("upper_ci", sub_unc.get("upper"))
+
+            if lower_arr is not None and upper_arr is not None:
                 try:
-                    # Uncertainty arrays usually match prediction column structure
+                    n_rows = len(sub_preds)
+                    n_shears = len(valid_targets)
+
+                    lower_arr = np.asarray(lower_arr, dtype=float)
+                    upper_arr = np.asarray(upper_arr, dtype=float)
+
+                    # Flat 1D → 2D when the engine returns a concatenated vector
+                    if lower_arr.ndim == 1 and lower_arr.size == n_rows * n_shears:
+                        lower_arr = lower_arr.reshape(n_rows, n_shears)
+                        upper_arr = upper_arr.reshape(n_rows, n_shears)
+
                     lower_df = pd.DataFrame(
-                        sub_unc["lower"],
+                        lower_arr,
                         index=sub_preds.index,
-                        columns=sub_preds.columns,
+                        columns=valid_targets,
                     )
                     upper_df = pd.DataFrame(
-                        sub_unc["upper"],
+                        upper_arr,
                         index=sub_preds.index,
-                        columns=sub_preds.columns,
+                        columns=valid_targets,
                     )
-
-                    # Rename uncertainty columns to match canonical names using same map
-                    lower_df = lower_df.rename(columns=rename_dict)
-                    upper_df = upper_df.rename(columns=rename_dict)
-
-                    # Filter to valid targets only
-                    lower_df = lower_df.reindex(columns=valid_targets)
-                    upper_df = upper_df.reindex(columns=valid_targets)
 
                     lower_df["sample_idx"] = lower_df.index
                     upper_df["sample_idx"] = upper_df.index
@@ -458,12 +486,24 @@ class Predictor:
                 )
 
                 # -------------------------------------------------------------
-                # UPDATE: Merge history and eval samples for learning context
+                # Merge history and eval samples for the learning context, then
+                # apply diverse context selection when the engine supports it.
                 # -------------------------------------------------------------
                 combined_learning_set = pd.concat(
                     [hist_subset, eval_subset], ignore_index=True
                 )
-                self.learn(combined_learning_set.copy())
+                context_for_learn = combined_learning_set.copy()
+                if self.model_type == "CNP" and hasattr(
+                    self.engine, "_select_diverse_context"
+                ):
+                    context_for_learn = self.engine._select_diverse_context(
+                        context_for_learn, max_k=15
+                    )
+                    Log.d(
+                        f"  Diverse context for {p_type}: "
+                        f"{len(combined_learning_set)} → {len(context_for_learn)} samples"
+                    )
+                self.learn(context_for_learn)
                 # -------------------------------------------------------------
 
                 try:
@@ -527,19 +567,62 @@ class Predictor:
 
         return pd.concat(results_list, ignore_index=True)
 
-    def learn(self, df: pd.DataFrame, lr: int = 1e-3, steps: int = 50):
+    def learn(
+        self,
+        df: pd.DataFrame,
+        lr: float = 1e-3,
+        steps: int = 50,
+        n_draws: int = 20,
+        k: int = 8,
+    ):
+        """
+        Adapts the model to a new protein group by encoding its context.
+
+        For CNP engines: delegates to the encode-only learn() — no gradient
+        updates are performed on the model weights. The 'steps' and 'lr'
+        parameters are accepted for backward compatibility but are ignored.
+        Multi-draw averaging is controlled by 'n_draws' and 'k'.
+
+        For non-CNP engines: no-op (legacy models do not support adaptation).
+        """
         if self.model_type != "CNP":
             return
 
-        Log.i(f"Learning from {len(df)} new samples...")
-        self.engine.learn(df, steps=steps, lr=lr)
+        Log.i(
+            f"Learning from {len(df)} new samples "
+            f"(n_draws={n_draws}, k={k}, steps/lr ignored for CNP)..."
+        )
+        self.engine.learn(df, steps=steps, lr=lr, n_draws=n_draws, k=k)
 
     def reset(self):
         """
-        Resets the model to its original state from the zip package.
-        This effectively discards any fine-tuning performed via learn().
+        Resets the model to its base state, discarding any adaptation from learn().
+
+        For CNP engines: restores the pristine model weights from the in-memory
+        snapshot saved at load time and clears the cached memory/context vectors.
+        This is instant and does not touch the filesystem.
+
+        For non-CNP / uninitialized engines: falls back to the original full
+        package-reload path (extract, re-init) for safety.
         """
-        Log.i("Resetting model state to original package version...")
+        if (
+            self.model_type == "CNP"
+            and self.engine is not None
+            and hasattr(self.engine, "_original_state")
+        ):
+            import copy
+
+            Log.i("Resetting CNP engine state (fast in-place restore)...")
+            self.engine.model.load_state_dict(
+                copy.deepcopy(self.engine._original_state)
+            )
+            self.engine.memory_vector = None
+            self.engine.context_t = None
+            Log.i("CNP engine reset complete.")
+            return
+
+        # Legacy / non-CNP fallback: full package reload
+        Log.i("Resetting model state via full package reload...")
         if self.extracted_path.exists():
             for child in self.extracted_path.iterdir():
                 if child.is_file():

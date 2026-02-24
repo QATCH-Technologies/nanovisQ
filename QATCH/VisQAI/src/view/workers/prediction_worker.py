@@ -165,15 +165,22 @@ class PredictionThread(QtCore.QThread):
 
                 if requested_shear is not None and len(requested_shear) > 0:
                     final_x = np.array(requested_shear, dtype=float)
-                    final_y = np.interp(final_x, std_shear_rates, y_pred)
-                    final_lower = np.interp(final_x, std_shear_rates, lower)
-                    final_upper = np.interp(final_x, std_shear_rates, upper)
-                else:
-                    final_x = std_shear_rates
-                    final_y = y_pred
-                    final_lower = lower
-                    final_upper = upper
 
+                    # Explicitly cast interpolation arrays to float to prevent dtype('O') errors
+                    std_shear_float = np.array(std_shear_rates, dtype=float)
+                    y_pred_float = np.array(y_pred, dtype=float)
+                    lower_float = np.array(lower, dtype=float)
+                    upper_float = np.array(upper, dtype=float)
+
+                    final_y = np.interp(final_x, std_shear_float, y_pred_float)
+                    final_lower = np.interp(final_x, std_shear_float, lower_float)
+                    final_upper = np.interp(final_x, std_shear_float, upper_float)
+                else:
+                    # Cast fallbacks to float as well so downstream GUI/plotting doesn't break
+                    final_x = np.array(std_shear_rates, dtype=float)
+                    final_y = np.array(y_pred, dtype=float)
+                    final_lower = np.array(lower, dtype=float)
+                    final_upper = np.array(upper, dtype=float)
                 # 8. Package Data
                 data_package = {
                     "x": final_x.tolist(),
