@@ -80,7 +80,8 @@ class _MainWindow(QtWidgets.QMainWindow):
         app_instance = QtWidgets.QApplication.instance()
         if app_instance:
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+            # capture clicks anywhere on gui
+            app_instance.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         # Handle mouse click events (e.g. hide on click)
@@ -374,8 +375,10 @@ class ControlsWindow(QtWidgets.QMainWindow):
         self.menubar.append(target.menuBar().addMenu("&Users"))
         self.username = self.menubar[1].addAction("User: [NONE]")
         self.username.setEnabled(False)
-        self.signinout = self.menubar[1].addAction("&Sign In", self.set_user_profile)
-        self.menubar[1].addAction("Select &directory...", self.set_working_directory)
+        self.signinout = self.menubar[1].addAction(
+            "&Sign In", self.set_user_profile)
+        self.menubar[1].addAction(
+            "Select &directory...", self.set_working_directory)
         self.manage = self.menubar[1].addAction(
             "&Manage Users...", self.manage_user_profiles
         )
@@ -390,23 +393,29 @@ class ControlsWindow(QtWidgets.QMainWindow):
         )
         if Constants.show_visQ_in_R_builds:
             self.modebar.addAction(
-                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0.setLearnMode(None)
+                "&3: VisQ.AI", lambda: self.parent.MainWin.ui0.setLearnMode(
+                    None)
             )
         self.chk1 = self.menubar[2].addAction("&Console", self.toggle_console)
         self.chk1.setCheckable(True)
         self.chk1.setChecked(
-            self.parent.AppSettings.value("viewState_Console", "True").lower() == "true"
+            self.parent.AppSettings.value(
+                "viewState_Console", "True").lower() == "true"
         )
-        self.chk2 = self.menubar[2].addAction("&Amplitude", self.toggle_amplitude)
+        self.chk2 = self.menubar[2].addAction(
+            "&Amplitude", self.toggle_amplitude)
         self.chk2.setCheckable(True)
         self.chk2.setChecked(
-            self.parent.AppSettings.value("viewState_Amplitude", "True").lower()
+            self.parent.AppSettings.value(
+                "viewState_Amplitude", "True").lower()
             == "true"
         )
-        self.chk3 = self.menubar[2].addAction("&Temperature", self.toggle_temperature)
+        self.chk3 = self.menubar[2].addAction(
+            "&Temperature", self.toggle_temperature)
         self.chk3.setCheckable(True)
         self.chk3.setChecked(
-            self.parent.AppSettings.value("viewState_Temperature", "True").lower()
+            self.parent.AppSettings.value(
+                "viewState_Temperature", "True").lower()
             == "true"
         )
         self.chk4 = self.menubar[2].addAction(
@@ -420,7 +429,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
             == "true"
         )
         self.menubar.append(target.menuBar().addMenu("&Help"))
-        self.chk5 = self.menubar[3].addAction("View &Tutorials", self.view_tutorials)
+        self.chk5 = self.menubar[3].addAction(
+            "View &Tutorials", self.view_tutorials)
         self.chk5.setCheckable(False)
         self.menubar.append(self.menubar[3].addMenu("View &Documentation"))
         self.menubar[4].addAction("&Release Notes", self.release_notes)
@@ -445,7 +455,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
             __version__ as QModel6_version,
         )
 
-        qmodel_versions_menu = self.menubar[3].addMenu("Model versions (3 available)")
+        qmodel_versions_menu = self.menubar[3].addMenu(
+            "Model versions (3 available)")
         self.menubar.append(qmodel_versions_menu)
         self.q_version_v1 = self.menubar[5].addAction(
             "ModelData v{} ({})".format(ModelData_version, ModelData_release),
@@ -629,7 +640,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Console window")
             self.parent.MainWin.ui0.logview.setVisible(True)
             # self.parent.LogWin.ui4.centralwidget.setVisible(True)
-        self.parent.AppSettings.setValue("viewState_Console", self.chk1.isChecked())
+        self.parent.AppSettings.setValue(
+            "viewState_Console", self.chk1.isChecked())
 
     def toggle_amplitude(self):
         tc = self.show_top_plot()
@@ -648,7 +660,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Amplitude", self.chk2.isChecked())
+        self.parent.AppSettings.setValue(
+            "viewState_Amplitude", self.chk2.isChecked())
 
     def toggle_temperature(self):
         tc = self.show_top_plot()
@@ -659,7 +672,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
             Log.d("Showing Temperature plot")
             self.parent._plt4.setVisible(True)
         self.hide_top_plot(tc)
-        self.parent.AppSettings.setValue("viewState_Temperature", self.chk3.isChecked())
+        self.parent.AppSettings.setValue(
+            "viewState_Temperature", self.chk3.isChecked())
 
     def toggle_RandD(self):
         if self.current_timer.isActive():
@@ -701,7 +715,8 @@ class ControlsWindow(QtWidgets.QMainWindow):
         QtCore.QTimer.singleShot(0, self.toggle_RandD)
 
     def view_tutorials(self):
-        self.parent.TutorialWin.setVisible(not self.parent.TutorialWin.isVisible())
+        self.parent.TutorialWin.setVisible(
+            not self.parent.TutorialWin.isVisible())
         self.chk5.setChecked(self.parent.TutorialWin.isVisible())
 
     def open_file(self, filepath, relative_to_cwd=True):
@@ -831,7 +846,8 @@ class Rename_Output_Files(QtCore.QObject):
             if self.bWorker[i].isVisible():
                 remaining_threads += 1
         if remaining_threads > 0:
-            Log.d(f"Waiting on {remaining_threads} Run Info threads to close...")
+            Log.d(
+                f"Waiting on {remaining_threads} Run Info threads to close...")
             return  # not done yet
         color_err = "#333333"
         labelbar = "Run Stopped. Saved to local data."
@@ -947,7 +963,8 @@ class Rename_Output_Files(QtCore.QObject):
             content = []
             with open(Constants.new_files_path, "r") as file:
                 self.indicate_analyzing()
-                new_file_time = strftime(Constants.csv_default_prefix, localtime())
+                new_file_time = strftime(
+                    Constants.csv_default_prefix, localtime())
                 content = file.readlines()
                 content.sort()
 
@@ -1002,7 +1019,8 @@ class Rename_Output_Files(QtCore.QObject):
                             _dev_name = _dev_parts[1]
 
                         # Retrieve device info based on the device name and port-id
-                        dev_info = FileStorage.DEV_info_get(_dev_pid, _dev_name)
+                        dev_info = FileStorage.DEV_info_get(
+                            _dev_pid, _dev_name)
                         if "NAME" in dev_info:
                             if dev_info["NAME"] != _dev_name:
                                 dev_name = dev_info["NAME"]
@@ -1018,7 +1036,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 ) | self.get_active_multi_port()
                             # else: 4x1 system, nothing to do
                     except:
-                        Log.e(TAG, f"Unable to lookup device info for: {dev_name}")
+                        Log.e(
+                            TAG, f"Unable to lookup device info for: {dev_name}")
 
                     # Controls saving with errors.
                     force_save = True
@@ -1126,7 +1145,8 @@ class Rename_Output_Files(QtCore.QObject):
                                 )
                             )
                             # trim off dev_id
-                            run_directory = run_directory[: run_directory.rfind("_")]
+                            run_directory = run_directory[: run_directory.rfind(
+                                "_")]
                             os.makedirs(
                                 os.path.join(
                                     path_root, run_parent_directory, run_directory
@@ -1155,7 +1175,8 @@ class Rename_Output_Files(QtCore.QObject):
                     # Attempt to rename temporary files to the new run path.
                     os.rename(old_path, new_run_path)
                     Log.i(
-                        ' Renamed "{}" ->\n         "{}"'.format(old_path, new_run_path)
+                        ' Renamed "{}" ->\n         "{}"'.format(
+                            old_path, new_run_path)
                     )
                     copy_file = new_run_path
                 except Exception:
@@ -1232,7 +1253,8 @@ class Rename_Output_Files(QtCore.QObject):
                         zf.write(copy_file, arcname=archive_file)
                         if archive_file.endswith(".csv"):
                             zf.writestr(
-                                crc_file, str(hex(zf.getinfo(archive_file).CRC))
+                                crc_file, str(
+                                    hex(zf.getinfo(archive_file).CRC))
                             )
 
                     os.remove(copy_file)
@@ -1361,7 +1383,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dbx_connection = None
 
         # Check application settings global variable to get/set elsewhere
-        self.AppSettings = QtCore.QSettings(Constants.app_publisher, Constants.app_name)
+        self.AppSettings = QtCore.QSettings(
+            Constants.app_publisher, Constants.app_name)
 
         # Sets up the user interface from the generated Python script using Qt Designer
         # Instantiates Ui classes
@@ -1581,13 +1604,15 @@ class MainWindow(QtWidgets.QMainWindow):
                 Log.w("No data devices available for selection.")
             return
         if data_folder == None:
-            self.data_folders = FileStorage.DEV_get_logged_data_folders(data_device)
+            self.data_folders = FileStorage.DEV_get_logged_data_folders(
+                data_device)
             if len(self.data_folders) > 0:
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_folders, "run")
                 self.aThread.started.connect(self.aWorker.show)
                 self.aWorker.finished.connect(self.aThread.quit)
-                self.aWorker.finished.connect(self.analyze_data_get_data_folder)
+                self.aWorker.finished.connect(
+                    self.analyze_data_get_data_folder)
                 self.aThread.start()
             else:
                 Log.w("No data folders available for selection.")
@@ -1619,12 +1644,18 @@ class MainWindow(QtWidgets.QMainWindow):
                         self.data_files = [
                             x for x in self.data_files if not x.endswith(".crc")
                         ]
-            self.data_files = [x for x in self.data_files if not x.endswith("_tec.csv")]
-            self.data_files = [x for x in self.data_files if not x.endswith("_poi.csv")]
-            self.data_files = [x for x in self.data_files if not x.endswith(".txt")]
-            self.data_files = [x for x in self.data_files if not x.endswith(".xml")]
-            self.data_files = [x for x in self.data_files if not x.endswith(".pdf")]
-            self.data_files = [x for x in self.data_files if not x.endswith(".zip")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith("_tec.csv")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith("_poi.csv")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith(".txt")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith(".xml")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith(".pdf")]
+            self.data_files = [
+                x for x in self.data_files if not x.endswith(".zip")]
             self.data_files = [
                 x
                 for x in self.data_files
@@ -1634,7 +1665,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.data_file = self.data_files[0]
                 Log.i("Selected data file = {}".format(self.data_file))
                 # continue analysis
-                self.analyze_data(self.data_device, self.data_folder, self.data_file)
+                self.analyze_data(self.data_device,
+                                  self.data_folder, self.data_file)
             elif "_3rd.csv" in self.data_files[0] or "_3rd.csv" in self.data_files[-1]:
                 if "_3rd.csv" in self.data_files[0]:
                     self.data_file = self.data_files[0]
@@ -1645,7 +1677,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 )
                 Log.i("Selected data file = {}".format(self.data_file))
                 # continue analysis
-                self.analyze_data(self.data_device, self.data_folder, self.data_file)
+                self.analyze_data(self.data_device,
+                                  self.data_folder, self.data_file)
             elif len(self.data_files) > 1:
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_files, "log file")
@@ -1693,7 +1726,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     name = m.getAttribute("name")
                     value = m.getAttribute("value")
                     if name == "start":
-                        captured = value[0 : value.find("T")]
+                        captured = value[0: value.find("T")]
             else:
                 zn = os.path.join(os.path.split(xml_path)[0], "capture.zip")
                 # Log.e(f"zn: {zn}")
@@ -1801,7 +1834,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Check if file exists
         if not os.path.exists(path_to_plate_config):
-            Log.e(tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
+            Log.e(
+                tag=TAG, msg=f"The file '{path_to_plate_config}' does not exist.")
             raise FileNotFoundError(
                 f"The file '{path_to_plate_config}' does not exist."
             )
@@ -1961,21 +1995,25 @@ class MainWindow(QtWidgets.QMainWindow):
                 os.makedirs(os.path.join(path_parts[0], subDir), exist_ok=True)
 
                 # Uniquify file names.
-                new_file_time = strftime(Constants.csv_default_prefix, localtime())
+                new_file_time = strftime(
+                    Constants.csv_default_prefix, localtime())
 
                 new_path = os.path.join(
-                    path_parts[0], subDir, "{}_{}".format(new_file_time, path_parts[1])
+                    path_parts[0], subDir, "{}_{}".format(
+                        new_file_time, path_parts[1])
                 )
                 try:
                     os.rename(old_path, new_path)
                     Log.i(
                         tag=TAG,
-                        msg='Renamed "{}" ->\n         "{}"'.format(old_path, new_path),
+                        msg='Renamed "{}" ->\n         "{}"'.format(
+                            old_path, new_path),
                     )
                 except:
                     Log.e(
                         tag=TAG,
-                        msg='Failed to rename "{}" to "{}"!'.format(old_path, new_path),
+                        msg='Failed to rename "{}" to "{}"!'.format(
+                            old_path, new_path),
                     )
         except:
             Log.e(
@@ -2110,7 +2148,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         else:
             # Check for and remove any invalid calibration files in root of config folder on CAL start
-            paths = [Constants.csv_calibration_path, Constants.cvs_peakfrequencies_path]
+            paths = [Constants.csv_calibration_path,
+                     Constants.cvs_peakfrequencies_path]
             for p in paths:
                 path = p.replace(Constants.tbd_active_device_name_path, "")
                 if os.path.exists(path):
@@ -2263,7 +2302,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.InfoWin.ui3.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label4
                 )
-                label4a = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
+                label4a = str(
+                    int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label4a
                 )
@@ -2328,7 +2368,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
             if self._get_source() == OperationType.calibration:
                 self.ControlsWin.ui1.pButton_Clear.setEnabled(False)  # insert
-                self.ControlsWin.ui1.pButton_Reference.setEnabled(False)  # insert
+                self.ControlsWin.ui1.pButton_Reference.setEnabled(
+                    False)  # insert
         elif worker_check == 0:
             Log.w(tag=TAG, msg="Port is not available")
             PopUp.warning(
@@ -2456,7 +2497,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.sBox_Samples.setEnabled(not enabled)  # insert
         self.ControlsWin.ui1.pButton_Clear.setEnabled(not enabled)
         self.ControlsWin.ui1.pButton_Reference.setEnabled(not enabled)
-        self.ControlsWin.ui1.pButton_Reference.setChecked(False)  # clear toggle state
+        self.ControlsWin.ui1.pButton_Reference.setChecked(
+            False)  # clear toggle state
 
         enable_start = enabled
         if enable_start:
@@ -2476,8 +2518,14 @@ class MainWindow(QtWidgets.QMainWindow):
             enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
 
         self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
-        self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
-        self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+        # self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
+        # self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+
+        # Modified for new run-status controls
+        if hasattr(self.ControlsWin.ui1, "run_controls"):
+            self.ControlsWin.ui1.run_controls.setEnabled(
+                enable_start or enable_stop)
+
         self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
         self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui1.tool_Advanced.setEnabled(enabled)
@@ -2750,16 +2798,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.ControlsWin.ui1.pButton_Stop.clicked.connect(self.stop)
         self.ControlsWin.ui1.pButton_Clear.clicked.connect(self.clear)
         self.ControlsWin.ui1.pButton_Reference.clicked.connect(self.reference)
-        self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(self.factory_defaults)
+        self.ControlsWin.ui1.pButton_ResetApp.clicked.connect(
+            self.factory_defaults)
         self.ControlsWin.ui1.pButton_ID.clicked.connect(self._port_identify)
-        self.ControlsWin.ui1.pButton_Refresh.clicked.connect(self._port_list_refresh)
-        self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(self._update_sample_size)
+        self.ControlsWin.ui1.pButton_Refresh.clicked.connect(
+            self._port_list_refresh)
+        self.ControlsWin.ui1.sBox_Samples.valueChanged.connect(
+            self._update_sample_size)
         self.ControlsWin.ui1.slTemp.valueChanged.connect(self._update_tec_temp)
-        self.ControlsWin.ui1.slTemp.sliderReleased.connect(self._update_tec_temp)
+        self.ControlsWin.ui1.slTemp.sliderReleased.connect(
+            self._update_tec_temp)
         self.ControlsWin.ui1.cBox_Source.currentIndexChanged.connect(
             self._source_changed
         )
-        self.ControlsWin.ui1.cBox_Port.currentIndexChanged.connect(self._port_changed)
+        self.ControlsWin.ui1.cBox_Port.currentIndexChanged.connect(
+            self._port_changed)
         self.ControlsWin.ui1.cBox_MultiMode.currentIndexChanged.connect(
             self.set_multi_mode
         )
@@ -2774,9 +2827,12 @@ class MainWindow(QtWidgets.QMainWindow):
     def _configure_filesystem(self):
         # set permissions on local application data folders and files
         try:
-            local_app_data_path = os.path.split(Constants.local_app_data_path)[0]
-            path_to_logged_data = os.path.join(os.getcwd(), Constants.log_export_path)
-            path_to_mydocs_data = os.path.join(os.getcwd(), Constants.app_publisher)
+            local_app_data_path = os.path.split(
+                Constants.local_app_data_path)[0]
+            path_to_logged_data = os.path.join(
+                os.getcwd(), Constants.log_export_path)
+            path_to_mydocs_data = os.path.join(
+                os.getcwd(), Constants.app_publisher)
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
                 subprocess.call(
@@ -2856,7 +2912,8 @@ class MainWindow(QtWidgets.QMainWindow):
             bundled_exists = os.path.isfile(bundled_database_path)
             if bundled_exists and not localapp_exists:
                 # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.dirname(machine_database_path), exist_ok=True)
+                os.makedirs(os.path.dirname(
+                    machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
                 Log.w(f"Copied the bundled core database to machine folder")
                 # Populate DB with core training samples
@@ -2895,7 +2952,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     tmp_path = machine_database.create_temp_decrypt()
                     try:
                         if tmp_path:
-                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
+                            migrator = DatabaseMigrator(
+                                tmp_path, backup_dir=None)
                             current_version = migrator.get_current_version()
                             target_version = MigrationVersion(1, 1, 0)
                             if current_version < target_version:
@@ -2904,7 +2962,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                     to_version=target_version,
                                     up_sql=[""],
                                     down_sql=[""],
-                                    data_transform=lambda conn: conn.execute(""),
+                                    data_transform=lambda conn: conn.execute(
+                                        ""),
                                     autofill_defaults={""},
                                     description="",
                                 )
@@ -2930,7 +2989,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     if machine_database.get_ingredient(ing.id) is None:
                         # We must use the same `enc_id`, do not use `ingctrl.add()`
                         machine_database.add_ingredient(ing)
-                        Log.w(f"Added missing core ingredient to database: {ing.name}")
+                        Log.w(
+                            f"Added missing core ingredient to database: {ing.name}")
                 bundled_database.close()
                 machine_database.close()
                 # TODO: Think of a better way to do this!
@@ -3019,7 +3079,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.TutorialCheckbox.clicked.connect(self.toggleTutorialOnStartup)
         # force widget to minimum width, determined by length of checkbox text
         min_size = self.TutorialWin.minimumSizeHint()
-        self.TutorialWidget.setMinimumSize(min_size.width() + 42, min_size.height())
+        self.TutorialWidget.setMinimumSize(
+            min_size.width() + 42, min_size.height())
         # self.TutorialText.setMinimumSize(min_size.width(), min_size.height())
 
         if UserProfiles.count() == 0:
@@ -3091,7 +3152,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         if not self._identifying:
             Log.i(TAG, f"Identifying port {friendly_port_name}...")
-            self.ControlsWin.ui1.pButton_ID.setStyleSheet("background: yellow;")
+            self.ControlsWin.ui1.pButton_ID.setStyleSheet(
+                "background: yellow;")
             self._identifying = True
             if (
                 True
@@ -3443,7 +3505,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.set_cal1 = text
             Log.i(
-                "Set on device '{}': CAL1 = {} ({}C)".format(dev_handle, cal_new, text)
+                "Set on device '{}': CAL1 = {} ({}C)".format(
+                    dev_handle, cal_new, text)
             )
             if self.setEEPROM(self._selected_port, 1, cal_new):
                 Log.i("Device EEPROM write CAL1 success!")
@@ -3488,7 +3551,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 self.set_cal2 = text
             Log.i(
-                "Set on device '{}': CAL2 = {} ({}C)".format(dev_handle, cal_new, text)
+                "Set on device '{}': CAL2 = {} ({}C)".format(
+                    dev_handle, cal_new, text)
             )
             if self.setEEPROM(self._selected_port, 3, cal_new):
                 Log.i("Device EEPROM write CAL2 success!")
@@ -3517,7 +3581,8 @@ class MainWindow(QtWidgets.QMainWindow):
             EEPROM_serial.open()
 
             # Write EEPROM address with value on the device
-            EEPROM_serial.write("EEPROM {} {}\n".format(address, value).encode())
+            EEPROM_serial.write(
+                "EEPROM {} {}\n".format(address, value).encode())
             timeoutAt = time() + 3
             temp_reply = ""
             lines_in_reply = 2
@@ -3526,7 +3591,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 # timeout needed if old FW:
                 while EEPROM_serial.in_waiting == 0 and time() < timeoutAt:
                     pass
-                temp_reply += EEPROM_serial.read(EEPROM_serial.in_waiting).decode()
+                temp_reply += EEPROM_serial.read(
+                    EEPROM_serial.in_waiting).decode()
 
             if time() < timeoutAt:
                 success = True
@@ -3547,7 +3613,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # This function is connected to the valueChanged signal of the sample Spin Box.
         if self.worker is not None:
             # Log.i(TAG, "Changing sample size")
-            self.worker.reset_buffers(self.ControlsWin.ui1.sBox_Samples.value() + 1)
+            self.worker.reset_buffers(
+                self.ControlsWin.ui1.sBox_Samples.value() + 1)
 
     ###########################################################################
     # Updates and redraws the graphics in the plot.
@@ -3585,15 +3652,40 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker._forecaster_in.put(snapshot)
                 if not self.worker._forecaster_out.empty():
                     try:
-                        pred_int, pred_str = self.worker._forecaster_out.get()
-                        ui_value = pred_int + 1
-                        ui_value = max(0, min(ui_value, 4))
-                        self.ControlsWin.ui1.fill_status_progress_bar.setValue(ui_value)
-                        self.ControlsWin.ui1.fill_status_progress_bar.setFormat(
-                            f"Run: %v/%m ({pred_str})"
-                        )
+                        # Get raw model prediction (0=Empty, 1=Init, 2=Ch1, 3=Ch2, 4=Ch3)
+                        pred_int, _ = self.worker._forecaster_out.get()
+                        # This logic handles drop application code.
+                        is_drop_applied = all(self._drop_applied)
+                        # Refactored messages out of constants.  Can move them back if we like the messages.
+                        ui_step = 0
+                        status_msg = "Unkown"
+                        if pred_int == 0:
+                            if not is_drop_applied:
+                                status_msg = "Waiting for drop"
+                                ui_step = 0
+                            else:
+                                status_msg = "Drop applied, waiting for init data"
+                                ui_step = 1
+                        elif pred_int == 1:
+                            status_msg = "Init points detected, waiting on 1st ch"
+                            ui_step = 2
+                        elif pred_int == 2:
+                            status_msg = "1st ch detected, waiting on 2nd ch"
+                            ui_step = 3
+                        elif pred_int == 3:
+                            status_msg = "2nd ch detected, waiting on 3rd ch"
+                            ui_step = 4
+                        elif pred_int >= 4:
+                            status_msg = "Fill complete"
+                            ui_step = 5
+
+                        if hasattr(self.ControlsWin.ui1, "run_controls"):
+                            self.ControlsWin.ui1.run_controls.update_progress(
+                                ui_step, 5, status_msg
+                            )
+
                     except Exception as e:
-                        Log.e(TAG, f"Error retrieving forecast result: {e}")
+                        Log.e(TAG, f"Error retrieving fill status: {e}")
 
             (
                 self._ser_error1,
@@ -3620,7 +3712,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 ############################################################
                 if self.tecWorker._tec_locked:
                     self.tecWorker._tec_temp = vectortemp[0]
-                    self.tecWorker._tec_power = self.worker.get_value2_buffer(0)
+                    self.tecWorker._tec_power = self.worker.get_value2_buffer(
+                        0)
                     sp = self.tecWorker._tec_setpoint
                     pv = self.tecWorker._tec_temp
                     op = self.tecWorker._tec_power
@@ -3628,7 +3721,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         sp = 0.25
                     if op == 0:
                         new_l1 = (
-                            "[AUTO-OFF ERROR]" if np.isnan(pv) else "[AUTO-OFF TIMEOUT]"
+                            "[AUTO-OFF ERROR]" if np.isnan(
+                                pv) else "[AUTO-OFF TIMEOUT]"
                         )
                     else:
                         new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
@@ -3704,8 +3798,10 @@ class MainWindow(QtWidgets.QMainWindow):
                             d2 = float("{0:.4f}".format(vector2[0] * 1e6))
                             d3 = float("{0:.2f}".format(vectortemp[0]))
                         else:
-                            a1 = vector1[0] - self._reference_value_frequency[0]
-                            a2 = vector2[0] - self._reference_value_dissipation[0]
+                            a1 = vector1[0] - \
+                                self._reference_value_frequency[0]
+                            a2 = vector2[0] - \
+                                self._reference_value_dissipation[0]
                             d1 = float("{0:.2f}".format(a1))
                             d2 = float("{0:.4f}".format(a2 * 1e6))
                             d3 = float("{0:.2f}".format(vectortemp[0]))
@@ -3756,11 +3852,13 @@ class MainWindow(QtWidgets.QMainWindow):
                                             labelbar = "Capturing data... Apply drop when ready..."
                                             if (
                                                 abs(
-                                                    vector1[0] - self._baseline_freq_avg
+                                                    vector1[0] -
+                                                    self._baseline_freq_avg
                                                 )
                                                 > 10 * self._baseline_freq_noise
                                                 and abs(
-                                                    vector2[0] - self._baseline_diss_avg
+                                                    vector2[0] -
+                                                    self._baseline_diss_avg
                                                 )
                                                 > 10 * self._baseline_diss_noise
                                             ):
@@ -3854,7 +3952,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 "background: #ff0000; padding: 1px; border: 1px solid #cccccc"
                             )
 
-                label8 = str(int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
+                label8 = str(
+                    int(self._readFREQ[self._readFREQ.size // 2])) + " Hz"
                 self.InfoWin.ui3.info6.setText(
                     "<font color=#0000ff > Frequency Value </font>" + label8
                 )
@@ -3866,11 +3965,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.InfoWin.ui3.info4.setText(
                     "<font color=#0000ff > Stop Frequency </font>" + label6
                 )
-                label5 = str(int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
+                label5 = str(
+                    int(self._readFREQ[-1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info4a.setText(
                     "<font color=#0000ff > Frequency Range </font>" + label5
                 )
-                label4 = str(int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
+                label4 = str(
+                    int(self._readFREQ[1] - self._readFREQ[0])) + " Hz"
                 self.InfoWin.ui3.info5.setText(
                     "<font color=#0000ff > Sample Rate </font>" + label4
                 )
@@ -4057,7 +4158,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return
                     self._plt1.clear()
                     self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+                    self._plt1.linkedViewChanged(
+                        self._plt0.vb, self._plt1.XAxis)
 
             # updates for multiple plot y-axes
             updateViews1()
@@ -4065,7 +4167,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 if p == None:
                     continue
                 # p.vb.sigResized.connect(updateViews1)
-                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p.setLimits(yMax=None, yMin=None,
+                            minYRange=None, maxYRange=None)
                 p.enableAutoRange(axis="x", enable=True)
                 p.enableAutoRange(axis="y", enable=True)
                 p.plot(
@@ -4215,7 +4318,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     return
                     self._plt1.clear()
                     self._plt1.setGeometry(self._plt0.vb.sceneBoundingRect())
-                    self._plt1.linkedViewChanged(self._plt0.vb, self._plt1.XAxis)
+                    self._plt1.linkedViewChanged(
+                        self._plt0.vb, self._plt1.XAxis)
 
             # updates for multiple plot y-axes
             updateViews1()
@@ -4235,7 +4339,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._amps[i] = self.worker.get_value1_buffer(i)
                 else:
                     # p.vb.sigResized.connect(updateViews1)
-                    p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                    p.setLimits(yMax=None, yMin=None,
+                                minYRange=None, maxYRange=None)
                     p.enableAutoRange(axis="x", enable=True)
                     p.enableAutoRange(axis="y", enable=True)
                     p.plot(
@@ -4269,7 +4374,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     try:
                         if self._text4[i] == None:
                             # 'size' and 'bold' retained when calling 'setText()'
-                            self._text4[i] = pg.LabelItem(size="11pt", bold=True)
+                            self._text4[i] = pg.LabelItem(
+                                size="11pt", bold=True)
                             self._text4[i].setParentItem(_plt2.graphicsItem())
                             self._text4[i].anchor(
                                 itemPos=(0.5, 0.25), parentPos=(0.5, 0.25)
@@ -4287,18 +4393,22 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self._baselinedata[i] = [
                                     [
                                         np.amin(
-                                            self.worker.get_d1_buffer(i)[:numPoints]
+                                            self.worker.get_d1_buffer(
+                                                i)[:numPoints]
                                         ),
                                         np.amax(
-                                            self.worker.get_d1_buffer(i)[:numPoints]
+                                            self.worker.get_d1_buffer(
+                                                i)[:numPoints]
                                         ),
                                     ],
                                     [
                                         np.amin(
-                                            self.worker.get_d2_buffer(i)[:numPoints]
+                                            self.worker.get_d2_buffer(
+                                                i)[:numPoints]
                                         ),
                                         np.amax(
-                                            self.worker.get_d2_buffer(i)[:numPoints]
+                                            self.worker.get_d2_buffer(
+                                                i)[:numPoints]
                                         ),
                                     ],
                                 ]
@@ -4313,8 +4423,10 @@ class MainWindow(QtWidgets.QMainWindow):
                                 _plt3.viewRange()[1],
                             ]
                             current_deltas = np.diff(current_y_range)[:, 0]
-                            last_y_deltas = np.diff(self._last_y_range[i])[:, 0]
-                            baseline_deltas = np.diff(self._baselinedata[i])[:, 0]
+                            last_y_deltas = np.diff(
+                                self._last_y_range[i])[:, 0]
+                            baseline_deltas = np.diff(
+                                self._baselinedata[i])[:, 0]
                             # self._last_y_range[i] != current_y_range:
                             if any(
                                 np.subtract(current_deltas, last_y_deltas)
@@ -4407,14 +4519,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 for a in range(1, len(self._amps)):
                     combined_amps = np.maximum(combined_amps, self._amps[a])
                 p = self._plt0_arr[i]
-                p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
+                p.setLimits(yMax=None, yMin=None,
+                            minYRange=None, maxYRange=None)
                 p.enableAutoRange(axis="x", enable=True)
                 p.enableAutoRange(axis="y", enable=True)
-                p.plot(x=self._readFREQ, y=combined_amps, pen=Constants.plot_colors[0])
+                p.plot(x=self._readFREQ, y=combined_amps,
+                       pen=Constants.plot_colors[0])
                 self.labels = []
                 for j in range(len(self._amps)):
                     am = np.argmax(self._amps[j])
-                    item = pg.TextItem(text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
+                    item = pg.TextItem(
+                        text=str(j + 1), color=(0, 0, 0), anchor=(0, 1))
                     item.setPos(self._readFREQ[am], combined_amps[am])
                     self.labels.append(item)
                     p.addItem(self.labels[j])
@@ -4460,11 +4575,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
         added = differences & set(after_items)
         if len(added) > 0:  # port(s) added
-            added_str = str(sorted(added)).translate({ord(i): None for i in "[{',}]"})
+            added_str = str(sorted(added)).translate(
+                {ord(i): None for i in "[{',}]"})
             if len(added) == 1:
                 # PopUp.question(self, title, "Found new port: {}\nWould you like to use it?".format(added_str), default=True)
                 use_port = True
-                Log.w(f"Found new port: {[t.split(':')[0] for t in added_str.split()]}")
+                Log.w(
+                    f"Found new port: {[t.split(':')[0] for t in added_str.split()]}")
                 if use_port:
                     i = self.ControlsWin.ui1.cBox_Port.findData(added_str)
                     self.ControlsWin.ui1.cBox_Port.setCurrentIndex(i)
@@ -4608,13 +4725,14 @@ class MainWindow(QtWidgets.QMainWindow):
                         ports[i] += f";{dev_info['IP']}"
                         if " (" in port_names[i]:
                             port_names[i] = "{} ({})".format(
-                                port_names[i][0 : port_names[i].index(" (")],
+                                port_names[i][0: port_names[i].index(" (")],
                                 dev_info["IP"],
                             )
                         else:
                             port_names[i] += f" ({dev_info['IP']})"
                         if not net_exists:
-                            Log.e(f"ERROR: Failed to ping device {dev_info['IP']}")
+                            Log.e(
+                                f"ERROR: Failed to ping device {dev_info['IP']}")
                 except ValueError:
                     pass  # device not connected, ignore it
                 except:
@@ -4661,7 +4779,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # usb and ethernet icons
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
         usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
-        ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
+        ethernet_icon = QtGui.QIcon(os.path.join(
+            icon_path, "ethernet-icon.png"))  # png
 
         if ports is not None:
             for i in range(len(ports)):
@@ -4669,9 +4788,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 dev_name = port_parts[0]
                 is_networked = port_parts[-1].count(".") == 3
                 port_icon = ethernet_icon if is_networked else usb_icon
-                self.ControlsWin.ui1.cBox_Port.addItem(port_icon, dev_name, ports[i])
+                self.ControlsWin.ui1.cBox_Port.addItem(
+                    port_icon, dev_name, ports[i])
             self.ControlsWin.ui1.cBox_Port.model().sort(0)
-            self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+            self.ControlsWin.ui1.cBox_Port.addItem(
+                "⚙️  Configure...", "CMD_DEV_INFO")
 
         # Log.d(selected_port, ports)
         selected_port_parts = selected_port.split(";")
@@ -4775,7 +4896,8 @@ class MainWindow(QtWidgets.QMainWindow):
         else:
             idx = (source.value + 1) % 2  # 0 -> 1, 1 -> 0
         if not self.ControlsWin.ui1.cBox_Speed.currentText() == "0":
-            self.restore_mode_idx[idx] = self.ControlsWin.ui1.cBox_Speed.currentIndex()
+            self.restore_mode_idx[idx] = self.ControlsWin.ui1.cBox_Speed.currentIndex(
+            )
         # do not use 'idx' here
         selected_index = self.restore_mode_idx[source.value]
 
@@ -4819,8 +4941,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         j = self.ControlsWin.ui1.cBox_Port.currentIndex() + 1
                     # Check age of calibration file, and ask for new cal if older than 15 mins
                     cal_file_path = Constants.cvs_peakfrequencies_path
-                    cal_file_path = FileStorage.DEV_populate_path(cal_file_path, j)
-                    timestamp = os.path.getmtime(cal_file_path)  # may throw OSError
+                    cal_file_path = FileStorage.DEV_populate_path(
+                        cal_file_path, j)
+                    timestamp = os.path.getmtime(
+                        cal_file_path)  # may throw OSError
                     last_modified = datetime.datetime.fromtimestamp(timestamp)
                     last_cal_age = datetime.datetime.now() - last_modified
                     FIFTEEN_MINS = datetime.timedelta(minutes=15)
@@ -4851,7 +4975,8 @@ class MainWindow(QtWidgets.QMainWindow):
         for e in elems:
             if e != None:
                 e.clear()
-                e.setLimits(yMin=None, yMax=None, minYRange=None, maxYRange=None)
+                e.setLimits(yMin=None, yMax=None,
+                            minYRange=None, maxYRange=None)
                 e.setXRange(min=0, max=1)
                 e.setYRange(min=0, max=1)
         if self._plt2_arr[0] != None:
@@ -4895,9 +5020,11 @@ class MainWindow(QtWidgets.QMainWindow):
                         self._labelref2 = "not set"
                     else:
                         self._reference_flag = True
-                        d1 = float("{0:.2f}".format(self._reference_value_frequency[i]))
+                        d1 = float("{0:.2f}".format(
+                            self._reference_value_frequency[i]))
                         d2 = float(
-                            "{0:.4f}".format(self._reference_value_dissipation[i] * 1e6)
+                            "{0:.4f}".format(
+                                self._reference_value_dissipation[i] * 1e6)
                         )
                         self._labelref1 = str(d1) + "Hz"
                         self._labelref2 = str(d2) + "e-06"
@@ -4992,9 +5119,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_tec_temp(self):  # wired to slider change
 
-        self.tecWorker.set_slider_down(self.ControlsWin.ui1.slTemp.isSliderDown())
+        self.tecWorker.set_slider_down(
+            self.ControlsWin.ui1.slTemp.isSliderDown())
         self.tecWorker.set_slider_value(self.ControlsWin.ui1.slTemp.value())
-        self.tecWorker.set_slider_enable(self.ControlsWin.ui1.slTemp.isEnabled())
+        self.tecWorker.set_slider_enable(
+            self.ControlsWin.ui1.slTemp.isEnabled())
 
         pv = self.tecWorker._tec_temp
         sp = self.ControlsWin.ui1.slTemp.value()
@@ -5010,7 +5139,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tecWorker._tec_update_now = False
         elif self.ControlsWin.ui1.slTemp.isSliderDown():
             # control is ON: update GUI only, not TEC
-            new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(pv, sp, op)
+            new_l1 = "PV:{0:2.2f}C SP:{1:2.2f}C OP:{2:+04.0f}".format(
+                pv, sp, op)
             self.ControlsWin.ui1.lTemp.setText(new_l1)
             self.tecWorker._tec_update_now = False
         else:
@@ -5031,7 +5161,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = []
                 for i in range(self.multiplex_plots):
                     if i < self.ControlsWin.ui1.cBox_Port.count() - 1:
-                        selected_port.append(self.ControlsWin.ui1.cBox_Port.itemData(i))
+                        selected_port.append(
+                            self.ControlsWin.ui1.cBox_Port.itemData(i))
 
             self.worker._port = selected_port  # used in run()
             do_continue = self.fwUpdater.run(self)
@@ -5075,9 +5206,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tecThread = QtCore.QThread()
             self.tecWorker = TECTask()
             self.tecWorker.set_port(selected_port)
-            self.tecWorker.set_slider_down(self.ControlsWin.ui1.slTemp.isSliderDown())
-            self.tecWorker.set_slider_value(self.ControlsWin.ui1.slTemp.value())
-            self.tecWorker.set_slider_enable(self.ControlsWin.ui1.slTemp.isEnabled())
+            self.tecWorker.set_slider_down(
+                self.ControlsWin.ui1.slTemp.isSliderDown())
+            self.tecWorker.set_slider_value(
+                self.ControlsWin.ui1.slTemp.value())
+            self.tecWorker.set_slider_enable(
+                self.ControlsWin.ui1.slTemp.isEnabled())
             self.tecWorker.moveToThread(self.tecThread)
             self.tecThread.worker = self.tecWorker
             self.tecThread.started.connect(self.tecWorker.run)
@@ -5191,7 +5325,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                     auto_create_if_missing=True
                                 )
                             )
-                            Log.d(f"License valid={is_valid}; message={message}")
+                            Log.d(
+                                f"License valid={is_valid}; message={message}")
                         except Exception as e:
                             Log.e(f"License fetch error: {e}")
 
@@ -5273,7 +5408,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self._dbx_connection = None
                 return color, labelweb2
 
-            self.web_thread = threading.Thread(target=self.update_check)  # non-blocking
+            self.web_thread = threading.Thread(
+                target=self.update_check)  # non-blocking
             self.web_thread.start()
 
             # ping periodically for task to finish
@@ -5333,7 +5469,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._dbx_connection = None
 
             if hasattr(self, "_license_manager") and self._license_manager:
-                self.VisQAIWin.check_license(getattr(self, "_license_manager", None))
+                self.VisQAIWin.check_license(
+                    getattr(self, "_license_manager", None))
 
         except Exception as e:
             Log.e("Update Task error:", e)
@@ -5346,7 +5483,8 @@ class MainWindow(QtWidgets.QMainWindow):
         icon_path = os.path.join(
             Architecture.get_path(), "QATCH/icons/download_icon.ico"
         )
-        self.InfoWin.ui3.pButton_Download.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
+        self.InfoWin.ui3.pButton_Download.setIcon(
+            QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.InfoWin.ui3.pButton_Download.setText(
             _translate("MainWindow3", " Download ZIP")
         )
@@ -5432,16 +5570,19 @@ class MainWindow(QtWidgets.QMainWindow):
             if datetime.datetime.now() >= expires_at:
                 # stored access_token is expired, attempt to get a new one
                 # prefer working resource path, if exists
-                working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+                working_resource_path = os.path.join(
+                    os.getcwd(), "QATCH/resources/")
                 bundled_resource_path = os.path.join(
                     Architecture.get_path(), "QATCH/resources/"
                 )  # otherwise, use bundled resource path
                 # resource_path = working_resource_path if os.path.exists(working_resource_path) else bundled_resource_path
                 # prefer working keystore, if it exists
-                keystore = os.path.join(working_resource_path, "dbx_key_store.zip")
+                keystore = os.path.join(
+                    working_resource_path, "dbx_key_store.zip")
                 if not os.path.exists(keystore):
                     # use bundled keystore, if none in working folder
-                    keystore = os.path.join(bundled_resource_path, "dbx_key_store.zip")
+                    keystore = os.path.join(
+                        bundled_resource_path, "dbx_key_store.zip")
                 if os.path.exists(keystore):
                     Log.d("Retrieving keys from Dropbox Keystore.")
                     with pyzipper.AESZipFile(
@@ -5452,8 +5593,10 @@ class MainWindow(QtWidgets.QMainWindow):
                         encryption=pyzipper.WZ_AES,
                     ) as zf:
                         # Add a protected file to the zip archive
-                        zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
-                        app_authorization = zf.read("app_authorization").decode()
+                        zf.setpassword(hashlib.sha256(
+                            zf.comment).hexdigest().encode())
+                        app_authorization = zf.read(
+                            "app_authorization").decode()
                         refresh_token = zf.read("refresh_token").decode()
                 else:
                     raise Exception(
@@ -5498,8 +5641,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 require_EXE = False
 
             # determine current build type: beta vs release
-            running_beta_build = branch.replace("x", "b") in Constants.app_version
-            running_release_build = branch.replace("x", "r") in Constants.app_version
+            running_beta_build = branch.replace(
+                "x", "b") in Constants.app_version
+            running_release_build = branch.replace(
+                "x", "r") in Constants.app_version
             if running_beta_build == running_release_build:
                 Log.e(
                     "Unable to determine whether running beta or release build. Assuming 'beta' and continuing."
@@ -5510,7 +5655,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 running_release_build = False  # just to be safe
 
             self._dbx_connection = dropbox.Dropbox(access_token)
-            self._license_manager = LicenseManager(dbx_conn=self._dbx_connection)
+            self._license_manager = LicenseManager(
+                dbx_conn=self._dbx_connection)
             is_valid, message, license_data = self._license_manager.validate_license(
                 auto_create_if_missing=True
             )
@@ -5544,7 +5690,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 ):  # UUIP has changed for existing UUID, update it
                     start_idx = response_data.index(uuid)
                     end_idx = response_data.index("\n", start_idx)
-                    old_entry = response_data[start_idx : end_idx + 1]
+                    old_entry = response_data[start_idx: end_idx + 1]
                     new_entry = f"{uuid},{uuip}\n"
                     response_data = response_data.replace(old_entry, new_entry)
                     self._dbx_connection.files_upload(
@@ -5584,7 +5730,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 tags_url = resp.url.replace("tag", "download") + "/tags.txt"
                 resp = requests.get(tags_url)
                 if resp.ok:
-                    all_tags = resp.content.decode().split()[::-1]  # newest to oldest
+                    all_tags = resp.content.decode().split()[
+                        ::-1]  # newest to oldest
                     date_order = parser.parse(resp.headers["Last-Modified"])
                     for entry in all_tags:
                         build_type = "exe" if require_EXE else "py"
@@ -5647,13 +5794,15 @@ class MainWindow(QtWidgets.QMainWindow):
             # find most recent build based on allowed build type: beta vs release
             enabled, error, expires = UserProfiles.checkDevMode()
             # bundled EXE, running 'r' or not in dev
-            release_builds_only = require_EXE and (running_release_build or not enabled)
+            release_builds_only = require_EXE and (
+                running_release_build or not enabled)
             most_recent = None
             if release_builds_only:
                 # find most recent *release* build, skipping any newer *beta* builds
                 # raise an Exception if no *release* builds are found on the server!
                 for build in builds:
-                    is_release_build = branch.replace("x", "r") in build["name"]
+                    is_release_build = branch.replace(
+                        "x", "r") in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -5662,7 +5811,8 @@ class MainWindow(QtWidgets.QMainWindow):
                         break  # found, stop searching
             elif len(builds) > 0:
                 for build in builds:
-                    is_release_build = branch.replace("x", "r") in build["name"]
+                    is_release_build = branch.replace(
+                        "x", "r") in build["name"]
                     is_target_build, _d = target_build(build["path"])
                     if _d:
                         build["date"] = _d
@@ -5779,7 +5929,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.res_files = []
 
             remote_resource_path = f"/{branch}/resources/"
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(
+                os.getcwd(), "QATCH/resources/")
             bundled_resource_path = os.path.join(
                 Architecture.get_path(), "QATCH/resources/"
             )
@@ -5874,7 +6025,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     latest_version = response.text.split()[
                         -1
                     ].strip()  # last line saved
-                    server_file_size = int(response.headers["Content-Length"]) + 112
+                    server_file_size = int(
+                        response.headers["Content-Length"]) + 112
             response.close()  # release connection, we are done reading 'remote file compare'
             if os.path.exists(working_file_compare):
                 if server_file_size != os.stat(working_file_compare).st_size:
@@ -5901,7 +6053,8 @@ class MainWindow(QtWidgets.QMainWindow):
     def update_resources(self, branch):
         try:
             remote_resource_path = f"/{branch}/resources/"
-            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(
+                os.getcwd(), "QATCH/resources/")
             working_file_compare = os.path.join(
                 working_resource_path, "lookup_resources.csv"
             )
@@ -5955,7 +6108,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.progressBar.setWindowFlag(
                     QtCore.Qt.WindowContextHelpButtonHint, False
                 )
-                self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+                self.progressBar.setWindowFlag(
+                    QtCore.Qt.WindowStaysOnTopHint, True)
                 self.progressBar.setFixedSize(
                     int(self.progressBar.width() * 1.5),
                     int(self.progressBar.height() * 1.1),
@@ -6091,7 +6245,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 and os.path.split(cur_install_path)[1] == "QATCH"
             ):
                 cur_install_path = os.path.dirname(cur_install_path)
-            save_to = os.path.join(os.path.dirname(cur_install_path), name[0:-4], name)
+            save_to = os.path.join(os.path.dirname(
+                cur_install_path), name[0:-4], name)
             new_install_path = os.path.dirname(save_to)
             if not os.path.exists(new_install_path):
                 # make folder first
@@ -6144,7 +6299,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.progressBar.setWindowFlag(
                         QtCore.Qt.WindowContextHelpButtonHint, False
                     )
-                    self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+                    self.progressBar.setWindowFlag(
+                        QtCore.Qt.WindowStaysOnTopHint, True)
                     self.progressBar.canceled.disconnect()
                     self.progressBar.canceled.connect(self.install_cancel)
                     self.progressBar.setFixedSize(
@@ -6159,7 +6315,8 @@ class MainWindow(QtWidgets.QMainWindow):
                     self.upd_thread.started.connect(self.updater.run)
                     self.updater.finished.connect(self.upd_thread.quit)
                     self.updater.finished.connect(self.updater.deleteLater)
-                    self.upd_thread.finished.connect(self.upd_thread.deleteLater)
+                    self.upd_thread.finished.connect(
+                        self.upd_thread.deleteLater)
                     self.updater.progress.connect(self.update_progress)
                     self.updater.finished.connect(self.progressBar.reset)
                     self.updater.finished.connect(self.post_download_check)
@@ -6223,7 +6380,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 Constants.UpdateEngine = UpdateEngines.GitHub
         if Constants.UpdateEngine == UpdateEngines.DropboxAPI:
             # InstallWorker(proceed, copy_src, copy_dst)
-            _updaterTask = UpdaterTask_Dbx(dest, src, size, self._dbx_connection)
+            _updaterTask = UpdaterTask_Dbx(
+                dest, src, size, self._dbx_connection)
         if Constants.UpdateEngine == UpdateEngines.GitHub:
             _updaterTask = UpdaterTask_Git(dest, src, size)
         if not _updaterTask:
@@ -6306,8 +6464,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.progressBar.setWindowTitle(
                 f" Installing SW {os.path.basename(new_install_path)}"
             )
-            self.progressBar.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
-            self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowContextHelpButtonHint, False)
+            self.progressBar.setWindowFlag(
+                QtCore.Qt.WindowStaysOnTopHint, True)
             self.progressBar.canceled.disconnect()
             self.progressBar.setFixedSize(
                 int(self.progressBar.width() * 1.5),
@@ -6480,7 +6640,8 @@ class ExtractWorker(QtCore.QThread):
             if os.path.dirname(save_to) == new_install_path:
                 os.renames(
                     save_to,
-                    os.path.join(new_install_path + "_temp", zip_filename + ".zip"),
+                    os.path.join(new_install_path + "_temp",
+                                 zip_filename + ".zip"),
                 )
             os.renames(new_install_path + "_temp", new_install_path)
 
@@ -6566,7 +6727,8 @@ class UpdaterTask_Dbx(UpdaterTask):
                             f"Starting Download: {os.path.basename(path)} ({pct}%)"
                         )
                     Log.i(self.TAG, status_str)
-                    self.progress.emit(status_str[: status_str.rfind(" (")], pct)
+                    self.progress.emit(
+                        status_str[: status_str.rfind(" (")], pct)
                     need_repaint = True
                     last_pct = pct
                 if (
@@ -6698,7 +6860,8 @@ class TECTask(QtCore.QThread):
     def run(self):
         Log.i(
             TAG,
-            "Temp Control started".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+            "Temp Control started".format(
+                strftime("%Y-%m-%d %H:%M:%S", localtime())),
         )
         self.infobar_setText.emit(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
@@ -6722,11 +6885,13 @@ class TECTask(QtCore.QThread):
                     if self.slider_value != self._tec_setpoint and not self.slider_down:
                         # Try to update now to re-sync; if that fails, then auto-off.
                         if self._tec_out_of_sync < 3:
-                            Log.d("Scheduling TEC for immediate update (out-of-sync)!")
+                            Log.d(
+                                "Scheduling TEC for immediate update (out-of-sync)!")
                             self._tec_out_of_sync += 1
                             self._tec_update_now = True
                         else:
-                            Log.w("Shutting down TEC to re-sync states (out-of-sync)!")
+                            Log.w(
+                                "Shutting down TEC to re-sync states (out-of-sync)!")
                             self._tec_out_of_sync = 0
                             new_l1 = "[AUTO-OFF ERROR]"
                             self._tec_update("OFF")
@@ -6877,7 +7042,8 @@ class TECTask(QtCore.QThread):
     def _task_stop(self):
         Log.i(
             TAG,
-            "Temp Control stopped".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+            "Temp Control stopped".format(
+                strftime("%Y-%m-%d %H:%M:%S", localtime())),
         )
         self.infobar_setText.emit(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
@@ -6928,7 +7094,8 @@ class TECTask(QtCore.QThread):
 
             # set offsetB, offsetH and offsetC prior to initialization
             if hasattr(Constants, "temp_offset_both"):
-                self._tec_update("=OFFSET {0:2.2f}".format(Constants.temp_offset_both))
+                self._tec_update("=OFFSET {0:2.2f}".format(
+                    Constants.temp_offset_both))
                 Log.d(
                     TAG,
                     "{1}: Set offsetB={0:+02.2f}".format(
@@ -6939,7 +7106,8 @@ class TECTask(QtCore.QThread):
             if self._tec_stop_thread:
                 return
             if hasattr(Constants, "temp_offset_heat"):
-                self._tec_update("+OFFSET {0:2.2f}".format(Constants.temp_offset_heat))
+                self._tec_update(
+                    "+OFFSET {0:2.2f}".format(Constants.temp_offset_heat))
                 Log.d(
                     TAG,
                     "{1}: Set offsetH={0:+02.2f}".format(
@@ -6950,7 +7118,8 @@ class TECTask(QtCore.QThread):
             if self._tec_stop_thread:
                 return
             if hasattr(Constants, "temp_offset_cool"):
-                self._tec_update("-OFFSET {0:2.2f}".format(Constants.temp_offset_cool))
+                self._tec_update(
+                    "-OFFSET {0:2.2f}".format(Constants.temp_offset_cool))
                 Log.d(
                     TAG,
                     "{1}: Set offsetC={0:+02.2f}".format(
@@ -7100,7 +7269,8 @@ class TECTask(QtCore.QThread):
 
                 # Append to log file for temperature controller
                 # checks the path for the header insertion
-                tec_log_path = FileStorage.DEV_populate_path(Constants.tec_log_path, 0)
+                tec_log_path = FileStorage.DEV_populate_path(
+                    Constants.tec_log_path, 0)
                 os.makedirs(os.path.split(tec_log_path)[0], exist_ok=True)
                 header_exists = os.path.exists(tec_log_path)
                 with open(tec_log_path, "a") as tempFile:
@@ -7109,8 +7279,10 @@ class TECTask(QtCore.QThread):
                             "Date/Time,Command,Status/Mode,Power(raw),Stable/Total(sec),Min/Max(C),Temp(C),Ambient(C)\n"
                         )
                     log_line = "{},{},{},{},{},{},{},{}\n".format(
-                        strftime("%Y-%m-%d %H:%M:%S", localtime()),  # Date/Time
-                        "SET '{}'".format(dac) if not dac == "" else "GET",  # Command
+                        strftime("%Y-%m-%d %H:%M:%S",
+                                 localtime()),  # Date/Time
+                        "SET '{}'".format(
+                            dac) if not dac == "" else "GET",  # Command
                         # Status/Mode
                         "{}/{}".format(cycle_stable, heat_cool_off),
                         # Power(raw)
