@@ -10,21 +10,38 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-22
+    2025-02-16
 
 Version:
-    1.7
+    1.8
 """
 
 from typing import List, Optional
-from rapidfuzz import process, fuzz
+
+from rapidfuzz import fuzz, process
 
 try:
     from src.db.db import Database
-    from src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import Protein, Salt, Stabilizer, Surfactant, Buffer, Ingredient, Excipient
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 
 
 class IngredientController:
@@ -70,8 +87,11 @@ class IngredientController:
             List[str]: A list of all stored ingredient names.
         """
 
-        names = [ing.name for ing in self.get_all_ingredients()
-                 if self._user_mode and ing.is_user or not self._user_mode]
+        names = [
+            ing.name
+            for ing in self.get_all_ingredients()
+            if self._user_mode and ing.is_user or not self._user_mode
+        ]
 
         return list(set(names))
 
@@ -328,7 +348,7 @@ class IngredientController:
         Returns:
             List[Protein]: A list of all proteins in the database.
         """
-        return self._fetch_by_type("Protein")
+        return self._fetch_by_type(type="Protein", unique=True)
 
     def get_buffer_by_id(self, id: int) -> Optional[Buffer]:
         """Retrieve a `Buffer` by its database ID.
@@ -358,7 +378,7 @@ class IngredientController:
         Returns:
             List[Buffer]: A list of all buffers in the database.
         """
-        return self._fetch_by_type("Buffer")
+        return self._fetch_by_type(type="Buffer", unique=True)
 
     def get_salt_by_id(self, id: int) -> Optional[Salt]:
         """Retrieve a `Salt` by its database ID.
@@ -388,7 +408,7 @@ class IngredientController:
         Returns:
             List[Salt]: A list of all salts in the database.
         """
-        return self._fetch_by_type("Salt")
+        return self._fetch_by_type(type="Salt", unique=True)
 
     def get_excipient_by_id(self, id: int) -> Optional[Excipient]:
         """Retrieve a `Excipient` by its database ID.
@@ -418,7 +438,7 @@ class IngredientController:
         Returns:
             List[Excipient]: A list of all excipients in the database.
         """
-        return self._fetch_by_type("Excipient")
+        return self._fetch_by_type(type="Excipient", unique=True)
 
     def get_surfactant_by_id(self, id: int) -> Optional[Surfactant]:
         """Retrieve a `Surfactant` by its database ID.
@@ -448,7 +468,7 @@ class IngredientController:
         Returns:
             List[Surfactant]: A list of all surfactants in the database.
         """
-        return self._fetch_by_type("Surfactant")
+        return self._fetch_by_type(type="Surfactant", unique=True)
 
     def get_stabilizer_by_id(self, id: int) -> Optional[Stabilizer]:
         """Retrieve a `Stabilizer` by its database ID.
@@ -478,7 +498,7 @@ class IngredientController:
         Returns:
             List[Stabilizer]: A list of all stabilizers in the database.
         """
-        return self._fetch_by_type("Stabilizer")
+        return self._fetch_by_type(type="Stabilizer", unique=True)
 
     # ----- Creators (per‐type, with auto‐assignment of enc_id) ----- #
 
@@ -500,7 +520,8 @@ class IngredientController:
             return existing
 
         protein.enc_id = self._get_next_enc_id(
-            is_user=protein.is_user, ing_type="Protein")
+            is_user=self._user_mode, ing_type="Protein"
+        )
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
 
@@ -524,7 +545,8 @@ class IngredientController:
             return existing
 
         buffer.enc_id = self._get_next_enc_id(
-            is_user=buffer.is_user, ing_type="Buffer")
+            is_user=self._user_mode, ing_type="Buffer"
+        )
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
 
@@ -547,8 +569,7 @@ class IngredientController:
                 return self.update_salt(existing.id, salt)
             return existing
 
-        salt.enc_id = self._get_next_enc_id(
-            is_user=salt.is_user, ing_type="Salt")
+        salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
 
@@ -572,7 +593,8 @@ class IngredientController:
             return existing
 
         stabilizer.enc_id = self._get_next_enc_id(
-            is_user=stabilizer.is_user, ing_type="Stabilizer")
+            is_user=self._user_mode, ing_type="Stabilizer"
+        )
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
 
@@ -596,7 +618,8 @@ class IngredientController:
             return existing
 
         surfactant.enc_id = self._get_next_enc_id(
-            is_user=surfactant.is_user, ing_type="Surfactant")
+            is_user=self._user_mode, ing_type="Surfactant"
+        )
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
 
@@ -620,7 +643,8 @@ class IngredientController:
             return existing
 
         excipient.enc_id = self._get_next_enc_id(
-            is_user=excipient.is_user, ing_type="Excipient")
+            is_user=self._user_mode, ing_type="Excipient"
+        )
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
 
@@ -1027,10 +1051,9 @@ class IngredientController:
         self.db.update_ingredient(e_fetch.id, e_new)
         return e_new
 
-    def fuzzy_fetch(self,
-                    name: str,
-                    max_results: int = 5,
-                    score_cutoff: int = 90) -> list[str]:
+    def fuzzy_fetch(
+        self, name: str, max_results: int = 5, score_cutoff: int = 90
+    ) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names
@@ -1053,26 +1076,64 @@ class IngredientController:
             choices=list(name_mapping.keys()),
             scorer=fuzz.WRatio,
             limit=max_results,
-            score_cutoff=score_cutoff
+            score_cutoff=score_cutoff,
         )
         return [name_mapping[match_name] for match_name, score, idx in matches]
 
-    def _fetch_by_type(self, type: str) -> List[Ingredient]:
+    def _fetch_by_type(self, type: str, unique: bool = False) -> List[Ingredient]:
         """Helper method to retrieve all ingredients of a given subclass type.
 
         Args:
             type (str): The subclass name (e.g., "Protein", "Buffer").
+            unique (bool): If True, filters out duplicates by name (keeping the first occurrence).
 
         Returns:
             List[Ingredient]: A list of ingredients matching the specified type.
         """
         ingredients = self.db.get_all_ingredients()
-        return [ing for ing in ingredients if ing.type == type]
+        filtered = [ing for ing in ingredients if ing.type == type]
+
+        if unique:
+            seen = set()
+            unique_list = []
+            for ing in filtered:
+                if ing.name not in seen:
+                    unique_list.append(ing)
+                    seen.add(ing.name)
+            return unique_list
+
+        return filtered
+
+    # def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
+    #     """Helper method to retrieve a single ingredient by name and subclass type.
+    #     This method performs a fuzzy match on the ingredient name to allow for minor discrepancies
+    #     in user input. If a fuzzy match is found, it uses that name to search for the ingredient.
+
+    #     Args:
+    #         name (str): The ingredient name to match.
+    #         type (str): The subclass name (e.g., "Protein", "Buffer").
+
+    #     Returns:
+    #         Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
+    #     """
+    #     ingredients = self.db.get_all_ingredients()
+    #     # Perform a fuzzy matching search on the name.
+    #     fuzzy_name = self.fuzzy_fetch(name=str(name), max_results=1)
+    #     if fuzzy_name:
+    #         name = fuzzy_name[0]
+    #     for ing in ingredients:
+    #         # Skip non-user ingredients while in user mode.
+    #         if self._user_mode and not ing.is_user:
+    #             continue
+    #         # Return first matching ingredient by type and name.
+    #         if ing.type == type and ing.name == name:
+    #             return ing
+    #     return None
 
     def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
         """Helper method to retrieve a single ingredient by name and subclass type.
-        This method performs a fuzzy match on the ingredient name to allow for minor discrepancies
-        in user input. If a fuzzy match is found, it uses that name to search for the ingredient.
+        This method performs an exact match on the ingredient name to ensure distinct
+        ingredients (e.g., 'Vuda' vs 'Vudalimab') are treated separately.
 
         Args:
             name (str): The ingredient name to match.
@@ -1082,15 +1143,12 @@ class IngredientController:
             Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
         """
         ingredients = self.db.get_all_ingredients()
-        # Perform a fuzzy matching search on the name.
-        fuzzy_name = self.fuzzy_fetch(name=str(name), max_results=1)
-        if fuzzy_name:
-            name = fuzzy_name[0]
+
         for ing in ingredients:
             # Skip non-user ingredients while in user mode.
             if self._user_mode and not ing.is_user:
                 continue
-            # Return first matching ingredient by type and name.
+            # Return first matching ingredient by type and exact name.
             if ing.type == type and ing.name == name:
                 return ing
         return None
@@ -1111,16 +1169,16 @@ class IngredientController:
         same_type = self._fetch_by_type(type=ing_type)
         if is_user:
             # User-created enc_id must start at USER_START_ID
-            used = [ing.enc_id for ing in same_type if ing.enc_id >=
-                    self.USER_START_ID]
+            used = [ing.enc_id for ing in same_type if ing.enc_id >= self.USER_START_ID]
             if not used:
                 return self.USER_START_ID
             else:
                 return max(used) + 1
         else:
             # Developer-created enc_id must be in range [1..DEV_MAX_ID]
-            used = [ing.enc_id for ing in same_type if 1 <=
-                    ing.enc_id <= self.DEV_MAX_ID]
+            used = [
+                ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
+            ]
             if not used:
                 return 1
             next_id = max(used) + 1

@@ -1,25 +1,34 @@
 try:
-    from QATCH.core.constants import Constants
-    from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
+    from QATCH.core.constants import Constants
 except:
     print("Running VisQAI as standalone app")
 
     class Log:
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
-        def i(tag, msg=""): print("INFO:", tag, msg)
-        def w(tag, msg=""): print("WARNING:", tag, msg)
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
+
+
+import os
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Type
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-import os
-from typing import Dict, Any, List, Tuple, Type
-from typing import TYPE_CHECKING
 
 try:
     from src.utils.constraints import Constraints
     from src.utils.icon_utils import IconUtils
     from src.view.checkable_combo_box import CheckableComboBox
+
     if TYPE_CHECKING:
         from src.models.ingredient import Ingredient
         from src.view.main_window import VisQAIWindow
@@ -28,6 +37,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.utils.icon_utils import IconUtils
     from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
+
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.models.ingredient import Ingredient
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
@@ -47,32 +57,30 @@ class ConstraintsUI(QtWidgets.QWidget):
             self.suggest_dialog.setWindowTitle("Add Optimize Feature(s)")
         self.suggest_dialog.setModal(True)
         # hide question mark from title bar of window
-        self.suggest_dialog.setWindowFlag(
-            QtCore.Qt.WindowContextHelpButtonHint, False)
+        self.suggest_dialog.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
         self.suggest_dialog.setMinimumSize(500, 300)
-        self.suggest_dialog.setWindowIcon(QtGui.QIcon(
-            os.path.join(Architecture.get_path(), 'QATCH/icons/qmodel.png')))
+        self.suggest_dialog.setWindowIcon(
+            QtGui.QIcon(os.path.join(Architecture.get_path(), "QATCH/icons/qmodel.png"))
+        )
 
         layout = QtWidgets.QVBoxLayout(self.suggest_dialog)
 
         if self.step == 2:
 
-            label = QtWidgets.QLabel(
-                "How many suggestions do you want to add?")
+            label = QtWidgets.QLabel("How many suggestions do you want to add?")
             layout.addWidget(label)
 
             self.suggestion_text = QtWidgets.QComboBox(self.suggest_dialog)
             self.suggestion_text.addItems(
-                list(map(str, range(1, 11))))  # 1 to 10 suggestions
+                list(map(str, range(1, 11)))
+            )  # 1 to 10 suggestions
             self.suggestion_text.setEditable(True)
             layout.addWidget(self.suggestion_text)
 
-        self.constraints_group = QtWidgets.QGroupBox(
-            "Constraints", self.suggest_dialog)
+        self.constraints_group = QtWidgets.QGroupBox("Constraints", self.suggest_dialog)
         self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_group)
 
-        self.constraints_none = QtWidgets.QLabel(
-            "None", self.constraints_group)
+        self.constraints_none = QtWidgets.QLabel("None", self.constraints_group)
         self.constraints_none.setToolTip("No constraints on the suggestions")
         self.constraints_layout.addWidget(self.constraints_none)
 
@@ -86,12 +94,17 @@ class ConstraintsUI(QtWidgets.QWidget):
         layout.addWidget(self.constraints_group)
 
         self.add_constraints_btn = QtWidgets.QPushButton(
-            icon=IconUtils.rotate_and_crop_icon(QtGui.QIcon(
-                os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')), 45, 50),
+            icon=IconUtils.rotate_and_crop_icon(
+                QtGui.QIcon(
+                    os.path.join(Architecture.get_path(), "QATCH/icons/cancel.png")
+                ),
+                45,
+                50,
+            ),
             text="   Add Constraint",
-            parent=self.suggest_dialog)
-        self.add_constraints_btn.setToolTip(
-            "Add a new constraint for the suggestions")
+            parent=self.suggest_dialog,
+        )
+        self.add_constraints_btn.setToolTip("Add a new constraint for the suggestions")
         self.add_constraints_btn.clicked.connect(self.add_new_constraint)
         layout.addWidget(self.add_constraints_btn)
 
@@ -99,7 +112,8 @@ class ConstraintsUI(QtWidgets.QWidget):
 
         button_box = QtWidgets.QDialogButtonBox(self.suggest_dialog)
         button_box.setStandardButtons(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel)
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel
+        )
         layout.addWidget(button_box)
 
         button_box.accepted.connect(self.accept_suggestions)
@@ -118,7 +132,8 @@ class ConstraintsUI(QtWidgets.QWidget):
         constraints = self.build_constraints()
         if not constraints:
             Log.w(
-                "Missing/invalid fields in Constraints. Please fill out or remove them.")
+                "Missing/invalid fields in Constraints. Please fill out or remove them."
+            )
             return
 
         self.suggest_dialog.accept()  # Hide the dialog
@@ -126,8 +141,7 @@ class ConstraintsUI(QtWidgets.QWidget):
         Log.d("Constraints:", constraints.build())
         if self.step == 2:
             for _ in range(int(num_suggestions)):
-                self.parent.load_suggestion(
-                    constraints)  # Add a new suggestion
+                self.parent.load_suggestion(constraints)  # Add a new suggestion
                 while self.parent.timer.isActive():
                     QtWidgets.QApplication.processEvents()
                 if self.parent.progressBar.wasCanceled():
@@ -145,32 +159,35 @@ class ConstraintsUI(QtWidgets.QWidget):
         self.constraints_rows.append(QtWidgets.QHBoxLayout())
         # The constraint ingredient can be one of the following:
         #   Protein, Buffer, Surfactant, Stabilizer, Salt
-        self.constraints_ingredients.append(
-            QtWidgets.QComboBox(self.constraints_group))
-        self.constraints_ingredients[-1].addItems([
-            "Protein", "Buffer", "Surfactant", "Stabilizer", "Salt", "Excipient"])
+        self.constraints_ingredients.append(QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_ingredients[-1].addItems(
+            ["Protein", "Buffer", "Surfactant", "Stabilizer", "Salt", "Excipient"]
+        )
         # No selection by default
         self.constraints_ingredients[-1].setCurrentIndex(-1)
         self.constraints_ingredients[-1].currentIndexChanged.connect(
-            lambda index, idx=len(self.constraints_ingredients)-1: self.autofill_constraint_values(idx))
+            lambda index, idx=len(
+                self.constraints_ingredients
+            ) - 1: self.autofill_constraint_values(idx)
+        )
         # When ingredient changes, autofill possible values
         self.constraints_rows[-1].addWidget(self.constraints_ingredients[-1])
         # The constraint feature can be one of the following:
         #   Type, Concentration
-        self.constraints_features.append(
-            QtWidgets.QComboBox(self.constraints_group))
-        self.constraints_features[-1].addItems([
-            "Type", "Concentration"])
+        self.constraints_features.append(QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_features[-1].addItems(["Type", "Concentration"])
         # No selection by default
         self.constraints_features[-1].setCurrentIndex(-1)
         self.constraints_features[-1].currentIndexChanged.connect(
-            lambda index, idx=len(self.constraints_features)-1: self.autofill_constraint_values(idx))
+            lambda index, idx=len(
+                self.constraints_features
+            ) - 1: self.autofill_constraint_values(idx)
+        )
         # When feature changes, autofill possible values
         self.constraints_rows[-1].addWidget(self.constraints_features[-1])
         # The constraint verb can be one of the following:
         #   is, is not
-        self.constraints_verbs.append(
-            QtWidgets.QComboBox(self.constraints_group))
+        self.constraints_verbs.append(QtWidgets.QComboBox(self.constraints_group))
         # TODO: "is not" support not implemented in Constraints
         self.constraints_verbs[-1].addItems(["is", "is not"])
         # No selection by default
@@ -180,8 +197,7 @@ class ConstraintsUI(QtWidgets.QWidget):
         self.constraints_rows[-1].addWidget(self.constraints_verbs[-1])
         # The constraint value can be a single, multiple or range of values
         # (i.e. "PBS", "tween-20,tween-80" or "0.01-0.2")
-        self.constraints_values.append(
-            CheckableComboBox(self.constraints_group))
+        self.constraints_values.append(CheckableComboBox(self.constraints_group))
         # self.constraints_values[-1].setEditable(True)
         # Add items for now just for debugging the combination selection
         # self.constraints_values[-1].addItems([
@@ -193,29 +209,35 @@ class ConstraintsUI(QtWidgets.QWidget):
         # with stretch
         self.constraints_rows[-1].addWidget(self.constraints_values[-1], 1)
         # Delete button to clear this constraint from the list
-        self.constraints_delete_buttons.append(QtWidgets.QToolButton(
-            icon=QtGui.QIcon(
-                os.path.join(Architecture.get_path(), 'QATCH/icons/cancel.png')),
-            text=None,
-            parent=self.constraints_group))
+        self.constraints_delete_buttons.append(
+            QtWidgets.QToolButton(
+                icon=QtGui.QIcon(
+                    os.path.join(Architecture.get_path(), "QATCH/icons/cancel.png")
+                ),
+                text=None,
+                parent=self.constraints_group,
+            )
+        )
         self.constraints_delete_buttons[-1].clicked.connect(
-            lambda: self.remove_constraint(len(self.constraints_delete_buttons) - 1))
+            lambda: self.remove_constraint(len(self.constraints_delete_buttons) - 1)
+        )
         self.constraints_delete_buttons[-1].setFixedWidth(
-            self.constraints_delete_buttons[-1].sizeHint().height())  # make it square
-        self.constraints_delete_buttons[-1].setToolTip(
-            "Delete this constraint")
-        self.constraints_delete_buttons[-1].setCursor(
-            QtCore.Qt.PointingHandCursor)
+            self.constraints_delete_buttons[-1].sizeHint().height()
+        )  # make it square
+        self.constraints_delete_buttons[-1].setToolTip("Delete this constraint")
+        self.constraints_delete_buttons[-1].setCursor(QtCore.Qt.PointingHandCursor)
         # Add the delete button to the row
-        self.constraints_rows[-1].addWidget(
-            self.constraints_delete_buttons[-1])
+        self.constraints_rows[-1].addWidget(self.constraints_delete_buttons[-1])
         self.constraints_layout.addLayout(self.constraints_rows[-1])
 
     def autofill_constraint_values(self, index: int):
-        if index < 0 or index >= len(self.constraints_ingredients) or \
-                index >= len(self.constraints_features) or \
-                index >= len(self.constraints_verbs) or \
-                index >= len(self.constraints_values):
+        if (
+            index < 0
+            or index >= len(self.constraints_ingredients)
+            or index >= len(self.constraints_features)
+            or index >= len(self.constraints_verbs)
+            or index >= len(self.constraints_values)
+        ):
             Log.e("Invalid constraint index:", index)
             return
 
@@ -229,8 +251,7 @@ class ConstraintsUI(QtWidgets.QWidget):
             self.constraints_features[index].removeItem(0)  # bye, Class
 
         model = self.constraints_values[index].model()
-        current_items = [model.data(model.index(i, 0))
-                         for i in range(model.rowCount())]
+        current_items = [model.data(model.index(i, 0)) for i in range(model.rowCount())]
 
         if not ingredient or not feature:
             return  # nothing selected yet
@@ -266,7 +287,10 @@ class ConstraintsUI(QtWidgets.QWidget):
             editable = True
 
         # Clear and set new items or placeholder (if different)
-        if autofill_items != current_items or editable != self.constraints_values[index].isEditable():
+        if (
+            autofill_items != current_items
+            or editable != self.constraints_values[index].isEditable()
+        ):
             self.constraints_values[index].clear()
             self.constraints_values[index].setEditable(editable)
             if editable:
@@ -356,13 +380,13 @@ class ConstraintsUI(QtWidgets.QWidget):
                         except ValueError:
                             return None  # invalid float format
 
-            added_constraints.append(
-                (ingredient, feature, verb, values, whole))
+            added_constraints.append((ingredient, feature, verb, values, whole))
 
         constraints = Constraints(self.main_window.database)
-
         # Populate constraints object from user added constraints
-        for idx, (ingredient, feature, verb, values, whole) in enumerate(added_constraints):
+        for idx, (ingredient, feature, verb, values, whole) in enumerate(
+            added_constraints
+        ):
             feature = str(feature)  # type set
             constraint_name = f"{ingredient}_{feature[:4].lower()}"
             negate = False if verb == "is" else True
@@ -370,16 +394,17 @@ class ConstraintsUI(QtWidgets.QWidget):
                 # Categorical constraint
                 choices: List[Ingredient] = []
                 for value in whole:
-                    if (negate == False and value in values) or \
-                       (negate == True and value not in values):
+                    if (negate == False and value in values) or (
+                        negate == True and value not in values
+                    ):
                         choice = self.main_window.ing_ctrl.get_by_name(
                             name=value,
-                            ingredient=Constraints._FEATURE_CLASS[constraint_name]
-                            (enc_id=-1, name="Dummy Ingredient subclass instance"))
+                            ingredient=Constraints._FEATURE_CLASS[constraint_name](
+                                enc_id=-1, name="Dummy Ingredient subclass instance"
+                            ),
+                        )
                         choices.append(choice)
-                constraints.add_choices(
-                    feature=constraint_name,
-                    choices=choices)
+                constraints.add_choices(feature=constraint_name, choices=choices)
             elif constraint_name in Constraints._NUMERIC:
                 # Numerical constraint
                 # NOTE: "is not" not supported for numeric values
@@ -387,7 +412,8 @@ class ConstraintsUI(QtWidgets.QWidget):
                     constraints.add_range(
                         feature=constraint_name,
                         low=min(value) if isinstance(value, tuple) else value,
-                        high=max(value) if isinstance(value, tuple) else value)
+                        high=max(value) if isinstance(value, tuple) else value,
+                    )
             else:
                 Log.e(f"Unknown constraint: {constraint_name}")
                 return None

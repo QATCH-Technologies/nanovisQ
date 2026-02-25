@@ -237,12 +237,13 @@ class Ui_Main(object):
         self.mode_learn_text = QtWidgets.QLabel("VisQ.AI<sup>TM</sup>")
         self.mode_learn_arrow = QtWidgets.QLabel("<b>></b>")
         self.mode_learn_arrow.setStyleSheet("font-family: 'Arial';")
+        self.mode_learn_arrow.setVisible(False)
         self.mode_learn_layout.setContentsMargins(18, 10, 10, 10)
         self.mode_learn_layout.addWidget(self.mode_learn_text)
         self.mode_learn_layout.addStretch()
         self.mode_learn_layout.addWidget(self.mode_learn_arrow)
         self.mode_learn.setLayout(self.mode_learn_layout)
-        self.mode_learn.mousePressEvent = self.showLearnTools
+        self.mode_learn.mousePressEvent = self.setLearnMode  # self.showLearnTools
         modelayout.setContentsMargins(0, 0, 0, 0)
         modelayout.addWidget(self.logolabel)
         modelayout.addWidget(self.mode_mode)
