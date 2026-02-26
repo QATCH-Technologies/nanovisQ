@@ -44,6 +44,10 @@ class Worker:
         logger = multiprocessing.get_logger()
         logger.setLevel(logging.INFO)
 
+        # Dummy, set in config()
+        self._driedValue = None
+        self._appliedValue = None
+
         # configure basic process
         self.config(
             QCS_on=QCS_on,
@@ -139,6 +143,18 @@ class Worker:
         self._timestart = 0
         self._freq_hopping = freq_hopping
         self._reconstruct = reconstruct
+
+        if driedValue:
+            self._driedValue = driedValue
+        elif self._driedValue:
+            with self._driedValue.get_lock():
+                self._driedValue.value = 0.0
+
+        if appliedValue:
+            self._appliedValue = appliedValue
+        elif self._appliedValue:
+            with self._appliedValue.get_lock():
+                self._appliedValue.value = 0.0
 
     ###########################################################################
     # Starts all processes, based on configuration given in constructor.
