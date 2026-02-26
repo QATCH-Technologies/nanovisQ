@@ -6,12 +6,11 @@
 /logged_data
 /logged_data_test
 /QATCH_Q-1_FW_py_v*
-*.log
 **/__pycache__
 
 # Ignore all files in "assets" folder
 **/assets/**
 
 # But explicitly include "VisQAI-base.zip" and "app.db" assets
-!**/assets/VisQAI-base.visq
+!**/assets/VisQAI-base.zip
 !**/assets/app.db
