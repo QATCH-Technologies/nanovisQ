@@ -1,10 +1,15 @@
+import datetime
 import hashlib
 import logging
+import multiprocessing
 import os
 import shutil
 import stat
 import subprocess
 import sys
+import threading
+from collections import deque
+from time import localtime, mktime, strftime, strptime, time
 from typing import List
 from xml.dom import minidom
 
@@ -35,6 +40,13 @@ from QATCH.core.worker import Worker
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
+from QATCH.processors.InterpTemps import (
+    ActionType,
+    InterpTempsProcess,
+    QueueCommandFormat,
+)
+from QATCH.ui.configure_data import UIConfigureData
+from QATCH.ui.export import Ui_Export
 from QATCH.ui.mainWindow_ui import (
     Ui_Controls,
     Ui_Info,
@@ -43,6 +55,12 @@ from QATCH.ui.mainWindow_ui import (
     Ui_Main,
     Ui_Plots,
 )
+from QATCH.ui.popUp import PopUp, QueryComboBox
+from QATCH.ui.preferences_ui import PreferencesUI
+from QATCH.ui.runInfo import QueryRunInfo, RunInfoWindow
+from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
+from QATCH.VisQAI.src.db.db import Database
+from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
 TAG = "[MainWindow]"  # ""
 ADMIN_OPTION_CMDS = 1
@@ -984,7 +1002,11 @@ class Rename_Output_Files(QtCore.QObject):
                     current_directory = this_dir
                     path_split = os.path.split(this_dir)
                     preferences_write_path = (
-                        UserProfiles.user_preferences._get_write_data_path()
+                        UserProfiles.user_preferences.get_folder_save_path(
+                                runname=input_text,
+                                device_id=_dev_name,
+                                port_id=_dev_pid,
+                            )
                     )
                     if preferences_write_path == "":
                         path_root = path_split[0]
@@ -1476,8 +1498,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
 
         # Instantiates a Worker class
-        self.worker = Worker(driedValue=self._sensorDriedTimeValue,
-                             appliedValue=self._dropAppliedTimeValue)
+        self.worker = Worker()
 
         # Initiates an Upgrader class
         self.fwUpdater = FW_Updater()
@@ -4391,7 +4412,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             relative_time = self.worker.get_t1_buffer(i)
                             dry_status, dry_msg = self.dry_detect[i].update(
                                 resonance_frequency=rf_vector, dissipation=dissipation_vector, relative_time=relative_time)
-                            if dry_status:
+                            if not dry_status:
 
                                 # Set and signal all receivers that new time is available (if unset)
                                 with self._sensorDriedTimeValue.get_lock():
@@ -4402,7 +4423,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                         self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
 
                                 self._text4[i].setText(
-                                    'Calibrating...', color=(0, 0, 200))
+                                    dry_msg, color=(0, 0, 200))
                                 self._baselinedata[i] = [
                                     [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
                                         self.worker.get_d1_buffer(i)[:numPoints])],
@@ -7544,13 +7565,6 @@ class DryingDetection:
             status += "Dried<br>"
             Log.w(f"Dry time was {self._dry_time}")
             return True, status
-        Log.d(
-            f"DryingDetection stats:\n"
-            f"  sigma_f={sigma_f:.5f}/{self.sigma_stable_freq}\n"
-            f"  sigma_d={sigma_d:.5f}/{self.sigma_stable_diss}\n"
-            f"  slope_f={slope_f:.6f}/{self.flat_eps}\n"
-            f"  slope_d={slope_d:.6f}/{self.flat_eps}"
-        )
         status += "Drying in progress:<br>"
         if sigma_f >= self.sigma_stable_freq or abs(slope_f) >= self.flat_eps:
             status += " - Resonance frequency unstable<br>"

@@ -1,15 +1,18 @@
-from QATCH.core.constants import Constants
-from QATCH.core.ringBuffer import RingBuffer
-from QATCH.common.fileStorage import FileStorage
-from QATCH.common.logger import Logger as Log
-import numpy as np
+import logging
+
 # from scipy.interpolate import UnivariateSpline # unused
 import multiprocessing
-from time import time
-import logging
-from logging.handlers import QueueHandler
-import sys
 import os
+import sys
+from logging.handlers import QueueHandler
+from time import time
+
+import numpy as np
+
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants
+from QATCH.core.ringBuffer import RingBuffer
 
 TAG = "[Elaborate]"
 
@@ -199,8 +202,9 @@ class ElaborateProcess(multiprocessing.Process):
            W.H. Press, S.A. Teukolsky, W.T. Vetterling, B.P. Flannery
            Cambridge University Press ISBN-13: 9780521880688
         """
-        import numpy as np
         from math import factorial
+
+        import numpy as np
         try:
             window_size = np.abs(int(window_size))
             order = np.abs(int(order))
@@ -367,17 +371,17 @@ class ElaborateProcess(multiprocessing.Process):
                     0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False)
             self._count += 1
 
-        # Read the shared values
-        with self._driedValue.get_lock():
-            if self.sensorDriedTime != self._driedValue.value:
-                self.sensorDriedTime = self._driedValue.value
-                Log.d("[ElaborateProcess]",
-                      f"Sensor dried time = {self.sensorDriedTime}")
-        with self._appliedValue.get_lock():
-            if self.dropAppliedTime != self._appliedValue.value:
-                self.dropAppliedTime = self._appliedValue.value
-                Log.d("[ElaborateProcess]",
-                      f"Drop applied time = {self.dropAppliedTime}")
+        # # Read the shared values
+        # with self._driedValue.get_lock():
+        #     if self.sensorDriedTime != self._driedValue.value:
+        #         self.sensorDriedTime = self._driedValue.value
+        #         Log.d("[ElaborateProcess]",
+        #               f"Sensor dried time = {self.sensorDriedTime}")
+        # with self._appliedValue.get_lock():
+        #     if self.dropAppliedTime != self._appliedValue.value:
+        #         self.dropAppliedTime = self._appliedValue.value
+        #         Log.d("[ElaborateProcess]",
+        #               f"Drop applied time = {self.dropAppliedTime}")
 
         if overtone in (0, 255):
             if not (self._err1 and self._err2):
