@@ -25,9 +25,10 @@ Version:
     1.6
 """
 
-from enum import StrEnum, unique
 from abc import ABC
-from typing import Any, Dict, Type, TypeVar, Union, Optional, Tuple
+from enum import StrEnum, unique
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar, Union
+
 TAG = "[Ingredient]"
 T = TypeVar("T", bound="Ingredient")
 
@@ -305,7 +306,7 @@ class Ingredient(ABC):
 class ProteinClass(StrEnum):
     NONE = "None"
     ADC = "ADC"
-    FC_FUSION = "FC-Fusion"
+    FC_FUSION = "Fc-Fusion"
     MAB_IGG1 = "mAb_IgG1"
     MAB_IGG4 = "mAb_IgG4"
     POLYCLONAL = "Polyclonal"
@@ -451,7 +452,8 @@ class Protein(Ingredient):
             self._class_type = ct
         except ValueError:
             raise ValueError(
-                f"`{class_type}` is not a supported class of protein. Supported classes are: {ProteinClass.all_strings()}.")
+                f"`{class_type}` is not a supported class of protein. Supported classes are: {ProteinClass.all_strings()}."
+            )
 
     @property
     def molecular_weight(self) -> Union[float, None]:
@@ -618,27 +620,28 @@ class Buffer(Ingredient):
 
         if not isinstance(other, Protein):
             return NotImplemented
-        return (
-            type(self) is type(other)
-            and self.pH == other.pH
-        )
+        return type(self) is type(other) and self.pH == other.pH
 
 
 class Stabilizer(Ingredient):
     """Represents a stabilizer ingredient without additional properties beyond Ingredient."""
+
     pass
 
 
 class Surfactant(Ingredient):
     """Represents a surfactant ingredient without additional properties beyond Ingredient."""
+
     pass
 
 
 class Salt(Ingredient):
     """Represents a salt ingredient without additional properties beyond Ingredient."""
+
     pass
 
 
 class Excipient(Ingredient):
     """Represents a Excipient ingredient without additional properties beyond Ingredient."""
+
     pass
