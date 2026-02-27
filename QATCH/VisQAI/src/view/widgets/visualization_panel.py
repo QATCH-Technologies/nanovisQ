@@ -441,8 +441,9 @@ class VisualizationPanel(QtWidgets.QWidget):
         x_ticks = get_tick_values(x_range[0], x_range[1], log_x)
         y_ticks = get_tick_values(y_range[0], y_range[1], log_y)
 
-        y_pos_for_x_labels = y_range[0] + (y_range[1] - y_range[0]) * 0.02
-        x_pos_for_y_labels = x_range[0] + (x_range[1] - x_range[0]) * 0.02
+        # Push ticks deeper into the plot (6%) to make room for axis labels on the outside
+        y_pos_for_x_labels = y_range[0] + (y_range[1] - y_range[0]) * 0.06
+        x_pos_for_y_labels = x_range[0] + (x_range[1] - x_range[0]) * 0.06
 
         pool_index = 0
 
@@ -495,9 +496,9 @@ class VisualizationPanel(QtWidgets.QWidget):
             label.setPos(x_pos_for_y_labels, y_val)
 
         # Labels positioned nicely inside view ranges
-        # Labels positioned nicely inside view ranges
         if self.act_axis_labels.isChecked():
             x_center = (x_range[0] + x_range[1]) / 2
+            y_center = (y_range[0] + y_range[1]) / 2
 
             mode = getattr(self, "plot_mode", "standard")
             if mode == "parity":
@@ -513,21 +514,25 @@ class VisualizationPanel(QtWidgets.QWidget):
                 x_label_text = "Log Shear Rate (1/s)" if log_x else "Shear Rate (1/s)"
                 y_label_text = "Log Viscosity (cP)" if log_y else "Viscosity (cP)"
 
+            # X-Axis Label -> Centered, placed below the ticks
             x_name = get_item()
             x_name.setText(x_label_text)
-            x_name.setAnchor((0.5, 0))
+            # Anchor (0.5, 1) sets the bottom edge of the text, drawing it upwards
+            x_name.setAnchor((0.5, 1))
             x_name.setAngle(0)
-            x_name.setPos(x_center, y_range[0] + (y_range[1] - y_range[0]) * 0.05)
+            # 1.5% padding from the absolute bottom so it doesn't get clipped
+            x_name.setPos(x_center, y_range[0] + (y_range[1] - y_range[0]) * 0.015)
             x_name.setColor("#6b7280")
             x_name.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
 
-            y_center = (y_range[0] + y_range[1]) / 2
-            y_label_text = "Log Viscosity (cP)" if log_y else "Viscosity (cP)"
+            # Y-Axis Label -> Centered, placed to the left of the ticks
             y_name = get_item()
             y_name.setText(y_label_text)
-            y_name.setAnchor((0.5, 1))
+            # Anchor (0.5, 0) on 90-deg text sets the left edge, drawing it rightwards
+            y_name.setAnchor((0.5, 0))
             y_name.setAngle(90)
-            y_name.setPos(x_range[0] + (x_range[1] - x_range[0]) * 0.05, y_center)
+            # 1.5% padding from the absolute left so it doesn't get clipped
+            y_name.setPos(x_range[0] + (x_range[1] - x_range[0]) * 0.015, y_center)
             y_name.setColor("#6b7280")
             y_name.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
 
