@@ -584,7 +584,7 @@ class DashboardUI(QtWidgets.QWidget):
         dlg.exec_()
 
     def show_formulations_view(self):
-        """Opens a dialog listing all formulations with delete support and ICL toggles."""
+        """Opens a dialog listing all formulations with delete support, ICL toggles, and CSV export."""
         try:
             # 1. Fetch Formulations
             formulations = self.form_ctrl.get_all_formulations()
@@ -652,37 +652,43 @@ class DashboardUI(QtWidgets.QWidget):
                 except Exception as e:
                     print(f"Error updating ICL state: {e}")
 
-            # ----------------
+            def export_handler():
+                """Exports the entire database to a CSV file."""
+                try:
+                    df = self.form_ctrl.get_all_as_dataframe(encoded=False)
+                    
+                    if df is None or df.empty:
+                        QtWidgets.QMessageBox.information(
+                            self, "Export Info", "The database is empty. Nothing to export."
+                        )
+                        return
+                    path, _ = QtWidgets.QFileDialog.getSaveFileName(
+                        self, 
+                        "Export Database to CSV", 
+                        "formulations_database_export.csv", 
+                        "CSV Files (*.csv)"
+                    )
 
-            # 2. Define Headers
+                    if path:
+                        df.to_csv(path, index=False)
+                        QtWidgets.QMessageBox.information(
+                            self, "Success", f"Database successfully exported to:\n{path}"
+                        )
+
+                except Exception as e:
+                    QtWidgets.QMessageBox.critical(
+                        self, "Export Error", f"Failed to export data:\n{e}"
+                    )
+
             headers = [
-                "ID",
-                "Name",
-                "Temp (°C)",
-                "ICL",
-                "Last Model",
-                "Protein Type",
-                "Class",
-                "MW (Da)",
-                "pI Mean",
-                "pI Range",
-                "Conc (mg/mL)",
-                "Buffer",
-                "pH",
-                "Conc (mM)",
-                "Stabilizer",
-                "Conc (mM)",
-                "Surfactant",
-                "Conc (%)",
-                "Salt",
-                "Conc (mM)",
-                "Excipient",
-                "Conc (mM)",
-                "η @ 100",
-                "η @ 1k",
-                "η @ 10k",
-                "η @ 100k",
-                "η @ 15m",
+                "ID", "Name", "Temp (°C)", "ICL", "Last Model",
+                "Protein Type", "Class", "MW (Da)", "pI Mean", "pI Range", "Conc (mg/mL)",
+                "Buffer", "pH", "Conc (mM)",
+                "Stabilizer", "Conc (mM)",
+                "Surfactant", "Conc (%)",
+                "Salt", "Conc (mM)",
+                "Excipient", "Conc (mM)",
+                "η @ 100", "η @ 1k", "η @ 10k", "η @ 100k", "η @ 15m",
             ]
 
             rows = []
@@ -704,22 +710,16 @@ class DashboardUI(QtWidgets.QWidget):
                     class_name = "-"
                     if hasattr(ing, "class_type") and ing.class_type:
                         class_name = str(
-                            getattr(
-                                ing.class_type,
-                                "value",
-                                getattr(ing.class_type, "name", "-"),
-                            )
+                            getattr(ing.class_type, "value", getattr(ing.class_type, "name", "-"))
                         )
-                    row.extend(
-                        [
-                            str(ing.name or "-"),
-                            class_name,
-                            str(getattr(ing, "molecular_weight", "")),
-                            str(getattr(ing, "pI_mean", "")),
-                            str(getattr(ing, "pI_range", "")),
-                            str(p.concentration),
-                        ]
-                    )
+                    row.extend([
+                        str(ing.name or "-"),
+                        class_name,
+                        str(getattr(ing, "molecular_weight", "")),
+                        str(getattr(ing, "pI_mean", "")),
+                        str(getattr(ing, "pI_range", "")),
+                        str(p.concentration),
+                    ])
                 else:
                     row.extend(["-", "-", "-", "-", "-", "-"])
 
@@ -727,13 +727,11 @@ class DashboardUI(QtWidgets.QWidget):
                 if hasattr(f, "buffer") and f.buffer and f.buffer.ingredient:
                     b = f.buffer
                     ing = b.ingredient
-                    row.extend(
-                        [
-                            str(ing.name or "-"),
-                            str(getattr(ing, "pH", "")),
-                            str(b.concentration),
-                        ]
-                    )
+                    row.extend([
+                        str(ing.name or "-"),
+                        str(getattr(ing, "pH", "")),
+                        str(b.concentration),
+                    ])
                 else:
                     row.extend(["-", "-", "-"])
 
@@ -742,9 +740,7 @@ class DashboardUI(QtWidgets.QWidget):
                     if hasattr(f, comp_attr):
                         c = getattr(f, comp_attr)
                         if c and c.ingredient:
-                            row.extend(
-                                [str(c.ingredient.name or "-"), str(c.concentration)]
-                            )
+                            row.extend([str(c.ingredient.name or "-"), str(c.concentration)])
                             return
                     row.extend(["-", "-"])
 
@@ -767,22 +763,21 @@ class DashboardUI(QtWidgets.QWidget):
 
                 rows.append(row)
 
-            # 3. Show Dialog
             dlg = DatabaseTableDialog(
                 "Formulation Database",
                 headers,
                 rows,
                 self,
                 delete_callback=delete_handler,
-                check_col_idx=3,  # ICL Column
+                check_col_idx=3, 
                 check_callback=icl_toggled,
+                export_callback=export_handler,
             )
             dlg.resize(1500, 600)
             dlg.exec_()
-
+            
         except Exception as e:
             import traceback
-
             traceback.print_exc()
             QtWidgets.QMessageBox.critical(
                 self, "Error", f"Failed to load formulations:\n{e}"
