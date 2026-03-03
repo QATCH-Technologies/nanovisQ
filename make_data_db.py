@@ -39,7 +39,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
-SOURCE_CSV = "formulation_data_02162026.csv"
+SOURCE_CSV = "formulation_data_03022026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
@@ -133,6 +133,12 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "Protein_class_type" in df.columns:
         normalized_classes = []
         for val in df["Protein_class_type"]:
+            # Preserve NaN/null values as-is — these represent rows with no protein
+            # and must not be fuzzy-matched (str(NaN) == "nan" scores above cutoff
+            # against enum members like "Polyclonal", producing incorrect assignments).
+            if pd.isna(val):
+                normalized_classes.append(None)
+                continue
             val_str = str(val)
             if val_str not in valid_classes:
                 match = process.extractOne(
@@ -148,6 +154,20 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             else:
                 normalized_classes.append(val_str)
         df["Protein_class_type"] = normalized_classes
+
+    # Fill NaN optional ingredient type columns with "none" to prevent the string
+    # "nan" (produced by str(float('nan'))) from being stored as an ingredient name.
+    # Affects poly-hIgG rows that have empty cells for unused ingredient slots.
+    optional_ing_cols = [
+        "Salt_type",
+        "Stabilizer_type",
+        "Surfactant_type",
+        "Excipient_type",
+    ]
+    for col in optional_ing_cols:
+        if col in df.columns:
+            df[col] = df[col].fillna("none")
+
     if "icl" not in df.columns:
         df["icl"] = True  # Default ICL behavior is True
 

@@ -369,7 +369,11 @@ class FormulationController:
                     molecular_weight=float(row["MW"]),
                     pI_mean=float(row["PI_mean"]),
                     pI_range=float(row["PI_range"]),
-                    class_type=ProteinClass.from_value(row["Protein_class_type"]),
+                    class_type=(
+                        ProteinClass.from_value(row["Protein_class_type"])
+                        if pd.notna(row["Protein_class_type"])
+                        else None
+                    ),
                 )
             )
             buffer = self.ingredient_controller.add_buffer(
