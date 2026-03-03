@@ -1699,7 +1699,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.setStyleSheet("color: #333333;")
 
         # TODO: Only show these widgets when cam wheel device is detected
-        if True:
+        if False:
             self.tool_NextPortRow = NumberIconButton()
             self.tool_NextPortRow.setToolButtonStyle(
                 QtCore.Qt.ToolButtonTextUnderIcon)
