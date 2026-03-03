@@ -20,6 +20,7 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         delete_callback=None,
         check_col_idx=None,
         check_callback=None,
+        export_callback=None,  # <-- Added parameter
     ):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -50,20 +51,21 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         if self.delete_callback:
             self.table.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
             self.table.customContextMenuRequested.connect(self.show_context_menu)
-
         if self.check_callback:
             self.table.itemChanged.connect(self.on_item_changed)
-
-        # Populate
         self.populate_table(data_rows)
-
         self.table.resizeColumnsToContents()
         self.table.horizontalHeader().setStretchLastSection(True)
         layout.addWidget(self.table)
-
-        # Close Button
         btn_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Close)
         btn_box.rejected.connect(self.reject)
+
+        if export_callback:
+            export_btn = QtWidgets.QPushButton("Export All to CSV")
+            export_btn.clicked.connect(export_callback)
+            
+            btn_box.addButton(export_btn, QtWidgets.QDialogButtonBox.ActionRole)
+
         layout.addWidget(btn_box)
 
     def populate_table(self, data_rows):
