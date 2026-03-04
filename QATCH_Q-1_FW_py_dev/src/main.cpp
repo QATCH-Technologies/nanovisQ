@@ -183,6 +183,7 @@
 #define HW_REV_MATCH(t) (NVMEM.HW_Revision == t)
 #define PID_IN_RANGE(pid, lo, hi) (pid >= lo && pid <= hi)
 #define PID_IS_SECONDARY(pid) (PID_IN_RANGE(pid, 0x2, 0x4) || PID_IN_RANGE(pid, 0xB, 0xD))
+#define PID_IS_CONTROLLER(pid) (pid == 0x80)
 // NOTE: Primary devices are PID = 0x00, 0x01, 0x0A, 0x80 (flux controller) and/or 0xFF (default, when other)
 // NOTE: Secondary devices are PID = 0x02, 0x03, 0x04, 0x0B, 0x0C and/or 0x0D
 
@@ -218,6 +219,19 @@
 #define STEPPER_E2 4                     // motor enable pin 2 (PWM)
 #define STEPPER_SW 7                     // motor limit switch (HIGH on contact)
 #endif
+
+// Flux TEC select pins
+#define PIN_TEC_L 24
+#define PIN_TEC_C 25
+#define PIN_TEC_R 26
+
+// Flux PROBE select pins
+#define PIN_PROBE_1 27
+#define PIN_PROBE_2 28
+#define PIN_PROBE_3 29
+#define PIN_PROBE_4 30
+#define PIN_PROBE_5 31
+#define PIN_PROBE_6 32
 
 double freq_factor = 1.0;
 
@@ -1103,23 +1117,33 @@ void QATCH_setup()
 
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
-  
+
+  if (PID_IS_CONTROLLER(NVMEM.pid))
+  {
 #if (!STEPPER_MATCH(STEPPER_NONE))
-  pinMode(STEPPER_SW, INPUT);
+    pinMode(STEPPER_SW, INPUT);
 #if (STEPPER_MATCH(STEPPER_SCREW))
-  stepper.setMaxSpeed(100);
-  stepper.setSpeed(0.000001);
-  stepper.setMinPulseWidth(10000);
-  stepper.setAcceleration(100);
+    stepper.setMaxSpeed(100);
+    stepper.setSpeed(0.000001);
+    stepper.setMinPulseWidth(10000);
+    stepper.setAcceleration(100);
 #endif
 #if (STEPPER_MATCH(STEPPER_ROTARY))
-  stepper.setMaxSpeed(100);
-  stepper.setSpeed(0.000001);
-  stepper.setMinPulseWidth(100000);
-  stepper.setAcceleration(100);
+    stepper.setMaxSpeed(100);
+    stepper.setSpeed(0.000001);
+    stepper.setMinPulseWidth(100000);
+    stepper.setAcceleration(100);
 #endif
-  stepper_home();
+    stepper_home();
 #endif
+
+    // Set all FLUX pins low until specified
+    for (int pin = 24; pin <= 32; pin++)
+    {
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, LOW);
+    }
+  }
 }
 
 #if (!STEPPER_MATCH(STEPPER_NONE))
@@ -1688,6 +1712,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("TEMP"))
     {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        client->println("HW_CONFIG_ERROR: TEMP cmd not supported (PID must be primary, not 0x80)");
+        return;
+      }
       //      if (message_str.substring(5) == "FAIL")
       //      {
       //        max31855.simulate_err = !max31855.simulate_err;
@@ -2371,7 +2400,8 @@ void QATCH_loop()
     if (message_str.toUpperCase() == "STOP")
     {
 #if (!STEPPER_MATCH(STEPPER_NONE))
-      if (stepper.isRunning()) stepper.stop();
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+        if (stepper.isRunning()) stepper.stop();
 #endif
       stopStreaming();
       client->println("STOP"); // SW listens for this reply
@@ -2454,28 +2484,174 @@ void QATCH_loop()
 #if (!STEPPER_MATCH(STEPPER_NONE))
     if (message_str.toUpperCase().startsWith("STEP"))
     {
-      // Command format for relative movement: "STEP [+/-][dist]"
-      long position = 0;
-      long cmd_value = message_str.substring(4).trim().toInt();
-      // first-case: non-zero offsets, explicitly positive◘
-      if (cmd_value != 0 && message_str.indexOf("+") == 5)
-        position = stepper.currentPosition() + cmd_value;
-      else if (cmd_value == 0) { stepper_home(); return; } // home
-      else if (cmd_value == 1) position = stepperPositions[0];
-      else if (cmd_value == 2) position = stepperPositions[1];
-      else if (cmd_value == 3) position = stepperPositions[2];
-      else if (cmd_value == 4) position = stepperPositions[3];
-      else if (cmd_value == 5) position = stepperPositions[4];
-      else if (cmd_value == 6) position = stepperPositions[5];
-      // catch-all: negative offsets, or greater than 6
-      else position = stepper.currentPosition() + cmd_value;
-      client->printf("Stepper: Moving to position %i\n", position);
-      stepper.enableOutputs();
-      stepper.moveTo(position);
-      return;
-      // main loop handles `stepper.run()` and `disableOutputs()`
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // Command format for relative movement: "STEP [+/-][dist]"
+        long position = 0;
+        long cmd_value = message_str.substring(4).trim().toInt();
+        // first-case: non-zero offsets, explicitly positive◘
+        if (cmd_value != 0 && message_str.indexOf("+") == 5)
+          position = stepper.currentPosition() + cmd_value;
+        else if (cmd_value == 0) { stepper_home(); return; } // home
+        else if (cmd_value == 1) position = stepperPositions[0];
+        else if (cmd_value == 2) position = stepperPositions[1];
+        else if (cmd_value == 3) position = stepperPositions[2];
+        else if (cmd_value == 4) position = stepperPositions[3];
+        else if (cmd_value == 5) position = stepperPositions[4];
+        else if (cmd_value == 6) position = stepperPositions[5];
+        // catch-all: negative offsets, or greater than 6
+        else position = stepper.currentPosition() + cmd_value;
+        client->printf("Stepper: Moving to position %i\n", position);
+        stepper.enableOutputs();
+        stepper.moveTo(position);
+        // main loop handles `stepper.run()` and `disableOutputs()`
+      } else {
+        client->println("HW_CONFIG_ERROR: STEP cmd not supported (PID must be 0x80)");
+      }
+    return;
     }
 #endif
+
+    if (message_str.toUpperCase().startsWith("TEC"))
+    {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // client->println("Handling TEC command...");
+        // Examples:  "TEC" to get output states (L,C,R)
+        //            "TEC L" to set state of TEC-L only
+        //            "TEC C, R" to set state of C and R
+
+        bool _l = LOW, _c = LOW, _r = LOW;
+        bool valid = false, read_only = false;
+
+        if (message_str.toUpperCase().endsWith("NONE")) {
+          _l = _c = _r = LOW;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().endsWith("ALL")) {
+          _l = _c = _r = HIGH;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().indexOf(" L") > 0) {
+          _l = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" C") > 0) { 
+          // endsWith("(space)C") required to differentiate "TEC C" from "TEC"
+          _c = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" R") > 0) {
+          _r = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().endsWith("TEC")) {
+          valid = read_only = true;
+        }
+        
+        if (!valid) {
+          client->println("TEC: Unknown input. Ignoring line.");
+          return;
+        }
+
+        // set and report outputs:
+        if (!read_only)
+        {
+          digitalWrite(PIN_TEC_L, _l);
+          digitalWrite(PIN_TEC_C, _c);
+          digitalWrite(PIN_TEC_R, _r);
+        }
+
+        client->printf("TEC: %u, %u, %u\n", 
+          digitalRead(PIN_TEC_L), 
+          digitalRead(PIN_TEC_C), 
+          digitalRead(PIN_TEC_R));
+
+      } else {
+        client->println("HW_CONFIG_ERROR: TEC cmd not supported (PID must be 0x80)");
+      }
+
+      return;
+    }
+
+    if (message_str.toUpperCase().startsWith("PROBE")) 
+    {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // client->println("Handling PROBE command...");
+        // Examples:  "PROBE" to get output states (1,2,3,4,5,6)
+        //            "PROBE 1" to set state of PROBE-1 only
+        //            "PROBE 2, 3" to set state of 2 and 3
+
+        bool _1 = LOW, _2 = LOW, _3 = LOW, _4 = LOW, _5 = LOW, _6 = LOW;
+        bool valid = false, read_only = false;
+
+        if (message_str.toUpperCase().endsWith("NONE")) {
+          _1 = _2 = _3 = _4 = _5 = _6 = LOW;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().endsWith("ALL")) {
+          _1 = _2 = _3 = _4 = _5 = _6 = HIGH;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().indexOf(" 1") > 0) {
+          _1 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 2") > 0) {
+          _2 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 3") > 0) {
+          _3 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 4") > 0) {
+          _4 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 5") > 0) {
+          _5 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 6") > 0) {
+          _6 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().endsWith("PROBE")) {
+          valid = read_only = true;
+        }
+        
+        if (!valid) {
+          client->println("PROBE: Unknown input. Ignoring line.");
+          return;
+        }
+
+        // set and report outputs:
+        if (!read_only)
+        {
+          digitalWrite(PIN_PROBE_1, _1);
+          digitalWrite(PIN_PROBE_2, _2);
+          digitalWrite(PIN_PROBE_3, _3);
+          digitalWrite(PIN_PROBE_4, _4);
+          digitalWrite(PIN_PROBE_5, _5);
+          digitalWrite(PIN_PROBE_6, _6);
+        }
+
+        client->printf("PROBE: %u, %u, %u, %u, %u, %u\n", 
+          digitalRead(PIN_PROBE_1), 
+          digitalRead(PIN_PROBE_2), 
+          digitalRead(PIN_PROBE_3), 
+          digitalRead(PIN_PROBE_4), 
+          digitalRead(PIN_PROBE_5), 
+          digitalRead(PIN_PROBE_6));
+
+      } else {
+        client->println("HW_CONFIG_ERROR: PROBE cmd not supported (PID must be 0x80)");
+      }
+
+      return;
+    }
 
     // decode message
     byte params = 0;
@@ -3275,7 +3451,8 @@ void QATCH_loop()
       ledWrite(LED_SEGMENT_DP, led_state);
     if (l298nhb_auto_off_at == 0)
     {
-      ledWrite(LED_BLUE_PIN, led_state);
+      if (!PID_IS_CONTROLLER(NVMEM.pid))
+        ledWrite(LED_BLUE_PIN, led_state);
       ledWrite(LED_ORANGE_PIN, LOW);
     }
     else
@@ -3574,19 +3751,22 @@ void QATCH_loop()
   }
 
 #if (!STEPPER_MATCH(STEPPER_NONE))
-  stepper.run();
-  if (stepper.isRunning())
+  if (PID_IS_CONTROLLER(NVMEM.pid))
   {
-  // client->print("Stepper: ");
-  // client->print(digitalRead(STEPPER_M1));
-  // client->print(digitalRead(STEPPER_E1));
-  // client->print(digitalRead(STEPPER_M2));
-  // client->println(digitalRead(STEPPER_E2));
-  } else {
-    if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
-        digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
-      client->println("Stepper: DONE!");
-    stepper.disableOutputs();
+    stepper.run();
+    if (stepper.isRunning())
+    {
+    // client->print("Stepper: ");
+    // client->print(digitalRead(STEPPER_M1));
+    // client->print(digitalRead(STEPPER_E1));
+    // client->print(digitalRead(STEPPER_M2));
+    // client->println(digitalRead(STEPPER_E2));
+    } else {
+      if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
+          digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
+        client->println("Stepper: DONE!");
+      stepper.disableOutputs();
+    }
   }
 #endif
 

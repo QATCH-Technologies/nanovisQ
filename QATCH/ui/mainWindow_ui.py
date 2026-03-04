@@ -6,11 +6,13 @@ import os
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
 from pyqtgraph import GraphicsLayoutWidget
+from time import time
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles, UserRoles
 from QATCH.core.constants import Constants, OperationType
+from QATCH.processors.Device import serial  # real device hardware
 from QATCH.ui.drawPlateConfig import WellPlate
 from QATCH.ui.popUp import PopUp
 
@@ -131,7 +133,8 @@ class FloatingMenuWidget(QtWidgets.QWidget):
             self.parent.setLearnMode(tab_index=index)
             # self.setActiveItem(index) # Handled by VisQAIWindow.on_tab_change()
         else:
-            raise ValueError(f"Index {index} is out-of-bounds for toolkit items count.")
+            raise ValueError(
+                f"Index {index} is out-of-bounds for toolkit items count.")
 
     def _setStyleSheet(
         self, label: QtWidgets.QLabel, selected: bool, hover: bool = False
@@ -347,11 +350,13 @@ class Ui_Main(object):
         layout_s.addStretch()
         self.btnCollapse = QtWidgets.QToolButton(handle)
         self.btnCollapse.setArrowType(QtCore.Qt.DownArrow)
-        self.btnCollapse.clicked.connect(lambda: self.handleSplitterButton(True))
+        self.btnCollapse.clicked.connect(
+            lambda: self.handleSplitterButton(True))
         layout_s.addWidget(self.btnCollapse)
         self.btnExpand = QtWidgets.QToolButton(handle)
         self.btnExpand.setArrowType(QtCore.Qt.UpArrow)
-        self.btnExpand.clicked.connect(lambda: self.handleSplitterButton(False))
+        self.btnExpand.clicked.connect(
+            lambda: self.handleSplitterButton(False))
         layout_s.addWidget(self.btnExpand)
         layout_s.addStretch()
         handle.setLayout(layout_s)
@@ -371,7 +376,8 @@ class Ui_Main(object):
         # (ignore the warning: "Trying to replace a widget with itself")
 
         # retain sizing of view menu toggle elements
-        elems = [parent.LogWin.ui4.centralwidget, parent.PlotsWin.ui2.centralwidget]
+        elems = [parent.LogWin.ui4.centralwidget,
+                 parent.PlotsWin.ui2.centralwidget]
         for e in elems:
             not_resize = e.sizePolicy()
             not_resize.setHorizontalStretch(1)
@@ -434,7 +440,8 @@ class Ui_Main(object):
         if not self.parent.AnalyzeProc.hasUnsavedChanges():
             self.parent.ControlsWin.ui_preferences.hide()
             self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
-            self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+            self.mode_analyze.setStyleSheet(
+                "padding: 10px; padding-left: 15px;")
             self.mode_learn.setStyleSheet("")
             self.splitter.replaceWidget(0, self.userview)
             # login, forgot pw, create user (must match pages in _configure_tutorials() too)
@@ -522,7 +529,8 @@ class Ui_Main(object):
                 self.mode_run.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;"
                 )
-                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
                 self.mode_learn.setStyleSheet("")
                 self.splitter.replaceWidget(0, self.runview)
                 if UserProfiles.count() == 0:
@@ -610,7 +618,8 @@ class Ui_Main(object):
             if check_result:
                 self.parent._enable_ui(False)
                 self.parent.VisQAIWin.enable(False)
-                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_run.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
                 self.mode_analyze.setStyleSheet(
                     "padding: 10px; padding-left: 15px; background: #B7D3DC;"
                 )
@@ -706,8 +715,10 @@ class Ui_Main(object):
                 )
                 # Calling `setCurrentIndex()` will trigger `on_tab_changed()` to set active toolkit item
                 self.parent.VisQAIWin.tab_widget.setCurrentIndex(tab_index)
-                self.mode_run.setStyleSheet("padding: 10px; padding-left: 15px;")
-                self.mode_analyze.setStyleSheet("padding: 10px; padding-left: 15px;")
+                self.mode_run.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
+                self.mode_analyze.setStyleSheet(
+                    "padding: 10px; padding-left: 15px;")
                 self.mode_learn.setStyleSheet("background: #B7D3DC;")
                 self.splitter.replaceWidget(0, self.learn_ui)
                 self.parent.viewTutorialPage(8)  # VisQ.AI(tm) coming soon
@@ -749,7 +760,8 @@ class Ui_Main(object):
 
     def retranslateUi(self, MainWindow0):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow0.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow0.setWindowTitle(
             _translate(
@@ -869,20 +881,23 @@ class Ui_Login(object):
             "<span style='font-size: 10pt'><b>User Sign-In Required</b></span>"
         )
         self.user_label.setFixedHeight(50)
-        self.layout.addWidget(self.user_label, 2, 1, 1, 3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_label, 2, 1, 1,
+                              3, QtCore.Qt.AlignCenter)
         self.user_initials = QtWidgets.QLineEdit()
         self.user_initials.textEdited.connect(self.text_transform)
         self.user_initials.setMinimumWidth(190)
         self.user_initials.setPlaceholderText("Initials")
         self.user_initials.setMaxLength(4)
         self.user_initials.installEventFilter(MainWindow5)
-        self.layout.addWidget(self.user_initials, 3, 2, 1, 1, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_initials, 3, 2,
+                              1, 1, QtCore.Qt.AlignCenter)
         self.user_password = QtWidgets.QLineEdit()
         self.user_password.setMinimumWidth(190)
         self.user_password.setPlaceholderText("Password")
         self.user_password.setEchoMode(QtWidgets.QLineEdit.Password)
         self.user_password.installEventFilter(MainWindow5)
-        self.layout.addWidget(self.user_password, 4, 2, 1, 1, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_password, 4, 2,
+                              1, 1, QtCore.Qt.AlignCenter)
         self.sign_in = QtWidgets.QPushButton("&Sign In")
         self.sign_in.setMinimumWidth(190)
         self.sign_in.clicked.connect(self.action_sign_in)
@@ -893,13 +908,15 @@ class Ui_Login(object):
         self.user_info = QtWidgets.QLabel("")
         self.user_info.setStyleSheet("color: #000000; font-weight: bold;")
         # self.user_info.setFixedHeight(50)
-        self.layout.addWidget(self.user_info, 6, 1, 1, 3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_info, 6, 1, 1,
+                              3, QtCore.Qt.AlignCenter)
 
         self.user_error = QtWidgets.QLabel("")
         self.user_error.setStyleSheet("color: #ff0000;")
         # self.user_label.setAlignment(QtCore.Qt.AlignCenter)
         # self.user_error.setFixedHeight(50)
-        self.layout.addWidget(self.user_error, 7, 1, 1, 3, QtCore.Qt.AlignCenter)
+        self.layout.addWidget(self.user_error, 7, 1, 1,
+                              3, QtCore.Qt.AlignCenter)
 
         v_layout = QtWidgets.QVBoxLayout()
         v_layout.addStretch()
@@ -938,7 +955,8 @@ class Ui_Login(object):
         self.togglepasswordAction = self.user_password.addAction(
             self.visibleIcon, QtWidgets.QLineEdit.TrailingPosition
         )
-        self.togglepasswordAction.triggered.connect(self.on_toggle_password_Action)
+        self.togglepasswordAction.triggered.connect(
+            self.on_toggle_password_Action)
 
     def on_toggle_password_Action(self) -> None:
         """Toggle the visibility of the password input field.
@@ -999,12 +1017,14 @@ class Ui_Login(object):
                 icon and title updated.
         """
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow5.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow5.setWindowTitle(
             _translate(
                 "MainWindow5",
-                "{} {} - Login".format(Constants.app_title, Constants.app_version),
+                "{} {} - Login".format(Constants.app_title,
+                                       Constants.app_version),
             )
         )
 
@@ -1086,9 +1106,11 @@ class Ui_Login(object):
         initials = self.user_initials.text().upper()
         pwd = self.user_password.text()
         requiredRole = UserRoles.ANY
-        authenticated, filename, params = UserProfiles.auth(initials, pwd, requiredRole)
+        authenticated, filename, params = UserProfiles.auth(
+            initials, pwd, requiredRole)
         if authenticated:
-            Log.i(f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
+            Log.i(
+                f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
             name, init, role = params[0], params[1], params[2].value
             self._sessionTimer.start()  # check session every hour
         else:
@@ -1133,7 +1155,8 @@ class Ui_Login(object):
 
                     if PopUp.question(
                         self.parent,
-                        "Developer Mode " + ("Expired" if is_expired else "Error"),
+                        "Developer Mode " +
+                            ("Expired" if is_expired else "Error"),
                         messagebox_description
                         + "<br/>"
                         + f"Renewal Period: Every {UserConstants.DEV_EXPIRE_LEN} days<br/><br/>"
@@ -1230,8 +1253,10 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # stop button ---------------------------------------------------------
         self.pButton_Stop = QtWidgets.QPushButton()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/stop_icon.ico")
-        self.pButton_Stop.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/stop_icon.ico")
+        self.pButton_Stop.setIcon(QtGui.QIcon(
+            QtGui.QPixmap(icon_path)))  # .png
         self.pButton_Stop.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Stop.setObjectName("pButton_Stop")
         if USE_FULLSCREEN:
@@ -1267,7 +1292,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         icon_path = os.path.join(
             Architecture.get_path(), "QATCH/icons/refresh-icon.png"
         )
-        self.pButton_Refresh.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
+        self.pButton_Refresh.setIcon(
+            QtGui.QIcon(QtGui.QPixmap(icon_path)))  # .png
         self.pButton_Refresh.setStyleSheet(
             "background:white;padding:3px;margin-right:9px;"
         )
@@ -1302,7 +1328,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # start button --------------------------------------------------------
         self.pButton_Start = QtWidgets.QPushButton()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/start_icon.ico")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/start_icon.ico")
         self.pButton_Start.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Start.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Start.setObjectName("pButton_Start")
@@ -1312,7 +1339,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         # clear plots button --------------------------------------------------
         self.pButton_Clear = QtWidgets.QPushButton()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/clear_icon.ico")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/clear_icon.ico")
         self.pButton_Clear.setIcon(QtGui.QIcon(QtGui.QPixmap(icon_path)))
         self.pButton_Clear.setMinimumSize(QtCore.QSize(0, 0))
         self.pButton_Clear.setObjectName("pButton_Clear")
@@ -1515,7 +1543,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.infosave.setFixedHeight(50)
         # else:
         #    self.infosave.setFixedHeight(15)
-        self.infosave.setText("<font color=#ffffff > TEC Temperature Control </font>")
+        self.infosave.setText(
+            "<font color=#ffffff > TEC Temperature Control </font>")
         self.Layout_controls.addWidget(self.infosave, 1, 4, 1, 1)
 
         # Program Status standby ----------------------------------------------
@@ -1524,7 +1553,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
         self.infostatus.setAlignment(QtCore.Qt.AlignCenter)
-        self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
+        self.infostatus.setText(
+            "<font color=#333333 > Program Status Standby </font>")
         if USE_FULLSCREEN:
             self.infostatus.setFixedHeight(50)
         self.Layout_controls.addWidget(self.infostatus, 5, 5, 1, 2)
@@ -1611,7 +1641,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             self.run_progress_bar.setFixedHeight(50)
             self.fill_status_progress_bar.setFixedHeight(50)
         if SHOW_SIMPLE_CONTROLS:
-            self.run_progress_bar.valueChanged.connect(self._update_progress_value)
+            self.run_progress_bar.valueChanged.connect(
+                self._update_progress_value)
 
         self.run_progress_bar.setValue(0)
         self.fill_status_progress_bar.setValue(0)
@@ -1637,15 +1668,27 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
         self.tool_bar.setStyleSheet("color: #333333;")
 
+        self.tool_NextPortRow = NumberIconButton()
+        self.tool_NextPortRow.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_NextPortRow.setText("Next Port")
+        self.tool_NextPortRow.clicked.connect(self.action_next_port)
+        self.action_NextPortRow = self.tool_bar.addWidget(
+            self.tool_NextPortRow)
+
+        self.action_NextPortSep = self.tool_bar.addSeparator()
+
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
 
         icon_init = QtGui.QIcon()
         icon_init.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "initialize.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(
+                icon_path, "initialize.png")), QtGui.QIcon.Normal
         )
         # icon_init.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'initialize-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Initialize = QtWidgets.QToolButton()
-        self.tool_Initialize.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_Initialize.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_Initialize.setIcon(icon_init)  # normal and disabled pixmaps
         self.tool_Initialize.setText("Initialize")
         self.tool_Initialize.clicked.connect(self.action_initialize)
@@ -1655,7 +1698,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         icon_start = QtGui.QIcon()
         icon_start.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "start.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "start.png")
+                          ), QtGui.QIcon.Normal
         )
         # icon_start.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'start-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Start = QtWidgets.QToolButton()
@@ -1667,7 +1711,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         icon_stop = QtGui.QIcon()
         icon_stop.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "stop.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "stop.png")
+                          ), QtGui.QIcon.Normal
         )
         # icon_stop.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'stop-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_Stop = QtWidgets.QToolButton()
@@ -1681,7 +1726,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         icon_reset = QtGui.QIcon()
         icon_reset.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "reset.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "reset.png")
+                          ), QtGui.QIcon.Normal
         )
         # icon_reset.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'reset-disabled.png')), QtGui.QIcon.Disabled) # not provided
         self.tool_Reset = QtWidgets.QToolButton()
@@ -1700,11 +1746,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
         icon_temp = QtGui.QIcon()
         icon_temp.addPixmap(
-            QtGui.QPixmap(os.path.join(icon_path, "temp.png")), QtGui.QIcon.Normal
+            QtGui.QPixmap(os.path.join(icon_path, "temp.png")
+                          ), QtGui.QIcon.Normal
         )
         # icon_temp.addPixmap(QtGui.QPixmap(os.path.join(icon_path, 'temp-disabled.png')), QtGui.QIcon.Disabled)
         self.tool_TempControl = QtWidgets.QToolButton()
-        self.tool_TempControl.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_TempControl.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_TempControl.setIcon(icon_temp)
         self.tool_TempControl.setText("Temp Control")
         self.tool_TempControl.setCheckable(True)
@@ -1745,11 +1793,13 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # self.toolBar.addWidget(self.tool_Advanced)
 
         icon_advanced = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/advanced.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/advanced.png")
         icon_advanced.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         # icon_advanced.addPixmap(QtGui.QPixmap('QATCH/icons/advanced-disabled.png'), QtGui.QIcon.Disabled)
         self.tool_Advanced = QtWidgets.QToolButton()
-        self.tool_Advanced.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.tool_Advanced.setToolButtonStyle(
+            QtCore.Qt.ToolButtonTextUnderIcon)
         # normal and disabled pixmaps
         self.tool_Advanced.setIcon(icon_advanced)
         self.tool_Advanced.setText("Advanced")
@@ -1759,7 +1809,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar_2.addSeparator()
 
         icon_user = QtGui.QIcon()
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/user.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/user.png")
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Normal)
         icon_user.addPixmap(QtGui.QPixmap(icon_path), QtGui.QIcon.Disabled)
         self.tool_User = QtWidgets.QToolButton()
@@ -1825,16 +1876,16 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # get innerText from HTML in infobar
         plain_text = self.infobar.text()
         color = plain_text[
-            plain_text.rindex("color=") + 6 : plain_text.rindex("color=") + 6 + 7
+            plain_text.rindex("color=") + 6: plain_text.rindex("color=") + 6 + 7
         ]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[plain_text.index(">") + 1 :]
-        plain_text = plain_text[0 : plain_text.rindex("<")]
+        plain_text = plain_text[plain_text.index(">") + 1:]
+        plain_text = plain_text[plain_text.index(">") + 1:]
+        plain_text = plain_text[plain_text.index(">") + 1:]
+        plain_text = plain_text[0: plain_text.rindex("<")]
         # remove any formatting tags: <b>, <i>, <u>
         while plain_text.rfind("<") != plain_text.find("<"):
-            plain_text = plain_text[0 : plain_text.rindex("<")]
-            plain_text = plain_text[plain_text.index(">") + 1 :]
+            plain_text = plain_text[0: plain_text.rindex("<")]
+            plain_text = plain_text[plain_text.index(">") + 1:]
         if len(plain_text) == 0:
             plain_text = "Progress: Not Started"
         else:
@@ -1887,11 +1938,14 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.pButton_Stop.setText(_translate("MainWindow", " STOP"))
         self.pButton_Start.setText(_translate("MainWindow", "START"))
         self.pButton_Clear.setText(_translate("MainWindow", "Clear Plots"))
-        self.pButton_Reference.setText(_translate("MainWindow", "Set/Reset Reference"))
-        self.pButton_ResetApp.setText(_translate("MainWindow", "Factory Defaults"))
+        self.pButton_Reference.setText(
+            _translate("MainWindow", "Set/Reset Reference"))
+        self.pButton_ResetApp.setText(
+            _translate("MainWindow", "Factory Defaults"))
         self.sBox_Samples.setSuffix(_translate("MainWindow", " / 5 min"))
         self.sBox_Samples.setPrefix(_translate("MainWindow", ""))
-        self.chBox_export.setText(_translate("MainWindow", "Txt Export Sweep File"))
+        self.chBox_export.setText(_translate(
+            "MainWindow", "Txt Export Sweep File"))
         self.chBox_freqHop.setText(_translate("MainWindow", "Mode Hop"))
         self.chBox_correctNoise.setText(
             _translate("MainWindow", "Show amplitude curve")
@@ -1899,6 +1953,60 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.chBox_MultiAuto.setText(
             _translate("MainWindow", "Auto-detect channel count")
         )
+
+    def action_next_port(self):
+        """Method to handle advancing to the next port."""
+        try:
+            # Disable port button to prevent multi-clicks
+            self.tool_NextPortRow.setEnabled(False)
+
+            controller_port = self.cBox_Port.itemData(
+                self.cBox_Port.count() - 2)  # last device, not including DEV_CMD
+
+            next_port_num = self.tool_NextPortRow.value()
+
+            if hasattr(self, "fluxThread"):
+                if self.fluxThread.isRunning():
+                    Log.d("Waiting for FLUX controller to stop.")
+                    # wait for thread to quit, gracefully
+                    if not self.fluxThread.wait(msecs=3000):
+                        Log.w(
+                            "Flux controller failed to exit gracefully... forcing termination")
+                        self.fluxThread.terminate()
+            Log.d("Starting FLUX controller thread.")
+            self.fluxThread = QtCore.QThread()
+            self.fluxWorker = FLUXControl()
+            self.fluxWorker.set_ports(
+                controller=controller_port,
+                next_port=next_port_num)
+            self.fluxWorker.moveToThread(self.fluxThread)
+            self.fluxThread.worker = self.fluxWorker
+            self.fluxThread.started.connect(self.fluxWorker.run)
+            self.fluxWorker.finished.connect(self.fluxThread.quit)
+            self.fluxWorker.result.connect(self.next_port_result)
+            self.fluxThread.start()
+
+        except Exception as e:
+            Log.e(f"action_next_port ERROR: {e}")
+
+            self.tool_NextPortRow.setIconError()
+            self.tool_NextPortRow.setEnabled(True)  # show X error indicator
+
+    def next_port_result(self, success):
+        try:
+            # Enable button to clear hourglass, show result (either number or red X)
+            self.tool_NextPortRow.setEnabled(True)
+
+            if not success:
+                self.tool_NextPortRow.setIconError()  # trasient red text, resets on next update
+
+                if PopUp.critical(self, "Next Port Failed",
+                                  "ERROR: Flux controller failed to move to the next port.",
+                                  btn1_text="Reset"):
+                    self.tool_NextPortRow.click()  # re-home stepper
+
+        except Exception as e:
+            Log.e(f"next_port_result ERROR: {e}")
 
     def action_initialize(self):
         if self.pButton_Start.isEnabled():
@@ -1935,7 +2043,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.infostatus.setStyleSheet(
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
-        self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
+        self.infostatus.setText(
+            "<font color=#333333 > Program Status Standby </font>")
         self.cal_initialized = False
         self.tool_Start.setEnabled(False)
         self.fill_status_progress_bar.setValue(0)
@@ -1999,7 +2108,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.advancedwidget.move(0, 0)
         self.advancedwidget.show()
         # make plate config button square
-        self.pButton_PlateConfig.setFixedWidth(self.pButton_PlateConfig.height())
+        self.pButton_PlateConfig.setFixedWidth(
+            self.pButton_PlateConfig.height())
         # QtWidgets.QWhatsThis.enterWhatsThisMode()
         # QtWidgets.QWhatsThis.showText(
         #     QtCore.QPoint(int(self.advancedwidget.width() / 2), int(self.advancedwidget.height() * (2/3))),
@@ -2067,7 +2177,8 @@ class Ui_Plots(object):
         self.gridLayout.setObjectName("gridLayout")
         # Remove top margin, leaving the rest as "default"
         self.gridLayout.setContentsMargins(11, 0, 11, 11)
-        self.Layout_graphs = QtWidgets.QSplitter(QtCore.Qt.Horizontal)  # QGridLayout()
+        self.Layout_graphs = QtWidgets.QSplitter(
+            QtCore.Qt.Horizontal)  # QGridLayout()
         self.Layout_graphs.setObjectName("Layout_graphs")
 
         self.plt = GraphicsLayoutWidget(self.centralwidget)
@@ -2112,11 +2223,13 @@ class Ui_Plots(object):
         layout_s.addStretch()
         self.btnCollapse = QtWidgets.QToolButton(handle)
         self.btnCollapse.setArrowType(QtCore.Qt.RightArrow)
-        self.btnCollapse.clicked.connect(lambda: self.handleSplitterButton(True))
+        self.btnCollapse.clicked.connect(
+            lambda: self.handleSplitterButton(True))
         layout_s.addWidget(self.btnCollapse)
         self.btnExpand = QtWidgets.QToolButton(handle)
         self.btnExpand.setArrowType(QtCore.Qt.LeftArrow)
-        self.btnExpand.clicked.connect(lambda: self.handleSplitterButton(False))
+        self.btnExpand.clicked.connect(
+            lambda: self.handleSplitterButton(False))
         layout_s.addWidget(self.btnExpand)
         layout_s.addStretch()
         handle.setLayout(layout_s)
@@ -2144,16 +2257,19 @@ class Ui_Plots(object):
             self.btnCollapse.setVisible(True)
             self.btnExpand.setVisible(False)
             width = self.Layout_graphs.width()
-            self.Layout_graphs.setSizes([int(width * 2 / 3), int(width * 1 / 3)])
+            self.Layout_graphs.setSizes(
+                [int(width * 2 / 3), int(width * 1 / 3)])
 
     def retranslateUi(self, MainWindow2):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow2.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow2.setWindowTitle(
             _translate(
                 "MainWindow2",
-                "{} {} - Plots".format(Constants.app_title, Constants.app_version),
+                "{} {} - Plots".format(Constants.app_title,
+                                       Constants.app_version),
             )
         )
 
@@ -2212,7 +2328,8 @@ class Ui_Info(object):
         # Data Information ---------------------------------------------------------------------
         self.info = QtWidgets.QLabel()
         self.info.setStyleSheet("background: #008EC0; padding: 1px;")
-        self.info.setText("<font color=#ffffff > Data Information&nbsp;</font>")
+        self.info.setText(
+            "<font color=#ffffff > Data Information&nbsp;</font>")
         # self.info.setFixedWidth(250)
         # self.info.setFixedHeight(15)
         self.gridLayout_2.addWidget(self.info, 3, 0, 1, 1)
@@ -2284,7 +2401,8 @@ class Ui_Info(object):
         self.inforef = QtWidgets.QLabel()
         self.inforef.setStyleSheet("background: #008EC0; padding: 1px;")
         # self.inforef1.setAlignment(QtCore.Qt.AlignCenter)
-        self.inforef.setText("<font color=#ffffff > Reference Settings </font>")
+        self.inforef.setText(
+            "<font color=#ffffff > Reference Settings </font>")
         # self.inforef.setFixedHeight(15)
         # self.inforef.setFixedWidth(250)
         self.gridLayout_2.addWidget(self.inforef, 11, 0, 1, 1)
@@ -2395,8 +2513,10 @@ class Ui_Info(object):
 
     def retranslateUi(self, MainWindow3):
         _translate = QtCore.QCoreApplication.translate
-        self.pButton_Download.setText(_translate("MainWindow3", " Check Again"))
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        self.pButton_Download.setText(
+            _translate("MainWindow3", " Check Again"))
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow3.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow3.setWindowTitle(_translate("MainWindow3", "Information"))
 
@@ -2413,7 +2533,8 @@ class Ui_Logger(object):
 
         # log to text box
         logTextBox.setFormatter(
-            logging.Formatter(fmt="%(asctime)s %(levelname)s %(message)s", datefmt=None)
+            logging.Formatter(
+                fmt="%(asctime)s %(levelname)s %(message)s", datefmt=None)
         )
         logging.getLogger("QATCH").addHandler(logTextBox)
         Log._show_user_info()
@@ -2425,12 +2546,14 @@ class Ui_Logger(object):
 
     def retranslateUi(self, MainWindow4):
         _translate = QtCore.QCoreApplication.translate
-        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/qatch-icon.png")
+        icon_path = os.path.join(
+            Architecture.get_path(), "QATCH/icons/qatch-icon.png")
         MainWindow4.setWindowIcon(QtGui.QIcon(icon_path))  # .png
         MainWindow4.setWindowTitle(
             _translate(
                 "MainWindow4",
-                "{} {} - Console".format(Constants.app_title, Constants.app_version),
+                "{} {} - Console".format(Constants.app_title,
+                                         Constants.app_version),
             )
         )
 
@@ -2479,14 +2602,16 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
     def appendToInfo(self, html):
         if self.forceRepaintEvents and "[Device] ERROR:" in html:
             return  # do not show serial errors during firmware update on info console
-        self.logInfo.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
+        self.logInfo.moveCursor(QtGui.QTextCursor.End,
+                                QtGui.QTextCursor.MoveAnchor)
         if self.progressMode:
             # replace the most recent line with this new html line
             self.logInfo.textCursor().deletePreviousChar()
             self.logInfo.moveCursor(
                 QtGui.QTextCursor.StartOfLine, QtGui.QTextCursor.MoveAnchor
             )
-            self.logInfo.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.KeepAnchor)
+            self.logInfo.moveCursor(
+                QtGui.QTextCursor.End, QtGui.QTextCursor.KeepAnchor)
             self.logInfo.textCursor().removeSelectedText()
         self.logInfo.insertHtml(html)
         self.logInfo.ensureCursorVisible()
@@ -2494,7 +2619,8 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
             self.logInfo.repaint()
 
     def appendToDebug(self, html):
-        self.logDebug.moveCursor(QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
+        self.logDebug.moveCursor(
+            QtGui.QTextCursor.End, QtGui.QTextCursor.MoveAnchor)
         self.logDebug.insertHtml(html)
         self.logDebug.ensureCursorVisible()
         if self.forceRepaintEvents:
@@ -2515,11 +2641,11 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
             print(msg, "(duplicate record ignored)")
             return  # ignore duplicate records when they are handled back-to-back
         self.last_record_msg = msg
-        msg = msg[msg.index(" ") + 1 :]  # trim date from console
+        msg = msg[msg.index(" ") + 1:]  # trim date from console
         html_fmt = '<font style=\'font-family:"Lucida Console","Courier New",monospace;color:{};font-weight:{};\'>{}</font><br/><br/>'
         color = "black" if record.levelno <= logging.INFO else "red"
         weight = "normal" if record.levelno <= logging.WARNING else "bold"
-        time_only = msg[0 : msg.index(",")]
+        time_only = msg[0: msg.index(",")]
         padding = "&nbsp;&nbsp;&nbsp;" if weight == "normal" else "&nbsp;&nbsp;"
         msg_info = time_only + padding + record.msg
         msg_debug = msg
@@ -2528,3 +2654,203 @@ class QTextEditLogger(logging.Handler, QtCore.QObject):
         if record.levelno >= logging.INFO:
             self.appendInfoText.emit(html_info)
         self.appendDebugText.emit(html_debug)
+
+
+class NumberIconButton(QtWidgets.QToolButton):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self._error = False
+        self._value = 1
+        self._iconSize = QtCore.QSize(32, 32)
+
+        self.setIconSize(self._iconSize)
+        self.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+
+        self.updateIcon()
+        self.clicked.connect(self.advance)
+
+    def advance(self):
+        self._value += 1
+        if self._value > 6 or self._error:
+            self._error = False
+            self._value = 1
+        self.updateIcon()
+
+    def value(self):
+        # Used to get the current port step by the caller
+        return self._value
+
+    def setIconError(self):
+        self._error = True
+        self.updateIcon()  # redraw with error colors, clears on next "advance"
+
+    def updateIcon(self, running=False):
+        self.setIcon(self.makeIcon(self._value, running))
+
+    def makeIcon(self, number, running=False, size=None):
+        if size is None:
+            size = self.iconSize()
+
+        # Define hourglass shape vertices (16x16)
+        points = [
+            QtCore.QPoint(8+2, 8+2),   # Top Left
+            QtCore.QPoint(8+14, 8+2),  # Top Right
+            QtCore.QPoint(8+9, 8+8),   # Middle Right
+            QtCore.QPoint(8+14, 8+14),  # Bottom Right
+            QtCore.QPoint(8+2, 8+14),  # Bottom Left
+            QtCore.QPoint(8+7, 8+8)    # Middle Left
+        ]
+
+        if not running:
+            pm_hourglass = QtGui.QPixmap(size)
+            self._beginPainter(pm_hourglass, False)
+
+            # Circle (disabled)
+            self.painter.drawEllipse(
+                pm_hourglass.rect().adjusted(2, 2, -2, -2))
+
+            # Hourglass (disabled)
+            self.painter.drawPolygon(QtGui.QPolygon(points))
+
+            self.painter.end()
+
+        pm_number = QtGui.QPixmap(size)
+        self._beginPainter(pm_number)
+
+        # Circle (enabled)
+        self.painter.drawEllipse(pm_number.rect().adjusted(2, 2, -2, -2))
+
+        # Number (enabled)
+        if not self._error:
+            self.painter.drawText(
+                pm_number.rect(), QtCore.Qt.AlignCenter, str(number))
+        else:
+            # Change pen to red, mark an X instead of the port number
+            pen = QtGui.QPen(QtGui.QColor("#FF0000"), 2)
+            self.painter.setPen(pen)
+
+            self.painter.drawText(
+                pm_number.rect(), QtCore.Qt.AlignCenter, "X")
+
+        self.painter.end()
+
+        icon = QtGui.QIcon()
+        if not running:
+            icon.addPixmap(pm_hourglass, QtGui.QIcon.Mode.Disabled,
+                           QtGui.QIcon.State.On)
+            icon.addPixmap(pm_number, QtGui.QIcon.Mode.Normal,
+                           QtGui.QIcon.State.On)
+        else:
+            icon.addPixmap(pm_number)  # same for enabled and disabled
+
+        return icon
+
+    def _beginPainter(self, device, enabled=True):
+        device.fill(QtCore.Qt.transparent)
+
+        self.painter = QtGui.QPainter()
+        self.painter.begin(device)
+        self.painter.setRenderHint(QtGui.QPainter.Antialiasing)
+
+        pen = QtGui.QPen(QtGui.QColor("#444444" if enabled else "#888888"), 2)
+        self.painter.setPen(pen)
+
+        font = QtGui.QFont(self.font())
+        font.setBold(True)
+        font.setPointSize(int(self.iconSize().height() * 0.35))
+        self.painter.setFont(font)
+
+
+class FLUXControl(QtCore.QThread):
+    result = QtCore.pyqtSignal(bool)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def set_ports(self, controller, next_port):
+        self._controller = controller
+        self._next_port = next_port
+
+    def run(self):
+        success = False
+        try:
+            controller_port = self._controller
+            next_port_num = self._next_port
+
+            # Attempt to open port and print errors (if any)
+            FLUX_serial = serial.Serial()
+
+            # Configure serial port (assume baud to check before update)
+            FLUX_serial.port = controller_port
+            FLUX_serial.baudrate = Constants.serial_default_speed  # 115200
+            FLUX_serial.stopbits = serial.STOPBITS_ONE
+            FLUX_serial.bytesize = serial.EIGHTBITS
+            FLUX_serial.timeout = Constants.serial_timeout_ms
+            FLUX_serial.write_timeout = Constants.serial_writetimeout_ms
+            FLUX_serial.open()
+
+            step = next_port_num if next_port_num > 1 else 0  # re-home on "step 1"
+
+            tecs = []
+            if step in [0, 1, 2]:
+                tecs.append("L")
+            if step in [2, 3, 4]:
+                tecs.append("C")
+            if step in [4, 5, 6]:
+                tecs.append("R")
+            tec = ", ".join(tecs)
+
+            probe = str(next_port_num)
+
+            # NOTE: The stepper is interrupted in FW by pending serial
+            #       so the STEP command must be last in the order sent
+            flux_cmds = f"TEC {tec}\nPROBE {probe}\nSTEP {step}\n"
+
+            Log.d(f"Port {next_port_num} control cmds: {flux_cmds}")
+
+            # Read and show the TEC temp status from the device
+            FLUX_serial.write(flux_cmds.encode())
+            timeoutAt = time() + Constants.stepper_timeout_sec
+            flux_reply = ""
+            # timeout needed if old FW
+            while time() < timeoutAt:
+                if "Stepper: DONE!" in flux_reply:
+                    break
+                while (
+                    FLUX_serial.in_waiting == 0 and time() < timeoutAt
+                ):  # timeout needed if old FW:
+                    pass
+                flux_reply += FLUX_serial.read(FLUX_serial.in_waiting).decode()
+
+            if time() < timeoutAt:
+                if ("Stepper: DONE!" in flux_reply and   # indicates stepper finished moving
+                    "Unknown input." not in flux_reply and  # indicates TEC or PROBE cmd issue
+                        "Stopped" not in flux_reply):  # indicates serial interrupted home action
+                    Log.i(f"SUCCESS - Port {next_port_num} selected.")
+                    success = True
+                else:
+                    Log.e(
+                        f"FAILURE - Port {next_port_num} NOT selected. Unexpected reply...")
+            else:
+                Log.e(
+                    f"TIMEOUT - Port {next_port_num} NOT selected. Controller timeout...")
+
+            if not success:
+                Log.d("Error Details: (serial response from port selection request)")
+                for line in flux_reply.splitlines():
+                    Log.d(f"ERROR >> {line}")
+                Log.d("Expected last line from controller to be \"Stepper: DONE!\"")
+
+        except Exception as e:
+            Log.e(f"FLUXControl ERROR: {e}")
+
+        finally:
+            if FLUX_serial.is_open:
+                FLUX_serial.close()
+
+        # emit result signal for caller:
+        self.result.emit(success)
+
+        # queue for quit
+        self.finished.emit()
