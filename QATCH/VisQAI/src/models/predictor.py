@@ -240,7 +240,6 @@ class Predictor:
         """
         if self.engine is None:
             raise RuntimeError("Engine not initialized")
-
         mean_pred, stats = self.engine.predict_with_uncertainty(
             df, n_samples=n_samples, ci_range=ci_range, k=k
         )
@@ -588,10 +587,7 @@ class Predictor:
         if self.model_type != "CNP":
             return
 
-        Log.i(
-            f"Learning from {len(df)} new samples "
-            f"(n_draws={n_draws}, k={k}, steps/lr ignored for CNP)..."
-        )
+        Log.i(f"Learning from {len(df)} new samples ")
         self.engine.learn(df, steps=steps, lr=lr, n_draws=n_draws, k=k)
 
     def reset(self):

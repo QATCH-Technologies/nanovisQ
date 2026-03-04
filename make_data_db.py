@@ -39,7 +39,7 @@ logger = logging.getLogger("DB_MAKER")
 
 ADMIN_SPACE_LIMIT = IngredientController.DEV_MAX_ID
 SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
-SOURCE_CSV = "formulation_data_03022026.csv"
+SOURCE_CSV = "formulation_data_03042026.csv"
 
 
 def get_project_paths() -> Tuple[Path, Path]:
