@@ -45,6 +45,15 @@ class QATCH:
     # Initializing values for application
     ###########################################################################
     def __init__(self, argv=sys.argv):
+        if getattr(sys, "frozen", False):
+            userpath = os.path.expandvars("%USERPROFILE%")
+            docspath = os.path.join(userpath, "Documents", "QATCH nanovisQ")
+            if os.path.isdir(docspath):
+                if os.path.normcase(os.getcwd()) != os.path.normcase(docspath):
+                    try:
+                        os.chdir(docspath)
+                    except OSError as ose:
+                        raise ose
 
         self.win = None
         if USE_PYI_SPLASH:

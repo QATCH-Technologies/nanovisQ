@@ -12,36 +12,45 @@ Date:
     2025-11-04
 
 Version:
-    1.0 - Initial implementation
+    1.0
 """
 
-import sys
-import os
-import traceback
-from typing import Optional, List, Dict, Tuple, TYPE_CHECKING
 import json
+import os
+import sys
+import traceback
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+
 import numpy as np
 
 try:
-    from QATCH.common.logger import Logger as Log
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
     from QATCH.core.constants import Constants
 
 except (ModuleNotFoundError, ImportError):
 
     class Log:
         @staticmethod
-        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        def d(tag, msg=""):
+            print("DEBUG:", tag, msg)
+
         @staticmethod
-        def i(tag, msg=""): print("INFO:", tag, msg)
+        def i(tag, msg=""):
+            print("INFO:", tag, msg)
+
         @staticmethod
-        def w(tag, msg=""): print("WARNING:", tag, msg)
+        def w(tag, msg=""):
+            print("WARNING:", tag, msg)
+
         @staticmethod
-        def e(tag, msg=""): print("ERROR:", tag, msg)
+        def e(tag, msg=""):
+            print("ERROR:", tag, msg)
 
     class Constants:
         app_title = "VisQAI"
         log_prefer_path = os.path.expanduser("~/Documents")
+
     Log.i("Running VisQAI as standalone app")
 
     class Architecture:
@@ -49,31 +58,48 @@ except (ModuleNotFoundError, ImportError):
         def get_path():
             return os.path.dirname(os.path.abspath(__file__))
 
-from PyQt5 import QtGui, QtWidgets
-from PyQt5.QtCore import Qt, QThread, pyqtSignal
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from PyQt5 import QtGui, QtWidgets
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
 
 try:
-    from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.predictor import Predictor
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
-    from src.utils.constraints import Constraints
+    from src.models.formulation import Formulation, ViscosityProfile
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from src.models.predictor import Predictor
     from src.processors.optimizer import Optimizer
+    from src.utils.constraints import Constraints
     from src.view.constraints_ui import ConstraintsUI
+
     if TYPE_CHECKING:
         from src.view.main_window import VisQAIWindow
 except (ModuleNotFoundError, ImportError):
-    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
-    from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Protein,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.processors.optimizer import Optimizer
+    from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.view.constraints_ui import ConstraintsUI
+
     if TYPE_CHECKING:
         from QATCH.VisQAI.src.view.main_window import VisQAIWindow
 
@@ -116,24 +142,30 @@ class OptimizationUI(QtWidgets.QDialog):
     SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
 
     SHEAR_RATE_LABELS = {
-        100: 'Viscosity @ 100 s⁻¹',
-        1000: 'Viscosity @ 1000 s⁻¹',
-        10000: 'Viscosity @ 10000 s⁻¹',
-        100000: 'Viscosity @ 100000 s⁻¹',
-        15000000: 'Viscosity @ 15M s⁻¹'
+        100: "Viscosity @ 100 s⁻¹",
+        1000: "Viscosity @ 1000 s⁻¹",
+        10000: "Viscosity @ 10000 s⁻¹",
+        100000: "Viscosity @ 100000 s⁻¹",
+        15000000: "Viscosity @ 15M s⁻¹",
     }
 
     INGREDIENT_UNITS = {
-        'Protein': 'mg/mL',
-        'Buffer': 'mM',
-        'Surfactant': '%w',
-        'Stabilizer': 'M',
-        'Excipient': 'mM',
-        'Salt': 'mM'
+        "Protein": "mg/mL",
+        "Buffer": "mM",
+        "Surfactant": "%w",
+        "Stabilizer": "M",
+        "Excipient": "mM",
+        "Salt": "mM",
     }
 
-    INGREDIENT_TYPES = ['Protein', 'Buffer',
-                        'Surfactant', 'Stabilizer', 'Excipient', 'Salt']
+    INGREDIENT_TYPES = [
+        "Protein",
+        "Buffer",
+        "Surfactant",
+        "Stabilizer",
+        "Excipient",
+        "Salt",
+    ]
 
     def __init__(self, parent=None):
         """Initialize the OptimizationUI window.
@@ -142,7 +174,7 @@ class OptimizationUI(QtWidgets.QDialog):
             parent (VisQAIWindow, optional): The parent window instance.
         """
         super().__init__(parent)
-        self.parent: 'VisQAIWindow' = parent
+        self.parent: "VisQAIWindow" = parent
         self.setWindowTitle("Formulation Optimization")
 
         # Database and controllers
@@ -164,12 +196,12 @@ class OptimizationUI(QtWidgets.QDialog):
 
         # Available ingredients by type
         self.ingredients_by_type: Dict[str, List] = {
-            'Protein': [],
-            'Buffer': [],
-            'Surfactant': [],
-            'Stabilizer': [],
-            'Excipient': [],
-            'Salt': []
+            "Protein": [],
+            "Buffer": [],
+            "Surfactant": [],
+            "Stabilizer": [],
+            "Excipient": [],
+            "Salt": [],
         }
 
         # Properties needed for constraints UI integration
@@ -199,13 +231,11 @@ class OptimizationUI(QtWidgets.QDialog):
         """Initialize file dialog for model selection."""
         self.model_dialog = QtWidgets.QFileDialog()
         self.model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.model_dialog.setNameFilter(
-            "VisQAI Model Files (*.zip);;All Files (*)")
+        self.model_dialog.setNameFilter("VisQAI Model Files (*.zip);;All Files (*)")
         self.model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
 
         # Set default directory
-        model_path = os.path.join(
-            Architecture.get_path(), "QATCH/VisQAI/assets")
+        model_path = os.path.join(Architecture.get_path(), "QATCH/VisQAI/assets")
         if os.path.exists(model_path):
             self.model_dialog.setDirectory(model_path)
         else:
@@ -238,8 +268,7 @@ class OptimizationUI(QtWidgets.QDialog):
             for ingredient in all_ingredients:
                 ingredient_type = ingredient.type
                 if ingredient_type in self.ingredients_by_type:
-                    self.ingredients_by_type[ingredient_type].append(
-                        ingredient)
+                    self.ingredients_by_type[ingredient_type].append(ingredient)
 
             # Sort each type by name and remove duplicates
             for ing_type in self.ingredients_by_type:
@@ -253,37 +282,38 @@ class OptimizationUI(QtWidgets.QDialog):
                         unique_ingredients[key] = ing
 
                 self.ingredients_by_type[ing_type] = sorted(
-                    unique_ingredients.values(),
-                    key=lambda x: x.name
+                    unique_ingredients.values(), key=lambda x: x.name
                 )
 
             # Populate lists needed by constraints UI
-            self.proteins = [
-                ing.name for ing in self.ingredients_by_type['Protein']]
-            self.buffers = [
-                ing.name for ing in self.ingredients_by_type['Buffer']]
+            self.proteins = [ing.name for ing in self.ingredients_by_type["Protein"]]
+            self.buffers = [ing.name for ing in self.ingredients_by_type["Buffer"]]
             self.surfactants = [
-                ing.name for ing in self.ingredients_by_type['Surfactant']]
+                ing.name for ing in self.ingredients_by_type["Surfactant"]
+            ]
             self.stabilizers = [
-                ing.name for ing in self.ingredients_by_type['Stabilizer']]
+                ing.name for ing in self.ingredients_by_type["Stabilizer"]
+            ]
             self.excipients = [
-                ing.name for ing in self.ingredients_by_type['Excipient']]
-            self.salts = [ing.name for ing in self.ingredients_by_type['Salt']]
+                ing.name for ing in self.ingredients_by_type["Excipient"]
+            ]
+            self.salts = [ing.name for ing in self.ingredients_by_type["Salt"]]
 
             # Get class types for proteins (if available)
             self.class_types = []
             self.proteins_by_class = {}
-            for protein in self.ingredients_by_type['Protein']:
-                if hasattr(protein, 'class_type') and protein.class_type:
+            for protein in self.ingredients_by_type["Protein"]:
+                if hasattr(protein, "class_type") and protein.class_type:
                     if protein.class_type not in self.class_types:
                         self.class_types.append(protein.class_type)
                     if protein.class_type not in self.proteins_by_class:
                         self.proteins_by_class[protein.class_type] = []
-                    self.proteins_by_class[protein.class_type].append(
-                        protein.name)
+                    self.proteins_by_class[protein.class_type].append(protein.name)
 
             Log.i(
-                TAG, f"Loaded ingredients: {sum(len(ings) for ings in self.ingredients_by_type.values())}")
+                TAG,
+                f"Loaded ingredients: {sum(len(ings) for ings in self.ingredients_by_type.values())}",
+            )
 
         except Exception as e:
             Log.e(TAG, f"Failed to load ingredients: {e}")
@@ -387,15 +417,14 @@ class OptimizationUI(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(group)
 
         # Status label
-        self.constraints_status_label = QtWidgets.QLabel(
-            "No constraints defined")
+        self.constraints_status_label = QtWidgets.QLabel("No constraints defined")
         layout.addWidget(self.constraints_status_label)
 
         # Configure constraints button
         self.configure_constraints_btn = QtWidgets.QPushButton(
-            "Configure Constraints...")
-        self.configure_constraints_btn.clicked.connect(
-            self.open_constraints_dialog)
+            "Configure Constraints..."
+        )
+        self.configure_constraints_btn.clicked.connect(self.open_constraints_dialog)
         layout.addWidget(self.configure_constraints_btn)
 
         return group
@@ -431,7 +460,8 @@ class OptimizationUI(QtWidgets.QDialog):
         self.tolerance_spin.setValue(1e-6)
         self.tolerance_spin.setDecimals(9)
         self.tolerance_spin.setStepType(
-            QtWidgets.QAbstractSpinBox.AdaptiveDecimalStepType)
+            QtWidgets.QAbstractSpinBox.AdaptiveDecimalStepType
+        )
         tol_layout.addWidget(self.tolerance_spin)
         layout.addLayout(tol_layout)
 
@@ -460,11 +490,20 @@ class OptimizationUI(QtWidgets.QDialog):
         strategy_layout = QtWidgets.QHBoxLayout()
         strategy_layout.addWidget(QtWidgets.QLabel("Strategy:"))
         self.strategy_combo = QtWidgets.QComboBox()
-        self.strategy_combo.addItems([
-            "best1bin", "best1exp", "best2bin", "best2exp",
-            "rand1bin", "rand1exp", "rand2bin", "rand2exp",
-            "randtobest1bin", "randtobest1exp"
-        ])
+        self.strategy_combo.addItems(
+            [
+                "best1bin",
+                "best1exp",
+                "best2bin",
+                "best2exp",
+                "rand1bin",
+                "rand1exp",
+                "rand2bin",
+                "rand2exp",
+                "randtobest1bin",
+                "randtobest1exp",
+            ]
+        )
         self.strategy_combo.setCurrentText("best1bin")
         strategy_layout.addWidget(self.strategy_combo)
         layout.addLayout(strategy_layout)
@@ -500,8 +539,7 @@ class OptimizationUI(QtWidgets.QDialog):
         init_layout = QtWidgets.QHBoxLayout()
         init_layout.addWidget(QtWidgets.QLabel("Initialization:"))
         self.init_combo = QtWidgets.QComboBox()
-        self.init_combo.addItems(
-            ['latinhypercube', 'sobol', 'halton', 'random'])
+        self.init_combo.addItems(["latinhypercube", "sobol", "halton", "random"])
         self.init_combo.setCurrentText("latinhypercube")
         init_layout.addWidget(self.init_combo)
         layout.addLayout(init_layout)
@@ -554,8 +592,7 @@ class OptimizationUI(QtWidgets.QDialog):
         # Create table for displaying optimal formulation
         self.results_table = QtWidgets.QTableWidget()
         self.results_table.setColumnCount(3)
-        self.results_table.setHorizontalHeaderLabels(
-            ["Component", "Value", "Units"])
+        self.results_table.setHorizontalHeaderLabels(["Component", "Value", "Units"])
         self.results_table.horizontalHeader().setStretchLastSection(True)
         self.results_table.setMaximumHeight(200)
         layout.addWidget(self.results_table)
@@ -612,8 +649,7 @@ class OptimizationUI(QtWidgets.QDialog):
             files = self.model_dialog.selectedFiles()
             if files:
                 self.model_path = files[0]
-                self.model_path_label.setText(
-                    os.path.basename(self.model_path))
+                self.model_path_label.setText(os.path.basename(self.model_path))
                 self._load_model()
 
     def _load_model(self) -> None:
@@ -628,18 +664,16 @@ class OptimizationUI(QtWidgets.QDialog):
         except Exception as e:
             Log.e(TAG, f"Failed to load model: {e}")
             QtWidgets.QMessageBox.critical(
-                self,
-                "Model Error",
-                f"Failed to load model:\n{str(e)}"
+                self, "Model Error", f"Failed to load model:\n{str(e)}"
             )
             self.predictor = None
 
     def _check_ready_state(self) -> None:
         """Check if all requirements are met for optimization."""
         ready = (
-            self.predictor is not None and
-            self.ing_ctrl is not None and
-            self.database is not None
+            self.predictor is not None
+            and self.ing_ctrl is not None
+            and self.database is not None
         )
         self.optimize_btn.setEnabled(ready)
 
@@ -652,8 +686,7 @@ class OptimizationUI(QtWidgets.QDialog):
             if self.ing_ctrl is None or self.database is None:
                 missing.append("database")
 
-            self.progress_label.setText(
-                f"Load {', '.join(missing)} to continue")
+            self.progress_label.setText(f"Load {', '.join(missing)} to continue")
 
     def save_target_profile(self) -> None:
         """Save target profile to file."""
@@ -661,7 +694,7 @@ class OptimizationUI(QtWidgets.QDialog):
             self,
             "Save Target Profile",
             "target_profile.json",
-            "JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)",
         )
 
         if file_path:
@@ -670,25 +703,18 @@ class OptimizationUI(QtWidgets.QDialog):
                 for shear_rate, spin in self.target_spins.items():
                     profile_data[str(shear_rate)] = spin.value()
 
-                data = {
-                    'target_profile': profile_data,
-                    'shear_rates': self.SHEAR_RATES
-                }
+                data = {"target_profile": profile_data, "shear_rates": self.SHEAR_RATES}
 
-                with open(file_path, 'w') as f:
+                with open(file_path, "w") as f:
                     json.dump(data, f, indent=2)
 
                 QtWidgets.QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Target profile saved to:\n{file_path}"
+                    self, "Success", f"Target profile saved to:\n{file_path}"
                 )
 
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Save Error",
-                    f"Failed to save target profile:\n{str(e)}"
+                    self, "Save Error", f"Failed to save target profile:\n{str(e)}"
                 )
 
     def open_constraints_dialog(self) -> None:
@@ -697,7 +723,7 @@ class OptimizationUI(QtWidgets.QDialog):
             QtWidgets.QMessageBox.warning(
                 self,
                 "Database Error",
-                "Database not initialized. Cannot configure constraints."
+                "Database not initialized. Cannot configure constraints.",
             )
             return
 
@@ -714,14 +740,17 @@ class OptimizationUI(QtWidgets.QDialog):
             # Count the number of constraints
             bounds, encoding = constraints.build()
             num_constraints = len(
-                [enc for enc in encoding if enc.get('choices') or enc.get('range')])
+                [enc for enc in encoding if enc.get("choices") or enc.get("range")]
+            )
 
             if num_constraints > 0:
                 self.constraints_status_label.setText(
-                    f"{num_constraints} constraint(s) defined")
+                    f"{num_constraints} constraint(s) defined"
+                )
             else:
                 self.constraints_status_label.setText(
-                    "No specific constraints (using defaults)")
+                    "No specific constraints (using defaults)"
+                )
         else:
             self.constraints_status_label.setText("No constraints defined")
 
@@ -741,12 +770,8 @@ class OptimizationUI(QtWidgets.QDialog):
 
     def _build_target_profile(self) -> ViscosityProfile:
         """Build target viscosity profile from UI inputs."""
-        viscosities = [self.target_spins[sr].value()
-                       for sr in self.SHEAR_RATES]
-        return ViscosityProfile(
-            shear_rates=self.SHEAR_RATES,
-            viscosities=viscosities
-        )
+        viscosities = [self.target_spins[sr].value() for sr in self.SHEAR_RATES]
+        return ViscosityProfile(shear_rates=self.SHEAR_RATES, viscosities=viscosities)
 
     def start_optimization(self) -> None:
         """Start the optimization process."""
@@ -759,7 +784,7 @@ class OptimizationUI(QtWidgets.QDialog):
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Constraints Error",
-                    "Unable to build constraints. Please check your database connection."
+                    "Unable to build constraints. Please check your database connection.",
                 )
                 return
 
@@ -773,7 +798,7 @@ class OptimizationUI(QtWidgets.QDialog):
                 maxiter=self.maxiter_spin.value(),
                 popsize=self.popsize_spin.value(),
                 tol=self.tolerance_spin.value(),
-                seed=seed
+                seed=seed,
             )
 
             # Update UI state - disable optimization button
@@ -784,8 +809,7 @@ class OptimizationUI(QtWidgets.QDialog):
 
             # Force UI update
             QtWidgets.QApplication.processEvents()
-            mutation = (self.mutation_min_spin.value(),
-                        self.mutation_max_spin.value())
+            mutation = (self.mutation_min_spin.value(), self.mutation_max_spin.value())
             atol = self.atol_spin.value()
             recombination = self.recombination_spin.value()
             try:
@@ -804,9 +828,7 @@ class OptimizationUI(QtWidgets.QDialog):
         except Exception as e:
             Log.e(TAG, f"Failed to start optimization: {e}")
             QtWidgets.QMessageBox.critical(
-                self,
-                "Optimization Error",
-                f"Failed to start optimization:\n{str(e)}"
+                self, "Optimization Error", f"Failed to start optimization:\n{str(e)}"
             )
 
     def stop_optimization(self) -> None:
@@ -815,7 +837,7 @@ class OptimizationUI(QtWidgets.QDialog):
         QtWidgets.QMessageBox.information(
             self,
             "Stop Optimization",
-            "Optimization cannot be stopped when running on main thread."
+            "Optimization cannot be stopped when running on main thread.",
         )
 
     def on_optimization_progress(self, message: str) -> None:
@@ -847,9 +869,7 @@ class OptimizationUI(QtWidgets.QDialog):
         self.progress_label.setText("Optimization failed")
 
         QtWidgets.QMessageBox.critical(
-            self,
-            "Optimization Error",
-            f"Optimization failed:\n{error_message}"
+            self, "Optimization Error", f"Optimization failed:\n{error_message}"
         )
 
     def _display_results(self) -> None:
@@ -864,15 +884,16 @@ class OptimizationUI(QtWidgets.QDialog):
 
         row = 0
         for component, value in form_dict.items():
-            self.results_table.setItem(
-                row, 0, QtWidgets.QTableWidgetItem(component))
+            self.results_table.setItem(row, 0, QtWidgets.QTableWidgetItem(component))
 
             if isinstance(value, (int, float)):
                 self.results_table.setItem(
-                    row, 1, QtWidgets.QTableWidgetItem(f"{value:.3f}"))
+                    row, 1, QtWidgets.QTableWidgetItem(f"{value:.3f}")
+                )
             else:
                 self.results_table.setItem(
-                    row, 1, QtWidgets.QTableWidgetItem(str(value)))
+                    row, 1, QtWidgets.QTableWidgetItem(str(value))
+                )
 
             # Add units based on component type
             units = ""
@@ -883,8 +904,7 @@ class OptimizationUI(QtWidgets.QDialog):
             if "temperature" in component.lower():
                 units = "°C"
 
-            self.results_table.setItem(
-                row, 2, QtWidgets.QTableWidgetItem(units))
+            self.results_table.setItem(row, 2, QtWidgets.QTableWidgetItem(units))
             row += 1
 
         self.results_table.resizeColumnsToContents()
@@ -907,59 +927,71 @@ class OptimizationUI(QtWidgets.QDialog):
             ax.plot(
                 self.target_profile.shear_rates,
                 self.target_profile.viscosities,
-                'o-',
-                color='#e74c3c',
+                "o-",
+                color="#e74c3c",
                 linewidth=2.5,
                 markersize=8,
-                label='Target Profile',
-                zorder=5
+                label="Target Profile",
+                zorder=5,
             )
 
             # Plot predicted profile
             ax.plot(
                 self.SHEAR_RATES,
                 pred_viscosities,
-                's-',
-                color='#3498db',
+                "s-",
+                color="#3498db",
                 linewidth=2.5,
                 markersize=8,
-                label='Predicted Profile',
-                zorder=5
+                label="Predicted Profile",
+                zorder=5,
             )
 
             if self.log_scale_check.isChecked():
-                ax.set_xscale('log')
+                ax.set_xscale("log")
 
-            ax.set_xlabel('Shear Rate (s⁻¹)', fontsize=11, color="#4C566A")
-            ax.set_ylabel('Viscosity (cP)', fontsize=11, color="#4C566A")
+            ax.set_xlabel("Shear Rate (s⁻¹)", fontsize=11, color="#4C566A")
+            ax.set_ylabel("Viscosity (cP)", fontsize=11, color="#4C566A")
             ax.set_title(
-                'Target vs Predicted Viscosity Profile',
+                "Target vs Predicted Viscosity Profile",
                 fontsize=13,
                 fontweight=600,
                 color="#2E3440",
-                pad=15
+                pad=15,
             )
 
             ax.legend(
-                loc='best',
+                loc="best",
                 fontsize=10,
                 frameon=True,
                 framealpha=0.95,
                 edgecolor="#E5E9F0",
-                fancybox=False
+                fancybox=False,
             )
 
-            ax.grid(True, alpha=0.2, which="major",
-                    linestyle="-", linewidth=0.5, color="#D8DEE9")
-            ax.grid(True, alpha=0.1, which="minor",
-                    linestyle="-", linewidth=0.3, color="#D8DEE9")
+            ax.grid(
+                True,
+                alpha=0.2,
+                which="major",
+                linestyle="-",
+                linewidth=0.5,
+                color="#D8DEE9",
+            )
+            ax.grid(
+                True,
+                alpha=0.1,
+                which="minor",
+                linestyle="-",
+                linewidth=0.3,
+                color="#D8DEE9",
+            )
 
-            ax.spines['top'].set_visible(False)
-            ax.spines['right'].set_visible(False)
-            ax.spines['left'].set_color("#E5E9F0")
-            ax.spines['bottom'].set_color("#E5E9F0")
-            ax.spines['left'].set_linewidth(1)
-            ax.spines['bottom'].set_linewidth(1)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.spines["left"].set_color("#E5E9F0")
+            ax.spines["bottom"].set_color("#E5E9F0")
+            ax.spines["left"].set_linewidth(1)
+            ax.spines["bottom"].set_linewidth(1)
             ax.tick_params(colors="#4C566A", which="both", labelsize=9)
 
         except Exception as e:
@@ -974,7 +1006,7 @@ class OptimizationUI(QtWidgets.QDialog):
             self,
             "Clear All",
             "Are you sure you want to clear all inputs and results?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
         )
 
         if reply == QtWidgets.QMessageBox.Yes:
@@ -1017,7 +1049,7 @@ class OptimizationUI(QtWidgets.QDialog):
             self,
             "Save Optimization Results",
             "optimization_results.json",
-            "JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;All Files (*)",
         )
 
         if file_path:
@@ -1028,47 +1060,52 @@ class OptimizationUI(QtWidgets.QDialog):
                     try:
                         bounds, encoding = self.constraints.build()
                         constraints_info = {
-                            'bounds': bounds,
-                            'encoding': encoding,
-                            'num_constraints': len([enc for enc in encoding if enc.get('choices') or enc.get('range')])
+                            "bounds": bounds,
+                            "encoding": encoding,
+                            "num_constraints": len(
+                                [
+                                    enc
+                                    for enc in encoding
+                                    if enc.get("choices") or enc.get("range")
+                                ]
+                            ),
                         }
                     except Exception as e:
                         Log.w(TAG, f"Could not serialize constraints: {e}")
-                        constraints_info = {
-                            'error': 'Could not serialize constraints'}
+                        constraints_info = {"error": "Could not serialize constraints"}
 
                 # Prepare results data
                 data = {
-                    'target_profile': {
-                        'shear_rates': self.target_profile.shear_rates,
-                        'viscosities': self.target_profile.viscosities
+                    "target_profile": {
+                        "shear_rates": self.target_profile.shear_rates,
+                        "viscosities": self.target_profile.viscosities,
                     },
-                    'optimal_formulation': self.optimal_formulation.to_dict(),
-                    'constraints': constraints_info,
-                    'optimization_settings': {
-                        'max_iterations': self.maxiter_spin.value(),
-                        'population_size': self.popsize_spin.value(),
-                        'tolerance': self.tolerance_spin.value(),
-                        'seed': self.seed_spin.value() if self.use_seed_check.isChecked() else None
-                    }
+                    "optimal_formulation": self.optimal_formulation.to_dict(),
+                    "constraints": constraints_info,
+                    "optimization_settings": {
+                        "max_iterations": self.maxiter_spin.value(),
+                        "population_size": self.popsize_spin.value(),
+                        "tolerance": self.tolerance_spin.value(),
+                        "seed": (
+                            self.seed_spin.value()
+                            if self.use_seed_check.isChecked()
+                            else None
+                        ),
+                    },
                 }
 
                 # Save to file
-                with open(file_path, 'w') as f:
+                with open(file_path, "w") as f:
                     json.dump(data, f, indent=2)
 
                 QtWidgets.QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Results saved successfully to:\n{file_path}"
+                    self, "Success", f"Results saved successfully to:\n{file_path}"
                 )
 
             except Exception as e:
                 Log.e(TAG, f"Failed to save results: {e}")
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Save Error",
-                    f"Failed to save results:\n{str(e)}"
+                    self, "Save Error", f"Failed to save results:\n{str(e)}"
                 )
 
     def save_profile_plot(self) -> None:
@@ -1077,23 +1114,18 @@ class OptimizationUI(QtWidgets.QDialog):
             self,
             "Save Profile Plot",
             "optimization_profile.png",
-            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)"
+            "PNG Files (*.png);;PDF Files (*.pdf);;SVG Files (*.svg);;All Files (*)",
         )
 
         if file_path:
             try:
-                self.profile_figure.savefig(
-                    file_path, dpi=300, bbox_inches='tight')
+                self.profile_figure.savefig(file_path, dpi=300, bbox_inches="tight")
                 QtWidgets.QMessageBox.information(
-                    self,
-                    "Success",
-                    f"Plot saved successfully to:\n{file_path}"
+                    self, "Success", f"Plot saved successfully to:\n{file_path}"
                 )
             except Exception as e:
                 QtWidgets.QMessageBox.critical(
-                    self,
-                    "Error",
-                    f"Failed to save plot:\n{str(e)}"
+                    self, "Error", f"Failed to save plot:\n{str(e)}"
                 )
 
 

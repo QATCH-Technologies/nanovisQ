@@ -51,7 +51,7 @@ csv_path = os.path.join(
     QATCH_ROOT,  # DO NOT COMMIT THIS CSV FILE
     "VisQAI",
     "assets",
-    "formulation_data_12292025.csv",
+    "formulation_data_02052026.csv",
 )
 if not os.path.isfile(csv_path):
     raise FileNotFoundError(f"CSV file not found: {csv_path}")
