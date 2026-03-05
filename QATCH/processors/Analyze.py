@@ -3807,23 +3807,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
-            if False:  # diff_only
-                mn = np.amin(self.ys_diff[tx0:tx2])
-                mx = np.amax(self.ys_diff[tx0:tx2])
-            else:
-                mn = min(
-                    np.amin(self.ys_freq_fit[tx0:tx2]),
-                    np.amin(self.ys_fit[tx0:tx2]),
-                    np.amin(self.ys_diff_fit[tx0:tx2]),
-                )
-                mx = max(
-                    np.amax(self.ys_freq_fit[tx0:tx2]),
-                    np.amax(self.ys_fit[tx0:tx2]),
-                    np.amax(self.ys_diff_fit[tx0:tx2]),
-                )
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
+            mn = min(
+                np.amin(self.ys_freq_fit[tx0:tx2]),
+                np.amin(self.ys_fit[tx0:tx2]),
+                np.amin(self.ys_diff_fit[tx0:tx2]),
+            )
+            mx = max(
+                np.amax(self.ys_freq_fit[tx0:tx2]),
+                np.amax(self.ys_fit[tx0:tx2]),
+                np.amax(self.ys_diff_fit[tx0:tx2]),
+            )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 3:
                 if not clipped:
@@ -3948,9 +3944,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -4322,9 +4318,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -6733,7 +6729,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(t_minima)
 
-            ax2.plot(xs[zeros3[0]:], ys_diss_diff_offset[zeros3[0]:], "b:")
+            l = min(len(xs), len(ys_diss_diff_offset))
+            ax2.plot(xs[zeros3[0]:l], ys_diss_diff_offset[zeros3[0]:l], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")
