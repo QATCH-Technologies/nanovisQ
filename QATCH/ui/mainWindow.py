@@ -3352,7 +3352,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 pid_new = int(text, base=16)
                 # valid values: 1-4, A-D, 0x00 (single),
                 #               0x80 (flux controller), 0xFF (default, single)
-                if not pid_new in [
+                if pid_new not in [
                     0x1,
                     0x2,
                     0x3,

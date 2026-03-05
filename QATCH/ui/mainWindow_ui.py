@@ -1921,21 +1921,20 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
 
             if controller_port is None:
                 Log.e("FLUX controller not found. Is it connected and powered on?")
+                self.tool_NextPortRow.setIconError()
+                self.action_NextPortRow.setEnabled(True)
+                return
 
             next_port_num = self.tool_NextPortRow.value()
-
-            # Write to global port variable
-            self.parent.parent.active_multi_ch = next_port_num
 
             if hasattr(self, "fluxThread"):
                 if self.fluxThread.isRunning():
                     Log.d("Waiting for FLUX controller to stop.")
                     # wait for thread to quit, gracefully
                     if not self.fluxThread.wait(msecs=3000):
-                        Log.w(
-                            "Flux controller failed to exit gracefully... forcing termination"
-                        )
-                        self.fluxThread.terminate()
+                        Log.w("Prior Flux controller thread still busy; skipping new Next Port request.")
+                        self.tool_NextPortRow.setEnabled(True)
+                        return
             Log.d("Starting FLUX controller thread.")
             self.fluxThread = QtCore.QThread()
             self.fluxWorker = FLUXControl()
@@ -1960,7 +1959,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             # Enable button to clear hourglass, show result (either number or red X)
             self.action_NextPortRow.setEnabled(True)
 
-            if not success:
+            if success:
+                # Write to global port variable
+                self.parent.parent.active_multi_ch = self.tool_NextPortRow.value()
+
+            else:
                 self.tool_NextPortRow.setIconError()  # trasient red text, resets on next update
 
                 if PopUp.critical(
@@ -2719,6 +2722,7 @@ class FLUXControl(QtCore.QThread):
 
     def run(self):
         success = False
+        FLUX_serial = None
         try:
             controller_port = self._controller
             next_port_num = self._next_port
@@ -2765,8 +2769,10 @@ class FLUXControl(QtCore.QThread):
                 while (
                     FLUX_serial.in_waiting == 0 and time() < timeoutAt
                 ):  # timeout needed if old FW:
-                    pass
-                flux_reply += FLUX_serial.read(FLUX_serial.in_waiting).decode()
+                    QtCore.QThread.msleep(5)
+                waiting = FLUX_serial.in_waiting
+                if waiting > 0:
+                    flux_reply += FLUX_serial.read(waiting).decode(errors="replace")
 
             if time() < timeoutAt:
                 if (
@@ -2796,11 +2802,9 @@ class FLUXControl(QtCore.QThread):
             Log.e(f"FLUXControl ERROR: {e}")
 
         finally:
-            if FLUX_serial.is_open:
+            if FLUX_serial is not None and FLUX_serial.is_open:
                 FLUX_serial.close()
 
-        # emit result signal for caller:
-        self.result.emit(success)
-
-        # queue for quit
-        self.finished.emit()
+            # always notify caller even on early failures
+            self.result.emit(success)
+            self.finished.emit()

@@ -174,9 +174,11 @@ class SerialProcess(multiprocessing.Process):
         try:
             self._overtone = float(speed)
         except:
-            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz Fundamental".format(
-                peaks_mag[1]))
-            self._overtone = peaks_mag[1]
+            fallback_idx = 1 if len(peaks_mag) > 1 else 0
+            overtone_label = "3rd Overtone" if fallback_idx == 1 else "Fundamental"
+            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz {}".format(
+                peaks_mag[fallback_idx], overtone_label))
+            self._overtone = peaks_mag[fallback_idx]
 
         self._overtone_int = None
         for x in range(len(self._serial)):
@@ -187,9 +189,11 @@ class SerialProcess(multiprocessing.Process):
                 break
         # Checks for correct frequency selection
         if self._overtone_int == None:
-            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz Fundamental".format(
-                peaks_mag[1]))
-            self._overtone_int = 1
+            fallback_idx = 1 if len(peaks_mag) > 1 else 0
+            overtone_label = "3rd Overtone" if fallback_idx == 1 else "Fundamental"
+            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz {}".format(
+                peaks_mag[fallback_idx], overtone_label))
+            self._overtone_int = fallback_idx
 
         is_open = False  # default, fail
         num_ports = len(self._serial)

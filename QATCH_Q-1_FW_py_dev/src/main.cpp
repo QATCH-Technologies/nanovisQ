@@ -1157,14 +1157,16 @@ void stepper_home()
   }
   if (stepper.isRunning()) {
     stepper.stop();
-    if (client->available())
+    if (client->available()) {
       client->println("Stepper: Stopped finding home (serial pending)");
-    else {
+      return; // Don't move to position without valid home
+    } else {
       client->println("Stepper: Found home position");
       stepper.setCurrentPosition(-stepperOffset);
     }
   } else {
     client->println("Stepper: Failed to find home!");
+    return; // Don't move to position without valid home
   }
   client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
   stepper.moveTo(stepperPositions[0]);
