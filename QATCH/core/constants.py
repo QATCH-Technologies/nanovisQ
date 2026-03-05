@@ -134,6 +134,11 @@ class Constants:
     tune_pid_hd = 0
 
     ###################
+    # FLUX parameters #
+    ###################
+    stepper_timeout_sec = 15
+
+    ###################
     # PLOT parameters #
     ###################
     plot_update_ms = 100  # 16
