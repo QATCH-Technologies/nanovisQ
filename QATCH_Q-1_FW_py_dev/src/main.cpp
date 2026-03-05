@@ -1087,7 +1087,7 @@ void QATCH_setup()
   }
 #endif
 
-  if (HW_REV_MATCH(HW_REVISION_3))
+  if (HW_REV_MATCH(HW_REVISION_3) && !PID_IS_CONTROLLER(NVMEM.pid))
     pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
@@ -2114,6 +2114,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("LID"))
     {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        client->println("HW_CONFIG_ERROR: LID cmd not supported (PID must be primary, not 0x80)");
+        return;
+      }
       if (!HW_REV_MATCH(HW_REVISION_3))
       {
         client->println("LID command is only supported by HW_REVISION_3.");
@@ -3721,7 +3726,7 @@ void QATCH_loop()
   }
 #endif
 
-  if (HW_REV_MATCH(HW_REVISION_3))
+  if (HW_REV_MATCH(HW_REVISION_3) && !PID_IS_CONTROLLER(NVMEM.pid))
   {
     /* HANDLE POGO BUTTON PRESS */
     // NOTE: Event fires on button release.
