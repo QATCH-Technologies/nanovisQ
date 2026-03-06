@@ -3,6 +3,7 @@ from QATCH.common.userProfiles import UserProfiles
 from QATCH.common.architecture import Architecture
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
+from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox # TODO copy this to QATCH core context, not from VisQAI
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
 from threading import Thread
@@ -200,6 +201,21 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox2.setChecked(False)
         self.groupbox2.setLayout(layout_h2)
 
+        layout_h13 = QtWidgets.QHBoxLayout()
+        self.combo_csv_cols = CheckableComboBox(self)
+        self.combo_csv_cols.addItems(["Average Viscosity", "Standard Deviation", "Viscosity Profile", "Formulation Details", "Notes"])
+        # check all items (by default)
+        for i in range(self.combo_csv_cols.count()):
+            self.combo_csv_cols.model().item(i, 0).setCheckState(QtCore.Qt.Checked)
+        self.combo_csv_cols.check_items()  # update checked items to reflect model
+        layout_h13.addWidget(self.combo_csv_cols)
+
+        self.groupbox6 = QtWidgets.QGroupBox("CSV Report Fields")
+        self.groupbox6.setCheckable(False)
+        self.groupbox6.setChecked(False)
+        self.groupbox6.setLayout(layout_h13)
+
+        self.exportAsCSV = QtWidgets.QCheckBox("CSV Report")
         self.exportAsZIP = QtWidgets.QCheckBox("ZIP Archive")
         self.exportAsFolder = QtWidgets.QCheckBox("Folder")
         self.dateFilter = QtWidgets.QLabel("Export by date:")
@@ -229,8 +245,9 @@ class Ui_Export(QtWidgets.QWidget):
         self.doMerge.setChecked(True)
 
         self.btnGroup1 = QtWidgets.QButtonGroup()
-        self.btnGroup1.addButton(self.exportAsFolder)
+        self.btnGroup1.addButton(self.exportAsCSV)
         self.btnGroup1.addButton(self.exportAsZIP)
+        self.btnGroup1.addButton(self.exportAsFolder)
         self.btnGroup1.setExclusive(True)
         self.btnGroup5 = QtWidgets.QButtonGroup()
         self.btnGroup5.addButton(self.filterOff, 0)
@@ -244,8 +261,9 @@ class Ui_Export(QtWidgets.QWidget):
         self.btnGroup2.setExclusive(True)
 
         layout_h4 = QtWidgets.QHBoxLayout()
-        layout_h4.addWidget(self.exportAsFolder)
+        layout_h4.addWidget(self.exportAsCSV)
         layout_h4.addWidget(self.exportAsZIP)
+        layout_h4.addWidget(self.exportAsFolder)
 
         layout_filter = QtWidgets.QHBoxLayout()
         layout_filter.addWidget(self.dateFilter, 6)
@@ -283,6 +301,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.exportNameTxt = QtWidgets.QLineEdit()
         self.exportNameTxt.setAlignment(QtCore.Qt.AlignCenter)
         self.exportUnnamed = QtWidgets.QCheckBox("Include \"_unnamed\" runs")
+        self.exportUnnamed.setChecked(False)  # set state of hidden widget
         self.exportNoName = QtWidgets.QCheckBox("Copy directly to folder")
 
         layout_h9 = QtWidgets.QHBoxLayout()
@@ -306,10 +325,10 @@ class Ui_Export(QtWidgets.QWidget):
         exportGridLayout.addWidget(self.selectRun, 1, 4, 1, 3)
         # row 2: export as
         exportGridLayout.addWidget(QtWidgets.QLabel("Export as:"), 2, 1, 1, 1)
-        exportGridLayout.addWidget(self.exportAsZIP, 2, 2, 1, 1)
-        # row, col, rspan, cspan
-        exportGridLayout.addWidget(self.exportAsFolder, 2, 3, 1, 1)
-        exportGridLayout.addWidget(self.exportUnnamed, 2, 4, 1, 3)
+        exportGridLayout.addWidget(self.exportAsCSV, 2, 2, 1, 1)
+        exportGridLayout.addWidget(self.exportAsZIP, 2, 3, 1, 1)
+        exportGridLayout.addWidget(self.exportAsFolder, 2, 4, 1, 1)
+        # exportGridLayout.addWidget(self.exportUnnamed, 2, 4, 1, 3)
         # row 3: export name
         exportGridLayout.addWidget(self.exportNameChk, 3, 1, 1, 1)
         exportGridLayout.addWidget(self.exportNameTxt, 3, 2, 1, 2)
@@ -365,6 +384,7 @@ class Ui_Export(QtWidgets.QWidget):
 
         layout_v = QtWidgets.QVBoxLayout()
         layout_v.addWidget(self.groupbox3)
+        layout_v.addWidget(self.groupbox6)
         layout_v.addWidget(self.groupbox2)
         layout_v.addWidget(self.groupbox1)
         layout_v.addWidget(self.tb)
@@ -433,12 +453,13 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox1.clicked.connect(self.checkChanged1)
         self.groupbox2.clicked.connect(self.checkChanged2)
         self.selection.stateChanged.connect(self.selectChanged)
-        self.exportAsZIP.stateChanged.connect(self.exportChanged)
+        self.btnGroup1.buttonToggled.connect(self.exportChanged)
         self.selectRun.pressed.connect(self.select_folder_source)
         self.groupbox5.clicked.connect(self.checkChanged5)
         self.exportNoName.stateChanged.connect(self.noNameChanged)
 
-        self.exportAsZIP.setChecked(True)  # emit signal now that it's set
+        self.exportAsCSV.setChecked(True)  # emit signal now that it's set
+        self.exportChanged(True)  # update enabled fields
 
     def noNameChanged(self, arg):
         self.generateExportName()
@@ -613,8 +634,14 @@ class Ui_Export(QtWidgets.QWidget):
         self.exportNameTxt.setEnabled(enabled)
         self.exportNameTxt.setText(default_filename if enabled else "")
 
-    def exportChanged(self, arg):
-        if self.exportAsZIP.isChecked():
+    def exportChanged(self, checked):
+        # # Enable/disable all buttons in the group accordingly
+        # enable_existing_files_btns = not self.exportAsCSV.isChecked()
+        # for button in self.btnGroup2.buttons():
+        #     button.setEnabled(enable_existing_files_btns)
+        self.groupbox6.setEnabled(self.exportAsCSV.isChecked())
+
+        if not self.exportAsFolder.isChecked():
             self.exportNoName.setEnabled(False)
             if self.exportNoName.isChecked():
                 self.exportNoName.setChecked(False)
@@ -636,6 +663,7 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox1.setEnabled(enable)
         self.groupbox2.setEnabled(enable)
         self.groupbox3.setEnabled(enable)
+        self.groupbox6.setEnabled(enable)
         self.archiveInfo.setEnabled(True)
         self.btn3.setEnabled(enable)
 
