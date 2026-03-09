@@ -5,7 +5,49 @@ try:
     from src.db.db import Database
     from src.processors.sampler import Sampler
     from src.utils.constraints import Constraints
+
+    class Log:
+        """Fallback logger implementation when QATCH logger is not available."""
+
+        @staticmethod
+        def w(msg: str) -> None:
+            """Log a warning message.
+
+            Args:
+                msg: The warning message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def e(msg: str) -> None:
+            """Log an error message.
+
+            Args:
+                msg: The error message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def i(msg: str) -> None:
+            """
+            Log an informational message.
+
+            Parameters:
+                msg (str): The message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def d(msg: str) -> None:
+            """Log a debug message.
+
+            Args:
+                msg: The debug message to log.
+            """
+            print(msg)
+
 except (ModuleNotFoundError, ImportError):
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
@@ -73,13 +115,18 @@ class SampleGenerationWorker(QtCore.QThread):
                     choices = []
                     negate = cond == "is not"
 
-                    # Use the locally fetched ingredients, NOT the main thread's objects
                     all_ings = local_ingredients_by_type.get(ingredient, [])
 
                     for ing in all_ings:
                         match = ing.name in values
                         if (not negate and match) or (negate and not match):
                             choices.append(ing)
+                    if not choices and not negate:
+                        Log.w(
+                            f"Categorical constraint '{feature_key} is {values}' matched no "
+                            f"ingredients in the database. Constraint will be ignored."
+                        )
+                        continue  # skip add_choices so build() falls back intentionally
 
                     constraints.add_choices(feature=feature_key, choices=choices)
 

@@ -15,7 +15,49 @@ try:
         Surfactant,
     )
     from src.utils.list_utils import ListUtils
+
+    class Log:
+        """Fallback logger implementation when QATCH logger is not available."""
+
+        @staticmethod
+        def w(msg: str) -> None:
+            """Log a warning message.
+
+            Args:
+                msg: The warning message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def e(msg: str) -> None:
+            """Log an error message.
+
+            Args:
+                msg: The error message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def i(msg: str) -> None:
+            """
+            Log an informational message.
+
+            Parameters:
+                msg (str): The message to log.
+            """
+            print(msg)
+
+        @staticmethod
+        def d(msg: str) -> None:
+            """Log a debug message.
+
+            Args:
+                msg: The debug message to log.
+            """
+            print(msg)
+
 except (ModuleNotFoundError, ImportError):
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.ingredient import (
@@ -103,10 +145,11 @@ class Constraints:
                 raise TypeError(
                     f"All choices for '{feature}' must be Ingredient instances; got {c!r} of type {type(c).__name__}"
                 )
-        # Note: no get_by_name re-validation. The caller is responsible for passing
-        # valid DB objects (e.g. from get_all_proteins()). Re-querying by name is
-        # fragile: subclass type mismatches or lookup quirks cause valid ingredients
-        # to fail validation, silently killing the constraint without a clear error.
+        if not choices:
+            Log.w(
+                f"add_choices('{feature}', []) — empty choice list stored. "
+                f"build() will fall back to all ingredients of this type."
+            )
         self._choices[feature] = list(choices)
 
     def set_db(self, db: Database) -> None:

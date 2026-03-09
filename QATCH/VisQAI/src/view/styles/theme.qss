@@ -876,3 +876,102 @@ GenerateSampleWidget QSpinBox {
 GenerateSampleWidget QSpinBox:focus {
     border: 1px solid #2596be;
 }
+/* ===========================================================================
+   19. OPTIMIZED CARD STATE
+   =========================================================================== */
+
+/* Amber tint — distinct from the green (measured) and default white (predicted) */
+QFrame[class="card"][optimized="true"] {
+    background-color: #fffbeb;
+    border: 1px solid #f59e0b;
+}
+
+QFrame[class="card"][optimized="true"]:hover {
+    border: 1px solid #d97706;
+    background-color: #fef3c7;
+}
+
+/* Optimized Badge */
+QFrame[class="card"] QLabel[class="badge-optimized"] {
+    color: #b45309;
+    background-color: #fef3c7;
+    border: 1px solid #f59e0b;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+/* ===========================================================================
+   20. OPTIMIZE WIDGET  (mirrors EvaluationWidget / GenerateSampleWidget)
+   =========================================================================== */
+OptimizeWidget {
+    background-color: #ffffff;
+    border-radius: 8px;
+    border: 1px solid #d1d5db;
+}
+
+OptimizeWidget[class="card"]:hover {
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+}
+
+OptimizeWidget QLabel {
+    color: #374151;
+    font-weight: 500;
+}
+
+OptimizeWidget QLabel#evalTitle {
+    color: #1f2937;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+OptimizeWidget QToolButton#btnEvalClose {
+    background: transparent;
+    border: none;
+    border-radius: 12px;
+}
+
+OptimizeWidget QToolButton#btnEvalClose:hover {
+    background-color: #ffebee;
+}
+
+OptimizeWidget QToolButton#btnEvalClose:pressed {
+    background-color: #ffcdd2;
+}
+
+OptimizeWidget QGroupBox {
+    font-weight: 600;
+    color: #2596be;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 15px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #f9fafb;
+}
+
+OptimizeWidget QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+
+OptimizeWidget QSpinBox,
+OptimizeWidget QDoubleSpinBox {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 4px;
+    background-color: #ffffff;
+}
+
+OptimizeWidget QSpinBox:focus,
+OptimizeWidget QDoubleSpinBox:focus {
+    border: 1px solid #2596be;
+}

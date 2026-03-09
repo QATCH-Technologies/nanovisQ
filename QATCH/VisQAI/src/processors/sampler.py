@@ -292,9 +292,6 @@ class Sampler:
         max_uncertainty: float = 1.0,
         n: int = 5,
     ) -> List[Formulation]:
-        """
-        Creates perturbed variants of a given formulation based on uncertainty scale.
-        """
         noise_scale = min(1.0, base_uncertainty / max_uncertainty) * 0.2
         base_df = formulation.to_dataframe(encoded=False, training=False)
         perturbed: List[Formulation] = []
@@ -309,11 +306,14 @@ class Sampler:
                     nv = float(np.clip(nv, low, high))
                     sug[feat] = self._round_suggestion(feat, nv, low, high)
                 else:
-                    sug[feat] = val
 
-            # Guarantee that 'None' selections dictate a 0.0 concentration
+                    choices = enc.get("choices", [])
+                    if choices:
+                        sug[feat] = np.random.choice(choices)
+                    else:
+                        sug[feat] = val  # fallback: keep existing (shouldn't happen)
+
             self._enforce_none_concentrations(sug)
-
             perturbed.append(self._build_formulation(sug))
         return perturbed
 

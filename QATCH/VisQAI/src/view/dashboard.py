@@ -12,6 +12,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.models.formulation import ViscosityProfile
     from src.utils.metrics import Metrics
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
@@ -19,11 +20,13 @@ try:
         FormulationConfigCard,
     )
     from widgets.generate_sample_widget import GenerateSampleWidget
+    from widgets.optimize_widget import OptimizeWidget
     from widgets.placeholder_widget import PlaceholderWidget
     from widgets.prediction_filter_widget import PredictionFilterWidget
     from widgets.reordable_container_widget import ReorderableCardContainer
     from widgets.visualization_panel import VisualizationPanel
     from workers.import_worker import ImportWorker
+    from workers.optimization_worker import OptimizationWorker
     from workers.prediction_worker import PredictionThread
     from workers.sample_generation_worker import SampleGenerationWorker
 except (ImportError, ModuleNotFoundError):
@@ -34,6 +37,7 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.models.formulation import ViscosityProfile
     from QATCH.VisQAI.src.utils.metrics import Metrics
     from QATCH.VisQAI.src.view.dialogs.database_table_dialog import DatabaseTableDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
@@ -44,6 +48,7 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.view.widgets.generate_sample_widget import (
         GenerateSampleWidget,
     )
+    from QATCH.VisQAI.src.view.widgets.optimize_widget import OptimizeWidget
     from QATCH.VisQAI.src.view.widgets.placeholder_widget import PlaceholderWidget
     from QATCH.VisQAI.src.view.widgets.prediction_filter_widget import (
         PredictionFilterWidget,
@@ -53,6 +58,7 @@ except (ImportError, ModuleNotFoundError):
     )
     from QATCH.VisQAI.src.view.widgets.visualization_panel import VisualizationPanel
     from QATCH.VisQAI.src.view.workers.import_worker import ImportWorker
+    from QATCH.VisQAI.src.view.workers.optimization_worker import OptimizationWorker
     from QATCH.VisQAI.src.view.workers.prediction_worker import PredictionThread
     from QATCH.VisQAI.src.view.workers.sample_generation_worker import (
         SampleGenerationWorker,
@@ -99,6 +105,7 @@ class DashboardUI(QtWidgets.QWidget):
         self._is_silencing_runs = False
         self._zombie_tasks = []
         self._is_evaluation_mode = False
+        self._is_optimize_mode = False
         self._pending_eval_config = None
 
     def _load_database_data(self):
@@ -158,7 +165,12 @@ class DashboardUI(QtWidgets.QWidget):
         self.generate_widget.closed.connect(lambda: self.btn_generate.setChecked(False))
         self.generate_widget.resized.connect(self._update_overlay_geometry)
         self.generate_widget.hide()
-
+        # Optimize Widget
+        self.optimize_widget = OptimizeWidget(self.ingredients_by_type, parent=self)
+        self.optimize_widget.optimize_requested.connect(self.run_optimization)
+        self.optimize_widget.closed.connect(lambda: self.btn_optimize.setChecked(False))
+        self.optimize_widget.resized.connect(self._update_overlay_geometry)
+        self.optimize_widget.hide()
         # --- Content ---
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -424,7 +436,7 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_optimize.setToolTip("Optimize")
         self.btn_optimize.setFixedSize(32, 32)
-        # No setStyleSheet here
+        self.btn_optimize.setCheckable(True)
         self.btn_optimize.clicked.connect(self.handle_optimize)
         layout.addWidget(self.btn_optimize)
 
@@ -656,23 +668,27 @@ class DashboardUI(QtWidgets.QWidget):
                 """Exports the entire database to a CSV file."""
                 try:
                     df = self.form_ctrl.get_all_as_dataframe(encoded=False)
-                    
+
                     if df is None or df.empty:
                         QtWidgets.QMessageBox.information(
-                            self, "Export Info", "The database is empty. Nothing to export."
+                            self,
+                            "Export Info",
+                            "The database is empty. Nothing to export.",
                         )
                         return
                     path, _ = QtWidgets.QFileDialog.getSaveFileName(
-                        self, 
-                        "Export Database to CSV", 
-                        "formulations_database_export.csv", 
-                        "CSV Files (*.csv)"
+                        self,
+                        "Export Database to CSV",
+                        "formulations_database_export.csv",
+                        "CSV Files (*.csv)",
                     )
 
                     if path:
                         df.to_csv(path, index=False)
                         QtWidgets.QMessageBox.information(
-                            self, "Success", f"Database successfully exported to:\n{path}"
+                            self,
+                            "Success",
+                            f"Database successfully exported to:\n{path}",
                         )
 
                 except Exception as e:
@@ -681,14 +697,33 @@ class DashboardUI(QtWidgets.QWidget):
                     )
 
             headers = [
-                "ID", "Name", "Temp (°C)", "ICL", "Last Model",
-                "Protein Type", "Class", "MW (Da)", "pI Mean", "pI Range", "Conc (mg/mL)",
-                "Buffer", "pH", "Conc (mM)",
-                "Stabilizer", "Conc (mM)",
-                "Surfactant", "Conc (%)",
-                "Salt", "Conc (mM)",
-                "Excipient", "Conc (mM)",
-                "η @ 100", "η @ 1k", "η @ 10k", "η @ 100k", "η @ 15m",
+                "ID",
+                "Name",
+                "Temp (°C)",
+                "ICL",
+                "Last Model",
+                "Protein Type",
+                "Class",
+                "MW (Da)",
+                "pI Mean",
+                "pI Range",
+                "Conc (mg/mL)",
+                "Buffer",
+                "pH",
+                "Conc (mM)",
+                "Stabilizer",
+                "Conc (mM)",
+                "Surfactant",
+                "Conc (%)",
+                "Salt",
+                "Conc (mM)",
+                "Excipient",
+                "Conc (mM)",
+                "η @ 100",
+                "η @ 1k",
+                "η @ 10k",
+                "η @ 100k",
+                "η @ 15m",
             ]
 
             rows = []
@@ -710,16 +745,22 @@ class DashboardUI(QtWidgets.QWidget):
                     class_name = "-"
                     if hasattr(ing, "class_type") and ing.class_type:
                         class_name = str(
-                            getattr(ing.class_type, "value", getattr(ing.class_type, "name", "-"))
+                            getattr(
+                                ing.class_type,
+                                "value",
+                                getattr(ing.class_type, "name", "-"),
+                            )
                         )
-                    row.extend([
-                        str(ing.name or "-"),
-                        class_name,
-                        str(getattr(ing, "molecular_weight", "")),
-                        str(getattr(ing, "pI_mean", "")),
-                        str(getattr(ing, "pI_range", "")),
-                        str(p.concentration),
-                    ])
+                    row.extend(
+                        [
+                            str(ing.name or "-"),
+                            class_name,
+                            str(getattr(ing, "molecular_weight", "")),
+                            str(getattr(ing, "pI_mean", "")),
+                            str(getattr(ing, "pI_range", "")),
+                            str(p.concentration),
+                        ]
+                    )
                 else:
                     row.extend(["-", "-", "-", "-", "-", "-"])
 
@@ -727,11 +768,13 @@ class DashboardUI(QtWidgets.QWidget):
                 if hasattr(f, "buffer") and f.buffer and f.buffer.ingredient:
                     b = f.buffer
                     ing = b.ingredient
-                    row.extend([
-                        str(ing.name or "-"),
-                        str(getattr(ing, "pH", "")),
-                        str(b.concentration),
-                    ])
+                    row.extend(
+                        [
+                            str(ing.name or "-"),
+                            str(getattr(ing, "pH", "")),
+                            str(b.concentration),
+                        ]
+                    )
                 else:
                     row.extend(["-", "-", "-"])
 
@@ -740,7 +783,9 @@ class DashboardUI(QtWidgets.QWidget):
                     if hasattr(f, comp_attr):
                         c = getattr(f, comp_attr)
                         if c and c.ingredient:
-                            row.extend([str(c.ingredient.name or "-"), str(c.concentration)])
+                            row.extend(
+                                [str(c.ingredient.name or "-"), str(c.concentration)]
+                            )
                             return
                     row.extend(["-", "-"])
 
@@ -769,15 +814,16 @@ class DashboardUI(QtWidgets.QWidget):
                 rows,
                 self,
                 delete_callback=delete_handler,
-                check_col_idx=3, 
+                check_col_idx=3,
                 check_callback=icl_toggled,
                 export_callback=export_handler,
             )
             dlg.resize(1500, 600)
             dlg.exec_()
-            
+
         except Exception as e:
             import traceback
+
             traceback.print_exc()
             QtWidgets.QMessageBox.critical(
                 self, "Error", f"Failed to load formulations:\n{e}"
@@ -883,23 +929,15 @@ class DashboardUI(QtWidgets.QWidget):
             print(f"Hypothesis '{text}' initialized.")
 
     def handle_optimize(self):
-        """Handler for the Optimize button."""
-        target_cards = self.get_target_cards()
-        if not target_cards:
-            return
-
-        # TODO: Replace with: dialog = OptimizerConfigDialog(target_cards[0], self); dialog.exec_()
-        reply = QtWidgets.QMessageBox.question(
-            self,
-            "Optimize Formulation",
-            "Run Bayesian Optimization on the selected formulation to minimize viscosity?",
-            QtWidgets.QMessageBox.StandardButton.Yes
-            | QtWidgets.QMessageBox.StandardButton.No,
-        )
-
-        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            self.viz_panel.set_plot_title("Optimization Initialized...")
-            # Trigger your optimization worker here
+        """Toggles the Optimize overlay widget."""
+        if self.optimize_widget.isVisible():
+            self.optimize_widget.hide()
+            self.btn_optimize.setChecked(False)
+        else:
+            self.optimize_widget.show()
+            self.optimize_widget.raise_()
+            self.btn_optimize.setChecked(True)
+            self._update_overlay_geometry()
 
     def _create_fab(self):
         """Creates the Floating Action Button for Adding Cards."""
@@ -1259,6 +1297,88 @@ class DashboardUI(QtWidgets.QWidget):
         self.progress_dialog.canceled.connect(worker.stop)
 
         worker.start()
+
+    def run_optimization(self, model_file, targets, constraints_data):
+        """Launches the OptimizationWorker after showing a progress dialog."""
+        self.optimize_widget.hide()
+        self.btn_optimize.setChecked(False)
+
+        maxiter = self.optimize_widget.spin_maxiter.value()
+
+        self.opt_progress_dialog = QtWidgets.QProgressDialog(
+            "Starting optimization…", "Cancel", 0, 100, self
+        )
+        self.opt_progress_dialog.setWindowTitle("Optimizing Formulation")
+        self.opt_progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        self.opt_progress_dialog.setAutoClose(True)
+        self.opt_progress_dialog.setAutoReset(True)
+        self.opt_progress_dialog.setMinimumDuration(0)
+        self.opt_progress_dialog.setValue(0)
+
+        worker = OptimizationWorker(
+            model_file=model_file,
+            targets=targets,
+            constraints_data=constraints_data,
+            maxiter=maxiter,
+        )
+
+        if not hasattr(self, "_active_workers"):
+            self._active_workers = []
+        self._active_workers.append(worker)
+
+        worker.progress_update.connect(self._on_optimization_progress)
+        worker.optimization_complete.connect(self._on_optimization_complete)
+        worker.optimization_error.connect(self._on_optimization_error)
+        worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
+        self.opt_progress_dialog.canceled.connect(worker.stop)
+
+        worker.start()
+
+    def _on_optimization_progress(self, value, text):
+        if hasattr(self, "opt_progress_dialog"):
+            self.opt_progress_dialog.setValue(value)
+            self.opt_progress_dialog.setLabelText(text)
+
+    def _on_optimization_complete(self, card_data):
+        if hasattr(self, "opt_progress_dialog"):
+            self.opt_progress_dialog.close()
+
+        card = self.add_prediction_card(card_data)
+
+        # Apply optimized state + inject the estimated profile so the plot
+        # renders immediately without a separate prediction run.
+        if card and card_data.get("optimized"):
+            card.set_optimized_state(True)
+
+            ep = card_data.get("estimated_profile")
+            if ep:
+                vp = ViscosityProfile(
+                    shear_rates=ep["shear_rates"],
+                    viscosities=ep["viscosities"],
+                )
+                # Store the profile on the formulation object so exports work
+                card.formulation.set_viscosity_profile(vp)
+
+                # Push the estimated profile directly into last_results so the
+                # viz panel renders it as a predicted curve immediately.
+                card.last_results = {
+                    "x": ep["shear_rates"],
+                    "y": ep["viscosities"],
+                    "lower": ep["viscosities"],  # no CI for optimizer output
+                    "upper": ep["viscosities"],
+                    "card_name": card.name_input.text(),
+                    "color": card.plot_color,
+                }
+                self.viz_panel.update_plot(card.last_results)
+
+    def _on_optimization_error(self, error_msg):
+        if hasattr(self, "opt_progress_dialog"):
+            self.opt_progress_dialog.close()
+        QtWidgets.QMessageBox.critical(
+            self,
+            "Optimization Failed",
+            f"The optimizer encountered an error:\n\n{error_msg}",
+        )
 
     def _cleanup_worker(self, worker):
         if not worker.wait(5000):  # 5 second timeout
@@ -2130,6 +2250,23 @@ class DashboardUI(QtWidgets.QWidget):
                 x, local_pos.y(), menu_width, self.generate_widget.sizeHint().height()
             )
             self.generate_widget.raise_()
+        # 4. Optimize Widget (Relative to Toolbar Button)
+        if hasattr(self, "optimize_widget") and self.optimize_widget.isVisible():
+            btn_geo = self.btn_optimize.geometry()
+            global_pos = self.btn_optimize.mapToGlobal(
+                QtCore.QPoint(0, btn_geo.height())
+            )
+            local_pos = self.mapFromGlobal(global_pos)
+
+            menu_width = 600
+            x = local_pos.x()
+            if x + menu_width > self.width():
+                x = self.width() - menu_width - 10
+
+            self.optimize_widget.setGeometry(
+                x, local_pos.y(), menu_width, self.optimize_widget.sizeHint().height()
+            )
+            self.optimize_widget.raise_()
 
     def resizeEvent(self, event):
         self._update_overlay_geometry()
