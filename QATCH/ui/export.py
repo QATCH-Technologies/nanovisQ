@@ -20,6 +20,7 @@ import shutil
 import subprocess
 import os
 import zipfile
+import csv
 
 TAG1 = "[Export]"
 TAG2 = "[Import]"
@@ -44,6 +45,7 @@ class Ui_Export(QtWidgets.QWidget):
 
     def __init__(self, type="item", parent=None):
         super(Ui_Export, self).__init__(parent)
+        self.csv_report_path = None
 
         USE_FULLSCREEN = (QDesktopWidget().availableGeometry().width() == 2880)
         self.setMinimumSize(500, 500)
@@ -208,7 +210,7 @@ class Ui_Export(QtWidgets.QWidget):
         layout_h13 = QtWidgets.QHBoxLayout()
         self.combo_csv_cols = CheckableComboBox(self)
         self.combo_csv_cols.addItems(
-            ["Run Name", "Average Viscosity", "Std Dev", "Viscosity Profile", "Formulation", "Notes"])
+            ["Run Name", "Average Viscosity", "Std Dev", "Viscosity Profile", "Temp", "Formulation", "Notes"])
         # check all items (by default)
         for i in range(self.combo_csv_cols.count()):
             self.combo_csv_cols.model().item(i, 0).setCheckState(QtCore.Qt.Checked)
@@ -455,7 +457,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.usb_add.connect(self.ui_add)
         self.usb_remove.connect(self.ui_remove)
         self.progress.connect(self.setProgress)
-        self.freeze_gui.connect(self.freezeGUI)
+        self.freeze_gui.connect(lambda enable: self.freezeGUI(
+            enable=enable, from_signal=True))
         self.tabs.currentChanged.connect(self.tabChanged)
         self.groupbox1.clicked.connect(self.checkChanged1)
         self.groupbox2.clicked.connect(self.checkChanged2)
@@ -521,7 +524,7 @@ class Ui_Export(QtWidgets.QWidget):
             self.groupbox2.setChecked(False)
         self.freezeGUI(True)
 
-    def checkChanged2(self, chk):
+    def checkChanged2(self, chk, from_signal=False):
         self.chk1 = False
         self.chk2 = chk
         # Log.d(f"group2 clicked! {chk}")
@@ -530,7 +533,8 @@ class Ui_Export(QtWidgets.QWidget):
         if chk:
             self.drive = self.btn5.text(
             ) if self.btn5.text() != "[NONE]" else None
-        self.freezeGUI(True)
+        if not from_signal:
+            self.freezeGUI(True)
 
     def checkChanged5(self, chk):
         self.archiveInfo.setEnabled(True)
@@ -649,7 +653,14 @@ class Ui_Export(QtWidgets.QWidget):
         # enable_existing_files_btns = not self.exportAsCSV.isChecked()
         # for button in self.btnGroup2.buttons():
         #     button.setEnabled(enable_existing_files_btns)
-        self.groupbox6.setEnabled(self.exportAsCSV.isChecked())
+        if self.exportAsCSV.isChecked():
+            self.groupbox6.setEnabled(True)
+            self.doMerge.setText("Append")
+            self.doSkip.setText("Abort")
+        else:
+            self.groupbox6.setEnabled(False)
+            self.doMerge.setText("Merge")
+            self.doSkip.setText("Skip")
 
         if not self.exportAsFolder.isChecked():
             self.exportNoName.setEnabled(False)
@@ -658,7 +669,7 @@ class Ui_Export(QtWidgets.QWidget):
         else:
             self.exportNoName.setEnabled(True)
 
-    def freezeGUI(self, enable):
+    def freezeGUI(self, enable, from_signal=False):
         if enable:
             self.ui_toggle(not self.drive == None)
         else:
@@ -676,6 +687,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.groupbox6.setEnabled(enable)
         self.archiveInfo.setEnabled(True)
         self.btn3.setEnabled(enable)
+        if enable and from_signal:
+            self.checkChanged2(self.groupbox2.isChecked(), from_signal=True)
 
     def ui_toggle(self, enable):
         if self.chk1:
@@ -1226,9 +1239,9 @@ class Ui_Export(QtWidgets.QWidget):
                 output_folder += Constants.slash
             drive_or_folder = "USB drive" if self.chk1 else "folder"
             data_path = os.path.join(Constants.log_prefer_path)
-            if Constants.log_export_path in output_folder:
+            if f"\\{Constants.log_export_path}\\" in output_folder:
                 export_path = os.path.join(output_folder[0:output_folder.rindex(
-                    Constants.log_export_path)], Constants.log_export_path)
+                    f"\\{Constants.log_export_path}\\")], Constants.log_export_path)
             else:
                 export_path = os.path.join(
                     output_folder, name, Constants.log_export_path)
@@ -1243,6 +1256,9 @@ class Ui_Export(QtWidgets.QWidget):
                         # profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
                         # for shear in profile_shears:
                         #     csv_report_cols.append(f"{csv_field} @ {shear:.0f}")
+                    elif csv_field == "Temp":
+                        # unabbreviate to avoid confusion
+                        csv_report_cols.append("Temperature")
                     elif csv_field == "Formulation":
                         # expand into full formulation details, separate cols:
                         formula_components = [
@@ -1256,6 +1272,40 @@ class Ui_Export(QtWidgets.QWidget):
                     else:
                         csv_report_cols.append(csv_field)
                 Log.d("CSV report cols:", csv_report_cols)
+                export_folder = os.path.split(export_path)[0]
+                self.csv_report_path = export_folder + ".csv"
+                if os.path.exists(self.csv_report_path):
+                    # CSV report file already exists, check if user wants Abort
+                    if self.btnGroup2.checkedId() == 3:  # Abort
+                        Log.e(
+                            "CSV report output file already exists. User selection requests Abort.")
+                        return
+                    if self.btnGroup2.checkedId() == 2:  # Append
+                        with open(self.csv_report_path, "r", newline="") as f:
+                            # Get first row only
+                            reader = csv.reader(f)
+                            csv_existing_header = next(reader)
+                        if ",".join(csv_report_cols) != ",".join(csv_existing_header):
+                            Log.e(
+                                "Existing CSV report file has different data columns. Cannot Append as requested. Aborting export.")
+                            return
+                        else:
+                            # Existing CSV file will remain; do not delete
+                            Log.d(
+                                "CSV columns match; append to existing file is allowed")
+                    if self.btnGroup2.checkedId() == 1:  # Replace
+                        # Existing CSV file needs to be replaced; delete it now
+                        Log.w(
+                            "Replacing existing CSV report file with this export data.")
+                        os.remove(self.csv_report_path)
+                # check if file exists again, in case it was deleted in prior block
+                if not os.path.exists(self.csv_report_path):
+                    os.makedirs(os.path.dirname(
+                        self.csv_report_path), exist_ok=True)
+                    with open(self.csv_report_path, "w", newline="") as f:
+                        # Quote fields as required
+                        writer = csv.writer(f)
+                        writer.writerow(csv_report_cols)
 
             # Log.d(output_folder, export_path)
             if self.exportAsZIP.isChecked():
@@ -1350,9 +1400,8 @@ class Ui_Export(QtWidgets.QWidget):
                                 Log.w(f"Skipping non-existent folder: {src}")
                                 continue
                             if self.exportAsCSV.isChecked():
-                                Log.w(f"Exporting {run} to CSV Report...")
                                 # This method returns True on success:
-                                if self.appendRunToCsvReport(run=src, cols=csv_report_cols):
+                                if self.appendRunToCsvReport(run=src, cols=csv_report_cols, d_filter=date_filter):
                                     copied += 1
                                 else:  # something went wrong, this run got skipped
                                     skipped += 1
@@ -1408,8 +1457,12 @@ class Ui_Export(QtWidgets.QWidget):
                 shutil.rmtree(export_path)
             Log.i(TAG1, "DONE - Exported {} run(s) to {}.".format(copied, export_path))
             if skipped > 0:
-                reason = "they already existed in the output location" if self.btnGroup5.checkedId(
-                ) == 0 else "date filtering was enabled"
+                if self.exportAsCSV.isChecked():
+                    reason = "there were errors with the analyze results"
+                elif self.btnGroup5.checkedId() == 0:
+                    reason = "they already existed in the output location"
+                else:
+                    reason = "date filtering was enabled"
                 Log.i(TAG1, "Skipped {} run(s) because {}".format(skipped, reason))
 
             history_path = os.path.join(
@@ -1446,33 +1499,70 @@ class Ui_Export(QtWidgets.QWidget):
         except Exception as e:
             Log.e(TAG1, "Export error: {}".format(str(e)))
             self.progress.emit("Error exporting local data!", 100, 'r', 0)
-        self.freeze_gui.emit(True)
+        finally:
+            self.freeze_gui.emit(True)
 
-    def appendRunToCsvReport(self, run, cols):
-        # files = os.listdir(run)
-        # Log.w(f"Run {os.path.basename(run)} has files: {files}")
+    def appendRunToCsvReport(self, run, cols, d_filter=0):
 
         # default values, if error parsing
         run_name = os.path.basename(run)
         viscosity_profile = []
         average_viscosity = np.nan
         std_dev = np.nan
+        temperature = np.nan
         formulation = None
         notes = "Unknown"
 
         _success = True
 
         try:
+
+            files = os.listdir(run)
+            # Log.w(f"Run {os.path.basename(run)} has files: {files}")
+
+            if d_filter != 0:
+                # check date filtering if this run can be exported
+                epoch = datetime.datetime.fromtimestamp(
+                    timestamp=0, tz=tz.utc)
+                last_modified = epoch
+                for f in files:
+                    f_path = os.path.join(run, f)
+                    st_mtime = datetime.datetime.fromtimestamp(
+                        timestamp=os.stat(f_path).st_mtime, tz=tz.utc)
+                    if st_mtime > last_modified:
+                        last_modified = st_mtime
+                if last_modified < d_filter:  # file older than filter
+                    return False  # immediate return, silently
+
+            Log.i(f"Exporting {run} to CSV Report...")
             file_path = os.path.join(run, "capture.zip")
             if os.path.exists(file_path):
                 parser = Parser(file_path)
 
-                # Everything of value relies on this, so pull it always
-                formulation = parser.get_formulation()
-
                 if "Run Name" in cols:
                     ### PULL RUN NAME FROM RUN INFO XML ###
                     run_name = parser.get_run_name()
+
+                if "Notes" in cols:
+                    ### PULL NOTES FROM RUN INFO XML ###
+                    notes = parser.get_run_notes()
+                    if notes:  # encode-decode to remove unencodable characters in user input
+                        notes = notes.strip().encode(
+                            encoding='ascii', errors='xmlcharrefreplace').decode(
+                            encoding='utf-8', errors='ignore')
+
+                    has_analyze_zip = any(file.startswith(
+                        "analyze-") and file.endswith(".zip") for file in files)
+                    if not has_analyze_zip:
+                        raise FileNotFoundError(
+                            "Run has not been analyzed. No analyze ZIP files found.")
+
+                # Everything of value relies on this, so pull it always
+                formulation = parser.get_formulation()
+
+                if "Temperature" in cols:
+                    ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
+                    temperature = formulation.temperature
 
                 require_vp = any(col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
                                  for col in cols)
@@ -1488,26 +1578,18 @@ class Ui_Export(QtWidgets.QWidget):
                     ### CALCULATE STANDARD DEVIATION FROM MOST RECENT ANALYSIS ###
                     std_dev = np.std(viscosity_profile)
 
-                # include_formula = any(col.startswith("Formulation")
-                #                       for col in cols)
-                # if include_formula:
-                #     ### PARSE FORMULATION DETAILS FROM RUN INFO XML ###
-                #     formula_details = [formulation.protein, formulation.stabilizer, formulation.buffer,
-                #                        formulation.surfactant, formulation.salt, formulation.excipient]
-
-                if "Notes" in cols:
-                    ### PULL NOTES FROM RUN INFO XML ###
-                    notes = parser.get_run_notes()
-                    if notes:  # encode-decode to remove unencodable characters in user input
-                        notes = notes.encode(
-                            encoding='ascii', errors='xmlcharrefreplace').decode(
-                            encoding='utf-8', errors='ignore')
-
             else:
                 Log.e(
                     f"Run {os.path.basename(run)} has no run data file. Cannot export!")
 
                 _success = False
+
+        except FileNotFoundError as fnfe:
+            Log.e(
+                f"Run {run_name} has not been analyzed and cannot be exported. "
+                "Please analyze before exporting run results to CSV.")
+
+            _success = False
 
         except Exception as e:
             Log.e(
@@ -1526,6 +1608,8 @@ class Ui_Export(QtWidgets.QWidget):
                     row.append(average_viscosity)
                 elif col == "Std Dev":
                     row.append(std_dev)
+                elif col == "Temperature":
+                    row.append(temperature)
                 elif col == "Formulation_Protein":
                     if formulation and (component := formulation.protein) and component.ingredient.name != "None":
                         row.append(
@@ -1582,18 +1666,16 @@ class Ui_Export(QtWidgets.QWidget):
 
                 _success = False
 
-            # header row
-            csv_header = ",".join(cols)
-            csv_row = ",".join(row)
+            if self.csv_report_path:
 
-            Log.e(csv_header)
-            Log.e(csv_row)
+                # Append new export row to existing CSV report
+                with open(self.csv_report_path, "a", newline='') as f:
+                    # Quote fields as required
+                    writer = csv.writer(f)
+                    writer.writerow(row)
 
-            # TODO: Make CSV report file (using Append / Replace / Abort logic) with header row (must match if using "append"; abort if not)
-            # TODO: Actually write rows to the CSV report file for each 'csv_row' printed in this loop
-            # TODO: Detect runs with no `analyze-*.zip` output file and make a more friendly error message for "Run not analyzed yet" skip reason
-            # TODO: Update the console log from "Skipped 2 run(s) because they already existed in the output location" to "due to export errors" (log to error console too) - only for CSV reports (I think)
-            # TODO: Figure out why "ST_" encountered an export error when generating the CSV report, it has been analyzed before, is something else wrong?
+            else:
+                raise ValueError("CSV file path not set; cannot export row")
 
         except Exception as e:
             Log.e(
