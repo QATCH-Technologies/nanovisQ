@@ -101,8 +101,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.last_results = None
         self.is_expanded = True
         self.is_measured = False
-        self.notes_visible = False
         self.is_optimized = False
+        self.notes_visible = False
         self.is_selectable = False
         self.is_selected = False
         self.plot_color = self._generate_auto_color()
@@ -177,12 +177,18 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.name_input.setPlaceholderText("Prediction Name")
         self.name_input.setProperty("class", "title-input")
 
-        self.lbl_measured = QtWidgets.QLabel("Measured")
+        self.lbl_measured = QtWidgets.QLabel("✓ Measured Data")
         self.lbl_measured.setProperty("class", "badge-success")
         self.lbl_measured.setVisible(False)
 
+        # Optimized badge — no inline setStyleSheet so Qt never allocates a
+        # native window handle before this widget is parented into the layout
+        self.lbl_optimized = QtWidgets.QLabel("⚡ Optimized")
+        self.lbl_optimized.setProperty("class", "badge-optimized")
+        self.lbl_optimized.setVisible(False)
+
         # Warning Indicator for Incomplete Data
-        self.lbl_warning = QtWidgets.QLabel("Incomplete")
+        self.lbl_warning = QtWidgets.QLabel("⚠ Incomplete")
         self.lbl_warning.setStyleSheet(
             "color: #c62828; background-color: #ffcdd2; "
             "border-radius: 4px; padding: 4px 8px; font-size: 11px; font-weight: bold;"
@@ -191,14 +197,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.lbl_warning.setToolTip(
             "Missing required ingredient information or valid concentrations. Inference is blocked."
         )
-        # Optimized Badge
-        self.lbl_optimized = QtWidgets.QLabel("Optimized")
-        self.lbl_optimized.setProperty("class", "badge-optimized")
-        self.lbl_optimized.setVisible(False)
-        self.lbl_optimized.setToolTip(
-            "This formulation was produced by the optimizer. "
-            "Input fields are locked; the estimated profile is shown."
-        )
+
         # Delete Button
         self.btn_delete = QtWidgets.QPushButton()
         self.btn_delete.setObjectName("btnCardDelete")
@@ -273,6 +272,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         header_layout.addWidget(self.name_input, stretch=1)
         header_layout.addWidget(self.lbl_warning)
         header_layout.addWidget(self.lbl_measured)
+        header_layout.addWidget(self.lbl_optimized)
         header_layout.addWidget(self.btn_delete)
         header_layout.addWidget(self.btn_options)
 
@@ -599,48 +599,49 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 self.act_use_icl.setChecked(False)
 
     def set_optimized_state(self, is_optimized: bool):
-        """Lock all inputs and show the optimized badge when is_optimized=True."""
+        """Show the ⚡ Optimized badge and lock ingredient/environment fields.
+
+        Name and notes are deliberately kept editable so the user can rename
+        or annotate the result.
+        """
         self.is_optimized = is_optimized
 
-        # QSS property for distinctive card styling
+        # Badge — mirrors set_measured_state pattern exactly
+        self.lbl_optimized.setVisible(is_optimized)
         self.setProperty("optimized", is_optimized)
         self.style().unpolish(self)
         self.style().polish(self)
 
-        self.lbl_optimized.setVisible(is_optimized)
-
-        # Lock/unlock all editable fields (same pattern as set_measured_state)
-        self.name_input.setReadOnly(is_optimized)
-        self.btn_add_ing.setVisible(not is_optimized)
-
+        # Ingredient rows
+        if hasattr(self, "btn_add_ing"):
+            self.btn_add_ing.setEnabled(not is_optimized)
+            self.btn_add_ing.setVisible(not is_optimized)
         for ing_type, (combo, spin, _, btn_rem) in self.active_ingredients.items():
             combo.setEnabled(not is_optimized)
             spin.setReadOnly(is_optimized)
-            if ing_type == "Buffer":
+            if is_optimized:
                 btn_rem.setEnabled(False)
             else:
-                btn_rem.setEnabled(not is_optimized)
+                btn_rem.setEnabled(ing_type != "Buffer")
 
-        self.slider_temp.setEnabled(not is_optimized)
-        self.spin_temp.setReadOnly(is_optimized)
-        self.notes_edit.setReadOnly(is_optimized)
-        self.drag_handle.setEnabled(not is_optimized)
+        # Temperature controls
+        if hasattr(self, "slider_temp"):
+            self.slider_temp.setEnabled(not is_optimized)
+        if hasattr(self, "spin_temp"):
+            self.spin_temp.setReadOnly(is_optimized)
 
-        # Model combo stays enabled so the user can re-run the estimate
-        # with a different model if desired.
+        # Model selection — the optimizer already chose the model
         if hasattr(self, "model_combo"):
-            self.model_combo.setEnabled(True)
+            self.model_combo.setEnabled(not is_optimized)
         if hasattr(self, "btn_select_model"):
-            self.btn_select_model.setEnabled(True)
+            self.btn_select_model.setEnabled(not is_optimized)
 
-        # Disable the ICL option – optimized cards are not ground-truth data
-        if hasattr(self, "act_use_icl"):
-            self.act_use_icl.setEnabled(False)
-            self.act_use_icl.setChecked(False)
-
-        # Disable options that make no sense for a locked card
-        if hasattr(self, "act_clear"):
-            self.act_clear.setEnabled(False)
+        # Name and notes kept writable
+        self.name_input.setReadOnly(False)
+        self.name_input.setEnabled(True)
+        if hasattr(self, "notes_edit"):
+            self.notes_edit.setReadOnly(False)
+            self.notes_edit.setEnabled(True)
 
     def toggle_content(self):
         if not self.is_expanded:
@@ -1549,8 +1550,6 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         if "missing_fields" in data:
             self.mark_missing_fields(data["missing_fields"])
-        if data.get("optimized", False):
-            self.set_optimized_state(True)
 
     def mark_missing_fields(self, missing_list):
         """Visually indicates missing information on the card."""

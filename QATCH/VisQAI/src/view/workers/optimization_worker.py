@@ -144,6 +144,10 @@ class OptimizationWorker(QtCore.QThread):
                             f"matched no ingredients in the database. "
                             f"Check that the selected name exactly matches a DB entry."
                         )
+                    print(
+                        f"[Optimizer] Constraint applied: {feature_key} "
+                        f"{'is NOT' if negate else 'is'} {[c.name for c in choices]}"
+                    )
                     constraints.add_choices(feature=feature_key, choices=choices)
 
                 elif feature_key in Constraints._NUMERIC:
@@ -215,6 +219,21 @@ class OptimizationWorker(QtCore.QThread):
                 seed=42,
             )
             best_formulation = optimizer.optimize(progress_callback=_progress_cb)
+
+            # Diagnostic: log what the optimizer actually chose for each type
+            for _attr in (
+                "protein",
+                "buffer",
+                "salt",
+                "surfactant",
+                "stabilizer",
+                "excipient",
+            ):
+                _comp = getattr(best_formulation, _attr, None)
+                if _comp and getattr(_comp, "ingredient", None):
+                    print(
+                        f"[Optimizer] Best {_attr}: {_comp.ingredient.name} @ {_comp.concentration}"
+                    )
 
             if not self._is_running:
                 return

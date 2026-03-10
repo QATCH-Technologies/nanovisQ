@@ -105,7 +105,6 @@ class DashboardUI(QtWidgets.QWidget):
         self._is_silencing_runs = False
         self._zombie_tasks = []
         self._is_evaluation_mode = False
-        self._is_optimize_mode = False
         self._pending_eval_config = None
 
     def _load_database_data(self):
@@ -1299,21 +1298,18 @@ class DashboardUI(QtWidgets.QWidget):
         worker.start()
 
     def run_optimization(self, model_file, targets, constraints_data):
-        """Launches the OptimizationWorker after showing a progress dialog."""
+        """Launches the OptimizationWorker, routing progress into the viz panel
+        loading overlay — identical to how predictions display progress."""
         self.optimize_widget.hide()
         self.btn_optimize.setChecked(False)
 
         maxiter = self.optimize_widget.spin_maxiter.value()
 
-        self.opt_progress_dialog = QtWidgets.QProgressDialog(
-            "Starting optimization…", "Cancel", 0, 100, self
-        )
-        self.opt_progress_dialog.setWindowTitle("Optimizing Formulation")
-        self.opt_progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
-        self.opt_progress_dialog.setAutoClose(True)
-        self.opt_progress_dialog.setAutoReset(True)
-        self.opt_progress_dialog.setMinimumDuration(0)
-        self.opt_progress_dialog.setValue(0)
+        # Snapshot the current plot state so Cancel can restore it exactly.
+        self._pre_opt_data_series = list(getattr(self.viz_panel, "data_series", []))
+        self._pre_opt_plot_title = getattr(self, "_last_plot_title", "")
+
+        self.viz_panel.set_plot_title("Optimizing formulation…")
 
         worker = OptimizationWorker(
             model_file=model_file,
@@ -1325,60 +1321,92 @@ class DashboardUI(QtWidgets.QWidget):
         if not hasattr(self, "_active_workers"):
             self._active_workers = []
         self._active_workers.append(worker)
+        self._current_opt_worker = worker
+
+        # Pass a cancel callback that stops the worker AND restores the plot.
+        self.viz_panel.show_loading(
+            cancel_callback=lambda: self._cancel_optimization(worker)
+        )
 
         worker.progress_update.connect(self._on_optimization_progress)
         worker.optimization_complete.connect(self._on_optimization_complete)
         worker.optimization_error.connect(self._on_optimization_error)
         worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
-        self.opt_progress_dialog.canceled.connect(worker.stop)
 
         worker.start()
 
     def _on_optimization_progress(self, value, text):
-        if hasattr(self, "opt_progress_dialog"):
-            self.opt_progress_dialog.setValue(value)
-            self.opt_progress_dialog.setLabelText(text)
+        """Drive the viz-panel loading overlay with real optimizer progress."""
+        # Stop the free-running animation so we can show real percentage
+        if (
+            hasattr(self.viz_panel, "anim_timer")
+            and self.viz_panel.anim_timer.isActive()
+        ):
+            self.viz_panel.anim_timer.stop()
+        if hasattr(self.viz_panel, "progress_bar"):
+            self.viz_panel.progress_bar.setValue(value)
+        if hasattr(self.viz_panel, "loading_label"):
+            self.viz_panel.loading_label.setText(text)
+        self.viz_panel.set_plot_title(f"Optimizing… {value}%")
 
     def _on_optimization_complete(self, card_data):
-        if hasattr(self, "opt_progress_dialog"):
-            self.opt_progress_dialog.close()
+        """Add the optimized formulation card and update the plot."""
+        # Hide the overlay and reset the label for the next prediction run
+        self.viz_panel.hide_loading()
+        if hasattr(self.viz_panel, "loading_label"):
+            self.viz_panel.loading_label.setText("Calculating…")
 
+        # Add the card; lock its fields to prevent accidental edits
         card = self.add_prediction_card(card_data)
-
-        # Apply optimized state + inject the estimated profile so the plot
-        # renders immediately without a separate prediction run.
-        if card and card_data.get("optimized"):
+        if hasattr(card, "set_optimized_state"):
             card.set_optimized_state(True)
 
-            ep = card_data.get("estimated_profile")
-            if ep:
-                vp = ViscosityProfile(
-                    shear_rates=ep["shear_rates"],
-                    viscosities=ep["viscosities"],
-                )
-                # Store the profile on the formulation object so exports work
-                card.formulation.set_viscosity_profile(vp)
-
-                # Push the estimated profile directly into last_results so the
-                # viz panel renders it as a predicted curve immediately.
-                card.last_results = {
-                    "x": ep["shear_rates"],
-                    "y": ep["viscosities"],
-                    "lower": ep["viscosities"],  # no CI for optimizer output
-                    "upper": ep["viscosities"],
-                    "card_name": card.name_input.text(),
-                    "color": card.plot_color,
-                }
-                self.viz_panel.update_plot(card.last_results)
+        # Show the estimated viscosity profile immediately
+        est = card_data.get("estimated_profile", {})
+        shear = est.get("shear_rates", [])
+        viscs = est.get("viscosities", [])
+        if shear and viscs:
+            data_package = {
+                "x": shear,
+                "y": viscs,
+                "config_name": card_data.get("name", "Optimized Formulation"),
+                "measured": False,
+            }
+            if hasattr(card, "set_results"):
+                card.set_results(data_package)
+            name = card_data.get("name", "Optimized Formulation")
+            self._last_plot_title = name
+            self.viz_panel.set_plot_title(name)
+            self.viz_panel.set_data(data_package)
 
     def _on_optimization_error(self, error_msg):
-        if hasattr(self, "opt_progress_dialog"):
-            self.opt_progress_dialog.close()
+        self.viz_panel.hide_loading()
+        if hasattr(self.viz_panel, "loading_label"):
+            self.viz_panel.loading_label.setText("Calculating…")
+        self.viz_panel.set_plot_title("Optimization failed")
         QtWidgets.QMessageBox.critical(
             self,
             "Optimization Failed",
             f"The optimizer encountered an error:\n\n{error_msg}",
         )
+
+    def _cancel_optimization(self, worker):
+        """Stop the running optimizer and restore the plot to its pre-run state."""
+        worker.stop()
+        self.viz_panel.hide_loading()
+        if hasattr(self.viz_panel, "loading_label"):
+            self.viz_panel.loading_label.setText("Calculating…")
+
+        # Restore whatever was on the plot before optimization started
+        prev_series = getattr(self, "_pre_opt_data_series", [])
+        prev_title = getattr(self, "_pre_opt_plot_title", "")
+        if prev_series:
+            self.viz_panel.set_plot_title(prev_title)
+            self.viz_panel.set_data(list(prev_series))
+        else:
+            # No previous data — clear to placeholder state
+            self.viz_panel.set_plot_title("")
+            self.viz_panel.set_data([])
 
     def _cleanup_worker(self, worker):
         if not worker.wait(5000):  # 5 second timeout

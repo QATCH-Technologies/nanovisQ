@@ -126,6 +126,23 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.loading_label.setAlignment(Qt.AlignCenter)
         overlay_layout.addWidget(self.loading_label)
 
+        self.btn_cancel_loading = QtWidgets.QPushButton("Cancel")
+        self.btn_cancel_loading.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_cancel_loading.setFixedWidth(100)
+        self.btn_cancel_loading.setStyleSheet(
+            "QPushButton {"
+            "  color: #374151; background-color: #f3f4f6;"
+            "  border: 1px solid #d1d5db; border-radius: 6px;"
+            "  padding: 5px 14px; font-weight: 600; font-size: 11px;"
+            "}"
+            "QPushButton:hover  { background-color: #e5e7eb; }"
+            "QPushButton:pressed { background-color: #d1d5db; }"
+        )
+        self.btn_cancel_loading.setVisible(False)
+        overlay_layout.addSpacing(8)
+        overlay_layout.addWidget(self.btn_cancel_loading, 0, Qt.AlignCenter)
+        self._cancel_loading_cb = None
+
         # --- PLACEHOLDER ---
         self.placeholder_label = QtWidgets.QLabel(
             "No data to display.\nRun a prediction or import data to view profiles."
@@ -542,7 +559,37 @@ class VisualizationPanel(QtWidgets.QWidget):
                 f"<span style='color: #374151; font-size: 11pt; font-weight: 600;'>{title_text}</span>"
             )
 
-    def show_loading(self):
+    def show_loading(self, cancel_callback=None):
+        """Show the loading overlay.
+
+        Parameters
+        ----------
+        cancel_callback : callable, optional
+            When provided a "Cancel" button is shown inside the overlay.
+            Clicking it calls the callback (e.g. ``worker.stop``) and hides
+            the button immediately so it can't be double-clicked.
+            Pass ``None`` (default) for normal predictions — button is hidden.
+        """
+        # Wire / unwire the cancel button
+        self._cancel_loading_cb = cancel_callback
+        try:
+            self.btn_cancel_loading.clicked.disconnect()
+        except TypeError:
+            pass  # no connections yet
+        if cancel_callback is not None:
+
+            def _on_cancel():
+                self.btn_cancel_loading.setEnabled(False)
+                self.btn_cancel_loading.setText("Cancelling…")
+                cancel_callback()
+
+            self.btn_cancel_loading.clicked.connect(_on_cancel)
+            self.btn_cancel_loading.setEnabled(True)
+            self.btn_cancel_loading.setText("Cancel")
+            self.btn_cancel_loading.setVisible(True)
+        else:
+            self.btn_cancel_loading.setVisible(False)
+
         self.overlay_widget.setVisible(True)
         self.progress_bar.setValue(0)
         self.anim_timer = QtCore.QTimer()
@@ -559,6 +606,17 @@ class VisualizationPanel(QtWidgets.QWidget):
         if hasattr(self, "anim_timer"):
             self.anim_timer.stop()
         self.progress_bar.setValue(100)
+        # Always hide and reset the cancel button so it never bleeds into the
+        # next prediction or overlay use.
+        if hasattr(self, "btn_cancel_loading"):
+            try:
+                self.btn_cancel_loading.clicked.disconnect()
+            except TypeError:
+                pass
+            self.btn_cancel_loading.setText("Cancel")
+            self.btn_cancel_loading.setEnabled(True)
+            self.btn_cancel_loading.setVisible(False)
+        self._cancel_loading_cb = None
         QtWidgets.QApplication.processEvents()
         self.overlay_widget.setVisible(False)
 

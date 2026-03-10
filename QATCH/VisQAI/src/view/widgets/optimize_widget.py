@@ -54,13 +54,20 @@ class _CompactCheckableComboBox(CheckableComboBox):
         self.initStyleOption(opt)
 
         try:
-            items = self.getItems()
-            if not items:
+            from PyQt5.QtCore import Qt
+
+            model = self.model()
+            checked = []
+            for i in range(model.rowCount()):
+                item = model.item(i)
+                if item is not None and item.checkState() == Qt.Checked:
+                    checked.append(item.text())
+            if not checked:
                 opt.currentText = "Select..."
-            elif len(items) == 1:
-                opt.currentText = items[0]
+            elif len(checked) == 1:
+                opt.currentText = checked[0]
             else:
-                opt.currentText = f"{len(items)} items selected"
+                opt.currentText = f"{len(checked)} selected"
         except Exception:
             pass
 
@@ -609,6 +616,24 @@ class OptimizeWidget(QtWidgets.QFrame):
     # Validation
     # ──────────────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _checked_items(combo_box) -> list:
+        """Return the text of every item whose check state is Qt.Checked.
+
+        CheckableComboBox.getItems() returns ALL items in the model regardless
+        of check state — it is only useful as a "has any items" test.  To find
+        which items the user actually ticked we must inspect the model directly.
+        """
+        from PyQt5.QtCore import Qt
+
+        checked = []
+        model = combo_box.model()
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item is not None and item.checkState() == Qt.Checked:
+                checked.append(item.text())
+        return checked
+
     def _validate(self):
         has_targets = len(self.target_rows) > 0
         has_model = self.model_combo.isEnabled()
@@ -619,7 +644,7 @@ class OptimizeWidget(QtWidgets.QFrame):
             attr_ok = row["attribute"].currentIndex() > 0
             cond_ok = row["condition"].currentIndex() > 0
             if row["value_stack"].currentIndex() == 0:
-                val_ok = len(row["value_cb"].getItems()) > 0
+                val_ok = len(self._checked_items(row["value_cb"])) > 0
             else:
                 val_ok = True
             if not (ing_ok and attr_ok and cond_ok and val_ok):
@@ -647,7 +672,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         constraints_data = []
         for row in self.constraint_rows:
             val = (
-                row["value_cb"].getItems()
+                self._checked_items(row["value_cb"])
                 if row["value_stack"].currentIndex() == 0
                 else row["value_spin"].value()
             )

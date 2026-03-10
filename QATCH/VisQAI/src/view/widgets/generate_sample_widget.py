@@ -23,13 +23,20 @@ class CompactCheckableComboBox(CheckableComboBox):
         self.initStyleOption(opt)
 
         try:
-            items = self.getItems()
-            if not items:
+            from PyQt5.QtCore import Qt
+
+            model = self.model()
+            checked = []
+            for i in range(model.rowCount()):
+                item = model.item(i)
+                if item is not None and item.checkState() == Qt.Checked:
+                    checked.append(item.text())
+            if not checked:
                 opt.currentText = "Select..."
-            elif len(items) == 1:
-                opt.currentText = items[0]
+            elif len(checked) == 1:
+                opt.currentText = checked[0]
             else:
-                opt.currentText = f"{len(items)} items selected"
+                opt.currentText = f"{len(checked)} selected"
         except Exception:
             pass
 
@@ -115,16 +122,14 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         # 1. Model Selector
         model_layout = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setStyleSheet(
-            "background-color: #ffffff; height: 26px;")
+        self.model_combo.setStyleSheet("background-color: #ffffff; height: 26px;")
         self.model_combo.setToolTip("Select a prediction model from assets")
         self._populate_model_list()
 
         self.btn_select_model = QtWidgets.QPushButton()
         self.btn_select_model.setFixedWidth(40)
         self.btn_select_model.setFixedHeight(26)
-        self.btn_select_model.setCursor(
-            QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_select_model.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_select_model.setToolTip("Import New Model (.visq)")
         self.btn_select_model.setIcon(
             QtGui.QIcon(
@@ -169,8 +174,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         )
 
         self.constraints_container = QtWidgets.QWidget()
-        self.constraints_layout = QtWidgets.QVBoxLayout(
-            self.constraints_container)
+        self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_container)
         self.constraints_layout.setContentsMargins(0, 0, 5, 0)
         self.constraints_layout.setSpacing(8)
 
@@ -189,8 +193,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         btn_layout = QtWidgets.QHBoxLayout()
 
         self.btn_add_constraint = QtWidgets.QPushButton("+ Add Constraint")
-        self.btn_add_constraint.setCursor(
-            QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_add_constraint.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         self.btn_add_constraint.setFixedHeight(34)
         self.btn_add_constraint.clicked.connect(self.add_constraint_row)
 
@@ -233,13 +236,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
             """Initialize file dialog for model selection."""
             model_dialog = ModelSelectionDialog()
             model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-            model_dialog.setNameFilter(
-                "VisQAI Models (*.visq)")
+            model_dialog.setNameFilter("VisQAI Models (*.visq)")
             model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
 
             # Set default directory
-            model_path = os.path.join(
-                Architecture.get_path(), "QATCH/VisQAI/assets")
+            model_path = os.path.join(Architecture.get_path(), "QATCH/VisQAI/assets")
             if os.path.exists(model_path):
                 model_dialog.setDirectory(model_path)
             # else:
@@ -285,6 +286,24 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.adjustSize()
         self.resized.emit()
 
+    @staticmethod
+    def _checked_items(combo_box) -> list:
+        """Return the text of every item whose check state is Qt.Checked.
+
+        CheckableComboBox.getItems() returns ALL items regardless of check
+        state.  Inspecting the model directly is the only reliable way to
+        find which items the user ticked.
+        """
+        from PyQt5.QtCore import Qt
+
+        checked = []
+        model = combo_box.model()
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item is not None and item.checkState() == Qt.Checked:
+                checked.append(item.text())
+        return checked
+
     def _validate_rows(self):
         if not self.constraint_rows:
             self.btn_add_constraint.setEnabled(True)
@@ -302,10 +321,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
             if val_stack.currentIndex() == 0:  # Dropdown view
                 val_box = row["value_cb"]
-                if hasattr(val_box, "getItems"):
-                    val_valid = len(val_box.getItems()) > 0
-                else:
-                    val_valid = val_box.currentIndex() > 0
+                val_valid = len(self._checked_items(val_box)) > 0
             else:  # Numeric SpinBox View
                 val_valid = True  # A DoubleSpinBox always has a valid float value
 
@@ -314,8 +330,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 break
 
         self.btn_add_constraint.setEnabled(all_complete)
-        self.btn_generate.setEnabled(
-            all_complete and self.model_combo.isEnabled())
+        self.btn_generate.setEnabled(all_complete and self.model_combo.isEnabled())
 
     def add_constraint_row(self):
         self.lbl_none.hide()
@@ -386,8 +401,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         row_layout.addWidget(val_stack, stretch=1)
         row_layout.addWidget(btn_delete)
 
-        self.constraints_layout.insertWidget(
-            len(self.constraint_rows), row_widget)
+        self.constraints_layout.insertWidget(len(self.constraint_rows), row_widget)
 
         row_data = {
             "widget": row_widget,
@@ -401,8 +415,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.constraint_rows.append(row_data)
 
         # Cascading Logic
-        btn_delete.clicked.connect(
-            lambda: self.remove_constraint_row(row_data))
+        btn_delete.clicked.connect(lambda: self.remove_constraint_row(row_data))
         cb_ingredient.currentIndexChanged.connect(
             lambda: self._on_ingredient_changed(row_data)
         )
@@ -491,16 +504,14 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                             getattr(
                                 p.class_type,
                                 "value",
-                                getattr(p.class_type, "name",
-                                        str(p.class_type)),
+                                getattr(p.class_type, "name", str(p.class_type)),
                             )
                         )
                         if c_val != "-":
                             classes.add(c_val)
                 items = sorted(list(classes))
             else:
-                items = [
-                    obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
+                items = [obj.name for obj in self.ingredients_by_type.get(ing_type, [])]
                 if ing_type not in ["Protein", "Buffer"]:
                     if "None" not in items:
                         items.insert(0, "None")
@@ -524,7 +535,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
             # Extract values based on which widget is currently active
             if val_stack.currentIndex() == 0:
-                val = row["value_cb"].getItems()
+                val = self._checked_items(row["value_cb"])
             else:
                 val = row["value_spin"].value()
 
