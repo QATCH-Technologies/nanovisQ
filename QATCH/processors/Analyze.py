@@ -3810,23 +3810,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
-            if False:  # diff_only
-                mn = np.amin(self.ys_diff[tx0:tx2])
-                mx = np.amax(self.ys_diff[tx0:tx2])
-            else:
-                mn = min(
-                    np.amin(self.ys_freq_fit[tx0:tx2]),
-                    np.amin(self.ys_fit[tx0:tx2]),
-                    np.amin(self.ys_diff_fit[tx0:tx2]),
-                )
-                mx = max(
-                    np.amax(self.ys_freq_fit[tx0:tx2]),
-                    np.amax(self.ys_fit[tx0:tx2]),
-                    np.amax(self.ys_diff_fit[tx0:tx2]),
-                )
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
+            mn = min(
+                np.amin(self.ys_freq_fit[tx0:tx2]),
+                np.amin(self.ys_fit[tx0:tx2]),
+                np.amin(self.ys_diff_fit[tx0:tx2]),
+            )
+            mx = max(
+                np.amax(self.ys_freq_fit[tx0:tx2]),
+                np.amax(self.ys_fit[tx0:tx2]),
+                np.amax(self.ys_diff_fit[tx0:tx2]),
+            )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 3:
                 if not clipped:
@@ -3951,9 +3947,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -4345,9 +4341,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -6768,7 +6764,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(t_minima)
 
-            ax2.plot(xs[zeros3[0]:], ys_diss_diff_offset[zeros3[0]:], "b:")
+            plot_len = min(len(xs), len(ys_diss_diff_offset))
+            ax2.plot(xs[zeros3[0]:plot_len], ys_diss_diff_offset[zeros3[0]:plot_len], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")
@@ -7921,7 +7918,10 @@ class AnalyzerWorker(QtCore.QObject):
 
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+            # NOTE: This is only enabled for production builds, not dev/nightly builds
             enable_bandaid_3 = True
+            if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                enable_bandaid_3 = False
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
             point_factor_limit = 0.25
@@ -7977,7 +7977,13 @@ class AnalyzerWorker(QtCore.QObject):
             if initial_fill[-1] >= 90 and not hide_initial_fill:
                 # Truncate the initial fill region to just a few evenly spaced points
                 # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                num_fill_pts = 5
+                # See issue #256 for details on why use dynamic number of fill points
+                min_fill_pts = 3
+                max_fill_pts = 8
+                target_num_pts = 10
+                num_fill_pts = max(min_fill_pts, 
+                                   min(max_fill_pts, 
+                                       target_num_pts - len(distances)))
                 shear_at_fill_start = in_shear_rate[0]
                 shear_at_fill_end = in_shear_rate[-len(distances)-1]
                 shear_points = np.geomspace(  # like `linspace` but for log10

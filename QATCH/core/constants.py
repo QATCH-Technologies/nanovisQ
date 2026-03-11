@@ -42,8 +42,8 @@ class Constants:
     # APPLICATION parameters #
     ##########################
     app_title = "QATCH nanovisQ Real-Time GUI"
-    app_version = "v2.6b69"
-    app_date = "2026-02-12"
+    app_version = "v2.6b70"
+    app_date = "2026-03-03"
     app_sources = ["Calibration Qatch Q-1 Device",
                    "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
@@ -132,6 +132,11 @@ class Constants:
     tune_pid_hp = 20
     tune_pid_hi = 0.045
     tune_pid_hd = 0
+
+    ###################
+    # FLUX parameters #
+    ###################
+    stepper_timeout_sec = 15
 
     ###################
     # PLOT parameters #
