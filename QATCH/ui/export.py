@@ -1551,24 +1551,34 @@ class Ui_Export(QtWidgets.QWidget):
                             encoding='ascii', errors='xmlcharrefreplace').decode(
                             encoding='utf-8', errors='ignore')
 
-                    has_analyze_zip = any(file.startswith(
-                        "analyze-") and file.endswith(".zip") for file in files)
-                    if not has_analyze_zip:
-                        raise FileNotFoundError(
-                            "Run has not been analyzed. No analyze ZIP files found.")
-
-                # Everything of value relies on this, so pull it always
-                formulation = parser.get_formulation()
+                require_formulation = any(
+                    col in ["Temperature", "Viscosity Profile",
+                            "Average Viscosity", "Std Dev"]
+                    or col.startswith("Formulation_")
+                    for col in cols
+                )
+                if require_formulation:
+                    # Everything of value relies on this, so pull it always
+                    formulation = parser.get_formulation()
 
                 if "Temperature" in cols:
                     ### PULL TEMPERATURE FROM FORMULATION INFORMATION ###
-                    temperature = formulation.temperature
+                    if formulation and formulation.temperature:
+                        temperature = formulation.temperature
 
                 require_vp = any(col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
                                  for col in cols)
                 if require_vp:
+                    has_analyze_zip = any(file.startswith(
+                        "analyze-") and file.endswith(".zip") for file in files)
+                    if not has_analyze_zip:
+                        # if not analyzed yet, there is no Viscosity Profile to pull
+                        raise FileNotFoundError(
+                            "Run has not been analyzed. No analyze ZIP files found.")
+
                     ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
-                    viscosity_profile = formulation.viscosity_profile.viscosities
+                    if formulation and formulation.viscosity_profile:
+                        viscosity_profile = formulation.viscosity_profile.viscosities
 
                 if "Average Viscosity" in cols:
                     ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###
