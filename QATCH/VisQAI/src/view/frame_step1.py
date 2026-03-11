@@ -1501,14 +1501,11 @@ class FrameStep1(QtWidgets.QDialog):
         info_on_success = False
         open_on_success = True
 
-        default_export_folder = os.path.expanduser(
-            os.path.join(
-                "~",
-                "Documents",
-                f"{Constants.app_publisher} {Constants.app_name}",
-                "exported_pdfs",
-            )
+        default_export_folder = os.path.join(
+            os.path.dirname(Constants.log_prefer_path), 
+            "exported"
         )
+
         if os.path.exists(os.path.dirname(default_export_folder)):
             os.makedirs(default_export_folder, exist_ok=True)
         else:
