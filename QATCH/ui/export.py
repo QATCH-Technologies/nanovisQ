@@ -1541,7 +1541,10 @@ class Ui_Export(QtWidgets.QWidget):
 
                 if "Run Name" in cols:
                     ### PULL RUN NAME FROM RUN INFO XML ###
-                    run_name = parser.get_run_name()
+                    parsed_name = parser.get_run_name()
+                    if parsed_name:
+                        run_name = parsed_name
+                    # else: keep default run_name from os.path.basename(run)
 
                 if "Notes" in cols:
                     ### PULL NOTES FROM RUN INFO XML ###
@@ -1569,16 +1572,12 @@ class Ui_Export(QtWidgets.QWidget):
                 require_vp = any(col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
                                  for col in cols)
                 if require_vp:
-                    has_analyze_zip = any(file.startswith(
-                        "analyze-") and file.endswith(".zip") for file in files)
-                    if not has_analyze_zip:
-                        # if not analyzed yet, there is no Viscosity Profile to pull
-                        raise FileNotFoundError(
-                            "Run has not been analyzed. No analyze ZIP files found.")
-
                     ### CALCULATE VISCOSITY PROFILE FROM MOST RECENT ANALYSIS ###
                     if formulation and formulation.viscosity_profile:
                         viscosity_profile = formulation.viscosity_profile.viscosities
+                    else:
+                        raise FileNotFoundError(
+                            "Run has no measured Viscosity Profile. Has it been analyzed?")
 
                 if "Average Viscosity" in cols:
                     ### CALCULATE AVERAGE VISCOSITY FROM MOST RECENT ANALYSIS ###

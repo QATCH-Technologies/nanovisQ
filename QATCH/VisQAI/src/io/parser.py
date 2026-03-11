@@ -684,9 +684,9 @@ class Parser:
             units=salt_data["units"]
         )
 
-        if vp:
+        if vp is not None:
             formulation.set_viscosity_profile(profile=vp)
-        if temp:
+        if temp is not None:
             formulation.set_temperature(temp=temp)
 
         return formulation
