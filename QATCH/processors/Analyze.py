@@ -6764,8 +6764,13 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(t_minima)
 
+            start_idx = int(zeros3[0]) if len(zeros3) else 0
+            if len(zeros3) == 0:
+                Log.w(
+                    "No zero-crossings found in ys_diss_diff_offset; plotting full range.")
             plot_len = min(len(xs), len(ys_diss_diff_offset))
-            ax2.plot(xs[zeros3[0]:plot_len], ys_diss_diff_offset[zeros3[0]:plot_len], "b:")
+            ax2.plot(xs[start_idx:plot_len],
+                     ys_diss_diff_offset[start_idx:plot_len], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")
@@ -7469,6 +7474,11 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d("the times to remove are:", idx_of_normal_pts_to_remove)
             for i in idx_of_normal_pts_to_remove:
                 try:
+                    if i not in times:
+                        Log.w(
+                            f"Midpoint @ {i} already removed, skipping removal of bad point..."
+                        )
+                        continue
                     idx = times.index(i)
                     Log.d(
                         f"Removing index {idx} from distances with value {distances[idx]}."
@@ -7483,10 +7493,42 @@ class AnalyzerWorker(QtCore.QObject):
 
             all_pos = np.concatenate((line1_y[dropUnder2:], distances))
             all_time = np.concatenate((line1_x[dropUnder2:], xs[times]))
-            all_temp = np.concatenate(
-                (temperature[t0: t0 + len(line1_x[dropUnder2:])],
-                 temperature[times])
-            )
+
+            lb = t0
+            ub = t0 + len(line1_x[dropUnder2:])
+            # safety check: prevent upper bound larger than array end
+            if ub > len(temperature):
+                lb -= (ub - (len(temperature) - 1))
+                ub = len(temperature) - 1
+            # safety check: prevent lower bound less than array start
+            if lb < 0:
+                lb = 0
+                ub = len(line1_x[dropUnder2:])
+
+            all_temp = np.concatenate((temperature[lb:ub], temperature[times]))
+
+            len_pos = len(all_pos)
+            len_time = len(all_time)
+            len_temp = len(all_temp)
+            if len_pos == len_time == len_temp:
+                Log.d("CHECK PASS: ALL arrays are the same length!")
+            else:
+                Log.w(
+                    "CHECK FAIL: ALL arrays are different lengths. Truncating to shortest one.")
+                len_req = min(len_pos, len_time, len_temp)
+                if len_pos != len_req:
+                    Log.w(
+                        f"Array `all_pos` resized from {len_pos} to {len_req}")
+                    all_pos = all_pos[:len_req]
+                if len_time != len_req:
+                    Log.w(
+                        f"Array `all_time` resized from {len_time} to {len_req}")
+                    all_time = all_time[:len_req]
+                if len_temp != len_req:
+                    Log.w(
+                        f"Array `all_temp` resized from {len_temp} to {len_req}")
+                    all_temp = all_temp[:len_req]
+
             avg_temp = np.average(temperature[t0: times[-1]])
             all_velocity = all_pos / all_time
             # all_velocity[-7] /= 2 # 1.61 (#2 in distances)
@@ -7870,14 +7912,42 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.w(
                         f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
                     )
-                    in_shear_rate = np.delete(in_shear_rate, i)
-                    in_viscosity = np.delete(in_viscosity, i)
-                    in_temp = np.delete(in_temp, i)
-                    viscosity = np.delete(viscosity, i)
-                    shear_rate = np.delete(shear_rate, i)
-                    fill_visc = np.delete(fill_visc, i)
-                    fill_shear = np.delete(fill_shear, i)
-                    distances = np.delete(distances, -i)
+                    flag_warn = False
+                    if len(in_shear_rate) >= abs(i):
+                        in_shear_rate = np.delete(in_shear_rate, i)
+                    else:
+                        flag_warn = True
+                    if len(in_viscosity) >= abs(i):
+                        in_viscosity = np.delete(in_viscosity, i)
+                    else:
+                        flag_warn = True
+                    if len(in_temp) >= abs(i):
+                        in_temp = np.delete(in_temp, i)
+                    else:
+                        flag_warn = True
+                    if len(viscosity) >= abs(i):
+                        viscosity = np.delete(viscosity, i)
+                    else:
+                        flag_warn = True
+                    if len(shear_rate) >= abs(i):
+                        shear_rate = np.delete(shear_rate, i)
+                    else:
+                        flag_warn = True
+                    if len(fill_visc) >= abs(i):
+                        fill_visc = np.delete(fill_visc, i)
+                    else:
+                        flag_warn = True
+                    if len(fill_shear) >= abs(i):
+                        fill_shear = np.delete(fill_shear, i)
+                    else:
+                        flag_warn = True
+                    if len(distances) >= abs(i):
+                        distances = np.delete(distances, -i)
+                    else:
+                        flag_warn = True
+                    if flag_warn:
+                        Log.w(
+                            f"WARNING: Unable to remove all outliers from the dataset.")
             except Exception as e:
                 Log.e("ERROR:", e)
                 Log.e("Unable to remove outliers from the dataset prior to plotting.")
@@ -7981,8 +8051,8 @@ class AnalyzerWorker(QtCore.QObject):
                 min_fill_pts = 3
                 max_fill_pts = 8
                 target_num_pts = 10
-                num_fill_pts = max(min_fill_pts, 
-                                   min(max_fill_pts, 
+                num_fill_pts = max(min_fill_pts,
+                                   min(max_fill_pts,
                                        target_num_pts - len(distances)))
                 shear_at_fill_start = in_shear_rate[0]
                 shear_at_fill_end = in_shear_rate[-len(distances)-1]
@@ -8260,10 +8330,8 @@ class AnalyzerWorker(QtCore.QObject):
                         ).astype(int)
                     )
                     na_val = len(xs) - 1
-                    na_pts = bad_times.count(na_val)
-                    if na_pts > 1:
-                        for i in range(na_pts - 1):
-                            cal_idxs = np.append(cal_idxs, na_val)
+                    while len(cal_idxs) < len(cal_pts):  # extend until at required size
+                        cal_idxs = np.append(cal_idxs, na_val)
                     cal_times = np.array(
                         np.round(xs[cal_idxs], 4), dtype=float)
                     cal_disss = np.array(
@@ -8278,6 +8346,46 @@ class AnalyzerWorker(QtCore.QObject):
                     cal_notes = [
                         "Not Analyzed" if x in bad_times else "" for x in cal_idxs
                     ]
+
+                    len_pts = len(cal_pts)
+                    len_idxs = len(cal_idxs)
+                    len_times = len(cal_times)
+                    len_disss = len(cal_disss)
+                    len_freqs = len(cal_freqs)
+                    len_notes = len(cal_notes)
+
+                    if len_pts == len_idxs == len_times == len_disss == len_freqs == len_notes:
+                        Log.d("CHECK PASS: CAL arrays are the same length!")
+                    else:
+                        Log.w(
+                            "CHECK FAIL: CAL arrays are different lengths. Truncating to shortest one.")
+                        len_req = min(len_pts, len_idxs, len_times,
+                                      len_disss, len_freqs, len_notes)
+                        if len_pts != len_req:
+                            Log.w(
+                                f"Array `cal_pts` resized from {len_pts} to {len_req}")
+                            cal_pts = cal_pts[:len_req]
+                        if len_idxs != len_req:
+                            Log.w(
+                                f"Array `cal_idxs` resized from {len_idxs} to {len_req}")
+                            cal_idxs = cal_idxs[:len_req]
+                        if len_times != len_req:
+                            Log.w(
+                                f"Array `cal_times` resized from {len_times} to {len_req}")
+                            cal_times = cal_times[:len_req]
+                        if len_disss != len_req:
+                            Log.w(
+                                f"Array `cal_disss` resized from {len_disss} to {len_req}")
+                            cal_disss = cal_disss[:len_req]
+                        if len_freqs != len_req:
+                            Log.w(
+                                f"Array `cal_freqs` resized from {len_freqs} to {len_req}")
+                            cal_freqs = cal_freqs[:len_req]
+                        if len_notes != len_req:
+                            Log.w(
+                                f"Array `cal_notes` resized from {len_notes} to {len_req}")
+                            cal_notes = cal_notes[:len_req]
+
                     cal_data = np.column_stack(
                         [cal_pts, cal_idxs, cal_times,
                             cal_disss, cal_freqs, cal_notes]
