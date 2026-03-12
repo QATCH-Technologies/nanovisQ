@@ -644,13 +644,15 @@ class DropEffectCorrection(CurveOptimizer):
 
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
         min_count = len(current_streak)
-        min_drop = min(current_streak)
+        min_drop = min(current_streak) if len(
+            current_streak) else (len(values) - 1)
         sign = 1 if col_name == "Dissipation" else -1
         if sign == 1:
             argidx = np.argmax(values[:min_drop])
         else:
             argidx = np.argmin(values[:min_drop])
-        base_slope = (values[argidx] - values[0]) / min_drop
+        base_slope = ((values[argidx] - values[0]) /
+                      min_drop) if min_drop else 0
         window_size = 3
         while True:
             min_drop = min_drop - 1
@@ -704,7 +706,7 @@ class DropEffectCorrection(CurveOptimizer):
         end = start + count
         middle = whole[start:end]
         return middle
-    
+
     def _safe_savgol_win(self, n: int, preferred: int, poly: int) -> int:
         """
         Choose robust window lengths (odd, <= series length, > polyorder)
@@ -897,14 +899,17 @@ class DropEffectCorrection(CurveOptimizer):
             # Only if end-of-fill is contained in the region.
             if len(self.bounds) > 1 and isinstance(self.bounds[1], int) and \
                     region[0] < self.bounds[1] < region[-1]:  # indices, not timestamps
-                Log.d(self.TAG, "Correcting drop with smoothed data due to region conflicts with end-of-fill")
+                Log.d(
+                    self.TAG, "Correcting drop with smoothed data due to region conflicts with end-of-fill")
                 insert_diss = super_smooth_diss_full[region[0]:region[-1]+1]
                 insert_rf = super_smooth_rf_full[region[0]:region[-1]+1]
 
             # Apply randomness to insert data based on stdev of baseline.
             rng = np.random.default_rng()
-            insert_diss = np.asarray(insert_diss) + rng.normal(0.0, 2*base_diss_std, size=len(insert_diss))
-            insert_rf = np.asarray(insert_rf) + rng.normal(0.0, 2*base_rf_std, size=len(insert_rf))
+            insert_diss = np.asarray(
+                insert_diss) + rng.normal(0.0, 2*base_diss_std, size=len(insert_diss))
+            insert_rf = np.asarray(
+                insert_rf) + rng.normal(0.0, 2*base_rf_std, size=len(insert_rf))
 
             # Replace the drop effect region with a smoother insert.
             corrected_diss[region[0]:region[-1]+1] = insert_diss
