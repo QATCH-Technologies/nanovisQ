@@ -6764,9 +6764,13 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(t_minima)
 
+            start_idx = int(zeros3[0]) if len(zeros3) else 0
+            if len(zeros3) == 0:
+                Log.w(
+                    "No zero-crossings found in ys_diss_diff_offset; plotting full range.")
             plot_len = min(len(xs), len(ys_diss_diff_offset))
-            ax2.plot(xs[zeros3[0]:plot_len],
-                     ys_diss_diff_offset[zeros3[0]:plot_len], "b:")
+            ax2.plot(xs[start_idx:plot_len],
+                     ys_diss_diff_offset[start_idx:plot_len], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")

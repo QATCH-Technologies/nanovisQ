@@ -643,16 +643,17 @@ class DropEffectCorrection(CurveOptimizer):
             current_streak = first_region_found
 
         # Work left from minimum time index, looking for an opposite direction shift prior to the big jump.
+        if not current_streak:
+            Log.d(self.TAG, f"No drop effects detected in {col_name}.")
+            return ([], values)
         min_count = len(current_streak)
-        min_drop = min(current_streak) if len(
-            current_streak) else (len(values) - 1)
+        min_drop = min(current_streak)
         sign = 1 if col_name == "Dissipation" else -1
         if sign == 1:
             argidx = np.argmax(values[:min_drop])
         else:
             argidx = np.argmin(values[:min_drop])
-        base_slope = ((values[argidx] - values[0]) /
-                      min_drop) if min_drop else 0
+        base_slope = (values[argidx] - values[0]) / min_drop
         window_size = 3
         while True:
             min_drop = min_drop - 1
