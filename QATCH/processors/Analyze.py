@@ -7498,12 +7498,13 @@ class AnalyzerWorker(QtCore.QObject):
             ub = t0 + len(line1_x[dropUnder2:])
             # safety check: prevent upper bound larger than array end
             if ub > len(temperature):
-                lb -= (ub - (len(temperature) - 1))
-                ub = len(temperature) - 1
+                overflow = ub - len(temperature)
+                lb = max(0, lb - overflow)
+                ub = len(temperature)
             # safety check: prevent lower bound less than array start
             if lb < 0:
                 lb = 0
-                ub = len(line1_x[dropUnder2:])
+                ub = min(len(temperature), len(line1_x[dropUnder2:]))
 
             all_temp = np.concatenate((temperature[lb:ub], temperature[times]))
 
@@ -7913,6 +7914,15 @@ class AnalyzerWorker(QtCore.QObject):
                         f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
                     )
                     flag_warn = False
+                    arrays_to_check = [
+                        in_shear_rate, in_viscosity, in_temp,
+                        viscosity, shear_rate, fill_visc,
+                        fill_shear, distances,
+                    ]
+                    if any(len(arr) < abs(i) for arr in arrays_to_check):
+                        Log.w(
+                            "Unable to remove outlier consistently; leaving dataset unchanged.")
+                        continue
                     if len(in_shear_rate) >= abs(i):
                         in_shear_rate = np.delete(in_shear_rate, i)
                     else:
@@ -7947,7 +7957,7 @@ class AnalyzerWorker(QtCore.QObject):
                         flag_warn = True
                     if flag_warn:
                         Log.w(
-                            f"WARNING: Unable to remove all outliers from the dataset.")
+                            "WARNING: Unable to remove all outliers from the dataset.")
             except Exception as e:
                 Log.e("ERROR:", e)
                 Log.e("Unable to remove outliers from the dataset prior to plotting.")
