@@ -8044,9 +8044,9 @@ class AnalyzerWorker(QtCore.QObject):
                     "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
                 )
                 enable_bandaid_3 = False
-            if enable_bandaid_3 and not hide_initial_fill:
+            if enable_bandaid_3 and high_shear_15x and not hide_initial_fill:
                 P1_value = sm_trendline[-1]
-                P2_value = high_shear_15y
+                P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
                 lower_factor = 1 - point_factor_limit
                 upper_factor = 1 + point_factor_limit
                 min_fit_end = min(P1_value, P2_value) * lower_factor
