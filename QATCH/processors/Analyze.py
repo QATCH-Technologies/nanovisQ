@@ -1627,6 +1627,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Determine initial button states
         enable_load = bool(self.cBox_Runs.currentText().strip(
         )) and self.cBox_Runs.currentText() != "No Runs Found"
+        enable_rescan = enable
         enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
@@ -1634,7 +1635,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # If disabled globally (e.g., busy state), disable everything
         if not enable:
-            enable_load = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
+            enable_load = enable_rescan = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
 
         # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
@@ -1654,6 +1655,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Apply button states
         self.tBtn_Load.setEnabled(enable_load)
+        self.tBtn_Rescan.setEnabled(enable_rescan)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
@@ -2432,13 +2434,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.xml_path = xml_path
 
     def updateDev(self, idx):
-        self.enable_buttons(False)
+        # Disable all toolbar buttons, then selectively re-enable based on state
+        self.enable_buttons(False, False)
+        if self.xml_path is not None:
+            self.tool_Cancel.setEnabled(True)  # enable Cancel
+        self.tBtn_Rescan.setEnabled(True)  # enable Rescan
         run = self.cBox_Runs.currentText()
         if len(run.strip()) == 0:
             self.cBox_Runs.setEditable(True)
             self.cBox_Runs.setEnabled(False)
             self.cBox_Runs.setEditText("No Runs Found")
             return
+        if self.text_Created.text().endswith(run):
+            self.enable_buttons()  # enable ALL buttons
+        else:
+            self.tBtn_Load.setEnabled(True)  # enable Load
         self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
         run = run[0: run.rfind("(") - 1]
@@ -7330,6 +7340,13 @@ class AnalyzerWorker(QtCore.QObject):
                 keep_ids = [keep_ids]
             trues = [True for x in distances]
             keep_ids = np.concatenate((keep_ids, trues))
+            if len(keep_ids) != len(log_velocity):
+                Log.w("Mismatched array lengths when rejecting initial fill outliers!")
+                while len(keep_ids) < len(log_velocity):
+                    keep_ids = np.concatenate(
+                        (keep_ids, [True]))  # lengthen, if needed
+                keep_ids = keep_ids[:len(log_velocity)].astype(
+                    'bool')  # shorten, if needed
             log_velocity_skip = log_velocity[~keep_ids]
             log_position_skip = log_position[~keep_ids]
             log_velocity = log_velocity[keep_ids]
@@ -7992,10 +8009,6 @@ class AnalyzerWorker(QtCore.QObject):
             # ax7.plot(out_shear_rate, out_viscosity, 'rx')
             # ax7.plot(shear_rate, viscosity, 'r:')
 
-            # New trendline variable for smoothing the initial fill small blue diamond points
-            sm_trendline = savgol_filter(
-                in_viscosity[:-len(distances)], len(in_viscosity)-len(distances), 1)
-
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
             # NOTE: This is only enabled for production builds, not dev/nightly builds
@@ -8004,6 +8017,24 @@ class AnalyzerWorker(QtCore.QObject):
                 enable_bandaid_3 = False
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
+
+            # New trendline variable for smoothing the initial fill small blue diamond points
+            try:
+                sm_x = in_viscosity[:-len(distances)]
+                sm_wl = len(in_viscosity)-len(distances)
+                if len(sm_x) == 0:
+                    raise ValueError(
+                        "No initial fill points present in dataset.")
+                if sm_wl <= 1:
+                    raise ValueError(
+                        "Too few points for smoothing: `wl` must be greater than `polyorder`.")
+                sm_trendline = savgol_filter(sm_x, sm_wl, 1)
+            except (ValueError, IndexError) as e:
+                Log.e(
+                    "Failed to generate initial fill region trendline. Skipping initial fill region analysis.")
+                Log.d(f"Error Details: {e}")
+                hide_initial_fill = True
+
             point_factor_limit = 0.25
             if point_factor_limit < 0 or point_factor_limit > 1:
                 Log.e(
@@ -8013,9 +8044,9 @@ class AnalyzerWorker(QtCore.QObject):
                     "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
                 )
                 enable_bandaid_3 = False
-            if enable_bandaid_3:
+            if enable_bandaid_3 and high_shear_15x and not hide_initial_fill:
                 P1_value = sm_trendline[-1]
-                P2_value = high_shear_15y
+                P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
                 lower_factor = 1 - point_factor_limit
                 upper_factor = 1 + point_factor_limit
                 min_fit_end = min(P1_value, P2_value) * lower_factor
