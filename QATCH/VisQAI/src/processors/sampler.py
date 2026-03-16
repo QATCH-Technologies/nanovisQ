@@ -41,7 +41,7 @@ from typing import Dict, List, Union
 import numpy as np
 
 try:
-    TAG = "[Sampler (Headless)]"
+    TAG = "[Sampler (HEADLESS)]"
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database

@@ -52,7 +52,7 @@ import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 
 try:
-    TAG = "[Optimizer (Headless)]"
+    TAG = "[Optimizer (HEADLESS)]"
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor

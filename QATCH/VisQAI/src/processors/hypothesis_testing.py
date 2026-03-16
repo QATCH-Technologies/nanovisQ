@@ -27,8 +27,10 @@ Key Features:
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
+
 Date:
     2026-03-16
+
 Version:
     2.1
 """
@@ -39,7 +41,7 @@ import numpy as np
 from shapely.geometry import Polygon, box
 
 try:
-    TAG = "[HypothesisTesting (Headless)]"
+    TAG = "[HypothesisTesting (HEADLESS)]"
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
 

@@ -34,7 +34,7 @@ import pandas as pd
 from scipy.interpolate import PchipInterpolator
 
 try:
-    TAG = "[Formulation (Headless)]"
+    TAG = "[Formulation (HEADLESS)]"
     from src.models.ingredient import (
         Buffer,
         Excipient,
