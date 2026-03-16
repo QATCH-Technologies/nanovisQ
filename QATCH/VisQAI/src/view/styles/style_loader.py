@@ -1,24 +1,21 @@
-"""
-Style Loader Utility for Qt Applications
+"""Style Loader Utility for Qt Applications.
 
-This module provides a centralized way to load and apply QSS stylesheets
-with dynamic icon path substitution.
+This module provides a centralized utility to load and apply QSS (Qt Style Sheets)
+with support for dynamic icon path substitution. It solves the common issue of
+hardcoded absolute paths in CSS by allowing placeholders like {{ICON_NAME}}
+within the QSS file, which are replaced with absolute paths at runtime.
 
-Usage:
-    from styles.style_loader import StyleLoader
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
 
-    # Initialize the loader
-    loader = StyleLoader()
+Date:
+    2026-03-16
 
-    # Apply to your application
-    app.setStyleSheet(loader.get_stylesheet())
-
-    # Or apply to a specific widget
-    my_widget.setStyleSheet(loader.get_stylesheet())
+Version:
+    1.0
 """
 
 import os
-from ast import Import
 from pathlib import Path
 
 try:

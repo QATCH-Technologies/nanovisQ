@@ -1,15 +1,24 @@
 """
 optimization_worker.py
 
-Background QThread that builds constraints, loads a predictor, constructs
-a target ViscosityProfile, runs the differential-evolution Optimizer, and
-emits the result as a card-data dict ready to be inserted by the dashboard.
+Background worker for formulation optimization using differential evolution.
 
-Signals
--------
-progress_update(int, str)           – percent (0-100) + status message
-optimization_complete(dict)         – card_data dict (see run() docstring)
-optimization_error(str)             – human-readable error message
+This module provides the OptimizationWorker class, which encapsulates the
+end-to-end optimization process: building constraints from user input,
+loading a predictor, running the differential evolution optimizer,
+and generating an estimated viscosity profile for the best result.
+
+The worker runs in a separate QThread to ensure the GUI remains responsive
+during the computationally intensive optimization process.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
 """
 
 import os
@@ -19,6 +28,25 @@ import pandas as pd
 from PyQt5 import QtCore
 
 try:
+    TAG = "[OptimizationWorker (Headless)]"
+
+    class Log:
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
+
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
     from src.models.formulation import ViscosityProfile
@@ -28,6 +56,7 @@ try:
     from src.view.architecture import Architecture
 except (ModuleNotFoundError, ImportError):
     from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.formulation import ViscosityProfile
@@ -37,18 +66,24 @@ except (ModuleNotFoundError, ImportError):
 
 
 class OptimizationWorker(QtCore.QThread):
-    """
-    Runs Optimizer in a background thread and emits card_data on success.
+    """A thread-safe worker that runs the optimization engine.
 
-    card_data keys
-    --------------
-    name             str   "Optimized Formulation"
-    optimized        bool  True
-    model            str   filename of the .visq asset
-    temperature      float
-    ingredients      dict  {type: {name, component, concentration, units}}
-    estimated_profile dict {shear_rates: list, viscosities: list}
-    targets          list  [{shear_rate, viscosity}, ...]  — the user's inputs
+    This worker translates high-level UI constraints into mathematical
+    boundaries, executes the Optimizer, and packages the result into a
+    standardized `card_data` format used by the dashboard for visualization.
+
+    Attributes:
+        progress_update (QtCore.pyqtSignal): Emits (int, str) representing the
+            completion percentage and a status message.
+        optimization_complete (QtCore.pyqtSignal): Emits a dictionary containing
+            the optimized formulation data.
+        optimization_error (QtCore.pyqtSignal): Emits a string error message
+            if the process fails.
+        model_file (str): Filename of the `.visq` asset to use for prediction.
+        targets (list[dict]): User-defined targets as `[{shear_rate, viscosity}, ...]`.
+        constraints_data (list[dict]): Raw constraint definitions from the UI.
+        maxiter (int): Maximum number of iterations for the optimizer.
+        _is_running (bool): Flag to support graceful termination of the thread.
     """
 
     progress_update = QtCore.pyqtSignal(int, str)
@@ -56,23 +91,55 @@ class OptimizationWorker(QtCore.QThread):
     optimization_error = QtCore.pyqtSignal(str)
 
     def __init__(self, model_file, targets, constraints_data, maxiter=100, parent=None):
+        """Initializes the worker with optimization parameters.
+
+        Args:
+            model_file (str): The name of the model zip file in the assets folder.
+            targets (list[dict]): Target points for the viscosity profile.
+            constraints_data (list[dict]): Constraint settings including
+                ingredient, attribute, condition, and values.
+            maxiter (int, optional): Max iterations for the algorithm. Defaults to 100.
+            parent (QObject, optional): Parent object. Defaults to None.
+        """
         super().__init__(parent)
         self.model_file = model_file
-        self.targets = targets  # list[{shear_rate, viscosity}]
-        self.constraints_data = (
-            constraints_data  # same schema as SampleGenerationWorker
-        )
+        self.targets = targets
+        self.constraints_data = constraints_data
         self.maxiter = maxiter
         self._is_running = True
 
-    # ──────────────────────────────────────────────────────────────────────────
-
     def run(self):
+        """Executes the optimization workflow.
+
+        Steps performed:
+            1. Initializes a local database and fetches ingredient lists.
+            2. Parses `constraints_data` into categorical and numeric constraints.
+            3. Loads the specified `Predictor` model.
+            4. Constructs a `ViscosityProfile` target from user inputs.
+            5. Runs the differential evolution `Optimizer`.
+            6. Computes an estimated 5-point viscosity profile for the result.
+            7. Emits the final `card_data` dictionary.
+
+        The `card_data` dictionary schema:
+            * name (str): "Optimized Formulation"
+            * measured (bool): False
+            * optimized (bool): True
+            * model (str): The model filename.
+            * temperature (float): Optimization temperature (default 25.0).
+            * ingredients (dict): Mappings of ingredient types to component data.
+            * estimated_profile (dict): Calculated shear rates and viscosities.
+            * targets (list): The original user-input targets.
+
+        Raises:
+            ValueError: If a categorical constraint matches no database entries.
+            FileNotFoundError: If the prediction model asset is missing.
+            Exception: Captures and emits any other runtime errors via signals.
+        """
         db = None
         try:
             db = Database(parse_file_key=True)
 
-            # ── 1. Fetch ingredients ───────────────────────────────────────────
+            # Fetch ingredients
             self.progress_update.emit(2, "Fetching ingredient database...")
             ing_ctrl = IngredientController(db)
             local_by_type = {
@@ -84,7 +151,7 @@ class OptimizationWorker(QtCore.QThread):
                 "Excipient": ing_ctrl.get_all_excipients(),
             }
 
-            # ── 2. Build constraints ───────────────────────────────────────────
+            # Build constraints
             self.progress_update.emit(8, "Building constraints...")
             constraints = Constraints(db)
 
@@ -93,8 +160,6 @@ class OptimizationWorker(QtCore.QThread):
                 attr = item["attribute"]
                 cond = item["condition"]
                 values = item["values"]
-
-                # Translate Class → Type (same logic as SampleGenerationWorker)
                 if attr == "Class" and ingredient == "Protein":
                     matched = []
                     for p in local_by_type.get("Protein", []):
@@ -116,14 +181,6 @@ class OptimizationWorker(QtCore.QThread):
                 if feature_key in Constraints._CATEGORICAL:
                     negate = cond == "is not"
                     all_ings = local_by_type.get(ingredient, [])
-
-                    # Case-insensitive, whitespace-stripped comparison.
-                    # The widget builds its list from ingredients_by_type (passed
-                    # at creation time) while the worker uses a fresh DB query.
-                    # If the DB name has trailing spaces, different casing, or
-                    # unicode quirks, a plain `in` check silently skips the
-                    # constraint and allows ALL ingredients — the root cause of
-                    # the categorical constraint not being respected.
                     values_norm = {
                         str(v).strip().lower()
                         for v in (values if isinstance(values, list) else [values])
@@ -135,18 +192,16 @@ class OptimizationWorker(QtCore.QThread):
                         or (negate and ing.name.strip().lower() not in values_norm)
                     ]
 
-                    # Guard: if "is X" matched nothing, raise — a silent skip
-                    # means the constraint is ignored entirely which is worse
-                    # than an explicit error the user can act on.
                     if not choices and not negate:
                         raise ValueError(
                             f"Categorical constraint '{feature_key} is {values}' "
                             f"matched no ingredients in the database. "
                             f"Check that the selected name exactly matches a DB entry."
                         )
-                    print(
-                        f"[Optimizer] Constraint applied: {feature_key} "
-                        f"{'is NOT' if negate else 'is'} {[c.name for c in choices]}"
+                    Log.i(
+                        TAG,
+                        f"Constraint applied: {feature_key} "
+                        f"{'is NOT' if negate else 'is'} {[c.name for c in choices]}",
                     )
                     constraints.add_choices(feature=feature_key, choices=choices)
 
@@ -170,11 +225,8 @@ class OptimizationWorker(QtCore.QThread):
                         else:
                             constraints.add_range(feature_key, low_r[0], low_r[1])
 
-            # ── 3. Load model ──────────────────────────────────────────────────
+            # Load model
             self.progress_update.emit(15, "Loading prediction model...")
-            # Resolve the .visq file directly from the assets directory — the
-            # same path that OptimizeWidget (and GenerateSampleWidget) use when
-            # populating the model combo.  No AssetManager required.
             assets_dir = os.path.join(
                 Architecture.get_path(), "QATCH", "VisQAI", "assets"
             )
@@ -185,7 +237,7 @@ class OptimizationWorker(QtCore.QThread):
                 )
             predictor = Predictor(zip_path=asset_zip)
 
-            # ── 4. Build target ViscosityProfile ──────────────────────────────
+            # Build target ViscosityProfile object
             self.progress_update.emit(20, "Building target viscosity profile...")
             shear_rates = [t["shear_rate"] for t in self.targets]
             target_viscs = [t["viscosity"] for t in self.targets]
@@ -193,8 +245,6 @@ class OptimizationWorker(QtCore.QThread):
                 shear_rates=shear_rates,
                 viscosities=target_viscs,
             )
-
-            # ── 5. Run differential evolution ─────────────────────────────────
             self.progress_update.emit(
                 25, "Starting differential evolution optimizer..."
             )
@@ -219,8 +269,6 @@ class OptimizationWorker(QtCore.QThread):
                 seed=42,
             )
             best_formulation = optimizer.optimize(progress_callback=_progress_cb)
-
-            # Diagnostic: log what the optimizer actually chose for each type
             for _attr in (
                 "protein",
                 "buffer",
@@ -231,21 +279,19 @@ class OptimizationWorker(QtCore.QThread):
             ):
                 _comp = getattr(best_formulation, _attr, None)
                 if _comp and getattr(_comp, "ingredient", None):
-                    print(
-                        f"[Optimizer] Best {_attr}: {_comp.ingredient.name} @ {_comp.concentration}"
+                    Log.d(
+                        TAG,
+                        f"Best {_attr}: {_comp.ingredient.name} @ {_comp.concentration}",
                     )
 
             if not self._is_running:
                 return
 
-            # ── 6. Predict estimated profile for the result ───────────────────
+            # Predict estimated profile for the result
             self.progress_update.emit(94, "Computing estimated viscosity profile...")
             pred_df = best_formulation.to_dataframe(encoded=False, training=False)
             pred_raw = predictor.predict(pred_df)
             estimated_shear = [100, 1_000, 10_000, 100_000, 15_000_000]
-
-            # predictor.predict() returns a DataFrame, not a numpy array.
-            # Extract the five viscosity columns in canonical order.
             _visc_cols = [
                 "Viscosity_100",
                 "Viscosity_1000",
@@ -266,8 +312,6 @@ class OptimizationWorker(QtCore.QThread):
                 estimated_visc = [
                     float(v) for v in np.asarray(pred_raw, dtype=float).flatten()
                 ]
-
-            # ── 7. Pack result as card_data ────────────────────────────────────
             ingredients_map = {}
             attr_map = {
                 "protein": "Protein",
@@ -318,4 +362,5 @@ class OptimizationWorker(QtCore.QThread):
                     pass
 
     def stop(self):
+        """Signals the worker thread to stop and terminate its current loop."""
         self._is_running = False

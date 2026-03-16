@@ -24,7 +24,7 @@ import pandas as pd
 try:
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.models.formulation import Component, Formulation, ViscosityProfile
+    from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import (
         Buffer,
         Excipient,
@@ -38,7 +38,6 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.formulation import (
-        Component,
         Formulation,
         ViscosityProfile,
     )

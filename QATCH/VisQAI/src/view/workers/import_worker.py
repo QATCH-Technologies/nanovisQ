@@ -1,49 +1,113 @@
+"""
+import_worker.py
+
+Provides a background worker for asynchronous XML data importation.
+
+This module contains the ImportWorker class, which handles the recursive
+searching, parsing, and database synchronization of XML files. By running
+these operations in a separate QThread, the main GUI remains responsive
+during large batch imports.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
+"""
+
 import os
 
 from PyQt5.QtCore import QThread, pyqtSignal
 
-# Import Parser
 try:
-    from src.io.parser import Parser
-except (ImportError, ModuleNotFoundError):
-    from QATCH.VisQAI.src.io.parser import Parser
+    TAG = "[ImportWorker (HEADLESS)]"
 
-# Import Database and Controller
-try:
+    class Log:
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
+
     from src.controller.formulation_controller import FormulationController
     from src.db.db import Database
+    from src.io.parser import Parser
+
+
 except (ImportError, ModuleNotFoundError):
+    TAG = "[ImportWorker]"
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.io.parser import Parser
 
 
 class ImportWorker(QThread):
-    """
-    Worker thread to recursively find and parse XML files from directories.
+    """A worker thread for recursive XML discovery and database synchronization.
+
+    This worker flattens a list of input directories and files, parses
+    discovered XMLs into Formulation objects, and syncs them with the local
+    database using a FormulationController. It emits signals to update the UI
+    on progress, status messages, and errors.
+
+    Attributes:
+        progress_changed (pyqtSignal): Emits an integer (0-100) representing
+            the percentage of files processed.
+        status_changed (pyqtSignal): Emits a string message describing the
+            current operation or warnings (e.g., missing fields).
+        import_finished (pyqtSignal): Emits a list of successfully imported or
+            updated Formulation objects upon completion.
+        import_error (pyqtSignal): Emits a string describing a critical error
+            that halted the import.
+        input_paths (list[str]): The initial list of files or directories to
+            search for XML data.
+        _is_running (bool): Internal flag used to support graceful cancellation
+            of the thread.
     """
 
-    # Signals to communicate with the main UI thread
     progress_changed = pyqtSignal(int)  # Progress value (0-100)
     status_changed = pyqtSignal(str)  # Status message
     import_finished = pyqtSignal(list)  # Successful results
     import_error = pyqtSignal(str)  # Error message
 
     def __init__(self, file_paths):
+        """Initializes the worker with target paths.
+
+        Args:
+            file_paths (list[str]): A list of file or directory paths to process.
+        """
         super().__init__()
         self.input_paths = file_paths
         self._is_running = True
 
     def run(self):
+        """Executes the import logic in a background thread.
+
+        The process follows two phases:
+        1. Discovery: Recursively crawls `input_paths` for .xml files.
+        2. Processing: Initializes a thread-local database connection, parses
+           each file, and performs a sync (add or update) with the database.
+
+        Metadata such as 'icl' and 'last_model' are preserved when updating
+        existing formulations.
+        """
         imported_data = []
-
-        # --- THREAD-SAFE DATABASE INITIALIZATION ---
         database = None
-
         try:
             self.status_changed.emit("Scanning directories for runs...")
-
-            # --- PHASE 1: DISCOVERY ---
-            # Flatten inputs into a list of specific XML files
             xml_files_to_process = self._discover_xml_files(self.input_paths)
             total_files = len(xml_files_to_process)
 
@@ -53,7 +117,6 @@ class ImportWorker(QThread):
                 )
                 return
 
-            # --- PHASE 2: PROCESSING ---
             database = Database(parse_file_key=True)
             controller = FormulationController(database)
             parser = Parser()
@@ -66,15 +129,12 @@ class ImportWorker(QThread):
                 self.status_changed.emit(f"Importing {filename}...")
 
                 # Parse specific file
-                # parser.parse now handles list or str, returns list of formulations
                 parsed_forms = parser.parse(fname)
 
                 if parsed_forms:
                     for formulation in parsed_forms:
                         if not self._is_running:
                             break
-
-                        # --- Missing Fields Check ---
                         if (
                             hasattr(formulation, "missing_fields")
                             and formulation.missing_fields
@@ -94,9 +154,7 @@ class ImportWorker(QThread):
                             )
 
                             if existing_form:
-                                # Check if the parsed formulation differs from the stored one
                                 if existing_form != formulation:
-                                    # Preserve local metadata (like UI toggles) before updating
                                     formulation.icl = getattr(
                                         existing_form, "icl", True
                                     )
@@ -112,8 +170,9 @@ class ImportWorker(QThread):
                                             )
                                         )
                                     except Exception as e:
-                                        print(
-                                            f"Failed to update existing formulation {filename}: {e}"
+                                        Log.e(
+                                            TAG,
+                                            f"Failed to update existing formulation {filename}: {e}",
                                         )
                                         final_formulation = existing_form
                                 else:
@@ -151,11 +210,18 @@ class ImportWorker(QThread):
             if database:
                 try:
                     database.close()
-                except:
-                    pass
+                except Exception as e:
+                    Log.e(TAG, f"Failed to close database with error: `{e}`")
 
     def _discover_xml_files(self, paths):
-        """Recursively finds all .xml files in the given paths."""
+        """Recursively finds all .xml files in the given paths.
+
+        Args:
+            paths (list[str]): List of filesystem paths to search.
+
+        Returns:
+            list[str]: Absolute paths to all discovered XML files.
+        """
         found_files = []
         for path in paths:
             if os.path.isfile(path) and path.lower().endswith(".xml"):
@@ -168,9 +234,15 @@ class ImportWorker(QThread):
         return found_files
 
     def _emit_progress(self, current_index, total_files):
-        """Helper to calculate and emit progress."""
+        """Calculates and emits the current progress percentage.
+
+        Args:
+            current_index (int): The index of the file just processed.
+            total_files (int): The total count of files to process.
+        """
         progress = int(((current_index + 1) / total_files) * 100)
         self.progress_changed.emit(progress)
 
     def stop(self):
+        """Signals the worker to stop processing and exit the run loop."""
         self._is_running = False

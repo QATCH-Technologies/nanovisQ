@@ -1,52 +1,51 @@
+"""
+sample_generation_worker.py
+
+Background worker for automated formulation sample generation.
+
+This module provides the SampleGenerationWorker class, which handles the
+asynchronous generation of design-of-experiment (DoE) samples. It utilizes
+active learning (UCB) and user-defined constraints to suggest new formulation
+candidates for testing.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
+"""
+
 from PyQt5 import QtCore
 
 try:
+    TAG = "[SampleGenerationWorker (HEADLESS)]"
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
     from src.processors.sampler import Sampler
     from src.utils.constraints import Constraints
 
     class Log:
-        """Fallback logger implementation when QATCH logger is not available."""
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
 
         @staticmethod
-        def w(msg: str) -> None:
-            """Log a warning message.
-
-            Args:
-                msg: The warning message to log.
-            """
-            print(msg)
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
 
         @staticmethod
-        def e(msg: str) -> None:
-            """Log an error message.
-
-            Args:
-                msg: The error message to log.
-            """
-            print(msg)
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
 
         @staticmethod
-        def i(msg: str) -> None:
-            """
-            Log an informational message.
-
-            Parameters:
-                msg (str): The message to log.
-            """
-            print(msg)
-
-        @staticmethod
-        def d(msg: str) -> None:
-            """Log a debug message.
-
-            Args:
-                msg: The debug message to log.
-            """
-            print(msg)
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
 
 except (ModuleNotFoundError, ImportError):
+    TAG = "[SampleGenerationWorker]"
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
@@ -55,11 +54,41 @@ except (ModuleNotFoundError, ImportError):
 
 
 class SampleGenerationWorker(QtCore.QThread):
+    """A background thread that generates suggested formulation samples.
+
+    This worker initializes a local database connection, builds a Constraints
+    object from UI data, and uses a Sampler to suggest the next best
+    experiments. It communicates progress and results back to the UI via
+    Qt signals.
+
+    Attributes:
+        progress_update (QtCore.pyqtSignal): Emits (int, str) representing the
+            completion percentage and a status message.
+        generation_complete (QtCore.pyqtSignal): Emits a list of dictionaries
+            containing the generated formulation data.
+        generation_error (QtCore.pyqtSignal): Emits a string error message if
+            the generation fails.
+        num_samples (int): The number of samples to generate.
+        model_file (str): The name of the VisQ model asset used to guide
+            sampling.
+        constraints_data (list[dict]): Raw constraint definitions from the UI.
+        _is_running (bool): Flag to support graceful termination of the thread.
+    """
+
     progress_update = QtCore.pyqtSignal(int, str)
     generation_complete = QtCore.pyqtSignal(list)
     generation_error = QtCore.pyqtSignal(str)
 
     def __init__(self, num_samples, model_file, constraints_data, parent=None):
+        """Initializes the worker with generation parameters.
+
+        Args:
+            num_samples (int): Count of formulations to suggest.
+            model_file (str): Path or name of the VisQ model.
+            constraints_data (list[dict]): Constraint configurations including
+                ingredient, attribute, condition, and values.
+            parent (QObject, optional): Parent object. Defaults to None.
+        """
         super().__init__(parent)
         self.num_samples = num_samples
         self.model_file = model_file
@@ -67,12 +96,29 @@ class SampleGenerationWorker(QtCore.QThread):
         self._is_running = True
 
     def run(self):
+        """Executes the sample generation logic.
 
+        The worker performs the following steps:
+            1. Fetches all ingredients from the database locally in the
+               background thread to avoid cross-thread issues.
+            2. Translates UI constraints (e.g., Protein Class) into specific
+               ingredient choices or numeric ranges.
+            3. Initializes the `Sampler` with the selected VisQ model.
+            4. Iteratively generates formulations using Upper Confidence
+               Bound (UCB) sampling.
+            5. Packages each result into a `card_data` dictionary for the UI.
+
+        The `card_data` schema for each sample:
+            * name (str): "Generated Sample X"
+            * measured (bool): False
+            * model (str): The model filename
+            * temperature (float): Formulation temperature
+            * ingredients (dict): Mappings of ingredient types to detailed
+              component data
+        """
         db = None
         try:
             db = Database(parse_file_key=True)
-
-            # --- THE FIX: Fetch ingredients locally in the background thread ---
             ing_ctrl = IngredientController(db)
             local_ingredients_by_type = {
                 "Protein": ing_ctrl.get_all_proteins(),
@@ -123,10 +169,11 @@ class SampleGenerationWorker(QtCore.QThread):
                             choices.append(ing)
                     if not choices and not negate:
                         Log.w(
+                            TAG,
                             f"Categorical constraint '{feature_key} is {values}' matched no "
-                            f"ingredients in the database. Constraint will be ignored."
+                            f"ingredients in the database. Constraint will be ignored.",
                         )
-                        continue  # skip add_choices so build() falls back intentionally
+                        continue
 
                     constraints.add_choices(feature=feature_key, choices=choices)
 
@@ -225,4 +272,5 @@ class SampleGenerationWorker(QtCore.QThread):
                 db.close()
 
     def stop(self):
+        """Signals the worker thread to stop and terminate its loop."""
         self._is_running = False
