@@ -669,14 +669,14 @@ class OptimizeWidget(QtWidgets.QFrame):
         self._validate()
 
     def _on_ingredient_changed(self, row_data):
-         """Repopulate the Attribute combo when the Ingredient selection changes.
- 
+        """Repopulate the Attribute combo when the Ingredient selection changes.
+
         Clears and rebuilds ``cb_attribute`` based on the newly selected
         ingredient type.  Proteins additionally expose a ``"Class"`` attribute.
         Signals are blocked during the rebuild to prevent spurious cascades.
         Delegates to ``_on_attribute_changed`` at the end to keep the
         downstream Condition and Value widgets in sync.
- 
+
         Args:
             row_data (dict): The constraint-row state dict containing the
                 ``ingredient`` and ``attribute`` combo box references.
@@ -698,18 +698,18 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def _on_attribute_changed(self, row_data):
         """Repopulate the Condition combo and switch the Value widget stack.
- 
+
         Updates ``cb_condition`` with comparison operators appropriate for the
         selected attribute:
- 
+
         * ``"Concentration"`` -> numeric operators (``>``, ``>=``, …) and
           switches ``value_stack`` to index 1 (spin box).
         * ``"Type"`` or ``"Class"`` -> ``"is"`` / ``"is not"`` and switches
           ``value_stack`` to index 0 (checkable combo).
- 
+
         Signals are blocked during the rebuild, then ``_populate_values`` is
         called to fill the value widget with the appropriate options.
- 
+
         Args:
             row_data (dict): The constraint-row state dict containing the
                 ``attribute``, ``condition``, and ``value_stack`` references.
@@ -734,14 +734,14 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def _populate_values(self, row_data):
         """Fill the Value combo box with options for the current attribute.
- 
+
         Only operates when both an ingredient and an attribute have been
         chosen (indices > 0).  For ``"Class"`` attributes on Proteins,
         collects unique ``class_type`` values from the ingredient objects in
         ``ingredients_by_type``; for ``"Type"`` attributes, uses ingredient
         names; numeric attributes leave the spin box unchanged.  Calls
         ``_validate`` at the end.
- 
+
         Args:
             row_data (dict): The constraint-row state dict containing the
                 ``ingredient``, ``attribute``, ``value_stack``, and
@@ -787,7 +787,7 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def _update_scroll_height(self):
         """Resize the constraints scroll area to fit the current number of rows.
- 
+
         Sets the fixed height of ``scroll_area`` to 30 px when empty, or to
         ``min(n, 3) * 36 + 10`` px for *n* rows (capping visible rows at three
         before scrolling activates).  Calls ``adjustSize()`` and emits
@@ -801,16 +801,16 @@ class OptimizeWidget(QtWidgets.QFrame):
     @staticmethod
     def _checked_items(combo_box) -> list:
         """Return the text of every item whose check state is ``Qt.Checked``.
- 
+
         ``CheckableComboBox.getItems()`` returns all items in the model
         regardless of check state and is therefore only useful as a
         "has any items" test.  This helper inspects the underlying
         ``QStandardItemModel`` directly to find which items the user has
         actually ticked.
- 
+
         Args:
             combo_box (CheckableComboBox): The checkable combo box to inspect.
- 
+
         Returns:
             list[str]: Ordered list of display texts for all checked items.
                 Empty list if none are checked.
@@ -827,16 +827,16 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def _validate(self):
         """Enable or disable footer buttons based on current form completeness.
- 
+
         Enables ``btn_optimize`` only when all three conditions hold:
- 
+
         1. At least one target row exists.
         2. The model combo is enabled (i.e. at least one ``.visq`` file was
            found or imported).
         3. Every constraint row has a valid ingredient, attribute, condition,
            and value selection (categorical rows must have at least one item
            checked).
- 
+
         ``btn_add_constraint`` is also disabled whenever any existing
         constraint row is incomplete, preventing partially filled rows from
         stacking  up.
@@ -862,7 +862,7 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def emit_optimize(self):
         """Collect form data and emit ``optimize_requested``.
- 
+
         Iterates over ``target_rows`` to build a list of
         ``{"shear_rate": int, "viscosity": float}`` dicts, falling back to
         10 000 s 1/s if a combo index is somehow out of range.  Iterates over
@@ -870,7 +870,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         ``{"ingredient": str, "attribute": str, "condition": str, "values": ...}``
         dicts, where ``values`` is a list of strings for categorical constraints
         or a single float for numeric ones.
- 
+
         Emits:
             optimize_requested (str, list, list): The selected model file path
                 (from the combo's display text), the targets list, and the
@@ -908,11 +908,11 @@ class OptimizeWidget(QtWidgets.QFrame):
 
     def close_widget(self):
         """Hide the overlay and notify the parent dashboard.
- 
+
         Calls ``hide()`` to make the widget invisible, then emits ``closed``
         so the dashboard can reset any toggle button or pointer state without
         needing to poll widget visibility.
- 
+
         Emits:
             closed (): Unconditionally after hiding the widget.
         """

@@ -1,3 +1,18 @@
+"""Dashboard UI module for the VisQAI viscosity prediction application.
+
+Provides the main ``DashboardUI`` widget that manages formulation configuration
+cards, viscosity predictions, evaluation, sample generation, optimization, and
+data import/export.
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.3
+"""
+
 import os
 import sys
 
@@ -7,12 +22,60 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
 
 try:
+    TAG = "[Dashboard (HEADLESS)]"
+
+    class Log:
+        """Minimal stdout logger used when running in headless/standalone mode.
+
+        Used when production imports fail. Mirrors the interface of the
+        production Logger.
+        """
+
+        @staticmethod
+        def d(TAG, msg=""):
+            """Log a debug message to stdout.
+
+            Args:
+                TAG: Identifier string for the log source.
+                msg: Message to log.
+            """
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            """Log an info message to stdout.
+
+            Args:
+                TAG: Identifier string for the log source.
+                msg: Message to log.
+            """
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            """Log a warning message to stdout.
+
+            Args:
+                TAG: Identifier string for the log source.
+                msg: Message to log.
+            """
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            """Log an error message to stdout.
+
+            Args:
+                TAG: Identifier string for the log source.
+                msg: Message to log.
+            """
+            print("ERROR:", TAG, msg)
+
     from architecture import Architecture
     from dialogs.database_table_dialog import DatabaseTableDialog
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.models.formulation import ViscosityProfile
     from src.utils.metrics import Metrics
     from styles.style_loader import load_stylesheet
     from widgets.evaluation_widget import EvaluationWidget
@@ -30,6 +93,7 @@ try:
     from workers.prediction_worker import PredictionThread
     from workers.sample_generation_worker import SampleGenerationWorker
 except (ImportError, ModuleNotFoundError):
+    TAG = "[Dashboard]"
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
     from QATCH.common.userProfiles import UserPreferences, UserProfiles
@@ -37,7 +101,6 @@ except (ImportError, ModuleNotFoundError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.formulation import ViscosityProfile
     from QATCH.VisQAI.src.utils.metrics import Metrics
     from QATCH.VisQAI.src.view.dialogs.database_table_dialog import DatabaseTableDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
@@ -64,10 +127,21 @@ except (ImportError, ModuleNotFoundError):
         SampleGenerationWorker,
     )
 
-TAG = "[VisQ.AI]"
-
 
 class DashboardUI(QtWidgets.QWidget):
+    """Main dashboard widget for VisQAI.
+
+    Manages a scrollable list of FormulationConfigCard widgets on the left and
+    a VisualizationPanel on the right. Coordinates inference predictions, batch
+    analysis, evaluation mode, sample generation, and formulation optimization.
+
+    Attributes:
+        INGREDIENT_TYPES (list[str]): Ordered list of supported ingredient
+            categories.
+        INGREDIENT_UNITS (dict[str, str]): Mapping of ingredient type to its
+            concentration unit.
+    """
+
     INGREDIENT_TYPES = [
         "Protein",
         "Buffer",
@@ -86,6 +160,11 @@ class DashboardUI(QtWidgets.QWidget):
     }
 
     def __init__(self, parent=None):
+        """Initialize the dashboard, load the database, build the UI, and set up batch/state flags.
+
+        Args:
+            parent (QtWidgets.QWidget, optional): Parent widget. Defaults to None.
+        """
         super().__init__(parent)
         self.ingredients_by_type = {}
         self.selection_mode_active = False
@@ -108,8 +187,7 @@ class DashboardUI(QtWidgets.QWidget):
         self._pending_eval_config = None
 
     def _load_database_data(self):
-        """Initializes DB connection and fetches ingredients for dropdowns."""
-
+        """Populate ``ingredients_by_type`` by fetching each ingredient category from the database via the ingredient controller."""
         # Fetch lists for each ingredient type
         self.ingredients_by_type["Protein"] = self.ing_ctrl.get_all_proteins()
         self.ingredients_by_type["Buffer"] = self.ing_ctrl.get_all_buffers()
@@ -119,31 +197,34 @@ class DashboardUI(QtWidgets.QWidget):
         self.ingredients_by_type["Excipient"] = self.ing_ctrl.get_all_excipients()
 
     def init_ui(self):
+        """Build the full dashboard layout.
+
+        Constructs the top toolbar, left scrollable card panel (with filter,
+        eval, generate, and optimize overlays), and right visualization panel
+        in a horizontal splitter.
+        """
         main_layout = QtWidgets.QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 1. Create Top Bar (Buttons Only)
-        # Note: We do NOT create eval_widget here anymore
+        # Create Top Bar
         top_bar = self._create_unified_top_bar()
         main_layout.addWidget(top_bar)
 
-        # 2. Splitter Configuration
+        # Splitter Configuration
         splitter = QtWidgets.QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
         splitter.setChildrenCollapsible(False)
         splitter.setStyleSheet("QSplitter::handle { background-color: #d1d5db; }")
 
-        # --- Left Panel ---
+        # Left Panel
         self.left_widget = QtWidgets.QWidget()
         self.left_widget.setObjectName("leftPanel")
         left_layout = QtWidgets.QVBoxLayout(self.left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.setSpacing(0)
 
-        # --- OVERLAY WIDGETS (Created NOW, parenting to left_widget) ---
-
-        # 1. Filter Widget
+        # Filter Widget
         self.filter_widget = PredictionFilterWidget(
             self.ingredients_by_type, parent=self.left_widget
         )
@@ -170,7 +251,8 @@ class DashboardUI(QtWidgets.QWidget):
         self.optimize_widget.closed.connect(lambda: self.btn_optimize.setChecked(False))
         self.optimize_widget.resized.connect(self._update_overlay_geometry)
         self.optimize_widget.hide()
-        # --- Content ---
+
+        # Content
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
@@ -194,7 +276,7 @@ class DashboardUI(QtWidgets.QWidget):
         self.left_widget.installEventFilter(self)
         splitter.addWidget(self.left_widget)
 
-        # --- Right Panel ---
+        # Right Panel
         self.right_widget = QtWidgets.QWidget()
         self.right_widget.setObjectName("rightPanel")
         self.right_widget.setStyleSheet("background-color: #ffffff;")
@@ -213,7 +295,15 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
     def _create_unified_top_bar(self):
-        """Creates the single unified top toolbar."""
+        """Build and return the fixed-height top toolbar.
+
+        Contains the search bar and all action buttons: filter, select, import,
+        export, generate, evaluate, hypothesis, optimize, run, delete, and the
+        options menu.
+
+        Returns:
+            QtWidgets.QWidget: The fully constructed top toolbar widget.
+        """
         container = QtWidgets.QWidget()
         container.setObjectName("topBar")
         container.setFixedHeight(50)
@@ -230,7 +320,7 @@ class DashboardUI(QtWidgets.QWidget):
         layout.setContentsMargins(15, 5, 15, 5)
         layout.setSpacing(10)
 
-        # --- Left Side Controls ---
+        # Left Side Controls
         self.search_bar = QtWidgets.QLineEdit()
         self.search_bar.setObjectName("searchBar")
         self.search_bar.setPlaceholderText("Search...")
@@ -269,7 +359,7 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_filter.setToolTip("Filter Options")
         self.btn_filter.setCheckable(True)
-        self.btn_filter.setFixedSize(32, 32)  # <--- Added to match others
+        self.btn_filter.setFixedSize(32, 32)
         self.btn_filter.clicked.connect(self.toggle_filter_menu_manual)
         layout.addWidget(self.btn_filter)
 
@@ -290,7 +380,7 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_select_mode.setToolTip("Enter Selection Mode")
         self.btn_select_mode.setCheckable(True)
-        self.btn_select_mode.setFixedSize(32, 32)  # <--- Added to match others
+        self.btn_select_mode.setFixedSize(32, 32)
         self.btn_select_mode.toggled.connect(self.toggle_selection_mode)
         layout.addWidget(self.btn_select_mode)
 
@@ -351,9 +441,6 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_export_top.setFixedSize(32, 32)
         self.btn_export_top.clicked.connect(self.export_analysis)
         layout.addWidget(self.btn_export_top)
-
-        # --- NEW BUTTONS (Inline Styles Removed to use theme.qss) ---
-
         # Generate Sample
         self.btn_generate = QtWidgets.QToolButton()
         self.btn_generate.setIcon(
@@ -393,7 +480,6 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_evaluate.setToolTip("Evaluate")
         self.btn_evaluate.setFixedSize(32, 32)
         self.btn_evaluate.setCheckable(True)
-        # No setStyleSheet here; theme.qss handles Checked state styling
         self.btn_evaluate.clicked.connect(self.handle_evaluate)
         layout.addWidget(self.btn_evaluate)
 
@@ -414,7 +500,6 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_hypothesis.setToolTip("Hypothesis")
         self.btn_hypothesis.setFixedSize(32, 32)
-        # No setStyleSheet here
         self.btn_hypothesis.clicked.connect(self.handle_hypothesis)
         layout.addWidget(self.btn_hypothesis)
 
@@ -439,7 +524,7 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_optimize.clicked.connect(self.handle_optimize)
         layout.addWidget(self.btn_optimize)
 
-        # --- Separator ---
+        # Separator
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
@@ -486,7 +571,7 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_delete_top.clicked.connect(self.delete_analysis)
         layout.addWidget(self.btn_delete_top)
 
-        # --- Spacer ---
+        # Spacer
         layout.addStretch(1)
         self.btn_right_options = QtWidgets.QToolButton()
         self.btn_right_options.setIcon(
@@ -504,19 +589,16 @@ class DashboardUI(QtWidgets.QWidget):
         )
         self.btn_right_options.setToolTip("More Options")
         self.btn_right_options.setFixedSize(32, 32)
+
         # Options
         self.btn_right_options.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         self.btn_right_options.setStyleSheet(
             "QToolButton::menu-indicator { image: none; }"
-        )  # Hide small triangle
+        )
 
         self.top_options_menu = QtWidgets.QMenu(self.btn_right_options)
-
-        # Action: View Ingredients
         act_view_ing = self.top_options_menu.addAction("View Ingredients")
         act_view_ing.triggered.connect(self.show_ingredients_view)
-
-        # Action: View Formulations
         act_view_form = self.top_options_menu.addAction("View Formulations")
         act_view_form.triggered.connect(self.show_formulations_view)
 
@@ -527,8 +609,12 @@ class DashboardUI(QtWidgets.QWidget):
         return container
 
     def show_ingredients_view(self):
-        """Opens a dialog listing all unique ingredients with detailed columns."""
-        # 1. Define Headers
+        """Open a read-only dialog displaying all ingredients from the database.
+
+        Groups ingredients by type with columns for name, ID, class, molecular
+        weight, pH, pI, kP, and HCI.
+        """
+        # Define Headers
         headers = [
             "Type",
             "Name",
@@ -544,7 +630,7 @@ class DashboardUI(QtWidgets.QWidget):
         ]
         rows = []
 
-        # 2. Iterate and Populate
+        # Iterate and Populate
         for ing_type, ingredients in self.ingredients_by_type.items():
             for ing in ingredients:
                 row = []
@@ -553,8 +639,6 @@ class DashboardUI(QtWidgets.QWidget):
                 row.append(ing_type)
                 row.append(getattr(ing, "name", "Unknown"))
                 row.append(str(getattr(ing, "id", "")))
-
-                # --- Detailed Attributes with Nested Class_Type Check ---
 
                 # Defaults
                 c_type_val = "-"
@@ -565,17 +649,15 @@ class DashboardUI(QtWidgets.QWidget):
                 # Check for nested class_type object (common in Proteins)
                 if hasattr(ing, "class_type") and ing.class_type:
                     ct = ing.class_type
-                    # Access nested attributes safely
                     c_type_val = str(getattr(ct, "value", getattr(ct, "name", str(ct))))
                     c_class = str(getattr(ct, "c_class", "-"))
                     kp_val = str(getattr(ct, "kP", "-"))
                     hci_val = str(getattr(ct, "hci", "-"))
                 elif hasattr(ing, "group"):
-                    # Fallback for Surfactants/etc that might use 'group'
                     c_type_val = str(ing.group)
 
-                row.append(c_type_val)  # Class Type
-                row.append(c_class)  # C-Class
+                row.append(c_type_val)
+                row.append(c_class)
 
                 # Standard Attributes
                 row.append(str(getattr(ing, "molecular_weight", "-")))
@@ -584,23 +666,26 @@ class DashboardUI(QtWidgets.QWidget):
                 row.append(str(getattr(ing, "pI_range", "-")))
 
                 # Nested Attributes
-                row.append(kp_val)  # kP
-                row.append(hci_val)  # HCI
+                row.append(kp_val)
+                row.append(hci_val)
 
                 rows.append(row)
 
-        # 3. Show Dialog
+        # how Dialog
         dlg = DatabaseTableDialog("Ingredient Database", headers, rows, self)
         dlg.resize(1200, 600)
         dlg.exec_()
 
     def show_formulations_view(self):
-        """Opens a dialog listing all formulations with delete support, ICL toggles, and CSV export."""
+        """Open an interactive dialog showing all formulations in the database.
+
+        Supports row deletion (imported-only), ICL toggle, and CSV export of
+        the full database.
+        """
         try:
-            # 1. Fetch Formulations
+            # Fetch Formulations
             formulations = self.form_ctrl.get_all_formulations()
 
-            # --- Handlers ---
             def delete_handler(f_id):
                 target_f = next(
                     (f for f in formulations if str(f.id) == str(f_id)), None
@@ -633,22 +718,21 @@ class DashboardUI(QtWidgets.QWidget):
                 return False
 
             def icl_toggled(f_id, state):
-                """Updates the ICL flag safely using the new Controller method."""
                 try:
-                    # 1. Update DB safely (Preserves ID)
+                    # Update DB safely
                     success = self.form_ctrl.update_formulation_metadata(
                         int(f_id), icl=state
                     )
 
                     if success:
-                        # 2. Update local list object
+                        # Update local list object
                         local_f = next(
                             (f for f in formulations if str(f.id) == str(f_id)), None
                         )
                         if local_f:
                             local_f.icl = state
 
-                        # 3. Synchronize Active UI Cards
+                        # Synchronize Active UI Cards
                         for i in range(self.cards_layout.count()):
                             item = self.cards_layout.itemAt(i)
                             widget = item.widget()
@@ -658,13 +742,12 @@ class DashboardUI(QtWidgets.QWidget):
                                     widget.set_icl_usage(state, save_db=False)
                                     break
                     else:
-                        print(f"Warning: Could not update ICL for ID {f_id}")
+                        Log.w(TAG, f"Could not update ICL for ID {f_id}")
 
                 except Exception as e:
-                    print(f"Error updating ICL state: {e}")
+                    Log.e(TAG, f"Error updating ICL state: {e}")
 
             def export_handler():
-                """Exports the entire database to a CSV file."""
                 try:
                     df = self.form_ctrl.get_all_as_dataframe(encoded=False)
 
@@ -777,7 +860,7 @@ class DashboardUI(QtWidgets.QWidget):
                 else:
                     row.extend(["-", "-", "-"])
 
-                # Others (Stabilizer, Surfactant, Salt, Excipient)
+                # Others
                 def add_simple_comp(comp_attr):
                     if hasattr(f, comp_attr):
                         c = getattr(f, comp_attr)
@@ -829,10 +912,7 @@ class DashboardUI(QtWidgets.QWidget):
             )
 
     def _on_card_selection_changed(self):
-        """
-        Called whenever a card is selected/deselected.
-        Auto-exits selection mode if the last item is deselected.
-        """
+        """Deactivate selection mode when the last selected card is deselected."""
         if not self.selection_mode_active:
             return
 
@@ -846,8 +926,10 @@ class DashboardUI(QtWidgets.QWidget):
             self.btn_select_mode.setChecked(False)
 
     def handle_generate_sample(self):
-        """Toggles the Sample Generation overlay widget."""
-        # Ensure eval widget is closed to prevent overlapping
+        """Toggle the GenerateSampleWidget overlay.
+
+        Exits evaluation mode first if active.
+        """
         if self._is_evaluation_mode:
             self.exit_evaluation_mode()
 
@@ -861,24 +943,15 @@ class DashboardUI(QtWidgets.QWidget):
             self._update_overlay_geometry()
 
     def handle_evaluate(self):
-        """
-        First click: enters evaluation mode, shows the eval widget menu, and
-        keeps the button visually active (checked/colored) for the duration.
+        """Toggle evaluation mode.
 
-        Subsequent clicks while eval mode is active: toggle the menu open/closed
-        WITHOUT exiting eval mode — the button stays active-colored either way.
-
-        Eval mode is only exited by the Clear button on the eval widget, which
-        fires clear_requested -> exit_evaluation_mode().
+        On first activation, hides cards without measured data and shows the
+        evaluation configuration widget. Subsequent clicks toggle the eval
+        widget's visibility.
         """
         if not self._is_evaluation_mode:
-            # ── Enter eval mode ──────────────────────────────────────────────
             self._is_evaluation_mode = True
-            # Keep the button forced-checked so its QSS active/checked color
-            # stays on regardless of future clicks.
             self.btn_evaluate.setChecked(True)
-
-            # Hide the filter widget if it's open
             if self.filter_widget.isVisible():
                 self.filter_widget.hide()
                 self.btn_filter.setChecked(False)
@@ -904,9 +977,6 @@ class DashboardUI(QtWidgets.QWidget):
             self._update_overlay_geometry()
 
         else:
-            # ── Eval mode already active — just toggle the menu ──────────────
-            # Qt toggled the checked state on click; force it back on so the
-            # button stays colored as long as eval mode is active.
             self.btn_evaluate.setChecked(True)
 
             if self.eval_widget.isVisible():
@@ -919,8 +989,10 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
     def handle_hypothesis(self):
-        """Handler for the Hypothesis button."""
-        # TODO: Replace with: dialog = HypothesisInputDialog(self); dialog.exec_()
+        """Prompt the user for a hypothesis name/ID and print it.
+
+        This is a placeholder for future implementation.
+        """
         text, ok = QtWidgets.QInputDialog.getText(
             self, "Hypothesis Testing", "Enter hypothesis name or ID:"
         )
@@ -928,7 +1000,7 @@ class DashboardUI(QtWidgets.QWidget):
             print(f"Hypothesis '{text}' initialized.")
 
     def handle_optimize(self):
-        """Toggles the Optimize overlay widget."""
+        """Toggle the OptimizeWidget overlay."""
         if self.optimize_widget.isVisible():
             self.optimize_widget.hide()
             self.btn_optimize.setChecked(False)
@@ -939,13 +1011,11 @@ class DashboardUI(QtWidgets.QWidget):
             self._update_overlay_geometry()
 
     def _create_fab(self):
-        """Creates the Floating Action Button for Adding Cards."""
+        """Create and position the floating action button ("+") that adds a new blank prediction card."""
         self.btn_add_fab = QtWidgets.QPushButton("+", self.left_widget)
         self.btn_add_fab.setToolTip("New Prediction")
         self.btn_add_fab.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_add_fab.resize(50, 50)
-
-        # Shadow Effect
         shadow = QtWidgets.QGraphicsDropShadowEffect(self.btn_add_fab)
         shadow.setBlurRadius(15)
         shadow.setXOffset(0)
@@ -957,9 +1027,14 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_add_fab.show()
 
     def eventFilter(self, source, event):
-        """
-        Handle resize events for the left panel to resize the filter overlay
-        and reposition the Floating Action Button (FAB).
+        """Reposition the FAB and filter overlay when the left panel is resized.
+
+        Args:
+            source (QtCore.QObject): The object that generated the event.
+            event (QtCore.QEvent): The event to filter.
+
+        Returns:
+            bool: Result of the parent ``eventFilter`` call.
         """
         if source == self.left_widget and event.type() == QtCore.QEvent.Type.Resize:
             self._update_filter_geometry()
@@ -973,8 +1048,10 @@ class DashboardUI(QtWidgets.QWidget):
         return super().eventFilter(source, event)
 
     def update_placeholder_visibility(self):
-        """
-        Updates the placeholder state based on visible cards.
+        """Show the placeholder widget when no cards are visible.
+
+        Updates the placeholder message depending on whether cards exist but
+        are filtered out, or none have been added yet.
         """
         visible_count = 0
         total_cards = 0
@@ -1008,14 +1085,11 @@ class DashboardUI(QtWidgets.QWidget):
         Enables/Disables the Evaluate button accordingly.
         """
         has_measured_data = False
-
-        # Iterate over all cards in the layout
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
             widget = item.widget()
 
             if isinstance(widget, FormulationConfigCard):
-                # FIX: Check the internal boolean property instead of a checkbox
                 if widget.is_measured:
                     has_measured_data = True
                     break
@@ -1023,15 +1097,19 @@ class DashboardUI(QtWidgets.QWidget):
         # Update Button State
         if hasattr(self, "btn_evaluate"):
             self.btn_evaluate.setEnabled(has_measured_data)
-
-            # If we just disabled the button and it was currently active (checked),
-            # we must force exit the evaluation mode to restore the UI.
             if not has_measured_data and self.btn_evaluate.isChecked():
                 self.btn_evaluate.setChecked(False)
                 self.exit_evaluation_mode()
 
     def _is_filter_default(self, filters):
-        """Checks if the provided filter dict matches the default state."""
+        """Return True if the given filter dict represents the default (no-op) filter state.
+
+        Args:
+            filters (dict): Filter configuration dictionary to evaluate.
+
+        Returns:
+            bool: True if the filter is at its default (no-op) state.
+        """
         if not filters["show_measured"] or not filters["show_predicted"]:
             return False
         if filters["model_text"] != "":
@@ -1045,12 +1123,14 @@ class DashboardUI(QtWidgets.QWidget):
         return True
 
     def exit_evaluation_mode(self):
-        """Restores UI to normal state and re-runs prediction for the open card."""
+        """Exit evaluation mode.
+
+        Restores all card visibility, re-sends the last prediction to the plot
+        for the currently expanded card, and resets the plot title.
+        """
         self._is_evaluation_mode = False
         self.eval_widget.hide()
         self.btn_evaluate.setChecked(False)
-
-        # Repopulate regular plot and track which card is currently expanded
         results = []
         expanded_card = None
         for i in range(self.cards_layout.count()):
@@ -1070,27 +1150,36 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
         # Re-run prediction for the currently expanded card so the plot reflects
-        # its inference curve (not the evaluation overlay that was just cleared).
         if expanded_card is not None:
             self.running_card = expanded_card
             expanded_card.emit_run_request()
 
     def on_eval_point_clicked(self, point_data):
-        """Handles clicks on the parity plot scatter points."""
+        """Reveal and scroll to the card associated with a clicked point in the parity/eval plot.
+
+        Args:
+            point_data (dict): Dictionary containing at least a ``card`` key
+                mapping to the ``FormulationConfigCard`` that was clicked.
+        """
         card = point_data.get("card")
         if not card:
             return
 
         card.show()
         if not card.is_expanded:
-            card.expand_silent()  # <-- was: card.toggle_content()
+            card.expand_silent()
 
         self._scroll_to_card(card)
 
     def run_evaluation_analysis(self, config):
-        """
-        Step 1: Batch-predict all visible measured cards.
-        Step 2: After batch completes, compute and display the selected metric.
+        """Collect all visible measured cards and trigger their predictions.
+
+        Triggers prediction requests via the batch mechanism, then calls
+        ``_compute_evaluation`` once all predictions are ready.
+
+        Args:
+            config (dict): Evaluation configuration including metric key,
+                shear range, and display options.
         """
         # Collect all visible measured cards
         target_cards = []
@@ -1109,10 +1198,7 @@ class DashboardUI(QtWidgets.QWidget):
                 "No cards with measured data are currently visible.",
             )
             return
-
-        # Store config for use after batch completes
         self._pending_eval_config = config
-
         # Collect prediction configs via the existing batch-collection mechanism
         self._batch_queue = []
         self._batch_results = []
@@ -1123,19 +1209,25 @@ class DashboardUI(QtWidgets.QWidget):
 
         if self._batch_queue:
             self._is_batch_running = True
-            metric_name = config.get("metric_name", config.get("metric", ""))
             self.viz_panel.set_plot_title(
                 f"Running predictions for evaluation ({len(self._batch_queue)} cards)..."
             )
             self.viz_panel.show_loading()
             self._process_next_in_batch()
         else:
-            # Cards may have emitted nothing (e.g., incomplete configs); try computing directly
             self._compute_evaluation(config)
 
     def _compute_evaluation(self, config):
-        """Performs metric computation and updates the visualization panel."""
+        """Compute and display evaluation results.
 
+        For the ``true_vs_pred`` metric, builds parity data and calls
+        ``viz_panel.set_parity_data``. For other metrics, uses the ``Metrics``
+        engine to score each card and annotates plot titles with average scores.
+
+        Args:
+            config (dict): Evaluation configuration including metric key,
+                shear range, and display options.
+        """
         metric_key = config.get("metric", "rmse")
         metric_name = config.get("metric_name", metric_key)
         shear_min = config.get("shear_min", 100)
@@ -1262,6 +1354,13 @@ class DashboardUI(QtWidgets.QWidget):
                 self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
 
     def run_sample_generation(self, num_samples, model_file, constraints_data):
+        """Launch a ``SampleGenerationWorker`` with the given constraints and display a cancellable progress dialog.
+
+        Args:
+            num_samples (int): Number of samples to generate.
+            model_file (str): Path to the model file used for generation.
+            constraints_data (dict): Constraint configuration for the generator.
+        """
         self.generate_widget.hide()
         self.btn_generate.setChecked(False)
 
@@ -1279,10 +1378,8 @@ class DashboardUI(QtWidgets.QWidget):
             num_samples=num_samples,
             model_file=model_file,
             constraints_data=constraints_data,
-            # parent=self,
         )
 
-        # --- THE FIX: Anchor the thread so it avoids garbage collection ---
         if not hasattr(self, "_active_workers"):
             self._active_workers = []
         self._active_workers.append(worker)
@@ -1290,22 +1387,26 @@ class DashboardUI(QtWidgets.QWidget):
         worker.progress_update.connect(self._on_generation_progress)
         worker.generation_complete.connect(self._on_generation_complete)
         worker.generation_error.connect(self._on_generation_error)
-
-        # Safely detach and delete the worker when it naturally finishes
         worker.finished.connect(lambda w=worker: self._cleanup_worker(w))
         self.progress_dialog.canceled.connect(worker.stop)
 
         worker.start()
 
     def run_optimization(self, model_file, targets, constraints_data):
-        """Launches the OptimizationWorker, routing progress into the viz panel
-        loading overlay — identical to how predictions display progress."""
+        """Launch an ``OptimizationWorker`` with the given model, targets, and constraints.
+
+        Shows a loading overlay with cancel support and stores pre-optimization
+        plot state for rollback on cancel.
+
+        Args:
+            model_file (str): Path to the model file used for optimization.
+            targets (dict): Target viscosity profile constraints.
+            constraints_data (dict): Formulation constraint configuration.
+        """
         self.optimize_widget.hide()
         self.btn_optimize.setChecked(False)
 
         maxiter = self.optimize_widget.spin_maxiter.value()
-
-        # Snapshot the current plot state so Cancel can restore it exactly.
         self._pre_opt_data_series = list(getattr(self.viz_panel, "data_series", []))
         self._pre_opt_plot_title = getattr(self, "_last_plot_title", "")
 
@@ -1322,8 +1423,6 @@ class DashboardUI(QtWidgets.QWidget):
             self._active_workers = []
         self._active_workers.append(worker)
         self._current_opt_worker = worker
-
-        # Pass a cancel callback that stops the worker AND restores the plot.
         self.viz_panel.show_loading(
             cancel_callback=lambda: self._cancel_optimization(worker)
         )
@@ -1336,8 +1435,12 @@ class DashboardUI(QtWidgets.QWidget):
         worker.start()
 
     def _on_optimization_progress(self, value, text):
-        """Drive the viz-panel loading overlay with real optimizer progress."""
-        # Stop the free-running animation so we can show real percentage
+        """Update the loading overlay progress bar and label text during optimization.
+
+        Args:
+            value (int): Progress percentage (0–100).
+            text (str): Status message to display in the overlay label.
+        """
         if (
             hasattr(self.viz_panel, "anim_timer")
             and self.viz_panel.anim_timer.isActive()
@@ -1350,8 +1453,12 @@ class DashboardUI(QtWidgets.QWidget):
         self.viz_panel.set_plot_title(f"Optimizing… {value}%")
 
     def _on_optimization_complete(self, card_data):
-        """Add the optimized formulation card and update the plot."""
-        # Hide the overlay and reset the label for the next prediction run
+        """Hide loading, add an optimized prediction card, and display its estimated viscosity profile.
+
+        Args:
+            card_data (dict): Data dict for the optimized formulation card,
+                including an optional ``estimated_profile`` key.
+        """
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):
             self.viz_panel.loading_label.setText("Calculating…")
@@ -1380,6 +1487,11 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_data(data_package)
 
     def _on_optimization_error(self, error_msg):
+        """Hide loading and show a critical error dialog with the optimizer's error message.
+
+        Args:
+            error_msg (str): Error message emitted by the optimization worker.
+        """
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):
             self.viz_panel.loading_label.setText("Calculating…")
@@ -1391,7 +1503,11 @@ class DashboardUI(QtWidgets.QWidget):
         )
 
     def _cancel_optimization(self, worker):
-        """Stop the running optimizer and restore the plot to its pre-run state."""
+        """Stop the optimization worker and restore the pre-optimization plot state.
+
+        Args:
+            worker (OptimizationWorker): The worker instance to stop.
+        """
         worker.stop()
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):
@@ -1404,24 +1520,41 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.set_plot_title(prev_title)
             self.viz_panel.set_data(list(prev_series))
         else:
-            # No previous data — clear to placeholder state
             self.viz_panel.set_plot_title("")
             self.viz_panel.set_data([])
 
     def _cleanup_worker(self, worker):
-        if not worker.wait(5000):  # 5 second timeout
-            import warnings
+        """Wait for a worker thread to finish (up to 5 s) then remove it from the active workers list.
 
-            warnings.warn("Worker thread did not finish in time during cleanup.")
+        Args:
+            worker (QtCore.QThread): The worker thread to clean up.
+        """
+        if not worker.wait(5000):
+            Log.w(TAG, "Worker thread did not finish in time during cleanup.")
         if hasattr(self, "_active_workers") and worker in self._active_workers:
             self._active_workers.remove(worker)
 
     def _on_generation_progress(self, value, text):
+        """Update the progress dialog value and label during sample generation.
+
+        Args:
+            value (int): Progress percentage (0–100).
+            text (str): Status message to display in the progress dialog.
+        """
         if hasattr(self, "progress_dialog"):
             self.progress_dialog.setValue(value)
             self.progress_dialog.setLabelText(text)
 
     def _on_generation_complete(self, generated_cards_data):
+        """Close the progress dialog, add a prediction card for each generated sample, and notify the user.
+
+        Triggers batch predictions for the new cards and notifies the user of
+        the total generated count.
+
+        Args:
+            generated_cards_data (list[dict]): List of card data dicts for
+                each generated sample.
+        """
         if hasattr(self, "progress_dialog"):
             self.progress_dialog.close()
 
@@ -1448,6 +1581,11 @@ class DashboardUI(QtWidgets.QWidget):
         )
 
     def _on_generation_error(self, error_msg):
+        """Close the progress dialog and show a critical error dialog.
+
+        Args:
+            error_msg (str): Error message emitted by the generation worker.
+        """
         if hasattr(self, "progress_dialog"):
             self.progress_dialog.close()
 
@@ -1456,7 +1594,15 @@ class DashboardUI(QtWidgets.QWidget):
         )
 
     def apply_filters(self, filter_data):
-        """Iterates over cards and toggles visibility based on match."""
+        """Apply the complex filter dict together with the current search-bar text.
+
+        Shows/hides cards accordingly, updates the filter button's active
+        state, and hides the filter widget.
+
+        Args:
+            filter_data (dict): Filter configuration emitted by
+                ``PredictionFilterWidget``.
+        """
         search_text = self.search_bar.text().lower()
 
         for i in range(self.cards_layout.count()):
@@ -1493,7 +1639,7 @@ class DashboardUI(QtWidgets.QWidget):
         self.filter_widget.hide()
 
     def toggle_filter_menu_manual(self):
-        """Toggles filter menu visibility on click."""
+        """Show the filter widget if hidden, or hide it if visible, and update its geometry."""
         if self.filter_widget.isVisible():
             self.filter_widget.hide()
         else:
@@ -1502,34 +1648,28 @@ class DashboardUI(QtWidgets.QWidget):
             self._update_filter_geometry()
 
     def _update_filter_geometry(self):
-        """Positions the filter widget directly below the top bar (which is outside the panel now)."""
+        """Resize the filter widget to span the full width of the left panel at the top."""
         if self.filter_widget.isVisible():
-            # Coordinate 0,0 is now the top of the left_widget (content area)
             self.filter_widget.setGeometry(
                 0, 0, self.left_widget.width(), self.filter_widget.sizeHint().height()
             )
 
     def run_analysis(self):
-        """
-        Modified to support Batch Analysis of selected cards.
-        """
+        """Collect target cards, gather their prediction configs via the batch-collection mechanism, then start sequential batch processing."""
         target_cards = self.get_target_cards()
         if not target_cards:
             return
 
-        # 1. Initialize Batch State
+        # Initialize Batch State
         self._batch_queue = []
         self._batch_results = []
-        self._is_batch_collecting = True  # Start listening for run requests
-
-        # 2. Trigger requests from cards (which call run_prediction via signals)
-        # Because _is_batch_collecting is True, run_prediction will Queue them instead of running.
+        self._is_batch_collecting = True
+        # Trigger requests from cards
         for card in target_cards:
             card.emit_run_request()
+        self._is_batch_collecting = False
 
-        self._is_batch_collecting = False  # Stop listening
-
-        # 3. Start processing the queue
+        # Start processing the queue
         if self._batch_queue:
             self._is_batch_running = True
             self.viz_panel.set_plot_title("Initializing Batch Analysis...")
@@ -1541,15 +1681,19 @@ class DashboardUI(QtWidgets.QWidget):
             )
 
     def _process_next_in_batch(self):
+        """Pop the next (card, config) pair from the batch queue and start its prediction.
+
+        When the queue is empty, finalizes by either triggering evaluation
+        computation or displaying all batch results on the plot.
+        """
         if not self._batch_queue:
             self._is_batch_running = False
             self.viz_panel.hide_loading()
 
             if self._is_evaluation_mode and self._pending_eval_config is not None:
-                # Batch was for evaluation — now compute the metric
                 config = self._pending_eval_config
                 self._pending_eval_config = None
-                self._compute_evaluation(config)  # <-- NEW BRANCH
+                self._compute_evaluation(config)
             else:
                 count = len(self._batch_results)
                 self.viz_panel.set_plot_title(f"Analysis Results ({count} Profiles)")
@@ -1562,10 +1706,10 @@ class DashboardUI(QtWidgets.QWidget):
         QtCore.QTimer.singleShot(0, lambda: self.run_prediction(config))
 
     def delete_analysis(self):
-        """Deletes Selected cards (if any) or the currently Open card and updates the plot."""
+        """Prompt for confirmation, then remove the selected (or expanded) card(s) and their corresponding data series from the visualization panel."""
         target_cards = []
 
-        # 1. Identify Target Cards
+        # Identify Target Cards
         if self.selection_mode_active:
             for i in range(self.cards_layout.count()):
                 widget = self.cards_layout.itemAt(i).widget()
@@ -1581,7 +1725,7 @@ class DashboardUI(QtWidgets.QWidget):
         if not target_cards:
             return
 
-        # 2. Confirm Deletion
+        # Confirm Deletion
         count = len(target_cards)
         msg = f"Are you sure you want to delete {count} prediction(s)?"
         reply = QtWidgets.QMessageBox.question(
@@ -1593,39 +1737,25 @@ class DashboardUI(QtWidgets.QWidget):
         )
 
         if reply == QtWidgets.QMessageBox.StandardButton.Yes:
-            # --- UPDATE PLOT: Remove data associated with deleted cards ---
-
             # Gather references to the data objects and names from the cards being deleted
             results_to_remove = []
             names_to_remove = []
 
             for card in target_cards:
-                # If the card has a stored result object, we target that specific object
                 if hasattr(card, "last_results") and card.last_results:
                     results_to_remove.append(card.last_results)
-                # We also track the name as a fallback
                 names_to_remove.append(card.name_input.text())
-
-            # Filter the current data series in the Visualization Panel
             current_series = self.viz_panel.data_series
             new_series = []
 
             for data_pkg in current_series:
-                # FIX: Use 'is' identity check to avoid numpy array comparison errors
-                # Replaces: if data_pkg in results_to_remove:
                 if any(data_pkg is res for res in results_to_remove):
                     continue
-
-                # Exclude if the name matches (fallback if object identity fails)
                 if data_pkg.get("config_name") in names_to_remove:
                     continue
 
                 new_series.append(data_pkg)
-
-            # Update the visualization with the filtered list
             self.viz_panel.set_data(new_series)
-
-            # --- REMOVE WIDGETS ---
             for card in target_cards:
                 self.remove_card(card)
 
@@ -1636,7 +1766,14 @@ class DashboardUI(QtWidgets.QWidget):
                 pass
 
     def toggle_selection_mode(self, active):
-        """Toggles selection mode and handles FAB state."""
+        """Enable or disable multi-select mode.
+
+        Disables FAB/Import when active, enables Select-All, and propagates
+        the selectable state to all cards.
+
+        Args:
+            active (bool): True to enable selection mode, False to disable.
+        """
         self.selection_mode_active = active
 
         # Disable Add FAB and Import when selecting
@@ -1658,7 +1795,7 @@ class DashboardUI(QtWidgets.QWidget):
                     widget.set_selectable(active)
 
     def select_all_cards(self):
-        """Selects all visible cards. If all are already selected, deselects all."""
+        """Select all visible cards if any are unselected; deselect all if all are already selected."""
         visible_cards = []
         for i in range(self.cards_layout.count()):
             w = self.cards_layout.itemAt(i).widget()
@@ -1669,8 +1806,6 @@ class DashboardUI(QtWidgets.QWidget):
             return
 
         selected_visible = [w for w in visible_cards if w.is_selected]
-
-        # If everything visible is already selected, deselect them all
         should_select = len(selected_visible) < len(visible_cards)
 
         for widget in visible_cards:
@@ -1687,7 +1822,6 @@ class DashboardUI(QtWidgets.QWidget):
             widget = item.widget()
 
             if widget and isinstance(widget, FormulationConfigCard):
-                # Get content
                 card_content = widget.get_searchable_text()
 
                 # Check Search Match
@@ -1697,9 +1831,6 @@ class DashboardUI(QtWidgets.QWidget):
                         if token not in card_content:
                             matches_search = False
                             break
-
-                # Check Filter Widget Match (if active)
-                matches_filter = True
                 if hasattr(self, "filter_widget") and self.filter_widget.isVisible():
                     pass
 
@@ -1711,6 +1842,18 @@ class DashboardUI(QtWidgets.QWidget):
         self.update_placeholder_visibility()
 
     def add_prediction_card(self, data=None):
+        """Create and insert a new ``FormulationConfigCard`` at the end of the card list.
+
+        If ``data`` is provided, loads its contents and triggers a prediction
+        for non-measured cards.
+
+        Args:
+            data (dict, optional): Card configuration data to pre-populate.
+                If None, an empty card is created. Defaults to None.
+
+        Returns:
+            FormulationConfigCard: The newly created card widget.
+        """
         if data and "name" in data:
             name = data["name"]
         else:
@@ -1743,13 +1886,9 @@ class DashboardUI(QtWidgets.QWidget):
 
         if data:
             if hasattr(card, "load_data"):
-                # load_data handles ingredient population if data['ingredients'] is a dict
                 card.load_data(data)
-
             if data.get("measured", False):
                 card.set_measured_state(True)
-
-            # Only trigger a run if it's a prediction (not measured data)
             if not data.get("measured", False):
                 card.emit_run_request()
 
@@ -1762,50 +1901,58 @@ class DashboardUI(QtWidgets.QWidget):
         return card
 
     def _scroll_to_card(self, card_widget):
-        """Helper to ensure the new card is visible in the scroll area."""
+        """Scroll the scroll area to ensure the given card widget is visible.
+
+        Args:
+            card_widget (FormulationConfigCard): The card to scroll into view.
+        """
         self.scroll_area.ensureWidgetVisible(card_widget, 0, 0)
 
     def _on_card_visibility_toggled(self, card):
-        """
-        Called when a card's 'Hide from Plot' menu action is toggled.
-        Forwards the request to the viz panel and keeps the action's
-        check-state in sync with the actual hidden state.
+        """Toggle the corresponding data series in the visualization panel and sync the card's hide-series action state.
+
+        Args:
+            card (FormulationConfigCard): The card whose series visibility
+                should be toggled.
         """
         card_name = card.name_input.text()
         new_hidden = self.viz_panel.toggle_card_series(card_name)
-        # Sync the checkmark without re-firing the signal
         card.act_hide_series.blockSignals(True)
         card.act_hide_series.setChecked(new_hidden)
         card.act_hide_series.blockSignals(False)
 
     def on_card_expanded(self, active_card):
+        """Collapse all other cards when one expands.
+
+        If not in evaluation mode, updates the plot to show the expanded
+        card's last results.
+
+        Args:
+            active_card (FormulationConfigCard): The card that was just
+                expanded.
         """
-        Handles card expansion: collapses others and updates the visualization
-        with the active card's data (including measured profiles).
-        """
-        # 1. Collapse other cards
+        # Collapse other cards
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
             widget = item.widget()
             if isinstance(widget, FormulationConfigCard) and widget is not active_card:
                 widget.collapse()
-
-        # Block the individual card from hijacking the plot if we are in Evaluation Mode
         if hasattr(self, "btn_evaluate") and self.btn_evaluate.isChecked():
             return
 
-        # 2. Automatically plot data if available (Fixes missing plot on open)
         if hasattr(active_card, "last_results") and active_card.last_results:
             # Sync name in case it changed
             data = active_card.last_results
             data["config_name"] = active_card.name_input.text()
-
-            # Send to Visualization Panel immediately
             self.viz_panel.set_plot_title(data["config_name"])
             self.viz_panel.set_data(data)
 
     def remove_card(self, card_widget):
-        # --- Remove associated plot data from the visualization panel ---
+        """Remove a card's data series from the visualization panel, then animate the card's collapse and delete it from the layout.
+
+        Args:
+            card_widget (FormulationConfigCard): The card to remove.
+        """
         if hasattr(card_widget, "last_results"):
             target_result = card_widget.last_results
             target_name = card_widget.name_input.text()
@@ -1836,10 +1983,8 @@ class DashboardUI(QtWidgets.QWidget):
         anim.start()
 
     def import_run(self):
-        """
-        Initiates the background import process for one or multiple directories.
-        """
-        # 1. Retrieve Load Path from Preferences
+        """Open a directory picker, launch an ``ImportWorker`` for the selected path(s), and display a cancellable progress dialog."""
+        # Retrieve Load Path from Preferences
         try:
             if (
                 not hasattr(UserProfiles, "user_preferences")
@@ -1890,8 +2035,6 @@ class DashboardUI(QtWidgets.QWidget):
         # Connect Worker Signals
         self.worker.progress_changed.connect(self.progress_dialog.setValue)
         self.worker.status_changed.connect(self.progress_dialog.setLabelText)
-
-        # [UPDATED] Store results temporarily, process only when thread is completely done
         self.worker.import_finished.connect(self._on_import_data_received)
         self.worker.finished.connect(self._on_import_thread_finished)
         self.worker.import_error.connect(self._on_import_error)
@@ -1903,15 +2046,17 @@ class DashboardUI(QtWidgets.QWidget):
         self._pending_results = []
 
     def _on_import_data_received(self, results):
-        """Buffer results until thread finishes cleanup."""
+        """Buffer the raw import results emitted by the worker.
+
+        Args:
+            results (list): List of ``Formulation`` objects returned by the
+                import worker.
+        """
         self._pending_results = results
 
     def _on_import_thread_finished(self):
-        """
-        Called when the import thread has fully exited (database closed).
-        Now safe to reload DB and process UI.
-        """
-        # 1. Reload Database (Critical Step)
+        """Reload the database and ingredient controllers after the import thread finishes, then process any buffered results."""
+        # Reload Database
         try:
             self.db.close()
             self.db = Database(parse_file_key=True)
@@ -1919,17 +2064,21 @@ class DashboardUI(QtWidgets.QWidget):
             self.form_ctrl = FormulationController(self.db)
             self._load_database_data()  # Refresh ingredient dropdowns
         except Exception as e:
-            print(f"Error reloading database after import: {e}")
+            Log.e(TAG, f"Error reloading database after import: {e}")
 
-        # 2. Process Results
+        # Process Results
         if hasattr(self, "_pending_results") and self._pending_results:
             self._process_imported_results(self._pending_results)
             self._pending_results = []  # Clear buffer
 
     def _process_imported_results(self, results):
-        """
-        Creates cards for each imported formulation.
-        (Formerly _on_import_finished, DB reload logic removed)
+        """Convert imported ``Formulation`` objects into card data dicts and create cards for each.
+
+        Sets their measured viscosity data and notifies the user of the total
+        imported count.
+
+        Args:
+            results (list): List of ``Formulation`` objects to process.
         """
         if not results:
             return
@@ -1942,7 +2091,6 @@ class DashboardUI(QtWidgets.QWidget):
         count = 0
         for formulation in results:
             try:
-                # [Ingredient Mapping Logic]
                 ingredients_map = {}
                 attr_map = {
                     "protein": "Protein",
@@ -2030,8 +2178,7 @@ class DashboardUI(QtWidgets.QWidget):
                     count += 1
 
             except Exception as e:
-                # Log.e(TAG, f"Error creating card for imported run: {e}")
-                print(f"Error creating card: {e}")
+                Log.e(TAG, f"Error creating card for imported run: {e}")
 
         if count > 0:
             QtWidgets.QMessageBox.information(
@@ -2043,15 +2190,14 @@ class DashboardUI(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(
                 self, "Import Warning", "No valid formulations could be processed."
             )
-
-        # --- UNMUTE RUNS ---
         self._is_silencing_runs = False
 
     def _on_import_error(self, error_msg):
+        """Cancel the progress dialog and show a critical import-error dialog.
+
+        Args:
+            error_msg (str): Error message emitted by the import worker.
         """
-        Callback when the import worker encounters an error.
-        """
-        # Ensure progress dialog is closed
         if hasattr(self, "progress_dialog") and self.progress_dialog.isVisible():
             self.progress_dialog.cancel()
 
@@ -2060,9 +2206,14 @@ class DashboardUI(QtWidgets.QWidget):
         )
 
     def get_target_cards(self):
-        """
-        Returns a list of cards to act upon.
-        Priority:
+        """Return the list of cards to act on.
+
+        Returns selected cards in selection mode, or the single expanded card
+        otherwise. Shows an info dialog if no target is found.
+
+        Returns:
+            list[FormulationConfigCard]: Cards that are currently targeted for
+                an action.
         """
         targets = []
 
@@ -2072,7 +2223,6 @@ class DashboardUI(QtWidgets.QWidget):
                 if isinstance(widget, FormulationConfigCard) and widget.is_selected:
                     targets.append(widget)
         else:
-            # Fallback to the currently open/expanded card
             for i in range(self.cards_layout.count()):
                 widget = self.cards_layout.itemAt(i).widget()
                 if isinstance(widget, FormulationConfigCard) and widget.is_expanded:
@@ -2089,7 +2239,11 @@ class DashboardUI(QtWidgets.QWidget):
         return targets
 
     def export_analysis(self):
-        """Batch export logic for the top bar."""
+        """Export the target card(s).
+
+        Single-card export delegates to the card's own export method;
+        multi-card batch export saves each to a CSV in a user-chosen folder.
+        """
         target_cards = self.get_target_cards()
 
         if not target_cards:
@@ -2119,19 +2273,21 @@ class DashboardUI(QtWidgets.QWidget):
                     self, "Batch Export", f"Exported {success} files to {folder}"
                 )
 
-    # In prediction_ui.py
-
     def run_prediction(self, config=None):
+        """Start a ``PredictionThread`` for the given config.
+
+        If batch-collecting, queues the request instead. Stops any currently
+        running task (adds it to zombie list) before launching the new one.
+
+        Args:
+            config (dict, optional): Prediction configuration dict. If None,
+                no prediction is started. Defaults to None.
         """
-        Handles requests. Now supports Queuing and Zombie Task protection.
-        """
-        # --- BLOCK SPAM DURING IMPORT ---
         if self._is_silencing_runs:
             return
 
         sender_card = self.sender()
 
-        # INTERCEPTION: If in batch collection mode, just queue and return
         if self._is_batch_collecting:
             if isinstance(sender_card, FormulationConfigCard) and config:
                 self._batch_queue.append((sender_card, config))
@@ -2151,11 +2307,8 @@ class DashboardUI(QtWidgets.QWidget):
             self._pending_color = config["color"]
         elif self.running_card:
             self._pending_color = self.running_card.plot_color
-
-        # --- ZOMBIE TASK MANAGEMENT ---
         if self.current_task is not None and self.current_task.isRunning():
             self.current_task.stop()
-            # Append to zombie list to prevent Python GC from destroying the C++ thread
             self._zombie_tasks.append(self.current_task)
 
         name = config.get("name", "Unknown Sample") if config else "Unknown Sample"
@@ -2168,28 +2321,26 @@ class DashboardUI(QtWidgets.QWidget):
         self.current_task.finished.connect(self._on_task_complete)
         self.current_task.start()
 
-    # In prediction_ui.py
-
     def _on_prediction_finished(self, data_package):
-        # Restore color
+        """Receive prediction results and update the card and visualization panel.
+
+        Preserves any existing measured data if the new result lacks it.
+        Updates the card's display, and advances the batch queue if a batch is
+        running.
+
+        Args:
+            data_package (dict): Prediction results containing at minimum ``x``
+                (shear rates) and ``y`` (viscosities) arrays.
+        """
         if self._pending_color and "color" not in data_package:
             data_package["color"] = self._pending_color
 
-        # [FIXED] Robust Restoration of Measured Data
         if hasattr(self, "running_card") and self.running_card:
             existing_results = self.running_card.last_results
-
-            # 1. Check if we have valid existing measured data (Not None)
             if existing_results and existing_results.get("measured_y") is not None:
-
-                # 2. Only restore if the NEW result doesn't have measured data
                 if data_package.get("measured_y") is None:
-
-                    # 3. Get the data arrays safely
                     old_measured = existing_results["measured_y"]
                     new_x = data_package.get("x")
-
-                    # 4. Compare lengths (ensure new_x is valid list/array)
                     if new_x is not None and len(old_measured) == len(new_x):
                         data_package["measured_y"] = old_measured
                         data_package["measured"] = True  # Enable VizPanel toggle
@@ -2202,8 +2353,6 @@ class DashboardUI(QtWidgets.QWidget):
             self._batch_results.append(data_package)
             self._process_next_in_batch()
         elif self._is_evaluation_mode:
-            # In eval mode but not a batch run (e.g., a single card re-run from expand).
-            # Card results are updated above; don't clobber the eval/parity plot.
             pass
         else:
             final_name = data_package.get("config_name", "Unknown")
@@ -2212,45 +2361,39 @@ class DashboardUI(QtWidgets.QWidget):
             self.viz_panel.hide_loading()
 
     def _on_task_complete(self):
-        """Called when thread naturally finishes. Cleans up zombie references."""
+        """Clean up a finished task from the zombie list."""
         sender = self.sender()
         if sender in self._zombie_tasks:
             self._zombie_tasks.remove(sender)
 
     def closeEvent(self, event):
-        """
-        Guaranteed cleanup on close.
+        """Stop the running prediction thread and close the database connection before the widget closes.
+
+        Args:
+            event (QtGui.QCloseEvent): The close event to handle.
         """
         if self.current_task is not None and self.current_task.isRunning():
-            print("Closing application: Stopping background thread...")
+            Log.i(TAG, "Closing application: Stopping background thread...")
             self.current_task.stop()
         self.db.close()
         super().closeEvent(event)
 
     def _update_overlay_geometry(self):
-        """Updates positions of overlay widgets."""
-
-        # 1. Filter Widget (Relative to Left Panel)
+        """Reposition all visible overlay widgets (filter, eval, generate, optimize) relative to their trigger buttons and the dashboard boundaries."""
+        # Filter Widget
         if hasattr(self, "filter_widget") and self.filter_widget.isVisible():
             self.filter_widget.setGeometry(
                 0, 0, self.left_widget.width(), self.filter_widget.sizeHint().height()
             )
 
-        # 2. Evaluation Widget (Relative to Toolbar Button)
+        # Evaluation Widget
         if hasattr(self, "eval_widget") and self.eval_widget.isVisible():
-            # Calculate Global Position of the Button's bottom-left corner
             btn_geo = self.btn_evaluate.geometry()
             global_pos = self.btn_evaluate.mapToGlobal(
                 QtCore.QPoint(0, btn_geo.height())
             )
-
-            # Map back to PredictionUI (self) coordinates
             local_pos = self.mapFromGlobal(global_pos)
-
-            # Set Width (e.g., 300px standard dropdown width)
             menu_width = 300
-
-            # Ensure it doesn't go off the right side of the screen
             x = local_pos.x()
             if x + menu_width > self.width():
                 x = self.width() - menu_width - 10
@@ -2258,10 +2401,9 @@ class DashboardUI(QtWidgets.QWidget):
             self.eval_widget.setGeometry(
                 x, local_pos.y(), menu_width, self.eval_widget.sizeHint().height()
             )
-
-            # Ensure it sits on top of everything (splitter, right panel, etc.)
             self.eval_widget.raise_()
-        # 3. Generate Widget (Relative to Toolbar Button)
+
+        # Generate Widget
         if hasattr(self, "generate_widget") and self.generate_widget.isVisible():
             btn_geo = self.btn_generate.geometry()
             global_pos = self.btn_generate.mapToGlobal(
@@ -2278,7 +2420,8 @@ class DashboardUI(QtWidgets.QWidget):
                 x, local_pos.y(), menu_width, self.generate_widget.sizeHint().height()
             )
             self.generate_widget.raise_()
-        # 4. Optimize Widget (Relative to Toolbar Button)
+
+        # Optimize Widget
         if hasattr(self, "optimize_widget") and self.optimize_widget.isVisible():
             btn_geo = self.btn_optimize.geometry()
             global_pos = self.btn_optimize.mapToGlobal(
@@ -2297,6 +2440,11 @@ class DashboardUI(QtWidgets.QWidget):
             self.optimize_widget.raise_()
 
     def resizeEvent(self, event):
+        """Reposition overlays when the dashboard is resized.
+
+        Args:
+            event (QtGui.QResizeEvent): The resize event to handle.
+        """
         self._update_overlay_geometry()
         super().resizeEvent(event)
 
