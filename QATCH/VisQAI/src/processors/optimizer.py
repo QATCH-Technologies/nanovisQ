@@ -1,87 +1,50 @@
 """
 optimizer.py
 
-Constrained formulation optimizer using Differential Evolution with a
-correct mixed discrete-continuous search strategy.
+This module provides a specialized framework for solving inverse-formulation
+problems in biopharmaceutical development. Specifically, it uses Differential
+Evolution (DE) to identify ingredient combinations and concentrations that
+yield a target rheological profile.
 
-Bug Fixes vs v1.2
-─────────────────
-1.  encoded=False on to_dataframe()
-        The old optimizer called formulation.to_dataframe(training=False),
-        which defaults to encoded=True and passes integer enc_ids to the
-        predictor.  Every other prediction call in the codebase (sampler.py
-        ×5) uses encoded=False.  The CNP engine expects human-readable
-        ingredient names; enc_ids silently produce garbage predictions.
+The module is organized into three primary components:
 
-2.  Categorical choice–index alignment
-        constraints.build() sorts categorical names alphabetically via
-        ListUtils.unique_case_insensitive_sort and sets bounds=(0, n-1)
-        against that sorted order.  The old optimizer built cat_choices from
-        the unsorted constraints._choices pool, so index 0 decoded to the
-        wrong ingredient.  Fixed by aligning cat_choices to match the sorted
-        names list returned in the encoding.
+- Telemetry & Progress (OptimizationStatus & OptimizationProgressTracker):
+    Captures and accumulates per-generation metrics including best fitness,
+    stagnation counts, and improvement rates. This allows for real-time
+    monitoring of convergence and supports early-stopping hooks for
+    high-throughput optimization tasks.
 
-3.  polish=True destroys categoricals
-        differential_evolution(polish=True) runs L-BFGS-B on the full
-        vector, including categorical dimensions.  L-BFGS-B treats them as
-        continuous, drifts them off-integer, and the final _decode(result.x)
-        rounds them to a different (often worse) formulation than DE found.
-        Fixed with polish=False in DE and a separate continuous-only L-BFGS-B
-        pass that freezes all categoricals at their DE-best integer values.
+- State Mapping (Encoding & Decoding):
+    Handles the transformation between the optimizer's continuous search
+    vectors and the discrete, structured domain of 'Formulation' objects.
+    It manages categorical ingredient alignment with backend databases and
+    enforces physical concentration constraints.
 
-4.  Linear-space MSE loss
-        Viscosity spans 4+ orders of magnitude (cP at 100 s⁻¹ can be 50×
-        larger than cP at 15 M s⁻¹).  Linear MSE means absolute errors at
-        high-viscosity low-shear points completely dominate; the optimizer
-        effectively ignores accuracy at the shear rates the user cares about.
-        Replaced with weighted MSE in log₁₀ space with log-shear interpolation
-        so every target point contributes proportionally to its weight
-        regardless of absolute scale.
+- The Optimization Engine (Optimizer):
+    A hybrid global-to-local search engine. It uses Scrambled Latin Hypercube
+    Sampling (LHS) for initial population seeding, Differential Evolution for
+    global exploration of categorical and numerical spaces, and L-BFGS-B
+    polishing for high-precision refinement of continuous concentration values.
 
-5.  Zero-shot predictions (no warm-start)
-        The CNP engine is a conditional neural process whose few-shot
-        accuracy depends on context vectors loaded via predictor.learn().
-        Sampler always calls this before predicting; the optimizer never did,
-        running in zero-shot mode.  Fixed by accepting an optional history_df
-        and calling predictor.learn() once before the first objective
-        evaluation.
 
-6.  LHS initialises categoricals as continuous floats
-        init='latinhypercube' generates values like 2.71 for a categorical
-        with 5 choices, so almost no initial candidates land at valid integer
-        corners and DE wastes early generations correcting them.  Fixed with a
-        custom discrete-aware initialiser: Latin Hypercube for continuous
-        variables, discrete uniform integer sampling for categoricals.
-
-New Features (non-breaking, all keyword-only)
-─────────────────────────────────────────────
-  target_weights     Per-target loss weights (length = len(target.shear_rates)).
-                     Default uniform.  Increase weight for operating points that
-                     matter most (e.g. 10 000 s⁻¹ for SC injections).
-
-  lambda_unc         Uncertainty-penalty coefficient λ.  When > 0 the objective
-                     adds λ × mean(std_log₁₀), steering the search toward
-                     formulations the model predicts confidently.
-
-  history_df         Historical formulation DataFrame (encoded=False) used to
-                     warm-start the CNP context via predictor.learn().
-
-  polish_continuous  Run a L-BFGS-B stage on continuous variables after DE,
-                     with all categorical indices frozen.  Default True.
+Example:
+    >>> optimizer = Optimizer(constraints, predictor, target_profile)
+    >>> tracker = OptimizationProgressTracker()
+    >>> best_formulation = optimizer.optimize(progress_callback=tracker)
+    >>> print(f"Optimized with improvement rate: {tracker.get_improvement_rate()}")
 
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-09
+    2026-03-16
 
 Version:
-    2.0
+    2.1
 """
 
 from __future__ import annotations
 
-import warnings
 from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -89,32 +52,64 @@ import pandas as pd
 from scipy.optimize import differential_evolution, minimize
 
 try:
+    TAG = "[Optimizer (Headless)]"
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor
     from src.utils.constraints import Constraints
+
+    class Log:
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
+
 except (ModuleNotFoundError, ImportError):
+    TAG = "[Optimizer]"
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.utils.constraints import Constraints
 
 
-# Canonical shear-rate grid the predictor outputs (must match inference engine)
 _PRED_SHEAR_RATES: List[float] = [100.0, 1_000.0, 10_000.0, 100_000.0, 15_000_000.0]
 _LOG_PRED_SHEAR = np.log10(_PRED_SHEAR_RATES)
 
-_EPS = 1e-9  # guard against log10(0)
-_LARGE_LOSS = 1e6  # finite penalty returned for invalid / None predictions
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Progress helpers  (public API backward-compatible with v1.2)
-# ══════════════════════════════════════════════════════════════════════════════
+_EPS = 1e-9
+_LARGE_LOSS = 1e6
 
 
 class OptimizationStatus:
-    """Snapshot of optimizer state emitted once per DE generation."""
+    """Snapshot of optimizer state emitted once per Differential Evolution (DE) generation.
+
+    This data class encapsulates the metrics of a specific point in the
+    optimization process, providing insights into the current best fitness value,
+    population characteristics, and numerical convergence. It is intended to
+    be used for logging, UI progress updates, or early-stopping telemetry.
+
+    Attributes:
+        iteration (int): The current generation index.
+        num_iterations (int): The maximum number of generations planned for
+            the optimization run.
+        best_value (float): The objective function value of the best-performing
+            individual in the current population.
+        population_size (int): The total number of individuals in the population.
+        convergence (float): A measure of the population's stability or
+            homogeneity (e.g., standard deviation of fitness or parameter spread).
+        progress_percent (float): The linear completion percentage of the
+            optimization run based on iterations.
+    """
 
     def __init__(
         self,
@@ -124,6 +119,16 @@ class OptimizationStatus:
         population_size: int,
         convergence: float,
     ) -> None:
+        """Initializes the optimization status snapshot.
+
+        Args:
+            iteration: The current iteration/generation number.
+            num_iterations: Total expected iterations.
+            best_value: Best objective value found in this generation.
+            population_size: Number of candidate solutions in the current population.
+            convergence: Numerical indicator of how close the population is to
+                settling on a solution.
+        """
         self.iteration = iteration
         self.num_iterations = num_iterations
         self.best_value = best_value
@@ -134,6 +139,7 @@ class OptimizationStatus:
         )
 
     def __repr__(self) -> str:
+        """Returns a string representation of the optimization status."""
         return (
             f"OptimizationStatus(iteration={self.iteration}, "
             f"best_value={self.best_value:.6f}, "
@@ -142,9 +148,28 @@ class OptimizationStatus:
 
 
 class OptimizationProgressTracker:
-    """Accumulates per-iteration status objects and prints a progress line."""
+    """Accumulates per-iteration status objects and monitors optimizer performance.
+
+    This class serves as a central repository for the telemetry data emitted
+    during an optimization run. It stores a chronological history of
+    `OptimizationStatus` snapshots and maintains flattened lists of key metrics
+    (iterations and best values) for rapid access during logging or visualization.
+
+    Attributes:
+        history (List[OptimizationStatus]): A chronological list of all status
+            snapshots received during the optimization.
+        iterations (List[int]): A flattened list of generation indices,
+            useful for plotting the x-axis of convergence curves.
+        best_values (List[float]): A flattened list of the best objective
+            function values found at each iteration.
+        start_value (Optional[float]): The best objective value found in the
+            initial generation (iteration 0).
+        best_value (Optional[float]): The most recent (and presumably lowest/highest)
+            best objective value recorded.
+    """
 
     def __init__(self) -> None:
+        """Initializes an empty tracker with initialized history containers."""
         self.history: List[OptimizationStatus] = []
         self.iterations: List[int] = []
         self.best_values: List[float] = []
@@ -152,6 +177,21 @@ class OptimizationProgressTracker:
         self.best_value: Optional[float] = None
 
     def __call__(self, status: OptimizationStatus) -> None:
+        """Updates the tracker with the latest optimization snapshot and logs progress.
+
+        This method acts as the primary callback handler. It appends the current
+        status to the internal history, updates the running best value, and
+        calculates the total improvement since the initial generation. Finally,
+        it formats and emits a structured log message to the system log.
+
+        Args:
+            status: An OptimizationStatus object containing the telemetry
+                data for the current generation.
+
+        Note:
+            The improvement is calculated as a positive delta representing the
+            reduction in the objective function value from the `start_value`.
+        """
         self.history.append(status)
         self.iterations.append(status.iteration)
         self.best_values.append(status.best_value)
@@ -164,21 +204,60 @@ class OptimizationProgressTracker:
         improvement = (
             (self.start_value - status.best_value) if self.start_value else 0.0
         )
-        print(
+        Log.i(
+            TAG,
             f"[{status.iteration:3d}/{status.num_iterations}] "
             f"Best: {status.best_value:10.6f} | "
             f"Improvement: {improvement:10.6f} | "
-            f"Progress: {status.progress_percent:6.1f}%"
+            f"Progress: {status.progress_percent:6.1f}%",
         )
 
     def get_improvement_rate(self) -> float:
-        """Average objective improvement per generation."""
+        """Calculates the average reduction in the objective value per generation.
+
+        This metric represents the 'velocity' of the optimization process by
+        measuring the total improvement from the initial generation to the
+        most recent generation, normalized by the total number of recorded
+        iterations. It is a useful indicator for assessing the efficiency
+        of the current optimization parameters.
+
+        Returns:
+            float: The average improvement per generation. Returns 0.0 if
+                fewer than two snapshots have been recorded or if the
+                initial value is unavailable.
+
+        Note:
+            The calculation is based on the difference between the
+            `start_value` and the current `best_value`, divided by the
+            total count of snapshots in the history.
+        """
         if len(self.history) < 2 or self.start_value is None:
             return 0.0
         return (self.start_value - self.best_value) / len(self.history)
 
     def get_stagnation_iterations(self, threshold: int = 10) -> int:
-        """Count consecutive tail generations with no improvement."""
+        """Counts the number of consecutive recent generations without improvement.
+
+        This method examines the tail of the optimization history to determine
+        how many generations the 'best_value' has remained unchanged. It is
+        primarily used for implementing early-stopping criteria or adjusting
+        optimizer hyperparameters (like mutation rate) when a plateau is detected.
+
+        Args:
+            threshold: The maximum number of recent generations to inspect.
+                The search will not exceed this depth. Defaults to 10.
+
+        Returns:
+            int: The count of consecutive generations (starting from the most
+                recent) where the best value is identical to the current
+                minimum. Returns 0 if the history is shorter than the
+                specified threshold.
+
+        Note:
+            The count is determined by iterating backwards from the latest
+            snapshot and incrementing until a superior (lower) best value
+            is encountered.
+        """
         if len(self.history) < threshold:
             return 0
         recent = self.history[-threshold:]
@@ -192,12 +271,21 @@ class OptimizationProgressTracker:
         return count
 
     def get_plot_data(self) -> Tuple[List[int], List[float]]:
+        """Retrieves a copy of the iteration and best value history for visualization.
+
+        This method provides the raw numerical data required to generate
+        convergence curves or progress plots. By returning copies of the
+        internal lists, it ensures that external plotting libraries or
+        manipulations do not inadvertently modify the tracker's primary
+        historical record.
+
+        Returns:
+            Tuple[List[int], List[float]]: A tuple containing two lists:
+                - The first list contains the generation indices (iterations).
+                - The second list contains the best objective function values
+                  recorded at each of those iterations.
+        """
         return self.iterations.copy(), self.best_values.copy()
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Core Optimizer
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 class Optimizer:
@@ -215,7 +303,7 @@ class Optimizer:
     maxiter : int
         Maximum DE generations.
     popsize : int
-        DE population multiplier (total population = popsize × n_variables).
+        DE population multiplier (total population = popsize x n_variables).
     tol : float
         DE convergence tolerance.
     seed : int, optional
@@ -251,6 +339,43 @@ class Optimizer:
         early_stopping_rounds: int = 20,
         improvement_tol: float = 1e-8,
     ) -> None:
+        """Initializes the Optimizer for Differential Evolution (DE).
+
+        This constructor prepares the search space by aligning constraints with
+        ingredient databases, setting up categorical encodings, and pre-computing
+        target viscosity profiles in log-space. It also optimizes the search
+        dimensionality by identifying fixed categorical features and adjusting
+        concentration bounds to prevent physically impossible formulations.
+
+        Args:
+            constraints: A Constraints object defining the allowed ranges and
+                ingredient choices.
+            predictor: The machine learning model used to predict viscosity
+                from formulation parameters.
+            target: The desired ViscosityProfile to optimize toward.
+            maxiter: Maximum number of generations for the DE algorithm.
+                Defaults to 100.
+            popsize: Multiplier for setting the total population size
+                (total pop = popsize * number of variables). Defaults to 15.
+            tol: Relative tolerance for convergence. Defaults to 1e-6.
+            seed: Random seed for reproducibility. Defaults to None.
+            target_weights: Optional importance weights for specific shear rates
+                in the target profile. Defaults to None (equal weighting).
+            lambda_unc: Uncertainty penalty weight. Increasing this favors
+                formulations where the model has higher confidence. Defaults to 0.0.
+            history_df: Optional historical data for "warm-starting" the
+                predictor's context. Defaults to None.
+            polish_continuous: If True, performs a local search refinement
+                following the DE global optimization. Defaults to True.
+            early_stopping_rounds: Number of generations to wait for improvement
+                before terminating. Defaults to 20.
+            improvement_tol: Minimum change in objective value to qualify as
+                an improvement for early stopping. Defaults to 1e-8.
+
+        Raises:
+            ValueError: If categorical ingredients cannot be aligned with the
+                database or if target_weights dimensions do not match the target.
+        """
         self.constraints = constraints
         self.predictor = predictor
         self.target = target
@@ -262,18 +387,7 @@ class Optimizer:
         self.polish_continuous = polish_continuous
         self.early_stopping_rounds = early_stopping_rounds
         self.improvement_tol = improvement_tol
-
-        # ── 1. Build bounds + encoding from constraints ────────────────────────
         self.bounds, self.encoding = self.constraints.build()
-
-        # ── 2. Align cat_choices to the sorted names in each encoding entry ───
-        #
-        #   constraints.build() sorts each categorical's names alphabetically
-        #   (via ListUtils.unique_case_insensitive_sort) and derives bounds from
-        #   that sorted list.  We MUST build cat_choices in the identical order,
-        #   otherwise index 0 in the vector decodes to the wrong ingredient.
-        #   (This was Bug #2 in v1.2 — the old code used the unsorted pool.)
-        #
         all_ings = self.constraints._ingredient_ctrl.get_all_ingredients()
         self.cat_choices: Dict[str, List[Ingredient]] = {}
 
@@ -281,18 +395,11 @@ class Optimizer:
             if enc["type"] != "cat":
                 continue
             feat = enc["feature"]
-
-            # Ingredient pool — respect any add_choices() constraint
             pool = self.constraints._choices.get(feat)
             if not pool:
                 cls = self.constraints._FEATURE_CLASS[feat]
                 pool = [ing for ing in all_ings if isinstance(ing, cls)]
-
-            # Case-insensitive name → Ingredient lookup over the pool
             name_to_ing: Dict[str, Ingredient] = {ing.name.lower(): ing for ing in pool}
-
-            # Reconstruct the list in the same sorted order build() used.
-            # enc["choices"] is the already-sorted names list from build().
             aligned: List[Ingredient] = []
             for name in enc["choices"]:
                 ing = name_to_ing.get(name.lower())
@@ -301,47 +408,23 @@ class Optimizer:
 
             if not aligned:
                 raise ValueError(
-                    f"Could not align any ingredients for categorical feature "
-                    f"'{feat}'.  This is a bug — the pool should never be "
-                    f"empty at this point."
+                    "Could not align any ingredients for categorical feature."
                 )
 
             self.cat_choices[feat] = aligned
-
-        # ── 3. Pull single-choice categoricals OUT of the DE search space ──────
-        #
-        #   When bounds = (0, 0) SciPy's DE normalises with (hi - lo) = 0 in
-        #   the denominator, producing NaN for that dimension.  NaN propagates
-        #   through mutation and the decoded index becomes undefined — the
-        #   constrained protein (or other ingredient) ends up wrong in the output.
-        #
-        #   Fix: remove fixed categoricals from bounds / encoding entirely and
-        #   store them in _fixed_cats.  _decode() injects them back before
-        #   building each candidate formulation.
-        #
         self._fixed_cats: Dict[str, Any] = {}
         variable_bounds: List[Tuple[float, float]] = []
         variable_encoding: List[Dict[str, Any]] = []
-
         for b, enc in zip(self.bounds, self.encoding):
             feat = enc["feature"]
             if enc["type"] == "cat" and len(self.cat_choices.get(feat, [])) == 1:
-                # Only one valid choice → not a variable, it's a constant.
                 self._fixed_cats[feat] = self.cat_choices[feat][0]
             else:
                 variable_bounds.append(b)
                 variable_encoding.append(enc)
-
         self.bounds = variable_bounds
         self.encoding = variable_encoding
 
-        # ── 4. Enforce minimum concentration for constrained ingredient types ──
-        #
-        #   If the user constrained "Protein Type is Adalimumab" but the
-        #   protein_conc lower bound is 0, DE can still set conc=0, making
-        #   _build_formulation skip the protein entirely.  Lift the lower
-        #   bound to a small positive value so DE always uses the ingredient.
-        #
         _CAT_TO_CONC: Dict[str, str] = {
             "Protein_type": "Protein_conc",
             "Buffer_type": "Buffer_conc",
@@ -350,7 +433,6 @@ class Optimizer:
             "Surfactant_type": "Surfactant_conc",
             "Excipient_type": "Excipient_conc",
         }
-        # Sensible positive minimums (well below typical experimental ranges)
         _MIN_CONC: Dict[str, float] = {
             "Protein_conc": 1.0,
             "Buffer_conc": 1.0,
@@ -361,7 +443,7 @@ class Optimizer:
         }
         for cat_feat, _ing in self._fixed_cats.items():
             if self._is_none_ingredient(_ing):
-                continue  # "None" type — don't force non-zero conc
+                continue
             conc_feat = _CAT_TO_CONC.get(cat_feat)
             if conc_feat is None:
                 continue
@@ -373,11 +455,10 @@ class Optimizer:
                         self.bounds[j] = (min_c, max(hi, min_c))
                     break
 
-        # ── 5. Index helpers for the categorical / continuous split ────────────
         self._cat_idx = [i for i, e in enumerate(self.encoding) if e["type"] == "cat"]
         self._num_idx = [i for i, e in enumerate(self.encoding) if e["type"] == "num"]
 
-        # ── 6. Pre-compute log₁₀-space targets ────────────────────────────────
+        # Pre-compute log-space targets
         self._target_log_shear = np.log10(
             np.array(target.shear_rates, dtype=float) + _EPS
         )
@@ -397,42 +478,43 @@ class Optimizer:
             n = len(target.shear_rates)
             self._target_weights = np.ones(n, dtype=float) / n
 
-        # ── 7. Warm-start the CNP predictor with historical context ───────────
-        #
-        #   Sampler always calls predictor.learn(history_df) before predicting
-        #   because the CNP engine is a conditional neural process; its accuracy
-        #   depends on having context vectors loaded.  The old optimizer never
-        #   did this, running in zero-shot mode.  (Bug #5 fix.)
-        #
+        # Warm-start the CNP predictor with historical context
         if history_df is not None and not history_df.empty:
             if hasattr(self.predictor, "learn"):
                 try:
                     self.predictor.learn(history_df)
-                except Exception as exc:
-                    warnings.warn(
-                        f"Optimizer: predictor warm-start failed — {exc}. "
+                except Exception as e:
+                    Log.w(
+                        TAG,
+                        f"Optimizer: predictor warm-start failed - {e}. "
                         "Continuing with base-model context.",
-                        RuntimeWarning,
-                        stacklevel=2,
                     )
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Internal helpers
-    # ──────────────────────────────────────────────────────────────────────────
-
     def _decode(self, x: np.ndarray) -> Dict[str, Any]:
-        """Map a continuous DE vector → {feature: value} dict.
+        """Translates a continuous vector from the optimizer into a structured formulation.
 
-        Fixed categoricals (single-choice constraints) are injected directly
-        from _fixed_cats — they are not present in the DE vector at all.
-        Variable categoricals are rounded to the nearest integer and clamped
-        before indexing into cat_choices.
+        Differential Evolution operates on continuous floating-point vectors. This
+        method maps those values back to the original feature space defined by
+        the encoding. For categorical features, it uses rounding and clipping
+        to map the float to the nearest valid ingredient index. It also merges
+        in any 'fixed' categorical features that were removed from the search
+        space during initialization to reconstruct a complete formulation.
 
-        A final hard-clamp pass ensures that every categorical in the decoded
-        dict is within its allowed set, regardless of floating-point drift or
-        any upstream ordering inconsistency.
+        Args:
+            x: A 1D NumPy array representing a candidate solution in the
+                optimizer's search space.
+
+        Returns:
+            Dict[str, Any]: A dictionary representing the formulation, where keys
+                are feature names and values are either floats (for concentrations)
+                or Ingredient objects (for types).
+
+        Note:
+            Categorical mapping uses a 'nearest-neighbor' approach:
+            index = round(value). A final validation pass ensures that all
+            categorical values are members of their respective allowed choices,
+            defaulting to the first available choice if an inconsistency is detected.
         """
-        # Seed with fixed categoricals so callers always get a complete dict
         out: Dict[str, Any] = dict(self._fixed_cats)
         for xi, enc in zip(x, self.encoding):
             feat = enc["feature"]
@@ -442,26 +524,32 @@ class Optimizer:
                 out[feat] = choices[idx]
             else:
                 out[feat] = float(xi)
-
-        # Hard-clamp: verify every decoded categorical is in its allowed pool.
-        # This catches any edge case where floating-point drift or index
-        # mis-alignment would produce a value outside the constraint set.
         for feat, choices in self.cat_choices.items():
             val = out.get(feat)
             if val is not None and val not in choices:
-                out[feat] = choices[0]  # fall back to first (lowest-index) valid choice
+                out[feat] = choices[0]
 
         return out
 
     @staticmethod
     def _is_none_ingredient(ing: Any) -> bool:
-        """Return True when an ingredient should be treated as absent.
+        """Determines if an ingredient object represents a null or 'None' entry.
 
-        Covers two cases:
-          - The ingredient object itself is None (missing from the pool).
-          - The ingredient's name is the sentinel string "None" / "none",
-            which some databases use to represent an optional component that
-            was not selected.
+        This helper handles two cases for 'empty' ingredients:
+        - The object is a literal `None`.
+        - The object is an Ingredient instance (or similar) whose `name`
+           attribute is explicitly set to a variation of "None".
+
+        This is used during optimization to skip constraints or logic
+        associated with active ingredients when a "None" placeholder
+        is selected for a specific feature slot (e.g., no stabilizer).
+
+        Args:
+            ing: The ingredient object or value to check.
+
+        Returns:
+            bool: True if the ingredient is considered a null placeholder;
+                False otherwise.
         """
         if ing is None:
             return True
@@ -469,13 +557,26 @@ class Optimizer:
         return name is not None and str(name).strip().lower() == "none"
 
     def _build_formulation(self, feat_dict: Dict[str, Any]) -> Formulation:
-        """Construct a Formulation from a decoded feature dict.
+        """Assembles a valid Formulation object from a dictionary of features.
 
-        Safety rule: if an ingredient is absent (None) or carries the name
-        "None", its concentration is forced to 0.0 and the component is not
-        set on the formulation.  This prevents the engine from receiving a
-        formulation where, e.g., Salt_type=None but Salt_conc=75, which is
-        physically meaningless and causes prediction errors.
+        This method maps raw ingredient types and concentrations back into the
+        domain-specific `Formulation` model. It iterates through a predefined
+        schema of components, applying the appropriate setter methods and units
+        (e.g., mg/mL for protein, mM for buffers).
+
+        The method performs basic validation during assembly:
+        - It skips ingredients identified as "None" via `_is_none_ingredient`.
+        - It skips ingredients with a concentration of 0.0 to ensure the
+           resulting model only contains active components.
+
+        Args:
+            feat_dict: A dictionary containing the decoded features. Keys should
+                match the expected feature names (e.g., 'Protein_type',
+                'Temperature'), and values should be the corresponding
+                ingredient objects or floats.
+
+        Returns:
+            Formulation object
         """
         form = Formulation()
 
@@ -493,14 +594,9 @@ class Optimizer:
             conc = float(feat_dict.get(conc_key, 0.0))
 
             if self._is_none_ingredient(ing):
-                # Ingredient absent or named "None" — skip entirely.
-                # Concentration is implicitly 0; no component is attached.
                 continue
 
             if conc == 0.0:
-                # Zero concentration with a real ingredient: valid (e.g. a
-                # stabilizer that wasn't needed).  Skip to keep the formulation
-                # lean, consistent with how Sampler handles this case.
                 continue
 
             getattr(form, setter)(ing, conc, units)
@@ -508,7 +604,6 @@ class Optimizer:
         form.set_temperature(temp=feat_dict.get("Temperature", 25.0))
         return form
 
-    # Ordered viscosity column names produced by to_dataframe / the engine
     _VISC_COLS = [
         "Viscosity_100",
         "Viscosity_1000",
@@ -518,21 +613,29 @@ class Optimizer:
     ]
 
     def _extract_pred_visc(self, raw) -> np.ndarray:
-        """Convert whatever the engine returns into a clean float64 array.
+        """Extracts and cleans predicted viscosity values from raw predictor output.
 
-        ``predictor.predict()`` returns a DataFrame whose columns may be
-        named ``Viscosity_*`` or ``Pred_Viscosity_*``.  Blindly calling
-        ``np.asarray(df).flatten()`` produces an object-dtype array whenever
-        any cell is None / pd.NA, which makes np.clip crash with:
-            TypeError: '>=' not supported between instances of 'NoneType' and 'float'
+        This method handles the transition from the predictor's raw output format
+        (often a pandas DataFrame with specific column naming conventions) to a
+        standardized NumPy array used for objective function calculations. It
+        prioritizes columns defined in `_VISC_COLS` and looks for 'Pred_'
+        prefixed alternatives if the standard names are missing.
 
-        This helper extracts the five viscosity values in the canonical shear-
-        rate order and converts them to float64, replacing any NaN/None with
-        the large-penalty sentinel ``_LARGE_LOSS`` so the candidate is
-        penalised rather than crashing.
+        To maintain stability during optimization, any non-finite values
+        (NaN, Inf) are replaced with a pre-defined `_LARGE_LOSS` penalty,
+        effectively steering the Differential Evolution algorithm away from
+        unstable regions of the search space.
+
+        Args:
+            raw: The raw output from a predictor. This can be a pandas DataFrame
+                containing viscosity columns, a NumPy array, or a list of
+                numerical values.
+
+        Returns:
+            np.ndarray: A 1D array of extracted viscosity values corresponding
+                to the optimizer's shear rate profile.
         """
         if isinstance(raw, pd.DataFrame):
-            # Try canonical column names first, then Pred_* variants
             row = raw.iloc[0] if len(raw) > 0 else pd.Series(dtype=float)
             vals = []
             for col in self._VISC_COLS:
@@ -544,50 +647,63 @@ class Optimizer:
                 vals.append(v)
             arr = np.array(vals, dtype=float)
         else:
-            # Already array-like (e.g. from predict_with_uncertainty mean)
             arr = np.asarray(raw, dtype=float).flatten()
-
-        # Replace NaN / ±inf with a large-but-finite penalty value so
-        # _log_mse_loss never receives bad input.
         arr = np.where(np.isfinite(arr), arr, _LARGE_LOSS)
         return arr
 
     def _log_mse_loss(self, pred_viscosities: np.ndarray) -> float:
-        """Weighted MSE in log₁₀ space between predictions and targets.
+        """Calculates the weighted Mean Squared Error (MSE) in log10-log10 space.
 
-        Interpolation is performed on the log₁₀(shear_rate) axis so that
-        targets at shear rates between the five predictor output points are
-        handled correctly.
+        This method computes the loss between the predicted viscosity profile
+        and the target profile. By operating in log-space for both shear rate
+        (x-axis) and viscosity (y-axis), the optimizer treats a 10% error at
+        1 cP with the same mathematical weight as a 10% error at 100 cP.
 
-        Parameters
-        ----------
-        pred_viscosities : float64 array of shape (5,)
-            Predicted viscosities at _PRED_SHEAR_RATES in cP.
+        The method interpolates the predicted values—which are generated at
+        fixed shear rates—onto the specific log-shear rates of the target
+        profile before calculating the squared error and applying importance
+        weights.
 
-        Returns
-        -------
-        float
-            Weighted mean squared error in log₁₀(cP) units.
+        Args:
+            pred_viscosities: A 1D array of predicted viscosities corresponding
+                to the standard optimizer shear rate profile.
+
+        Returns:
+            float: The weighted average of the squared log-errors.
+
+        Note:
+            Predictions are clipped to `_EPS` (a small positive constant)
+            prior to log transformation to avoid mathematical errors with
+            zero or negative values.
         """
-        # Ensure strictly positive before log; _extract_pred_visc should have
-        # removed NaN/None already, but clip defensively.
         log_pred = np.log10(np.clip(pred_viscosities.astype(float), _EPS, None))
         log_interp = np.interp(self._target_log_shear, _LOG_PRED_SHEAR, log_pred)
         sq_err = (log_interp - self._target_log_visc) ** 2
         return float(np.dot(sq_err, self._target_weights))
 
     def _objective(self, x: np.ndarray) -> float:
-        """Evaluate the loss for a DE candidate vector.
+        """The core cost function minimized by the Differential Evolution algorithm.
 
-        Uses predict_with_uncertainty when lambda_unc > 0, falling back to
-        predict() on failure to keep evaluation cost low in the common case.
+        This method evaluates a single candidate solution by performing a
+        full round-trip through the optimization pipeline including decoding, assembly,
+        prediction and scoring.
+
+        Args:
+            x: A 1D NumPy array representing a candidate formulation in
+                the continuous search space.
+
+        Returns:
+            float: The total calculated loss. A lower value indicates a
+                formulation that better matches the target profile with
+                higher model confidence.
+
+        Note:
+            If uncertainty prediction fails for any reason, the method
+            gracefully falls back to a standard point-prediction to ensure
+            the optimization loop is not interrupted.
         """
         feat_dict = self._decode(x)
         formulation = self._build_formulation(feat_dict)
-
-        # Bug #1 fix: encoded=False — the engine expects human-readable names,
-        # not integer enc_ids.  The old call was to_dataframe(training=False)
-        # which defaulted to encoded=True.
         df = formulation.to_dataframe(encoded=False, training=False)
 
         unc_penalty = 0.0
@@ -607,13 +723,29 @@ class Optimizer:
         return loss
 
     def _build_initial_population(self, popsize_total: int) -> np.ndarray:
-        """Build a discrete-aware initial population.
+        """Constructs the starting population for the Differential Evolution algorithm.
 
-        Categorical variables are sampled as uniform integers over
-        [0, n_choices).  Continuous variables use a scrambled Latin Hypercube
-        for good space coverage.  This fixes Bug #6 where standard LHS
-        initialised categoricals as floats like 2.71 and wasted early
-        generations correcting them.
+        This method initializes the search space using a hybrid sampling strategy
+        to ensure broad coverage and minimize initial clustering utilizing the following
+        stragegies:
+
+        1. Continuous Variables: Uses Latin Hypercube Sampling (LHS)
+           approach. By dividing the range into strata and ensuring exactly one
+           sample per stratum, the optimizer starts with a more uniform
+           distribution than standard random sampling, reducing 'blind spots'
+           in the search space.
+        2. Categorical Variables: Uses a discrete uniform distribution to
+           assign initial ingredient indices, ensuring that all valid choices
+           for a category are likely represented in the first generation.
+
+        Args:
+            popsize_total: The total number of individuals (candidate formulations)
+                to generate for the population.
+
+        Returns:
+            np.ndarray: A 2D array of shape `(popsize_total, n_vars)` containing
+                the initialized continuous vectors ready for the first
+                generation of DE.
         """
         rng = np.random.default_rng(self.seed)
         n_vars = len(self.bounds)
@@ -642,31 +774,43 @@ class Optimizer:
         return pop
 
     def _polish_continuous(self, x_best: np.ndarray) -> Tuple[np.ndarray, float]:
-        """Freeze categoricals and run L-BFGS-B on continuous variables only.
+        """Performs local refinement of continuous parameters while keeping categories fixed.
 
-        This is the correct approach for mixed-integer polishing.  Bug #3
-        fix: the old polish=True ran L-BFGS-B over the full vector including
-        categoricals.  L-BFGS-B drifted them off-integer and the rounded
-        result was often worse than what DE had found.
+        Differential Evolution is excellent at global search and identifying the
+        correct categorical 'buckets' (e.g., the right Protein or Buffer type),
+        but it can be less efficient at converging on the exact decimal-point
+        optimum for concentrations.
 
-        Parameters
-        ----------
-        x_best : np.ndarray
-            Best solution vector from DE.
+        This method "polishes" the best solution found by:
+        1. Freezing all categorical indices to their nearest integer values.
+        2. Isolating the continuous (numerical) variables.
+        3. Executing a high-precision, gradient-based local search (L-BFGS-B).
 
-        Returns
-        -------
-        (x_polished, loss_polished)
+        This two-stage approach ensures that the final formulation is not only in
+        the right design region but is also mathematically optimized for its
+        specific ingredients.
+
+        Args:
+            x_best: The best-performing continuous vector identified by the
+                global optimizer.
+
+        Returns:
+            Tuple[np.ndarray, float]: A tuple containing:
+                - x_polished: The refined vector with optimized continuous values.
+                - loss: The final objective function value after polishing.
+
+        Note:
+            If the optimization space contains no continuous variables, the
+            method returns the input vector and its objective value immediately.
         """
         if not self._num_idx:
             return x_best.copy(), self._objective(x_best)
-
-        # Round and freeze all categorical indices
         frozen: Dict[int, float] = {i: float(round(x_best[i])) for i in self._cat_idx}
         x0_cont = x_best[self._num_idx]
         bounds_cont = [self.bounds[i] for i in self._num_idx]
 
         def _cont_obj(x_cont: np.ndarray) -> float:
+            """Internal objective wrapper for local continuous search."""
             x_full = x_best.copy()
             for j, i in enumerate(self._num_idx):
                 x_full[i] = x_cont[j]
@@ -690,10 +834,6 @@ class Optimizer:
 
         return x_polished, float(result.fun)
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Public API
-    # ──────────────────────────────────────────────────────────────────────────
-
     def optimize(
         self,
         strategy: str = "best1bin",
@@ -705,39 +845,48 @@ class Optimizer:
         early_stopping_rounds: Optional[int] = None,
         improvement_tol: Optional[float] = None,
     ) -> Formulation:
-        """Run DE and return the best formulation found.
+        """Executes the global-to-local optimization pipeline to find an ideal formulation.
 
-        The ``init`` keyword from v1.2 has been removed; population
-        initialisation is now always discrete-aware.
+        This method coordinates the Differential Evolution (DE) search to minimize
+        the difference between predicted and target viscosity profiles. It handles
+        population initialization, real-time progress tracking, early stopping
+        logic, and an optional gradient-based local "polishing" step.
 
-        Parameters
-        ----------
-        strategy : str
-            DE mutation strategy.
-        mutation : (float, float)
-            Dithering bounds for the mutation constant F.
-        recombination : float
-            Crossover probability [0, 1].
-        atol : float
-            Absolute convergence tolerance.
-        workers : int
-            Parallel workers.  Use 1 when the predictor holds GPU tensors
-            (pickling may fail with >1).
-        progress_callback : callable, optional
-            Called once per generation with an OptimizationStatus object.
-        early_stopping_rounds : int, optional
-            Override the instance-level setting for this call.  Stop DE
-            after this many consecutive generations with no improvement
-            greater than improvement_tol.  0 disables early stopping.
-        improvement_tol : float, optional
-            Minimum absolute decrease in the best objective value that
-            counts as meaningful progress.  Default 1e-8.
+        The process follows three main phases:
+        1. Seeding: Generates an initial population using Latin Hypercube Sampling.
+        2. Global Search: Iterates through generations using the DE algorithm.
+           In each generation, a callback updates an internal `OptimizationProgressTracker`
+           and evaluates early stopping criteria.
+        3. Polishing: If `polish_continuous` is enabled, performs a high-precision
+           local search on the numerical parameters of the best categorical solution.
 
-        Returns
-        -------
-        Formulation
+        Args:
+            strategy: The DE differential evolution strategy to use (e.g., 'best1bin',
+                'rand1exp'). Defaults to "best1bin".
+            mutation: The mutation constant (F). A tuple (min, max) indicates
+                dithering. Defaults to (0.5, 1.0).
+            recombination: The recombination constant (CR). Range [0, 1].
+                Defaults to 0.7.
+            atol: Absolute tolerance for convergence. Defaults to 0.0.
+            workers: Number of CPU workers for parallel objective evaluation.
+                Use -1 for all available cores. Defaults to 1.
+            progress_callback: An optional function that receives an
+                `OptimizationStatus` object after every generation.
+            early_stopping_rounds: Number of generations with no improvement
+                before stopping. Overrides class default if provided.
+            improvement_tol: The minimum change required to count as an
+                improvement. Overrides class default if provided.
+
+        Returns:
+            Formulation: The optimized Formulation object containing the
+                ingredients, concentrations, and temperature that best match
+                the target profile.
+
+        Notes:
+            The early stopping logic relies on a closure-based callback that
+            communicates with the `OptimizationProgressTracker`. This allows
+            real-time monitoring of the 'stagnation' count.
         """
-        # Resolve per-call overrides vs instance defaults
         _es_rounds = (
             early_stopping_rounds
             if early_stopping_rounds is not None
@@ -785,34 +934,21 @@ class Optimizer:
             popsize=self.popsize,
             tol=self.tol,
             seed=self.seed,
-            polish=False,  # Bug #3 fix: we handle polish correctly below
+            polish=False,
             disp=False,
             workers=int(workers),
             atol=atol,
             recombination=recombination,
             mutation=mutation,
             strategy=strategy,
-            init=init_pop,  # Bug #6 fix: discrete-aware initialisation
+            init=init_pop,
             callback=_callback,
         )
 
         x_best = result.x
-
-        # Stage 2: continuous-only L-BFGS-B with categoricals frozen
         if self.polish_continuous:
             x_polished, loss_polished = self._polish_continuous(x_best)
             if loss_polished < self._objective(x_best):
                 x_best = x_polished
 
         return self._build_formulation(self._decode(x_best))
-
-    # ── Backward-compatible shim ───────────────────────────────────────────────
-
-    def _mse_loss(self, prof1: ViscosityProfile, prof2: ViscosityProfile) -> float:
-        """Legacy linear-space MSE between two ViscosityProfile objects.
-
-        Retained for external callers that depended on this method in v1.2.
-        New internal code uses _log_mse_loss exclusively.
-        """
-        v1 = np.interp(prof2.shear_rates, prof1.shear_rates, prof1.viscosities)
-        return float(np.mean((v1 - np.array(prof2.viscosities)) ** 2))

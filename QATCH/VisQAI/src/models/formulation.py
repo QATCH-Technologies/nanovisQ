@@ -20,10 +20,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-28
+    2026-03-16
 
 Version:
-    1.5
+    1.6
 """
 
 import math
@@ -34,6 +34,7 @@ import pandas as pd
 from scipy.interpolate import PchipInterpolator
 
 try:
+    TAG = "[Formulation (Headless)]"
     from src.models.ingredient import (
         Buffer,
         Excipient,
@@ -44,6 +45,7 @@ try:
         Surfactant,
     )
 except (ModuleNotFoundError, ImportError):
+    TAG = "[Formulation]"
     from QATCH.VisQAI.src.models.ingredient import (
         Buffer,
         Excipient,
@@ -53,8 +55,6 @@ except (ModuleNotFoundError, ImportError):
         Stabilizer,
         Surfactant,
     )
-
-TAG = "[Formulation]"
 
 
 class ViscosityProfile:
@@ -571,11 +571,8 @@ class Formulation:
             Dict[str, Any]: A dictionary capturing all set attributes of the formulation.
         """
         data: Dict[str, Any] = {
-            # "id": self.id,
             "name": self.name,
             "signature": self.signature,
-            # "icl": self.icl,
-            # "last_model": self.last_model,
         }
         for key, comp in self._components.items():
             if comp is not None:
@@ -613,7 +610,6 @@ class Formulation:
                     - C_Class, HCI
                     - Viscosity columns (if training=True)
         """
-        # 1. Define the Strict Column Order
         expected = [
             "ID",
             "Protein_type",
@@ -639,7 +635,6 @@ class Formulation:
             "HCI",
         ]
 
-        # --- Helper: Safe Attribute Access ---
         def safe_get(component, attr_path, default=0):
             """Safely retrieves nested attributes, returning default if any step is None."""
             if component is None or component.ingredient is None:
@@ -655,14 +650,12 @@ class Formulation:
                 return default
             return obj
 
-        # --- Helper: Get Component Data ---
         def get_comp_data(comp_name):
             comp = getattr(self, comp_name, None)
             if comp and comp.ingredient:
                 return comp, comp.ingredient
             return None, None
 
-        # Resolve Components
         prot, prot_ing = get_comp_data("protein")
         buff, buff_ing = get_comp_data("buffer")
         salt, salt_ing = get_comp_data("salt")
@@ -670,8 +663,6 @@ class Formulation:
         surf, surf_ing = get_comp_data("surfactant")
         exc, exc_ing = get_comp_data("excipient")
 
-        # 2. Build the Data Dictionary
-        # Note: We use 0.0 for concentrations of missing components
         row = {
             "ID": self.id,
             "Temperature": (
@@ -679,7 +670,7 @@ class Formulation:
                 if self.temperature is not None
                 else 25.0
             ),
-            # Protein Defaults (using safe_get to avoid NoneType errors)
+            # Protein Defaults
             "Protein_class_type": safe_get(prot, "class_type.value", 0),
             "kP": safe_get(prot, "class_type.kP", 0),
             "HCI": safe_get(prot, "class_type.hci", 0),
@@ -688,17 +679,14 @@ class Formulation:
             "PI_mean": safe_get(prot, "pI_mean", 0),
             "PI_range": safe_get(prot, "pI_range", 0),
             "Protein_conc": prot.concentration if prot else 0.0,
-            # Buffer Defaults
             "Buffer_pH": safe_get(buff, "pH", 0),
             "Buffer_conc": buff.concentration if buff else 0.0,
-            # Other Components
             "Salt_conc": salt.concentration if salt else 0.0,
             "Excipient_conc": exc.concentration if exc else 0.0,
             "Stabilizer_conc": stab.concentration if stab else 0.0,
             "Surfactant_conc": surf.concentration if surf else 0.0,
         }
 
-        # Handle Categorical Encoding (Name vs Encoded ID)
         if encoded:
             row.update(
                 {
@@ -725,8 +713,6 @@ class Formulation:
                     "Surfactant_type": surf_ing.name if surf_ing else "None",
                 }
             )
-
-        # 3. Handle Viscosity (Training Data)
         if training:
             shear_rates = [100, 1000, 10000, 100000, 15000000]
             visc_cols = [f"Viscosity_{r}" for r in shear_rates]
@@ -739,10 +725,7 @@ class Formulation:
                 for col in visc_cols:
                     row[col] = pd.NA
 
-        # 4. Create DataFrame and Enforce Order
         df = pd.DataFrame([row])
-
-        # Ensure all columns exist (fill missing with NA)
         for col in expected:
             if col not in df.columns:
                 df[col] = pd.NA

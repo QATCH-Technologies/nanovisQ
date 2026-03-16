@@ -11,6 +11,7 @@ database primary key (`id`). Subclasses include:
 - `Stabilizer`: Represents a generic stabilizer ingredient.
 - `Surfactant`: Represents a surfactant ingredient.
 - `Salt`: Represents a salt ingredient.
+- `Excipient`: Represents and excipient ingredient.
 
 Each class includes validation logic for its attributes, conversion to dictionary
 representations, and comparison methods to support sorting and equality checks.
@@ -19,10 +20,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-07-23
+    2026-03-16
 
 Version:
-    1.6
+    1.7
 """
 
 from abc import ABC

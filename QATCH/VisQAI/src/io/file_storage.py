@@ -17,10 +17,11 @@ Version:
     1.1
 """
 
-import os
 import hashlib
-import pyzipper
+import os
 from typing import Optional
+
+import pyzipper
 
 TAG = "[FileStorage]"
 
@@ -43,7 +44,13 @@ class SecureOpen:
         fh (Optional[file-like]): The file handle returned by open() or zf.open().
     """
 
-    def __init__(self, file: str, mode: str = 'r', zipname: Optional[str] = None, insecure: bool = False):
+    def __init__(
+        self,
+        file: str,
+        mode: str = "r",
+        zipname: Optional[str] = None,
+        insecure: bool = False,
+    ):
         """Initialize the SecureOpen context manager.
 
         Args:
@@ -94,8 +101,8 @@ class SecureOpen:
         zip_path = os.path.join(archive_dir, f"{zipname}.zip")
 
         # Upgrade 'w' to 'a' if archive exists to preserve existing entries
-        if 'w' in mode and os.path.isfile(zip_path):
-            zip_mode = mode.replace('w', 'a')
+        if "w" in mode and os.path.isfile(zip_path):
+            zip_mode = mode.replace("w", "a")
         else:
             zip_mode = mode
 
@@ -105,7 +112,7 @@ class SecureOpen:
             zip_mode,
             compression=pyzipper.ZIP_DEFLATED,
             allowZip64=True,
-            encryption=pyzipper.WZ_AES
+            encryption=pyzipper.WZ_AES,
         )
 
         # Check for encryption by attempting a testzip
@@ -121,11 +128,10 @@ class SecureOpen:
                 break
             except RuntimeError as e:
                 # Encrypted ZIP if "encrypted" in exception message
-                if 'encrypted' in str(e):
+                if "encrypted" in str(e):
                     print("Accessing secured records...")
                     # Derive password from the archive comment via SHA-256
-                    zf.setpassword(hashlib.sha256(
-                        zf.comment).hexdigest().encode())
+                    zf.setpassword(hashlib.sha256(zf.comment).hexdigest().encode())
                     password_protected = True
                 else:
                     print("ZIP RuntimeError: " + str(e))
@@ -143,7 +149,7 @@ class SecureOpen:
         namelist = zf.namelist()
 
         # If reading or appending, verify CRC for CSV records
-        if 'w' not in mode:
+        if "w" not in mode:
             if record in namelist:
                 if archive_file.endswith(".csv"):
                     crc_file = archive_file[:-4] + ".crc"
@@ -160,7 +166,8 @@ class SecureOpen:
                         proceed = False
                 else:
                     print(
-                        f"Record {record} has no CRC file, but it's not a CSV, so allow it to proceed...")
+                        f"Record {record} has no CRC file, but it's not a CSV, so allow it to proceed..."
+                    )
             else:
                 print(f"Record {record} not found!")
                 proceed = False
@@ -174,7 +181,8 @@ class SecureOpen:
         # Otherwise, close and raise an exception
         zf.close()
         raise Exception(
-            f"Security checks failed. Cannot open secured file {file_path}.")
+            f"Security checks failed. Cannot open secured file {file_path}."
+        )
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         """Exit the context, closing file handles and updating CRC records if needed.
@@ -196,13 +204,13 @@ class SecureOpen:
             archive_file = record
 
             # If writing/appending, update CRC for CSV records
-            if 'r' not in self.mode:
+            if "r" not in self.mode:
                 namelist = self.zf.namelist()
                 if archive_file in namelist and archive_file.endswith(".csv"):
                     crc_file = archive_file[:-4] + ".crc"
                     archive_crc = hex(self.zf.getinfo(archive_file).CRC)
                     # Write or overwrite the CRC file inside the ZIP
-                    with self.zf.open(crc_file, 'w') as crc_fh:
+                    with self.zf.open(crc_file, "w") as crc_fh:
                         crc_fh.write(archive_crc.encode())
 
             self.zf.close()
@@ -236,10 +244,10 @@ class SecureOpen:
 
         with pyzipper.AESZipFile(
             zip_path,
-            'r',
+            "r",
             compression=pyzipper.ZIP_DEFLATED,
             allowZip64=True,
-            encryption=pyzipper.WZ_AES
+            encryption=pyzipper.WZ_AES,
         ) as zf:
             namelist = zf.namelist()
         return record in namelist
@@ -270,15 +278,14 @@ class SecureOpen:
 
         zip_file_path = os.path.join(archive_dir, f"{zip_name}.zip")
         if not os.path.isfile(zip_file_path):
-            raise FileNotFoundError(
-                f"The zip file {zip_file_path} does not exist.")
+            raise FileNotFoundError(f"The zip file {zip_file_path} does not exist.")
 
         with pyzipper.AESZipFile(
             zip_file_path,
-            'r',
+            "r",
             compression=pyzipper.ZIP_DEFLATED,
             allowZip64=True,
-            encryption=pyzipper.WZ_AES
+            encryption=pyzipper.WZ_AES,
         ) as zf:
             namelist = zf.namelist()
 

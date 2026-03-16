@@ -15,22 +15,22 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-10-21
+    2026-03-16
 
 Version:
-    1.7
+    1.8
 """
 
 import json
 import os
 import random
-import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
 
 try:
+    TAG = "[Database (HEADLESS)]"
     from src.models.formulation import Component, Formulation, ViscosityProfile
     from src.models.ingredient import (
         Buffer,
@@ -45,10 +45,23 @@ try:
 
     class Log:
         @staticmethod
-        def e(msg):
-            print(msg)
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
 
 except (ModuleNotFoundError, ImportError):
+    TAG = "[Database]"
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.models.formulation import (
         Component,
@@ -127,7 +140,7 @@ class Database:
             if parse_file_key and not self.encryption_key:
                 self.set_encryption_key(self.metadata.get("app_key", None))
             if not self.encryption_key:
-                Log.e("Encryption key missing for encrypted database")
+                Log.e(TAG, "Encryption key missing for encrypted database")
             self.conn = self._open_cdb(str(self.db_path), self.encryption_key)
         else:
             self.conn = sqlite3.connect(str(self.db_path))
@@ -638,9 +651,29 @@ class Database:
     def update_formulation_metadata(
         self, f_id: int, icl: bool = None, last_model: str = None
     ) -> bool:
-        """
-        Updates lightweight metadata (ICL flag, Last Model) without deleting/re-inserting the record.
-        This preserves the ID and component links.
+        """Updates lightweight metadata for a formulation without affecting components.
+
+        This method performs an in-place update of the 'icl' flag and the
+        'last_model' identifier. Unlike a full record replacement, this approach
+        preserves the primary key (ID) and any existing foreign key links to
+        formulation components. The update is conditional; only non-None
+        arguments will trigger a database change.
+
+        Args:
+            f_id: The unique primary key ID of the formulation to update.
+            icl: An optional boolean flag indicating In-Concentration Loading status.
+                Converted to 1 (True) or 0 (False) for SQL storage.
+            last_model: An optional string identifier for the last predictive
+                model run against this formulation.
+
+        Returns:
+            bool: True if at least one row was successfully modified and committed;
+                False if the ID was not found or an error occurred.
+
+        Side Effects:
+            - Calls `_commit()` if changes were made.
+            - Triggers `backup()` if `self.use_encryption` is True to ensure
+              the encrypted disk state is synchronized.
         """
         try:
             c = self.conn.cursor()
@@ -664,7 +697,7 @@ class Database:
                 return True
             return False
         except Exception as e:
-            print(f"Error updating metadata: {e}")
+            Log.e(TAG, f"Error updating metadata: {e}")
             return False
 
     def get_formulation_by_signature(self, signature: str) -> Optional[Formulation]:
@@ -677,12 +710,10 @@ class Database:
             Optional[Formulation]: The matching Formulation object, or None if not found.
         """
         c = self.conn.cursor()
-        # Find the ID associated with this signature
         c.execute("SELECT id FROM formulation WHERE signature = ?", (signature,))
         row = c.fetchone()
 
         if row:
-            # Reuse the existing get_formulation method to handle component reconstruction
             return self.get_formulation(row[0])
         return None
 
@@ -800,9 +831,9 @@ class Database:
                 str_metadata = self._caesar_cipher(enc_metadata, shift_by)
                 self.metadata = json.loads(str_metadata)
         except FileNotFoundError:
-            print("Database file does not exist. Creating empty metadata.")
-        except Exception as e:
-            print("No readable metadata found in database file.")
+            Log.e(TAG, "Database file does not exist. Creating empty metadata.")
+        except Exception:
+            Log.e(TAG, "No readable metadata found in database file.")
 
     def _shuffle_text(self, text: str, seed: Union[int, None] = None) -> str:
         """Shuffles the characters of a given `text` string in a pseudo-random order.
@@ -824,10 +855,24 @@ class Database:
         return "".join(original)
 
     def _commit(self) -> None:
-        """Commit and immediately persist to disk if using encryption."""
+        """Commits the current transaction and synchronizes the disk state.
+
+        This method performs a standard SQL commit on the active connection. If
+        encryption is enabled, it goes a step further by performing an immediate
+        persistence operation to the filesystem. To maintain data integrity during
+        the encrypted write, it safely rotates the file handle—closing the current
+        read handle, executing the save, and re-establishing the read handle.
+
+        Side Effects:
+            - Finalizes the current SQL transaction via `self.conn.commit()`.
+            - If `self.use_encryption` is True:
+                - Closes and re-opens `self.file_handle`.
+                - Overwrites the file at `self.db_path` via `_save_cdb`.
+                - Resets `self.init_changes` to match the connection's
+                  total change count to prevent redundant backups.
+        """
         self.conn.commit()
         if self.use_encryption:
-            # Close and reopen file_handle around the write
             if self.file_handle is not None:
                 self.file_handle.close()
             self._save_cdb(str(self.db_path), self.encryption_key)
@@ -959,16 +1004,13 @@ class Database:
         """
         if self.file_handle is not None:
             self.file_handle.close()
-        # Only operate on an open database; nothing to do if already closed.
         if self.is_open:
-            # If there are changes or the file does not exist, save or commit
             if self.conn.total_changes > self.init_changes or not os.path.isfile(
                 self.db_path
             ):
                 if self.use_encryption:
                     self._save_cdb(self.db_path, self.encryption_key)
                 else:
-                    # No additional action needed; changes have been committed inline.
                     pass
             self.conn.close()
             self.is_open = False
@@ -1050,13 +1092,11 @@ class Database:
                 return True
 
             if temp_path is not None:
-                # Remove specific temp file
                 if temp_path.exists():
                     temp_path.unlink()
                 if temp_path in self._temp_db_paths:
                     self._temp_db_paths.remove(temp_path)
             else:
-                # Otherwise, remove all temp files created by this instance
                 for path in self._temp_db_paths[:]:
                     try:
                         if path.exists():
@@ -1083,23 +1123,38 @@ class Database:
             self.cleanup_temp_decrypt()
 
     def backup(self) -> None:
-        """Writes database from memory to disk
+        """Persists the in-memory database state to the physical disk.
 
-        Critically, however, `backup()` keeps the `conn` open, unlike `close()`.
+        This method synchronizes the current connection state with the filesystem.
+        Unlike the `close()` method, `backup()` ensures the database connection
+        remains active and open for subsequent operations. It evaluates whether
+        changes have occurred since the last initialization or if the database
+        file is missing before triggering a save.
+
+        The method automatically handles two storage modes:
+            1. Encrypted: Saves the state using a custom CDB implementation
+               with the provided encryption key.
+            2. Standard: Performs a standard SQL commit to the disk.
+
+        Side Effects:
+            - Closes and re-opens `self.file_handle` to ensure the disk state
+              is current.
+            - Updates `self.init_changes` to the current total change count
+              upon a successful save.
+
+        Notes:
+            This is particularly useful for long-running processes where
+            periodic data safety is required without interrupting the
+            active session.
         """
-        # Close file handle to allow file write
         if self.file_handle is not None:
             self.file_handle.close()
-        # If there are changes or the file does not exist, save or commit
         if self.conn.total_changes > self.init_changes or not os.path.isfile(
             self.db_path
         ):
             if self.use_encryption:
                 self._save_cdb(self.db_path, self.encryption_key)
             else:
-                # Just to be thorough, commit any changes to disk
                 self._commit()
-            # Update changes counter, only write DB in future if there are additional changes
             self.init_changes = self.conn.total_changes
-        # Re-open file handle to indicate DB is still open
         self.file_handle = open(self.db_path, "rb")

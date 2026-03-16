@@ -1,62 +1,71 @@
 """
 hypothesis_testing.py
 
+Hypothesis Testing Module for Formulation Viscosity Profiles.
+
+This module provides a geometric approach to hypothesis testing for formulation
+viscosity predictions. Instead of traditional point-estimate tests, it treats
+the prediction's confidence interval (CI) as a 2D polygon in log-linear space
+(log10 shear rate vs. viscosity).
+
+The core metric is 'Percentage Contained'—the ratio of the CI polygon's area
+that falls within user-defined bounds to its total area. This provides a
+probabilistic measure of confidence that a formulation meets specific
+rheological requirements across a range of shear rates.
+
+Key Features:
+    - Geometric Area Analysis: Uses `shapely` to calculate intersections between
+      prediction uncertainty polygons and hypothesis bounding boxes.
+    - Support for Multiple Test Types:
+        - 'upper': Verifies if a profile stays below a maximum threshold.
+        - 'lower': Verifies if a profile stays above a minimum threshold.
+        - 'between': Verifies if a profile stays within a specific range.
+    - Adaptive Logging: Automatically switches between a headless/standalone
+      logger and the full QATCH logging system based on the environment.
+    - Log-Scale Normalization: Shear rates are processed on a log10 scale to
+      prevent high-shear data from skewing geometric area calculations.
+
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
-
 Date:
-    2025-10-28
-
+    2026-03-16
 Version:
-   2.0 - Refactored to use area-based CI polygon containment
+    2.1
 """
 
-from typing import Dict, Union
+from typing import Dict
 
 import numpy as np
 from shapely.geometry import Polygon, box
 
 try:
-    import logging
-
+    TAG = "[HypothesisTesting (Headless)]"
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
 
-    logging.basicConfig(
-        level=logging.INFO, format="[%(asctime)s] %(levelname)s: %(message)s"
-    )
-
     class Log:
-        """Logging utility for standardized log messages."""
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
 
-        _logger = logging.getLogger("HypothesisTesting")
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
 
-        @classmethod
-        def i(cls, msg: str) -> None:
-            """Log an informational message."""
-            cls._logger.info(msg)
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
 
-        @classmethod
-        def w(cls, msg: str) -> None:
-            """Log a warning message."""
-            cls._logger.warning(msg)
-
-        @classmethod
-        def e(cls, msg: str) -> None:
-            """Log an error message."""
-            cls._logger.error(msg)
-
-        @classmethod
-        def d(cls, msg: str) -> None:
-            """Log a debug message."""
-            cls._logger.debug(msg)
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
 
 except (ImportError, ModuleNotFoundError):
+    TAG = "[HypothesisTesting]"
+
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.models.predictor import Predictor
-
-TAG = "[HypothesisTesting]"
 
 
 class HypothesisTesting:
