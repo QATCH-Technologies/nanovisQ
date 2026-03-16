@@ -6,27 +6,6 @@ problems in biopharmaceutical development. Specifically, it uses Differential
 Evolution (DE) to identify ingredient combinations and concentrations that
 yield a target rheological profile.
 
-The module is organized into three primary components:
-
-- Telemetry & Progress (OptimizationStatus & OptimizationProgressTracker):
-    Captures and accumulates per-generation metrics including best fitness,
-    stagnation counts, and improvement rates. This allows for real-time
-    monitoring of convergence and supports early-stopping hooks for
-    high-throughput optimization tasks.
-
-- State Mapping (Encoding & Decoding):
-    Handles the transformation between the optimizer's continuous search
-    vectors and the discrete, structured domain of 'Formulation' objects.
-    It manages categorical ingredient alignment with backend databases and
-    enforces physical concentration constraints.
-
-- The Optimization Engine (Optimizer):
-    A hybrid global-to-local search engine. It uses Scrambled Latin Hypercube
-    Sampling (LHS) for initial population seeding, Differential Evolution for
-    global exploration of categorical and numerical spaces, and L-BFGS-B
-    polishing for high-precision refinement of continuous concentration values.
-
-
 Example:
     >>> optimizer = Optimizer(constraints, predictor, target_profile)
     >>> tracker = OptimizationProgressTracker()
@@ -77,6 +56,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Optimizer]"
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
@@ -204,7 +184,7 @@ class OptimizationProgressTracker:
         improvement = (
             (self.start_value - status.best_value) if self.start_value else 0.0
         )
-        Log.i(
+        Log.d(
             TAG,
             f"[{status.iteration:3d}/{status.num_iterations}] "
             f"Best: {status.best_value:10.6f} | "

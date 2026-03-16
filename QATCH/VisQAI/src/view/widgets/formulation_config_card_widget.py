@@ -1767,11 +1767,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
         the persisted name, signature, and ingredient data with whatever
         happens to be in the in-memory Formulation object at call time.
         """
-        # Suppress saves while load_data is still populating the card
         if self._loading:
             return
-
-        # Only save if we have a valid DB ID (i.e., it's an imported/measured record)
         if not self.formulation or not self.formulation.id:
             return
 

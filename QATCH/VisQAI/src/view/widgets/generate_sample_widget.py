@@ -1,8 +1,29 @@
+"""
+generate_sample_widget.py
+
+Provides a user interface for defining formulation constraints and generating samples.
+
+This module contains the GenerateSampleWidget, which allows users to set up
+design-of-experiment (DoE) parameters. It features a dynamic constraint builder
+where users can mix categorical and numeric filters to guide the sample
+generation engine.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
+"""
+
 import glob
 import os
 import shutil
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtCore import Qt
 
 try:
     from src.view.architecture import Architecture
@@ -15,9 +36,18 @@ except (ImportError, ModuleNotFoundError):
 
 
 class CompactCheckableComboBox(CheckableComboBox):
-    """A wrapper for CheckableComboBox that prevents text crowding by displaying a summary."""
+    """A CheckableComboBox subclass that summarizes selections to prevent crowding.
+
+    Overrides the paint event to display "Select...", the single item name,
+    or "X selected" based on the number of checked items in the dropdown.
+    """
 
     def paintEvent(self, event):
+        """Custom paint event to render summary text instead of a long comma-separated list.
+
+        Args:
+            event (QPaintEvent): The paint event triggered by Qt.
+        """
         painter = QtGui.QPainter(self)
         opt = QtWidgets.QStyleOptionComboBox()
         self.initStyleOption(opt)
@@ -47,14 +77,36 @@ class CompactCheckableComboBox(CheckableComboBox):
 
 
 class GenerateSampleWidget(QtWidgets.QFrame):
-    """Overlay widget for defining constraints and generating new samples."""
+    """An overlay panel for configuring and initiating sample generation.
 
-    # Emits (num_samples: int, model_file: str, constraints: list)
+    This widget manages a list of dynamic constraint rows. Each row allows
+    the user to filter by ingredient type, specific attributes, and conditions.
+    The UI automatically toggles between a multi-select dropdown and a
+    numeric spinbox based on the chosen attribute.
+
+    Attributes:
+        generate_requested (QtCore.pyqtSignal): Emits (int, str, list) containing
+            the sample count, model filename, and a list of constraint dicts.
+        closed (QtCore.pyqtSignal): Emitted when the widget is hidden.
+        resized (QtCore.pyqtSignal): Emitted when the internal layout size changes.
+        ingredients_by_type (dict): A mapping of ingredient categories to
+            their corresponding model objects.
+        constraint_rows (list[dict]): Internal storage for the widgets and
+            logic maps associated with each added constraint row.
+    """
+
     generate_requested = QtCore.pyqtSignal(int, str, list)
     closed = QtCore.pyqtSignal()
     resized = QtCore.pyqtSignal()
 
     def __init__(self, ingredients_by_type, parent=None):
+        """Initializes the generation widget with styling and ingredient data.
+
+        Args:
+            ingredients_by_type (dict): Data source for populating ingredient
+                and class filters.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+        """
         super().__init__(parent)
         self.ingredients_by_type = ingredients_by_type
 
@@ -80,11 +132,12 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._init_ui()
 
     def _init_ui(self):
+        """Builds the primary UI structure, including the header and scroll area."""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 20)
         layout.setSpacing(15)
 
-        # --- Header ---
+        # Header
         header = QtWidgets.QHBoxLayout()
         lbl_title = QtWidgets.QLabel("Generate Samples")
         lbl_title.setObjectName("evalTitle")
@@ -114,12 +167,12 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         header.addWidget(btn_close)
         layout.addLayout(header)
 
-        # --- Configuration Group ---
+        # Configuration Group
         grp_settings = QtWidgets.QGroupBox("Configuration")
         settings_layout = QtWidgets.QFormLayout(grp_settings)
         settings_layout.setSpacing(12)
 
-        # 1. Model Selector
+        # Model Selector
         model_layout = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
         self.model_combo.setStyleSheet("background-color: #ffffff; height: 26px;")
@@ -151,7 +204,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         settings_layout.addRow("Model:", model_layout)
 
-        # 2. Number of Samples
+        # Number of Samples
         self.spin_samples = QtWidgets.QSpinBox()
         self.spin_samples.setRange(1, 100)
         self.spin_samples.setValue(5)
@@ -161,7 +214,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         settings_layout.addRow("Number of Samples:", self.spin_samples)
         layout.addWidget(grp_settings)
 
-        # --- Constraints Group with Scroll Area ---
+        #  Group with Scroll Area
         self.grp_constraints = QtWidgets.QGroupBox("Constraints")
         grp_constraints_layout = QtWidgets.QVBoxLayout(self.grp_constraints)
         grp_constraints_layout.setContentsMargins(15, 15, 15, 15)
@@ -188,7 +241,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         layout.addWidget(self.grp_constraints)
 
-        # --- Footer Actions ---
+        # Footer Actions
         layout.addSpacing(5)
         btn_layout = QtWidgets.QHBoxLayout()
 
@@ -213,6 +266,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._validate_rows()
 
     def _populate_model_list(self):
+        """Scans the assets directory for .visq files and populates the model selector."""
         self.model_combo.clear()
         pattern = os.path.join(self.assets_path, "*.visq")
         files = glob.glob(pattern)
@@ -231,27 +285,25 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 self.model_combo.setCurrentIndex(index)
 
     def browse_model_file(self):
+        """Opens a file dialog to import a .visq model into the local assets folder."""
         fname = None
         try:
-            """Initialize file dialog for model selection."""
             model_dialog = ModelSelectionDialog()
             model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
             model_dialog.setNameFilter("VisQAI Models (*.visq)")
             model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
 
-            # Set default directory
-            model_path = os.path.join(Architecture.get_path(), "QATCH/VisQAI/assets")
+            model_path = os.path.join(
+                Architecture.get_path(), "QATCH", "VisQAI", "assets"
+            )
             if os.path.exists(model_path):
                 model_dialog.setDirectory(model_path)
-            # else:
-            #     model_dialog.setDirectory(Constants.log_prefer_path)
 
-            """Open a file dialog to select a VisQAI model."""
             if model_dialog.exec_():
                 selected_files = model_dialog.selectedFiles()
                 if selected_files:
                     fname = selected_files[0]
-        except:
+        except Exception:
             fname, _ = QtWidgets.QFileDialog.getOpenFileName(
                 self, "Import Model File", "", "VisQAI Models (*.visq)"
             )
@@ -273,6 +325,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 )
 
     def _update_scroll_height(self):
+        """Dynamically resizes the scroll area based on the number of constraint rows."""
         row_height = 36
         num_rows = len(self.constraint_rows)
 
@@ -288,13 +341,14 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
     @staticmethod
     def _checked_items(combo_box) -> list:
-        """Return the text of every item whose check state is Qt.Checked.
+        """Retrieves a list of checked item texts from a CheckableComboBox.
 
-        CheckableComboBox.getItems() returns ALL items regardless of check
-        state.  Inspecting the model directly is the only reliable way to
-        find which items the user ticked.
+        Args:
+            combo_box (CheckableComboBox): The widget to inspect.
+
+        Returns:
+            list[str]: The texts of all items currently checked.
         """
-        from PyQt5.QtCore import Qt
 
         checked = []
         model = combo_box.model()
@@ -305,6 +359,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         return checked
 
     def _validate_rows(self):
+        """Checks if all constraint rows are complete to enable the Generate button."""
         if not self.constraint_rows:
             self.btn_add_constraint.setEnabled(True)
             self.btn_generate.setEnabled(self.model_combo.isEnabled())
@@ -319,11 +374,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
             val_stack = row["value_stack"]
 
-            if val_stack.currentIndex() == 0:  # Dropdown view
+            if val_stack.currentIndex() == 0:
                 val_box = row["value_cb"]
                 val_valid = len(self._checked_items(val_box)) > 0
-            else:  # Numeric SpinBox View
-                val_valid = True  # A DoubleSpinBox always has a valid float value
+            else:
+                val_valid = True
 
             if not (ing_valid and attr_valid and cond_valid and val_valid):
                 all_complete = False
@@ -333,6 +388,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.btn_generate.setEnabled(all_complete and self.model_combo.isEnabled())
 
     def add_constraint_row(self):
+        """Adds a new row of configuration widgets to the constraint layout."""
         self.lbl_none.hide()
 
         row_widget = QtWidgets.QWidget()
@@ -341,7 +397,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         combo_style = "background-color: #ffffff; height: 26px; border: 1px solid #d1d5db; border-radius: 4px;"
 
-        # 1. Ingredient
+        # Ingredient
         cb_ingredient = QtWidgets.QComboBox()
         cb_ingredient.addItem("Ingredient...")
         cb_ingredient.model().item(0).setEnabled(False)
@@ -350,19 +406,19 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         )
         cb_ingredient.setStyleSheet(combo_style)
 
-        # 2. Attribute (Type, Concentration, [Class])
+        # Attribute (Type, Concentration, [Class])
         cb_attribute = QtWidgets.QComboBox()
         cb_attribute.addItem("Attribute...")
         cb_attribute.model().item(0).setEnabled(False)
         cb_attribute.setStyleSheet(combo_style)
 
-        # 3. Condition (is, is not, >, >=, =, <=, <, !=)
+        # Condition (is, is not, >, >=, =, <=, <, !=)
         cb_condition = QtWidgets.QComboBox()
         cb_condition.addItem("Condition...")
         cb_condition.model().item(0).setEnabled(False)
         cb_condition.setStyleSheet(combo_style)
 
-        # 4. Value Stack (Dropdown vs Numeric Spinner)
+        # Value Stack
         val_stack = QtWidgets.QStackedWidget()
 
         cb_value = CompactCheckableComboBox()
@@ -370,13 +426,12 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         spin_value = QtWidgets.QDoubleSpinBox()
         spin_value.setStyleSheet(combo_style)
-        # Generous upper bound for concentrations
         spin_value.setRange(0.0, 10000.0)
         spin_value.setDecimals(3)
         spin_value.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
 
-        val_stack.addWidget(cb_value)  # Index 0
-        val_stack.addWidget(spin_value)  # Index 1
+        val_stack.addWidget(cb_value)
+        val_stack.addWidget(spin_value)
 
         btn_delete = QtWidgets.QToolButton()
         btn_delete.setIcon(
@@ -452,6 +507,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._on_attribute_changed(row_data)
 
     def _on_attribute_changed(self, row_data):
+        """Toggles the condition and value widgets based on numeric vs categorical choice.
+
+        Args:
+            row_data (dict): The dictionary of widgets for the specific row.
+        """
         attr_type = row_data["attribute"].currentText()
         cb_condition = row_data["condition"]
         val_stack = row_data["value_stack"]
@@ -463,13 +523,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         if row_data["attribute"].currentIndex() > 0:
             if attr_type == "Concentration":
-                # Included the requested "!=" operator
                 cb_condition.addItems([">", ">=", "=", "!=", "<=", "<"])
-                # Switch to numeric QDoubleSpinBox
                 val_stack.setCurrentIndex(1)
             elif attr_type in ["Type", "Class"]:
                 cb_condition.addItems(["is", "is not"])
-                val_stack.setCurrentIndex(0)  # Switch to dropdown
+                val_stack.setCurrentIndex(0)
 
         cb_condition.setCurrentIndex(0)
         cb_condition.blockSignals(False)
@@ -477,6 +535,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._populate_values(row_data)
 
     def _populate_values(self, row_data):
+        """Populates the multi-select dropdown with specific item names or classes.
+
+        Args:
+            row_data (dict): The dictionary of widgets for the specific row.
+        """
         ing_idx = row_data["ingredient"].currentIndex()
         attr_idx = row_data["attribute"].currentIndex()
         val_stack = row_data["value_stack"]
@@ -490,8 +553,6 @@ class GenerateSampleWidget(QtWidgets.QFrame):
 
         ing_type = row_data["ingredient"].currentText()
         attr_type = row_data["attribute"].currentText()
-
-        # We only need to dynamically populate the CheckableComboBox
         if attr_type in ["Type", "Class"]:
             val_cb.clear()
 
@@ -521,6 +582,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._validate_rows()
 
     def remove_constraint_row(self, row_data):
+        """Removes a constraint row from the layout and storage.
+
+        Args:
+            row_data (dict): The dictionary of widgets for the specific row.
+        """
         row_data["widget"].deleteLater()
         self.constraint_rows.remove(row_data)
         if not self.constraint_rows:
@@ -529,11 +595,10 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._validate_rows()
 
     def emit_generate(self):
+        """Aggregates all row data into a list of dicts and emits the generate signal."""
         constraints_data = []
         for row in self.constraint_rows:
             val_stack = row["value_stack"]
-
-            # Extract values based on which widget is currently active
             if val_stack.currentIndex() == 0:
                 val = self._checked_items(row["value_cb"])
             else:
@@ -554,5 +619,6 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         )
 
     def close_widget(self):
+        """Hides the panel and emits the closed signal."""
         self.hide()
         self.closed.emit()

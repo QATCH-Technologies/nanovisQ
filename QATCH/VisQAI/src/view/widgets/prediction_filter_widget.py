@@ -1,8 +1,21 @@
 """
-PredictionFilterWidget - Advanced filtering panel for predictions
+prediction_filter_widget.py
 
-Provides comprehensive filtering options including state, model, temperature,
-and ingredient composition. Styling handled by theme.qss.
+Filtering panel for refining prediction card visibility in the
+VisQAI prediction UI.
+
+Provides a collapsible dropdown panel (``PredictionFilterWidget``) with four
+filter dimensions: prediction state (measured vs. predicted), model name
+substring, temperature range, and per-ingredient-type multi-selection.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
 """
 
 from PyQt5 import QtCore, QtGui, QtWidgets
@@ -16,43 +29,89 @@ except (ImportError, ModuleNotFoundError):
 
 
 class PredictionFilterWidget(QtWidgets.QWidget):
-    """
-    A dropdown filter panel for refining prediction card visibility.
+    """A dropdown filter panel for refining prediction card visibility.
 
-    Emits:
-        filter_changed: Signal with dict containing all filter criteria
+    Renders as a floating ``QWidget`` with a drop-shadow effect.  The panel
+    starts hidden; callers toggle it with ``setVisible``.  All styling is
+    handled by ``theme.qss`` via the ``PredictionFilterWidget`` type selector
+    and the object-name selectors ``#filterModelInput``, ``#btnResetFilters``,
+    and ``#btnApplyFilters``.
 
-    Styling is handled by theme.qss via PredictionFilterWidget and
-    specific element selectors.
+    A footer row provides "Reset Filters" (left) and "Apply Filters" (right)
+    buttons.
+
+    Attributes:
+        ingredients_data (dict[str, list]): Mapping of ingredient category name
+            to a list of ingredient items forwarded to each ``FilterMenuButton``.
+        ing_buttons (dict[str, FilterMenuButton]): Mapping of ingredient
+            category name to its corresponding multi-select button, used by
+            ``emit_filter``, ``reset_filters``, ``get_filter_state``, and
+            ``is_default_state``.
+        chk_measured (QtWidgets.QCheckBox): Toggles inclusion of measured
+            data points.
+        chk_predicted (QtWidgets.QCheckBox): Toggles inclusion of predicted
+            data points.
+        txt_model (QtWidgets.QLineEdit): Free-text input for model name
+            filtering.
+        spin_temp_min (QtWidgets.QDoubleSpinBox): Lower bound of the
+            temperature range (°C), synchronised with ``range_slider``.
+        spin_temp_max (QtWidgets.QDoubleSpinBox): Upper bound of the
+            temperature range (°C), synchronised with ``range_slider``.
+        range_slider (RangeSlider): Dual-handle slider kept in sync with
+            ``spin_temp_min`` and ``spin_temp_max``.
     """
 
     filter_changed = QtCore.pyqtSignal(dict)
 
     def __init__(self, ingredients_data, parent=None):
+        """Initialise the filter panel, apply shadow styling, and build the UI.
+
+        Attaches a ``QGraphicsDropShadowEffect`` for visual depth, sets the
+        widget hidden by default, and delegates full UI construction to
+        ``_init_ui``.
+
+        Args:
+            ingredients_data (dict[str, list]): Mapping of ingredient category
+                name (e.g. ``"Protein"``, ``"Buffer"``) to a list of ingredient
+                items.  Passed directly to each ``FilterMenuButton`` so users
+                can multi-select specific ingredients per category.
+            parent (QtWidgets.QWidget | None): Optional Qt parent widget.
+                Defaults to ``None``.
+        """
         super().__init__(parent)
         self.ingredients_data = ingredients_data
-
-        # Enable styling via QSS
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
-        # ✨ No inline stylesheet - handled by theme.qss
-
-        # Add shadow effect for depth
         shadow = QtWidgets.QGraphicsDropShadowEffect(self)
         shadow.setBlurRadius(20)
         shadow.setYOffset(10)
         shadow.setColor(QtGui.QColor(0, 0, 0, 60))
         self.setGraphicsEffect(shadow)
-
         self.setVisible(False)
         self._init_ui()
 
     def _init_ui(self):
-        """Initialize the UI components"""
+        """Build and wire all child widgets in a top-to-bottom ``QVBoxLayout``.
+
+        Constructs four filter groups and a footer in order:
+
+        1. "State" group box containing
+           ``chk_measured`` and ``chk_predicted``; "Model" group box containing
+           ``txt_model``.
+        2. "Temperature Range (°C)" group box containing
+           ``spin_temp_min``, ``range_slider``, and ``spin_temp_max``.
+           ``range_slider.rangeChanged`` is wired to ``_on_slider_changed``;
+           both spin boxes' ``valueChanged`` are wired to ``_on_spin_changed``
+           to maintain bidirectional synchronisation.
+        3. "Composition Ingredients" group box containing a
+           three-column ``QGridLayout`` of ``FilterMenuButton`` widgets, one
+           per entry in ``ingredients_data``.
+        4. ``btn_reset`` ("Reset Filters") on the left and
+           ``btn_apply`` ("Apply Filters") on the right, connected to
+           ``reset_filters`` and ``emit_filter`` respectively.
+        """
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
         layout.setSpacing(15)
-
-        # --- Row 1: State & Model ---
         row1_layout = QtWidgets.QHBoxLayout()
         row1_layout.setSpacing(15)
 
@@ -71,15 +130,14 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         grp_model = QtWidgets.QGroupBox("Model")
         model_layout = QtWidgets.QVBoxLayout(grp_model)
         self.txt_model = QtWidgets.QLineEdit()
-        self.txt_model.setObjectName("filterModelInput")  # ✨ For QSS styling
+        self.txt_model.setObjectName("filterModelInput")
         self.txt_model.setPlaceholderText("Name contains...")
-        # ✨ No inline stylesheet - handled by theme.qss
         model_layout.addWidget(self.txt_model)
         row1_layout.addWidget(grp_model)
 
         layout.addLayout(row1_layout)
 
-        # --- Row 2: Temperature Range ---
+        # Temperature Range
         grp_temp = QtWidgets.QGroupBox("Temperature Range (°C)")
         temp_layout = QtWidgets.QHBoxLayout(grp_temp)
         temp_layout.setSpacing(10)
@@ -96,7 +154,6 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         self.spin_temp_max.setValue(100)
         self.spin_temp_max.setFixedWidth(60)
 
-        # Connect Sliders <-> Spins
         self.range_slider.rangeChanged.connect(self._on_slider_changed)
         self.spin_temp_min.valueChanged.connect(self._on_spin_changed)
         self.spin_temp_max.valueChanged.connect(self._on_spin_changed)
@@ -107,7 +164,7 @@ class PredictionFilterWidget(QtWidgets.QWidget):
 
         layout.addWidget(grp_temp)
 
-        # --- Row 3: Ingredients (Multi-Select) ---
+        # Ingredients
         grp_comp = QtWidgets.QGroupBox("Composition Ingredients")
         self.comp_layout = QtWidgets.QGridLayout(grp_comp)
         self.comp_layout.setVerticalSpacing(10)
@@ -124,8 +181,6 @@ class PredictionFilterWidget(QtWidgets.QWidget):
             c_layout.setSpacing(4)
 
             lbl = QtWidgets.QLabel(f"{ing_type}")
-
-            # Custom Multi-Select Button
             btn = FilterMenuButton("All selected", items)
             self.ing_buttons[ing_type] = btn
 
@@ -141,19 +196,17 @@ class PredictionFilterWidget(QtWidgets.QWidget):
 
         layout.addWidget(grp_comp)
 
-        # --- Footer ---
+        # Footer
         footer_layout = QtWidgets.QHBoxLayout()
 
         self.btn_reset = QtWidgets.QPushButton("Reset Filters")
-        self.btn_reset.setObjectName("btnResetFilters")  # ✨ For QSS styling
+        self.btn_reset.setObjectName("btnResetFilters")
         self.btn_reset.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        # ✨ No inline stylesheet - handled by theme.qss
         self.btn_reset.clicked.connect(self.reset_filters)
 
         self.btn_apply = QtWidgets.QPushButton("Apply Filters")
-        self.btn_apply.setObjectName("btnApplyFilters")  # ✨ For QSS styling
+        self.btn_apply.setObjectName("btnApplyFilters")
         self.btn_apply.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        # ✨ No inline stylesheet - handled by theme.qss
         self.btn_apply.clicked.connect(self.emit_filter)
 
         footer_layout.addWidget(self.btn_reset)
@@ -163,9 +216,19 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         layout.addLayout(footer_layout)
 
     def emit_filter(self):
+        """Collect all current filter values and emit ``filter_changed``.
+
+        Builds the filter dict by reading every control's current state.
+        Ingredient entries are only included in the ``"ingredients"`` sub-dict
+        when the user has deselected at least one item (i.e. the selection is
+        not "all selected"), which simplifies the ``is_default`` check in
+        consuming code.
+
+        Emits:
+            filter_changed (dict): A snapshot of all filter criteria with the
+                schema described in the module docstring.
         """
-        Gather all filter values and emit them to parent.
-        """
+
         filters = {
             "show_measured": self.chk_measured.isChecked(),
             "show_predicted": self.chk_predicted.isChecked(),
@@ -178,16 +241,22 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         for ing_type, btn in self.ing_buttons.items():
             selected_items = btn.get_selected_items()
             total_items = len(btn.items_map)
-
-            # Optimization: Only add to filters if NOT "All Selected"
-            # This makes the "is_default" check in the main UI easier
             if len(selected_items) < total_items:
                 filters["ingredients"][ing_type] = selected_items
 
         self.filter_changed.emit(filters)
 
     def _on_slider_changed(self, low, high):
-        """Update spinboxes when slider changes"""
+        """Synchronise the temperature spin boxes when the range slider moves.
+
+        Blocks both spin boxes' signals during the update to prevent the
+        reciprocal ``_on_spin_changed`` slot from firing and causing a
+        feedback loop.
+
+        Args:
+            low (float): New lower handle value emitted by ``RangeSlider``.
+            high (float): New upper handle value emitted by ``RangeSlider``.
+        """
         self.spin_temp_min.blockSignals(True)
         self.spin_temp_max.blockSignals(True)
         self.spin_temp_min.setValue(low)
@@ -196,11 +265,16 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         self.spin_temp_max.blockSignals(False)
 
     def _on_spin_changed(self):
-        """Update slider when spinboxes change"""
+        """Synchronise the range slider when either temperature spin box changes.
+
+        Reads the current values of ``spin_temp_min`` and ``spin_temp_max``,
+        clamps ``low`` to not exceed ``high`` (correcting ``spin_temp_min`` in
+        place if needed), then pushes both values to ``range_slider`` via
+        ``setValues``.
+        """
         low = self.spin_temp_min.value()
         high = self.spin_temp_max.value()
 
-        # Clamp low to not exceed high
         if low > high:
             low = high
             self.spin_temp_min.setValue(low)
@@ -208,10 +282,16 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         self.range_slider.setValues(low, high)
 
     def reset_filters(self):
+        """Reset every filter control to its default state and emit the update.
+
+        Blocks the widget's own signals during the reset so that intermediate
+        control changes do not trigger partial ``filter_changed`` emissions.
+        After all controls are restored to their defaults
+        (both state checks checked, model text cleared, temperature range
+        0 - 100 °C, all ingredient buttons fully selected), signals are
+        unblocked and ``emit_filter`` is called once to notify the parent of
+        the clean state.
         """
-        Reset all UI elements to default and emit the update.
-        """
-        # Block signals to prevent intermediate updates
         self.blockSignals(True)
 
         # Reset UI Components
@@ -232,12 +312,20 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         self.emit_filter()
 
     def get_filter_state(self):
-        """
-        Get the current filter state.
+        """Return a complete snapshot of the current filter control values.
+
+        Unlike ``emit_filter``, this method does *not* apply the "omit if all
+        selected" optimisation for ingredients — every ingredient type is
+        always present in the returned dict, making it suitable for
+        persistence or comparison use cases.
 
         Returns:
-            dict: Current filter values
+            dict: Current filter state with keys ``show_measured``,
+                ``show_predicted``, ``model_text``, ``temp_min``,
+                ``temp_max``, and ``ingredients`` (a dict mapping every
+                ingredient category name to its full list of selected items).
         """
+
         return {
             "show_measured": self.chk_measured.isChecked(),
             "show_predicted": self.chk_predicted.isChecked(),
@@ -251,24 +339,26 @@ class PredictionFilterWidget(QtWidgets.QWidget):
         }
 
     def is_default_state(self):
-        """
-        Check if filters are in default (unfiltered) state.
+        """Check whether all filter controls are at their default (unfiltered) values.
+
+        Inspects the current state via ``get_filter_state`` and the
+        ``ing_buttons`` map.  The filter is considered default when both state
+        check boxes are checked, the model text is empty, the temperature range
+        is exactly 0 - 100 °C, and every ingredient button has all of its
+        items selected.
 
         Returns:
-            bool: True if all filters are at default values
+            bool: ``True`` if every filter is at its default value and no
+                records would be excluded; ``False`` if any filter is active.
         """
         state = self.get_filter_state()
-
-        # Check basic filters
         if not (state["show_measured"] and state["show_predicted"]):
             return False
         if state["model_text"]:
             return False
         if state["temp_min"] != 0 or state["temp_max"] != 100:
             return False
-
-        # Check if any ingredients are filtered
-        for ing_type, btn in self.ing_buttons.items():
+        for _, btn in self.ing_buttons.items():
             total_items = len(btn.items_map)
             selected_items = btn.get_selected_items()
             if len(selected_items) < total_items:

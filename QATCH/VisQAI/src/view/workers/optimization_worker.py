@@ -28,7 +28,7 @@ import pandas as pd
 from PyQt5 import QtCore
 
 try:
-    TAG = "[OptimizationWorker (Headless)]"
+    TAG = "[OptimizationWorker (HEADLESS)]"
 
     class Log:
         @staticmethod
@@ -55,6 +55,7 @@ try:
     from src.utils.constraints import Constraints
     from src.view.architecture import Architecture
 except (ModuleNotFoundError, ImportError):
+    TAG = "[OptimizationWorker]"
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
