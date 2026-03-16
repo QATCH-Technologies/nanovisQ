@@ -1,3 +1,40 @@
+"""
+visualization_panel.py
+
+Interactive pyqtgraph-based viscosity visualization panel for the VisQAI dashboard.
+
+Provides ``VisualizationPanel``, a self-contained ``QWidget`` that renders
+shear-rate vs. viscosity profiles (standard mode) or true-vs-predicted parity
+plots (parity mode) with rich interactive features: hover/click annotations,
+crosshair, log/linear axis toggling, confidence-interval fill, measured-data
+overlay, and keyboard-free zoom / pan controls.
+
+All axis ticks and axis-name labels are drawn manually as pooled ``TextItem``
+overlays so they survive pyqtgraph's ``setLogMode`` and remain correctly
+positioned after any zoom or pan operation.  The axis label pool is managed
+by ``update_internal_axes``, which is always called through the
+``axis_debounce`` timer (50 ms single-shot) to coalesce rapid range-change
+events into a single redraw.
+
+Plot modes:
+
+* **standard** - one viscosity-profile curve per series, with optional CI fill,
+  measured-data dashed overlay, and CP-overlay scatter points at
+  ``STANDARD_SHEAR_RATES``.
+* **parity** - true vs. predicted viscosity scatter per series with a ``y = x``
+  reference line.
+
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.3
+"""
+
 import os
 
 import numpy as np
@@ -7,31 +44,106 @@ from PyQt5.QtCore import Qt
 from scipy import interpolate
 
 try:
+    TAG = ["VisualizationPanel (HEADLESS)"]
+
+    class Log:
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
+
     from architecture import Architecture
+    from src.models.formulation import ViscosityProfile
     from styles.style_loader import load_stylesheet
 except (ModuleNotFoundError, ImportError):
+    TAG = "[VisualizationPanel]"
     from QATCH.common.architecture import Architecture
-    from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
-
-try:
-    from src.models.formulation import ViscosityProfile
-except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.formulation import ViscosityProfile
+    from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
 
 
 class VisualizationPanel(QtWidgets.QWidget):
+    """Interactive shear-rate / viscosity plot panel with dual render modes.
+
+    Manages the full lifecycle of a pyqtgraph ``PlotWidget`` embedded inside
+    a ``QGridLayout`` stack shared with a translucent loading overlay and an
+    empty-state placeholder label.  Floating action buttons (options, home,
+    zoom-in, zoom-out) are parented directly to the ``PlotWidget`` and
+    repositioned on every ``Resize`` event via ``eventFilter``.
+
+    All axis tick labels and axis-name labels are drawn as pooled
+    ``pg.TextItem`` objects managed by ``update_internal_axes``; pyqtgraph's
+    native axis widgets are hidden so the custom labels have full control over
+    positioning in both log and linear coordinate spaces.
+
+    Attributes:
+        STANDARD_SHEAR_RATES (list[int]): Class-level list of five canonical
+            shear-rate values used for CP-overlay scatter point placement.
+        data_series (list[dict]): Current set of viscosity-profile data
+            packages in standard mode.  Each dict must contain ``"x"`` and
+            ``"y"`` arrays; optional keys include ``"color"``, ``"config_name"``,
+            ``"lower"``, ``"upper"``, and ``"measured_y"``.
+        measured_scatter_items (list[pg.ScatterPlotItem]): All measured-data
+            scatter markers currently on the plot, used for hover detection.
+        predicted_scatter_items (list[pg.ScatterPlotItem]): All predicted-data
+            scatter markers currently on the plot, used for hover detection.
+        measured_text_annotations (dict[float, pg.TextItem]): Mapping of
+            shear-rate value to the ``TextItem`` label for each measured CP
+            overlay point, enabling per-point toggle on click.
+        predicted_text_annotations (dict[float, pg.TextItem]): Mapping of
+            shear-rate value to the ``TextItem`` label for each predicted CP
+            overlay point, enabling per-point toggle on click.
+        series_plot_items (list[dict]): One dict per series (plus the parity
+            line in parity mode), each with keys ``"lines"``, ``"fills"``,
+            ``"scatters"``, and ``"texts"`` holding the corresponding
+            ``PlotItem`` objects for batch show/hide operations.
+        series_hidden (list[bool]): Parallel visibility-state list for
+            ``series_plot_items``; ``True`` means the series is currently
+            hidden.
+        axis_text_pool (list[pg.TextItem]): Reusable pool of ``TextItem``
+            objects used by ``update_internal_axes`` to avoid allocating new
+            items on every range change.
+        hovered_scatter (pg.ScatterPlotItem | None): The scatter item currently
+            under the cursor, or ``None`` when no scatter point is hovered.
+        axis_debounce (QtCore.QTimer): 50 ms single-shot timer that calls
+            ``update_internal_axes``; started whenever the view range changes
+            to coalesce rapid resize/pan/zoom events.
+    """
+
     STANDARD_SHEAR_RATES = [100, 1000, 10000, 100000, 15000000]
     eval_point_clicked = QtCore.pyqtSignal(dict)
 
     def __init__(self, parent=None):
+        """Initialise the panel, configure pyqtgraph, and build the full UI.
+
+        Sets up all instance state lists and dicts to empty/``None``, enables
+        pyqtgraph antialiasing globally, initialises the 50 ms debounce timer
+        wired to ``update_internal_axes``, then delegates full construction to
+        ``init_ui``.
+
+        Args:
+            parent (QtWidgets.QWidget | None): Optional Qt parent widget.
+                Defaults to ``None``.
+        """
         super().__init__(parent)
         self.data_series = []
         self.measured_scatter_items = []
         self.predicted_scatter_items = []
         self.measured_text_annotations = {}
         self.predicted_text_annotations = {}
-        self.series_plot_items = []  # list of dicts, one per series, for hide/show
-        self.series_hidden = []  # bool per series
+        self.series_plot_items = []
+        self.series_hidden = []
 
         self.axis_text_pool = []
         self.hovered_scatter = None
@@ -47,6 +159,21 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.init_ui()
 
     def init_ui(self):
+        """Build the complete widget hierarchy and wire all signals.
+
+        Constructs three layers stacked in a ``QGridLayout`` (``plot_stack``):
+
+        1. **PlotWidget** (``plot_widget``)
+        2. **Overlay** (``overlay_widget``)
+        3. **Placeholder** (``placeholder_label``)
+
+        Four floating ``QPushButton`` widgets (``btn_opts``, ``btn_home``,
+        ``btn_zoom_in``, ``btn_zoom_out``) are created via
+        ``_create_floating_button`` and parented to ``plot_widget``.  An
+        ``eventFilter`` on ``plot_widget`` repositions them on every
+        ``Resize`` event.  ``_init_controls`` is called last to create all
+        ``QAction`` toggles and shear-range spin boxes.
+        """
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
@@ -63,7 +190,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.stack_layout = QtWidgets.QGridLayout(self.plot_stack)
         self.stack_layout.setContentsMargins(0, 0, 0, 0)
 
-        # --- THE PLOT WIDGET ---
+        # Plot widget
         self.plot_widget = pg.PlotWidget(title="")
         self.plot_widget.setBackground(None)
         self.plot_widget.getPlotItem().setMenuEnabled(False)
@@ -102,7 +229,7 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         self.plot_widget.sigRangeChanged.connect(lambda: self.axis_debounce.start())
 
-        # --- OVERLAY ---
+        # Overlays
         self.overlay_widget = QtWidgets.QFrame()
         self.overlay_widget.setStyleSheet("background-color: rgba(255, 255, 255, 180);")
         self.overlay_widget.setVisible(False)
@@ -143,7 +270,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         overlay_layout.addWidget(self.btn_cancel_loading, 0, Qt.AlignCenter)
         self._cancel_loading_cb = None
 
-        # --- PLACEHOLDER ---
+        # Placeholder
         self.placeholder_label = QtWidgets.QLabel(
             "No data to display.\nRun a prediction or import data to view profiles."
         )
@@ -162,8 +289,8 @@ class VisualizationPanel(QtWidgets.QWidget):
         graph_layout.addWidget(self.plot_stack)
         layout.addWidget(self.graph_container)
 
-        # --- FLOATING CONTROLS ---
-        # 1. Options Button
+        # Controls
+        # Options Button
         self.btn_opts = self._create_floating_button(
             os.path.join(
                 Architecture.get_path(),
@@ -178,7 +305,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
         self.btn_opts.clicked.connect(self.show_options_menu)
 
-        # 2. Home Button (Reset View)
+        # Home Button
         self.btn_home = self._create_floating_button(
             os.path.join(
                 Architecture.get_path(),
@@ -193,7 +320,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
         self.btn_home.clicked.connect(self.reset_view)
 
-        # 3. Zoom In
+        # Zoom In
         self.btn_zoom_in = self._create_floating_button(
             os.path.join(
                 Architecture.get_path(),
@@ -208,7 +335,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
         self.btn_zoom_in.clicked.connect(self.zoom_in)
 
-        # 4. Zoom Out
+        # Zoom Out
         self.btn_zoom_out = self._create_floating_button(
             os.path.join(
                 Architecture.get_path(),
@@ -226,7 +353,21 @@ class VisualizationPanel(QtWidgets.QWidget):
         self._init_controls()
 
     def _create_floating_button(self, icon_name, tooltip):
-        """Helper to create consistent floating buttons."""
+        """Create a styled circular floating action button parented to ``plot_widget``.
+
+        Attempts to load the SVG icon from *icon_name*; falls back to a
+        single Unicode glyph (``+``, ``-``, ``⌂``, or ``⚙``) derived from a
+        keyword match in the filename when the path does not exist.  Applies a
+        white pill style with a subtle drop shadow.
+
+        Args:
+            icon_name (str): Absolute or relative path to the SVG icon file.
+            tooltip (str): Tooltip string shown on hover.
+
+        Returns:
+            QtWidgets.QPushButton: Fully styled 36 x 36 px button parented to
+                ``plot_widget``.
+        """
         btn = QtWidgets.QPushButton("", self.plot_widget)
         btn.setFixedSize(36, 36)
         btn.setCursor(Qt.PointingHandCursor)
@@ -272,6 +413,26 @@ class VisualizationPanel(QtWidgets.QWidget):
         return btn
 
     def _init_controls(self):
+        """Create all ``QAction`` toggles and shear-range spin boxes.
+
+        Instantiates and configures the following checkable ``QAction`` objects
+        (all wired to ``update_plot`` or related slots unless noted):
+
+        * ``act_log_x`` - Log Scale X (default: checked / on).
+        * ``act_log_y`` - Log Scale Y (default: unchecked / off).
+        * ``act_axis_labels`` - Show Axis Labels (default: checked; debounced).
+        * ``act_crosshairs`` - Show Crosshairs (default: unchecked; wired to
+          ``toggle_crosshairs``).
+        * ``act_ci`` - Show Confidence Interval (default: checked).
+        * ``act_cp`` - Show CP Overlay (default: checked; wired to
+          ``_toggle_cp_overlay``).
+        * ``act_measured`` - Show Measured Profile (default: unchecked and
+          disabled until measured data is loaded).
+
+        Also creates ``spin_min_shear`` (default 100 s⁻¹) and
+        ``spin_max_shear`` (default 15 000 000 s⁻¹) ``QDoubleSpinBox``
+        widgets, both wired to ``update_plot``.
+        """
         self.act_log_x = QtWidgets.QAction("Log Scale X", self, checkable=True)
         self.act_log_x.setChecked(True)
         self.act_log_x.toggled.connect(self.update_plot)
@@ -362,10 +523,24 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.spin_max_shear.valueChanged.connect(self.update_plot)
 
     def toggle_crosshairs(self, checked):
+        """Show or hide the dashed crosshair lines on the plot.
+
+        Args:
+            checked (bool): ``True`` to make ``vLine`` and ``hLine`` visible;
+                ``False`` to hide them.
+        """
         self.vLine.setVisible(checked)
         self.hLine.setVisible(checked)
 
     def show_options_menu(self):
+        """Display the graph-options context menu anchored below ``btn_opts``.
+
+        Builds a styled ``QMenu`` containing all ``QAction`` toggles from
+        ``_init_controls`` (separated into logical groups) and a
+        ``QWidgetAction`` embedding the min/max shear-rate spin boxes in a
+        two-row ``QGridLayout``.  Executes the menu modally at the bottom-left
+        corner of ``btn_opts``.
+        """
         menu = QtWidgets.QMenu(self)
 
         menu.setStyleSheet(
@@ -418,6 +593,26 @@ class VisualizationPanel(QtWidgets.QWidget):
         menu.exec_(self.btn_opts.mapToGlobal(QtCore.QPoint(0, self.btn_opts.height())))
 
     def update_internal_axes(self):
+        """Redraw all custom tick labels and axis-name overlays.
+
+        Called via ``axis_debounce`` after any view-range change.  Hides all
+        pooled ``TextItem`` objects, then recomputes tick positions for both
+        axes using the inner ``get_tick_values`` helper:
+
+        * **Log mode** - integer powers of 10 spanning the view range;
+          auto-stepped when the span exceeds 20 decades.
+        * **Linear mode** - order-of-magnitude-aligned steps refined to keep
+          the label count between ~5 and ~15.
+
+        Tick labels are formatted as ``10^N`` for powers of 10, or decimal
+        otherwise.  ``TextItem`` objects are retrieved from or appended to
+        ``axis_text_pool`` to avoid per-frame allocation.
+
+        When ``act_axis_labels`` is checked, centred X and Y axis-name labels
+        are also placed 1.5 % inside the view boundary in their respective
+        dimensions.  In parity mode the axis names reflect true/predicted
+        viscosity rather than shear rate / viscosity.
+        """
         for item in self.axis_text_pool:
             item.hide()
 
@@ -427,9 +622,6 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
-
-        # In parity mode, coords are pre-logged using parity_log_visc — use that
-        # flag for tick display and axis name text, not the standard act_log_x/y.
         _mode = getattr(self, "plot_mode", "standard")
         if _mode == "parity":
             log_x = getattr(self, "parity_log_visc", False)
@@ -457,8 +649,6 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         x_ticks = get_tick_values(x_range[0], x_range[1], log_x)
         y_ticks = get_tick_values(y_range[0], y_range[1], log_y)
-
-        # Push ticks deeper into the plot (6%) to make room for axis labels on the outside
         y_pos_for_x_labels = y_range[0] + (y_range[1] - y_range[0]) * 0.06
         x_pos_for_y_labels = x_range[0] + (x_range[1] - x_range[0]) * 0.06
 
@@ -512,7 +702,6 @@ class VisualizationPanel(QtWidgets.QWidget):
             label.setAngle(0)
             label.setPos(x_pos_for_y_labels, y_val)
 
-        # Labels positioned nicely inside view ranges
         if self.act_axis_labels.isChecked():
             x_center = (x_range[0] + x_range[1]) / 2
             y_center = (y_range[0] + y_range[1]) / 2
@@ -531,51 +720,62 @@ class VisualizationPanel(QtWidgets.QWidget):
                 x_label_text = "Log Shear Rate (1/s)" if log_x else "Shear Rate (1/s)"
                 y_label_text = "Log Viscosity (cP)" if log_y else "Viscosity (cP)"
 
-            # X-Axis Label -> Centered, placed below the ticks
             x_name = get_item()
             x_name.setText(x_label_text)
-            # Anchor (0.5, 1) sets the bottom edge of the text, drawing it upwards
             x_name.setAnchor((0.5, 1))
             x_name.setAngle(0)
-            # 1.5% padding from the absolute bottom so it doesn't get clipped
             x_name.setPos(x_center, y_range[0] + (y_range[1] - y_range[0]) * 0.015)
             x_name.setColor("#6b7280")
             x_name.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
 
-            # Y-Axis Label -> Centered, placed to the left of the ticks
             y_name = get_item()
             y_name.setText(y_label_text)
-            # Anchor (0.5, 0) on 90-deg text sets the left edge, drawing it rightwards
             y_name.setAnchor((0.5, 0))
             y_name.setAngle(90)
-            # 1.5% padding from the absolute left so it doesn't get clipped
             y_name.setPos(x_range[0] + (x_range[1] - x_range[0]) * 0.015, y_center)
             y_name.setColor("#6b7280")
             y_name.setFont(QtGui.QFont("Arial", 9, QtGui.QFont.Bold))
 
     def set_plot_title(self, title_text):
+        """Set the plot title to *title_text* with consistent HTML styling.
+
+        Wraps *title_text* in a ``<span>`` tag applying the dashboard's
+        standard title style (``#374151``, 11 pt, weight 600).  Does nothing
+        if ``plot_widget`` has not yet been created.
+
+        Args:
+            title_text (str): Plain text for the plot title.
+        """
         if hasattr(self, "plot_widget"):
             self.plot_widget.setTitle(
                 f"<span style='color: #374151; font-size: 11pt; font-weight: 600;'>{title_text}</span>"
             )
 
     def show_loading(self, cancel_callback=None):
-        """Show the loading overlay.
+        """Show the translucent loading overlay with an animated progress bar.
 
-        Parameters
-        ----------
-        cancel_callback : callable, optional
-            When provided a "Cancel" button is shown inside the overlay.
-            Clicking it calls the callback (e.g. ``worker.stop``) and hides
-            the button immediately so it can't be double-clicked.
-            Pass ``None`` (default) for normal predictions — button is hidden.
+        Makes ``overlay_widget`` visible and starts ``anim_timer`` (10 ms
+        interval) to increment the progress bar from 0 to 90 % in the
+        foreground.  ``QApplication.processEvents()`` is called once
+        immediately so the overlay renders before any heavy computation begins.
+
+        When *cancel_callback* is provided, ``btn_cancel_loading`` is shown
+        and wired so that clicking it disables the button, changes its text
+        to ``"Cancelling…"``, and invokes the callback (e.g.
+        ``worker.requestInterruption``).  Any previous connection on the
+        button is disconnected first to prevent signal accumulation across
+        multiple overlay lifecycles.  Pass ``None`` to hide the cancel button
+        (appropriate for fast synchronous predictions).
+
+        Args:
+            cancel_callback (callable | None): Zero-argument callable invoked
+                when the user clicks "Cancel".  Defaults to ``None``.
         """
-        # Wire / unwire the cancel button
         self._cancel_loading_cb = cancel_callback
         try:
             self.btn_cancel_loading.clicked.disconnect()
         except TypeError:
-            pass  # no connections yet
+            pass
         if cancel_callback is not None:
 
             def _on_cancel():
@@ -595,19 +795,31 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.anim_timer = QtCore.QTimer()
         self.anim_timer.timeout.connect(self._animate_step)
         self.anim_timer.start(10)
-        QtWidgets.QApplication.processEvents()  # Flush events so GUI displays instantly
+        QtWidgets.QApplication.processEvents()
 
     def _animate_step(self):
+        """Advance the loading progress bar by one step, capping at 90 %.
+
+        Connected to ``anim_timer.timeout``.  Increments the progress bar
+        value by 1 on each tick until it reaches 90, leaving the final 10 %
+        for ``hide_loading`` to fill when the operation completes.
+        """
         val = self.progress_bar.value()
         if val < 90:
             self.progress_bar.setValue(val + 1)
 
     def hide_loading(self):
+        """Stop the progress animation, complete the bar to 100 %, and hide the overlay.
+
+        Stops ``anim_timer``, sets the progress bar to 100 %, then hides and
+        fully resets ``btn_cancel_loading`` (disconnects signals, restores
+        text and enabled state) so it does not bleed into subsequent overlay
+        uses.  Calls ``QApplication.processEvents()`` to flush the final
+        visual state before hiding ``overlay_widget``.
+        """
         if hasattr(self, "anim_timer"):
             self.anim_timer.stop()
         self.progress_bar.setValue(100)
-        # Always hide and reset the cancel button so it never bleeds into the
-        # next prediction or overlay use.
         if hasattr(self, "btn_cancel_loading"):
             try:
                 self.btn_cancel_loading.clicked.disconnect()
@@ -621,12 +833,35 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.overlay_widget.setVisible(False)
 
     def eventFilter(self, source, event):
+        """Intercept ``plot_widget`` resize events to reposition floating buttons.
+
+        When *source* is ``plot_widget`` and the event type is ``Resize``,
+        calls ``_reposition_overlay_buttons`` and starts ``axis_debounce`` to
+        refresh tick labels at the new size.  All other events are forwarded
+        to the base-class handler.
+
+        Args:
+            source (QtCore.QObject): The object that generated the event.
+            event (QtCore.QEvent): The event to filter.
+
+        Returns:
+            bool: The result of ``super().eventFilter(source, event)``.
+        """
         if source == self.plot_widget and event.type() == QtCore.QEvent.Resize:
             self._reposition_overlay_buttons()
             self.axis_debounce.start()
         return super().eventFilter(source, event)
 
     def _reposition_overlay_buttons(self):
+        """Lay out the four floating action buttons in a right-aligned vertical column.
+
+        Positions ``btn_opts``, ``btn_home``, ``btn_zoom_in``, and
+        ``btn_zoom_out`` with 20 px right margin, 20 px top margin, and 10 px
+        inter-button spacing, all measured from the top-right corner of
+        ``plot_widget``.  The x position is clamped to a minimum of 0 to
+        prevent buttons from escaping the widget's left edge during extreme
+        resize events.
+        """
         margin_right = 20
         margin_top = 20
         spacing = 10
@@ -647,16 +882,47 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.btn_zoom_out.move(max(0, x), y)
 
     def zoom_in(self):
+        """Scale the view box inward by a factor of 0.8 on both axes.
+
+        Delegates to ``ViewBox.scaleBy((0.8, 0.8))``, which zooms in by
+        reducing the visible range symmetrically around the current centre.
+        """
         self.plot_widget.plotItem.vb.scaleBy((0.8, 0.8))
 
     def zoom_out(self):
+        """Scale the view box outward by a factor of 1.25 on both axes.
+
+        Delegates to ``ViewBox.scaleBy((1.25, 1.25))``, which zooms out by
+        expanding the visible range symmetrically around the current centre.
+        """
         self.plot_widget.plotItem.vb.scaleBy((1.25, 1.25))
 
     def reset_view(self):
+        """Reset the plot view to its intelligently snapped global limits.
+
+        Calls ``_apply_global_limits`` to recompute and set the Y range from
+        the current data, then starts ``axis_debounce`` to refresh tick
+        labels at the restored view range.
+        """
         self._apply_global_limits()
         self.axis_debounce.start()
 
     def set_data(self, data):
+        """Load one or more viscosity-profile data packages and switch to standard mode.
+
+        Accepts a single data dict or a list of dicts.  ``None`` values are
+        filtered out.  Initialises ``series_hidden`` to all-``False``.
+        Enables and checks ``act_measured`` when any series contains a non-``None``
+        ``"measured_y"`` key; disables and unchecks it otherwise.  Calls
+        ``update_plot`` to render the new data.
+
+        Args:
+            data (dict | list[dict] | None): One or more viscosity-profile
+                data packages.  Each dict requires at minimum ``"x"`` (shear
+                rates) and ``"y"`` (predicted viscosities); optional keys are
+                ``"color"``, ``"config_name"``, ``"lower"``, ``"upper"``
+                (confidence-interval bounds), and ``"measured_y"``.
+        """
         self.plot_mode = "standard"
         if isinstance(data, list):
             self.data_series = [d for d in data if d is not None]
@@ -683,12 +949,45 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.update_plot()
 
     def set_parity_data(self, parity_data, log_visc):
+        """Load parity-plot data and switch to parity render mode.
+
+        Stores *parity_data* and *log_visc*, sets ``plot_mode`` to
+        ``"parity"``, then calls ``update_plot`` to render the parity scatter.
+
+        Args:
+            parity_data (list[dict]): List of per-series parity dicts.  Each
+                dict must contain a ``"points"`` list of point dicts (keys
+                ``"true"``, ``"pred"``, ``"shear"``, ``"config_name"``), a
+                ``"color"`` hex string, and a ``"config_name"`` string.
+            log_visc (bool): When ``True``, point coordinates are
+                log10-transformed before plotting and axis labels read
+                "Log … Viscosity (cP)".
+        """
         self.plot_mode = "parity"
         self.parity_data = parity_data
         self.parity_log_visc = log_visc
         self.update_plot()
 
     def update_plot(self):
+        """Clear and fully redraw the plot from current data and option states.
+
+        Clears ``plot_widget``, resets all scatter/annotation/series tracking
+        lists, hides all pooled axis text items, and re-adds the crosshair
+        lines at their current visibility state.
+
+        Dispatch:
+
+        * **Parity mode** - delegates to ``_plot_parity``; returns immediately
+          after triggering ``axis_debounce``.
+        * **Standard mode, no data** - shows ``placeholder_label`` and
+          returns.
+        * **Standard mode, with data** - iterates ``data_series``, calling
+          ``_plot_single_series`` for each and storing the returned items dict
+          in ``series_plot_items``; hidden series are immediately concealed
+          via ``_set_series_items_visible``.  After all series are rendered,
+          ``_apply_global_limits`` sets the view range and ``axis_debounce``
+          is started; ``_rebuild_standard_legend`` populates the legend.
+        """
         self.plot_widget.clear()
 
         self.measured_scatter_items = []
@@ -705,15 +1004,12 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.plot_widget.addItem(self.hLine, ignoreBounds=True)
         self.vLine.setVisible(self.act_crosshairs.isChecked())
         self.hLine.setVisible(self.act_crosshairs.isChecked())
-
-        # Always clear the legend so old labels don't persist on clear
         self.legend.clear()
 
         mode = getattr(self, "plot_mode", "standard")
         if mode == "parity":
             self.placeholder_label.hide()
             self._plot_parity()
-            # Legend already contains only "y = x" from the line's name= argument
             self.axis_debounce.start()
             return
 
@@ -728,7 +1024,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.series_hidden = self.series_hidden[: len(self.data_series)]
 
         for i, data_package in enumerate(self.data_series):
-            # Process events to allow smooth progress bar animation across series
             QtWidgets.QApplication.processEvents()
             items = self._plot_single_series(data_package, index=i)
             self.series_plot_items.append(items)
@@ -738,20 +1033,35 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         self._apply_global_limits()
         self.axis_debounce.start()
-        # Add fixed type-indicator legend entries (Predicted / Measured only)
         self._rebuild_standard_legend()
 
     def _plot_parity(self):
-        # 1. Parity coordinates are pre-logged manually below, so setLogMode must
-        #    stay OFF to prevent pyqtgraph from double-transforming them.
+        """Render the parity (true vs. predicted viscosity) scatter plot.
+
+        Disables ``setLogMode`` on the ``PlotWidget`` because all coordinates
+        are pre-logged manually when ``parity_log_visc`` is ``True``.
+
+        Steps:
+
+        1. Synchronises ``series_hidden`` length with ``parity_data``.
+        2. Computes global min/max across all point ``"true"`` and ``"pred"``
+           values to size the ``y = x`` reference line.
+        3. Plots a dashed grey ``y = x`` line covering the data range with
+           5 % padding, registered as a non-hideable entry in
+           ``series_plot_items``.
+        4. For each parity series, builds a ``ScatterPlotItem`` with hover
+           styling and per-point ``TextItem`` annotations (hidden by default)
+           that show config name, shear rate, true viscosity, and predicted
+           viscosity.  Annotations are referenced from ``pt["_annotation"]``
+           so the click handler can reach them without a secondary lookup.
+        5. Sets view-box limits and range symmetrically on both axes.
+        """
         self.plot_widget.setLogMode(x=False, y=False)
 
-        # 2. Sync hidden state list for legend
         while len(self.series_hidden) < len(self.parity_data):
             self.series_hidden.append(False)
         self.series_hidden = self.series_hidden[: len(self.parity_data)]
 
-        # 3. Get global min/max for y=x line
         min_val = float("inf")
         max_val = float("-inf")
         for series in self.parity_data:
@@ -762,7 +1072,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         if min_val == float("inf"):
             return
 
-        # 4. Plot y=x parity line
+        # Plot y=x parity line
         line_min = max(min_val * 0.8, 1e-10) if self.parity_log_visc else min_val * 0.8
         line_max = max_val * 1.2
         val_min = np.log10(line_min) if self.parity_log_visc else line_min
@@ -775,16 +1085,14 @@ class VisualizationPanel(QtWidgets.QWidget):
             name="y = x",
         )
 
-        # Start series plot items with the parity line (non-hideable)
         self.series_plot_items.append(
             {"lines": [parity_line], "fills": [], "scatters": [], "texts": []}
         )
 
-        # 5. Plot scattered points per series
+        # Plot scattered points per series
         for i, series in enumerate(self.parity_data):
             spots = []
-            annotations = []  # one TextItem per point, toggled on click
-
+            annotations = []
             for pt in series["points"]:
                 px = (
                     np.log10(max(pt["true"], 1e-10))
@@ -798,7 +1106,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 )
                 spots.append({"pos": (px, py), "data": pt})
 
-                # Build label — mirrors the standard scatter annotation style
+                # Build label
                 shear_label = (
                     f"{int(pt['shear']):,}"
                     if pt["shear"] < 1e6
@@ -822,9 +1130,6 @@ class VisualizationPanel(QtWidgets.QWidget):
                 text_item.setVisible(False)
                 self.plot_widget.addItem(text_item)
                 annotations.append(text_item)
-
-                # Attach annotation reference to the point dict so the click
-                # handler can reach it without any extra lookup structure.
                 pt["_annotation"] = text_item
 
             if spots:
@@ -864,25 +1169,63 @@ class VisualizationPanel(QtWidgets.QWidget):
         )
 
     def _on_parity_scatter_clicked(self, plot, points):
-        """Toggle inline annotation box on the point — mirrors standard scatter
-        click behavior.  Also emits eval_point_clicked so the dashboard can
-        silently expand the corresponding card."""
+        """Toggle the annotation ``TextItem`` for the clicked parity scatter point.
+
+        Acts on the first point only when multiple overlapping points are
+        clicked.  Retrieves the annotation from ``pt["_annotation"]`` and
+        toggles its visibility.  Emits ``eval_point_clicked`` with the raw
+        point dict so the dashboard can silently expand and scroll to the
+        corresponding prediction card.
+
+        Args:
+            plot (pg.ScatterPlotItem): The scatter item that emitted the
+                signal.
+            points (list[pg.SpotItem]): List of clicked spot items.
+
+        Emits:
+            eval_point_clicked (dict): The raw point dict for the first
+                clicked point.
+        """
         if len(points) == 0:
             return
         # When multiple overlapping points are clicked, act on the first one only
         data = points[0].data()
         if not data:
             return
-
-        # Toggle the annotation TextItem that was embedded in the point dict
         ann = data.get("_annotation")
         if ann is not None:
             ann.setVisible(not ann.isVisible())
-
-        # Notify dashboard (for silent card-expand + scroll) — no QMessageBox there
         self.eval_point_clicked.emit(data)
 
     def _plot_single_series(self, data, index):
+        """Render one viscosity-profile series and return its plot-item dict.
+
+        Attempts to construct a ``ViscosityProfile`` from the series data for
+        smooth interpolation over 200 log-spaced shear rates within
+        ``[spin_min_shear, spin_max_shear]``; falls back to a simple
+        shear-range mask on the raw arrays if the profile raises.
+
+        Renders in this order (each conditional on option states):
+
+        1. **CI fill** - ``FillBetweenItem`` between interpolated lower/upper
+           bounds, alpha-scaled by series count.
+        2. **Measured overlay** - dashed line and CP scatter points at
+           ``STANDARD_SHEAR_RATES``, drawn only when ``act_measured`` is
+           checked and enabled.
+        3. **Predicted line** - solid line and CP scatter points, skipped for
+           pure measured-only series.
+
+        Args:
+            data (dict): A viscosity-profile data package as described in
+                ``set_data``.
+            index (int): Zero-based series index used for default colour
+                selection when ``data["color"]`` is absent.
+
+        Returns:
+            dict: A series-items dict with keys ``"lines"``, ``"fills"``,
+                ``"scatters"``, and ``"texts"`` containing the corresponding
+                ``PlotItem`` objects for this series.
+        """
         series_items = {
             "lines": [],
             "fills": [],
@@ -895,8 +1238,6 @@ class VisualizationPanel(QtWidgets.QWidget):
         main_color = (
             raw_color if raw_color else default_colors[index % len(default_colors)]
         )
-        series_name = data.get("config_name", f"Series {index + 1}")
-
         min_shear = self.spin_min_shear.value()
         max_shear = self.spin_max_shear.value()
 
@@ -934,7 +1275,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 upper = np.array([])
                 has_ci = False
         except Exception as e:
-            print(f"ViscosityProfile interpolation failed, falling back: {e}")
+            Log.w(TAG, f"ViscosityProfile interpolation failed, falling back: {e}")
             mask = (x_full >= min_shear) & (x_full <= max_shear)
             x, y = x_full[mask], y_full[mask]
             lower = (
@@ -1028,7 +1369,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 series_items["scatters"].extend(sc)
                 series_items["texts"].extend(tx)
             except Exception as e:
-                print(f"Error plotting measured data: {e}")
+                Log.e(TAG, f"Error plotting measured data: {e}")
 
         is_measured_only = data.get("measured", False) and not has_ci
         if not is_measured_only:
@@ -1054,6 +1395,46 @@ class VisualizationPanel(QtWidgets.QWidget):
     def _generate_scatter_points(
         self, vp, x, y_curve, min_shear, max_shear, log_x, log_y, color, point_type
     ):
+        """Create CP-overlay scatter markers and text annotations at standard shear rates.
+
+        Iterates over ``STANDARD_SHEAR_RATES``, keeping only those within
+        ``[min_shear, max_shear]``.  For each qualifying rate, viscosity is
+        read from *vp* if available; otherwise linear interpolation on
+        (*x*, *y_curve*) is used as a fallback.
+
+        Each scatter point is a 12 px white-filled circle with a coloured
+        border that expands to 18 px with a filled brush on hover.  Per-point
+        metadata (shear rate, data-space x/y, point type) is stored on the
+        ``ScatterPlotItem`` as ``_point_data``, and hover state as
+        ``_original_size``, ``_original_brush``, ``_hover_size``, and
+        ``_hover_brush`` for use by ``_apply_scatter_hover`` /
+        ``_reset_scatter_appearance``.
+
+        Each text annotation is a ``TextItem`` showing the shear rate and
+        viscosity, positioned 8 % above the scatter point in data coordinates.
+        Visibility mirrors the current ``act_cp`` state at creation time.
+        Annotations are registered in ``measured_text_annotations`` or
+        ``predicted_text_annotations`` by shear rate for click-toggle access.
+
+        Args:
+            vp (ViscosityProfile | None): Interpolation object for the series;
+                ``None`` falls back to ``scipy.interpolate.interp1d``.
+            x (np.ndarray): Shear-rate array in the view's current coordinate
+                space (possibly log-transformed by ``setLogMode``).
+            y_curve (np.ndarray): Viscosity array parallel to *x*.
+            min_shear (float): Lower shear-rate bound from ``spin_min_shear``.
+            max_shear (float): Upper shear-rate bound from ``spin_max_shear``.
+            log_x (bool): Whether the X axis is in log mode.
+            log_y (bool): Whether the Y axis is in log mode.
+            color (str): Hex colour string for border, hover brush, and text.
+            point_type (str): ``"measured"`` or ``"predicted"``; controls
+                which annotation dict and scatter list the items are appended
+                to.
+
+        Returns:
+            tuple[list[pg.ScatterPlotItem], list[pg.TextItem]]: Two parallel
+                lists of scatter markers and their text annotations.
+        """
         if not color:
             color = "#2596be"
 
@@ -1150,6 +1531,16 @@ class VisualizationPanel(QtWidgets.QWidget):
         return scatter_items_out, text_items_out
 
     def _toggle_cp_overlay(self, checked):
+        """Show or hide all CP-overlay text annotations in one pass.
+
+        Iterates over all values in ``measured_text_annotations`` and
+        ``predicted_text_annotations`` and sets each ``TextItem``'s visibility
+        to *checked*.
+
+        Args:
+            checked (bool): ``True`` to show all annotations; ``False`` to
+                hide them.
+        """
         all_texts = list(self.measured_text_annotations.values()) + list(
             self.predicted_text_annotations.values()
         )
@@ -1157,6 +1548,19 @@ class VisualizationPanel(QtWidgets.QWidget):
             item.setVisible(checked)
 
     def _set_series_items_visible(self, items_dict, visible):
+        """Set the visibility of every plot item belonging to one series.
+
+        Applies *visible* to all lines and fills unconditionally.  For text
+        annotations, visibility is the logical AND of *visible* and the current
+        ``act_cp`` checked state, so annotations stay hidden when the CP
+        overlay is globally off even if the series itself is shown.
+
+        Args:
+            items_dict (dict): A series-items dict with keys ``"lines"``,
+                ``"fills"``, ``"scatters"``, and ``"texts"``.
+            visible (bool): Target visibility state.
+        """
+
         for line in items_dict.get("lines", []):
             line.setVisible(visible)
         for fill in items_dict.get("fills", []):
@@ -1169,16 +1573,20 @@ class VisualizationPanel(QtWidgets.QWidget):
             tx.setVisible(visible and cp_on)
 
     def _rebuild_standard_legend(self):
-        """Adds exactly two fixed type-indicator entries to the legend:
-        'Predicted' (thick solid) and 'Measured' (thinner dashed), using a
-        neutral color.  No per-sample names are shown."""
-        self.legend.clear()
+        """ "Repopulate the legend with exactly two fixed type-indicator entries.
 
-        # Predicted swatch — solid, thick
+        Clears the legend and adds:
+
+        * **Predicted** - solid, 3 px wide, neutral grey (``#555555``).
+        * **Measured** - dashed, 2 px wide, neutral grey; only added when
+          ``act_measured`` is both checked and enabled.
+
+        No per-series names are shown in the legend; series are distinguished
+        solely by colour on the plot itself.
+        """
+        self.legend.clear()
         pred_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=3))
         self.legend.addItem(pred_item, "Predicted")
-
-        # Measured swatch — dashed, only when measured data is being shown
         if self.act_measured.isChecked() and self.act_measured.isEnabled():
             meas_item = pg.PlotDataItem(
                 pen=pg.mkPen("#555555", width=2, style=Qt.DashLine)
@@ -1186,9 +1594,21 @@ class VisualizationPanel(QtWidgets.QWidget):
             self.legend.addItem(meas_item, "Measured")
 
     def toggle_card_series(self, card_name: str) -> bool:
-        """Toggle the visibility of the series whose config_name matches
-        *card_name*.  Returns the new hidden state (True = hidden).
-        Called by the dashboard when a card's 'Hide from Plot' action fires."""
+        """Toggle the plot visibility of the series identified by *card_name*.
+
+        Searches ``data_series`` for the first entry whose ``"config_name"``
+        matches *card_name``, flips its ``series_hidden`` flag, and calls
+        ``_set_series_items_visible`` on the corresponding entry in
+        ``series_plot_items``.  Called by the dashboard when a card's
+        "Hide from Plot" action fires.
+
+        Args:
+            card_name (str): The ``config_name`` value of the series to toggle.
+
+        Returns:
+            bool: The new hidden state for the matched series (``True`` =
+                now hidden).  Returns ``False`` if no matching series is found.
+        """
         for i, data in enumerate(self.data_series):
             if data.get("config_name", "") == card_name:
                 while len(self.series_hidden) <= i:
@@ -1203,6 +1623,16 @@ class VisualizationPanel(QtWidgets.QWidget):
         return False
 
     def _toggle_series_visibility(self, series_index):
+        """Toggle the visibility of the series at *series_index* and update the legend.
+
+        Flips the ``series_hidden`` flag at *series_index*, applies the new
+        state via ``_set_series_items_visible``, then calls
+        ``_make_legend_clickable`` to refresh legend item styling.  Does
+        nothing if *series_index* is out of range for ``series_plot_items``.
+
+        Args:
+            series_index (int): Zero-based index into ``series_plot_items``.
+        """
         if series_index >= len(self.series_plot_items):
             return
         currently_hidden = (
@@ -1219,13 +1649,41 @@ class VisualizationPanel(QtWidgets.QWidget):
         self._make_legend_clickable()
 
     def _apply_global_limits(self):
+        """Compute and apply an intelligently snapped view range from the current data.
+
+        Returns immediately when ``data_series`` is empty.
+
+        **X axis** - always fixed to the hardware shear-rate domain
+        (100 - 15 000 000 s⁻¹) with 5 % logarithmic padding, converted to
+        log10 coordinates when ``act_log_x`` is checked.
+
+        **Y axis** - scanned across all visible series (predicted Y, CI bands
+        when ``act_ci`` is checked, and measured Y when ``act_measured`` is
+        checked).  Non-positive values are excluded in log mode to prevent
+        ``log10(0)`` errors.  A fallback range of ``[0, 100]`` (linear) or
+        ``[-1, 3]`` (log) is applied when no valid Y data is found.
+
+        **Snapping** (applied after global min/max are known):
+
+        * *Log Y* - snaps to the nearest integer powers of 10; expands by ±1
+          decade when min equals max (flat data).
+        * *Linear Y* - computes the order of magnitude of the data span, then
+          refines the grid step (÷5 if span ≤ 2 steps; ÷2 if span ≤ 5 steps),
+          floors/ceils to the nearest step, expands boundaries outward by one
+          step when data exactly hits the edge, and clamps the lower bound to
+          zero when all data is non-negative.
+
+        Disables pyqtgraph's built-in auto-ranging before setting custom limits
+        to prevent it from overriding the snapped range on subsequent
+        interactions.
+        """
         if not self.data_series:
             return
 
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
 
-        # --- X Axis Boundaries ---
+        # X Axis Boundaries
         limit_x_min = 100
         limit_x_max = 15000000
 
@@ -1242,7 +1700,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         vb_y_min = -10.0 if log_y else 0.0
         vb_y_max = 300.0 if log_y else 1e300
 
-        # --- Y Axis Boundaries ---
+        # Y Axis Boundaries
         global_min_y = float("inf")
         global_max_y = float("-inf")
         found_data = False
@@ -1293,10 +1751,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                     global_min_y = min(global_min_y, np.min(meas))
                     global_max_y = max(global_max_y, np.max(meas))
 
-        # Disable Pyqtgraph's auto-ranging since we are overriding it with custom snaps
         self.plot_widget.plotItem.vb.disableAutoRange(axis="y")
-
-        # Safely apply panning bounds so internal constraints have mathematical anchors
         self.plot_widget.plotItem.vb.setLimits(
             xMin=vb_x_min, xMax=vb_x_max, yMin=vb_y_min, yMax=vb_y_max
         )
@@ -1310,13 +1765,11 @@ class VisualizationPanel(QtWidgets.QWidget):
             )
             return
 
-        # --- Intelligent View Range Snapping ---
+        # Intelligent View Range Snapping
         if log_y:
             # Snap to the nearest integer powers of 10
             y_min_target = np.floor(np.log10(global_min_y))
             y_max_target = np.ceil(np.log10(global_max_y))
-
-            # Prevent a 0-height range if data is perfectly flat
             if y_max_target == y_min_target:
                 y_max_target += 1
                 y_min_target -= 1
@@ -1326,15 +1779,13 @@ class VisualizationPanel(QtWidgets.QWidget):
             )
 
         else:
-            # Calculate the Order of Magnitude (oom) of the data spread to find a clean step interval
+            # Calculate the Order of Magnitude of the data spread to find a clean step interval
             span = global_max_y - global_min_y
             if span == 0:
                 span = abs(global_max_y) if global_max_y != 0 else 1.0
 
             oom = 10 ** np.floor(np.log10(span))
             step = oom
-
-            # Refine the step down if the span is relatively small compared to the order of magnitude
             if span / step <= 2:
                 step /= 5
             elif span / step <= 5:
@@ -1343,14 +1794,10 @@ class VisualizationPanel(QtWidgets.QWidget):
             # Snap to linear demarcations
             y_min_target = np.floor(global_min_y / step) * step
             y_max_target = np.ceil(global_max_y / step) * step
-
-            # Expand by one interval if the data perfectly hits the boundary so it doesn't get visually clipped
             if y_min_target == global_min_y:
                 y_min_target -= step
             if y_max_target == global_max_y:
                 y_max_target += step
-
-            # A common-sense visual lock: if data is positive, don't let the snapping push the axis into the negatives
             if global_min_y >= 0 and y_min_target < 0:
                 y_min_target = 0
 
@@ -1359,6 +1806,19 @@ class VisualizationPanel(QtWidgets.QWidget):
             )
 
     def mouse_moved(self, evt):
+        """Handle throttled mouse-move events from the ``SignalProxy``.
+
+        When crosshairs are enabled (``act_crosshairs`` checked), maps the
+        scene position to view coordinates, updates ``vLine`` and ``hLine``
+        positions, and delegates hover detection to ``_check_scatter_hover``.
+        When crosshairs are disabled, delegates directly to
+        ``_check_scatter_hover_event``.  Resets hover state when the cursor
+        leaves the plot bounding rect.
+
+        Args:
+            evt (tuple): Single-element tuple wrapping the ``QPointF`` scene
+                position, as emitted by ``pg.SignalProxy``.
+        """
         if not self.act_crosshairs.isChecked():
             self._check_scatter_hover_event(evt)
             return
@@ -1372,6 +1832,16 @@ class VisualizationPanel(QtWidgets.QWidget):
             self._reset_scatter_hover()
 
     def _check_scatter_hover_event(self, evt):
+        """Unpack a ``SignalProxy`` event tuple and forward to ``_check_scatter_hover``.
+
+        Maps the scene position to view coordinates and calls
+        ``_check_scatter_hover`` when the position is inside the plot bounding
+        rect; calls ``_reset_scatter_hover`` otherwise.
+
+        Args:
+            evt (tuple): Single-element tuple wrapping the ``QPointF`` scene
+                position, as emitted by ``pg.SignalProxy``.
+        """
         pos = evt[0]
         if self.plot_widget.sceneBoundingRect().contains(pos):
             mousePoint = self.plot_widget.plotItem.vb.mapSceneToView(pos)
@@ -1380,6 +1850,24 @@ class VisualizationPanel(QtWidgets.QWidget):
             self._reset_scatter_hover()
 
     def _check_scatter_hover(self, mouse_x_view, mouse_y_view):
+        """Detect whether the cursor is within 2 % tolerance of any scatter point.
+
+        Computes per-axis tolerance as 2 % of the current view range, then
+        iterates all items in ``measured_scatter_items`` and
+        ``predicted_scatter_items``.  Point coordinates are log10-transformed
+        before comparison when the corresponding axis is in log mode (clamped
+        to 1e-10 to avoid domain errors).
+
+        When the hovered item changes, ``_reset_scatter_appearance`` is called
+        on the previously hovered item and ``_apply_scatter_hover`` on the
+        newly hovered one.  ``hovered_scatter`` is updated to reflect the
+        current state.
+
+        Args:
+            mouse_x_view (float): Cursor X coordinate in view (data) space.
+            mouse_y_view (float): Cursor Y coordinate in view (data) space.
+        """
+
         log_x = self.act_log_x.isChecked()
         log_y = self.act_log_y.isChecked()
         view_range_x = self.plot_widget.plotItem.vb.viewRange()[0]
@@ -1410,21 +1898,61 @@ class VisualizationPanel(QtWidgets.QWidget):
             self.hovered_scatter = hovered_item
 
     def _reset_scatter_hover(self):
+        """Clear the hover state for the currently hovered scatter point, if any.
+
+        Calls ``_reset_scatter_appearance`` on ``hovered_scatter`` and sets it
+        to ``None``.  Safe to call when no scatter is hovered.
+        """
         if self.hovered_scatter:
             self._reset_scatter_appearance(self.hovered_scatter)
             self.hovered_scatter = None
 
     def _apply_scatter_hover(self, scatter):
+        """Enlarge *scatter* and switch its brush to the hover style.
+
+        Sets the scatter's size to ``_hover_size`` and brush to
+        ``_hover_brush`` (both stored on the item at creation time), and
+        changes the plot cursor to ``PointingHandCursor`` to signal
+        clickability.
+
+        Args:
+            scatter (pg.ScatterPlotItem): The scatter item to apply hover
+                styling to.
+        """
         scatter.setSize(scatter._hover_size)
         scatter.setBrush(scatter._hover_brush)
         self.plot_widget.setCursor(Qt.PointingHandCursor)
 
     def _reset_scatter_appearance(self, scatter):
+        """Restore *scatter* to its default (non-hover) size and brush.
+
+        Sets the scatter's size to ``_original_size`` and brush to
+        ``_original_brush``, and restores the plot cursor to
+        ``ArrowCursor``.
+
+        Args:
+            scatter (pg.ScatterPlotItem): The scatter item to restore.
+        """
         scatter.setSize(scatter._original_size)
         scatter.setBrush(scatter._original_brush)
         self.plot_widget.setCursor(Qt.ArrowCursor)
 
     def on_plot_click(self, event):
+        """Toggle the text annotation for the scatter point nearest the click position.
+
+        Ignored in parity mode (annotation toggling is handled by
+        ``_on_parity_scatter_clicked``) and for non-left-button clicks.
+        Maps the click scene position to view coordinates and searches
+        ``measured_scatter_items`` and ``predicted_scatter_items`` for a point
+        within the same 2 % per-axis tolerance used by ``_check_scatter_hover``.
+        On a hit, looks up the corresponding ``TextItem`` in
+        ``measured_text_annotations`` or ``predicted_text_annotations`` by
+        shear rate and toggles its visibility.
+
+        Args:
+            event (pg.GraphicsScene.mouseEvents.MouseClickEvent): The click
+                event emitted by ``plot_widget.scene().sigMouseClicked``.
+        """
         if getattr(self, "plot_mode", "standard") == "parity":
             return
 
