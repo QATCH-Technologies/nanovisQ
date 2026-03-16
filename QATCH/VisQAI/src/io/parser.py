@@ -153,6 +153,11 @@ class Parser:
         val = el.get("value")
         if val is None:
             raise ValueError(f"Param '{name}' has no value attribute")
+        if len(val.strip()) == 0:
+            if required:
+                raise ValueError(f"Param '{name}' has empty value attribute")
+            return None
+
         try:
             return cast_type(val)
         except ValueError:
@@ -545,8 +550,12 @@ class Parser:
                         if re.match(r"analyze-\d+\.zip$", f)]
 
         if not analyze_zips:
-            raise FileNotFoundError(
+            # raise FileNotFoundError(
+            #     f"No analyze-*.zip files found in {self.base_path}")
+            Log.w(
+                "No Viscosity Profile available for run: "
                 f"No analyze-*.zip files found in {self.base_path}")
+            return None, None
         largest_zip_name = max(
             analyze_zips,
             key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1))
@@ -674,7 +683,10 @@ class Parser:
             concentration=salt_data["concentration"],
             units=salt_data["units"]
         )
-        formulation.set_temperature(temp=temp)
-        formulation.set_viscosity_profile(profile=vp)
+
+        if vp is not None:
+            formulation.set_viscosity_profile(profile=vp)
+        if temp is not None:
+            formulation.set_temperature(temp=temp)
 
         return formulation

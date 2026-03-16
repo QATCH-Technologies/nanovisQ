@@ -80,7 +80,8 @@ class _MainWindow(QtWidgets.QMainWindow):
         app_instance = QtWidgets.QApplication.instance()
         if app_instance:
             app_instance.focusWindowChanged.connect(self.focusWindowChanged)
-            app_instance.installEventFilter(self)  # capture clicks anywhere on gui
+            # capture clicks anywhere on gui
+            app_instance.installEventFilter(self)
 
     def eventFilter(self, obj, event):
         # Handle mouse click events (e.g. hide on click)
@@ -178,7 +179,6 @@ class LoginWindow(QtWidgets.QMainWindow):
         """
         # Handles key press events for all registered objects.
         if event.type() == QtCore.QEvent.KeyPress:
-
             # Handles focus for user password field and sign-in action.
             if event.key() in [QtCore.Qt.Key_Enter, QtCore.Qt.Key_Return]:
                 if len(self.ui5.user_password.text()) == 0:
@@ -200,7 +200,6 @@ class LoginWindow(QtWidgets.QMainWindow):
 
         # Handles focus in events for all registered objects.
         if event.type() == QtCore.QEvent.FocusIn:
-
             # Handles showing Caps Lock indicator when CapsLock key is active.
             if obj is self.ui5.user_password:
                 self.ui5.caps_lock_on = Constants.windll_is_caps_lock_on()
@@ -210,7 +209,6 @@ class LoginWindow(QtWidgets.QMainWindow):
 
         # Handles focus out events for all registered objects.
         if event.type() == QtCore.QEvent.FocusOut:
-
             # Handles hiding Caps Lock indicator when CapsLock key is active.
             if obj is self.ui5.user_password:
                 if self.ui5.caps_lock_on:
@@ -247,7 +245,6 @@ class LoginWindow(QtWidgets.QMainWindow):
 
 # ------------------------------------------------------------------------------
 class LoggerWindow(QtWidgets.QMainWindow):
-
     def __init__(self):
         super().__init__()
         self.ui4 = Ui_Logger()
@@ -270,7 +267,6 @@ class LoggerWindow(QtWidgets.QMainWindow):
 
 # ------------------------------------------------------------------------------
 class PlotsWindow(QtWidgets.QMainWindow):
-
     def __init__(self, samples=Constants.argument_default_samples):
         super().__init__()
         self.ui2 = Ui_Plots()
@@ -322,7 +318,6 @@ class WorkerSnapshot:
 
 # ------------------------------------------------------------------------------
 class InfoWindow(QtWidgets.QMainWindow):
-
     def __init__(self, samples=Constants.argument_default_samples):
         super().__init__()
         self.ui3 = Ui_Info()
@@ -347,7 +342,6 @@ class InfoWindow(QtWidgets.QMainWindow):
 
 
 class ControlsWindow(QtWidgets.QMainWindow):
-
     def __init__(self, parent, samples=Constants.argument_default_samples):
         self.parent = parent
         super().__init__()
@@ -910,7 +904,7 @@ class Rename_Output_Files(QtCore.QObject):
                     parent=self.parent,
                     title="Temp Propagation Failure",
                     message="ERROR: Failed to write temps to secondary.\n"
-                    + f"Filename: \"{result['filename']}\"",
+                    + f'Filename: "{result["filename"]}"',
                     details=result["details"],
                     ok_only=True,
                 )
@@ -2002,7 +1996,6 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # If the selected port has been disallowed, the application scans for connected devices.
         if selected_port == "":
-
             # Scan for connected devices.
             self.ControlsWin.ui1.pButton_Refresh.clicked.emit()
 
@@ -2058,7 +2051,6 @@ class MainWindow(QtWidgets.QMainWindow):
             selected_port = []
             for port_id in active_port_list:
                 if port_id < self.ControlsWin.ui1.cBox_Port.count() - 1:
-
                     # TODO: Figure out what value needs to be appended to the active ports list.
                     # Format is PORT_SERIALDEVICE from Last_Used.txt
                     selected_port.append(
@@ -2171,7 +2163,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # Start worker thread.
         worker_check = self.worker.start()
         if worker_check == 1:
-
             # Gets frequency range
             self._readFREQ = self.worker.get_frequency_range()
 
@@ -2475,6 +2466,11 @@ class MainWindow(QtWidgets.QMainWindow):
             # at least one device connected
             enable_temp = self.ControlsWin.ui1.cBox_Port.count() > 1
 
+        if not enabled:
+            # Lock icon to show number when button is disabled (not hourglass)
+            self.ControlsWin.ui1.tool_NextPortRow.updateIcon(running=True)
+
+        self.ControlsWin.ui1.action_NextPortRow.setEnabled(enabled)
         self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
         self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
         self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
@@ -2556,7 +2552,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 col=x,
                 row=y,
                 colspan=span,
-                title=title1 + f" {i+1}",
+                title=title1 + f" {i + 1}",
                 **{"font-size": "10pt"},
             )
             p.showGrid(x=True, y=True)
@@ -2592,7 +2588,7 @@ class MainWindow(QtWidgets.QMainWindow):
             p = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
-                title=title2 + f" {i+1}",
+                title=title2 + f" {i + 1}",
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
@@ -3181,19 +3177,19 @@ class MainWindow(QtWidgets.QMainWindow):
                     # keep going, search for dups (conflicts in config)
         if len(usb_dev) == 0:
             Log.d(
-                f"No matching config found for port \"{self._selected_port.split(':')[0]}\". New device?"
+                f'No matching config found for port "{self._selected_port.split(":")[0]}". New device?'
             )
         elif len(usb_dev) == 1:
             i, dev_name = usb_dev.pop()
             config_folder_name = dev_name if i == 0 else f"{i}_{dev_name}"
             Log.d(
-                f"Matching config found: port \"{self._selected_port.split(':')[0]}\" is device \"{config_folder_name}\"."
+                f'Matching config found: port "{self._selected_port.split(":")[0]}" is device "{config_folder_name}".'
             )
             FileStorage.DEV_set_active(i, dev_name)
         # multiple dev infos contain the same port (conflicts should resolve later)
         else:
             Log.d(
-                f"Multiple matching configs found for port \"{self._selected_port.split(':')[0]}\":"
+                f'Multiple matching configs found for port "{self._selected_port.split(":")[0]}":'
             )
             Log.d(f"Matching devices are: [{', '.join('_'.join(usb_dev))}]")
             # use root, trigger FW check conflict correction
@@ -3211,7 +3207,6 @@ class MainWindow(QtWidgets.QMainWindow):
         main ui window.
         """
         try:
-
             self.multiplex_plots = max(
                 1, min(4, 1 + self.ControlsWin.ui1.cBox_MultiMode.currentIndex())
             )
@@ -3355,8 +3350,21 @@ class MainWindow(QtWidgets.QMainWindow):
         if ok:
             try:
                 pid_new = int(text, base=16)
-                # valid values: 1-4, A-D
-                if not pid_new in [0x1, 0x2, 0x3, 0x4, 0xA, 0xB, 0xC, 0xD]:
+                # valid values: 1-4, A-D, 0x00 (single),
+                #               0x80 (flux controller), 0xFF (default, single)
+                if pid_new not in [
+                    0x1,
+                    0x2,
+                    0x3,
+                    0x4,
+                    0xA,
+                    0xB,
+                    0xC,
+                    0xD,
+                    0x00,
+                    0x80,
+                    0xFF,
+                ]:
                     Log.w("Out-of-range PID entered by user. Using default: 0xFF")
                     pid_new = 0xFF
             except:
@@ -4173,7 +4181,6 @@ class MainWindow(QtWidgets.QMainWindow):
         # REFERENCE NOT SET
         ###########################################################################################################################
         else:
-
             for i, p in enumerate(self._plt2_arr):
                 if p == None:
                     continue
@@ -4542,6 +4549,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
 
     def _refresh_ports(self):
+        flux_controller_exists = False
 
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
         if selected_port == None:
@@ -4662,16 +4670,46 @@ class MainWindow(QtWidgets.QMainWindow):
         icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/")
         usb_icon = QtGui.QIcon(os.path.join(icon_path, "usb-icon.png"))  # png
         ethernet_icon = QtGui.QIcon(os.path.join(icon_path, "ethernet-icon.png"))  # png
+        controller_icon = QtGui.QIcon(
+            os.path.join(icon_path, "controller-icon.png")
+        )  # png
 
         if ports is not None:
+            controller_port = None
             for i in range(len(ports)):
                 port_parts = port_names[i].split(" (")
                 dev_name = port_parts[0]
                 is_networked = port_parts[-1].count(".") == 3
-                port_icon = ethernet_icon if is_networked else usb_icon
+                is_controller = port_names[i].startswith("80:")
+                port_icon = usb_icon
+                if is_controller:
+                    port_icon = controller_icon
+                    flux_controller_exists = True
+                    controller_port = [port_icon, dev_name, ports[i]]
+                    continue  # wait to add it until after sorting other ports
+                elif is_networked:
+                    port_icon = ethernet_icon
                 self.ControlsWin.ui1.cBox_Port.addItem(port_icon, dev_name, ports[i])
             self.ControlsWin.ui1.cBox_Port.model().sort(0)
+            if controller_port:
+                self.ControlsWin.ui1.cBox_Port.addItem(
+                    controller_port[0], controller_port[1], controller_port[2]
+                )
             self.ControlsWin.ui1.cBox_Port.addItem("⚙️  Configure...", "CMD_DEV_INFO")
+
+        # Show/hide "Next Port" button (as HW supports it)
+        self.ControlsWin.ui1.action_NextPortRow.setVisible(flux_controller_exists)
+        self.ControlsWin.ui1.action_NextPortSep.setVisible(flux_controller_exists)
+
+        # re-home controller if FLUX is connected (on launch and Reset)
+        if self.ControlsWin.ui1.action_NextPortRow.isVisible():  # use action, not tool
+            # To avoid re-homing on run start, only do this if Run button is disabled
+            if self.ControlsWin.ui1.tool_Start.isEnabled():
+                pass  # do nothing, leave cam wheel where it is
+            else:
+                # setting error will force immediate re-home on next update
+                self.ControlsWin.ui1.tool_NextPortRow.setIconError()
+                self.ControlsWin.ui1.tool_NextPortRow.click()  # update
 
         # Log.d(selected_port, ports)
         selected_port_parts = selected_port.split(";")
@@ -4726,13 +4764,17 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ControlsWin.ui1.cBox_Port.setCurrentIndex(0)
                 self._port_changed()
 
+        # Remove FLUX controller from list of PIDs connected (if exists)
+        if "80" in dev_pids:
+            dev_pids.remove("80")
+
         restore_idx = self.ControlsWin.ui1.cBox_MultiMode.currentIndex()
         self.ControlsWin.ui1.cBox_MultiMode.clear()
         multi_channel_count = 4 * 1
         if "A" in dev_pids:
             multi_channel_count = 4 * 6
         multi_channel_items = [
-            f"{i+1} Channel" + ("s" if i > 0 else "")
+            f"{i + 1} Channel" + ("s" if i > 0 else "")
             for i in range(multi_channel_count)
         ]
         self.ControlsWin.ui1.cBox_MultiMode.addItems(multi_channel_items)
@@ -5696,7 +5738,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.ask_for_update = True
                 self.url_download = most_recent
                 version_info_descr = branch[:-1]  # drop 'x' from 'v2.6x'
-                self.build_descr = f'{most_recent["name"][most_recent["name"].rfind(version_info_descr):-4]} ({ts1})'
+                self.build_descr = f"{most_recent['name'][most_recent['name'].rfind(version_info_descr) : -4]} ({ts1})"
                 self.build_descr = self.build_descr.replace("_exe", "").replace(
                     "_py", ""
                 )  # remove '_exe' and '_py' from build description
@@ -6291,7 +6333,6 @@ class MainWindow(QtWidgets.QMainWindow):
         )
 
         if os.path.exists(save_to):
-
             self.progressBar = QtWidgets.QProgressDialog(
                 f"Extracting SW {os.path.basename(new_install_path)}...",
                 "Cancel",
@@ -6337,7 +6378,6 @@ class MainWindow(QtWidgets.QMainWindow):
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
                 ) as proc:
-
                     # Cannot send input after starting communication (must do it now)
                     Log.d("INPUT: Sending inputs to automate the launch script.")
                     # say yes to 'choice' (up to two times, but do 5 to future-proof it)
@@ -6405,7 +6445,6 @@ class MainWindow(QtWidgets.QMainWindow):
                 "QATCH Software Ready!",
                 "<b>Install Success!</b><br/><br/>Would you like to close this instance and<br/>launch the new application now?",
             ):
-
                 # launch new instance
                 launch_file = "QATCH nanovisQ.lnk" if do_launch_inline else "launch.bat"
                 start_new_build = os.path.join(new_install_path, launch_file)
@@ -6503,7 +6542,6 @@ class UpdaterProcess_Dbx(multiprocessing.Process):
 
 
 class UpdaterTask(QtCore.QThread):
-
     TAG = "[UpdaterTask]"
     finished = QtCore.pyqtSignal()
     exception = QtCore.pyqtSignal(str)
@@ -6526,7 +6564,6 @@ class UpdaterTask(QtCore.QThread):
 
 
 class UpdaterTask_Dbx(UpdaterTask):
-
     def __init__(self, local_file, remote_file, total_size, dbx_conn):
         super().__init__(local_file, remote_file, total_size)
         self._dbx_connection = dbx_conn
@@ -6590,7 +6627,6 @@ class UpdaterTask_Dbx(UpdaterTask):
 
 
 class UpdaterTask_Git(UpdaterTask):
-
     def run(self):
         try:
             save_to = self.local_file
