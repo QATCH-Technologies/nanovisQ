@@ -506,8 +506,6 @@ class Database:
             int: The database-assigned primary key (`id`) of the newly inserted formulation.
         """
         c = self.conn.cursor()
-
-        # [FIXED] SQL string now matches the 5 values provided
         c.execute(
             "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
             (

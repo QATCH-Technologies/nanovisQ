@@ -1104,32 +1104,6 @@ class IngredientController:
 
         return filtered
 
-    # def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
-    #     """Helper method to retrieve a single ingredient by name and subclass type.
-    #     This method performs a fuzzy match on the ingredient name to allow for minor discrepancies
-    #     in user input. If a fuzzy match is found, it uses that name to search for the ingredient.
-
-    #     Args:
-    #         name (str): The ingredient name to match.
-    #         type (str): The subclass name (e.g., "Protein", "Buffer").
-
-    #     Returns:
-    #         Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
-    #     """
-    #     ingredients = self.db.get_all_ingredients()
-    #     # Perform a fuzzy matching search on the name.
-    #     fuzzy_name = self.fuzzy_fetch(name=str(name), max_results=1)
-    #     if fuzzy_name:
-    #         name = fuzzy_name[0]
-    #     for ing in ingredients:
-    #         # Skip non-user ingredients while in user mode.
-    #         if self._user_mode and not ing.is_user:
-    #             continue
-    #         # Return first matching ingredient by type and name.
-    #         if ing.type == type and ing.name == name:
-    #             return ing
-    #     return None
-
     def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
         """Helper method to retrieve a single ingredient by name and subclass type.
         This method performs an exact match on the ingredient name to ensure distinct

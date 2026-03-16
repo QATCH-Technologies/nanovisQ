@@ -303,8 +303,6 @@ class FormulationController:
         """
         added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
-
-        # Define minimum expected columns (excluding optional name/signature)
         expected = {
             "Protein_type",
             "MW",
