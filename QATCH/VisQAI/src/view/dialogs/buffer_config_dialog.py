@@ -1,3 +1,22 @@
+"""
+buffer_config_dialog.py
+
+Provides a configuration dialog for buffer ingredients.
+
+This module defines the BufferConfigDialog, which allows users to set or edit
+properties for buffer solutions, specifically their name and pH levels. It
+includes validation logic to ensure a pH value is provided before saving.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
+"""
+
 from PyQt5 import QtWidgets
 
 try:
@@ -22,12 +41,32 @@ _STYLE_NORMAL = (
 
 
 class BufferConfigDialog(QtWidgets.QDialog):
-    """Dialog for configuring buffer ingredients."""
+    """A modal dialog for adding or editing Buffer ingredient properties.
 
-    # pH of None / missing is tracked via self._ph_unset rather than a numeric
-    # sentinel.  This keeps the full 0–14 range typeable in the spinbox.
+    This dialog manages a simple form for a Buffer's name and pH. It tracks
+    validation state visually, highlighting the pH field in red if it is
+    missing or set to the sentinel value (0.0).
+
+    Attributes:
+        controller: The ingredient controller responsible for database/model
+            persistence (add/update).
+        existing_buffer (Buffer, optional): The buffer instance being edited,
+            if any.
+        result_ingredient (Buffer, optional): The newly created or updated
+            Buffer object after successful acceptance.
+        _ph_unset (bool): Internal flag tracking if the pH value is currently
+            missing or invalid.
+    """
 
     def __init__(self, ing_ctrl, existing_buffer=None, parent=None):
+        """Initializes the dialog with controller and optional existing data.
+
+        Args:
+            ing_ctrl: The controller logic for managing ingredients.
+            existing_buffer (Buffer, optional): An existing Buffer object to
+                populate the form for editing. Defaults to None.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+        """
         super().__init__(parent)
         self.controller = ing_ctrl
         self.existing_buffer = existing_buffer
@@ -134,60 +173,67 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         layout.addLayout(btn_layout)
 
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
     @staticmethod
     def buffer_needs_completion(buffer) -> bool:
-        """Return True if *buffer* has an unset pH."""
+        """Determines if a buffer object lacks a valid pH.
+
+        Args:
+            buffer (Buffer): The buffer object to inspect.
+
+        Returns:
+            bool: True if pH is None or 0.0, False otherwise.
+        """
         if not isinstance(buffer, Buffer):
             return False
         # Treat 0.0 as the missing/sentinel value
         return buffer.pH is None or buffer.pH == 0.0
 
     def has_incomplete_fields(self) -> bool:
-        """Return True if pH has not yet been provided."""
+        """Checks if the form currently contains invalid or missing data.
+
+        Returns:
+            bool: True if the pH spinbox is at the 0.0 sentinel value.
+        """
         return self.spin_ph.value() == 0.0
 
     def _mark_unset(self) -> None:
+        """Applies red styling and shows the warning banner."""
         self.spin_ph.setStyleSheet(_STYLE_UNSET)
         self.lbl_incomplete.setVisible(True)
 
     def _mark_set(self) -> None:
+        """Restores normal styling and hides the warning banner."""
         self.spin_ph.setStyleSheet(_STYLE_NORMAL)
         self.lbl_incomplete.setVisible(False)
 
     def _on_ph_changed(self, value: float) -> None:
-        # Clear the unset flag only when the user moves above 0.0
+        """Validates the pH value in real-time as the user types.
+
+        Args:
+            value (float): The current numeric value of the pH spinbox.
+        """
         if value > 0.0:
             self._mark_set()
         else:
             self._mark_unset()
 
-    # ------------------------------------------------------------------
-    # Population
-    # ------------------------------------------------------------------
-
     def _populate_fields(self, data):
-        """Populate fields from either a Buffer object or a dictionary.
+        """Populates the dialog widgets from a Buffer object or dictionary.
 
-        A None or 0.0 pH is flagged as unset with red styling.
-        A real pH value is filled normally.
+        Args:
+            data (Buffer or dict): Data source containing 'name' and 'ph' keys/attrs.
         """
         name = ""
         ph = None
 
         if isinstance(data, Buffer):
             name = data.name or ""
-            ph = data.pH  # may be None
+            ph = data.pH
         elif isinstance(data, dict):
             name = data.get("name", "")
-            ph = data.get("ph")  # intentionally no default
+            ph = data.get("ph")
 
         self.edit_name.setText(name)
-
-        # Check if missing or matching the 0.0 sentinel
         is_unset = ph is None or float(ph) == 0.0
         self.spin_ph.setValue(0.0 if is_unset else float(ph))
 
@@ -196,11 +242,12 @@ class BufferConfigDialog(QtWidgets.QDialog):
         else:
             self._mark_set()
 
-    # ------------------------------------------------------------------
-    # Save
-    # ------------------------------------------------------------------
-
     def save_and_accept(self):
+        """Validates input and saves the buffer via the controller.
+
+        If valid, it either updates the existing buffer or creates a new one
+        before closing the dialog. Displays warning messages for invalid input.
+        """
         name = self.edit_name.text().strip()
         if not name:
             QtWidgets.QMessageBox.warning(self, "Invalid Input", "Name is required.")
@@ -217,13 +264,11 @@ class BufferConfigDialog(QtWidgets.QDialog):
 
         try:
             if self.existing_buffer and isinstance(self.existing_buffer, Buffer):
-                # UPDATE
                 self.existing_buffer.name = name
                 self.existing_buffer.pH = self.spin_ph.value()
                 self.controller.update(self.existing_buffer.id, self.existing_buffer)
                 self.result_ingredient = self.existing_buffer
             else:
-                # ADD NEW
                 new_buffer = Buffer(enc_id=-1, name=name, pH=self.spin_ph.value())
                 self.result_ingredient = self.controller.add(new_buffer)
 
@@ -235,7 +280,11 @@ class BufferConfigDialog(QtWidgets.QDialog):
             )
 
     def get_data(self):
-        """Returns the buffer configuration as a dictionary."""
+        """Extracts the current form data into a dictionary.
+
+        Returns:
+            dict: A dictionary containing 'name' (str) and 'ph' (float or None).
+        """
         return {
             "name": self.edit_name.text().strip(),
             "ph": self.spin_ph.value() if not self.has_incomplete_fields() else None,

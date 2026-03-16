@@ -1,14 +1,42 @@
+"""
+database_table_dialog.py
+
+Provides a generic, reusable dialog for displaying and managing database records.
+
+This module contains the DatabaseTableDialog, a versatile QDialog that wraps a
+QTableWidget with built-in support for searching, row deletion via context
+menus, and interactive checkbox columns.
+
+Author:
+    Paul MacNichol (paul.macnichol@qatchtech.com)
+
+Date:
+    2026-03-16
+
+Version:
+    1.0
+"""
+
 from PyQt5 import QtCore, QtWidgets
 from PyQt5.QtCore import Qt
 
 
 class DatabaseTableDialog(QtWidgets.QDialog):
-    """
-    Generic Dialog to display database records in a table.
-    Supports:
-      - Search/Filter
-      - Row Deletion (via delete_callback)
-      - Checkbox Column (via check_col_idx + check_callback)
+    """A generic dialog for tabular data display with filtering and callbacks.
+
+    This dialog simplifies the process of showing database rows by providing
+    automatic table population, a search bar for filtering, and hooks for
+    deleting records or toggling boolean states (checkboxes).
+
+    Attributes:
+        delete_callback (callable, optional): A function called when a row is deleted.
+            Expected signature: `callback(record_id) -> bool`.
+        check_col_idx (int, optional): The index of the column that should be
+            rendered as a checkbox.
+        check_callback (callable, optional): A function called when a checkbox
+            is toggled. Expected signature: `callback(record_id, is_checked)`.
+        search_bar (QtWidgets.QLineEdit): The input field used for table filtering.
+        table (QtWidgets.QTableWidget): The central widget displaying the data.
     """
 
     def __init__(
@@ -20,8 +48,25 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         delete_callback=None,
         check_col_idx=None,
         check_callback=None,
-        export_callback=None,  # <-- Added parameter
+        export_callback=None,
     ):
+        """Initializes the dialog and builds the table interface.
+
+        Args:
+            title (str): The window title.
+            headers (list[str]): List of column header labels.
+            data_rows (list[list]): A list of rows, where each row is a list of
+                values matching the headers.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            delete_callback (callable, optional): Logic to execute on record
+                deletion. Defaults to None.
+            check_col_idx (int, optional): Index for a checkable column.
+                Defaults to None.
+            check_callback (callable, optional): Logic to execute on checkbox
+                toggle. Defaults to None.
+            export_callback (callable, optional): Logic to execute when the
+                Export button is clicked. Defaults to None.
+        """
         super().__init__(parent)
         self.setWindowTitle(title)
         self.setWindowFlags(self.windowFlags() | Qt.WindowMaximizeButtonHint)
@@ -63,19 +108,25 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         if export_callback:
             export_btn = QtWidgets.QPushButton("Export All to CSV")
             export_btn.clicked.connect(export_callback)
-            
+
             btn_box.addButton(export_btn, QtWidgets.QDialogButtonBox.ActionRole)
 
         layout.addWidget(btn_box)
 
     def populate_table(self, data_rows):
+        """Fills the table with provided data rows.
+
+        Handles the logic for converting raw data into QTableWidgetItems,
+        including special handling for checkbox columns.
+
+        Args:
+            data_rows (list[list]): The data to display.
+        """
         self.table.blockSignals(True)  # Prevent itemChanged firing during setup
         self.table.setRowCount(len(data_rows))
 
         for r_idx, row_data in enumerate(data_rows):
             for c_idx, val in enumerate(row_data):
-
-                # Checkbox Handling for specific column
                 if self.check_col_idx is not None and c_idx == self.check_col_idx:
                     item = QtWidgets.QTableWidgetItem("")
                     item.setFlags(
@@ -83,27 +134,27 @@ class DatabaseTableDialog(QtWidgets.QDialog):
                         | QtCore.Qt.ItemIsEnabled
                         | QtCore.Qt.ItemIsSelectable
                     )
-
-                    # Interpret value as boolean
                     is_checked = str(val).lower() in ("true", "1", "yes")
                     item.setCheckState(
                         QtCore.Qt.Checked if is_checked else QtCore.Qt.Unchecked
                     )
-
-                    # Store original ID in data for easy access if needed, though we use col 0 lookup
                     item.setData(QtCore.Qt.UserRole, val)
                 else:
                     item = QtWidgets.QTableWidgetItem(str(val))
-
                 self.table.setItem(r_idx, c_idx, item)
-
         self.table.blockSignals(False)
 
     def on_item_changed(self, item):
-        """Handle checkbox toggles."""
+        """Internal handler for checkbox state changes.
+
+        Identifies the record ID from column 0 of the affected row and triggers
+        the `check_callback`.
+
+        Args:
+            item (QTableWidgetItem): The table item that was changed.
+        """
         if self.check_col_idx is not None and item.column() == self.check_col_idx:
             row = item.row()
-            # Assume ID is always in column 0
             id_item = self.table.item(row, 0)
             if id_item and self.check_callback:
                 record_id = id_item.text()
@@ -111,7 +162,14 @@ class DatabaseTableDialog(QtWidgets.QDialog):
                 self.check_callback(record_id, is_checked)
 
     def show_context_menu(self, pos):
-        """Shows context menu with Delete option."""
+        """Displays a context menu for row-level actions.
+
+        Currently supports a 'Delete' action which is only enabled if at
+        least one item is selected.
+
+        Args:
+            pos (QPoint): The local position where the menu was requested.
+        """
         menu = QtWidgets.QMenu()
         delete_action = menu.addAction("Delete")
 
@@ -124,7 +182,11 @@ class DatabaseTableDialog(QtWidgets.QDialog):
             self.handle_delete()
 
     def handle_delete(self):
-        """Processes deletion for selected rows."""
+        """Identifies selected rows and triggers the deletion callback.
+
+        Rows are processed in reverse order to ensure indices remain valid
+        as rows are removed from the table widget.
+        """
         rows = sorted(
             set(index.row() for index in self.table.selectedIndexes()), reverse=True
         )
@@ -136,17 +198,21 @@ class DatabaseTableDialog(QtWidgets.QDialog):
                     self.table.removeRow(row)
 
     def filter_table(self, text):
-        """Simple case-insensitive row filtering."""
+        """ "Performs a case-insensitive search across all table cells.
+
+        Hides rows that do not contain the filter text in at least one column.
+
+        Args:
+            text (str): The search string provided by the user.
+        """
         text = text.lower()
         for i in range(self.table.rowCount()):
             match = False
             for j in range(self.table.columnCount()):
                 item = self.table.item(i, j)
-                # Check text or check state representation
                 if item:
                     content = item.text().lower()
                     if not content and item.flags() & QtCore.Qt.ItemIsUserCheckable:
-                        # Allow searching for 'checked' status if desired, or skip
                         pass
                     elif text in content:
                         match = True

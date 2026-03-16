@@ -1,36 +1,3 @@
-/* ===========================================================================
-   VISQ.AI - STYLESHEET
-   =========================================================================== */
-
-/* ===========================================================================
-   COLOR PALETTE
-   ===========================================================================
-   Primary Blues (Main Brand Colors):
-   - #2596be - Deep Blue (primary text, borders, main actions)
-   - #13B5F0 - Bright Blue (pressed states, active elements)
-   - #17C4F3 - Cyan Bright (primary buttons, focus states)
-   - #4EC4EB - Cyan Medium (hover states, selections)
-   - #64CDF5 - Cyan Light (hover backgrounds, subtle highlights)
-   - #8DD9F7 - Cyan Pale (backgrounds, cards, soft accents)
-   
-   Supporting Colors:
-   - #4caf50 - Success Green (measured data, positive actions)
-   - #ff9800 - Warning Orange (caution states)
-   - #f44336 - Error Red (destructive actions)
-   
-   Neutrals:
-   - #24292f - Text Dark
-   - #6b7280 - Text Muted
-   - #d1d5db - Border Light
-   - #e5e7eb - Border Lighter
-   - #f3f4f6 - Background Light
-   - #f9fafb - Background Lightest
-   - #ffffff - White
-   =========================================================================== */
-
-/* ===========================================================================
-   1. CONTAINER STYLING
-   =========================================================================== */
 QWidget#leftPanel {
     background-color: transparent; 
     border-right: 1px solid #e5e7eb;
@@ -50,10 +17,6 @@ QWidget#topBar {
     background-color: #ffffff;
     border-bottom: 1px solid #e5e7eb;
 }
-
-/* ===========================================================================
-   2. PREDICTION CARDS
-   =========================================================================== */
 QFrame[class="card"] {
     background-color: #ffffff;
     border: 1px solid #d1d5db;
@@ -85,9 +48,6 @@ QFrame[class="card"][selected="true"] {
     border: 2px solid #2596be;
 }
 
-/* ===========================================================================
-   3. TYPOGRAPHY & HEADERS
-   =========================================================================== */
 QFrame[class="card"] QLabel {
     color: #24292f;
 }
@@ -102,11 +62,6 @@ QFrame[class="divider"] {
     color: #e5e7eb;
 }
 
-/* ===========================================================================
-   4. INPUT CONTROLS (LineEdit, ComboBox, SpinBoxes)
-   =========================================================================== */
-
-/* --- Common Input Styling --- */
 QFrame[class="card"] QLineEdit, 
 QFrame[class="card"] QComboBox, 
 QFrame[class="card"] QDoubleSpinBox,
@@ -243,9 +198,6 @@ QFrame[class="card"] QSpinBox::down-button:hover {
     border-color: #4EC4EB;
 }
 
-/* ===========================================================================
-   5. BUTTONS
-   =========================================================================== */
 QFrame[class="card"] QPushButton {
     background-color: #ffffff;
     border: 1px solid #d1d5db;
@@ -297,10 +249,6 @@ QPushButton#btnBrowseModel:hover {
     border-color: #4EC4EB;
 }
 
-/* ===========================================================================
-   6. SPECIAL INPUTS
-   =========================================================================== */
-
 /* Title Input (Underline Style) */
 QFrame[class="card"] QLineEdit[class="title-input"] {
     background-color: transparent;
@@ -318,9 +266,6 @@ QFrame[class="card"] QLineEdit[class="title-input"]:focus {
     background-color: transparent;
 }
 
-/* ===========================================================================
-   7. SLIDERS
-   =========================================================================== */
 
 /* Temperature Slider */
 QSlider::groove:horizontal {
@@ -356,9 +301,6 @@ QSlider::add-page:horizontal {
     border-radius: 3px;
 }
 
-/* ===========================================================================
-   8. TOOLBAR BUTTONS (Top Bar)
-   =========================================================================== */
 
 /* Circle Toolbar Buttons */
 QToolButton {
@@ -402,9 +344,6 @@ QToolButton#btnDelete:pressed {
     background-color: #ffcdd2;
 }
 
-/* ===========================================================================
-   9. SEARCH BAR
-   =========================================================================== */
 QLineEdit#searchBar {
     border: 1px solid #d1d5db;
     border-radius: 16px;
@@ -418,9 +357,6 @@ QLineEdit#searchBar:focus {
     background-color: #f9fafb;
 }
 
-/* ===========================================================================
-   10. SEPARATORS & DIVIDERS
-   =========================================================================== */
 QFrame[frameShape="4"] {  /* VLine */
     color: #e0e0e0;
 }
@@ -429,15 +365,11 @@ QFrame[frameShape="5"] {  /* HLine */
     color: #e0e0e0;
 }
 
-/* ===========================================================================
-   11. PLACEHOLDER / EMPTY STATE
-   =========================================================================== */
 QWidget#placeholderWidget {
     background-color: transparent;
 }
 
 QLabel#placeholderIcon {
-    /* Icon styling handled by code - this ensures no conflicts */
 }
 
 QLabel#placeholderText {
@@ -447,18 +379,12 @@ QLabel#placeholderText {
     padding: 10px 20px;
 }
 
-/* ===========================================================================
-   12. DRAG & DROP PLACEHOLDER
-   =========================================================================== */
 QWidget#dragPlaceholder {
-    background-color: rgba(78, 196, 235, 0.1);  /* Cyan medium with 10% opacity */
+    background-color: rgba(78, 196, 235, 0.1);
     border: 1px dashed #4EC4EB;
     border-radius: 6px;
 }
 
-/* ===========================================================================
-   13. FILTER WIDGET (Dropdown Panel)
-   =========================================================================== */
 PredictionFilterWidget {
     background-color: #ffffff;
     border-bottom-left-radius: 8px;
@@ -536,9 +462,6 @@ QPushButton#btnApplyFilters:pressed {
     background-color: #13B5F0;
 }
 
-/* ===========================================================================
-   14. FORMULATION CARD COMPONENTS
-   =========================================================================== */
 
 /* Drag Handle */
 QFrame[class="card"] DragHandle {
@@ -639,9 +562,6 @@ QFrame[class="card"] QPushButton#btnIngredientRemove:hover {
     border: 1px solid #ffcdd2;
 }
 
-/* ===========================================================================
-   15. CARD MENUS (Add Component Menu)
-   =========================================================================== */
 QMenu#cardComponentMenu {
     background-color: #ffffff;
     border: 1px solid #d1d5db;
@@ -717,9 +637,6 @@ QFrame[class="card"] QToolButton[class="help-btn"]:hover {
     color: #2596be;
 }
 
-/* ===========================================================================
-   16. FLOATING ACTION BUTTON (FAB)
-   =========================================================================== */
 QPushButton#fabAdd {
     background-color: #17C4F3;
     color: white;
@@ -732,8 +649,6 @@ QPushButton#fabAdd {
 
 QPushButton#fabAdd:hover {
     background-color: #4EC4EB;
-    /* Note: transform: scale() is not supported in QSS */
-    /* Use QPushButton properties or animations in Python for scaling effects */
 }
 
 QPushButton#fabAdd:pressed {
@@ -744,12 +659,10 @@ QPushButton#fabAdd:disabled {
     background-color: #d1d5db;
     color: #9ca3af;
 }
-/* ===========================================================================
-   17. EVALUATION WIDGET
-   =========================================================================== */
+
 EvaluationWidget {
     background-color: #ffffff;
-    border-radius: 8px; /* Apply rounding to all corners now that it has a top border */
+    border-radius: 8px;
     border: 1px solid #d1d5db;
 }
 
@@ -815,9 +728,6 @@ EvaluationWidget QDoubleSpinBox:focus {
     border: 1px solid #2596be;
 }
 
-/* ===========================================================================
-   18. GENERATE SAMPLE WIDGET
-   =========================================================================== */
 GenerateSampleWidget {
     background-color: #ffffff;
     border-radius: 8px;

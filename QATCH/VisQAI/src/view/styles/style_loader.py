@@ -28,11 +28,23 @@ except (ImportError, ModuleNotFoundError):
 
 
 class StyleLoader:
-    """
-    Loads and manages QSS stylesheets with icon path substitution.
+    """Loads and manages QSS stylesheets with icon path substitution.
+
+    This class handles reading QSS files from disk, caching their content,
+    and substituting specific markers with absolute file system paths. This
+    is particularly useful for ensuring icons load correctly across different
+    installation environments.
+
+    Attributes:
+        DEFAULT_ICONS (dict): Default mapping of icon placeholders to their
+            relative paths within the project architecture.
+        base_dir (Path): The root directory used to resolve relative icon paths.
+        theme_file (str): The filename of the QSS theme to load.
+        icon_paths (dict): The active mapping of placeholders to file paths.
+        _stylesheet_cache (str, optional): Cached version of the processed
+            stylesheet to prevent redundant disk I/O.
     """
 
-    # Default icon paths (relative to the base directory)
     DEFAULT_ICONS = {
         "ICON_DOWN": os.path.join(
             Architecture.get_path(),
@@ -64,18 +76,16 @@ class StyleLoader:
     }
 
     def __init__(self, base_dir=None, theme_file="theme.qss", icon_paths=None):
-        """
-        Initialize the style loader.
+        """Initializes the StyleLoader with path configurations.
 
         Args:
-            base_dir: Base directory for resolving relative paths.
-                     If None, uses the directory of this file.
-            theme_file: Name of the QSS file (default: 'theme.qss')
-            icon_paths: Dictionary of icon placeholder -> path mappings.
-                       If None, uses DEFAULT_ICONS.
+            base_dir (str or Path, optional): Base directory for resolving relative
+                paths. If None, defaults to the parent of the current file's directory.
+            theme_file (str): Name of the QSS file. Defaults to 'theme.qss'.
+            icon_paths (dict, optional): Dictionary mapping placeholders to paths.
+                If None, uses `DEFAULT_ICONS`.
         """
         if base_dir is None:
-            # Get the directory where this file is located
             base_dir = Path(__file__).parent.parent
         else:
             base_dir = Path(base_dir)
@@ -86,25 +96,29 @@ class StyleLoader:
         self._stylesheet_cache = None
 
     def _resolve_icon_path(self, relative_path):
-        """
-        Resolve an icon path to an absolute path with forward slashes.
+        """Resolves an icon path to an absolute path formatted for Qt.
+
+        Qt requires forward slashes for file paths within QSS, even on Windows
+        operating systems.
 
         Args:
-            relative_path: Path relative to base_dir
+            relative_path (str): Path relative to the `base_dir`.
 
         Returns:
-            Absolute path string with forward slashes
+            str: An absolute path string using forward slashes.
         """
         abs_path = (self.base_dir / relative_path).resolve()
-        # Qt requires forward slashes even on Windows
         return str(abs_path).replace("\\", "/")
 
     def _load_qss_file(self):
-        """
-        Load the QSS file from disk.
+        """Loads the raw QSS file content from the filesystem.
 
         Returns:
-            Raw QSS content as string
+            str: The raw content of the QSS file.
+
+        Raises:
+            FileNotFoundError: If the theme file cannot be found at the
+                calculated path.
         """
         qss_path = self.base_dir / "styles" / self.theme_file
 
@@ -118,32 +132,33 @@ class StyleLoader:
             return f.read()
 
     def _substitute_icons(self, qss_content):
-        """
-        Replace icon placeholders with actual file paths.
+        """Replaces icon placeholders with absolute file paths.
+
+        Supports both the new `{{PLACEHOLDER}}` and legacy `__PLACEHOLDER__`
+        formats.
 
         Args:
-            qss_content: Raw QSS content with {{PLACEHOLDER}} markers
+            qss_content (str): Raw QSS content containing placeholder markers.
 
         Returns:
-            QSS content with substituted paths
+            str: Processed QSS content with absolute file paths.
         """
         for placeholder, relative_path in self.icon_paths.items():
             abs_path = self._resolve_icon_path(relative_path)
-            # Replace both {{PLACEHOLDER}} and old __PLACEHOLDER__ formats
             qss_content = qss_content.replace(f"{{{{{placeholder}}}}}", abs_path)
             qss_content = qss_content.replace(f"__{placeholder}__", abs_path)
 
         return qss_content
 
     def get_stylesheet(self, use_cache=True):
-        """
-        Get the complete stylesheet with icon paths substituted.
+        """Retrieves the processed stylesheet with substituted paths.
 
         Args:
-            use_cache: If True, uses cached stylesheet after first load
+            use_cache (bool): If True, returns the previously processed
+                stylesheet if available. Defaults to True.
 
         Returns:
-            Complete QSS stylesheet as string
+            str: The final QSS stylesheet ready for use in `setStyleSheet()`.
         """
         if use_cache and self._stylesheet_cache is not None:
             return self._stylesheet_cache
@@ -157,44 +172,47 @@ class StyleLoader:
         return qss_content
 
     def reload(self):
-        """
-        Force reload of the stylesheet from disk.
-        Useful during development.
+        """Forces a reload of the stylesheet from disk.
+
+        Useful during development to see QSS changes without restarting the app.
+
+        Returns:
+            str: The freshly loaded and processed QSS stylesheet.
         """
         self._stylesheet_cache = None
         return self.get_stylesheet(use_cache=False)
 
     def set_icon_path(self, placeholder, path):
-        """
-        Update or add an icon path mapping.
+        """Updates or adds a new icon path mapping.
+
+        Calling this method automatically invalidates the stylesheet cache.
 
         Args:
-            placeholder: The placeholder name (e.g., 'ICON_DOWN')
-            path: Path relative to base_dir
+            placeholder (str): The placeholder name used in the QSS (e.g., 'ICON_LOGO').
+            path (str): The file path relative to `base_dir`.
         """
         self.icon_paths[placeholder] = path
-        self._stylesheet_cache = None  # Invalidate cache
+        self._stylesheet_cache = None
 
     @classmethod
     def create_default(cls):
-        """
-        Create a StyleLoader with default settings.
-        Convenience method for typical usage.
+        """Creates a StyleLoader instance with default settings.
+
+        Returns:
+            StyleLoader: A new instance initialized with default icons and theme.
         """
         return cls()
 
 
-# Convenience function for quick usage
 def load_stylesheet(base_dir=None, icon_paths=None):
-    """
-    Quick function to load the default stylesheet.
+    """Convenience function to quickly load the default stylesheet.
 
     Args:
-        base_dir: Base directory for resolving paths
-        icon_paths: Custom icon path mappings
+        base_dir (str or Path, optional): Base directory for path resolution.
+        icon_paths (dict, optional): Custom icon placeholder mappings.
 
     Returns:
-        Complete QSS stylesheet string
+        str: The complete processed QSS stylesheet.
     """
     loader = StyleLoader(base_dir=base_dir, icon_paths=icon_paths)
     return loader.get_stylesheet()
