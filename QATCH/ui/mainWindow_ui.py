@@ -2,11 +2,11 @@ import datetime
 import logging
 import math
 import os
+from time import time
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
 from pyqtgraph import GraphicsLayoutWidget
-from time import time
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
@@ -1862,7 +1862,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     {
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
-                 """.replace("{COLOR}", color)
+                 """.replace(
+            "{COLOR}", color
+        )
         self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
@@ -1932,7 +1934,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     Log.d("Waiting for FLUX controller to stop.")
                     # wait for thread to quit, gracefully
                     if not self.fluxThread.wait(msecs=3000):
-                        Log.w("Prior Flux controller thread still busy; skipping new Next Port request.")
+                        Log.w(
+                            "Prior Flux controller thread still busy; skipping new Next Port request."
+                        )
                         self.tool_NextPortRow.setEnabled(True)
                         return
             Log.d("Starting FLUX controller thread.")

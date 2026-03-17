@@ -7,6 +7,7 @@
 /logged_data_test
 /QATCH_Q-1_FW_py_v*
 **/__pycache__
+**/*.log
 
 # Ignore all files in "assets" folder
 **/assets/**
