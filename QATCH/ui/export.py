@@ -230,7 +230,7 @@ class Ui_Export(QtWidgets.QWidget):
         for i in range(self.combo_csv_cols.count()):
             self.combo_csv_cols.model().item(i, 0).setCheckState(QtCore.Qt.Checked)
         self.combo_csv_cols.check_items()  # update checked items to reflect model
-        # disable "Run Name" as it's required to be included in the exorted CSV as a key ID
+        # disable "Run Name" as it's required to be included in the exported CSV as a key ID
         self.combo_csv_cols.model().item(0, 0).setEnabled(False)
         layout_h13.addWidget(self.combo_csv_cols)
 

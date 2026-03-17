@@ -267,6 +267,11 @@ class Parser:
         val = el.get("value")
         if val is None:
             raise ValueError(f"Param '{name}' has no value attribute")
+        if len(val.strip()) == 0:
+            if required:
+                raise ValueError(f"Param '{name}' has empty value attribute")
+            return None
+
         try:
             return cast_type(val)
         except ValueError:
