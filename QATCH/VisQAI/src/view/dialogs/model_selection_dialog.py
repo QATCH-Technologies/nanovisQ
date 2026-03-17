@@ -68,6 +68,8 @@ except ImportError:
 
     from architecture import Architecture
 
+_NOT_PROVIDED = object()  # module-level sentinel
+
 
 class QFancyListWidget(QListWidget):
     """A QListWidget that clears selection when clicking on an empty area."""
@@ -102,7 +104,7 @@ class ModelSelectionDialog(QDialog):
 
     fileSelected: pyqtSignal = pyqtSignal(str)
 
-    def __init__(self, models_directory=os.getcwd(), parent=None):
+    def __init__(self, models_directory=None, parent=None):
         """Initialize the dialog and populate model lists.
 
         Args:
@@ -111,7 +113,9 @@ class ModelSelectionDialog(QDialog):
             parent (QWidget, optional): Parent widget. Defaults to None.
         """
         super().__init__(parent)
-        self.models_directory = models_directory
+        self.models_directory = (
+            models_directory if models_directory is not None else os.getcwd()
+        )
         self.pinned_models = []
         self.pinned_names = {}
         self.selected_model = None
@@ -140,7 +144,6 @@ class ModelSelectionDialog(QDialog):
                 QSize(16, 16)
             )
         )
-        Log.e(os.path.join(_icons_dir, "pin-circle-svgrepo-com.svg"))
         _pinned_label_layout.addWidget(_pin_icon)
         _pinned_section_label = QLabel("PINNED MODELS")
         _pinned_section_label.setProperty("class", "section-header")
@@ -429,7 +432,7 @@ class ModelSelectionDialog(QDialog):
 
         return {}, None  # entry not found
 
-    def on_model_selected(self, item=None, previous=NameError):
+    def on_model_selected(self, item=None, previous=_NOT_PROVIDED):
         """Update the detail panel and selected_model for the given item.
 
         Connected to both ``itemClicked`` and ``currentItemChanged`` on the
@@ -448,8 +451,8 @@ class ModelSelectionDialog(QDialog):
             self.detail_panel.setText("Select a model to view details")
             self.selected_model = None
             return
-        if not previous:
-            return
+        # if not previous:
+        #     return
 
         if not self.pinned_list.isAncestorOf(item.listWidget()):
             self.pinned_list.clearSelection()
@@ -528,10 +531,15 @@ class ModelSelectionDialog(QDialog):
             )
             return
 
-        if model_info["metadata"].get("pin", False):
-            mvc.unpin(sha)
-        else:
-            mvc.pin(sha)
+        try:
+            if model_info["metadata"].get("pin", False):
+                mvc.unpin(sha)
+            else:
+                mvc.pin(sha)
+        except (ValueError, KeyError, PermissionError) as e:
+            Log.e(TAG, f"Failed to toggle pin for {model_name}: {e}")
+            QMessageBox.warning(self, "Operation Failed", str(e))
+            return
 
         if self.pinned_list.currentItem():
             search_list = "recent"
@@ -745,6 +753,7 @@ class ModelSelectionDialog(QDialog):
                                 TAG,
                                 f'Child model sha "{child}" not found in model list',
                             )
+                            continue  # Skip this child
                         child_name = self.pinned_names.get(
                             child_model["filename"], child_model["filename"]
                         )

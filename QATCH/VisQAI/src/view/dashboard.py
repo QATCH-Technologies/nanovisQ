@@ -1408,6 +1408,7 @@ class DashboardUI(QtWidgets.QWidget):
         """
         self.optimize_widget.hide()
         self.btn_optimize.setChecked(False)
+        self._opt_cancelled = False
 
         maxiter = self.optimize_widget.spin_maxiter.value()
         self._pre_opt_data_series = list(getattr(self.viz_panel, "data_series", []))
@@ -1462,6 +1463,8 @@ class DashboardUI(QtWidgets.QWidget):
             card_data (dict): Data dict for the optimized formulation card,
                 including an optional ``estimated_profile`` key.
         """
+        if getattr(self, "_opt_cancelled", False):
+            return
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):
             self.viz_panel.loading_label.setText("Calculating…")
@@ -1495,6 +1498,8 @@ class DashboardUI(QtWidgets.QWidget):
         Args:
             error_msg (str): Error message emitted by the optimization worker.
         """
+        if getattr(self, "_opt_cancelled", False):
+            return
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):
             self.viz_panel.loading_label.setText("Calculating…")
@@ -1511,6 +1516,7 @@ class DashboardUI(QtWidgets.QWidget):
         Args:
             worker (OptimizationWorker): The worker instance to stop.
         """
+        self._opt_cancelled = True
         worker.stop()
         self.viz_panel.hide_loading()
         if hasattr(self.viz_panel, "loading_label"):

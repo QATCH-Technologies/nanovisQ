@@ -88,6 +88,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
                 display-only behaviour.
         """
         self._editable = editable
+        super().setEditable(editable)
+        self.check_items()
 
     def handle_item_pressed(self, index):
         """Toggle the check state of the item at *index* when it is pressed.
@@ -163,9 +165,9 @@ class CheckableComboBox(QtWidgets.QComboBox):
         for i in item_list:
             text_label = self.model().item(i, 0).text()
             if count == 0:
-                n += "% s" % text_label
+                n += "%s" % text_label
             else:
-                n += "; % s" % text_label
+                n += "; %s" % text_label
             count += 1
 
         # NOTE: To display text different from the items in the list
@@ -192,8 +194,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
         if line_edit:
             if self._editable:
                 line_edit.setPlaceholderText("<val>; <min>-<max>")
-                if line_edit.isReadOnly() == True:
+                if line_edit.isReadOnly():
                     line_edit.setReadOnly(False)
             else:
-                if line_edit.isReadOnly() == False:
+                if not line_edit.isReadOnly():
                     line_edit.setReadOnly(True)
