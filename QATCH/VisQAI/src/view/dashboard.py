@@ -1754,7 +1754,7 @@ class DashboardUI(QtWidgets.QWidget):
                 if hasattr(card, "last_results") and card.last_results:
                     results_to_remove.append(card.last_results)
                 names_to_remove.append(card.name_input.text())
-            current_series = self.viz_panel.data_series
+            current_series = getattr(self.viz_panel, "data_series", [])
             new_series = []
 
             for data_pkg in current_series:
@@ -1791,10 +1791,19 @@ class DashboardUI(QtWidgets.QWidget):
         self.btn_select_all.setEnabled(active)
 
         # Dim the FAB visually if disabled
-        opacity = 0.5 if active else 1.0
-        effect = QtWidgets.QGraphicsOpacityEffect(self.btn_add_fab)
-        effect.setOpacity(opacity)
-        self.btn_add_fab.setGraphicsEffect(effect)
+        if active:
+            # Use opacity effect when dimmed (loses shadow temporarily)
+            effect = QtWidgets.QGraphicsOpacityEffect(self.btn_add_fab)
+            effect.setOpacity(0.5)
+            self.btn_add_fab.setGraphicsEffect(effect)
+        else:
+            # Restore shadow effect when enabled
+            shadow = QtWidgets.QGraphicsDropShadowEffect(self.btn_add_fab)
+            shadow.setBlurRadius(15)
+            shadow.setXOffset(0)
+            shadow.setYOffset(4)
+            shadow.setColor(QtGui.QColor(0, 0, 0, 80))
+            self.btn_add_fab.setGraphicsEffect(shadow)
 
         for i in range(self.cards_layout.count()):
             item = self.cards_layout.itemAt(i)
@@ -1884,6 +1893,7 @@ class DashboardUI(QtWidgets.QWidget):
         card.removed.connect(self.remove_card)
         card.run_requested.connect(self.run_prediction)
         card.expanded.connect(self.on_card_expanded)
+        card.color_changed.connect(self._on_card_color_changed)
         card.selection_changed.connect(self._on_card_selection_changed)
         card.visibility_toggled.connect(self._on_card_visibility_toggled)
         if card.is_measured:
@@ -1916,6 +1926,26 @@ class DashboardUI(QtWidgets.QWidget):
             card_widget (FormulationConfigCard): The card to scroll into view.
         """
         self.scroll_area.ensureWidgetVisible(card_widget, 0, 0)
+
+    def _on_card_color_changed(self, new_color: str):
+        """Update the plot series colour when a card's colour picker changes.
+
+        Finds the data-series entry in the visualization panel whose
+        ``"config_name"`` matches the emitting card's name, updates its
+        ``"color"`` key, and triggers a full plot redraw.
+
+        Args:
+            new_color (str): Hex colour string selected by the user (e.g.
+                ``"#2596be"``).
+        """
+        card = self.sender()
+        if not isinstance(card, FormulationConfigCard):
+            return
+        card_name = card.name_input.text()
+        for series in self.viz_panel.data_series:
+            if series.get("config_name") == card_name:
+                series["color"] = new_color
+        self.viz_panel.update_plot()
 
     def _on_card_visibility_toggled(self, card):
         """Toggle the corresponding data series in the visualization panel and sync the card's hide-series action state.
@@ -2384,6 +2414,16 @@ class DashboardUI(QtWidgets.QWidget):
         if self.current_task is not None and self.current_task.isRunning():
             Log.i(TAG, "Closing application: Stopping background thread...")
             self.current_task.stop()
+
+        # Stop all active workers (optimization, generation, etc.)
+        if hasattr(self, "_active_workers"):
+            for worker in list(self._active_workers):
+                if hasattr(worker, "stop"):
+                    worker.stop()
+                if not worker.wait(2000):
+                    Log.w(TAG, f"Worker {worker} did not finish in time on close.")
+            self._active_workers.clear()
+
         self.db.close()
         super().closeEvent(event)
 

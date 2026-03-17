@@ -421,3 +421,45 @@ class VersionManager:
         if "pin" in meta:
             meta.pop("pin")
             self._write_index(index)
+
+    def delete(self, sha: str) -> None:
+        """Permanently remove a snapshot from the repository.
+
+        Removes the snapshot's entry from the index and deletes its object
+        directory from disk.  Protected snapshots cannot be deleted.
+
+        Args:
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot
+                to delete.
+
+        Raises:
+            ValueError: If ``sha`` is not a valid SHA-256 hex digest.
+            KeyError: If no snapshot with the given ``sha`` exists.
+            PermissionError: If the snapshot is marked as protected.
+            OSError: If the on-disk object directory cannot be removed.
+        """
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
+            raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
+
+        with self._lock:
+            index = self._load_index()
+            if sha not in index:
+                raise KeyError(f"No snapshot with hash {sha}")
+
+            meta = index[sha].get("metadata", {})
+            if meta.get("protected", False):
+                raise PermissionError(
+                    f"Cannot delete protected snapshot {meta.get('filename')}"
+                )
+
+            obj_dir = self._object_path(sha)
+            try:
+                if obj_dir.exists():
+                    shutil.rmtree(obj_dir)
+            except OSError as exc:
+                raise OSError(
+                    f"Failed to remove object dir {obj_dir}: {exc}"
+                ) from exc
+
+            index.pop(sha)
+            self._write_index(index)

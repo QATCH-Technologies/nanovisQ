@@ -52,6 +52,8 @@ class CheckableComboBox(QtWidgets.QComboBox):
         self.currentTextChanged.connect(self.check_items)
         self.setModel(QtGui.QStandardItemModel(self))
         self._editable = False
+        self._user_edited = False
+        self._saved_user_text = ""
 
     def addItems(self, texts):
         """Add multiple items and initialise each one as unchecked.
@@ -59,8 +61,9 @@ class CheckableComboBox(QtWidgets.QComboBox):
         Args:
             texts (Iterable[str]): Display strings to add to the combo box.
         """
+        start = self.count()
         super().addItems(texts)
-        for i in range(self.count()):
+        for i in range(start, self.count()):
             self.model().item(i, 0).setCheckState(QtCore.Qt.Unchecked)
 
     def getItems(self):
@@ -89,7 +92,25 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """
         self._editable = editable
         super().setEditable(editable)
+        if editable:
+            line_edit = self.lineEdit()
+            if line_edit:
+                line_edit.textEdited.connect(self._on_text_edited)
         self.check_items()
+
+    def _on_text_edited(self, text: str):
+        """Track free-text edits so the popup can preserve them.
+
+        Connected to ``QLineEdit.textEdited`` when the widget is in editable
+        mode.  Sets :attr:`_user_edited` and caches the current value in
+        :attr:`_saved_user_text` so that :meth:`_restore_user_text_on_popup_click`
+        can restore it after an item is clicked.
+
+        Args:
+            text (str): The current line-edit text after the user's keystroke.
+        """
+        self._user_edited = True
+        self._saved_user_text = text
 
     def handle_item_pressed(self, index):
         """Toggle the check state of the item at *index* when it is pressed.
@@ -105,7 +126,10 @@ class CheckableComboBox(QtWidgets.QComboBox):
             item.setCheckState(QtCore.Qt.Unchecked)
         else:
             item.setCheckState(QtCore.Qt.Checked)
-        self.check_items()
+        if self._editable and self._user_edited:
+            self._restore_user_text_on_popup_click()
+        else:
+            self.check_items()
 
     def item_checked(self, index):
         """Return whether the item at a given row index is checked.
@@ -119,6 +143,37 @@ class CheckableComboBox(QtWidgets.QComboBox):
         """
         item = self.model().item(index, 0)
         return item.checkState() == QtCore.Qt.Checked
+
+    def _restore_user_text_on_popup_click(self):
+        """Restore the cached free-text value after a popup item is clicked.
+
+        Called by :meth:`handle_item_pressed` (and at the start of
+        :meth:`on_popup_closed`) when :attr:`_editable` is ``True`` and
+        :attr:`_user_edited` is set, so that clicking a checkbox entry does not
+        overwrite text the user has typed into the line-edit.
+        """
+        line_edit = self.lineEdit()
+        if line_edit:
+            line_edit.setText(self._saved_user_text)
+
+    def on_popup_closed(self):
+        """Preserve user-typed text when the drop-down popup is dismissed.
+
+        Invoked at the start of :meth:`hidePopup`.  If the widget is in
+        editable mode and the user has a pending free-text edit the cached
+        text is restored so that closing the popup does not erase it.
+        """
+        if self._editable and self._user_edited:
+            self._restore_user_text_on_popup_click()
+
+    def hidePopup(self):
+        """Override to preserve free-text before the popup hides.
+
+        Calls :meth:`on_popup_closed` first, then delegates to the base-class
+        implementation.
+        """
+        self.on_popup_closed()
+        super().hidePopup()
 
     def check_items(self):
         """Collect checked row indices and refresh the display label.

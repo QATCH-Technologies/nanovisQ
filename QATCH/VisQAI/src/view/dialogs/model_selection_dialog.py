@@ -348,8 +348,11 @@ class ModelSelectionDialog(QDialog):
         for filename in os.listdir(self.models_directory):
             if filename == "index.json":
                 index_path = os.path.join(self.models_directory, filename)
-                with open(index_path, "r") as f:
-                    index_data = json.load(f)
+                try:
+                    with open(index_path, "r") as f:
+                        index_data = json.load(f)
+                except (OSError, json.JSONDecodeError) as e:
+                    Log.e(TAG, f"Failed to parse index.json: {e}")
 
             # if not filename.startswith('VisQAI'):
             #     continue
@@ -644,7 +647,12 @@ class ModelSelectionDialog(QDialog):
                 )
                 return
 
-        mvc.rename(sha, new_name)
+        index = mvc._load_index()
+        if sha not in index:
+            Log.e(TAG, f"SHA {sha} not found in index during rename")
+            return
+        index[sha]["metadata"]["pinned_name"] = new_name
+        mvc._write_index(index)
 
         if self.pinned_list.currentItem():
             select_index = self.pinned_list.currentRow()
@@ -773,9 +781,11 @@ class ModelSelectionDialog(QDialog):
                                     TAG,
                                     f'Parent model sha "{parent}" not found in model list',
                                 )
-                            parent_name = self.pinned_names.get(
-                                parent_model["filename"], parent_model["filename"]
-                            )
+                                parent_name = f"Unknown ({parent[:7]})"  # Fallback to truncated SHA
+                            else:
+                                parent_name = self.pinned_names.get(
+                                    parent_model["filename"], parent_model["filename"]
+                                )
                     elif parent := metadata.get("parent_model", None):
                         # Found parent model in legacy metadata, missing sha hash reference
                         parent_name = self.pinned_names.get(
