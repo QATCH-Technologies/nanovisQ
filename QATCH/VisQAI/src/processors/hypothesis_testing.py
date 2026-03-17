@@ -34,18 +34,13 @@ Date:
 Version:
     2.1
 """
-<<<<<<< HEAD
 
 from typing import Dict
 
-=======
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 import numpy as np
-from typing import Union, Dict
 from shapely.geometry import Polygon, box
 
 try:
-<<<<<<< HEAD
     TAG = "[HypothesisTesting (HEADLESS)]"
     from src.models.formulation import Formulation
     from src.models.predictor import Predictor
@@ -58,26 +53,11 @@ try:
         @staticmethod
         def i(TAG, msg=""):
             print("INFO:", TAG, msg)
-=======
-    from src.models.predictor import Predictor
-    from src.models.formulation import Formulation
-    import logging
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] %(levelname)s: %(message)s"
-    )
-
-    class Log:
-        """Logging utility for standardized log messages."""
-        _logger = logging.getLogger("HypothesisTesting")
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
         @staticmethod
         def w(TAG, msg=""):
             print("WARNING:", TAG, msg)
 
-<<<<<<< HEAD
         @staticmethod
         def e(TAG, msg=""):
             print("ERROR:", TAG, msg)
@@ -87,38 +67,21 @@ except (ImportError, ModuleNotFoundError):
 
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.models.formulation import Formulation
-=======
-        @classmethod
-        def w(cls, msg: str) -> None:
-            """Log a warning message."""
-            cls._logger.warning(msg)
-
-        @classmethod
-        def e(cls, msg: str) -> None:
-            """Log an error message."""
-            cls._logger.error(msg)
-
-        @classmethod
-        def d(cls, msg: str) -> None:
-            """Log a debug message."""
-            cls._logger.debug(msg)
-except (ImportError, ModuleNotFoundError):
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
     from QATCH.VisQAI.src.models.predictor import Predictor
-    from QATCH.VisQAI.src.models.formulation import Formulation
-    from QATCH.common.logger import Logger as Log
 
 
 class HypothesisTesting:
     def __init__(self, model_path: str):
         self._predictor = Predictor(model_path)
 
-    def evaluate_hypothesis(self,
-                            formulation: Formulation,
-                            hypothesis_type: str,
-                            shear_rates: list[int],
-                            bounds: tuple,
-                            ci_range: tuple) -> Dict:
+    def evaluate_hypothesis(
+        self,
+        formulation: Formulation,
+        hypothesis_type: str,
+        shear_rates: list[int],
+        bounds: tuple,
+        ci_range: tuple,
+    ) -> Dict:
         """
         Evaluate hypothesis by calculating the area of the CI polygon contained within bounds.
 
@@ -139,7 +102,8 @@ class HypothesisTesting:
         """
         mean_pred, pred_stats = self._predictor.predict_uncertainty(
             df=formulation.to_dataframe(encoded=False, training=False),
-            ci_range=ci_range)
+            ci_range=ci_range,
+        )
         mean_pred = mean_pred.flatten()
         lower_ci = pred_stats.get("lower_ci", None)
         if lower_ci is None:
@@ -161,8 +125,7 @@ class HypothesisTesting:
         upper_ci = upper_ci.flatten()
         lower_ci = lower_ci.flatten()
         # Create mean predictions dictionary
-        mean_predictions = {sr: mean_pred[i]
-                            for i, sr in enumerate(shear_rates)}
+        mean_predictions = {sr: mean_pred[i] for i, sr in enumerate(shear_rates)}
 
         # Route to appropriate test method
         if hypothesis_type == "upper" and bounds[0] == -np.inf:
@@ -171,7 +134,7 @@ class HypothesisTesting:
                 upper_ci=upper_ci,
                 lower_ci=lower_ci,
                 bounds=bounds,
-                shear_rates=shear_rates
+                shear_rates=shear_rates,
             )
         elif hypothesis_type == "lower" and bounds[1] == np.inf:
             result = self._lower_bound_test(
@@ -179,15 +142,17 @@ class HypothesisTesting:
                 upper_ci=upper_ci,
                 lower_ci=lower_ci,
                 bounds=bounds,
-                shear_rates=shear_rates
+                shear_rates=shear_rates,
             )
-        elif hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf:
+        elif (
+            hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf
+        ):
             result = self._between_bound_test(
                 mean_pred=mean_pred,
                 upper_ci=upper_ci,
                 lower_ci=lower_ci,
                 bounds=bounds,
-                shear_rates=shear_rates
+                shear_rates=shear_rates,
             )
         else:
             msg = f"Hypothesis type '{hypothesis_type}' with bounds ({bounds[0]}, {bounds[1]}) is unsupported."
@@ -199,11 +164,13 @@ class HypothesisTesting:
 
         return result
 
-    def _calculate_ci_polygon_area(self,
-                                   shear_rates: list,
-                                   upper_ci: np.ndarray,
-                                   lower_ci: np.ndarray,
-                                   bounds: tuple) -> Dict:
+    def _calculate_ci_polygon_area(
+        self,
+        shear_rates: list,
+        upper_ci: np.ndarray,
+        lower_ci: np.ndarray,
+        bounds: tuple,
+    ) -> Dict:
         """
         Calculate the area of the CI polygon contained within the specified bounds.
 
@@ -223,10 +190,13 @@ class HypothesisTesting:
 
         # Create CI polygon
         # Points go clockwise: upper boundary (left to right), then lower boundary (right to left)
-        upper_points = [(log_shear_rates[i], upper_ci[i])
-                        for i in range(len(shear_rates))]
-        lower_points = [(log_shear_rates[i], lower_ci[i])
-                        for i in range(len(shear_rates)-1, -1, -1)]
+        upper_points = [
+            (log_shear_rates[i], upper_ci[i]) for i in range(len(shear_rates))
+        ]
+        lower_points = [
+            (log_shear_rates[i], lower_ci[i])
+            for i in range(len(shear_rates) - 1, -1, -1)
+        ]
 
         try:
             ci_polygon = Polygon(upper_points + lower_points)
@@ -240,11 +210,7 @@ class HypothesisTesting:
 
             if total_area == 0:
                 Log.w("CI polygon has zero area")
-                return {
-                    "pct_contained": 0.0,
-                    "area_contained": 0.0,
-                    "total_area": 0.0
-                }
+                return {"pct_contained": 0.0, "area_contained": 0.0, "total_area": 0.0}
 
             # Create bounding box for clipping
             lower_bound, upper_bound = bounds
@@ -253,11 +219,9 @@ class HypothesisTesting:
 
             # Handle infinite bounds
             if lower_bound == -np.inf:
-                lower_bound = min(lower_ci) - \
-                    abs(min(lower_ci)) * 0.1  # Extend below
+                lower_bound = min(lower_ci) - abs(min(lower_ci)) * 0.1  # Extend below
             if upper_bound == np.inf:
-                upper_bound = max(upper_ci) + \
-                    abs(max(upper_ci)) * 0.1  # Extend above
+                upper_bound = max(upper_ci) + abs(max(upper_ci)) * 0.1  # Extend above
 
             # Create bounding box and find intersection
             bounding_box = box(min_x, lower_bound, max_x, upper_bound)
@@ -269,29 +233,28 @@ class HypothesisTesting:
             else:
                 clipped_area = clipped_polygon.area
 
-            pct_contained = (clipped_area / total_area *
-                             100.0) if total_area > 0 else 0.0
+            pct_contained = (
+                (clipped_area / total_area * 100.0) if total_area > 0 else 0.0
+            )
 
             return {
                 "pct_contained": pct_contained,
                 "area_contained": clipped_area,
-                "total_area": total_area
+                "total_area": total_area,
             }
 
         except Exception as e:
             Log.e(f"Error calculating polygon area: {str(e)}")
-            return {
-                "pct_contained": 0.0,
-                "area_contained": 0.0,
-                "total_area": 0.0
-            }
+            return {"pct_contained": 0.0, "area_contained": 0.0, "total_area": 0.0}
 
-    def _upper_bound_test(self,
-                          mean_pred: np.ndarray,
-                          upper_ci: np.ndarray,
-                          lower_ci: np.ndarray,
-                          bounds: tuple,
-                          shear_rates: list) -> Dict:
+    def _upper_bound_test(
+        self,
+        mean_pred: np.ndarray,
+        upper_ci: np.ndarray,
+        lower_ci: np.ndarray,
+        bounds: tuple,
+        shear_rates: list,
+    ) -> Dict:
         """
         Test if CI polygon is below the upper bound threshold.
 
@@ -316,7 +279,7 @@ class HypothesisTesting:
             shear_rates=shear_rates,
             upper_ci=upper_ci,
             lower_ci=lower_ci,
-            bounds=test_bounds
+            bounds=test_bounds,
         )
 
         result["bounds"] = bounds
@@ -324,12 +287,14 @@ class HypothesisTesting:
 
         return result
 
-    def _lower_bound_test(self,
-                          mean_pred: np.ndarray,
-                          upper_ci: np.ndarray,
-                          lower_ci: np.ndarray,
-                          bounds: tuple,
-                          shear_rates: list) -> Dict:
+    def _lower_bound_test(
+        self,
+        mean_pred: np.ndarray,
+        upper_ci: np.ndarray,
+        lower_ci: np.ndarray,
+        bounds: tuple,
+        shear_rates: list,
+    ) -> Dict:
         """
         Test if CI polygon is above the lower bound threshold.
 
@@ -354,7 +319,7 @@ class HypothesisTesting:
             shear_rates=shear_rates,
             upper_ci=upper_ci,
             lower_ci=lower_ci,
-            bounds=test_bounds
+            bounds=test_bounds,
         )
 
         result["bounds"] = bounds
@@ -362,12 +327,14 @@ class HypothesisTesting:
 
         return result
 
-    def _between_bound_test(self,
-                            mean_pred: np.ndarray,
-                            upper_ci: np.ndarray,
-                            lower_ci: np.ndarray,
-                            bounds: tuple,
-                            shear_rates: list) -> Dict:
+    def _between_bound_test(
+        self,
+        mean_pred: np.ndarray,
+        upper_ci: np.ndarray,
+        lower_ci: np.ndarray,
+        bounds: tuple,
+        shear_rates: list,
+    ) -> Dict:
         """
         Test if CI polygon is between the lower and upper bound thresholds.
 
@@ -382,10 +349,7 @@ class HypothesisTesting:
             Dictionary with test results
         """
         result = self._calculate_ci_polygon_area(
-            shear_rates=shear_rates,
-            upper_ci=upper_ci,
-            lower_ci=lower_ci,
-            bounds=bounds
+            shear_rates=shear_rates, upper_ci=upper_ci, lower_ci=lower_ci, bounds=bounds
         )
 
         result["bounds"] = bounds

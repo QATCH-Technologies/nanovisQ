@@ -2,11 +2,11 @@ import datetime
 import logging
 import math
 import os
+from time import time
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtWidgets import QDesktopWidget
 from pyqtgraph import GraphicsLayoutWidget
-from time import time
 
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.logger import Logger as Log
@@ -1638,22 +1638,11 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.tool_bar.setIconSize(QtCore.QSize(50, 30))
         self.tool_bar.setStyleSheet("color: #333333;")
 
-<<<<<<< HEAD
-        # TODO: Only show these widgets when cam wheel device is detected
-        if False:
-            self.tool_NextPortRow = NumberIconButton()
-            self.tool_NextPortRow.setToolButtonStyle(
-                QtCore.Qt.ToolButtonTextUnderIcon)
-            self.tool_NextPortRow.setText("Next Port")
-            self.tool_NextPortRow.clicked.connect(self.action_next_port)
-            self.tool_bar.addWidget(self.tool_NextPortRow)
-=======
         self.tool_NextPortRow = NumberIconButton()
         self.tool_NextPortRow.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
         self.tool_NextPortRow.setText("Next Port")
         self.tool_NextPortRow.clicked.connect(self.action_next_port)
         self.action_NextPortRow = self.tool_bar.addWidget(self.tool_NextPortRow)
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
         self.action_NextPortSep = self.tool_bar.addSeparator()
 
@@ -1873,7 +1862,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     {
                      background-color: qlineargradient(spread:pad, x1:0, y1:0, x2:1, y2:1, stop:0 rgba(184, 184, 184, 200), stop:1 rgba(221, 221, 221, 200));
                     }
-                 """.replace("{COLOR}", color)
+                 """.replace(
+            "{COLOR}", color
+        )
         self.run_progress_bar.setStyleSheet(styleBar)
 
     def _update_progress_value(self):
@@ -1943,7 +1934,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
                     Log.d("Waiting for FLUX controller to stop.")
                     # wait for thread to quit, gracefully
                     if not self.fluxThread.wait(msecs=3000):
-                        Log.w("Prior Flux controller thread still busy; skipping new Next Port request.")
+                        Log.w(
+                            "Prior Flux controller thread still busy; skipping new Next Port request."
+                        )
                         self.tool_NextPortRow.setEnabled(True)
                         return
             Log.d("Starting FLUX controller thread.")

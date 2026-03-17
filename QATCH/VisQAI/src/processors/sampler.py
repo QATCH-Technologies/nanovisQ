@@ -1,4 +1,3 @@
-
 """
 sampler.py
 
@@ -33,19 +32,15 @@ Date:
     2026-03-16
 
 Version:
-<<<<<<< HEAD
     2.1
-=======
-    2.2
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 """
 
 import os
-from typing import Dict, Union, List
+from typing import Dict, List, Union
+
 import numpy as np
 
 try:
-<<<<<<< HEAD
     TAG = "[Sampler (HEADLESS)]"
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
@@ -64,33 +59,11 @@ try:
         @staticmethod
         def i(TAG, msg=""):
             print("INFO:", TAG, msg)
-=======
-    from src.db.db import Database
-    from src.models.predictor import Predictor
-    from src.models.formulation import Formulation, ViscosityProfile
-    from src.controller.ingredient_controller import IngredientController
-    from src.controller.formulation_controller import FormulationController
-    from src.managers.asset_manager import AssetManager, AssetError
-    from src.utils.constraints import Constraints
-    from src.models.ingredient import Ingredient
-
-    import logging
-
-    logging.basicConfig(
-        level=logging.INFO,
-        format="[%(asctime)s] %(levelname)s: %(message)s"
-    )
-
-    class Log:
-        """Logging utility for standardized log messages."""
-        _logger = logging.getLogger("Predictor")
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
         @staticmethod
         def w(TAG, msg=""):
             print("WARNING:", TAG, msg)
 
-<<<<<<< HEAD
         @staticmethod
         def e(TAG, msg=""):
             print("ERROR:", TAG, msg)
@@ -100,32 +73,12 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-=======
-        @classmethod
-        def w(cls, msg: str) -> None:
-            """Log a warning message."""
-            cls._logger.warning(msg)
-
-        @classmethod
-        def e(cls, msg: str) -> None:
-            """Log an error message."""
-            cls._logger.error(msg)
-
-        @classmethod
-        def d(cls, msg: str) -> None:
-            """Log a debug message."""
-            cls._logger.debug(msg)
-except (ModuleNotFoundError, ImportError):
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.VisQAI.src.managers.asset_manager import AssetError, AssetManager
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
-    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
-    from QATCH.VisQAI.src.managers.asset_manager import AssetManager, AssetError
-    from QATCH.VisQAI.src.utils.constraints import Constraints
     from QATCH.VisQAI.src.models.ingredient import Ingredient
-    from QATCH.common.logger import Logger as Log
+    from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.VisQAI.src.utils.constraints import Constraints
 
 
 class Sampler:
@@ -169,9 +122,8 @@ class Sampler:
         asset_name: str,
         database: Database,
         constraints: Constraints = None,
-        seed: int = None
+        seed: int = None,
     ):
-<<<<<<< HEAD
         """Initializes the Sampler with model assets and constrained design space.
 
         The initialization process performs several critical setup steps:
@@ -191,20 +143,6 @@ class Sampler:
         Raises:
             AssetError: If the specified `asset_name` cannot be found or is
                 incompatible with the required `.visq` format.
-=======
-        """
-        Initializes the Sampler with model assets, controllers, and constraints.
-
-        Args:
-            asset_name (str): Name of the predictor asset (zip file without extension).
-            database (Database): Database instance for controllers.
-            constraints (Constraints, optional): Predefined constraints. If None, uses
-                historical data to infer numeric ranges. Defaults to None.
-            seed (int, optional): Random seed for reproducibility. Defaults to None.
-
-        Raises:
-            AssetError: If the specified asset is not found under the assets directory.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         self.database = database
         self.form_ctrl = FormulationController(db=database)
@@ -212,13 +150,12 @@ class Sampler:
 
         # Load model asset
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(
-            os.path.join(base_dir, os.pardir, os.pardir))
+        project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
         self.asset_ctrl = AssetManager(assets_dir=assets_dir)
-        if not self.asset_ctrl.asset_exists(asset_name, ['.zip']):
+        if not self.asset_ctrl.asset_exists(asset_name, [".visq"]):
             raise AssetError(f"Asset `{asset_name}` not found.")
-        asset_zip = self.asset_ctrl.get_asset_path(asset_name, ['.zip'])
+        asset_zip = self.asset_ctrl.get_asset_path(asset_name, [".visq"])
         self.predictor = Predictor(zip_path=asset_zip)
 
         # Configure constraints
@@ -234,7 +171,6 @@ class Sampler:
 
         self._bounds, self._encoding = self.constraints.build()
 
-<<<<<<< HEAD
         # Apply absolute constraints/caps
         for i, enc in enumerate(self._encoding):
             if enc["type"] == "num":
@@ -271,8 +207,6 @@ class Sampler:
             except Exception as e:
                 Log.w(TAG, f"Failed to warm start predictor: {e}")
 
-=======
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         if seed is not None:
             np.random.seed(seed)
 
@@ -300,13 +234,11 @@ class Sampler:
         """
         df = formulation.to_dataframe(encoded=False, training=False)
         vis, unc_dict = self.predictor.predict_uncertainty(df)
-        # Extract standard deviation from uncertainty dictionary
-        unc = unc_dict['std'] if isinstance(unc_dict, dict) else unc_dict
+        unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
         self._current_viscosity = self._make_viscosity_profile(vis)
         self._current_uncertainty = unc
         self._last_formulation = formulation
 
-<<<<<<< HEAD
     def get_next_sample(self, use_ucb: bool = True, kappa: float = 2.0) -> Formulation:
         """Generates and selects the optimal next candidate formulation using active learning.
 
@@ -316,15 +248,6 @@ class Sampler:
         The selection is guided by an acquisition function—either Upper Confidence
         Bound (UCB), which balances predicted viscosity against uncertainty, or
         pure uncertainty maximization.
-=======
-    def get_next_sample(
-        self,
-        use_ucb: bool = True,
-        kappa: float = 2.0
-    ) -> Formulation:
-        """
-        Generates and selects the next candidate formulation.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
         Args:
             use_ucb: If True, uses the Upper Confidence Bound acquisition function
@@ -345,36 +268,39 @@ class Sampler:
             to search for hidden gaps in the design space.
         """
         candidates: List[tuple] = []
-        base_unc = np.nanmean(
-            self._current_uncertainty) if self._current_uncertainty.size > 0 else float('inf')
+        base_unc = (
+            np.nanmean(self._current_uncertainty)
+            if self._current_uncertainty.size > 0
+            else float("inf")
+        )
         n_global = 20 if base_unc < 0.05 else 5
 
-        # Generate global random candidates
         for form in self._generate_random_samples(n_global):
             vis, unc_dict = self.predictor.predict_uncertainty(
-                form.to_dataframe(encoded=False, training=False))
-            # Extract standard deviation from uncertainty dictionary
-            unc = unc_dict['std'] if isinstance(unc_dict, dict) else unc_dict
-            score = self._acquisition_ucb(
-                vis, unc, kappa) if use_ucb else np.nanmean(unc)
+                form.to_dataframe(encoded=False, training=False)
+            )
+            unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
+            score = (
+                self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
+            )
             candidates.append((form, score))
 
-        # Generate local perturbations around the last formulation
         if self._last_formulation is not None:
             for form in self._perturb_formulation(self._last_formulation, base_unc):
                 vis, unc_dict = self.predictor.predict_uncertainty(
-                    form.to_dataframe(encoded=False, training=False))
-                # Extract standard deviation from uncertainty dictionary
-                unc = unc_dict['std'] if isinstance(
-                    unc_dict, dict) else unc_dict
-                score = self._acquisition_ucb(
-                    vis, unc, kappa) if use_ucb else np.nanmean(unc)
+                    form.to_dataframe(encoded=False, training=False)
+                )
+                unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
+                score = (
+                    self._acquisition_ucb(vis, unc, kappa)
+                    if use_ucb
+                    else np.nanmean(unc)
+                )
                 candidates.append((form, score))
 
         candidates.sort(key=lambda x: -x[1])
         return candidates[0][0] if candidates else None
 
-<<<<<<< HEAD
     def _round_suggestion(
         self, feat: str, val: float, low: float, high: float
     ) -> float:
@@ -403,24 +329,11 @@ class Sampler:
         Note:
             Quantization helps align AI suggestions with practical lab equipment
             limitations (e.g., pipetting resolution or scale precision).
-=======
-    def _round_suggestion(self, feat: str, val: float) -> float:
         """
-        Rounds a suggested numeric value according to feature-specific rules.
-
-        Args:
-            feat (str): Feature name (e.g., 'Stabilizer_conc').
-            val (float): Raw suggested value.
-
-        Returns:
-            float: Rounded value within valid bounds.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
-        """
-        if feat in ('Stabilizer_conc', 'Surfactant_conc'):
-            rounded = float(round(min(max(val, 0.0), 1.0) / 0.05) * 0.05)
-            return rounded if rounded > 0 else 0.05
+        if feat in ("Stabilizer_conc", "Surfactant_conc"):
+            rounded = float(round(max(val, 0.0) / 0.05) * 0.05)
+            min_step = 0.05
         else:
-<<<<<<< HEAD
             rounded = float(round(max(val, 0.0) / 5.0) * 5.0)
             min_step = 5.0
 
@@ -475,48 +388,23 @@ class Sampler:
             This method is used as the 'Exploration' phase of the active learning
             cycle to discover new areas of the design space that may contain
             high predictive uncertainty.
-=======
-            rounded = float(round(val / 5.0) * 5.0)
-            return rounded if rounded > 0 else 5.0
-
-    def _generate_random_samples(self, n: int) -> List[Formulation]:
-        """
-        Generates random formulations within defined constraints.
-
-        Args:
-            n (int): Number of random samples to generate.
-
-        Returns:
-            List[Formulation]: List of randomly generated formulations.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         samples: List[Formulation] = []
 
         for _ in range(n):
             suggestions: Dict[str, Union[str, float]] = {}
             for (low, high), enc in zip(self._bounds, self._encoding):
-                feat = enc['feature']
-                if enc['type'] == 'cat':
-                    choices = enc.get('choices', [])
+                feat = enc["feature"]
+                if enc["type"] == "cat":
+                    choices = enc.get("choices", [])
                     if not choices:
-                        raise RuntimeError(
-                            f"No choices for categorical feature {feat}")
-                    suggestions[feat] = np.random.choice(choices)
+                        suggestions[feat] = "None"
+                    else:
+                        suggestions[feat] = np.random.choice(choices)
                 else:
-<<<<<<< HEAD
                     raw = float(np.random.uniform(low, high))
                     suggestions[feat] = self._round_suggestion(feat, raw, low, high)
             self._enforce_none_concentrations(suggestions)
-=======
-                    ing_type = suggestions.get(
-                        feat.replace('_conc', '_type'), None)
-                    if ing_type is not None and str(ing_type).lower() == 'none':
-                        suggestions[feat] = 0.0
-                    else:
-                        raw = float(np.random.uniform(low, high))
-                        suggestions[feat] = self._round_suggestion(feat, raw)
-
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
             samples.append(self._build_formulation(suggestions))
         return samples
 
@@ -527,7 +415,6 @@ class Sampler:
         max_uncertainty: float = 1.0,
         n: int = 5,
     ) -> List[Formulation]:
-<<<<<<< HEAD
         """Creates a set of localized variations of an existing formulation.
 
         This method acts as a local exploitation strategy. It takes a successful
@@ -557,19 +444,6 @@ class Sampler:
             Numerical features are perturbed using a normal distribution centered
             around the original value, while categorical features are
             randomly resampled from their allowed choices.
-=======
-        """
-        Creates perturbed variants of a given formulation based on uncertainty scale.
-
-        Args:
-            formulation (Formulation): Base formulation to perturb.
-            base_uncertainty (float): Reference uncertainty for scaling noise.
-            max_uncertainty (float): Upper bound for uncertainty scaling. Defaults to 1.0.
-            n (int): Number of perturbations to generate. Defaults to 5.
-
-        Returns:
-            List[Formulation]: Perturbed formulations.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         noise_scale = min(1.0, base_uncertainty / max_uncertainty) * 0.2
         base_df = formulation.to_dataframe(encoded=False, training=False)
@@ -578,14 +452,13 @@ class Sampler:
         for _ in range(n):
             sug: Dict[str, Union[str, float]] = {}
             for (low, high), enc in zip(self._bounds, self._encoding):
-                feat = enc['feature']
+                feat = enc["feature"]
                 val = base_df[feat].iloc[0]
-                if enc['type'] == 'num':
+                if enc["type"] == "num":
                     nv = val * (1 + np.random.normal(scale=noise_scale))
                     nv = float(np.clip(nv, low, high))
-                    sug[feat] = self._round_suggestion(feat, nv)
+                    sug[feat] = self._round_suggestion(feat, nv, low, high)
                 else:
-<<<<<<< HEAD
 
                     choices = enc.get("choices", [])
                     if choices:
@@ -594,14 +467,10 @@ class Sampler:
                         sug[feat] = val
 
             self._enforce_none_concentrations(sug)
-=======
-                    sug[feat] = val
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
             perturbed.append(self._build_formulation(sug))
         return perturbed
 
     def _make_viscosity_profile(self, viscosities: np.ndarray) -> ViscosityProfile:
-<<<<<<< HEAD
         """Constructs a ViscosityProfile object from a set of predicted values.
 
         This helper method acts as the final step in the prediction pipeline.
@@ -620,20 +489,10 @@ class Sampler:
         Returns:
             ViscosityProfile: A structured domain object containing the
                 paired shear rate and viscosity data.
-=======
-        """
-        Constructs a ViscosityProfile from predicted viscosity values.
-
-        Args:
-            viscosities (np.ndarray): Array of viscosity predictions.
-
-        Returns:
-            ViscosityProfile: Profile at predefined shear rates.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         return ViscosityProfile(
             shear_rates=[100, 1000, 10000, 100000, 15000000],
-            viscosities=viscosities.flatten().tolist()
+            viscosities=viscosities.flatten().tolist(),
         )
 
     def _acquisition_ucb(
@@ -641,9 +500,8 @@ class Sampler:
         viscosity: np.ndarray,
         uncertainty: np.ndarray,
         kappa: float = 2.0,
-        reference_shear_rate: float = 10_000
+        reference_shear_rate: float = 10_000,
     ) -> float:
-<<<<<<< HEAD
         """Computes the Upper Confidence Bound (UCB) score for a candidate sample.
 
         The UCB used is:
@@ -662,19 +520,6 @@ class Sampler:
         Returns:
             float: The calculated UCB score. Higher scores indicate more
                 desirable candidates for the next sampling iteration.
-=======
-        """
-        Computes Upper Confidence Bound (UCB) score for acquisition.
-
-        Args:
-            viscosity (dict): Mapping of shear rates to viscosity values.
-            uncertainty (np.ndarray): Uncertainty estimates from the predictor.
-            kappa (float): Exploration–exploitation trade-off parameter.
-            reference_shear_rate (float): Shear rate to evaluate mean viscosity at.
-
-        Returns:
-            float: UCB score = mu + kappa * sigma.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         try:
             srs = np.array([100, 1_000, 10_000, 100_000, 15_000_000])
@@ -686,7 +531,6 @@ class Sampler:
         sigma = np.nanmean(uncertainty)
         return mu + kappa * sigma
 
-<<<<<<< HEAD
     def _resolve_ingredient(
         self, val: Union[str, Ingredient, None], get_method
     ) -> Union[Ingredient, None]:
@@ -729,64 +573,50 @@ class Sampler:
         Returns:
             Formulation: A fully populated domain object ready for
                 viscosity prediction or database persistent storage.
-=======
-    def _build_formulation(self, suggestions: Dict[str, Union[str, float]]) -> Formulation:
-        """
-        Builds a Formulation object from feature suggestions.
-
-        Args:
-            suggestions (Dict[str, Union[str, float]]): Feature-value mapping.
-
-        Returns:
-            Formulation: Constructed formulation with components set.
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         form = Formulation()
 
-        if (val := suggestions.get("Protein_type")):
-            prot = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_protein_by_name(val)
-            form.set_protein(prot,
-                             float(suggestions.get("Protein_conc", 0.0)),
-                             "mg/mL")
+        prot = self._resolve_ingredient(
+            suggestions.get("Protein_type"), self.ing_ctrl.get_protein_by_name
+        )
+        if prot:
+            form.set_protein(prot, float(suggestions.get("Protein_conc", 0.0)), "mg/mL")
 
-        if (val := suggestions.get("Buffer_type")):
-            buff = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_buffer_by_name(val)
-            form.set_buffer(buff,
-                            float(suggestions.get("Buffer_conc", 0.0)),
-                            "mM")
+        buff = self._resolve_ingredient(
+            suggestions.get("Buffer_type"), self.ing_ctrl.get_buffer_by_name
+        )
+        if buff:
+            form.set_buffer(buff, float(suggestions.get("Buffer_conc", 0.0)), "mM")
 
-        if (val := suggestions.get("Salt_type")):
-            salt = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_salt_by_name(val)
-            form.set_salt(salt,
-                          float(suggestions.get("Salt_conc", 0.0)),
-                          "mM")
+        salt = self._resolve_ingredient(
+            suggestions.get("Salt_type"), self.ing_ctrl.get_salt_by_name
+        )
+        if salt:
+            form.set_salt(salt, float(suggestions.get("Salt_conc", 0.0)), "mM")
 
-        if (val := suggestions.get("Stabilizer_type")):
-            stab = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_stabilizer_by_name(val)
-            form.set_stabilizer(stab,
-                                float(suggestions.get(
-                                    "Stabilizer_conc", 0.0)),
-                                "M")
+        stab = self._resolve_ingredient(
+            suggestions.get("Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
+        )
+        if stab:
+            form.set_stabilizer(
+                stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M"
+            )
 
-        if (val := suggestions.get("Surfactant_type")):
-            surf = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_surfactant_by_name(val)
-            form.set_surfactant(surf,
-                                float(suggestions.get(
-                                    "Surfactant_conc", 0.0)),
-                                "%w")
+        surf = self._resolve_ingredient(
+            suggestions.get("Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
+        )
+        if surf:
+            form.set_surfactant(
+                surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w"
+            )
 
-        if (val := suggestions.get("Excipient_type")):
-            excip = val if isinstance(
-                val, Ingredient) else self.ing_ctrl.get_excipient_by_name(val)
-            form.set_excipient(excip,
-                               float(suggestions.get(
-                                   "Excipient_conc", 0.0)),
-                               "mM")
+        excip = self._resolve_ingredient(
+            suggestions.get("Excipient_type"), self.ing_ctrl.get_excipient_by_name
+        )
+        if excip:
+            form.set_excipient(
+                excip, float(suggestions.get("Excipient_conc", 0.0)), "mM"
+            )
 
         form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form

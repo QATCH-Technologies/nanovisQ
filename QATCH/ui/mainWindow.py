@@ -4326,11 +4326,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                 self._text4[i].setText(
                                     dry_msg, color=(0, 0, 200))
                                 self._baselinedata[i] = [
-<<<<<<< HEAD
-                                    [np.amin(self.worker.get_d1_buffer(i)[:numPoints]), np.amax(
-                                        self.worker.get_d1_buffer(i)[:numPoints])],
-                                    [np.amin(self.worker.get_d2_buffer(i)[:numPoints]), np.amax(self.worker.get_d2_buffer(i)[:numPoints])]]
-=======
                                     [
                                         np.amin(
                                             self.worker.get_d1_buffer(i)[:numPoints]
@@ -4348,7 +4343,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                         ),
                                     ],
                                 ]
->>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
                             else:
                                 self._text4[i].setText(
                                     'Apply drop now!', color=(0, 200, 0))
