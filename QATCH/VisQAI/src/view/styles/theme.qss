@@ -660,6 +660,12 @@ QPushButton#fabAdd:disabled {
     color: #9ca3af;
 }
 
+/* Optimization Widget — suppress card hover colour change */
+OptimizeWidget[class="card"]:hover {
+    border: 1px solid #d1d5db;
+    background-color: #ffffff;
+}
+
 EvaluationWidget {
     background-color: #ffffff;
     border-radius: 8px;
@@ -795,4 +801,195 @@ GenerateSampleWidget QSpinBox {
 
 GenerateSampleWidget QSpinBox:focus {
     border: 1px solid #2596be;
+}
+
+/* --- Dialog background --- */
+ModelSelectionDialog {
+    background-color: #ffffff;
+}
+
+/* --- Section header labels ("PINNED MODELS", "RECENT MODELS") --- */
+ModelSelectionDialog QLabel[class="section-header"] {
+    font-weight: 600;
+    color: #2596be;
+    font-size: 9pt;
+    letter-spacing: 0.5px;
+}
+
+/* --- List widgets --- */
+ModelSelectionDialog QListWidget {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background-color: #ffffff;
+    alternate-background-color: #f9fafb;
+    outline: none;
+}
+
+ModelSelectionDialog QListWidget::item {
+    padding: 8px 10px;
+    border-bottom: 1px solid #f3f4f6;
+    color: #24292f;
+}
+
+ModelSelectionDialog QListWidget::item:selected {
+    background-color: #e6f7fd;
+    color: #2596be;
+    border-bottom: 1px solid #4EC4EB;
+}
+
+ModelSelectionDialog QListWidget::item:hover:!selected {
+    background-color: #f9fafb;
+}
+
+/* --- Scroll area (detail panel) --- */
+ModelSelectionDialog QScrollArea {
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background-color: #f9fafb;
+}
+
+ModelSelectionDialog QLabel#detailPanel {
+    color: #6b7280;
+    font-size: 9pt;
+    padding: 8px;
+    background-color: #f9fafb;
+}
+
+/* --- Standard buttons --- */
+ModelSelectionDialog QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-weight: 500;
+    color: #24292f;
+    min-height: 28px;
+}
+
+ModelSelectionDialog QPushButton:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
+    color: #2596be;
+}
+
+ModelSelectionDialog QPushButton:pressed {
+    background-color: #d1f2fc;
+    border-color: #13B5F0;
+}
+
+ModelSelectionDialog QPushButton:disabled {
+    background-color: #f3f4f6;
+    color: #9ca3af;
+    border-color: #e5e7eb;
+}
+
+/* Primary button (Select) */
+ModelSelectionDialog QPushButton[class="primary"] {
+    background-color: #e6f7fd;
+    color: #2596be;
+    border: 1px solid #4EC4EB;
+}
+
+ModelSelectionDialog QPushButton[class="primary"]:hover {
+    background-color: #17C4F3;
+    color: #ffffff;
+    border-color: #17C4F3;
+}
+
+ModelSelectionDialog QPushButton[class="primary"]:pressed {
+    background-color: #13B5F0;
+    border-color: #13B5F0;
+}
+
+/* Danger button (Delete) */
+ModelSelectionDialog QPushButton[class="danger"] {
+    color: #d32f2f;
+    border-color: #ffcdd2;
+    background-color: #fff8f8;
+}
+
+ModelSelectionDialog QPushButton[class="danger"]:hover {
+    background-color: #ffebee;
+    border-color: #f44336;
+    color: #b71c1c;
+}
+
+ModelSelectionDialog QPushButton[class="danger"]:pressed {
+    background-color: #ffcdd2;
+}
+
+QWidget#modelDetailsWin {
+    background-color: #ffffff;
+}
+
+QWidget#modelDetailsWin QTreeWidget {
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    background-color: #ffffff;
+    alternate-background-color: #f9fafb;
+    outline: none;
+}
+
+QWidget#modelDetailsWin QTreeWidget::item {
+    padding: 4px 8px;
+    color: #24292f;
+}
+
+QWidget#modelDetailsWin QTreeWidget::item:selected {
+    background-color: #e6f7fd;
+    color: #2596be;
+}
+
+QWidget#modelDetailsWin QTreeWidget::item:hover:!selected {
+    background-color: #f9fafb;
+}
+
+QWidget#modelDetailsWin QHeaderView::section {
+    background-color: #f3f4f6;
+    border: none;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 4px 8px;
+    color: #6b7280;
+    font-weight: 600;
+    font-size: 9pt;
+}
+
+/* Standard buttons in details window */
+QWidget#modelDetailsWin QPushButton {
+    background-color: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-weight: 500;
+    color: #24292f;
+    min-height: 28px;
+}
+
+QWidget#modelDetailsWin QPushButton:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
+    color: #2596be;
+}
+
+QWidget#modelDetailsWin QPushButton:pressed {
+    background-color: #d1f2fc;
+    border-color: #13B5F0;
+}
+
+/* Primary button (Switch to Selected) */
+QWidget#modelDetailsWin QPushButton[class="primary"] {
+    background-color: #e6f7fd;
+    color: #2596be;
+    border: 1px solid #4EC4EB;
+}
+
+QWidget#modelDetailsWin QPushButton[class="primary"]:hover {
+    background-color: #17C4F3;
+    color: #ffffff;
+    border-color: #17C4F3;
+}
+
+QWidget#modelDetailsWin QPushButton[class="primary"]:pressed {
+    background-color: #13B5F0;
+    border-color: #13B5F0;
 }

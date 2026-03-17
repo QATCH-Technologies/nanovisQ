@@ -3,7 +3,9 @@
 Provides the main ``DashboardUI`` widget that manages formulation configuration
 cards, viscosity predictions, evaluation, sample generation, optimization, and
 data import/export.
-Author:
+
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
@@ -997,7 +999,7 @@ class DashboardUI(QtWidgets.QWidget):
             self, "Hypothesis Testing", "Enter hypothesis name or ID:"
         )
         if ok and text:
-            print(f"Hypothesis '{text}' initialized.")
+            Log.i(TAG, f"Hypothesis '{text}' initialized.")
 
     def handle_optimize(self):
         """Toggle the OptimizeWidget overlay."""
@@ -1334,8 +1336,9 @@ class DashboardUI(QtWidgets.QWidget):
                     )
                     results_to_plot.append(data_copy)
                 except Exception as e:
-                    print(
-                        f"Failed to calculate {metric_key} for {card.name_input.text()}: {e}"
+                    Log.e(
+                        TAG,
+                        f"Failed to calculate {metric_key} for {card.name_input.text()}: {e}",
                     )
 
             if not results_to_plot:
@@ -2267,7 +2270,7 @@ class DashboardUI(QtWidgets.QWidget):
                         card.save_to_csv(file_path)
                         success += 1
                     except Exception as e:
-                        print(f"Error exporting {base_name}: {e}")
+                        Log.e(TAG, f"Error exporting {base_name}: {e}")
 
                 QtWidgets.QMessageBox.information(
                     self, "Batch Export", f"Exported {success} files to {folder}"

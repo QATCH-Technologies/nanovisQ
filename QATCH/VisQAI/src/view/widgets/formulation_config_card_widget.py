@@ -52,7 +52,9 @@ try:
         Stabilizer,
         Surfactant,
     )
-    from src.view.model_selection_dialog import ModelSelectionDialog
+    from src.view.dialogs.model_selection_dialog import (
+        ModelSelectionDialog,
+    )
     from styles.style_loader import load_stylesheet
 
 except (ModuleNotFoundError, ImportError):
@@ -74,8 +76,10 @@ except (ModuleNotFoundError, ImportError):
         GenericIngredientDialog,
     )
     from QATCH.VisQAI.src.view.dialogs.model_options_dialog import ModelOptionsDialog
+    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import (
+        ModelSelectionDialog,
+    )
     from QATCH.VisQAI.src.view.dialogs.protein_config_dialog import ProteinConfigDialog
-    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
 
 

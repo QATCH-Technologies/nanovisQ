@@ -27,12 +27,16 @@ from PyQt5.QtCore import Qt
 
 try:
     from src.view.architecture import Architecture
-    from src.view.checkable_combo_box import CheckableComboBox
-    from src.view.model_selection_dialog import ModelSelectionDialog
+    from src.view.components.checkable_combo_box import CheckableComboBox
+    from src.view.dialogs.model_selection_dialog import (
+        ModelSelectionDialog,
+    )
 except (ImportError, ModuleNotFoundError):
     from QATCH.common.architecture import Architecture
-    from QATCH.VisQAI.src.view.checkable_combo_box import CheckableComboBox
-    from QATCH.VisQAI.src.view.model_selection_dialog import ModelSelectionDialog
+    from QATCH.VisQAI.src.view.components.checkable_combo_box import CheckableComboBox
+    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import (
+        ModelSelectionDialog,
+    )
 
 
 class CompactCheckableComboBox(CheckableComboBox):
