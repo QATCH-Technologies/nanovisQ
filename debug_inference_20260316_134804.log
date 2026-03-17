@@ -1,0 +1,77 @@
+2026-03-16 13:48:04,840 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:48:09,092 - QATCH.logger - INFO - [Optimizer] [  1/100] Best:   0.000005 | Improvement:   0.000000 | Progress:    1.0%
+2026-03-16 13:48:11,231 - QATCH.logger - INFO - [Optimizer] [  2/100] Best:   0.000005 | Improvement:   0.000000 | Progress:    2.0%
+2026-03-16 13:48:13,476 - QATCH.logger - INFO - [Optimizer] [  3/100] Best:   0.000005 | Improvement:   0.000000 | Progress:    3.0%
+2026-03-16 13:48:15,732 - QATCH.logger - INFO - [Optimizer] [  4/100] Best:   0.000005 | Improvement:   0.000000 | Progress:    4.0%
+2026-03-16 13:48:16,731 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-(03062026).visq 
+2026-03-16 13:48:16,867 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:48:19,402 - QATCH.logger - INFO - [Optimizer] [  5/100] Best:   0.000001 | Improvement:   0.000003 | Progress:    5.0%
+2026-03-16 13:48:23,831 - QATCH.logger - INFO - [Optimizer] [  6/100] Best:   0.000000 | Improvement:   0.000005 | Progress:    6.0%
+2026-03-16 13:48:25,798 - QATCH.logger - INFO - [Optimizer] [  1/10] Best:   0.000005 | Improvement:   0.000000 | Progress:   10.0%
+2026-03-16 13:48:28,331 - QATCH.logger - INFO - [Optimizer] [  7/100] Best:   0.000000 | Improvement:   0.000005 | Progress:    7.0%
+2026-03-16 13:48:30,317 - QATCH.logger - INFO - [Optimizer] [  2/10] Best:   0.000005 | Improvement:   0.000000 | Progress:   20.0%
+2026-03-16 13:48:32,812 - QATCH.logger - INFO - [Optimizer] [  8/100] Best:   0.000000 | Improvement:   0.000005 | Progress:    8.0%
+2026-03-16 13:48:34,820 - QATCH.logger - INFO - [Optimizer] [  3/10] Best:   0.000005 | Improvement:   0.000000 | Progress:   30.0%
+2026-03-16 13:48:37,252 - QATCH.logger - INFO - [Optimizer] [  9/100] Best:   0.000000 | Improvement:   0.000005 | Progress:    9.0%
+2026-03-16 13:48:39,272 - QATCH.logger - INFO - [Optimizer] [  4/10] Best:   0.000005 | Improvement:   0.000000 | Progress:   40.0%
+2026-03-16 13:48:41,812 - QATCH.logger - INFO - [Optimizer] [ 10/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   10.0%
+2026-03-16 13:48:43,716 - QATCH.logger - INFO - [Optimizer] [  5/10] Best:   0.000001 | Improvement:   0.000003 | Progress:   50.0%
+2026-03-16 13:48:46,239 - QATCH.logger - INFO - [Optimizer] [ 11/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   11.0%
+2026-03-16 13:48:48,115 - QATCH.logger - INFO - [Optimizer] [  6/10] Best:   0.000000 | Improvement:   0.000005 | Progress:   60.0%
+2026-03-16 13:48:50,641 - QATCH.logger - INFO - [Optimizer] [ 12/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   12.0%
+2026-03-16 13:48:52,623 - QATCH.logger - INFO - [Optimizer] [  7/10] Best:   0.000000 | Improvement:   0.000005 | Progress:   70.0%
+2026-03-16 13:48:55,039 - QATCH.logger - INFO - [Optimizer] [ 13/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   13.0%
+2026-03-16 13:48:57,032 - QATCH.logger - INFO - [Optimizer] [  8/10] Best:   0.000000 | Improvement:   0.000005 | Progress:   80.0%
+2026-03-16 13:48:59,455 - QATCH.logger - INFO - [Optimizer] [ 14/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   14.0%
+2026-03-16 13:49:01,559 - QATCH.logger - INFO - [Optimizer] [  9/10] Best:   0.000000 | Improvement:   0.000005 | Progress:   90.0%
+2026-03-16 13:49:03,986 - QATCH.logger - INFO - [Optimizer] [ 15/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   15.0%
+2026-03-16 13:49:06,051 - QATCH.logger - INFO - [Optimizer] [ 10/10] Best:   0.000000 | Improvement:   0.000005 | Progress:  100.0%
+2026-03-16 13:49:06,276 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best protein: Adalimumab @ 74.46312942524668
+2026-03-16 13:49:06,277 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best buffer: Histidine @ 22.19430791893833
+2026-03-16 13:49:06,282 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best surfactant: tween-20 @ 0.11313394600028623
+2026-03-16 13:49:06,291 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best stabilizer: Sucrose @ 0.09536242071407619
+2026-03-16 13:49:06,294 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best excipient: Lysine @ 97.7847608526692
+2026-03-16 13:49:06,696 - QATCH.logger - INFO - [PredictionWorker] ICL Filter was: {'logic': 'AND', 'fields': ['Protein_type']}
+2026-03-16 13:49:07,755 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-(03062026).visq 
+2026-03-16 13:49:07,898 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:49:07,899 - QATCH.logger - INFO - [Optimizer] [ 16/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   16.0%
+2026-03-16 13:49:07,985 - QATCH.logger - INFO - [PredictionWorker] ICL Filter was: {'logic': 'AND', 'fields': ['Protein_type']}
+2026-03-16 13:49:09,021 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-(03062026).visq 
+2026-03-16 13:49:09,179 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:49:09,190 - QATCH.logger - INFO - [PredictionWorker] Learning from 34 context samples...
+2026-03-16 13:49:09,193 - QATCH.logger - INFO - Learning from 34 new samples  
+2026-03-16 13:49:10,853 - QATCH.logger - INFO - [Optimizer] [ 17/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   17.0%
+2026-03-16 13:49:13,256 - QATCH.logger - INFO - [Optimizer] [ 18/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   18.0%
+2026-03-16 13:49:15,670 - QATCH.logger - INFO - [Optimizer] [ 19/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   19.0%
+2026-03-16 13:49:18,055 - QATCH.logger - INFO - [Optimizer] [ 20/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   20.0%
+2026-03-16 13:49:20,426 - QATCH.logger - INFO - [Optimizer] [ 21/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   21.0%
+2026-03-16 13:49:22,685 - QATCH.logger - INFO - [Optimizer] [ 22/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   22.0%
+2026-03-16 13:49:25,062 - QATCH.logger - INFO - [Optimizer] [ 23/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   23.0%
+2026-03-16 13:49:27,371 - QATCH.logger - INFO - [Optimizer] [ 24/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   24.0%
+2026-03-16 13:49:29,837 - QATCH.logger - INFO - [Optimizer] [ 25/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   25.0%
+2026-03-16 13:49:32,283 - QATCH.logger - INFO - [Optimizer] [ 26/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   26.0%
+2026-03-16 13:49:34,733 - QATCH.logger - INFO - [Optimizer] [ 27/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   27.0%
+2026-03-16 13:49:37,132 - QATCH.logger - INFO - [Optimizer] [ 28/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   28.0%
+2026-03-16 13:49:39,535 - QATCH.logger - INFO - [Optimizer] [ 29/100] Best:   0.000000 | Improvement:   0.000005 | Progress:   29.0%
+2026-03-16 13:49:39,738 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best protein: Pembrolizumab @ 77.56829751675093
+2026-03-16 13:49:39,740 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best buffer: Histidine @ 33.78146997508371
+2026-03-16 13:49:39,745 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best surfactant: tween-20 @ 0.1544421690220474
+2026-03-16 13:49:39,750 - QATCH.logger - DEBUG - [OptimizationWorker (Headless)] Best excipient: Lysine @ 207.4729844769937
+2026-03-16 13:51:57,106 - QATCH.logger - INFO - [PredictionWorker] ICL Filter was: {'logic': 'AND', 'fields': ['Protein_type']}
+2026-03-16 13:51:57,647 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-Tuned(Aug).visq 
+2026-03-16 13:51:57,702 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:51:57,702 - QATCH.logger - INFO - [PredictionWorker] Learning from 39 context samples...
+2026-03-16 13:51:57,706 - QATCH.logger - INFO - Learning from 39 new samples  
+2026-03-16 13:52:01,217 - QATCH.logger - INFO - [PredictionWorker] ICL Filter was: {'logic': 'AND', 'fields': ['Protein_type']}
+2026-03-16 13:52:01,710 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-(03062026).visq 
+2026-03-16 13:52:01,762 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:52:01,762 - QATCH.logger - INFO - [PredictionWorker] Learning from 34 context samples...
+2026-03-16 13:52:01,763 - QATCH.logger - INFO - Learning from 34 new samples  
+2026-03-16 13:52:07,055 - QATCH.logger - INFO - [PredictionWorker] ICL Filter was: {'logic': 'AND', 'fields': ['Protein_type']}
+2026-03-16 13:52:07,547 - QATCH.logger - INFO - Extracting package: C:\Users\paulm\dev\nanovisQ\QATCH\VisQAI\assets\VisQAI-(03062026).visq 
+2026-03-16 13:52:07,588 - QATCH.logger - INFO - CNP Engine initialized successfully. 
+2026-03-16 13:52:07,588 - QATCH.logger - INFO - [PredictionWorker] Learning from 34 context samples...
+2026-03-16 13:52:07,589 - QATCH.logger - INFO - Learning from 34 new samples  
+2026-03-16 13:52:19,642 - QATCH.logger - INFO -  Finishing Application...
+2026-03-16 13:52:19,648 - QATCH.logger - INFO -  Application closed
+2026-03-16 13:52:19,655 - QATCH - INFO - Closed logging handlers

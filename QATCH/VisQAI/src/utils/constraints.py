@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """
 Design Space and Constraint Management for Bioformulations.
 
@@ -23,22 +24,17 @@ Version:
 """
 
 import copy
+=======
+from typing import Dict, Any, List, Tuple, Type
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 import math
-from typing import Any, Dict, List, Tuple, Type
+import copy
 
 try:
     TAG = "[Constraints (HEADLESS)]"
     from src.controller.ingredient_controller import IngredientController
+    from src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     from src.db.db import Database
-    from src.models.ingredient import (
-        Buffer,
-        Excipient,
-        Ingredient,
-        Protein,
-        Salt,
-        Stabilizer,
-        Surfactant,
-    )
     from src.utils.list_utils import ListUtils
 
     class Log:
@@ -86,16 +82,8 @@ except (ModuleNotFoundError, ImportError):
 
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+    from QATCH.VisQAI.src.models.ingredient import Ingredient, Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.models.ingredient import (
-        Buffer,
-        Excipient,
-        Ingredient,
-        Protein,
-        Salt,
-        Stabilizer,
-        Surfactant,
-    )
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
 
 
@@ -144,13 +132,13 @@ class Constraints:
         "Excipient_type": Excipient,
     }
     _DEFAULT_RANGES = {
-        "Protein_conc": (0, 600),
-        "Temperature": (15, 40),
-        "Buffer_conc": (0, 50),
-        "Salt_conc": (0, 150),
-        "Stabilizer_conc": (0, 0.5),
-        "Surfactant_conc": (0, 0.3),
-        "Excipient_conc": (0, 600),
+        "Protein_conc": (0, 300),
+        "Temperature": (24, 25),
+        "Buffer_conc": (0, 100),
+        "Salt_conc": (0, 200),
+        "Stabilizer_conc": (0, 1),
+        "Surfactant_conc": (0, 1),
+        "Excipient_conc": (0, 100),
     }
 
     def __init__(self, db: Database):
@@ -181,7 +169,7 @@ class Constraints:
         """
         new_obj = type(self)(self._db)
         for key, value in self.__dict__.items():
-            if key in ("_db", "_ingredient_ctrl"):
+            if key in ('_db', '_ingredient_ctrl'):
                 new_obj.__dict__[key] = None
             else:
                 new_obj.__dict__[key] = copy.deepcopy(value, memo)
@@ -203,7 +191,7 @@ class Constraints:
             raise ValueError(
                 f"Unknown numeric feature '{feature}'.  Only {self._NUMERIC} are allowed in add_range()."
             )
-        if feature != "Temperature" and (low < 0.0 or high < 0.0):
+        if feature != 'Temperature' and (low < 0.0 or high < 0.0):
             raise ValueError(
                 f"Negative values are not allowed for numeric feature {feature}"
             )
@@ -233,12 +221,18 @@ class Constraints:
                 raise TypeError(
                     f"All choices for '{feature}' must be Ingredient instances; got {c!r} of type {type(c).__name__}"
                 )
+<<<<<<< HEAD
         if not choices:
             Log.w(
                 TAG,
                 f"add_choices('{feature}', []) - empty choice list stored. "
                 f"build() will fall back to all ingredients of this type.",
             )
+=======
+            if not self._ingredient_ctrl.get_by_name(name=c.name, ingredient=c):
+                raise ValueError(
+                    f"`{c.name}` has not been added to persistent store yet.")
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         self._choices[feature] = list(choices)
 
     def set_db(self, db: Database) -> None:
@@ -263,6 +257,7 @@ class Constraints:
         """
         return self._db
 
+<<<<<<< HEAD
     def build(self) -> Tuple[List[Tuple[float, float]], List[Dict[str, Any]]]:
         """Finalizes and encodes the constraints into a mathematical search space.
 
@@ -280,29 +275,37 @@ class Constraints:
         Raises:
             ValueError: If a categorical feature has no available choices
         """
+=======
+    def build(self) -> Tuple[
+        List[Tuple[float, float]],
+        List[Dict[str, Any]]
+    ]:
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         bounds: List[Tuple[float, float]] = []
         encoding: List[Dict[str, Any]] = []
 
         all_ingredients = self._ingredient_ctrl.get_all_ingredients()
+        for ing in all_ingredients:
+            print(ing.to_dict())
         all_features = self._CATEGORICAL + self._NUMERIC
 
         for feat in all_features:
             if feat in self._CATEGORICAL:
                 chosen = self._choices.get(feat)
-                # Treat an explicitly-set empty list the same as "not constrained":
-                # add_choices(feature, []) means zero valid choices were found
-                # (e.g. "is not" applied to every available ingredient), which should
-                # fall back to all ingredients rather than raising ValueError.
-                if not chosen:
+                if chosen is None:
                     cls = self._FEATURE_CLASS[feat]
-                    chosen = [ing for ing in all_ingredients if isinstance(ing, cls)]
+                    chosen = [
+                        ing for ing in all_ingredients if isinstance(ing, cls)]
                 if not chosen:
                     raise ValueError(f"No choices available for '{feat}'.")
 
                 names = ListUtils.unique_case_insensitive_sort(
-                    [ing.name for ing in chosen]
-                )
-                encoding.append({"feature": feat, "type": "cat", "choices": names})
+                    [ing.name for ing in chosen])
+                encoding.append({
+                    "feature": feat,
+                    "type": "cat",
+                    "choices": names
+                })
                 bounds.append((0.0, float(len(names) - 1)))
 
             elif feat in self._NUMERIC:

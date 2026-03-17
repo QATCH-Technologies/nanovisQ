@@ -226,6 +226,8 @@ pytz==2025.2
 pywin32-ctypes==0.2.3
     # via
     #   keyring
+pyyaml==6.0.3
+    # via -r requirements.in
 pyzipper==0.3.6
     # via -r requirements.in
 rapidfuzz==3.14.1

@@ -16,6 +16,7 @@ Date:
     2026-03-16
 
 Version:
+<<<<<<< HEAD
     1.7
 """
 
@@ -25,9 +26,19 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, List, Optional, Type, Union
 
+=======
+    1.3
+"""
+import zipfile
+import re
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 import numpy as np
-
+import os
+import xml.etree.ElementTree as ET
+from typing import Any, Optional, Type
+from pathlib import Path
 try:
+<<<<<<< HEAD
     TAG = "[Parser (HEADLESS)]"
 
     class Log:
@@ -62,10 +73,35 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Parser]"
+=======
+    class Log:
+        @staticmethod
+        def d(tag, msg=""): print("DEBUG:", tag, msg)
+        @staticmethod
+        def i(tag, msg=""): print("INFO:", tag, msg)
+        @staticmethod
+        def w(tag, msg=""): print("WARNING:", tag, msg)
+        @staticmethod
+        def e(tag, msg=""): print("ERROR:", tag, msg)
+    from src.models.ingredient import (
+        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
+    )
+    from src.models.formulation import ViscosityProfile, Formulation
+    from src.controller.ingredient_controller import IngredientController
+    from src.db.db import Database
+    from src.io.file_storage import SecureOpen
+
+except (ModuleNotFoundError, ImportError):
+    from QATCH.VisQAI.src.models.ingredient import (
+        Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
+    )
+    from QATCH.VisQAI.src.models.formulation import ViscosityProfile, Formulation
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
+<<<<<<< HEAD
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import (
         Buffer,
@@ -75,6 +111,9 @@ except (ModuleNotFoundError, ImportError):
         Stabilizer,
         Surfactant,
     )
+=======
+TAG = "[Parser]"
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
 
 class Parser:
@@ -106,6 +145,7 @@ class Parser:
             targeted for extraction.
     """
 
+<<<<<<< HEAD
     TAG = "[Parser]"
 
     def __init__(self, xml_path: str = ""):
@@ -220,15 +260,40 @@ class Parser:
 
         if not self.xml_path.exists():
             raise FileNotFoundError(f"XML not found at path `{self.xml_path}`.")
+=======
+    def __init__(self, xml_path: str):
+        """Initialize the parser by loading and parsing the XML file.
+
+        Args:
+            xml_path (str): Filesystem path to the XML file.
+
+        Raises:
+            FileNotFoundError: If the file does not exist at `xml_path`.
+            ET.ParseError: If the XML is malformed and cannot be parsed.
+        """
+        self.capture_path = Path(xml_path)
+        self.base_path = self.capture_path.parent
+        self.xml_path = next(self.base_path.glob("*.xml"), None)
+        if not os.path.exists(self.capture_path):
+            raise FileNotFoundError(
+                f"capture.zip not found at path `{self.capture_path}`.")
+        if not os.path.exists(self.xml_path):
+            raise FileNotFoundError(
+                f"XML not found at path `{self.xml_path}`.")
+
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         tree = ET.parse(self.xml_path)
         self.root = tree.getroot()
-
+        self.profile_shears = [1e2, 1e3, 1e4, 1e5, 15000000]
         params_list = self.root.findall("params")
         if not params_list:
             self.params = None
         else:
             self.params = params_list[-1]
+        self.database = Database(parse_file_key=True)
+        self.ing_ctrl = IngredientController(self.database)
 
+<<<<<<< HEAD
     def get_param(self, name: str, cast_type: Type = str, required: bool = True) -> Any:
         """Retrieves and casts a parameter value from the `<params>` XML section.
 
@@ -252,6 +317,52 @@ class Parser:
             ValueError: If `required` is True and the section or parameter is
                 missing. Also raised if the 'value' attribute is missing from
                 the element, or if the value cannot be cast to `cast_type`.
+=======
+    def get_text(self, elem: ET.Element, tag: str, cast_type: Type) -> Any:
+        """Retrieve and cast the text content of a child element.
+
+        Args:
+            elem (ET.Element): Parent XML element.
+            tag (str): Tag name of the child element to find.
+            cast_type (Type): Callable type (e.g., `int`, `float`, `str`) used to cast the text.
+
+        Returns:
+            Any: The value of the child element, cast to `cast_type`.
+
+        Raises:
+            ValueError: If no child with the specified `tag` is found, or if casting fails.
+        """
+        txt = elem.findtext(tag)
+        if txt is None:
+            raise ValueError(f"Missing <{tag}> in <{elem.tag}>")
+        try:
+            return cast_type(txt)
+        except ValueError:
+            raise ValueError(f"Cannot cast '{txt}' of <{tag}> to {cast_type}")
+
+    def get_param(
+        self,
+        name: str,
+        cast_type: Type = str,
+        required: bool = True
+    ) -> Any:
+        """Retrieve a parameter value by name from the `<params>` section and cast it.
+
+        Args:
+            name (str): The `name` attribute of the `<param>` element to retrieve.
+            cast_type (Type, optional): Callable type (e.g., `int`, `float`, `str`) to cast the value.
+                Defaults to `str`.
+            required (bool, optional): Whether the parameter is required. If True and the parameter
+                is missing, raises an error. If False, returns `None` when missing. Defaults to True.
+
+        Returns:
+            Any: The parameter value cast to `cast_type`, or `None` if not found and `required` is False.
+
+        Raises:
+            ValueError: If `<params>` is missing but `required` is True,
+                        or if the `<param>` element with `name` is missing but `required` is True,
+                        or if the `value` attribute is missing, or if casting fails.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         if self.params is None:
             if required:
@@ -267,14 +378,24 @@ class Parser:
         val = el.get("value")
         if val is None:
             raise ValueError(f"Param '{name}' has no value attribute")
+        if len(val.strip()) == 0:
+            if required:
+                raise ValueError(f"Param '{name}' has empty value attribute")
+            return None
+
         try:
             return cast_type(val)
         except ValueError:
-            raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}")
+            raise ValueError(
+                f"Cannot cast param '{name}' value '{val}' to {cast_type}")
 
     def get_param_attr(
-        self, name: str, attr: str, required: bool = False
+        self,
+        name: str,
+        attr: str,
+        required: bool = False
     ) -> Optional[str]:
+<<<<<<< HEAD
         """Retrieves a specific attribute from a `<param>` element.
 
         This method searches the internal parameters collection for a `<param>`
@@ -296,6 +417,22 @@ class Parser:
         Raises:
             ValueError: If `required` is True and the specified parameter
                 is missing or does not contain the requested attribute.
+=======
+        """Retrieve a specific attribute from a `<param>` element.
+
+        Args:
+            name (str): The `name` attribute of the `<param>` element.
+            attr (str): The attribute to retrieve from the `<param>` element.
+            required (bool, optional): Whether the attribute is required. If True and the attribute
+                is missing, raises an error. If False, returns `None`. Defaults to False.
+
+        Returns:
+            Optional[str]: The value of the requested attribute, or `None` if not present and `required` is False.
+
+        Raises:
+            ValueError: If `<params>` is missing (when `required` is True),
+                        or if the `<param>` element is missing or lacks the specified attribute when `required` is True.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         if self.params is None:
             return None
@@ -306,6 +443,7 @@ class Parser:
             return None
         return el.get(attr)
 
+<<<<<<< HEAD
     def get_protein(self) -> dict:
         """Constructs and returns protein-related data using XML params and DB lookups.
 
@@ -330,20 +468,53 @@ class Parser:
             warning is logged and a default dictionary with 'found' flags set
             to False is returned.
         """
+=======
+    def get_protein(self) -> Protein:
+        """Construct and return a `Protein` object with concentration and units from `<params>`.
+
+        Expects the following `<param>` entries in `<params>`:
+            - `protein_type` (string)
+            - `protein_mw` (float)
+            - `protein_pI_mean` (float)
+            - `protein_pI_range` (float)
+            - `protein_concentration` (float)
+            - `units` attribute on `protein_concentration` (string, required)
+
+        Returns:
+            Protein: A dictionary-like structure containing:
+                {
+                    "protein": <Protein instance>,
+                    "concentration": <float>,
+                    "units": <str>
+                }
+
+        Raises:
+            ValueError: If any required parameter is missing or cannot be cast.
+        """
+
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         try:
             name = self.get_param("protein_type", str, required=True)
-        except Exception:
+            protein_obj = self.ing_ctrl.get_protein_by_name(name)
+            if protein_obj is None:
+                raise ValueError(
+                    "Protein could not be fetched from persistent store.")
+        except:
             Log.w(
+<<<<<<< HEAD
                 TAG,
                 "<protein_type> param could not be found in run XML; returning default.",
             )
+=======
+                TAG, f"<protein_type> param could not be found in run XML; returning default.")
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
             return {
                 "protein": Protein(
                     enc_id=-1,
                     name="None",
                     molecular_weight=0.0,
                     pI_mean=0.0,
-                    pI_range=0.0,
+                    pI_range=0.0
                 ),
                 "concentration": 0.0,
                 "units": "mg/mL",
@@ -351,9 +522,11 @@ class Parser:
                     "name": False,
                     "conc": False,
                     "units": False,
-                },
+                }
             }
+        conc = self.get_param("protein_concentration", float)
 
+<<<<<<< HEAD
         protein_obj = self.ing_ctrl.get_protein_by_name(name)
         if protein_obj is None:
             molecular_weight = 0.0
@@ -375,12 +548,18 @@ class Parser:
         if units is None:
             units = "mg/mL"
 
+=======
+        molecular_weight = protein_obj.molecular_weight
+        pI_mean = protein_obj.pI_mean
+        pI_range = protein_obj.pI_range
+        units = self.get_param_attr(
+            "protein_concentration", "units", required=True)
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
-
         return {
             "protein": Protein(
                 enc_id=-1,
@@ -388,13 +567,14 @@ class Parser:
                 molecular_weight=molecular_weight,
                 pI_mean=pI_mean,
                 pI_range=pI_range,
-                class_type=class_type,
+                class_type=protein_obj.class_type
             ),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
+<<<<<<< HEAD
     def get_buffer(self) -> dict:
         """Constructs and returns buffer-related data using XML params and DB lookups.
 
@@ -415,51 +595,64 @@ class Parser:
         Notes:
             If 'buffer_type' is missing from the XML, a warning is logged and a
             default dictionary with 'found' flags set to False is returned immediately.
+=======
+    def get_buffer(self) -> Buffer:
+        """Construct and return a `Buffer` object with concentration and units from `<params>`.
+
+        Expects the following `<param>` entries in `<params>`:
+            - `buffer_type` (string)
+            - `buffer_pH` (float)
+            - `buffer_concentration` (float)
+            - `units` attribute on `buffer_concentration` (string, optional)
+
+        Returns:
+            Buffer: A dictionary-like structure containing:
+                {
+                    "buffer": <Buffer instance>,
+                    "concentration": <float>,
+                    "units": <str> or None
+                }
+
+        Raises:
+            ValueError: If any required parameter is missing or cannot be cast.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         try:
             name = self.get_param("buffer_type", str, required=True)
-        except Exception:
+            conc = self.get_param("buffer_concentration",
+                                  float, required=True)
+        except:
             Log.w(
-                TAG,
-                f"<buffer_type> param could not be found in XML; returning default.",
-            )
+                TAG, f"<buffer_type> param could not be found in XML; returning default.")
             return {
                 "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
                 "concentration": 0.0,
                 "units": "mM",
-                "found": {"name": False, "conc": False, "units": False},
+                "found": {
+                    "name": False,
+                    "conc": False,
+                    "units": False
+                }
             }
 
         buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
-
-        # If unseen in DB, create a placeholder with 0.0 to force user completion
-        if buffer_obj is None:
-            buffer_ph = 0.0
-        else:
-            buffer_ph = buffer_obj.pH if buffer_obj.pH is not None else 0.0
-
-        try:
-            conc = self.get_param("buffer_concentration", float, required=True)
-        except Exception:
-            conc = 0.0
-
         units = self.get_param_attr("buffer_concentration", "units")
         if units is None:
-            units = "mM"
-
+            units = "pH"
+        buffer_ph = buffer_obj.pH if buffer_obj is not None else 0.0
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
-
         return {
             "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
+<<<<<<< HEAD
     def get_stabilizer(self) -> dict:
         """Constructs and returns stabilizer-related data from the run parameters.
 
@@ -477,28 +670,51 @@ class Parser:
                 - 'units' (str): The measurement units (defaults to "mM").
                 - 'found' (dict): A mapping of boolean flags indicating if
                   'name', 'conc', and 'units' were present in the parameters.
+=======
+    def get_stabilizer(self) -> Stabilizer:
+        """Construct and return a `Stabilizer` object with concentration and units from `<params>`.
+
+        Expects the following `<param>` entries in `<params>`:
+            - `stabilizer_type` (string)
+            - `stabilizer_concentration` (float)
+            - `units` attribute on `stabilizer_concentration` (string, optional)
+
+        Returns:
+            Stabilizer: A dictionary-like structure containing:
+                {
+                    "stabilizer": <Stabilizer instance>,
+                    "concentration": <float>,
+                    "units": <str> or None
+                }
+
+        Raises:
+            ValueError: If any required parameter is missing or cannot be cast.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         name = self.get_param("stabilizer_type", str, required=False)
-        conc = self.get_param("stabilizer_concentration", float, required=False)
-        units = self.get_param_attr("stabilizer_concentration", "units", required=False)
+        conc = self.get_param("stabilizer_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "stabilizer_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
-            units = "mM"
+            units = 'mM'
         return {
             "stabilizer": Stabilizer(enc_id=-1, name=name),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
+<<<<<<< HEAD
     def get_surfactant(self) -> dict:
         """Constructs and returns surfactant-related data from the run parameters.
 
@@ -516,28 +732,51 @@ class Parser:
                 - 'units' (str): The measurement units (defaults to "%w").
                 - 'found' (dict): A mapping of boolean flags indicating if
                   'name', 'conc', and 'units' were present in the parameters.
+=======
+    def get_surfactant(self) -> Surfactant:
+        """Construct and return a `Surfactant` object with concentration and units from `<params>`.
+
+        Expects the following `<param>` entries in `<params>`:
+            - `surfactant_type` (string)
+            - `surfactant_concentration` (float)
+            - `units` attribute on `surfactant_concentration` (string, optional)
+
+        Returns:
+            Surfactant: A dictionary-like structure containing:
+                {
+                    "surfactant": <Surfactant instance>,
+                    "concentration": <float>,
+                    "units": <str> or None
+                }
+
+        Raises:
+            ValueError: If any required parameter is missing or cannot be cast.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         name = self.get_param("surfactant_type", str, required=False)
-        conc = self.get_param("surfactant_concentration", float, required=False)
-        units = self.get_param_attr("surfactant_concentration", "units", required=False)
+        conc = self.get_param("surfactant_concentration",
+                              float, required=False)
+        units = self.get_param_attr(
+            "surfactant_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
-            units = "%w"
+            units = '%w'
         return {
             "surfactant": Surfactant(enc_id=-1, name=name),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
+<<<<<<< HEAD
     def get_excipient(self) -> dict:
         """Constructs and returns salt-related data from the run parameters.
 
@@ -554,54 +793,62 @@ class Parser:
                 - 'units' (str): The measurement units for the concentration.
                 - 'found' (dict): A mapping of boolean flags indicating if
                   'name', 'conc', and 'units' were explicitly present.
+=======
+    def get_excipient(self) -> Excipient:
+        """Construct and return a `Excipient` object with concentration and units from `<params>`.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         name = self.get_param("excipient_type", str, required=False)
         conc = self.get_param("excipient_concentration", float, required=False)
-        units = self.get_param_attr("excipient_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "excipient_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
-            units = "mM"
+            units = 'mM'
 
         return {
             "excipient": Excipient(enc_id=-1, name=name),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
-    def get_salt(self) -> dict:
-        """Construct and return a `Salt` object with concentration and units from `<params>`."""
+    def get_salt(self) -> Salt:
+        """Construct and return a `Salt` object with concentration and units from `<params>`.
+        """
         name = self.get_param("salt_type", str, required=False)
         conc = self.get_param("salt_concentration", float, required=False)
-        units = self.get_param_attr("salt_concentration", "units", required=False)
+        units = self.get_param_attr(
+            "salt_concentration", "units", required=False)
         found = {
             "name": name is not None,
             "conc": conc is not None,
-            "units": units is not None,
+            "units": units is not None
         }
         if name is None:
             name = "None"
         if conc is None:
             conc = 0.0
         if units is None:
-            units = "mM"
+            units = 'mM'
 
         return {
             "salt": Salt(enc_id=-1, name=name),
             "concentration": conc,
             "units": units,
-            "found": found,
+            "found": found
         }
 
     def get_metrics(self) -> dict[str, str]:
+<<<<<<< HEAD
         """Extracts all metric entries from the most recent `<metrics>` section.
 
         This method searches the XML tree for all occurrences of the `<metrics>`
@@ -614,6 +861,12 @@ class Parser:
                 values are the corresponding measurement strings (with units
                 included if available). Returns an empty dictionary if no
                 `<metrics>` section is found.
+=======
+        """Extract all metrics from the most recent <metrics> section.
+
+        Returns:
+            dict[str, str]: Dictionary mapping metric names to their values (with units if applicable)
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         metrics_list = self.root.findall("metrics")
         if not metrics_list:
@@ -635,6 +888,7 @@ class Parser:
 
         return metrics_dict
 
+<<<<<<< HEAD
     def get_signature(self) -> Optional[str]:
         """Retrieves the run signature from the `<metrics>` element attributes.
 
@@ -666,6 +920,13 @@ class Parser:
                 strings (e.g., "Created", "Modified") and values are 2-tuples
                 containing (username, recorded_timestamp). Returns an empty
                 dictionary if no `<audits>` section is found.
+=======
+    def get_audits(self) -> dict[str, tuple[str, str]]:
+        """Extract all audit entries from the most recent <audits> section.
+
+        Returns:
+            dict[str, tuple[str, str]]: Dictionary mapping action names to (username, timestamp) tuples
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         audits_list = self.root.findall("audits")
         if not audits_list:
@@ -686,6 +947,7 @@ class Parser:
         return audits_dict
 
     def get_run_notes(self) -> Optional[str]:
+<<<<<<< HEAD
         """Retrieves and formats the run notes from the parameters.
 
         This method looks up the 'notes' key within the parsed parameters. If
@@ -696,6 +958,12 @@ class Parser:
         Returns:
             Optional[str]: The formatted notes string if present; None if the
                 parameter is missing or empty.
+=======
+        """Retrieve the run notes from params.
+
+        Returns:
+            Optional[str]: The notes text with \\n replaced by actual newlines, or None if not found
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         notes = self.get_param("notes", str, required=False)
         if notes:
@@ -743,6 +1011,7 @@ class Parser:
         return value == "True" if value else False
 
     def get_viscosity_profile(self) -> ViscosityProfile:
+<<<<<<< HEAD
         """Locates and extracts viscosity data from the most recent analysis archive.
 
         This method searches the instance's base path for zip archives matching the
@@ -762,47 +1031,64 @@ class Parser:
             FileNotFoundError: If the base path is invalid or missing, if no
                 'analyze-*.zip' files are found in the directory, or if the required
                 '*_analyze_out.csv' file is missing from the selected archive.
+=======
+        """
+        Locate and extract viscosity data from the largest analyze-[INT].zip file,
+        then interpolate at the standard shear rates.
+
+        Returns:
+            ViscosityProfile: The viscosity profile interpolated at self.profile_shears
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         if not self.base_path or not os.path.isdir(self.base_path):
-            raise FileNotFoundError(f"Base path not found: {self.base_path}")
+            raise FileNotFoundError(
+                f"Base path not found: {self.base_path}")
 
         all_files = os.listdir(self.base_path)
-        analyze_zips = [f for f in all_files if re.match(r"analyze-\d+\.zip$", f)]
+        analyze_zips = [f for f in all_files
+                        if re.match(r"analyze-\d+\.zip$", f)]
 
         if not analyze_zips:
-            raise FileNotFoundError(f"No analyze-*.zip files found in {self.base_path}")
+            # raise FileNotFoundError(
+            #     f"No analyze-*.zip files found in {self.base_path}")
+            Log.w(
+                "No Viscosity Profile available for run: "
+                f"No analyze-*.zip files found in {self.base_path}")
+            return None, None
         largest_zip_name = max(
             analyze_zips,
-            key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1)),
+            key=lambda n: int(re.search(r"analyze-(\d+)\.zip", n).group(1))
         )
         zip_base_name = largest_zip_name[:-4]
 
         # Get namelist from the analyze zip
-        dummy_path = os.path.join(self.base_path, "dummy")
+        dummy_path = os.path.join(self.base_path, 'dummy')
         namelist = SecureOpen.get_namelist(dummy_path, zip_name=zip_base_name)
 
-        csv_files = [n for n in namelist if n.endswith("_analyze_out.csv")]
+        csv_files = [n for n in namelist
+                     if n.endswith("_analyze_out.csv")]
         if not csv_files:
             raise FileNotFoundError(
-                f"No *_analyze_out.csv found inside {largest_zip_name}"
-            )
+                f"No *_analyze_out.csv found inside {largest_zip_name}")
 
         csv_file_name = csv_files[0]
         csv_path = os.path.join(self.base_path, csv_file_name)
-        with SecureOpen(csv_path, "r", zipname=zip_base_name, insecure=True) as csv_f:
-            csv_data = np.loadtxt(csv_f, delimiter=",", skiprows=1, usecols=(0, 2, 4))
-            # Handle case where csv has only one row
-            if csv_data.ndim == 1:
-                csv_data = csv_data.reshape(1, -1)
-
+        with SecureOpen(csv_path, 'r', zipname=zip_base_name, insecure=True) as csv_f:
+            csv_data = np.loadtxt(
+                csv_f,
+                delimiter=",",
+                skiprows=1,
+                usecols=(0, 2, 4)
+            )
             shear_rate = csv_data[:, 0]
             viscosity = csv_data[:, 1]
             temperature = csv_data[:, 2]
-
         shear_rates_list = shear_rate.tolist()
         viscosities_list = viscosity.tolist()
         temp_profile = ViscosityProfile(
-            shear_rates=shear_rates_list, viscosities=viscosities_list, units="cP"
+            shear_rates=shear_rates_list,
+            viscosities=viscosities_list,
+            units="cP"
         )
         interpolated_viscosities = [
             temp_profile.get_viscosity(sr) for sr in self.profile_shears
@@ -810,7 +1096,7 @@ class Parser:
         profile = ViscosityProfile(
             shear_rates=self.profile_shears,
             viscosities=interpolated_viscosities,
-            units="cP",
+            units="cP"
         )
 
         # Mark as measured data
@@ -819,6 +1105,7 @@ class Parser:
         return profile, np.average(temperature)
 
     def get_run_name(self) -> Optional[str]:
+<<<<<<< HEAD
         """Retrieves the run name from the `<run_info>` XML tag.
 
         This method attempts to extract the 'name' attribute by first checking if
@@ -830,15 +1117,26 @@ class Parser:
         Returns:
             Optional[str]: The extracted run name as a string, or None if the
                 `<run_info>` tag or its 'name' attribute cannot be found.
+=======
+        """Retrieve the run name from the <run_info> tag.
+
+        Returns:
+            Optional[str]: The value of the 'name' attribute from the <run_info> root element,
+                or None if the attribute is not found.
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
         """
         # Check if root element is run_info
         if self.root.tag == "run_info":
             run_name = self.root.get("name")
             if run_name is None:
                 Log.w(
+<<<<<<< HEAD
                     TAG,
                     "<run_info> root element found but 'name' attribute is missing",
                 )
+=======
+                    TAG, "<run_info> root element found but 'name' attribute is missing")
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
                 return None
             return run_name
 
@@ -856,6 +1154,7 @@ class Parser:
         return run_name
 
     def get_formulation(self) -> Formulation:
+<<<<<<< HEAD
         """Constructs and populates a `Formulation` object using parsed parameters.
 
         This method aggregates data from various internal parsing helpers to build
@@ -888,62 +1187,60 @@ class Parser:
             formulation.notes = notes
 
         #  Fetch Ingredients & Track Missing Fields
+=======
+        """Construct a `Formulation` object using parsed parameters and provided arguments.
+        Returns:
+            Formulation: A fully populated `Formulation` instance.
+        Raises:
+            TypeError: If `salt` is not a `Salt` instance, or if `vp` dict does not contain
+                the required keys with list values.
+            ValueError: If any provided concentration or temperature value is invalid.
+        """
+        formulation = Formulation()
+>>>>>>> c8b8db9a73c06821c07e683989b6114d95b0f143
 
         buffer_data = self.get_buffer()
-        if not buffer_data["found"]["name"]:
-            missing_fields.append("Buffer Type")
-
         protein_data = self.get_protein()
-        if not protein_data["found"]["name"]:
-            missing_fields.append("Protein Type")
-
         surfactant_data = self.get_surfactant()
         stabilizer_data = self.get_stabilizer()
         excipient_data = self.get_excipient()
         salt_data = self.get_salt()
+        vp, temp = self.get_viscosity_profile()
 
-        # Try to load viscosity profile
-        try:
-            vp, temp = self.get_viscosity_profile()
-            formulation.set_temperature(temp=temp)
-            formulation.set_viscosity_profile(profile=vp)
-        except FileNotFoundError:
-            missing_fields.append("Viscosity Data")
-            formulation.set_temperature(25.0)  # Default
-
-        # Populate Formulation
         formulation.set_buffer(
             buffer=buffer_data["buffer"],
             concentration=buffer_data["concentration"],
-            units=buffer_data["units"],
+            units=buffer_data["units"]
         )
         formulation.set_protein(
             protein=protein_data["protein"],
             concentration=protein_data["concentration"],
-            units=protein_data["units"],
+            units=protein_data["units"]
         )
         formulation.set_surfactant(
             surfactant=surfactant_data["surfactant"],
             concentration=surfactant_data["concentration"],
-            units=surfactant_data["units"],
+            units=surfactant_data["units"]
         )
         formulation.set_stabilizer(
             stabilizer=stabilizer_data["stabilizer"],
             concentration=stabilizer_data["concentration"],
-            units=stabilizer_data["units"],
+            units=stabilizer_data["units"]
         )
         formulation.set_excipient(
             excipient=excipient_data["excipient"],
             concentration=excipient_data["concentration"],
-            units=excipient_data["units"],
+            units=excipient_data["units"]
         )
         formulation.set_salt(
             salt=salt_data["salt"],
             concentration=salt_data["concentration"],
-            units=salt_data["units"],
+            units=salt_data["units"]
         )
 
-        # Attach missing fields metadata
-        formulation.missing_fields = missing_fields
+        if vp is not None:
+            formulation.set_viscosity_profile(profile=vp)
+        if temp is not None:
+            formulation.set_temperature(temp=temp)
 
         return formulation

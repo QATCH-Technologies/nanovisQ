@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6b68"
-#define RELEASE_DATE "2026-01-27"
+#define CODE_VERSION "v2.6b70"
+#define RELEASE_DATE "2026-03-11"
 
 /************************** LIBRARIES **************************/
 
@@ -183,7 +183,8 @@
 #define HW_REV_MATCH(t) (NVMEM.HW_Revision == t)
 #define PID_IN_RANGE(pid, lo, hi) (pid >= lo && pid <= hi)
 #define PID_IS_SECONDARY(pid) (PID_IN_RANGE(pid, 0x2, 0x4) || PID_IN_RANGE(pid, 0xB, 0xD))
-// NOTE: Primary devices are PID = 0x00, 0x01, 0x0A, and/or 0xFF (default, when other)
+#define PID_IS_CONTROLLER(pid) (pid == 0x80)
+// NOTE: Primary devices are PID = 0x00, 0x01, 0x0A, 0x80 (flux controller) and/or 0xFF (default, when other)
 // NOTE: Secondary devices are PID = 0x02, 0x03, 0x04, 0x0B, 0x0C and/or 0x0D
 
 // Determine external voltage condition
@@ -200,6 +201,37 @@
 #define POS_CLOSED_2   (NVMEM.POGO_PosClosed2)
 #define POS_INIT_2     ((POS_OPENED_2 + POS_CLOSED_2) / 2)
 #define MOVE_DELAY   (NVMEM.POGO_MoveDelay)
+
+// Define stepper types
+#define STEPPER_NONE -1
+#define STEPPER_SCREW 0
+#define STEPPER_ROTARY 1
+#define STEPPER_TYPE STEPPER_ROTARY // active stepper motor
+#define STEPPER_MATCH(t) (STEPPER_TYPE == t)
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+#include "DualHBridgeStepper.h"
+
+// Stepper pins
+#define STEPPER_M1 1                     // motor signal pin 1 (0=forward,1=back)
+#define STEPPER_E1 2                     // motor enable pin 1 (PWM)
+#define STEPPER_M2 3                     // motor signal pin 2 (0=forward,1=back)
+#define STEPPER_E2 4                     // motor enable pin 2 (PWM)
+#define STEPPER_SW 7                     // motor limit switch (HIGH on contact)
+#endif
+
+// Flux TEC select pins
+#define PIN_TEC_L 24
+#define PIN_TEC_C 25
+#define PIN_TEC_R 26
+
+// Flux PROBE select pins
+#define PIN_PROBE_1 27
+#define PIN_PROBE_2 28
+#define PIN_PROBE_3 29
+#define PIN_PROBE_4 30
+#define PIN_PROBE_5 31
+#define PIN_PROBE_6 32
 
 double freq_factor = 1.0;
 
@@ -233,7 +265,8 @@ double freq_factor = 1.0;
 // use Ambient temperature to correct external K-probe temperature readings
 // NOTE: This correction only applies during active measurement runs
 #define USE_TEMP_CORRECTION true
-#define TEMP_CORRECT_COOLDOWN (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_INTERVAL (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_DELTA 0.25
 #else
 // no MAX31855 support, no ambient correction available
 #define USE_TEMP_CORRECTION false
@@ -368,7 +401,7 @@ float ambient = NAN;
 
 #if USE_TEMP_CORRECTION
 float starting_ambient = NAN;
-unsigned long temp_correct_auto_off_at = 0; // time to auto-off (after last run stop)
+unsigned long temp_correct_adjust_delta_at = 0; // time to auto-adjust (after last run stop)
 #endif
 
 // Create servo object for POGO lid
@@ -525,6 +558,24 @@ byte EEPROM_pid = 0;
 IntervalTimer busyTimer;
 volatile byte busyTimerState;
 const unsigned long busyTimerInt_us = 15000;
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+DualHBridgeStepper stepper(STEPPER_M1, STEPPER_E1, STEPPER_M2, STEPPER_E2);
+#if STEPPER_MATCH(STEPPER_SCREW)
+// Linear Screw Stepper settings:
+const bool stepperHomingDir = true; // forwards
+long stepSize = -980; // assumes equal step sizes
+long stepperOffset = -110; // position of Port 1 relative to L1 switch
+#endif
+#if STEPPER_MATCH(STEPPER_ROTARY)
+// Circular Rotary Stepper settings
+const bool stepperHomingDir = false; // forwards
+long stepSize = 135; // assumes equal step sizes
+long stepperOffset = 60; // position of Port 1 relative to L1 switch
+#endif
+long stepperPositions[6] = {0, stepSize, 2*stepSize, 3*stepSize, 4*stepSize, 5*stepSize};
+void stepper_home(); // prototype
+#endif
 
 void busyTimerTask(bool dp)
 {
@@ -1037,7 +1088,7 @@ void QATCH_setup()
   }
 #endif
 
-  if (HW_REV_MATCH(HW_REVISION_3))
+  if (HW_REV_MATCH(HW_REVISION_3) && !PID_IS_CONTROLLER(NVMEM.pid))
     pogo_button_pressed(true); // initialize to open state
 
   // Turn off LEDs and FAN after boot check
@@ -1067,7 +1118,61 @@ void QATCH_setup()
 
   // Serial.print("EEPROM length: ");
   // Serial.println(EEPROM.length());
+
+  if (PID_IS_CONTROLLER(NVMEM.pid))
+  {
+#if (!STEPPER_MATCH(STEPPER_NONE))
+    pinMode(STEPPER_SW, INPUT);
+#if (STEPPER_MATCH(STEPPER_SCREW))
+    stepper.setMaxSpeed(100);
+    stepper.setSpeed(0.000001);
+    stepper.setMinPulseWidth(10000);
+    stepper.setAcceleration(100);
+#endif
+#if (STEPPER_MATCH(STEPPER_ROTARY))
+    stepper.setMaxSpeed(100);
+    stepper.setSpeed(0.000001);
+    stepper.setMinPulseWidth(100000);
+    stepper.setAcceleration(100);
+#endif
+    stepper_home();
+#endif
+
+    // Set all FLUX pins low until specified
+    for (int pin = 24; pin <= 32; pin++)
+    {
+      pinMode(pin, OUTPUT);
+      digitalWrite(pin, LOW);
+    }
+  }
 }
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+void stepper_home()
+{
+  client->println("Stepper: Homing...");
+  stepper.enableOutputs();
+  stepper.moveTo(stepperHomingDir ? 10000 : -10000);
+  while (!digitalRead(STEPPER_SW) && stepper.isRunning() && !client->available()) {
+    stepper.run();
+  }
+  if (stepper.isRunning()) {
+    stepper.stop();
+    if (client->available()) {
+      client->println("Stepper: Stopped finding home (serial pending)");
+      return; // Don't move to position without valid home
+    } else {
+      client->println("Stepper: Found home position");
+      stepper.setCurrentPosition(-stepperOffset);
+    }
+  } else {
+    client->println("Stepper: Failed to find home!");
+    return; // Don't move to position without valid home
+  }
+  client->printf("Stepper: Moving to position %i\n", stepperPositions[0]);
+  stepper.moveTo(stepperPositions[0]);
+}
+#endif
 
 // helper function since PJRC library doesn't handle mode switching
 void ledWrite(int pin, int value)
@@ -1598,10 +1703,8 @@ void QATCH_loop()
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
 #if USE_TEMP_CORRECTION
-        if (DEBUG) {
-          client->printf("CORR. TEMP: %f\n", starting_ambient); // DEBUG ONLY
-          client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DEBUG ONLY
-        }
+        client->printf("CORR. TEMP: %f\n", starting_ambient);
+        client->printf("CORR. TIME: %u\n", temp_correct_adjust_delta_at);
 #endif
       }
       return;
@@ -1610,6 +1713,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("TEMP"))
     {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        client->println("HW_CONFIG_ERROR: TEMP cmd not supported (PID must be primary, not 0x80)");
+        return;
+      }
       //      if (message_str.substring(5) == "FAIL")
       //      {
       //        max31855.simulate_err = !max31855.simulate_err;
@@ -1648,13 +1756,7 @@ void QATCH_loop()
           //        tft_tempcontrol(); // draw "OFF" state
           tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-          if (temp_correct_auto_off_at != 0)
-          {
-            if (DEBUG)
-              Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-            temp_correct_auto_off_at = 0; // off
-            starting_ambient = NAN;
-          }
+          temp_correct_adjust(true); // force off immediately
 #endif
         }
 #else
@@ -2005,6 +2107,11 @@ void QATCH_loop()
 
     if (message_str.startsWith("LID"))
     {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        client->println("HW_CONFIG_ERROR: LID cmd not supported (PID must be primary, not 0x80)");
+        return;
+      }
       if (!HW_REV_MATCH(HW_REVISION_3))
       {
         client->println("LID command is only supported by HW_REVISION_3.");
@@ -2277,14 +2384,16 @@ void QATCH_loop()
 #if USE_TEMP_CORRECTION
       if (l298nhb.active())
       {
+        if (temp_correct_adjust_delta_at == 0) // only if NOT in cooldown from prior run
+          starting_ambient = ambient;
+        else
+          temp_correct_adjust_delta_at = 0; // turn on, use prior base, prevent auto-adjust
         if (DEBUG)
         {
           Serial.println("CORRECTION ON!");
           Serial.print("Ambient: ");
-          Serial.println(ambient);
+          Serial.println(starting_ambient);
         }
-        starting_ambient = ambient;
-        temp_correct_auto_off_at = 0; // turn on, prevent auto-off
       }
 #endif
       return;
@@ -2292,6 +2401,10 @@ void QATCH_loop()
 
     if (message_str.toUpperCase() == "STOP")
     {
+#if (!STEPPER_MATCH(STEPPER_NONE))
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+        if (stepper.isRunning()) stepper.stop();
+#endif
       stopStreaming();
       client->println("STOP"); // SW listens for this reply
       return;
@@ -2367,6 +2480,178 @@ void QATCH_loop()
         client->println("?"); // unknown
       }
       tft_idle(); // redraw errors and icons
+      return;
+    }
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+    if (message_str.toUpperCase().startsWith("STEP"))
+    {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // Command format for relative movement: "STEP [+/-][dist]"
+        long position = 0;
+        long cmd_value = message_str.substring(4).trim().toInt();
+        // first-case: non-zero offsets, explicitly positive◘
+        if (cmd_value != 0 && message_str.indexOf("+") == 5)
+          position = stepper.currentPosition() + cmd_value;
+        else if (cmd_value == 0) { stepper_home(); return; } // home
+        else if (cmd_value == 1) position = stepperPositions[0];
+        else if (cmd_value == 2) position = stepperPositions[1];
+        else if (cmd_value == 3) position = stepperPositions[2];
+        else if (cmd_value == 4) position = stepperPositions[3];
+        else if (cmd_value == 5) position = stepperPositions[4];
+        else if (cmd_value == 6) position = stepperPositions[5];
+        // catch-all: negative offsets, or greater than 6
+        else position = stepper.currentPosition() + cmd_value;
+        client->printf("Stepper: Moving to position %i\n", position);
+        stepper.enableOutputs();
+        stepper.moveTo(position);
+        // main loop handles `stepper.run()` and `disableOutputs()`
+      } else {
+        client->println("HW_CONFIG_ERROR: STEP cmd not supported (PID must be 0x80)");
+      }
+    return;
+    }
+#endif
+
+    if (message_str.toUpperCase().startsWith("TEC"))
+    {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // client->println("Handling TEC command...");
+        // Examples:  "TEC" to get output states (L,C,R)
+        //            "TEC L" to set state of TEC-L only
+        //            "TEC C, R" to set state of C and R
+
+        bool _l = LOW, _c = LOW, _r = LOW;
+        bool valid = false, read_only = false;
+
+        if (message_str.toUpperCase().endsWith("NONE")) {
+          _l = _c = _r = LOW;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().endsWith("ALL")) {
+          _l = _c = _r = HIGH;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().indexOf(" L") > 0) {
+          _l = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" C") > 0) { 
+          // endsWith("(space)C") required to differentiate "TEC C" from "TEC"
+          _c = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" R") > 0) {
+          _r = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().endsWith("TEC")) {
+          valid = read_only = true;
+        }
+        
+        if (!valid) {
+          client->println("TEC: Unknown input. Ignoring line.");
+          return;
+        }
+
+        // set and report outputs:
+        if (!read_only)
+        {
+          digitalWrite(PIN_TEC_L, _l);
+          digitalWrite(PIN_TEC_C, _c);
+          digitalWrite(PIN_TEC_R, _r);
+        }
+
+        client->printf("TEC: %u, %u, %u\n", 
+          digitalRead(PIN_TEC_L), 
+          digitalRead(PIN_TEC_C), 
+          digitalRead(PIN_TEC_R));
+
+      } else {
+        client->println("HW_CONFIG_ERROR: TEC cmd not supported (PID must be 0x80)");
+      }
+
+      return;
+    }
+
+    if (message_str.toUpperCase().startsWith("PROBE")) 
+    {
+      if (PID_IS_CONTROLLER(NVMEM.pid))
+      {
+        // client->println("Handling PROBE command...");
+        // Examples:  "PROBE" to get output states (1,2,3,4,5,6)
+        //            "PROBE 1" to set state of PROBE-1 only
+        //            "PROBE 2, 3" to set state of 2 and 3
+
+        bool _1 = LOW, _2 = LOW, _3 = LOW, _4 = LOW, _5 = LOW, _6 = LOW;
+        bool valid = false, read_only = false;
+
+        if (message_str.toUpperCase().endsWith("NONE")) {
+          _1 = _2 = _3 = _4 = _5 = _6 = LOW;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().endsWith("ALL")) {
+          _1 = _2 = _3 = _4 = _5 = _6 = HIGH;
+          valid = true;
+        } 
+        if (message_str.toUpperCase().indexOf(" 1") > 0) {
+          _1 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 2") > 0) {
+          _2 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 3") > 0) {
+          _3 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 4") > 0) {
+          _4 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 5") > 0) {
+          _5 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().indexOf(" 6") > 0) {
+          _6 = HIGH;
+          valid = true;
+        }
+        if (message_str.toUpperCase().endsWith("PROBE")) {
+          valid = read_only = true;
+        }
+        
+        if (!valid) {
+          client->println("PROBE: Unknown input. Ignoring line.");
+          return;
+        }
+
+        // set and report outputs:
+        if (!read_only)
+        {
+          digitalWrite(PIN_PROBE_1, _1);
+          digitalWrite(PIN_PROBE_2, _2);
+          digitalWrite(PIN_PROBE_3, _3);
+          digitalWrite(PIN_PROBE_4, _4);
+          digitalWrite(PIN_PROBE_5, _5);
+          digitalWrite(PIN_PROBE_6, _6);
+        }
+
+        client->printf("PROBE: %u, %u, %u, %u, %u, %u\n", 
+          digitalRead(PIN_PROBE_1), 
+          digitalRead(PIN_PROBE_2), 
+          digitalRead(PIN_PROBE_3), 
+          digitalRead(PIN_PROBE_4), 
+          digitalRead(PIN_PROBE_5), 
+          digitalRead(PIN_PROBE_6));
+
+      } else {
+        client->println("HW_CONFIG_ERROR: PROBE cmd not supported (PID must be 0x80)");
+      }
+
       return;
     }
 
@@ -2504,14 +2789,8 @@ void QATCH_loop()
 #if USE_MAX31855
         float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-        // check for auto-off, stop if due
-        if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-        {
-          if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-          temp_correct_auto_off_at = 0; // off
-          starting_ambient = NAN;
-        }
+        // check for auto-off, adjust and/or stop if due
+        temp_correct_adjust(false);
         if (!isnan(starting_ambient)) // active
         {
           if (DEBUG)
@@ -3040,14 +3319,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3168,7 +3441,8 @@ void QATCH_loop()
       ledWrite(LED_SEGMENT_DP, led_state);
     if (l298nhb_auto_off_at == 0)
     {
-      ledWrite(LED_BLUE_PIN, led_state);
+      if (!PID_IS_CONTROLLER(NVMEM.pid))
+        ledWrite(LED_BLUE_PIN, led_state);
       ledWrite(LED_ORANGE_PIN, LOW);
     }
     else
@@ -3268,14 +3542,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3315,13 +3583,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
 
@@ -3392,13 +3654,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
   }
@@ -3435,7 +3691,7 @@ void QATCH_loop()
   }
 #endif
 
-  if (HW_REV_MATCH(HW_REVISION_3))
+  if (HW_REV_MATCH(HW_REVISION_3) && !PID_IS_CONTROLLER(NVMEM.pid))
   {
     /* HANDLE POGO BUTTON PRESS */
     // NOTE: Event fires on button release.
@@ -3465,6 +3721,27 @@ void QATCH_loop()
       }
     }
   }
+
+#if (!STEPPER_MATCH(STEPPER_NONE))
+  if (PID_IS_CONTROLLER(NVMEM.pid))
+  {
+    stepper.run();
+    if (stepper.isRunning())
+    {
+    // client->print("Stepper: ");
+    // client->print(digitalRead(STEPPER_M1));
+    // client->print(digitalRead(STEPPER_E1));
+    // client->print(digitalRead(STEPPER_M2));
+    // client->println(digitalRead(STEPPER_E2));
+    } else {
+      if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
+          digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
+        client->println("Stepper: DONE!");
+      stepper.disableOutputs();
+    }
+  }
+#endif
+
 }
 
 /************************** FUNCTION ***************************/
@@ -3780,15 +4057,15 @@ void stopStreaming(void)
 #if USE_TEMP_CORRECTION
   if (l298nhb.active() && !isnan(starting_ambient))
   {
-    temp_correct_auto_off_at = millis() + TEMP_CORRECT_COOLDOWN; // calculate time to reset
+    temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
     // special case in event of rollover in prior line math
-    if (temp_correct_auto_off_at == 0) 
+    if (temp_correct_adjust_delta_at == 0) 
     {
-      temp_correct_auto_off_at = 1;
+      temp_correct_adjust_delta_at = 1;
     }
-    if (DEBUG) 
+    if (DEBUG)
     {
-      Serial.printf("CORRECTION off @ t = %u\n", temp_correct_auto_off_at);
+      Serial.printf("CORRECTION adjust @ t = %u\n", temp_correct_adjust_delta_at);
     }
   }
 #endif
@@ -3941,6 +4218,55 @@ void setLidCalibration(byte opened_1, byte closed_1,
     nv.save();
   else
     client->println("ERROR: Failed to save lid calibration in EEPROM. NVMEM struct is invalid.");
+}
+
+void temp_correct_adjust(bool force_off)
+{
+#if !USE_TEMP_CORRECTION
+  return; // skip it
+#endif
+
+  // check for auto-off, adjust and/or stop if due
+  if ((force_off) || (last_temp > 
+    temp_correct_adjust_delta_at && temp_correct_adjust_delta_at != 0))
+  {
+    float now_ambient = max31855.readInternal(false);
+    if ((!force_off) && (abs(now_ambient - starting_ambient) > 
+      TEMP_CORRECT_COOLDOWN_DELTA))
+    {
+      // kick adjust timer for another interval:
+      temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
+      // special case in event of rollover in prior line math
+      if (temp_correct_adjust_delta_at == 0) 
+      {
+        temp_correct_adjust_delta_at = 1;
+      }
+
+      // adjust starting ambient closer to actual ambient by delta temp:
+      if (DEBUG)
+      {
+        Serial.print("CORRECTION adjust: ");
+        Serial.print(starting_ambient);
+      }
+      if (now_ambient > starting_ambient)
+        starting_ambient += TEMP_CORRECT_COOLDOWN_DELTA;
+      else
+        starting_ambient -= TEMP_CORRECT_COOLDOWN_DELTA;
+      if (DEBUG)
+      {
+        Serial.print(" -> ");
+        Serial.println(starting_ambient);
+      }
+      
+    } else if (temp_correct_adjust_delta_at != 0) { 
+      // fall here immediately if `force_off` set, or
+      // stop the adjustment timer when delta is minimized:
+      if (DEBUG)
+        Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+      temp_correct_adjust_delta_at = 0; // off
+      starting_ambient = NAN;
+    }
+  }
 }
 
 /************************** ILI9341 ****************************/

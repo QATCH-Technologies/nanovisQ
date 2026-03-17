@@ -62,6 +62,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
     @staticmethod
     def Lookup_ST(surfactant, concentration):
         ST1 = 72
+        return ST1  # always
+
+        # NOTE: This function is not currently used; returning constant value above
         if concentration > 2:  # mg/mL
             ST1 = 57.5
         return ST1  # always
@@ -1624,6 +1627,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # Determine initial button states
         enable_load = bool(self.cBox_Runs.currentText().strip(
         )) and self.cBox_Runs.currentText() != "No Runs Found"
+        enable_rescan = enable
         enable_cancel = enable_info = enable_modify = self.xml_path is not None
         enable_back = self.stateStep >= 0
         enable_next = enable_cancel and self.stateStep < 7
@@ -1631,7 +1635,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # If disabled globally (e.g., busy state), disable everything
         if not enable:
-            enable_load = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
+            enable_load = enable_rescan = enable_info = enable_cancel = enable_back = enable_next = enable_modify = enable_analyze = False
 
         # Handle tool_Modify state
         if enable_cancel and not enable_analyze:
@@ -1651,6 +1655,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
         # Apply button states
         self.tBtn_Load.setEnabled(enable_load)
+        self.tBtn_Rescan.setEnabled(enable_rescan)
         self.tBtn_Info.setEnabled(enable_info)
         self.tool_Cancel.setEnabled(enable_cancel)
         self.tool_Back.setEnabled(enable_back)
@@ -2429,13 +2434,21 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.xml_path = xml_path
 
     def updateDev(self, idx):
-        self.enable_buttons(False)
+        # Disable all toolbar buttons, then selectively re-enable based on state
+        self.enable_buttons(False, False)
+        if self.xml_path is not None:
+            self.tool_Cancel.setEnabled(True)  # enable Cancel
+        self.tBtn_Rescan.setEnabled(True)  # enable Rescan
         run = self.cBox_Runs.currentText()
         if len(run.strip()) == 0:
             self.cBox_Runs.setEditable(True)
             self.cBox_Runs.setEnabled(False)
             self.cBox_Runs.setEditText("No Runs Found")
             return
+        if self.text_Created.text().endswith(run):
+            self.enable_buttons()  # enable ALL buttons
+        else:
+            self.tBtn_Load.setEnabled(True)  # enable Load
         self.cBox_Runs.setEditable(False)
         self.cBox_Runs.setEnabled(True)
         run = run[0: run.rfind("(") - 1]
@@ -3807,23 +3820,19 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ax2.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             ax3.setXRange(self.xs[slice_start], self.xs[slice_end], padding=0)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
-            if False:  # diff_only
-                mn = np.amin(self.ys_diff[tx0:tx2])
-                mx = np.amax(self.ys_diff[tx0:tx2])
-            else:
-                mn = min(
-                    np.amin(self.ys_freq_fit[tx0:tx2]),
-                    np.amin(self.ys_fit[tx0:tx2]),
-                    np.amin(self.ys_diff_fit[tx0:tx2]),
-                )
-                mx = max(
-                    np.amax(self.ys_freq_fit[tx0:tx2]),
-                    np.amax(self.ys_fit[tx0:tx2]),
-                    np.amax(self.ys_diff_fit[tx0:tx2]),
-                )
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
+            mn = min(
+                np.amin(self.ys_freq_fit[tx0:tx2]),
+                np.amin(self.ys_fit[tx0:tx2]),
+                np.amin(self.ys_diff_fit[tx0:tx2]),
+            )
+            mx = max(
+                np.amax(self.ys_freq_fit[tx0:tx2]),
+                np.amax(self.ys_fit[tx0:tx2]),
+                np.amax(self.ys_diff_fit[tx0:tx2]),
+            )
             ax.setYRange(mn, mx, padding=pad)
             if self.stateStep >= 3:
                 if not clipped:
@@ -3948,9 +3957,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(self.xs[tx0], self.xs[tx2], padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -4167,7 +4176,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4243,10 +4252,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             else:
                 audits.setAttribute("signature", audits_signature)
 
-            with open(self.xml_path, "w") as f:
-                xml_str = run.toxml()
-                f.write(xml_str)
-                Log.d(f"Added <audit> to XML file: {self.xml_path}")
+            try:
+                with open(xml_path, "w", encoding="utf-8") as f:
+                    xml_str = run.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
+                    f.write(xml_str)
+                    Log.d(f"Added <audit> to XML file: {xml_path}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Filesystem error writing XML: {xml_path}")
+                Log.e("Error Details:", ose.strerror)
+                self.detect_change()
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {xml_path}")
+                Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def appendPointsToXml(self, poi_vals):
         data_path = self.loaded_datapath
@@ -4255,7 +4274,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         xml_params = {}
         if secure_open.file_exists(xml_path, "audit"):
             xml_text = ""
-            with open(xml_path, "r") as f:
+            with open(xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
             if isinstance(xml_text, bytes):
                 xml_text = xml_text.decode()
@@ -4286,10 +4305,20 @@ class AnalyzeProcess(QtWidgets.QWidget):
             signature = hash.hexdigest()
             points.setAttribute("signature", signature)
 
-            with open(self.xml_path, "w") as f:
-                xml_str = run.toxml()
-                f.write(xml_str)
-                Log.d(f"Added <points> to XML file: {self.xml_path}")
+            try:
+                with open(xml_path, "w", encoding="utf-8") as f:
+                    xml_str = run.toxml(encoding='ascii').decode(
+                        encoding='utf-8', errors='ignore')
+                    f.write(xml_str)
+                    Log.d(f"Added <points> to XML file: {xml_path}")
+            except OSError as ose:  # FileNotFoundError
+                Log.e(f"Filesystem error writing XML: {xml_path}")
+                Log.e("Error Details:", ose.strerror)
+                self.detect_change()
+            except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                Log.e(f"Unicode error writing XML: {xml_path}")
+                Log.e("Error Details:", ue.reason)
+                self.detect_change()
 
     def markerMoveFinished(self, marker):
         ax = self.graphWidget
@@ -4322,9 +4351,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             tx2 = next(x for x, y in enumerate(self.xs) if y >= tt2)
             ax.setXRange(tt0, tt2, padding=0.12)
             # Prevent empty slices
-            if tx0 == tx2:
-                tx0 -= 1
-                tx2 += 1
+            if tx0 >= tx2:
+                tx0 = 0
+                tx2 = len(self.xs) - 1
             mn = min(
                 np.amin(self.ys_freq_fit[tx0:tx2]),
                 np.amin(self.ys_fit[tx0:tx2]),
@@ -4438,7 +4467,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Read the XML file's content.
             xml_text = ""
-            with open(self.xml_path, "r") as f:
+            with open(self.xml_path, "r", encoding="utf-8") as f:
                 xml_text = f.read()
 
             # Decode if the content is in bytes format.
@@ -5767,7 +5796,11 @@ class AnalyzerWorker(QtCore.QObject):
 
                     name = p.getAttribute("name")
                     value = p.getAttribute("value")
-                    xml_params[name] = value
+
+                    # Normalize file encoding so it can be logged as UTF-8
+                    xml_params[name] = value.encode(
+                        encoding='ascii', errors='xmlcharrefreplace').decode(
+                        encoding='utf-8', errors='ignore')
 
                     if name == "batch_number" and p.hasAttribute("input"):
                         batch_input_type = p.getAttribute("input")
@@ -5872,11 +5905,19 @@ class AnalyzerWorker(QtCore.QObject):
                     signature = hash.hexdigest()
                     batch_params.setAttribute("signature", signature)
 
-                    with open(self.xml_path, "w") as f:
-                        xml_str = doc.toxml()
-                        f.write(xml_str)
-                        Log.d(
-                            f"Added <batch_params> to XML file: {self.xml_path}")
+                    try:
+                        with open(self.xml_path, "w", encoding="utf-8") as f:
+                            xml_str = doc.toxml(encoding='ascii').decode(
+                                encoding='utf-8', errors='ignore')
+                            f.write(xml_str)
+                            Log.d(
+                                f"Added <batch_params> to XML file: {self.xml_path}")
+                    except OSError as ose:  # FileNotFoundError
+                        Log.e(f"Filesystem error writing XML: {self.xml_path}")
+                        Log.e("Error Details:", ose.strerror)
+                    except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
+                        Log.e(f"Unicode error writing XML: {self.xml_path}")
+                        Log.e("Error Details:", ue.reason)
                 # END BATCH PARAMS INSERT #
 
             self.update(status_label)
@@ -6733,7 +6774,13 @@ class AnalyzerWorker(QtCore.QObject):
 
             np.asarray(t_minima)
 
-            ax2.plot(xs[zeros3[0]:], ys_diss_diff_offset[zeros3[0]:], "b:")
+            start_idx = int(zeros3[0]) if len(zeros3) else 0
+            if len(zeros3) == 0:
+                Log.w(
+                    "No zero-crossings found in ys_diss_diff_offset; plotting full range.")
+            plot_len = min(len(xs), len(ys_diss_diff_offset))
+            ax2.plot(xs[start_idx:plot_len],
+                     ys_diss_diff_offset[start_idx:plot_len], "b:")
             ax2.plot(xs[t_minima], ys_diss_diff_offset[t_minima], "rx")
             ax2.plot(xs[t1], ys_diss_diff_offset[t1], "gx")
             ax2.plot(xs[t2], ys_diss_diff_offset[t2], "gx")
@@ -7293,6 +7340,13 @@ class AnalyzerWorker(QtCore.QObject):
                 keep_ids = [keep_ids]
             trues = [True for x in distances]
             keep_ids = np.concatenate((keep_ids, trues))
+            if len(keep_ids) != len(log_velocity):
+                Log.w("Mismatched array lengths when rejecting initial fill outliers!")
+                while len(keep_ids) < len(log_velocity):
+                    keep_ids = np.concatenate(
+                        (keep_ids, [True]))  # lengthen, if needed
+                keep_ids = keep_ids[:len(log_velocity)].astype(
+                    'bool')  # shorten, if needed
             log_velocity_skip = log_velocity[~keep_ids]
             log_position_skip = log_position[~keep_ids]
             log_velocity = log_velocity[keep_ids]
@@ -7437,6 +7491,11 @@ class AnalyzerWorker(QtCore.QObject):
             Log.d("the times to remove are:", idx_of_normal_pts_to_remove)
             for i in idx_of_normal_pts_to_remove:
                 try:
+                    if i not in times:
+                        Log.w(
+                            f"Midpoint @ {i} already removed, skipping removal of bad point..."
+                        )
+                        continue
                     idx = times.index(i)
                     Log.d(
                         f"Removing index {idx} from distances with value {distances[idx]}."
@@ -7451,10 +7510,43 @@ class AnalyzerWorker(QtCore.QObject):
 
             all_pos = np.concatenate((line1_y[dropUnder2:], distances))
             all_time = np.concatenate((line1_x[dropUnder2:], xs[times]))
-            all_temp = np.concatenate(
-                (temperature[t0: t0 + len(line1_x[dropUnder2:])],
-                 temperature[times])
-            )
+
+            lb = t0
+            ub = t0 + len(line1_x[dropUnder2:])
+            # safety check: prevent upper bound larger than array end
+            if ub > len(temperature):
+                overflow = ub - len(temperature)
+                lb = max(0, lb - overflow)
+                ub = len(temperature)
+            # safety check: prevent lower bound less than array start
+            if lb < 0:
+                lb = 0
+                ub = min(len(temperature), len(line1_x[dropUnder2:]))
+
+            all_temp = np.concatenate((temperature[lb:ub], temperature[times]))
+
+            len_pos = len(all_pos)
+            len_time = len(all_time)
+            len_temp = len(all_temp)
+            if len_pos == len_time == len_temp:
+                Log.d("CHECK PASS: ALL arrays are the same length!")
+            else:
+                Log.w(
+                    "CHECK FAIL: ALL arrays are different lengths. Truncating to shortest one.")
+                len_req = min(len_pos, len_time, len_temp)
+                if len_pos != len_req:
+                    Log.w(
+                        f"Array `all_pos` resized from {len_pos} to {len_req}")
+                    all_pos = all_pos[:len_req]
+                if len_time != len_req:
+                    Log.w(
+                        f"Array `all_time` resized from {len_time} to {len_req}")
+                    all_time = all_time[:len_req]
+                if len_temp != len_req:
+                    Log.w(
+                        f"Array `all_temp` resized from {len_temp} to {len_req}")
+                    all_temp = all_temp[:len_req]
+
             avg_temp = np.average(temperature[t0: times[-1]])
             all_velocity = all_pos / all_time
             # all_velocity[-7] /= 2 # 1.61 (#2 in distances)
@@ -7838,14 +7930,51 @@ class AnalyzerWorker(QtCore.QObject):
                     Log.w(
                         f"Removed {pt} point '{viscosity[i]}' for being outside the standard deviation of expected viscosity."
                     )
-                    in_shear_rate = np.delete(in_shear_rate, i)
-                    in_viscosity = np.delete(in_viscosity, i)
-                    in_temp = np.delete(in_temp, i)
-                    viscosity = np.delete(viscosity, i)
-                    shear_rate = np.delete(shear_rate, i)
-                    fill_visc = np.delete(fill_visc, i)
-                    fill_shear = np.delete(fill_shear, i)
-                    distances = np.delete(distances, -i)
+                    flag_warn = False
+                    arrays_to_check = [
+                        in_shear_rate, in_viscosity, in_temp,
+                        viscosity, shear_rate, fill_visc,
+                        fill_shear, distances,
+                    ]
+                    if any(len(arr) < abs(i) for arr in arrays_to_check):
+                        Log.w(
+                            "Unable to remove outlier consistently; leaving dataset unchanged.")
+                        continue
+                    if len(in_shear_rate) >= abs(i):
+                        in_shear_rate = np.delete(in_shear_rate, i)
+                    else:
+                        flag_warn = True
+                    if len(in_viscosity) >= abs(i):
+                        in_viscosity = np.delete(in_viscosity, i)
+                    else:
+                        flag_warn = True
+                    if len(in_temp) >= abs(i):
+                        in_temp = np.delete(in_temp, i)
+                    else:
+                        flag_warn = True
+                    if len(viscosity) >= abs(i):
+                        viscosity = np.delete(viscosity, i)
+                    else:
+                        flag_warn = True
+                    if len(shear_rate) >= abs(i):
+                        shear_rate = np.delete(shear_rate, i)
+                    else:
+                        flag_warn = True
+                    if len(fill_visc) >= abs(i):
+                        fill_visc = np.delete(fill_visc, i)
+                    else:
+                        flag_warn = True
+                    if len(fill_shear) >= abs(i):
+                        fill_shear = np.delete(fill_shear, i)
+                    else:
+                        flag_warn = True
+                    if len(distances) >= abs(i):
+                        distances = np.delete(distances, -i)
+                    else:
+                        flag_warn = True
+                    if flag_warn:
+                        Log.w(
+                            "WARNING: Unable to remove all outliers from the dataset.")
             except Exception as e:
                 Log.e("ERROR:", e)
                 Log.e("Unable to remove outliers from the dataset prior to plotting.")
@@ -7880,15 +8009,32 @@ class AnalyzerWorker(QtCore.QObject):
             # ax7.plot(out_shear_rate, out_viscosity, 'rx')
             # ax7.plot(shear_rate, viscosity, 'r:')
 
-            # New trendline variable for smoothing the initial fill small blue diamond points
-            sm_trendline = savgol_filter(
-                in_viscosity[:-len(distances)], len(in_viscosity)-len(distances), 1)
-
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
+            # NOTE: This is only enabled for production builds, not dev/nightly builds
             enable_bandaid_3 = True
+            if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+                enable_bandaid_3 = False
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
+
+            # New trendline variable for smoothing the initial fill small blue diamond points
+            try:
+                sm_x = in_viscosity[:-len(distances)]
+                sm_wl = len(in_viscosity)-len(distances)
+                if len(sm_x) == 0:
+                    raise ValueError(
+                        "No initial fill points present in dataset.")
+                if sm_wl <= 1:
+                    raise ValueError(
+                        "Too few points for smoothing: `wl` must be greater than `polyorder`.")
+                sm_trendline = savgol_filter(sm_x, sm_wl, 1)
+            except (ValueError, IndexError) as e:
+                Log.e(
+                    "Failed to generate initial fill region trendline. Skipping initial fill region analysis.")
+                Log.d(f"Error Details: {e}")
+                hide_initial_fill = True
+
             point_factor_limit = 0.25
             if point_factor_limit < 0 or point_factor_limit > 1:
                 Log.e(
@@ -7898,9 +8044,9 @@ class AnalyzerWorker(QtCore.QObject):
                     "Disabling initial fill limit check due to invalid parameter specified: 'point_factor_limit'"
                 )
                 enable_bandaid_3 = False
-            if enable_bandaid_3:
+            if enable_bandaid_3 and high_shear_15x and not hide_initial_fill:
                 P1_value = sm_trendline[-1]
-                P2_value = high_shear_15y
+                P2_value = high_shear_15y  # exists only if high_Shear_15x is not zero
                 lower_factor = 1 - point_factor_limit
                 upper_factor = 1 + point_factor_limit
                 min_fit_end = min(P1_value, P2_value) * lower_factor
@@ -7942,7 +8088,13 @@ class AnalyzerWorker(QtCore.QObject):
             if initial_fill[-1] >= 90 and not hide_initial_fill:
                 # Truncate the initial fill region to just a few evenly spaced points
                 # mlen = int(np.floor((len(in_shear_rate) - len(distances)) / 5))
-                num_fill_pts = 5
+                # See issue #256 for details on why use dynamic number of fill points
+                min_fill_pts = 3
+                max_fill_pts = 8
+                target_num_pts = 10
+                num_fill_pts = max(min_fill_pts,
+                                   min(max_fill_pts,
+                                       target_num_pts - len(distances)))
                 shear_at_fill_start = in_shear_rate[0]
                 shear_at_fill_end = in_shear_rate[-len(distances)-1]
                 shear_points = np.geomspace(  # like `linspace` but for log10
@@ -8219,10 +8371,8 @@ class AnalyzerWorker(QtCore.QObject):
                         ).astype(int)
                     )
                     na_val = len(xs) - 1
-                    na_pts = bad_times.count(na_val)
-                    if na_pts > 1:
-                        for i in range(na_pts - 1):
-                            cal_idxs = np.append(cal_idxs, na_val)
+                    while len(cal_idxs) < len(cal_pts):  # extend until at required size
+                        cal_idxs = np.append(cal_idxs, na_val)
                     cal_times = np.array(
                         np.round(xs[cal_idxs], 4), dtype=float)
                     cal_disss = np.array(
@@ -8237,6 +8387,46 @@ class AnalyzerWorker(QtCore.QObject):
                     cal_notes = [
                         "Not Analyzed" if x in bad_times else "" for x in cal_idxs
                     ]
+
+                    len_pts = len(cal_pts)
+                    len_idxs = len(cal_idxs)
+                    len_times = len(cal_times)
+                    len_disss = len(cal_disss)
+                    len_freqs = len(cal_freqs)
+                    len_notes = len(cal_notes)
+
+                    if len_pts == len_idxs == len_times == len_disss == len_freqs == len_notes:
+                        Log.d("CHECK PASS: CAL arrays are the same length!")
+                    else:
+                        Log.w(
+                            "CHECK FAIL: CAL arrays are different lengths. Truncating to shortest one.")
+                        len_req = min(len_pts, len_idxs, len_times,
+                                      len_disss, len_freqs, len_notes)
+                        if len_pts != len_req:
+                            Log.w(
+                                f"Array `cal_pts` resized from {len_pts} to {len_req}")
+                            cal_pts = cal_pts[:len_req]
+                        if len_idxs != len_req:
+                            Log.w(
+                                f"Array `cal_idxs` resized from {len_idxs} to {len_req}")
+                            cal_idxs = cal_idxs[:len_req]
+                        if len_times != len_req:
+                            Log.w(
+                                f"Array `cal_times` resized from {len_times} to {len_req}")
+                            cal_times = cal_times[:len_req]
+                        if len_disss != len_req:
+                            Log.w(
+                                f"Array `cal_disss` resized from {len_disss} to {len_req}")
+                            cal_disss = cal_disss[:len_req]
+                        if len_freqs != len_req:
+                            Log.w(
+                                f"Array `cal_freqs` resized from {len_freqs} to {len_req}")
+                            cal_freqs = cal_freqs[:len_req]
+                        if len_notes != len_req:
+                            Log.w(
+                                f"Array `cal_notes` resized from {len_notes} to {len_req}")
+                            cal_notes = cal_notes[:len_req]
+
                     cal_data = np.column_stack(
                         [cal_pts, cal_idxs, cal_times,
                             cal_disss, cal_freqs, cal_notes]
