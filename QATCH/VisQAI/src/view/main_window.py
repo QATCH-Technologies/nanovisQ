@@ -209,10 +209,6 @@ class BaseVisQAIWindow(QtWidgets.QMainWindow):
             message = "License manager not initialized!"
             license_data = {}
         Log.i(f"{message}")
-        ###########################
-        # REMEBER TO DELETE THIS! #
-        is_valid_license = True   #
-        ###########################
         # Handle valid license
         if is_valid_license:
             status = license_data.get("status", "unknown")

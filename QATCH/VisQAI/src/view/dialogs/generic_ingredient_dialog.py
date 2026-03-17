@@ -118,8 +118,8 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         form_layout.setSpacing(10)
 
         self.edit_name = QtWidgets.QLineEdit()
-        self.edit_name.setPlaceholderText("Component name...")
-        self.edit_name.setReadOnly(True)
+        self.edit_name.setPlaceholderText(self._get_placeholder(ingredient_type))
+        self.edit_name.setReadOnly(is_edit)
         form_layout.addRow("Name*:", self.edit_name)
 
         layout.addLayout(form_layout)
