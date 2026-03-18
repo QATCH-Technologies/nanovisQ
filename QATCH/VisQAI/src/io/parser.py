@@ -225,7 +225,7 @@ class Parser:
         self.base_path = input_path.parent
         self.xml_path = input_path
 
-        if self.xml_path and self.xml_path.suffix is not ".xml":
+        if self.xml_path and self.xml_path.suffix != ".xml":
             self.xml_path = next(self.base_path.glob("*.xml"), None)
             if not self.xml_path:
                 raise FileNotFoundError(
