@@ -246,7 +246,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.filterOff = QtWidgets.QCheckBox("All Dates")
         self.filterToday = QtWidgets.QCheckBox("Today")
         self.filterLastXDays = QtWidgets.QCheckBox("Last:")
-        self.filterLastXDays.setFixedWidth(self.filterLastXDays.sizeHint().width())
+        self.filterLastXDays.setFixedWidth(
+            self.filterLastXDays.sizeHint().width())
         self.filterNumDays = QtWidgets.QLineEdit("7")
         self.filterNumDays.setAlignment(QtCore.Qt.AlignCenter)
         self.filterValid = QtGui.QIntValidator(1, 31)
@@ -257,7 +258,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.filterUnits.setSizePolicy(
             QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Preferred
         )
-        self.filterUnits.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.filterUnits.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToContents)
         self.filterUnits.setFixedWidth(self.filterUnits.sizeHint().width())
         self.filterUnits.setCurrentText("Days")
         self.filterOff.setChecked(True)
@@ -500,12 +502,13 @@ class Ui_Export(QtWidgets.QWidget):
         super(Ui_Export, self).showNormal()
         self.resize(self.minimumSize())
 
-        self.tabs.setCurrentIndex(tab_idx)
-        self.generateExportName()
-
         self.exported = False
         self.do_close = False
         self.drive = None
+
+        self.tabs.setCurrentIndex(tab_idx)
+        self.generateExportName()
+        self.select_folder_target(no_ask=True)
 
         self.progress.emit(
             "<b>Insert USB drive...</b><br/>No USB drives detected.", 0, "b", 0
@@ -553,7 +556,8 @@ class Ui_Export(QtWidgets.QWidget):
         if chk and self.groupbox1.isChecked():
             self.groupbox1.setChecked(False)
         if chk:
-            self.drive = self.btn5.text() if self.btn5.text() != "[NONE]" else None
+            self.drive = self.btn5.text(
+            ) if self.btn5.text() != "[NONE]" else None
         if not from_signal:
             self.freezeGUI(True)
 
@@ -612,7 +616,8 @@ class Ui_Export(QtWidgets.QWidget):
                             tabwidth = 2
                             indent = " " * tabwidth * (level)
                             dash = "- "
-                            formatted_item = "{}{}{}".format(indent, dash, split[1])
+                            formatted_item = "{}{}{}".format(
+                                indent, dash, split[1])
                             to_show.append(formatted_item)
                     self.archiveInfo.setText("\n".join(to_show))
             else:
@@ -622,7 +627,8 @@ class Ui_Export(QtWidgets.QWidget):
                     os.path.join(path_to_import, Constants.log_export_path)
                 )
                 # Log.d(f"tests = {test1}, {test2}")
-                self.archiveInfo.setText(self.list_files(path_to_import, show_files))
+                self.archiveInfo.setText(
+                    self.list_files(path_to_import, show_files))
                 if test1 or test2:
                     pass
                 else:
@@ -785,7 +791,8 @@ class Ui_Export(QtWidgets.QWidget):
             )
         self.checkMode = None
         while not self.do_close:
-            uncheckeddrives = ["%s:" % d for d in dl if os.path.exists("%s:" % d)]
+            uncheckeddrives = ["%s:" %
+                               d for d in dl if os.path.exists("%s:" % d)]
             if self.chk1:
                 if self.checkMode != 1:
                     Log.i("Detecting USB drives...")
@@ -808,7 +815,8 @@ class Ui_Export(QtWidgets.QWidget):
                         if self.drive == d:
                             self.usb_remove.emit()
                 if changes:
-                    drives = ["%s:" % d for d in dl if os.path.exists("%s:" % d)]
+                    drives = ["%s:" %
+                              d for d in dl if os.path.exists("%s:" % d)]
                 self.checkMode = 1
             elif self.chk2:
                 if self.checkMode != 2:
@@ -861,14 +869,15 @@ class Ui_Export(QtWidgets.QWidget):
         self.selectRun.setText(f"{dev_or_run}{self.selectRun.text()}")
         self.generateExportName()
 
-    def select_folder_target(self):
+    def select_folder_target(self, no_ask=False):
         default_export_folder = os.path.join(
-            os.path.dirname(Constants.log_prefer_path), "exported"
+            os.path.dirname(Constants.log_prefer_path), "export"
         )
         top_level = QtCore.QUrl.fromLocalFile(default_export_folder)
         if self.btn5.text() != "[NONE]":
             top_level = QtCore.QUrl.fromLocalFile(self.btn5.text())
-        select_path = self.select_folder(top_level)
+        select_path = (top_level.toLocalFile() if no_ask
+                       else self.select_folder(top_level))
         if select_path == None:
             return  # self.btn5.setText("[NONE]")
         self.drive = select_path
@@ -876,7 +885,8 @@ class Ui_Export(QtWidgets.QWidget):
         self.freezeGUI(True)
 
     def select_import_folder(self):
-        default_import_folder = os.path.expanduser(os.path.join("~", "Downloads"))
+        default_import_folder = os.path.expanduser(
+            os.path.join("~", "Downloads"))
         top_level = QtCore.QUrl.fromLocalFile(default_import_folder)
         if self.btn7.text() != "[NONE]":
             path = self.btn7.text()
@@ -904,7 +914,8 @@ class Ui_Export(QtWidgets.QWidget):
             return None
 
     def select_file_source(self):
-        default_import_folder = os.path.expanduser(os.path.join("~", "Downloads"))
+        default_import_folder = os.path.expanduser(
+            os.path.join("~", "Downloads"))
         top_level = QtCore.QUrl.fromLocalFile(default_import_folder)
         if self.btn7.text() != "[NONE]":
             path = self.btn7.text()
@@ -921,7 +932,8 @@ class Ui_Export(QtWidgets.QWidget):
         # self.freezeGUI(True)
 
     def select_file(self, dir):
-        filepath, _ = QtWidgets.QFileDialog.getOpenFileUrl(self, "Select File", dir)
+        filepath, _ = QtWidgets.QFileDialog.getOpenFileUrl(
+            self, "Select File", dir)
         # Log.d(filepath)
         if filepath.isValid():
             Log.i(TAG2, f"Selected {filepath.toLocalFile()}")
@@ -933,7 +945,8 @@ class Ui_Export(QtWidgets.QWidget):
     def doImport(self):
         self.stop_threads = False
         thread = Thread(
-            target=self.importTask, args=(lambda: self.stop_threads, self.btn7.text())
+            target=self.importTask, args=(
+                lambda: self.stop_threads, self.btn7.text())
         )
         thread.start()
 
@@ -987,7 +1000,8 @@ class Ui_Export(QtWidgets.QWidget):
                             "r",
                             1,
                         )
-                        Log.e("Selected ZIP archive contains a bad file:", test_result)
+                        Log.e(
+                            "Selected ZIP archive contains a bad file:", test_result)
                         self.importNow.setEnabled(True)
                         self.importCancel.setEnabled(False)
                         return
@@ -1269,7 +1283,8 @@ class Ui_Export(QtWidgets.QWidget):
                 f.write('to "{}"</small><br/>\n'.format(local_data))
                 f.write(f"<small>Settings: ")
                 f.write(
-                    "Import from {}, ".format("ZIP" if ".zip" in path else "Folder")
+                    "Import from {}, ".format(
+                        "ZIP" if ".zip" in path else "Folder")
                 )
                 f.write(
                     f"{self.btnGroup4.checkedButton().text()} existing files</small><br/>\n"
@@ -1368,7 +1383,7 @@ class Ui_Export(QtWidgets.QWidget):
             if f"\\{Constants.log_export_path}\\" in output_folder:
                 export_path = os.path.join(
                     output_folder[
-                        0 : output_folder.rindex(f"\\{Constants.log_export_path}\\")
+                        0: output_folder.rindex(f"\\{Constants.log_export_path}\\")
                     ],
                     Constants.log_export_path,
                 )
@@ -1442,7 +1457,8 @@ class Ui_Export(QtWidgets.QWidget):
                         os.remove(self.csv_report_path)
                 # check if file exists again, in case it was deleted in prior block
                 if not os.path.exists(self.csv_report_path):
-                    os.makedirs(os.path.dirname(self.csv_report_path), exist_ok=True)
+                    os.makedirs(os.path.dirname(
+                        self.csv_report_path), exist_ok=True)
                     with open(self.csv_report_path, "w", newline="") as f:
                         # Quote fields as required
                         writer = csv.writer(f)
@@ -1536,7 +1552,8 @@ class Ui_Export(QtWidgets.QWidget):
                             pct = min(
                                 99,
                                 max(
-                                    1, int(100 * (((x1 - z1) + ((x2 - z2) / y2)) / y1))
+                                    1, int(
+                                        100 * (((x1 - z1) + ((x2 - z2) / y2)) / y1))
                                 ),
                             )
                             if abort():
@@ -1626,7 +1643,8 @@ class Ui_Export(QtWidgets.QWidget):
                     else:
                         dst = top_level
                     Log.d(f"Moving nested folders from {src} to {dst}...")
-                    Log.d(f"Deleting empty folder structure at {export_path}...")
+                    Log.d(
+                        f"Deleting empty folder structure at {export_path}...")
                     # Check if the destination folder already exists
                     if not os.path.exists(dst):
                         Log.d(f"Making directory: {dst}")
@@ -1791,7 +1809,8 @@ class Ui_Export(QtWidgets.QWidget):
                         temperature = formulation.temperature
 
                 require_vp = any(
-                    col in ["Viscosity Profile", "Average Viscosity", "Std Dev"]
+                    col in ["Viscosity Profile",
+                            "Average Viscosity", "Std Dev"]
                     for col in cols
                 )
                 if require_vp:
@@ -1827,7 +1846,8 @@ class Ui_Export(QtWidgets.QWidget):
             _success = False
 
         except Exception as e:
-            Log.e(f"Run {os.path.basename(run)} encountered an error. Cannot export!")
+            Log.e(
+                f"Run {os.path.basename(run)} encountered an error. Cannot export!")
 
             _success = False
 
@@ -1996,7 +2016,8 @@ class Ui_Export(QtWidgets.QWidget):
                             for file in os.listdir(path)
                             if not os.path.isdir(os.path.join(path, file))
                         ]
-                        epoch = datetime.datetime.fromtimestamp(timestamp=0, tz=tz.utc)
+                        epoch = datetime.datetime.fromtimestamp(
+                            timestamp=0, tz=tz.utc)
                         last_modified = epoch
                         for f in files:
                             f_path = os.path.join(path, f)
@@ -2032,7 +2053,8 @@ class Ui_Export(QtWidgets.QWidget):
 
     def eject(self):
         self.stop_threads = False
-        eject = Thread(target=self.ejectTask, args=(lambda: self.stop_threads,))
+        eject = Thread(target=self.ejectTask,
+                       args=(lambda: self.stop_threads,))
         eject.start()
 
     def ejectTask(self, abort):
@@ -2102,7 +2124,8 @@ class Ui_Export(QtWidgets.QWidget):
             else:
                 Log.w(TAG1, "Erase Aborted by User.")
                 return
-        erase = Thread(target=self.eraseTask, args=(lambda: self.stop_threads,))
+        erase = Thread(target=self.eraseTask,
+                       args=(lambda: self.stop_threads,))
         erase.start()
 
     def eraseTask(self, abort):
@@ -2110,7 +2133,8 @@ class Ui_Export(QtWidgets.QWidget):
         try:
             data_path = os.path.join(Constants.log_prefer_path)
             Log.i(TAG1, "Erasing local data...")
-            self.progress.emit("Erasing local data... please wait...", 0, "r", 0)
+            self.progress.emit(
+                "Erasing local data... please wait...", 0, "r", 0)
             # walking through the directory tree
             for folder, devices, logs in os.walk(data_path):
                 y1 = len(devices)
