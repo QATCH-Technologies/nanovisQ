@@ -153,6 +153,20 @@ class FormulationController:
             f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found."
         )
 
+    @staticmethod
+    def _normalize_label(value) -> str:
+        """Validate and normalize a string label from a DataFrame cell.
+
+        Raises:
+            ValueError: If the value is NA or blank after stripping whitespace.
+        """
+        if not pd.notna(value):
+            raise ValueError(f"Label is NA: {value!r}")
+        label = str(value).strip()
+        if not label:
+            raise ValueError(f"Label is empty or whitespace-only: {value!r}")
+        return label
+
     def _ensure_ingredient(self, ing: Ingredient) -> Ingredient:
         """Return `ing` as-is if already persisted, otherwise add it via the ingredient controller.
 
@@ -366,7 +380,7 @@ class FormulationController:
             from tqdm import tqdm
 
             p_bar = tqdm(total=len(df))
-
+        seen_signatures: set[str] = set()
         try:
             for row in df.itertuples(index=False):
                 if verbose_print:
@@ -377,11 +391,14 @@ class FormulationController:
                     f_sig = None
 
                 # Skip rows whose signature is already present in the database
-                if (
-                    f_sig is not None
-                    and self.get_formulation_by_signature(f_sig) is not None
-                ):
-                    continue
+                # or already queued in this batch
+                if f_sig is not None:
+                    if (
+                        f_sig in seen_signatures
+                        or self.get_formulation_by_signature(f_sig) is not None
+                    ):
+                        continue
+                    seen_signatures.add(f_sig)
 
                 f_name = getattr(row, "name", None) if has_name else None
                 if f_name is not None and not pd.notna(f_name):
@@ -398,7 +415,7 @@ class FormulationController:
                 protein = self.ingredient_controller.add_protein(
                     Protein(
                         enc_id=0,
-                        name=str(row.Protein_type),
+                        name=self._normalize_label(row.Protein_type),
                         molecular_weight=float(row.MW),
                         pI_mean=float(row.PI_mean),
                         pI_range=float(row.PI_range),
@@ -410,19 +427,19 @@ class FormulationController:
                     )
                 )
                 buffer = self.ingredient_controller.add_buffer(
-                    Buffer(enc_id=0, name=str(row.Buffer_type), pH=row.Buffer_pH)
+                    Buffer(enc_id=0, name=self._normalize_label(row.Buffer_type), pH=row.Buffer_pH)
                 )
                 stabilizer = self.ingredient_controller.add_stabilizer(
-                    Stabilizer(enc_id=0, name=str(row.Stabilizer_type))
+                    Stabilizer(enc_id=0, name=self._normalize_label(row.Stabilizer_type))
                 )
                 surfactant = self.ingredient_controller.add_surfactant(
-                    Surfactant(enc_id=0, name=str(row.Surfactant_type))
+                    Surfactant(enc_id=0, name=self._normalize_label(row.Surfactant_type))
                 )
                 salt = self.ingredient_controller.add_salt(
-                    Salt(enc_id=0, name=str(row.Salt_type))
+                    Salt(enc_id=0, name=self._normalize_label(row.Salt_type))
                 )
                 excipient = self.ingredient_controller.add_excipient(
-                    Excipient(enc_id=0, name=str(row.Excipient_type))
+                    Excipient(enc_id=0, name=self._normalize_label(row.Excipient_type))
                 )
 
                 # BUILD VISCOSITY PROFILE

@@ -1156,7 +1156,11 @@ class IngredientController:
         Returns:
             List[Ingredient]: A list of ingredients matching the specified type.
         """
-        ingredients = self.db.get_ingredients_by_type(type)
+        ingredients = [
+            ing
+            for ing in self.db.get_ingredients_by_type(type)
+            if not self._user_mode or ing.is_user
+        ]
         for ing in ingredients:
             if ing.id not in self._cache:
                 self._cache[ing.id] = ing
