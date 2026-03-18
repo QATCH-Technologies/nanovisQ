@@ -952,6 +952,8 @@ class IngredientController:
         self.db.update_ingredient(p_fetch.id, p_new)
         p_new.id = p_fetch.id
         self._cache[p_fetch.id] = p_new
+        if p_fetch.name != p_new.name:
+            self._name_cache.pop((p_fetch.name, "Protein"), None)
         self._name_cache[(p_new.name, "Protein")] = p_new
         return p_new
 
@@ -982,6 +984,8 @@ class IngredientController:
         self.db.update_ingredient(b_fetch.id, b_new)
         b_new.id = b_fetch.id
         self._cache[b_fetch.id] = b_new
+        if b_fetch.name != b_new.name:
+            self._name_cache.pop((b_fetch.name, "Buffer"), None)
         self._name_cache[(b_new.name, "Buffer")] = b_new
         return b_new
 
@@ -1012,6 +1016,8 @@ class IngredientController:
         self.db.update_ingredient(s_fetch.id, s_new)
         s_new.id = s_fetch.id
         self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Salt"), None)
         self._name_cache[(s_new.name, "Salt")] = s_new
         return s_new
 
@@ -1042,6 +1048,8 @@ class IngredientController:
         self.db.update_ingredient(s_fetch.id, s_new)
         s_new.id = s_fetch.id
         self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Surfactant"), None)
         self._name_cache[(s_new.name, "Surfactant")] = s_new
         return s_new
 
@@ -1072,6 +1080,8 @@ class IngredientController:
         self.db.update_ingredient(s_fetch.id, s_new)
         s_new.id = s_fetch.id
         self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Stabilizer"), None)
         self._name_cache[(s_new.name, "Stabilizer")] = s_new
         return s_new
 
@@ -1102,6 +1112,8 @@ class IngredientController:
         self.db.update_ingredient(e_fetch.id, e_new)
         e_new.id = e_fetch.id
         self._cache[e_fetch.id] = e_new
+        if e_fetch.name != e_new.name:
+            self._name_cache.pop((e_fetch.name, "Excipient"), None)
         self._name_cache[(e_new.name, "Excipient")] = e_new
         return e_new
 
@@ -1219,7 +1231,7 @@ class IngredientController:
         #         )
         #     return next_id
         if is_user:
-            max_id = self.db.get_max_enc_id(ing_type, self.USER_START_ID, 2**31)
+            max_id = self.db.get_max_enc_id(ing_type, self.USER_START_ID, 2**63 - 1)
             return (max_id + 1) if max_id is not None else self.USER_START_ID
         else:
             max_id = self.db.get_max_enc_id(ing_type, 1, self.DEV_MAX_ID)

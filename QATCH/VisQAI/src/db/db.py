@@ -584,17 +584,12 @@ class Database:
         if not forms:
             return
         c = self.conn.cursor()
-        c.execute("SELECT COALESCE(MAX(id), 0) FROM formulation")
-        start_id = c.fetchone()[0] + 1
-        c.executemany(
-            "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
-            [
-                (f.name, f.signature, f.temperature, int(f.icl), f.last_model)
-                for f in forms
-            ],
-        )
-        for i, f in enumerate(forms):
-            f.id = start_id + i
+        for f in forms:
+            c.execute(
+                "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
+                (f.name, f.signature, f.temperature, int(f.icl), f.last_model),
+            )
+            f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
         comp_rows = [
             (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units)
             for f in forms

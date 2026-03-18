@@ -184,6 +184,12 @@ class FormulationController:
         Raises:
             ValueError: If any required component is missing or invalid.
         """
+        # If an identical formulation already exists, return it without persisting ingredients
+        if formulation.signature is not None:
+            existing = self.get_formulation_by_signature(formulation.signature)
+            if existing is not None:
+                return existing
+
         # Ensure each ingredient is persisted and update the formulation's component references
         formulation.buffer.ingredient = self._ensure_ingredient(
             formulation.buffer.ingredient
@@ -203,12 +209,6 @@ class FormulationController:
         formulation.excipient.ingredient = self._ensure_ingredient(
             formulation.excipient.ingredient
         )
-
-        # If an identical formulation already exists, return it
-        if formulation.signature is not None:
-            existing = self.get_formulation_by_signature(formulation.signature)
-            if existing is not None:
-                return existing
 
         # Otherwise, add a new formulation record
         self.db.add_formulation(formulation)
@@ -460,14 +460,14 @@ class FormulationController:
 
                 pending_forms.append(form)
 
-        finally:
             self.db.add_formulations_batch(pending_forms)
+            self.db.flush()
+        finally:
             self.db._defer_commit = False
             self.db._defer_backup = False
             self.db.end_bulk()
-            self.db.flush()
-        if verbose_print:
-            p_bar.close()
+            if verbose_print:
+                p_bar.close()
 
         return pending_forms
 
