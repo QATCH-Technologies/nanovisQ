@@ -150,6 +150,7 @@ class Database:
         self.init_changes = self.conn.total_changes
         self._create_tables()
         self.is_open = True
+        self._defer_backup: bool = False
 
     def _create_tables(self) -> None:
         """Create all necessary tables if they do not already exist.
@@ -272,6 +273,10 @@ class Database:
             )
         """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)"
+        )
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -335,7 +340,7 @@ class Database:
             c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
 
         self._commit()
-        if self.use_encryption:
+        if self.use_encryption and not self._defer_backup:
             self.backup()
         ing.id = db_id
         return db_id
@@ -422,6 +427,36 @@ class Database:
         c.execute("SELECT id FROM ingredient")
         ids = [r[0] for r in c.fetchall()]
         return [self.get_ingredient(i) for i in ids]
+
+    def get_ingredients_by_type(self, ing_type: str) -> List[Ingredient]:
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM ingredient WHERE type = ?", (ing_type,))
+        return [self.get_ingredient(r[0]) for r in c.fetchall()]
+
+    def get_max_enc_id(
+        self, ing_type: str, min_enc_id: int, max_enc_id: int
+    ) -> Optional[int]:
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT MAX(enc_id) FROM ingredient WHERE type = ? AND enc_id BETWEEN ? AND ?",
+            (
+                ing_type,
+                min_enc_id,
+                max_enc_id,
+            ),  # ← type-scoped, so Protein and Buffer max independently
+        )
+        row = c.fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def get_ingredient_by_name_type(
+        self, name: str, ing_type: str
+    ) -> Optional[Ingredient]:
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id FROM ingredient WHERE name = ? AND type = ?", (name, ing_type)
+        )
+        row = c.fetchone()
+        return self.get_ingredient(row[0]) if row else None
 
     def update_ingredient(self, id: int, ing: Ingredient) -> bool:
         """Update an existing ingredient record and its subclass-specific details.
@@ -560,7 +595,7 @@ class Database:
             )
 
         self._commit()
-        if self.use_encryption:
+        if self.use_encryption and not self._defer_backup:
             self.backup()
         form.id = fid
         return fid
