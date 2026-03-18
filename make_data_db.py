@@ -379,7 +379,9 @@ def main():
     verify_database_integrity(db_path, df_normalized, app_key)
     logger.info(f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
 
-    logger.info(f"SUCCESS: Database generated and verified in {time.perf_counter() - t_start:.2f}s.")
+    logger.info(
+        f"SUCCESS: Database generated and verified in {time.perf_counter() - t_start:.2f}s."
+    )
 
 
 if __name__ == "__main__":

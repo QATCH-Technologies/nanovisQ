@@ -185,12 +185,24 @@ class FormulationController:
             ValueError: If any required component is missing or invalid.
         """
         # Ensure each ingredient is persisted and update the formulation's component references
-        formulation.buffer.ingredient = self._ensure_ingredient(formulation.buffer.ingredient)
-        formulation.protein.ingredient = self._ensure_ingredient(formulation.protein.ingredient)
-        formulation.salt.ingredient = self._ensure_ingredient(formulation.salt.ingredient)
-        formulation.surfactant.ingredient = self._ensure_ingredient(formulation.surfactant.ingredient)
-        formulation.stabilizer.ingredient = self._ensure_ingredient(formulation.stabilizer.ingredient)
-        formulation.excipient.ingredient = self._ensure_ingredient(formulation.excipient.ingredient)
+        formulation.buffer.ingredient = self._ensure_ingredient(
+            formulation.buffer.ingredient
+        )
+        formulation.protein.ingredient = self._ensure_ingredient(
+            formulation.protein.ingredient
+        )
+        formulation.salt.ingredient = self._ensure_ingredient(
+            formulation.salt.ingredient
+        )
+        formulation.surfactant.ingredient = self._ensure_ingredient(
+            formulation.surfactant.ingredient
+        )
+        formulation.stabilizer.ingredient = self._ensure_ingredient(
+            formulation.stabilizer.ingredient
+        )
+        formulation.excipient.ingredient = self._ensure_ingredient(
+            formulation.excipient.ingredient
+        )
 
         # If an identical formulation already exists, return it
         if formulation.signature is not None:
@@ -249,8 +261,12 @@ class FormulationController:
         f_new.buffer.ingredient = self._ensure_ingredient(f_new.buffer.ingredient)
         f_new.protein.ingredient = self._ensure_ingredient(f_new.protein.ingredient)
         f_new.salt.ingredient = self._ensure_ingredient(f_new.salt.ingredient)
-        f_new.surfactant.ingredient = self._ensure_ingredient(f_new.surfactant.ingredient)
-        f_new.stabilizer.ingredient = self._ensure_ingredient(f_new.stabilizer.ingredient)
+        f_new.surfactant.ingredient = self._ensure_ingredient(
+            f_new.surfactant.ingredient
+        )
+        f_new.stabilizer.ingredient = self._ensure_ingredient(
+            f_new.stabilizer.ingredient
+        )
         f_new.excipient.ingredient = self._ensure_ingredient(f_new.excipient.ingredient)
 
         # Delete the old formulation and re-add the new data
@@ -260,7 +276,23 @@ class FormulationController:
 
     def update_formulation_metadata(
         self, id: int, icl: bool = None, last_model: str = None
-    ):
+    ) -> bool:
+        """Update lightweight metadata fields for a formulation without touching its components.
+
+        Delegates to `Database.update_formulation_metadata`. Only non-``None`` arguments
+        will trigger a database write, so callers may pass a single field to update.
+
+        Args:
+            id (int): The primary key of the formulation to update.
+            icl (bool, optional): New value for the In-Concentration Loading flag.
+                If ``None``, the field is left unchanged.
+            last_model (str, optional): Identifier of the last predictive model run
+                against this formulation. If ``None``, the field is left unchanged.
+
+        Returns:
+            bool: ``True`` if at least one field was updated successfully, ``False``
+                if the formulation was not found or an error occurred.
+        """
         return self.db.update_formulation_metadata(id, icl, last_model)
 
     def add_all_from_dataframe(
@@ -292,8 +324,6 @@ class FormulationController:
         Raises:
             ValueError: If required columns are missing from the DataFrame.
         """
-        self.db._defer_backup = True
-        added_forms: List[Formulation] = []
         shear_rates = [100, 1000, 10000, 100000, 15000000]
         expected = {
             "Protein_type",
@@ -321,24 +351,30 @@ class FormulationController:
         if missing:
             raise ValueError(f"DataFrame is missing columns: `{missing}`")
 
+        has_name = "name" in df.columns
+        has_sig = "signature" in df.columns
+        has_icl = "icl" in df.columns
+        has_model = "last_model" in df.columns
+
+        self.db._defer_backup = True
+        self.db._defer_commit = True
+        self.db.begin_bulk()
+
+        pending_forms: List[Formulation] = []
+
         if verbose_print:
             from tqdm import tqdm
 
             p_bar = tqdm(total=len(df))
+
         try:
-            for _, row in df.iterrows():
+            for row in df.itertuples(index=False):
                 if verbose_print:
                     p_bar.update()
-                f_name = (
-                    row["name"]
-                    if "name" in df.columns and pd.notna(row["name"])
-                    else None
-                )
-                f_sig = (
-                    row["signature"]
-                    if "signature" in df.columns and pd.notna(row["signature"])
-                    else None
-                )
+
+                f_sig = getattr(row, "signature", None) if has_sig else None
+                if f_sig is not None and not pd.notna(f_sig):
+                    f_sig = None
 
                 # Skip rows whose signature is already present in the database
                 if (
@@ -347,45 +383,50 @@ class FormulationController:
                 ):
                     continue
 
-                form = Formulation(name=f_name, signature=f_sig)
-                if "icl" in df.columns and pd.notna(row["icl"]):
-                    form.icl = bool(row["icl"])
+                f_name = getattr(row, "name", None) if has_name else None
+                if f_name is not None and not pd.notna(f_name):
+                    f_name = None
 
-                if "last_model" in df.columns and pd.notna(row["last_model"]):
-                    form.last_model = str(row["last_model"])
+                form = Formulation(name=f_name, signature=f_sig)
+
+                if has_icl and pd.notna(row.icl):
+                    form.icl = bool(row.icl)
+
+                if has_model and pd.notna(row.last_model):
+                    form.last_model = str(row.last_model)
 
                 protein = self.ingredient_controller.add_protein(
                     Protein(
                         enc_id=0,
-                        name=str(row["Protein_type"]),
-                        molecular_weight=float(row["MW"]),
-                        pI_mean=float(row["PI_mean"]),
-                        pI_range=float(row["PI_range"]),
+                        name=str(row.Protein_type),
+                        molecular_weight=float(row.MW),
+                        pI_mean=float(row.PI_mean),
+                        pI_range=float(row.PI_range),
                         class_type=(
-                            ProteinClass.from_value(row["Protein_class_type"])
-                            if pd.notna(row["Protein_class_type"])
+                            ProteinClass.from_value(row.Protein_class_type)
+                            if pd.notna(row.Protein_class_type)
                             else None
                         ),
                     )
                 )
                 buffer = self.ingredient_controller.add_buffer(
-                    Buffer(enc_id=0, name=str(row["Buffer_type"]), pH=row["Buffer_pH"])
+                    Buffer(enc_id=0, name=str(row.Buffer_type), pH=row.Buffer_pH)
                 )
                 stabilizer = self.ingredient_controller.add_stabilizer(
-                    Stabilizer(enc_id=0, name=str(row["Stabilizer_type"]))
+                    Stabilizer(enc_id=0, name=str(row.Stabilizer_type))
                 )
                 surfactant = self.ingredient_controller.add_surfactant(
-                    Surfactant(enc_id=0, name=str(row["Surfactant_type"]))
+                    Surfactant(enc_id=0, name=str(row.Surfactant_type))
                 )
                 salt = self.ingredient_controller.add_salt(
-                    Salt(enc_id=0, name=str(row["Salt_type"]))
+                    Salt(enc_id=0, name=str(row.Salt_type))
                 )
                 excipient = self.ingredient_controller.add_excipient(
-                    Excipient(enc_id=0, name=str(row["Excipient_type"]))
+                    Excipient(enc_id=0, name=str(row.Excipient_type))
                 )
 
                 # BUILD VISCOSITY PROFILE
-                vis_values = [row[f"Viscosity_{r}"] for r in shear_rates]
+                vis_values = [getattr(row, f"Viscosity_{r}") for r in shear_rates]
                 if any(pd.notna(v) for v in vis_values):
                     vp = ViscosityProfile(
                         shear_rates=shear_rates, viscosities=vis_values, units="cP"
@@ -399,38 +440,36 @@ class FormulationController:
 
                 # SET COMPONENTS
                 form.set_buffer(
-                    buffer=buffer, concentration=row["Buffer_conc"], units="mM"
+                    buffer=buffer, concentration=row.Buffer_conc, units="mM"
                 )
                 form.set_protein(
-                    protein=protein, concentration=row["Protein_conc"], units="mg/mL"
+                    protein=protein, concentration=row.Protein_conc, units="mg/mL"
                 )
                 form.set_stabilizer(
-                    stabilizer=stabilizer,
-                    concentration=row["Stabilizer_conc"],
-                    units="M",
+                    stabilizer=stabilizer, concentration=row.Stabilizer_conc, units="M"
                 )
-                form.set_salt(salt=salt, concentration=row["Salt_conc"], units="mM")
+                form.set_salt(salt=salt, concentration=row.Salt_conc, units="mM")
                 form.set_surfactant(
-                    surfactant=surfactant,
-                    concentration=row["Surfactant_conc"],
-                    units="%w",
+                    surfactant=surfactant, concentration=row.Surfactant_conc, units="%w"
                 )
                 form.set_excipient(
-                    excipient=excipient, concentration=row["Excipient_conc"], units="mM"
+                    excipient=excipient, concentration=row.Excipient_conc, units="mM"
                 )
-                form.set_temperature(temp=row["Temperature"])
+                form.set_temperature(temp=row.Temperature)
                 form.set_viscosity_profile(profile=vp)
 
-                saved = self.add_formulation(form)
-                added_forms.append(saved)
+                pending_forms.append(form)
+
         finally:
+            self.db.add_formulations_batch(pending_forms)
+            self.db._defer_commit = False
             self.db._defer_backup = False
-            if self.db.use_encryption:
-                self.db.backup()
+            self.db.end_bulk()
+            self.db.flush()
         if verbose_print:
             p_bar.close()
 
-        return added_forms
+        return pending_forms
 
     def get_all_as_dataframe(self, encoded: bool = True) -> pd.DataFrame:
         """Export all stored formulations to a pandas DataFrame.

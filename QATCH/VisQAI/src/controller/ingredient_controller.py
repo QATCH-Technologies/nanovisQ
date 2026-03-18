@@ -72,9 +72,11 @@ class IngredientController:
         self.db: Database = db
         self._user_mode: bool = user_mode
         self._cache: dict[int, Ingredient] = {}
+        self._name_cache: dict[tuple[str, str], Ingredient] = {}
 
     def _invalidate_cache(self):
         self._cache.clear()
+        self._name_cache.clear()
 
     def _get_ingredient(self, id: int) -> Optional["Ingredient"]:
         if id not in self._cache:
@@ -537,6 +539,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
         self._cache[db_id] = protein
+        self._name_cache[(protein.name, "Protein")] = protein
         return protein
 
     def add_buffer(self, buffer: Buffer) -> Buffer:
@@ -562,6 +565,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
         self._cache[db_id] = buffer
+        self._name_cache[(buffer.name, "Buffer")] = buffer
         return buffer
 
     def add_salt(self, salt: Salt) -> Salt:
@@ -585,6 +589,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
         self._cache[db_id] = salt
+        self._name_cache[(salt.name, "Salt")] = salt
         return salt
 
     def add_stabilizer(self, stabilizer: Stabilizer) -> Stabilizer:
@@ -610,6 +615,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
         self._cache[db_id] = stabilizer
+        self._name_cache[(stabilizer.name, "Stabilizer")] = stabilizer
         return stabilizer
 
     def add_surfactant(self, surfactant: Surfactant) -> Surfactant:
@@ -635,6 +641,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
         self._cache[db_id] = surfactant
+        self._name_cache[(surfactant.name, "Surfactant")] = surfactant
         return surfactant
 
     def add_excipient(self, excipient: Excipient) -> Excipient:
@@ -660,6 +667,7 @@ class IngredientController:
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
         self._cache[db_id] = excipient
+        self._name_cache[(excipient.name, "Excipient")] = excipient
         return excipient
 
     # ----- Deletion ----- #
@@ -916,8 +924,6 @@ class IngredientController:
             self.db.delete_ingredient(e.id)
         self._invalidate_cache()
 
-    # ----- Mutators (update) ----- #
-
     def update_protein(self, id: int, p_new: Protein) -> Protein:
         """Update an existing `Protein` record by replacing it.
 
@@ -944,7 +950,9 @@ class IngredientController:
         p_new.is_user = p_fetch.is_user
 
         self.db.update_ingredient(p_fetch.id, p_new)
-        self._invalidate_cache()
+        p_new.id = p_fetch.id
+        self._cache[p_fetch.id] = p_new
+        self._name_cache[(p_new.name, "Protein")] = p_new
         return p_new
 
     def update_buffer(self, id: int, b_new: Buffer) -> Buffer:
@@ -972,7 +980,9 @@ class IngredientController:
         b_new.is_user = b_fetch.is_user
 
         self.db.update_ingredient(b_fetch.id, b_new)
-        self._invalidate_cache()
+        b_new.id = b_fetch.id
+        self._cache[b_fetch.id] = b_new
+        self._name_cache[(b_new.name, "Buffer")] = b_new
         return b_new
 
     def update_salt(self, id: int, s_new: Salt) -> Salt:
@@ -1000,7 +1010,9 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
-        self._invalidate_cache()
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        self._name_cache[(s_new.name, "Salt")] = s_new
         return s_new
 
     def update_surfactant(self, id: int, s_new: Surfactant) -> Surfactant:
@@ -1028,7 +1040,9 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
-        self._invalidate_cache()
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        self._name_cache[(s_new.name, "Surfactant")] = s_new
         return s_new
 
     def update_stabilizer(self, id: int, s_new: Stabilizer) -> Stabilizer:
@@ -1056,7 +1070,9 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
-        self._invalidate_cache()
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        self._name_cache[(s_new.name, "Stabilizer")] = s_new
         return s_new
 
     def update_excipient(self, id: int, e_new: Excipient) -> Excipient:
@@ -1084,7 +1100,9 @@ class IngredientController:
         e_new.is_user = e_fetch.is_user
 
         self.db.update_ingredient(e_fetch.id, e_new)
-        self._invalidate_cache()
+        e_new.id = e_fetch.id
+        self._cache[e_fetch.id] = e_new
+        self._name_cache[(e_new.name, "Excipient")] = e_new
         return e_new
 
     def fuzzy_fetch(
@@ -1152,11 +1170,18 @@ class IngredientController:
         Returns:
             Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
         """
+        key = (name, type)
+        if key in self._name_cache:
+            ing = self._name_cache[key]
+            if not self._user_mode or ing.is_user:
+                return ing
         ing = self.db.get_ingredient_by_name_type(name, type)
         if ing is None:
             return None
         if self._user_mode and not ing.is_user:
             return None
+        self._name_cache[key] = ing  # warm on first DB hit
+        self._cache[ing.id] = ing
         return ing
 
     def _get_next_enc_id(self, *, is_user: bool, ing_type: str) -> int:
