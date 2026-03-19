@@ -10,10 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-18
+    2026-03-19
 
 Version:
-    1.4
+    1.5
 """
 
 import json
@@ -84,6 +84,8 @@ def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
     if seed is None:
         milliseconds = int(round(time.time() * 1000))
         seed = milliseconds % 255
+    # seed 10 cannot be used, it breaks metadata parsing because in ASCII it is '\n'
+    # and adding a newline character would mean the end of the metadata header line.
     if seed == 10:
         seed += 1
 
@@ -135,6 +137,9 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "Protein_class_type" in df.columns:
         normalized_classes = []
         for val in df["Protein_class_type"]:
+            # Preserve NaN/null values as-is — these represent rows with no protein
+            # and must not be fuzzy-matched (str(NaN) == "nan" scores above cutoff
+            # against enum members like "Polyclonal", producing incorrect assignments).
             if pd.isna(val):
                 normalized_classes.append(None)
                 continue
@@ -154,6 +159,9 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                 normalized_classes.append(val_str)
         df["Protein_class_type"] = normalized_classes
 
+    # Fill NaN optional ingredient type columns with "none" to prevent the string
+    # "nan" (produced by str(float('nan'))) from being stored as an ingredient name.
+    # Affects poly-hIgG rows that have empty cells for unused ingredient slots.
     optional_ing_cols = [
         "Salt_type",
         "Stabilizer_type",
@@ -204,8 +212,7 @@ def verify_database_integrity(
         all_forms = form_ctrl.get_all_formulations()
         for f in all_forms:
             if not f.viscosity_profile:
-                raise ValueError(
-                    f"Formulation {f.id} has no viscosity profile.")
+                raise ValueError(f"Formulation {f.id} has no viscosity profile.")
 
             viscs = f.viscosity_profile.viscosities
             if any(v <= 0 for v in viscs):
@@ -258,6 +265,8 @@ def verify_database_integrity(
                 # Attempt numeric conversion first
                 src_numeric = pd.to_numeric(df_src[col])
                 db_numeric = pd.to_numeric(df_db[col])
+
+                # Force float to ensure 100 == 100.0, handling NaNs as 0.0
                 df_src[col] = src_numeric.fillna(0.0).astype(float)
                 df_db[col] = db_numeric.fillna(0.0).astype(float)
 
@@ -277,6 +286,8 @@ def verify_database_integrity(
                     .str.strip()
                     .replace({"nan": "none", "none": "none"})
                 )
+
+        # Deduplicate source data (DB handles duplicates on insertion)
         df_src_dedup = df_src.drop_duplicates()
         dedup_count = len(df_src) - len(df_src_dedup)
 
@@ -305,10 +316,8 @@ def verify_database_integrity(
             ]
             sort_cols = [c for c in sort_candidates if c in df_src.columns]
 
-            df_src_sorted = df_src.sort_values(
-                by=sort_cols).reset_index(drop=True)
-            df_db_sorted = df_db.sort_values(
-                by=sort_cols).reset_index(drop=True)
+            df_src_sorted = df_src.sort_values(by=sort_cols).reset_index(drop=True)
+            df_db_sorted = df_db.sort_values(by=sort_cols).reset_index(drop=True)
 
             pd.testing.assert_frame_equal(
                 df_src_sorted,
@@ -318,8 +327,7 @@ def verify_database_integrity(
                 rtol=2e-2,
                 atol=1e-6,
             )
-            logger.info(
-                "DataFrame verification passed: DB export matches source CSV.")
+            logger.info("DataFrame verification passed: DB export matches source CSV.")
         except AssertionError as e:
             logger.error(f"DataFrame mismatch details: {e}")
             raise ValueError(
@@ -369,6 +377,7 @@ def main():
 
     database.close()
 
+    # Inject Encrypted Metadata Header
     header_bytes = None
     temp_db = Database(path=":memory:")
     try:
@@ -382,7 +391,7 @@ def main():
         raise EncodingWarning("Failed to encrypt metadata header")
 
     with open(db_path, "rb") as f:
-        f.readline()
+        f.readline()  # Skip default header
         content = f.read()
 
     with open(db_path, "wb") as f:
@@ -393,8 +402,7 @@ def main():
 
     t_verify = time.perf_counter()
     verify_database_integrity(db_path, df_normalized, app_key)
-    logger.info(
-        f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
+    logger.info(f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
 
     logger.info(
         f"SUCCESS: Database generated and verified in {time.perf_counter() - t_start:.2f}s."
