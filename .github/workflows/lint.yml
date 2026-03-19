@@ -134,4 +134,4 @@ jobs:
             shapely
 
       - name: Run mypy
-        run: mypy .
+        run: mypy --namespace-packages .
