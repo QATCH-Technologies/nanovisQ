@@ -7895,7 +7895,8 @@ class AnalyzerWorker(QtCore.QObject):
 
             viscosity_at_1p15 = viscosity[-len(distances)]
 
-            # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 10% of POI2 and POI4
+            # PURPOSE: Hide 60% and/or 80% points when trending outside +/- 5% of POI2 and POI4
+            # NOTE: Historically, this used to be +/- 10%, but was changed with issue #314.
             try:
                 normal_idxs = []
                 percent_pts = {}
@@ -7914,10 +7915,10 @@ class AnalyzerWorker(QtCore.QObject):
                 # std_viscosity = np.std(
                 #     np.delete(in_viscosity, [idx1, idx2])
                 # )  # all of in_viscosity, just not 2 points
-                min_visc = 0.9*min(viscosity[idx0],
-                                   viscosity[idx1])
-                max_visc = 1.1*max(viscosity[idx0],
-                                   viscosity[idx1])
+                min_visc = 0.95*min(viscosity[idx0],
+                                    viscosity[idx1])
+                max_visc = 1.05*max(viscosity[idx0],
+                                    viscosity[idx1])
                 Log.i(
                     f"Expected normal viscosity range = (min = {min_visc}, max = {max_visc})"
                 )
@@ -8011,10 +8012,11 @@ class AnalyzerWorker(QtCore.QObject):
 
             ### BANDAID #3 ###
             # PURPOSE: Hide initial fill points when trending in the wrong direction of high-shear
-            # NOTE: This is only enabled for production builds, not dev/nightly builds
             enable_bandaid_3 = True
-            if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
-                enable_bandaid_3 = False
+            # NOTE: This was only enabled for production builds, not dev/nightly builds
+            #       As of issue #314 (2026-03-19): Band-Aid is enabled in all contexts.
+            # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
+            #    enable_bandaid_3 = False
             hide_initial_fill = False  # if disabled, never force hide initial fill
             remove_initial_fill = False
 
