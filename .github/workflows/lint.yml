@@ -2,7 +2,6 @@ name: Code Quality
 
 on:
   push:
-    branches: [main, 302-formatter-worflow]
     paths:
       - "**.py"
       - "requirements-dev.txt"
@@ -10,7 +9,6 @@ on:
       - "pyproject.toml"
       - ".github/workflows/lint.yml"
   pull_request:
-    branches: [main, 302-formatter-worflow]
     paths:
       - "**.py"
       - "setup.cfg"
