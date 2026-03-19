@@ -60,6 +60,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     }
     TAG = "[QModelV6YOLO_Live]"
 
+    # Number of consecutive identical predictions required before accepting a state change.
+    DEBOUNCE_THRESHOLD = 3
+
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
         """Initializes the live fill classifier with a model and buffer settings.
 
@@ -70,12 +73,16 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """
         super().__init__(model_path)
         self.buffer_window_size = buffer_window_size
-        self.current_prediction = 0
+        self.current_prediction = -1
 
         # New storage attributes
         self._data: Optional[pd.DataFrame] = None
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
+
+        # Debounce state: candidate and consecutive count
+        self._debounce_candidate = -1
+        self._debounce_count = 0
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
@@ -164,8 +171,14 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 )
                 if processed_df is not None and not processed_df.empty:
                     pred = self.predict(processed_df)
-                    self.current_prediction = pred
-                    return pred
+                    if pred == self._debounce_candidate:
+                        self._debounce_count += 1
+                    else:
+                        self._debounce_candidate = pred
+                        self._debounce_count = 1
+                    if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
+                        self.current_prediction = pred
+                    return self.current_prediction
                 else:
                     Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
             else:

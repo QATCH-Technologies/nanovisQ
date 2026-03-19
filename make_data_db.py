@@ -10,7 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-16
+    2026-03-18
+
+Version:
+    1.4
 """
 
 import json
@@ -52,19 +55,17 @@ def get_project_paths() -> Tuple[Path, Path]:
     Returns:
         Tuple[Path, Path]: A tuple containing (db_path, csv_path).
     """
-    cwd = Path(os.getcwd())
-    if cwd.name == "VisQAI":
-        root = cwd.parent
-    elif (cwd / "QATCH").is_dir():
-        root = cwd / "QATCH"
-    else:
-        root = cwd
+    script_dir = Path(__file__).resolve().parent
+    for candidate in (script_dir, *script_dir.parents):
+        base_path = candidate / "QATCH" / "VisQAI" / "assets"
+        if base_path.is_dir():
+            db_path = base_path / "app.db"
+            csv_path = base_path / SOURCE_CSV
+            return db_path.resolve(), csv_path.resolve()
 
-    base_path = root / "VisQAI" / "assets"
-    db_path = base_path / "app.db"
-    csv_path = base_path / SOURCE_CSV
-
-    return db_path.resolve(), csv_path.resolve()
+    raise FileNotFoundError(
+        "Could not locate QATCH/VisQAI/assets relative to make_data_db.py"
+    )
 
 
 def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
@@ -83,8 +84,6 @@ def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
     if seed is None:
         milliseconds = int(round(time.time() * 1000))
         seed = milliseconds % 255
-    # seed 10 cannot be used, it breaks metadata parsing because in ASCII it is '\n'
-    # and adding a newline character would mean the end of the metadata header line.
     if seed == 10:
         seed += 1
 
@@ -136,9 +135,6 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "Protein_class_type" in df.columns:
         normalized_classes = []
         for val in df["Protein_class_type"]:
-            # Preserve NaN/null values as-is — these represent rows with no protein
-            # and must not be fuzzy-matched (str(NaN) == "nan" scores above cutoff
-            # against enum members like "Polyclonal", producing incorrect assignments).
             if pd.isna(val):
                 normalized_classes.append(None)
                 continue
@@ -158,9 +154,6 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                 normalized_classes.append(val_str)
         df["Protein_class_type"] = normalized_classes
 
-    # Fill NaN optional ingredient type columns with "none" to prevent the string
-    # "nan" (produced by str(float('nan'))) from being stored as an ingredient name.
-    # Affects poly-hIgG rows that have empty cells for unused ingredient slots.
     optional_ing_cols = [
         "Salt_type",
         "Stabilizer_type",
@@ -264,8 +257,6 @@ def verify_database_integrity(
                 # Attempt numeric conversion first
                 src_numeric = pd.to_numeric(df_src[col])
                 db_numeric = pd.to_numeric(df_db[col])
-
-                # Force float to ensure 100 == 100.0, handling NaNs as 0.0
                 df_src[col] = src_numeric.fillna(0.0).astype(float)
                 df_db[col] = db_numeric.fillna(0.0).astype(float)
 
@@ -285,8 +276,6 @@ def verify_database_integrity(
                     .str.strip()
                     .replace({"nan": "none", "none": "none"})
                 )
-
-        # Deduplicate source data (DB handles duplicates on insertion)
         df_src_dedup = df_src.drop_duplicates()
         dedup_count = len(df_src) - len(df_src_dedup)
 
@@ -335,6 +324,7 @@ def verify_database_integrity(
 
 def main():
     """Main execution function for database generation."""
+    t_start = time.perf_counter()
     db_path, csv_path = get_project_paths()
     logger.info(f"DB Path:  {db_path}")
     logger.info(f"CSV Path: {csv_path}")
@@ -366,18 +356,18 @@ def main():
     df_normalized = normalize_dataframe(pd.read_csv(csv_path))
 
     logger.info(f"Adding {len(df_normalized)} samples to database...")
+    t_import = time.perf_counter()
     form_ctrl.add_all_from_dataframe(df_normalized, verbose_print=True)
+    logger.info(f"Import completed in {time.perf_counter() - t_import:.2f}s.")
 
     database.close()
-
-    # Inject Encrypted Metadata Header
     temp_db = Database(path=":memory:")
     temp_db.metadata = {"app_encoding": Constants.app_encoding}
 
     header_bytes = encrypt_metadata_header(metadata, temp_db)
 
     with open(db_path, "rb") as f:
-        f.readline()  # Skip default header
+        f.readline()
         content = f.read()
 
     with open(db_path, "wb") as f:
@@ -386,9 +376,13 @@ def main():
 
     logger.info(f"Encrypted metadata injected (Seed: {header_bytes[0]}).")
 
+    t_verify = time.perf_counter()
     verify_database_integrity(db_path, df_normalized, app_key)
+    logger.info(f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
 
-    logger.info("SUCCESS: Database generated and verified.")
+    logger.info(
+        f"SUCCESS: Database generated and verified in {time.perf_counter() - t_start:.2f}s."
+    )
 
 
 if __name__ == "__main__":

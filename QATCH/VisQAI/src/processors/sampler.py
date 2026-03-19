@@ -36,6 +36,7 @@ Version:
 """
 
 import os
+import tempfile
 from typing import Dict, List, Union
 
 import numpy as np
@@ -45,7 +46,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.managers.asset_manager import AssetError, AssetManager
+    from src.managers.version_manager import VersionManager
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor
@@ -74,7 +75,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.managers.asset_manager import AssetError, AssetManager
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
@@ -99,8 +100,8 @@ class Sampler:
             lifecycle and historical data retrieval.
         ing_ctrl (IngredientController): Logic layer for looking up specific
             biochemical properties of ingredients.
-        asset_ctrl (AssetManager): Manager for loading and verifying `.visq`
-            model packages from the assets directory.
+        version_ctrl (VersionManager): Manager for loading and verifying `.visq`
+            model packages from the versioned model repository.
         predictor (Predictor): The inference engine used to estimate viscosity
             and prediction uncertainty.
         constraints (Constraints): Definition of the search space, including
@@ -141,8 +142,8 @@ class Sampler:
                 sampling operations.
 
         Raises:
-            AssetError: If the specified `asset_name` cannot be found or is
-                incompatible with the required `.visq` format.
+            FileNotFoundError: If the specified `asset_name` cannot be found
+                in the versioned model repository.
         """
         self.database = database
         self.form_ctrl = FormulationController(db=database)
@@ -152,11 +153,18 @@ class Sampler:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
-        self.asset_ctrl = AssetManager(assets_dir=assets_dir)
-        if not self.asset_ctrl.asset_exists(asset_name, [".visq"]):
-            raise AssetError(f"Asset `{asset_name}` not found.")
-        asset_zip = self.asset_ctrl.get_asset_path(asset_name, [".visq"])
-        self.predictor = Predictor(zip_path=asset_zip)
+        self.version_ctrl = VersionManager(repo_dir=assets_dir)
+        target_filename = f"{asset_name}.visq"
+        match = next(
+            (m for m in self.version_ctrl.list() if m["filename"] == target_filename),
+            None,
+        )
+        Log.w(TAG, f"self.version_ctrl.list() = {self.version_ctrl.list()}")
+        if match is None:
+            raise FileNotFoundError(f"Model `{asset_name}` not found.")
+        tmp_dir = tempfile.mkdtemp()
+        asset_zip = self.version_ctrl.get(match["sha"], tmp_dir)
+        self.predictor = Predictor(zip_path=str(asset_zip))
 
         # Configure constraints
         if constraints is None:

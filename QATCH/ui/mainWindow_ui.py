@@ -1702,6 +1702,8 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.run_controls.startRequested.connect(self.action_start)
         self.run_controls.stopRequested.connect(self.action_stop)
         self.run_controls.setEnabled(False)  # Set disabled initially
+        self.tool_Start = self.run_controls  # backward-compat alias for legacy callers
+        self.tool_Stop = self.run_controls
         self.tool_bar.addWidget(self.run_controls)
         self.tool_bar.addSeparator()
         # ----------------------------------------------------------------------
@@ -2004,6 +2006,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
             if hasattr(self, "run_controls"):
+                self.action_reset()
                 self.run_controls.update_progress(0, 5, "Ready")
             self.pButton_Start.clicked.emit()
             self.cal_initialized = True
@@ -2034,8 +2037,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         self.infostatus.setStyleSheet(
             "background: white; padding: 1px; border: 1px solid #cccccc"
         )
-        self.infostatus.setText(
-            "<font color=#333333 > Program Status Standby </font>")
+        self.infostatus.setText("<font color=#333333 > Program Status Standby </font>")
 
         self.cal_initialized = False
         if hasattr(self, "run_controls"):
@@ -2851,10 +2853,8 @@ class StartStopButton(QToolButton):
             painter.setBrush(QBrush(self.color_darkgreen))
             path = QPainterPath()
             path.moveTo(center.x() - icon_size * 0.4, center.y())
-            path.lineTo(center.x() - icon_size * 0.1,
-                        center.y() + icon_size * 0.3)
-            path.lineTo(center.x() + icon_size * 0.4,
-                        center.y() - icon_size * 0.4)
+            path.lineTo(center.x() - icon_size * 0.1, center.y() + icon_size * 0.3)
+            path.lineTo(center.x() + icon_size * 0.4, center.y() - icon_size * 0.4)
 
             check_pen = QPen(icon_color, 2.5)
             check_pen.setCapStyle(Qt.RoundCap)
@@ -2864,8 +2864,7 @@ class StartStopButton(QToolButton):
             # Stop Square
             painter.setBrush(QBrush(self.color_darkred))
             s = icon_size * 0.5
-            painter.drawRect(
-                QRectF(center.x() - s / 2, center.y() - s / 2, s, s))
+            painter.drawRect(QRectF(center.x() - s / 2, center.y() - s / 2, s, s))
 
         else:
             # Start Triangle
@@ -2945,9 +2944,7 @@ class RunControls(QWidget):
 
         self.lbl_status = QLabel("Run Status")
         self.lbl_status.setAlignment(Qt.AlignCenter)
-        self.lbl_status.setStyleSheet(
-            "color: #333; font-size: 11px; margin-top: 2px;"
-        )
+        self.lbl_status.setStyleSheet("color: #333; font-size: 11px; margin-top: 2px;")
         self.status_layout.addWidget(self.lbl_status)
 
         self.layout.addWidget(self.status_container)
@@ -2998,6 +2995,8 @@ class RunControls(QWidget):
             self.anim.setEndValue(160)
             self.anim.start()
         else:
+            self.btn.is_complete = False
+            self.btn.progress = 0.0
             self.btn.setText("Start")
             self.anim.setStartValue(160)
             self.anim.setEndValue(0)
