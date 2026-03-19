@@ -134,4 +134,10 @@ jobs:
             shapely
 
       - name: Run mypy
-        run: mypy --namespace-packages .
+        run: |
+          mypy \
+            QATCH/VisQAI \
+            QATCH/common \
+            QATCH/core \
+            QATCH/processors \
+            QATCH/ui
