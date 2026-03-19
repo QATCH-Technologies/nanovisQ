@@ -204,7 +204,8 @@ def verify_database_integrity(
         all_forms = form_ctrl.get_all_formulations()
         for f in all_forms:
             if not f.viscosity_profile:
-                raise ValueError(f"Formulation {f.id} has no viscosity profile.")
+                raise ValueError(
+                    f"Formulation {f.id} has no viscosity profile.")
 
             viscs = f.viscosity_profile.viscosities
             if any(v <= 0 for v in viscs):
@@ -304,8 +305,10 @@ def verify_database_integrity(
             ]
             sort_cols = [c for c in sort_candidates if c in df_src.columns]
 
-            df_src_sorted = df_src.sort_values(by=sort_cols).reset_index(drop=True)
-            df_db_sorted = df_db.sort_values(by=sort_cols).reset_index(drop=True)
+            df_src_sorted = df_src.sort_values(
+                by=sort_cols).reset_index(drop=True)
+            df_db_sorted = df_db.sort_values(
+                by=sort_cols).reset_index(drop=True)
 
             pd.testing.assert_frame_equal(
                 df_src_sorted,
@@ -315,9 +318,13 @@ def verify_database_integrity(
                 rtol=2e-2,
                 atol=1e-6,
             )
-            logger.info("DataFrame verification passed: DB export matches source CSV.")
+            logger.info(
+                "DataFrame verification passed: DB export matches source CSV.")
         except AssertionError as e:
             logger.error(f"DataFrame mismatch details: {e}")
+            raise ValueError(
+                "DataFrame verification failed: DB export does not match source CSV."
+            ) from e
     finally:
         db.close()
 
@@ -361,10 +368,18 @@ def main():
     logger.info(f"Import completed in {time.perf_counter() - t_import:.2f}s.")
 
     database.close()
-    temp_db = Database(path=":memory:")
-    temp_db.metadata = {"app_encoding": Constants.app_encoding}
 
-    header_bytes = encrypt_metadata_header(metadata, temp_db)
+    header_bytes = None
+    temp_db = Database(path=":memory:")
+    try:
+        temp_db.metadata = {"app_encoding": Constants.app_encoding}
+        header_bytes = encrypt_metadata_header(metadata, temp_db)
+    finally:
+        temp_db.close()
+
+    if not header_bytes:
+        logger.warning("Failed to encrypt metadata header")
+        raise EncodingWarning("Failed to encrypt metadata header")
 
     with open(db_path, "rb") as f:
         f.readline()
@@ -378,7 +393,8 @@ def main():
 
     t_verify = time.perf_counter()
     verify_database_integrity(db_path, df_normalized, app_key)
-    logger.info(f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
+    logger.info(
+        f"Verification completed in {time.perf_counter() - t_verify:.2f}s.")
 
     logger.info(
         f"SUCCESS: Database generated and verified in {time.perf_counter() - t_start:.2f}s."

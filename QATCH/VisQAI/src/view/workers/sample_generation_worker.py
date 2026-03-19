@@ -147,7 +147,8 @@ class SampleGenerationWorker(QtCore.QThread):
                                 getattr(
                                     p.class_type,
                                     "value",
-                                    getattr(p.class_type, "name", str(p.class_type)),
+                                    getattr(p.class_type, "name",
+                                            str(p.class_type)),
                                 )
                             )
                             if c_val in values:
@@ -175,7 +176,8 @@ class SampleGenerationWorker(QtCore.QThread):
                         )
                         continue
 
-                    constraints.add_choices(feature=feature_key, choices=choices)
+                    constraints.add_choices(
+                        feature=feature_key, choices=choices)
 
                 elif feature_key in Constraints._NUMERIC:
                     v = float(values)
@@ -184,11 +186,14 @@ class SampleGenerationWorker(QtCore.QThread):
                             feature=feature_key, low=v + 0.001, high=10000.0
                         )
                     elif cond == ">=":
-                        constraints.add_range(feature=feature_key, low=v, high=10000.0)
+                        constraints.add_range(
+                            feature=feature_key, low=v, high=10000.0)
                     elif cond == "=":
-                        constraints.add_range(feature=feature_key, low=v, high=v)
+                        constraints.add_range(
+                            feature=feature_key, low=v, high=v)
                     elif cond == "<=":
-                        constraints.add_range(feature=feature_key, low=0.0, high=v)
+                        constraints.add_range(
+                            feature=feature_key, low=0.0, high=v)
                     elif cond == "<":
                         constraints.add_range(
                             feature=feature_key, low=0.0, high=max(0.0, v - 0.001)
@@ -211,52 +216,53 @@ class SampleGenerationWorker(QtCore.QThread):
 
             self.progress_update.emit(5, "Initializing prediction engine...")
             asset_name = self.model_file.replace(".visq", "")
-            sampler = Sampler(
-                asset_name=asset_name, database=db, constraints=constraints
-            )
-
             generated_cards_data = []
-            for i in range(self.num_samples):
-                if not self._is_running:
-                    break
 
-                progress_val = int(5 + ((i / self.num_samples) * 90))
-                self.progress_update.emit(
-                    progress_val, f"Generating sample {i + 1} of {self.num_samples}..."
-                )
+            with Sampler(
+                asset_name=asset_name, database=db, constraints=constraints
+            ) as sampler:
 
-                new_formulation = sampler.get_next_sample(use_ucb=True)
+                for i in range(self.num_samples):
+                    if not self._is_running:
+                        break
 
-                if new_formulation:
-                    sampler.add_sample(new_formulation)
-                    ingredients_map = {}
-                    attr_map = {
-                        "protein": "Protein",
-                        "buffer": "Buffer",
-                        "surfactant": "Surfactant",
-                        "stabilizer": "Stabilizer",
-                        "excipient": "Excipient",
-                        "salt": "Salt",
-                    }
+                    progress_val = int(5 + ((i / self.num_samples) * 90))
+                    self.progress_update.emit(
+                        progress_val, f"Generating sample {i + 1} of {self.num_samples}..."
+                    )
 
-                    for model_attr, ui_type in attr_map.items():
-                        comp = getattr(new_formulation, model_attr, None)
-                        if comp and comp.ingredient:
-                            ingredients_map[ui_type] = {
-                                "name": comp.ingredient.name,
-                                "component": comp.ingredient.name,
-                                "concentration": comp.concentration,
-                                "units": comp.units,
-                            }
+                    new_formulation = sampler.get_next_sample(use_ucb=True)
 
-                    card_data = {
-                        "name": f"Generated Sample {i + 1}",
-                        "measured": False,
-                        "model": self.model_file,
-                        "temperature": getattr(new_formulation, "temperature", 25.0),
-                        "ingredients": ingredients_map,
-                    }
-                    generated_cards_data.append(card_data)
+                    if new_formulation:
+                        sampler.add_sample(new_formulation)
+                        ingredients_map = {}
+                        attr_map = {
+                            "protein": "Protein",
+                            "buffer": "Buffer",
+                            "surfactant": "Surfactant",
+                            "stabilizer": "Stabilizer",
+                            "excipient": "Excipient",
+                            "salt": "Salt",
+                        }
+
+                        for model_attr, ui_type in attr_map.items():
+                            comp = getattr(new_formulation, model_attr, None)
+                            if comp and comp.ingredient:
+                                ingredients_map[ui_type] = {
+                                    "name": comp.ingredient.name,
+                                    "component": comp.ingredient.name,
+                                    "concentration": comp.concentration,
+                                    "units": comp.units,
+                                }
+
+                        card_data = {
+                            "name": f"Generated Sample {i + 1}",
+                            "measured": False,
+                            "model": self.model_file,
+                            "temperature": getattr(new_formulation, "temperature", 25.0),
+                            "ingredients": ingredients_map,
+                        }
+                        generated_cards_data.append(card_data)
 
             self.progress_update.emit(100, "Finalizing UI...")
             if self._is_running:

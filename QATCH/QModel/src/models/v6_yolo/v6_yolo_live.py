@@ -53,7 +53,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
     STATUS_MAP = {
         -1: "No Fill",
-        0: "Initial FIll",
+        0: "Initial Fill",
         1: "1 Channel",
         2: "2 Channels",
         3: "3 Channels",
@@ -122,7 +122,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             return
 
         if "Relative_time" not in new_data.columns:
-            raise ValueError("new_data must contain the 'Relative_time' column.")
+            raise ValueError(
+                "new_data must contain the 'Relative_time' column.")
 
         if self._data is None or self._data.empty:
             self._data = new_data.copy()
@@ -133,17 +134,19 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             ]
 
             if not new_data_filtered.empty:
-                new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
+                new_data_aligned = new_data_filtered.reindex(
+                    columns=self._data.columns)
                 self._data = pd.concat(
                     [self._data, new_data_aligned], ignore_index=True
                 )
                 self._prediction_buffer_size += len(new_data_filtered)
         if self._data is not None and not self._data.empty:
             self._last_max_time = self._data["Relative_time"].max()
-            self._data.sort_values(by="Relative_time", ascending=True, inplace=True)
+            self._data.sort_values(
+                by="Relative_time", ascending=True, inplace=True)
             self._data.reset_index(drop=True, inplace=True)
             if self.buffer_window_size and len(self._data) > self.buffer_window_size:
-                self._data = self._data.iloc[-self.buffer_window_size :]
+                self._data = self._data.iloc[-self.buffer_window_size:]
                 self._data.reset_index(drop=True, inplace=True)
 
     def attempt_classification(self) -> int:
@@ -251,7 +254,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         v6_base_path = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
         )
-        type_cls_asset = os.path.join(v6_base_path, "type_cls", "weights", "best.pt")
+        type_cls_asset = os.path.join(
+            v6_base_path, "type_cls", "weights", "best.pt")
         self.model_path = type_cls_asset
         self.buffer_window_size = buffer_window_size
 
@@ -302,7 +306,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 data_received = False
                 while not self._queue_in.empty():
                     raw_data = self._queue_in.get()
-                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(raw_data)
+                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(
+                        raw_data)
                     try:
                         if df_chunk is not None and not df_chunk.empty:
                             self._classifier.add_chunk(df_chunk)

@@ -106,14 +106,15 @@ class TestSampler(unittest.TestCase):
         constrained = Constraints(db=self.db)
         constrained.add_range("Protein_conc", 50.0, 60.0)
         constrained.add_range("Temperature", 25.0, 26.0)
-        sampler_c = Sampler(
+
+        with Sampler(
             asset_name=self.asset_name,
             database=self.db,
             constraints=constrained,
             seed=123
-        )
+        ) as sampler_c:
+            samples = sampler_c._generate_random_samples(30)
 
-        samples = sampler_c._generate_random_samples(30)
         self.assertEqual(len(samples), 30)
 
         for s in samples:

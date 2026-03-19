@@ -2052,7 +2052,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             Log.e(f"next_port_result ERROR: {e}")
 
     def action_initialize(self):
-        """Method to handle initalization UI actions."""
+        """Method to handle initialization UI actions."""
         if self.pButton_Start.isEnabled():
             self.cBox_Source.setCurrentIndex(OperationType.calibration.value)
             if hasattr(self, "run_controls"):
