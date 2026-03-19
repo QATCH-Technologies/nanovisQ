@@ -36,6 +36,7 @@ Version:
 """
 
 import os
+import tempfile
 from typing import Dict, List, Union
 
 import numpy as np
@@ -45,7 +46,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.managers.asset_manager import AssetError, AssetManager
+    from src.managers.version_manager import VersionManager
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor
@@ -74,7 +75,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.managers.asset_manager import AssetError, AssetManager
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
@@ -99,8 +100,8 @@ class Sampler:
             lifecycle and historical data retrieval.
         ing_ctrl (IngredientController): Logic layer for looking up specific
             biochemical properties of ingredients.
-        asset_ctrl (AssetManager): Manager for loading and verifying `.visq`
-            model packages from the assets directory.
+        version_ctrl (VersionManager): Manager for loading and verifying `.visq`
+            model packages from the versioned model repository.
         predictor (Predictor): The inference engine used to estimate viscosity
             and prediction uncertainty.
         constraints (Constraints): Definition of the search space, including
@@ -141,8 +142,8 @@ class Sampler:
                 sampling operations.
 
         Raises:
-            AssetError: If the specified `asset_name` cannot be found or is
-                incompatible with the required `.visq` format.
+            FileNotFoundError: If the specified `asset_name` cannot be found
+                in the versioned model repository.
         """
         self.database = database
         self.form_ctrl = FormulationController(db=database)
@@ -150,13 +151,22 @@ class Sampler:
 
         # Load model asset
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
+        project_root = os.path.abspath(
+            os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
-        self.asset_ctrl = AssetManager(assets_dir=assets_dir)
-        if not self.asset_ctrl.asset_exists(asset_name, [".visq"]):
-            raise AssetError(f"Asset `{asset_name}` not found.")
-        asset_zip = self.asset_ctrl.get_asset_path(asset_name, [".visq"])
-        self.predictor = Predictor(zip_path=asset_zip)
+        self.version_ctrl = VersionManager(repo_dir=assets_dir)
+        target_filename = f"{asset_name}.visq"
+        match = next(
+            (m for m in self.version_ctrl.list()
+             if m["filename"] == target_filename),
+            None,
+        )
+        Log.d(TAG, f"self.version_ctrl.list() = {self.version_ctrl.list()}")
+        if match is None:
+            raise FileNotFoundError(f"Model `{asset_name}` not found.")
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        asset_zip = self.version_ctrl.get(match["sha"], self._tmp_dir.name)
+        self.predictor = Predictor(zip_path=str(asset_zip))
 
         # Configure constraints
         if constraints is None:
@@ -213,6 +223,16 @@ class Sampler:
         self._current_uncertainty = np.array([])
         self._current_viscosity = None
         self._last_formulation = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.cleanup()
+
+    def cleanup(self):
+        if hasattr(self, "_tmp_dir") and hasattr(self._tmp_dir, "cleanup"):
+            self._tmp_dir.cleanup()
 
     def add_sample(self, formulation: Formulation) -> None:
         """Evaluates a formulation candidate and updates internal prediction state.
@@ -281,7 +301,8 @@ class Sampler:
             )
             unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
             score = (
-                self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
+                self._acquisition_ucb(
+                    vis, unc, kappa) if use_ucb else np.nanmean(unc)
             )
             candidates.append((form, score))
 
@@ -290,7 +311,8 @@ class Sampler:
                 vis, unc_dict = self.predictor.predict_uncertainty(
                     form.to_dataframe(encoded=False, training=False)
                 )
-                unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
+                unc = unc_dict["std"] if isinstance(
+                    unc_dict, dict) else unc_dict
                 score = (
                     self._acquisition_ucb(vis, unc, kappa)
                     if use_ucb
@@ -403,7 +425,8 @@ class Sampler:
                         suggestions[feat] = np.random.choice(choices)
                 else:
                     raw = float(np.random.uniform(low, high))
-                    suggestions[feat] = self._round_suggestion(feat, raw, low, high)
+                    suggestions[feat] = self._round_suggestion(
+                        feat, raw, low, high)
             self._enforce_none_concentrations(suggestions)
             samples.append(self._build_formulation(suggestions))
         return samples
@@ -580,13 +603,15 @@ class Sampler:
             suggestions.get("Protein_type"), self.ing_ctrl.get_protein_by_name
         )
         if prot:
-            form.set_protein(prot, float(suggestions.get("Protein_conc", 0.0)), "mg/mL")
+            form.set_protein(prot, float(
+                suggestions.get("Protein_conc", 0.0)), "mg/mL")
 
         buff = self._resolve_ingredient(
             suggestions.get("Buffer_type"), self.ing_ctrl.get_buffer_by_name
         )
         if buff:
-            form.set_buffer(buff, float(suggestions.get("Buffer_conc", 0.0)), "mM")
+            form.set_buffer(buff, float(
+                suggestions.get("Buffer_conc", 0.0)), "mM")
 
         salt = self._resolve_ingredient(
             suggestions.get("Salt_type"), self.ing_ctrl.get_salt_by_name
@@ -595,7 +620,8 @@ class Sampler:
             form.set_salt(salt, float(suggestions.get("Salt_conc", 0.0)), "mM")
 
         stab = self._resolve_ingredient(
-            suggestions.get("Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
+            suggestions.get(
+                "Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
         )
         if stab:
             form.set_stabilizer(
@@ -603,7 +629,8 @@ class Sampler:
             )
 
         surf = self._resolve_ingredient(
-            suggestions.get("Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
+            suggestions.get(
+                "Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
         )
         if surf:
             form.set_surfactant(
@@ -611,7 +638,8 @@ class Sampler:
             )
 
         excip = self._resolve_ingredient(
-            suggestions.get("Excipient_type"), self.ing_ctrl.get_excipient_by_name
+            suggestions.get(
+                "Excipient_type"), self.ing_ctrl.get_excipient_by_name
         )
         if excip:
             form.set_excipient(

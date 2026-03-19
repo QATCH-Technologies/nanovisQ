@@ -118,8 +118,13 @@ class Parser:
         or single-file processing.
 
         Args:
-            xml_path (Optional[str]): Path to an XML file to load immediately
-                upon initialization. Defaults to empty str.
+            xml_path (Optional[str]): Path to an XML file or 'capture.zip' file
+                to load immediately upon initialization. If passed a ZIP file,
+                a matching XML file will be discovered (if exists); otherwise,
+                a `FileNotFoundError` will be raised. Defaults to empty str.
+
+        Raises:
+            FileNotFoundError: If XML file does not exist at the base ZIP path.
         """
         self.database = Database(parse_file_key=True)
         self.ing_ctrl = IngredientController(self.database)
@@ -128,6 +133,7 @@ class Parser:
         self.base_path = None
         self.root = None
         self.params = None
+
         if xml_path:
             self._load_state(xml_path)
 
@@ -218,6 +224,13 @@ class Parser:
         self.base_path = input_path.parent
         self.xml_path = input_path
 
+        if self.xml_path and self.xml_path.suffix.lower() != ".xml":
+            xml_candidates = sorted(self.base_path.glob("*.xml"))
+            if len(xml_candidates) != 1:
+                raise FileNotFoundError(
+                    f"Expected exactly one XML alongside `{input_path.name}`, found {len(xml_candidates)}."
+                )
+            self.xml_path = xml_candidates[0]
         if not self.xml_path.exists():
             raise FileNotFoundError(f"XML not found at path `{self.xml_path}`.")
         tree = ET.parse(self.xml_path)
@@ -267,10 +280,17 @@ class Parser:
         val = el.get("value")
         if val is None:
             raise ValueError(f"Param '{name}' has no value attribute")
+        if len(val.strip()) == 0:
+            if required:
+                raise ValueError(f"Param '{name}' has empty value attribute")
+            return None
+
         try:
             return cast_type(val)
-        except ValueError:
-            raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}")
+        except ValueError as e:
+            raise ValueError(
+                f"Cannot cast param '{name}' value '{val}' to {cast_type}"
+            ) from e
 
     def get_param_attr(
         self, name: str, attr: str, required: bool = False
@@ -907,7 +927,7 @@ class Parser:
             vp, temp = self.get_viscosity_profile()
             formulation.set_temperature(temp=temp)
             formulation.set_viscosity_profile(profile=vp)
-        except FileNotFoundError:
+        except (FileNotFoundError, ValueError):
             missing_fields.append("Viscosity Data")
             formulation.set_temperature(25.0)  # Default
 

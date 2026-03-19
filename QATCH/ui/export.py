@@ -230,7 +230,7 @@ class Ui_Export(QtWidgets.QWidget):
         for i in range(self.combo_csv_cols.count()):
             self.combo_csv_cols.model().item(i, 0).setCheckState(QtCore.Qt.Checked)
         self.combo_csv_cols.check_items()  # update checked items to reflect model
-        # disable "Run Name" as it's required to be included in the exorted CSV as a key ID
+        # disable "Run Name" as it's required to be included in the exported CSV as a key ID
         self.combo_csv_cols.model().item(0, 0).setEnabled(False)
         layout_h13.addWidget(self.combo_csv_cols)
 
@@ -500,12 +500,13 @@ class Ui_Export(QtWidgets.QWidget):
         super(Ui_Export, self).showNormal()
         self.resize(self.minimumSize())
 
-        self.tabs.setCurrentIndex(tab_idx)
-        self.generateExportName()
-
         self.exported = False
         self.do_close = False
         self.drive = None
+
+        self.tabs.setCurrentIndex(tab_idx)
+        self.generateExportName()
+        self.select_folder_target(no_ask=True)
 
         self.progress.emit(
             "<b>Insert USB drive...</b><br/>No USB drives detected.", 0, "b", 0
@@ -861,16 +862,29 @@ class Ui_Export(QtWidgets.QWidget):
         self.selectRun.setText(f"{dev_or_run}{self.selectRun.text()}")
         self.generateExportName()
 
-    def select_folder_target(self):
+    def select_folder_target(self, no_ask=False):
         default_export_folder = os.path.join(
-            os.path.dirname(Constants.log_prefer_path), "exported"
+            os.path.dirname(Constants.log_prefer_path), "export"
         )
         top_level = QtCore.QUrl.fromLocalFile(default_export_folder)
         if self.btn5.text() != "[NONE]":
             top_level = QtCore.QUrl.fromLocalFile(self.btn5.text())
-        select_path = self.select_folder(top_level)
-        if select_path == None:
+        select_path = (
+            top_level.toLocalFile() if no_ask else self.select_folder(top_level)
+        )
+        if select_path is None:
             return  # self.btn5.setText("[NONE]")
+        if no_ask:
+            try:
+                os.makedirs(select_path, exist_ok=True)
+            except OSError as e:
+                Log.e(
+                    TAG1, f"Export target is not accessible: {select_path}. Error: {e}"
+                )
+                self.drive = None
+                self.btn5.setText("[NONE]")
+                self.freezeGUI(True)
+                return
         self.drive = select_path
         self.btn5.setText(self.drive)
         self.freezeGUI(True)

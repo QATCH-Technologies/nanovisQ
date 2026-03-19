@@ -979,13 +979,11 @@ class Rename_Output_Files(QtCore.QObject):
                     current_directory = this_dir
                     path_split = os.path.split(this_dir)
                     preferences_write_path = (
-                        UserProfiles.user_preferences.get_folder_save_path(
-                                runname=input_text,
-                                device_id=_dev_name,
-                                port_id=_dev_pid,
-                            )
+                        UserProfiles.user_preferences.get_preferences().get(
+                            "write_data_path", None
+                        )
                     )
-                    if preferences_write_path == "":
+                    if not preferences_write_path:
                         path_root = path_split[0]
                     else:
                         # If user preferences are set, load from the prefered write path.
@@ -1463,9 +1461,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._vector_2 = None
 
         # Used for DryingDetection times
-        self._sensorDriedTimeValue = multiprocessing.Value('f', 0.0)
+        self._sensorDriedTimeValue = multiprocessing.Value("f", 0.0)
         self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
-        self._dropAppliedTimeValue = multiprocessing.Value('f', 0.0)
+        self._dropAppliedTimeValue = multiprocessing.Value("f", 0.0)
         self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
 
         # Instantiates a Worker class
@@ -1548,7 +1546,12 @@ class MainWindow(QtWidgets.QMainWindow):
         for _ in range(4):
             self.dry_detect.append(
                 DryingDetection(
-                    window_size=2000, sigma_stable_diss=0.25, sigma_stable_freq=0.25, flat_slope_eps=0.000015))
+                    window_size=2000,
+                    sigma_stable_diss=0.25,
+                    sigma_stable_freq=0.25,
+                    flat_slope_eps=0.000015,
+                )
+            )
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
@@ -2493,8 +2496,11 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.ControlsWin.ui1.action_NextPortRow.setEnabled(enabled)
         self.ControlsWin.ui1.tool_Initialize.setEnabled(enabled)
-        self.ControlsWin.ui1.tool_Start.setEnabled(enable_start)
-        self.ControlsWin.ui1.tool_Stop.setEnabled(enable_stop)
+
+        # Modified for new run-status controls
+        if hasattr(self.ControlsWin.ui1, "run_controls"):
+            self.ControlsWin.ui1.run_controls.setEnabled(enable_start or enable_stop)
+
         self.ControlsWin.ui1.tool_Reset.setEnabled(enabled)
         self.ControlsWin.ui1.tool_TempControl.setEnabled(enable_temp)
         # self.ControlsWin.ui1.tool_Advanced.setEnabled(enabled)
@@ -3614,15 +3620,39 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker._forecaster_in.put(snapshot)
                 if not self.worker._forecaster_out.empty():
                     try:
-                        pred_int, pred_str = self.worker._forecaster_out.get()
-                        ui_value = pred_int + 1
-                        ui_value = max(0, min(ui_value, 4))
-                        self.ControlsWin.ui1.fill_status_progress_bar.setValue(ui_value)
-                        self.ControlsWin.ui1.fill_status_progress_bar.setFormat(
-                            f"Run: %v/%m ({pred_str})"
-                        )
+                        # Get raw model prediction (-1=Empty, 0=Init, 1=Ch1, 2=Ch2, 3=Ch3)
+                        pred_int, _ = self.worker._forecaster_out.get()
+                        # This logic handles drop application code.
+                        is_drop_applied = all(self._drop_applied)
+                        # Refactored messages out of constants.  Can move them back if we like the messages.
+                        ui_step = 0
+                        status_msg = "Unknown"
+                        if pred_int == -1:
+                            if not is_drop_applied:
+                                status_msg = "Waiting for drop"
+                                ui_step = 0
+                            else:
+                                status_msg = "Drop applied, waiting for init data"
+                                ui_step = 1
+                        elif pred_int == 0:
+                            status_msg = "Init points detected"
+                            ui_step = 2
+                        elif pred_int == 1:
+                            status_msg = "1st ch detected"
+                            ui_step = 3
+                        elif pred_int == 2:
+                            status_msg = "2nd ch detected"
+                            ui_step = 4
+                        elif pred_int == 3:
+                            status_msg = "Fill complete"
+                            ui_step = 5
+
+                        if hasattr(self.ControlsWin.ui1, "run_controls"):
+                            self.ControlsWin.ui1.run_controls.update_progress(
+                                ui_step, 5, status_msg
+                            )
                     except Exception as e:
-                        Log.e(TAG, f"Error retrieving forecast result: {e}")
+                        Log.e(TAG, f"Error retrieving fill status: {e}")
 
             (
                 self._ser_error1,
@@ -3765,7 +3795,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                             labelbar = "Waiting for start..."
                                             continue
                                         if time_running < 3.0:
-                                            labelbar = 'Capturing data... Calibrating baselines for first 3 seconds... please wait...'
+                                            labelbar = "Capturing data... Calibrating baselines for first 3 seconds... please wait..."
                                             # next(x for x,y in list(vector0) if y <= 1.0)
                                             idx = int(len(list(vector0)) / 3)
                                             if idx > 0:
@@ -4312,7 +4342,10 @@ class MainWindow(QtWidgets.QMainWindow):
                             rf_vector = self.worker.get_d1_buffer(i)
                             relative_time = self.worker.get_t1_buffer(i)
                             dry_status, dry_msg = self.dry_detect[i].update(
-                                resonance_frequency=rf_vector, dissipation=dissipation_vector, relative_time=relative_time)
+                                resonance_frequency=rf_vector,
+                                dissipation=dissipation_vector,
+                                relative_time=relative_time,
+                            )
                             if not dry_status:
 
                                 # Set and signal all receivers that new time is available (if unset)
@@ -4321,10 +4354,11 @@ class MainWindow(QtWidgets.QMainWindow):
                                     if self._sensorDriedTimes[i] == 0.0:
                                         self._sensorDriedTimes[i] = time_running
                                         # set on each and every trigger for multiplex:
-                                        self._sensorDriedTimeValue.value = self._sensorDriedTimes[i]
+                                        self._sensorDriedTimeValue.value = (
+                                            self._sensorDriedTimes[i]
+                                        )
 
-                                self._text4[i].setText(
-                                    dry_msg, color=(0, 0, 200))
+                                self._text4[i].setText(dry_msg, color=(0, 0, 200))
                                 self._baselinedata[i] = [
                                     [
                                         np.amin(
@@ -4345,7 +4379,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 ]
                             else:
                                 self._text4[i].setText(
-                                    'Apply drop now!', color=(0, 200, 0))
+                                    "Apply drop now!", color=(0, 200, 0)
+                                )
                         else:
                             time_running = _plt2.getViewBox().viewRange()[0][1]
                             current_y_range = [
@@ -6780,7 +6815,7 @@ class TECTask(QtCore.QThread):
     def run(self):
         Log.i(
             TAG,
-            "Temp Control started".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+            f"Temp Control started ({strftime('%Y-%m-%d %H:%M:%S', localtime())})",
         )
         self.infobar_setText.emit(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
@@ -6959,7 +6994,7 @@ class TECTask(QtCore.QThread):
     def _task_stop(self):
         Log.i(
             TAG,
-            "Temp Control stopped".format(strftime("%Y-%m-%d %H:%M:%S", localtime())),
+            f"Temp Control stopped ({strftime('%Y-%m-%d %H:%M:%S', localtime())})",
         )
         self.infobar_setText.emit(
             "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
@@ -7437,10 +7472,10 @@ class DryingDetection:
         slope_f = self._compute_slope(nf)
         slope_d = self._compute_slope(nd)
         if (
-            sigma_f < self.sigma_stable_freq and
-            sigma_d < self.sigma_stable_diss and
-            abs(slope_f) < self.flat_eps and
-            abs(slope_d) < self.flat_eps
+            sigma_f < self.sigma_stable_freq
+            and sigma_d < self.sigma_stable_diss
+            and abs(slope_f) < self.flat_eps
+            and abs(slope_d) < self.flat_eps
         ):
             self._dried = True
             self._dry_time = float(self.time_w[-1])
