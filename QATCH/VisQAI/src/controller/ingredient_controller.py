@@ -10,10 +10,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2025-02-16
+    2026-03-18
 
 Version:
-    1.8
+    1.9
 """
 
 from typing import List, Optional
@@ -71,6 +71,19 @@ class IngredientController:
         """
         self.db: Database = db
         self._user_mode: bool = user_mode
+        self._cache: dict[int, Ingredient] = {}
+        self._name_cache: dict[tuple[str, str], Ingredient] = {}
+
+    def _invalidate_cache(self):
+        self._cache.clear()
+        self._name_cache.clear()
+
+    def _get_ingredient(self, id: int) -> Optional["Ingredient"]:
+        if id not in self._cache:
+            ing = self.db.get_ingredient(id)
+            if ing and ing.id is not None:
+                self._cache[ing.id] = ing
+        return self._cache.get(id)
 
     def get_all_ingredients(self) -> List[Ingredient]:
         """Retrieve all ingredients stored in the database.
@@ -98,6 +111,7 @@ class IngredientController:
     def delete_all_ingredients(self) -> None:
         """Delete all ingredients from the database."""
         self.db.delete_all_ingredients()
+        self._invalidate_cache()
 
     def get_by_id(self, id: int, ingredient: Ingredient) -> Ingredient:
         """Retrieve a specific ingredient by ID, dispatching to the correct subclass method.
@@ -329,7 +343,7 @@ class IngredientController:
         Returns:
             Optional[Protein]: The `Protein` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_protein_by_name(self, name: str) -> Optional[Protein]:
         """Retrieve a `Protein` by its name.
@@ -359,7 +373,7 @@ class IngredientController:
         Returns:
             Optional[Buffer]: The `Buffer` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_buffer_by_name(self, name: str) -> Optional[Buffer]:
         """Retrieve a `Buffer` by its name.
@@ -389,7 +403,7 @@ class IngredientController:
         Returns:
             Optional[Salt]: The `Salt` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_salt_by_name(self, name: str) -> Optional[Salt]:
         """Retrieve a `Salt` by its name.
@@ -419,7 +433,7 @@ class IngredientController:
         Returns:
             Optional[Excipient]: The `Excipient` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_excipient_by_name(self, name: str) -> Optional[Excipient]:
         """Retrieve a `Excipient` by its name.
@@ -449,7 +463,7 @@ class IngredientController:
         Returns:
             Optional[Surfactant]: The `Surfactant` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_surfactant_by_name(self, name: str) -> Optional[Surfactant]:
         """Retrieve a `Surfactant` by its name.
@@ -479,7 +493,7 @@ class IngredientController:
         Returns:
             Optional[Stabilizer]: The `Stabilizer` instance if found, otherwise None.
         """
-        return self.db.get_ingredient(id)
+        return self._get_ingredient(id)  # type: ignore[return-value]
 
     def get_stabilizer_by_name(self, name: str) -> Optional[Stabilizer]:
         """Retrieve a `Stabilizer` by its name.
@@ -524,7 +538,8 @@ class IngredientController:
         )
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
-
+        self._cache[db_id] = protein
+        self._name_cache[(protein.name, "Protein")] = protein
         return protein
 
     def add_buffer(self, buffer: Buffer) -> Buffer:
@@ -549,7 +564,8 @@ class IngredientController:
         )
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
-
+        self._cache[db_id] = buffer
+        self._name_cache[(buffer.name, "Buffer")] = buffer
         return buffer
 
     def add_salt(self, salt: Salt) -> Salt:
@@ -572,7 +588,8 @@ class IngredientController:
         salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
         db_id = self.db.add_ingredient(salt)
         salt.id = db_id
-
+        self._cache[db_id] = salt
+        self._name_cache[(salt.name, "Salt")] = salt
         return salt
 
     def add_stabilizer(self, stabilizer: Stabilizer) -> Stabilizer:
@@ -597,7 +614,8 @@ class IngredientController:
         )
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
-
+        self._cache[db_id] = stabilizer
+        self._name_cache[(stabilizer.name, "Stabilizer")] = stabilizer
         return stabilizer
 
     def add_surfactant(self, surfactant: Surfactant) -> Surfactant:
@@ -622,7 +640,8 @@ class IngredientController:
         )
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
-
+        self._cache[db_id] = surfactant
+        self._name_cache[(surfactant.name, "Surfactant")] = surfactant
         return surfactant
 
     def add_excipient(self, excipient: Excipient) -> Excipient:
@@ -647,7 +666,8 @@ class IngredientController:
         )
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
-
+        self._cache[db_id] = excipient
+        self._name_cache[(excipient.name, "Excipient")] = excipient
         return excipient
 
     # ----- Deletion ----- #
@@ -664,6 +684,7 @@ class IngredientController:
         if self.get_protein_by_id(id) is None:
             raise ValueError(f"Protein with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_protein_by_name(self, name: str) -> None:
         """Delete a `Protein` by its name.
@@ -678,6 +699,7 @@ class IngredientController:
         if protein is None:
             raise ValueError(f"Protein with name '{name}' does not exist.")
         self.db.delete_ingredient(protein.id)
+        self._invalidate_cache()
 
     def delete_all_proteins(self) -> None:
         """Delete all `Protein` instances from the database.
@@ -690,6 +712,7 @@ class IngredientController:
             raise ValueError("No items of type 'Protein' found.")
         for p in proteins:
             self.db.delete_ingredient(p.id)
+        self._invalidate_cache()
 
     def delete_buffer_by_id(self, id: int) -> None:
         """Delete a `Buffer` by its database ID.
@@ -703,6 +726,7 @@ class IngredientController:
         if self.get_buffer_by_id(id) is None:
             raise ValueError(f"Buffer with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_buffer_by_name(self, name: str) -> None:
         """Delete a `Buffer` by its name.
@@ -717,6 +741,7 @@ class IngredientController:
         if buffer is None:
             raise ValueError(f"Buffer with name '{name}' does not exist.")
         self.db.delete_ingredient(buffer.id)
+        self._invalidate_cache()
 
     def delete_all_buffers(self) -> None:
         """Delete all `Buffer` instances from the database.
@@ -729,6 +754,7 @@ class IngredientController:
             raise ValueError("No items of type 'Buffer' found.")
         for b in buffers:
             self.db.delete_ingredient(b.id)
+        self._invalidate_cache()
 
     def delete_salt_by_id(self, id: int) -> None:
         """Delete a `Salt` by its database ID.
@@ -742,6 +768,7 @@ class IngredientController:
         if self.get_salt_by_id(id) is None:
             raise ValueError(f"Salt with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_salt_by_name(self, name: str) -> None:
         """Delete a `Salt` by its name.
@@ -756,6 +783,7 @@ class IngredientController:
         if salt is None:
             raise ValueError(f"Salt with name '{name}' does not exist.")
         self.db.delete_ingredient(salt.id)
+        self._invalidate_cache()
 
     def delete_all_salts(self) -> None:
         """Delete all `Salt` instances from the database.
@@ -768,6 +796,7 @@ class IngredientController:
             raise ValueError("No items of type 'Salt' found.")
         for s in salts:
             self.db.delete_ingredient(s.id)
+        self._invalidate_cache()
 
     def delete_surfactant_by_id(self, id: int) -> None:
         """Delete a `Surfactant` by its database ID.
@@ -781,6 +810,7 @@ class IngredientController:
         if self.get_surfactant_by_id(id) is None:
             raise ValueError(f"Surfactant with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_surfactant_by_name(self, name: str) -> None:
         """Delete a `Surfactant` by its name.
@@ -795,6 +825,7 @@ class IngredientController:
         if surf is None:
             raise ValueError(f"Surfactant with name '{name}' does not exist.")
         self.db.delete_ingredient(surf.id)
+        self._invalidate_cache()
 
     def delete_all_surfactants(self) -> None:
         """Delete all `Surfactant` instances from the database.
@@ -807,6 +838,7 @@ class IngredientController:
             raise ValueError("No items of type 'Surfactant' found.")
         for s in surfs:
             self.db.delete_ingredient(s.id)
+        self._invalidate_cache()
 
     def delete_stabilizer_by_id(self, id: int) -> None:
         """Delete a `Stabilizer` by its database ID.
@@ -820,6 +852,7 @@ class IngredientController:
         if self.get_stabilizer_by_id(id) is None:
             raise ValueError(f"Stabilizer with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_stabilizer_by_name(self, name: str) -> None:
         """Delete a `Stabilizer` by its name.
@@ -834,6 +867,7 @@ class IngredientController:
         if stab is None:
             raise ValueError(f"Stabilizer with name '{name}' does not exist.")
         self.db.delete_ingredient(stab.id)
+        self._invalidate_cache()
 
     def delete_all_stabilizers(self) -> None:
         """Delete all `Stabilizer` instances from the database.
@@ -846,6 +880,7 @@ class IngredientController:
             raise ValueError("No items of type 'Stabilizer' found.")
         for s in stabs:
             self.db.delete_ingredient(s.id)
+        self._invalidate_cache()
 
     def delete_excipient_by_id(self, id: int) -> None:
         """Delete a `Excipient` by its database ID.
@@ -859,6 +894,7 @@ class IngredientController:
         if self.get_excipient_by_id(id) is None:
             raise ValueError(f"Excipient with id {id} does not exist.")
         self.db.delete_ingredient(id)
+        self._invalidate_cache()
 
     def delete_excipient_by_name(self, name: str) -> None:
         """Delete a `Excipient` by its name.
@@ -873,6 +909,7 @@ class IngredientController:
         if excip is None:
             raise ValueError(f"Excipient with name '{name}' does not exist.")
         self.db.delete_ingredient(excip.id)
+        self._invalidate_cache()
 
     def delete_all_excipients(self) -> None:
         """Delete all `Excipient` instances from the database.
@@ -885,8 +922,7 @@ class IngredientController:
             raise ValueError("No items of type 'Excipient' found.")
         for e in excips:
             self.db.delete_ingredient(e.id)
-
-    # ----- Mutators (update) ----- #
+        self._invalidate_cache()
 
     def update_protein(self, id: int, p_new: Protein) -> Protein:
         """Update an existing `Protein` record by replacing it.
@@ -914,6 +950,11 @@ class IngredientController:
         p_new.is_user = p_fetch.is_user
 
         self.db.update_ingredient(p_fetch.id, p_new)
+        p_new.id = p_fetch.id
+        self._cache[p_fetch.id] = p_new
+        if p_fetch.name != p_new.name:
+            self._name_cache.pop((p_fetch.name, "Protein"), None)
+        self._name_cache[(p_new.name, "Protein")] = p_new
         return p_new
 
     def update_buffer(self, id: int, b_new: Buffer) -> Buffer:
@@ -941,6 +982,11 @@ class IngredientController:
         b_new.is_user = b_fetch.is_user
 
         self.db.update_ingredient(b_fetch.id, b_new)
+        b_new.id = b_fetch.id
+        self._cache[b_fetch.id] = b_new
+        if b_fetch.name != b_new.name:
+            self._name_cache.pop((b_fetch.name, "Buffer"), None)
+        self._name_cache[(b_new.name, "Buffer")] = b_new
         return b_new
 
     def update_salt(self, id: int, s_new: Salt) -> Salt:
@@ -968,6 +1014,11 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Salt"), None)
+        self._name_cache[(s_new.name, "Salt")] = s_new
         return s_new
 
     def update_surfactant(self, id: int, s_new: Surfactant) -> Surfactant:
@@ -995,6 +1046,11 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Surfactant"), None)
+        self._name_cache[(s_new.name, "Surfactant")] = s_new
         return s_new
 
     def update_stabilizer(self, id: int, s_new: Stabilizer) -> Stabilizer:
@@ -1022,6 +1078,11 @@ class IngredientController:
         s_new.is_user = s_fetch.is_user
 
         self.db.update_ingredient(s_fetch.id, s_new)
+        s_new.id = s_fetch.id
+        self._cache[s_fetch.id] = s_new
+        if s_fetch.name != s_new.name:
+            self._name_cache.pop((s_fetch.name, "Stabilizer"), None)
+        self._name_cache[(s_new.name, "Stabilizer")] = s_new
         return s_new
 
     def update_excipient(self, id: int, e_new: Excipient) -> Excipient:
@@ -1049,6 +1110,11 @@ class IngredientController:
         e_new.is_user = e_fetch.is_user
 
         self.db.update_ingredient(e_fetch.id, e_new)
+        e_new.id = e_fetch.id
+        self._cache[e_fetch.id] = e_new
+        if e_fetch.name != e_new.name:
+            self._name_cache.pop((e_fetch.name, "Excipient"), None)
+        self._name_cache[(e_new.name, "Excipient")] = e_new
         return e_new
 
     def fuzzy_fetch(
@@ -1090,19 +1156,23 @@ class IngredientController:
         Returns:
             List[Ingredient]: A list of ingredients matching the specified type.
         """
-        ingredients = self.db.get_all_ingredients()
-        filtered = [ing for ing in ingredients if ing.type == type]
-
+        ingredients = [
+            ing
+            for ing in self.db.get_ingredients_by_type(type)
+            if not self._user_mode or ing.is_user
+        ]
+        for ing in ingredients:
+            if ing.id not in self._cache:
+                self._cache[ing.id] = ing
         if unique:
             seen = set()
-            unique_list = []
-            for ing in filtered:
+            result = []
+            for ing in ingredients:
                 if ing.name not in seen:
-                    unique_list.append(ing)
+                    result.append(ing)
                     seen.add(ing.name)
-            return unique_list
-
-        return filtered
+            return result
+        return ingredients
 
     def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
         """Helper method to retrieve a single ingredient by name and subclass type.
@@ -1116,16 +1186,19 @@ class IngredientController:
         Returns:
             Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
         """
-        ingredients = self.db.get_all_ingredients()
-
-        for ing in ingredients:
-            # Skip non-user ingredients while in user mode.
-            if self._user_mode and not ing.is_user:
-                continue
-            # Return first matching ingredient by type and exact name.
-            if ing.type == type and ing.name == name:
+        key = (name, type)
+        if key in self._name_cache:
+            ing = self._name_cache[key]
+            if not self._user_mode or ing.is_user:
                 return ing
-        return None
+        ing = self.db.get_ingredient_by_name_type(name, type)
+        if ing is None:
+            return None
+        if self._user_mode and not ing.is_user:
+            return None
+        self._name_cache[key] = ing  # warm on first DB hit
+        self._cache[ing.id] = ing
+        return ing
 
     def _get_next_enc_id(self, *, is_user: bool, ing_type: str) -> int:
         """Compute the next `enc_id` for a new ingredient of a given subclass.
@@ -1140,24 +1213,37 @@ class IngredientController:
         Raises:
             RuntimeError: If no developer `enc_id` slots remain (for developer-created ingredients).
         """
-        same_type = self._fetch_by_type(type=ing_type)
+        # same_type = self._fetch_by_type(type=ing_type)
+        # if is_user:
+        #     # User-created enc_id must start at USER_START_ID
+        #     used = [ing.enc_id for ing in same_type if ing.enc_id >= self.USER_START_ID]
+        #     if not used:
+        #         return self.USER_START_ID
+        #     else:
+        #         return max(used) + 1
+        # else:
+        #     # Developer-created enc_id must be in range [1..DEV_MAX_ID]
+        #     used = [
+        #         ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
+        #     ]
+        #     if not used:
+        #         return 1
+        #     next_id = max(used) + 1
+        #     if next_id > self.DEV_MAX_ID:
+        #         raise RuntimeError(
+        #             f"No developer enc_id available for type '{ing_type}' (1..{self.DEV_MAX_ID} exhausted)."
+        #         )
+        #     return next_id
         if is_user:
-            # User-created enc_id must start at USER_START_ID
-            used = [ing.enc_id for ing in same_type if ing.enc_id >= self.USER_START_ID]
-            if not used:
-                return self.USER_START_ID
-            else:
-                return max(used) + 1
+            max_id = self.db.get_max_enc_id(ing_type, self.USER_START_ID, 2**63 - 1)
+            return (max_id + 1) if max_id is not None else self.USER_START_ID
         else:
-            # Developer-created enc_id must be in range [1..DEV_MAX_ID]
-            used = [
-                ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
-            ]
-            if not used:
+            max_id = self.db.get_max_enc_id(ing_type, 1, self.DEV_MAX_ID)
+            if max_id is None:
                 return 1
-            next_id = max(used) + 1
+            next_id = max_id + 1
             if next_id > self.DEV_MAX_ID:
                 raise RuntimeError(
-                    f"No developer enc_id available for type '{ing_type}' (1..{self.DEV_MAX_ID} exhausted)."
+                    f"No developer enc_id available for type '{ing_type}'."
                 )
             return next_id
