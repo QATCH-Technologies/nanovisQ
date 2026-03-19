@@ -1356,12 +1356,12 @@ class DashboardUI(QtWidgets.QWidget):
             else:
                 self.viz_panel.set_plot_title(f"Evaluation Results: {metric_name}")
 
-    def run_sample_generation(self, num_samples, model_file, constraints_data):
+    def run_sample_generation(self, num_samples, model_path, constraints_data):
         """Launch a ``SampleGenerationWorker`` with the given constraints and display a cancellable progress dialog.
 
         Args:
             num_samples (int): Number of samples to generate.
-            model_file (str): Path to the model file used for generation.
+            model_path (str): Path to the model file used for generation.
             constraints_data (dict): Constraint configuration for the generator.
         """
         self.generate_widget.hide()
@@ -1379,7 +1379,7 @@ class DashboardUI(QtWidgets.QWidget):
 
         worker = SampleGenerationWorker(
             num_samples=num_samples,
-            model_file=model_file,
+            model_path=model_path,
             constraints_data=constraints_data,
         )
 

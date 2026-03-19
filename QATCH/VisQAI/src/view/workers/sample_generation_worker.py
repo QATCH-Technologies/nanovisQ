@@ -18,12 +18,15 @@ Version:
     1.0
 """
 
+import os
+
 from PyQt5 import QtCore
 
 try:
     TAG = "[SampleGenerationWorker (HEADLESS)]"
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
+    from src.managers.version_manager import VersionManager
     from src.processors.sampler import Sampler
     from src.utils.constraints import Constraints
 
@@ -49,6 +52,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.processors.sampler import Sampler
     from QATCH.VisQAI.src.utils.constraints import Constraints
 
@@ -69,8 +73,9 @@ class SampleGenerationWorker(QtCore.QThread):
         generation_error (QtCore.pyqtSignal): Emits a string error message if
             the generation fails.
         num_samples (int): The number of samples to generate.
-        model_file (str): The name of the VisQ model asset used to guide
-            sampling.
+        model_path (str): The full path to the `.visq` model file used to guide
+            sampling. The file will be committed to the version repository if not
+            already tracked, and the resulting SHA is passed to the Sampler.
         constraints_data (list[dict]): Raw constraint definitions from the UI.
         _is_running (bool): Flag to support graceful termination of the thread.
     """
@@ -79,19 +84,21 @@ class SampleGenerationWorker(QtCore.QThread):
     generation_complete = QtCore.pyqtSignal(list)
     generation_error = QtCore.pyqtSignal(str)
 
-    def __init__(self, num_samples, model_file, constraints_data, parent=None):
+    def __init__(self, num_samples, model_path, constraints_data, parent=None):
         """Initializes the worker with generation parameters.
 
         Args:
             num_samples (int): Count of formulations to suggest.
-            model_file (str): Path or name of the VisQ model.
+            model_path (str): Full path to the `.visq` model file. The file is
+                committed to the version repository (idempotently) on first use
+                so its SHA-256 digest can be resolved for the Sampler.
             constraints_data (list[dict]): Constraint configurations including
                 ingredient, attribute, condition, and values.
             parent (QObject, optional): Parent object. Defaults to None.
         """
         super().__init__(parent)
         self.num_samples = num_samples
-        self.model_file = model_file
+        self.model_path = model_path
         self.constraints_data = constraints_data
         self._is_running = True
 
@@ -103,7 +110,9 @@ class SampleGenerationWorker(QtCore.QThread):
                background thread to avoid cross-thread issues.
             2. Translates UI constraints (e.g., Protein Class) into specific
                ingredient choices or numeric ranges.
-            3. Initializes the `Sampler` with the selected VisQ model.
+            3. Commits the `.visq` model file to the version repository
+               (idempotently) to obtain its SHA-256 digest, then initializes
+               the `Sampler` with that digest.
             4. Iteratively generates formulations using Upper Confidence
                Bound (UCB) sampling.
             5. Packages each result into a `card_data` dictionary for the UI.
@@ -210,9 +219,13 @@ class SampleGenerationWorker(QtCore.QThread):
                             )
 
             self.progress_update.emit(5, "Initializing prediction engine...")
-            asset_name = self.model_file.replace(".visq", "")
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
+            repo_dir = os.path.join(project_root, "repo")
+            vm = VersionManager(repo_dir=repo_dir)
+            sha = vm.commit(self.model_path)
             sampler = Sampler(
-                asset_name=asset_name, database=db, constraints=constraints
+                sha=sha, database=db, repo_dir=repo_dir, constraints=constraints
             )
 
             generated_cards_data = []
@@ -252,7 +265,7 @@ class SampleGenerationWorker(QtCore.QThread):
                     card_data = {
                         "name": f"Generated Sample {i + 1}",
                         "measured": False,
-                        "model": self.model_file,
+                        "model": os.path.basename(self.model_path),
                         "temperature": getattr(new_formulation, "temperature", 25.0),
                         "ingredients": ingredients_map,
                     }

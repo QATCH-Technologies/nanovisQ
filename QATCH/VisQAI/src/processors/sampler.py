@@ -20,7 +20,7 @@ key architectural patterns:
 - Physical & Practical Constraints
 
 Example:
-    >>> sampler = Sampler(asset_name="v3_model", database=db)
+    >>> sampler = Sampler(sha="a3f1c2...", database=db)
     >>> # Suggest the next best formulation to test in the lab
     >>> next_form = sampler.get_next_sample(use_ucb=True, kappa=2.0)
     >>> print(f"Suggested Protein: {next_form.protein.name}")
@@ -36,6 +36,7 @@ Version:
 """
 
 import os
+import tempfile
 from typing import Dict, List, Union
 
 import numpy as np
@@ -45,7 +46,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.managers.asset_manager import AssetError, AssetManager
+    from src.managers.version_manager import VersionManager
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor
@@ -74,7 +75,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.managers.asset_manager import AssetError, AssetManager
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
@@ -99,8 +100,8 @@ class Sampler:
             lifecycle and historical data retrieval.
         ing_ctrl (IngredientController): Logic layer for looking up specific
             biochemical properties of ingredients.
-        asset_ctrl (AssetManager): Manager for loading and verifying `.visq`
-            model packages from the assets directory.
+        version_manager (VersionManager): Content-addressed repository used to
+            retrieve committed `.visq` model snapshots by SHA-256 digest.
         predictor (Predictor): The inference engine used to estimate viscosity
             and prediction uncertainty.
         constraints (Constraints): Definition of the search space, including
@@ -119,44 +120,54 @@ class Sampler:
 
     def __init__(
         self,
-        asset_name: str,
+        sha: str,
         database: Database,
+        repo_dir: str = None,
         constraints: Constraints = None,
         seed: int = None,
     ):
         """Initializes the Sampler with model assets and constrained design space.
 
         The initialization process performs several critical setup steps:
-        - Asset Loading
+        - Snapshot Retrieval: Resolves the committed `.visq` model snapshot
+          from the VersionManager by its SHA-256 digest and extracts it into
+          a temporary directory for the Predictor to load.
         - Constraint Resolution
         - Physical Capping
-        - -Warm Starting
+        - Warm Starting
 
         Args:
-            asset_name: The name of the predictive model asset to load.
+            sha: The SHA-256 hex digest identifying the committed model snapshot
+                to load from the version repository.
             database: An active Database connection for record lookups.
+            repo_dir: Optional path to the version repository root. If None,
+                defaults to a ``repo/`` directory two levels above this file.
             constraints: Optional pre-defined Constraints. If None,
                 constraints are derived from database history.
             seed: Optional integer seed for reproducibility in stochastic
                 sampling operations.
 
         Raises:
-            AssetError: If the specified `asset_name` cannot be found or is
-                incompatible with the required `.visq` format.
+            KeyError: If the specified `sha` cannot be found in the version
+                repository.
+            FileNotFoundError: If the snapshot binary is missing on disk despite
+                a valid index entry.
         """
         self.database = database
         self.form_ctrl = FormulationController(db=database)
         self.ing_ctrl = IngredientController(db=database)
 
-        # Load model asset
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
-        assets_dir = os.path.join(project_root, "assets")
-        self.asset_ctrl = AssetManager(assets_dir=assets_dir)
-        if not self.asset_ctrl.asset_exists(asset_name, [".visq"]):
-            raise AssetError(f"Asset `{asset_name}` not found.")
-        asset_zip = self.asset_ctrl.get_asset_path(asset_name, [".visq"])
-        self.predictor = Predictor(zip_path=asset_zip)
+        # Resolve version repository path
+        if repo_dir is None:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
+            repo_dir = os.path.join(project_root, "repo")
+
+        # Load model snapshot from version repository
+        self.version_manager = VersionManager(repo_dir=repo_dir)
+        tmp_dir = tempfile.mkdtemp(prefix="visqai_sampler_")
+        asset_path = self.version_manager.get(sha, tmp_dir)
+        self.predictor = Predictor(zip_path=str(asset_path))
 
         # Configure constraints
         if constraints is None:

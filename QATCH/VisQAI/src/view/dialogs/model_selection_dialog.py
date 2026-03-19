@@ -21,12 +21,14 @@ Version:
 
 import json
 import os
+import shutil
 from datetime import datetime
 
 from PyQt5.QtCore import QDir, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
     QDialog,
+    QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -193,6 +195,10 @@ class ModelSelectionDialog(QDialog):
         self.delete_btn.setProperty("class", "danger")
         self.delete_btn.setCursor(Qt.PointingHandCursor)
 
+        # Import action
+        self.import_btn = QPushButton("Import Model")
+        self.import_btn.setCursor(Qt.PointingHandCursor)
+
         # Dismiss action
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setProperty("class", "ghost")
@@ -217,6 +223,7 @@ class ModelSelectionDialog(QDialog):
         footer.addWidget(self.view_details_btn)
         footer.addWidget(self.rename_btn)
         footer.addWidget(self.pin_btn)
+        footer.addWidget(self.import_btn)
         footer.addStretch()
         footer.addWidget(self.delete_btn)
         footer.addWidget(self.cancel_btn)
@@ -238,10 +245,13 @@ class ModelSelectionDialog(QDialog):
         self.pinned_list.itemDoubleClicked.connect(self.accept)
         self.recent_list.itemDoubleClicked.connect(self.accept)
         self.select_btn.clicked.connect(self.accept)
+        self.import_btn.clicked.connect(self.import_model)
         self.cancel_btn.clicked.connect(self.reject)
 
     def populate_models(self):
         """Scan the models directory and repopulate the pinned and recent lists."""
+        self.pinned_models = []
+        self.pinned_names = {}
         self.all_models = self.scan_model_directory()
 
         # Sort by modification time (most recent first)
@@ -500,6 +510,64 @@ class ModelSelectionDialog(QDialog):
                 self.selected_model = model["filepath"]
                 self.fileSelected.emit(self.selected_model)
                 self.accept()
+                break
+
+    def import_model(self):
+        """Open a file dialog to import a .visq model into the models directory.
+
+        Copies the selected file into :attr:`models_directory`, commits it to
+        the :class:`VersionManager` so it is immediately tracked, then
+        refreshes the model lists. Shows an appropriate warning if the file
+        already exists or if the copy fails.
+        """
+        fname, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import VisQ.AI Model",
+            "",
+            "VisQAI Models (*.visq)",
+        )
+        if not fname:
+            return
+
+        filename = os.path.basename(fname)
+        dest_path = os.path.join(self.models_directory, filename)
+
+        if os.path.exists(dest_path):
+            QMessageBox.warning(
+                self,
+                "Model Already Exists",
+                f'A model named "{filename}" already exists in the models directory.',
+            )
+            return
+
+        try:
+            shutil.copy2(fname, dest_path)
+        except Exception as e:
+            Log.e(TAG, f"Failed to import model {filename}: {e}")
+            QMessageBox.warning(self, "Import Failed", f"Could not import model:\n{e}")
+            return
+
+        # Register the new file with VersionManager so it is immediately tracked
+        try:
+            mvc = VersionManager(self.models_directory, retention=255)
+            mvc.commit(dest_path)
+        except Exception as e:
+            Log.w(
+                TAG,
+                f"Imported model {filename} but failed to register in version repo: {e}",
+            )
+
+        self.populate_models()
+
+        # Auto-select the just-imported model
+        for i in range(self.recent_list.count()):
+            item = self.recent_list.item(i)
+            if item.text().splitlines()[0].split("\t")[0].strip() in (
+                filename,
+                os.path.splitext(filename)[0],
+            ):
+                self.recent_list.setCurrentRow(i)
+                self.on_model_selected(item=self.recent_list.currentItem())
                 break
 
     def toggle_pin(self):
@@ -845,8 +913,9 @@ class ModelSelectionDialog(QDialog):
         if hasattr(self, "details_win"):
             self.details_win.close()
 
-        self.details_win = QWidget()
+        self.details_win = QDialog(self)
         self.details_win.setObjectName("modelDetailsWin")
+        self.details_win.setWindowFlags(self.details_win.windowFlags() | Qt.Window)
         details_layout = QVBoxLayout()
         self.details_win.setLayout(details_layout)
 

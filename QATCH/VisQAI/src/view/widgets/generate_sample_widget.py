@@ -617,9 +617,11 @@ class GenerateSampleWidget(QtWidgets.QFrame):
                 }
             )
 
-        model_file = self.model_combo.currentText()
+        model_path = (
+            self.model_combo.currentData()
+        )  # full path (already stored as item data)
         self.generate_requested.emit(
-            self.spin_samples.value(), model_file, constraints_data
+            self.spin_samples.value(), model_path, constraints_data
         )
 
     def close_widget(self):
