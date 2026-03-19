@@ -49,10 +49,10 @@ try:
 
 except (ImportError, ModuleNotFoundError):
     TAG = "[ImportWorker]"
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.io.parser import Parser
+    from QATCH.common.logger import Logger as Log
 
 
 class ImportWorker(QThread):
@@ -112,9 +112,7 @@ class ImportWorker(QThread):
             total_files = len(xml_files_to_process)
 
             if total_files == 0:
-                self.import_error.emit(
-                    "No XML files found in the selected directories."
-                )
+                self.import_error.emit("No XML files found in the selected directories.")
                 return
 
             database = Database(parse_file_key=True)
@@ -135,39 +133,28 @@ class ImportWorker(QThread):
                     for formulation in parsed_forms:
                         if not self._is_running:
                             break
-                        if (
-                            hasattr(formulation, "missing_fields")
-                            and formulation.missing_fields
-                        ):
+                        if hasattr(formulation, "missing_fields") and formulation.missing_fields:
                             missing_str = ", ".join(formulation.missing_fields)
-                            self.status_changed.emit(
-                                f"Warning: {filename} missing {missing_str}"
-                            )
+                            self.status_changed.emit(f"Warning: {filename} missing {missing_str}")
 
                         # Database Sync Logic
                         signature = formulation.signature
                         final_formulation = None
 
                         if signature:
-                            existing_form = controller.get_formulation_by_signature(
-                                signature
-                            )
+                            existing_form = controller.get_formulation_by_signature(signature)
 
                             if existing_form:
                                 if existing_form != formulation:
-                                    formulation.icl = getattr(
-                                        existing_form, "icl", True
-                                    )
+                                    formulation.icl = getattr(existing_form, "icl", True)
                                     formulation.last_model = getattr(
                                         existing_form, "last_model", None
                                     )
 
                                     try:
                                         # Update the formulation in the database
-                                        final_formulation = (
-                                            controller.update_formulation(
-                                                existing_form.id, formulation
-                                            )
+                                        final_formulation = controller.update_formulation(
+                                            existing_form.id, formulation
                                         )
                                     except Exception as e:
                                         Log.e(
@@ -180,9 +167,7 @@ class ImportWorker(QThread):
 
                                 # Attach any missing fields for UI notification
                                 if hasattr(formulation, "missing_fields"):
-                                    final_formulation.missing_fields = (
-                                        formulation.missing_fields
-                                    )
+                                    final_formulation.missing_fields = formulation.missing_fields
                             else:
                                 success = controller.add_formulation(formulation)
                                 if success:
@@ -201,9 +186,7 @@ class ImportWorker(QThread):
                 self.import_finished.emit(imported_data)
 
         except ImportError as e:
-            self.import_error.emit(
-                f"Dependency Import Error: {e}. Check project structure."
-            )
+            self.import_error.emit(f"Dependency Import Error: {e}. Check project structure.")
         except Exception as e:
             self.import_error.emit(f"Error during import: {str(e)}")
         finally:

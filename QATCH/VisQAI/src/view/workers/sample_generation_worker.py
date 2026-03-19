@@ -46,11 +46,11 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[SampleGenerationWorker]"
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.processors.sampler import Sampler
     from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.common.logger import Logger as Log
 
 
 class SampleGenerationWorker(QtCore.QThread):
@@ -180,9 +180,7 @@ class SampleGenerationWorker(QtCore.QThread):
                 elif feature_key in Constraints._NUMERIC:
                     v = float(values)
                     if cond == ">":
-                        constraints.add_range(
-                            feature=feature_key, low=v + 0.001, high=10000.0
-                        )
+                        constraints.add_range(feature=feature_key, low=v + 0.001, high=10000.0)
                     elif cond == ">=":
                         constraints.add_range(feature=feature_key, low=v, high=10000.0)
                     elif cond == "=":
@@ -196,9 +194,7 @@ class SampleGenerationWorker(QtCore.QThread):
                     elif cond == "!=":
                         low_range = (0.0, max(0.0, v - 0.001))
                         high_range = (v + 0.001, 10000.0)
-                        if (high_range[1] - high_range[0]) >= (
-                            low_range[1] - low_range[0]
-                        ):
+                        if (high_range[1] - high_range[0]) >= (low_range[1] - low_range[0]):
                             constraints.add_range(
                                 feature=feature_key,
                                 low=high_range[0],
@@ -211,9 +207,7 @@ class SampleGenerationWorker(QtCore.QThread):
 
             self.progress_update.emit(5, "Initializing prediction engine...")
             asset_name = self.model_file.replace(".visq", "")
-            sampler = Sampler(
-                asset_name=asset_name, database=db, constraints=constraints
-            )
+            sampler = Sampler(asset_name=asset_name, database=db, constraints=constraints)
 
             generated_cards_data = []
             for i in range(self.num_samples):

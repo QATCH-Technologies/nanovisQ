@@ -97,9 +97,7 @@ class PlaceholderWidget(QtWidgets.QWidget):
             )
 
         layout.addWidget(self.lbl_icon)
-        self.lbl_text = QtWidgets.QLabel(
-            "No data yet.\nClick the + button to add new data."
-        )
+        self.lbl_text = QtWidgets.QLabel("No data yet.\nClick the + button to add new data.")
         self.lbl_text.setObjectName("placeholderText")
         self.lbl_text.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         self.lbl_text.setWordWrap(True)
@@ -120,9 +118,7 @@ class PlaceholderWidget(QtWidgets.QWidget):
                 must not be null.
         """
         painter = QtGui.QPainter(pixmap)
-        painter.setCompositionMode(
-            QtGui.QPainter.CompositionMode.CompositionMode_SourceIn
-        )
+        painter.setCompositionMode(QtGui.QPainter.CompositionMode.CompositionMode_SourceIn)
         painter.fillRect(pixmap.rect(), QtGui.QColor("#4EC4EB"))  # Cyan medium
         painter.end()
 

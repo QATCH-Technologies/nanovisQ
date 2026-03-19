@@ -23,9 +23,9 @@ Version:
 
 import os
 
+from PyQt5 import QtCore
 import numpy as np
 import pandas as pd
-from PyQt5 import QtCore
 
 try:
     TAG = "[OptimizationWorker (HEADLESS)]"
@@ -56,14 +56,14 @@ try:
     from src.view.architecture import Architecture
 except (ModuleNotFoundError, ImportError):
     TAG = "[OptimizationWorker]"
-    from QATCH.common.architecture import Architecture
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.formulation import ViscosityProfile
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.processors.optimizer import Optimizer
     from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
 
 
 class OptimizationWorker(QtCore.QThread):
@@ -228,9 +228,7 @@ class OptimizationWorker(QtCore.QThread):
 
             # Load model
             self.progress_update.emit(15, "Loading prediction model...")
-            assets_dir = os.path.join(
-                Architecture.get_path(), "QATCH", "VisQAI", "assets"
-            )
+            assets_dir = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
             asset_zip = os.path.join(assets_dir, self.model_file)
             if not os.path.isfile(asset_zip):
                 raise FileNotFoundError(
@@ -246,9 +244,7 @@ class OptimizationWorker(QtCore.QThread):
                 shear_rates=shear_rates,
                 viscosities=target_viscs,
             )
-            self.progress_update.emit(
-                25, "Starting differential evolution optimizer..."
-            )
+            self.progress_update.emit(25, "Starting differential evolution optimizer...")
 
             def _progress_cb(status):
                 if not self._is_running:
@@ -310,9 +306,7 @@ class OptimizationWorker(QtCore.QThread):
                     except (TypeError, ValueError):
                         estimated_visc.append(float("nan"))
             else:
-                estimated_visc = [
-                    float(v) for v in np.asarray(pred_raw, dtype=float).flatten()
-                ]
+                estimated_visc = [float(v) for v in np.asarray(pred_raw, dtype=float).flatten()]
             ingredients_map = {}
             attr_map = {
                 "protein": "Protein",

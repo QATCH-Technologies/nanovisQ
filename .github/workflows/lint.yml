@@ -1,0 +1,139 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**.py"
+      - "requirements-dev.txt"
+      - "setup.cfg"
+      - "pyproject.toml"
+      - ".github/workflows/lint.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**.py"
+      - "setup.cfg"
+      - "pyproject.toml"
+
+jobs:
+  black:
+    name: Black (formatting)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip (black)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-black-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: lint-black-
+
+      - name: Install Black
+        run: pip install black==24.4.2
+
+      - name: Run Black check
+        run: black --check --diff .
+  isort:
+    name: isort (import order)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip (isort)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-isort-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: lint-isort-
+
+      - name: Install isort
+        run: pip install isort==5.13.2
+
+      - name: Run isort check
+        run: isort --check-only --diff .
+  flake8:
+    name: Flake8 (linting)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # needed to get full git history for diff
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip (flake8)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-flake8-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: lint-flake8-
+
+      - name: Install Flake8 + plugins
+        run: |
+          pip install \
+            flake8==7.1.0 \
+            flake8-bugbear==24.4.26 \
+            flake8-comprehensions==3.14.0 \
+            flake8-simplify==0.21.0 \
+            pep8-naming==0.14.1
+
+      - name: Get changed Python files
+        id: changed
+        run: |
+          git diff --name-only --diff-filter=ACMRT origin/${{ github.base_ref || 'main' }}...HEAD \
+            | grep '\.py$' \
+            | tr '\n' ' ' > changed_files.txt
+          echo "files=$(cat changed_files.txt)" >> $GITHUB_OUTPUT
+
+      - name: Run Flake8 on changed files only
+        if: steps.changed.outputs.files != ''
+        run: flake8 ${{ steps.changed.outputs.files }}
+  mypy:
+    name: mypy (type checking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip (mypy + stubs)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: lint-mypy-${{ hashFiles('requirements-dev.txt') }}
+          restore-keys: lint-mypy-
+
+      - name: Install mypy + stubs only
+        run: |
+          pip install \
+            mypy==1.10.0 \
+            mypy-extensions \
+            types-requests==2.32.0 \
+            types-PyYAML==6.0.12 \
+            pandas-stubs==2.2.0 \
+            types-tqdm==4.66.0 \
+            types-Pillow==10.2.0 \
+            types-pymysql==1.1.0 \
+            numpy==2.0.2 \
+            pandas==2.3.2 \
+            scipy==1.16.2 \
+            cryptography \
+            rapidfuzz \
+            shapely
+
+      - name: Run mypy
+        run: mypy .

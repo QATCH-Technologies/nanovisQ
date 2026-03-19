@@ -121,8 +121,7 @@ class StyleLoader:
 
         if not qss_path.exists():
             raise FileNotFoundError(
-                f"QSS file not found: {qss_path}\n"
-                f"Expected location: {qss_path.absolute()}"
+                f"QSS file not found: {qss_path}\n" f"Expected location: {qss_path.absolute()}"
             )
 
         with open(qss_path, "r", encoding="utf-8") as f:

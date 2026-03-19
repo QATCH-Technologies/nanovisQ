@@ -318,9 +318,7 @@ class QModelV6YOLO_DataProcessor:
         return img
 
     @classmethod
-    def generate_channel_det(
-        cls, df: pd.DataFrame, img_w: int, img_h: int
-    ) -> np.ndarray:
+    def generate_channel_det(cls, df: pd.DataFrame, img_w: int, img_h: int) -> np.ndarray:
         """
         Generates the visualization input for the YOLO Detection Model.
 

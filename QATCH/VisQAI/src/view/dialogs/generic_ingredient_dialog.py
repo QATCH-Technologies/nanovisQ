@@ -21,13 +21,7 @@ Version:
 from PyQt5 import QtWidgets
 
 try:
-    from src.models.ingredient import (
-        Excipient,
-        Ingredient,
-        Salt,
-        Stabilizer,
-        Surfactant,
-    )
+    from src.models.ingredient import Excipient, Ingredient, Salt, Stabilizer, Surfactant
 except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import (
         Excipient,
@@ -77,9 +71,7 @@ class GenericIngredientDialog(QtWidgets.QDialog):
         is_edit = existing_ingredient is not None
         self.result_ingredient = None
 
-        self.setWindowTitle(
-            f"Edit {ingredient_type}" if is_edit else f"Add New {ingredient_type}"
-        )
+        self.setWindowTitle(f"Edit {ingredient_type}" if is_edit else f"Add New {ingredient_type}")
         self.resize(350, 150)
         self.setModal(True)
 
@@ -224,13 +216,9 @@ class GenericIngredientDialog(QtWidgets.QDialog):
             return
 
         try:
-            if self.existing_ingredient and isinstance(
-                self.existing_ingredient, Ingredient
-            ):
+            if self.existing_ingredient and isinstance(self.existing_ingredient, Ingredient):
                 self.existing_ingredient.name = name
-                self.controller.update(
-                    self.existing_ingredient.id, self.existing_ingredient
-                )
+                self.controller.update(self.existing_ingredient.id, self.existing_ingredient)
                 self.result_ingredient = self.existing_ingredient
                 print(self.controller.get_all_ingredients())
             else:

@@ -1,6 +1,6 @@
 import ctypes
-import os
 from enum import Enum
+import os
 from time import localtime, strftime
 
 from QATCH.common.architecture import Architecture, OSType
@@ -44,8 +44,7 @@ class Constants:
     app_title = "QATCH nanovisQ Real-Time GUI"
     app_version = "v2.6b70"
     app_date = "2026-03-03"
-    app_sources = ["Calibration Qatch Q-1 Device",
-                   "Measurement Qatch Q-1 Device"]
+    app_sources = ["Calibration Qatch Q-1 Device", "Measurement Qatch Q-1 Device"]
     app_publisher = "QATCH"
     app_name = "nanovisQ"
     app_encoding = "utf-8"
@@ -54,9 +53,7 @@ class Constants:
     # RECOMMENDED firmware #
     ########################
     best_fw_version = app_version  # may specify an exact version if needed
-    do_legacy_updates = (
-        False  # only use on FW v2.5b23 or older; will break newer devices!
-    )
+    do_legacy_updates = False  # only use on FW v2.5b23 or older; will break newer devices!
 
     #################
     # FEATURE FLAGS #
@@ -238,23 +235,16 @@ class Constants:
     )
     csv_calibration_export_path = os.path.join(local_app_data_path, "config")
     user_profiles_path = os.path.join(local_app_data_path, "profiles", "users")
-    run_profiles_path = os.path.join(
-        local_app_data_path, "profiles", "runs"
-    )  # future use
+    run_profiles_path = os.path.join(local_app_data_path, "profiles", "runs")  # future use
     query_info_recall_path = os.path.join(local_app_data_path, "recall.xml")
-    user_constants_path = os.path.join(
-        local_app_data_path, "settings", "userConstants.py"
-    )
-    auto_sign_key_path = os.path.join(
-        local_app_data_path, "tokens", "auto_sign_key.pem"
-    )
+    user_constants_path = os.path.join(local_app_data_path, "settings", "userConstants.py")
+    auto_sign_key_path = os.path.join(local_app_data_path, "tokens", "auto_sign_key.pem")
     license_cache_path = os.path.join(local_app_data_path, "license_cache")
     invalidChars = "\\/:*?\"'<>|"
 
     select_tag_prompt = "-- Select Tag --"
     subfolder_field = f"/ (Subfolder)"
-    valid_tags = ["Username", "Initials", "Device",
-                  "Runname", "Date", "Time", "Port"]
+    valid_tags = ["Username", "Initials", "Device", "Runname", "Date", "Time", "Port"]
     path_delimiters = ["_", "-", " "]
     date_formats = ["YYYY-MM-DD", "DD-MM-YYYY", "MM-DD-YYYY"]
     time_formats = ["HH:mm:ss", "hh:mm:ss A", "HH:mm", "hh:mm A"]
@@ -316,9 +306,7 @@ class Constants:
     new_files_path = csv_export_path + slash + "new_files.txt"
 
     # Log file for storing the output of the TEC temperature controller
-    tec_log_path = (
-        csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
-    )
+    tec_log_path = csv_export_path + slash + tbd_active_device_name_path + slash + "output_tec.csv"
 
     ##########################
     # CALIBRATION parameters #
@@ -363,8 +351,7 @@ class Constants:
     ######################
     # MODEL # parameters #
     ######################
-    list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
+    list_predict_models = ["ModelData", "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
@@ -466,13 +453,11 @@ class Constants:
         try:
             # pull in lookup table from resources
             # prefer working resource path, if exists
-            working_resource_path = os.path.join(
-                os.getcwd(), "QATCH/resources/")
+            working_resource_path = os.path.join(os.getcwd(), "QATCH/resources/")
             # bundled_resource_path = os.path.join(Architecture.get_path(), "QATCH/resources/") # otherwise, use bundled resource path
             # if os.path.exists(working_resource_path) else bundled_resource_path
             resource_path = working_resource_path
-            batch_params_file = os.path.join(
-                resource_path, "lookup_batch_params.csv")
+            batch_params_file = os.path.join(resource_path, "lookup_batch_params.csv")
             detected_delimeter = "\t"
             with open(batch_params_file, "r") as f:
                 first_line = f.readline()
@@ -520,9 +505,7 @@ class Constants:
         # if given 'param' ALL, return entire list of params for 'batch'
         if param == "ALL":
             if batch_in_csv_file:
-                idx_of_batch = np.where(batches == batch_upper)[
-                    0
-                ]  # batches.index(batch)
+                idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
                 all_params = data[idx_of_batch[0]]
                 return dict(zip(params_orig_case, all_params))
             else:
@@ -536,9 +519,7 @@ class Constants:
         # print(f"batch_in_csv_file: {batch_in_csv_file}")
 
         # param does not exist, anywhere
-        if param_in_py_file == False and (
-            param_in_csv_file == False or batch_in_csv_file == False
-        ):
+        if param_in_py_file == False and (param_in_csv_file == False or batch_in_csv_file == False):
             default_val = 0  # getattr(Constants, param)
             Log.e(
                 f"get_batch_param(): PARAM '{param}' is not found (using {default_val}). Please specify a default value in Constants.py."
@@ -546,9 +527,7 @@ class Constants:
             return str(default_val)
 
         # param only exists in Constants.py
-        if param_in_py_file == True and (
-            param_in_csv_file == False or batch_in_csv_file == False
-        ):
+        if param_in_py_file == True and (param_in_csv_file == False or batch_in_csv_file == False):
             default_val = getattr(Constants, param)
             Log.w(
                 f"get_batch_param(): PARAM '{param}' is not found for BATCH '{batch}' (using {default_val}). Please add the batch/param to lookup_BATCH#.csv."
@@ -556,10 +535,8 @@ class Constants:
             return str(default_val)
 
         # batch and param exists in lookup_BATCH, so return the lookup pair
-        idx_of_param = np.where(params == param_upper)[
-            0]  # params.index(param)
-        idx_of_batch = np.where(batches == batch_upper)[
-            0]  # batches.index(batch)
+        idx_of_param = np.where(params == param_upper)[0]  # params.index(param)
+        idx_of_batch = np.where(batches == batch_upper)[0]  # batches.index(batch)
         found_param = data[idx_of_batch[0], idx_of_param[0]]
 
         # check for dups and report the warning if so

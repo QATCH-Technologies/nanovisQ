@@ -9,16 +9,16 @@ Date: 2025-08-27
 Version: 1.1
 """
 
-import sqlite3
-import json
-import shutil
-from typing import Dict, List, Optional, Tuple, Callable, Any, Union
-from pathlib import Path
-from datetime import datetime
-import hashlib
-import traceback
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
+import hashlib
+import json
+from pathlib import Path
+import shutil
+import sqlite3
+import traceback
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 
 class MigrationStatus(Enum):
@@ -34,6 +34,7 @@ class MigrationStatus(Enum):
         FAILED (str): Migration encountered an error and did not complete.
         ROLLED_BACK (str): Migration changes were reverted after failure or manual rollback.
     """
+
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
@@ -76,7 +77,11 @@ class MigrationVersion:
         Returns:
             bool: True if this version is less than ``other``, False otherwise.
         """
-        return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
+        return (self.major, self.minor, self.patch) < (
+            other.major,
+            other.minor,
+            other.patch,
+        )
 
     def __gt__(self, other) -> bool:
         """Check if this version is greater than another.
@@ -87,7 +92,11 @@ class MigrationVersion:
         Returns:
             bool: True if this version is greater than ``other``, False otherwise.
         """
-        return (self.major, self.minor, self.patch) > (other.major, other.minor, other.patch)
+        return (self.major, self.minor, self.patch) > (
+            other.major,
+            other.minor,
+            other.patch,
+        )
 
     def __eq__(self, other) -> bool:
         """Check if this version is equal to another.
@@ -98,7 +107,11 @@ class MigrationVersion:
         Returns:
             bool: True if the versions are equal, False otherwise.
         """
-        return (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)
+        return (self.major, self.minor, self.patch) == (
+            other.major,
+            other.minor,
+            other.patch,
+        )
 
     def __le__(self, other) -> bool:
         """Check if this version is less than or equal to another.
@@ -133,7 +146,7 @@ class MigrationVersion:
         return hash((self.major, self.minor, self.patch))
 
     @classmethod
-    def from_string(cls, version_str: str) -> 'MigrationVersion':
+    def from_string(cls, version_str: str) -> "MigrationVersion":
         """Create a ``MigrationVersion`` from a string.
 
         The string should follow semantic versioning format:
@@ -154,11 +167,11 @@ class MigrationVersion:
             >>> MigrationVersion.from_string("2.0")
             MigrationVersion(major=2, minor=0, patch=0)
         """
-        parts = version_str.split('.')
+        parts = version_str.split(".")
         return cls(
             major=int(parts[0]),
             minor=int(parts[1]) if len(parts) > 1 else 0,
-            patch=int(parts[2]) if len(parts) > 2 else 0
+            patch=int(parts[2]) if len(parts) > 2 else 0,
         )
 
 
@@ -250,9 +263,15 @@ class DatabaseMigrator:
     """
 
     _REQUIRED_TABLES = {
-        'ingredient', 'protein', 'buffer', 'stabilizer',
-        'surfactant', 'salt', 'formulation',
-        'formulation_component', 'viscosity_profile'
+        "ingredient",
+        "protein",
+        "buffer",
+        "stabilizer",
+        "surfactant",
+        "salt",
+        "formulation",
+        "formulation_component",
+        "viscosity_profile",
     }
 
     def __init__(self, db_path: Union[str, Path], backup_dir: Optional[Path] = None):
@@ -280,10 +299,8 @@ class DatabaseMigrator:
         self.backup_dir = backup_dir or self.db_path.parent / "backups"
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-        self.migrations: Dict[Tuple[MigrationVersion,
-                                    MigrationVersion], Migration] = {}
-        self.migration_graph: Dict[MigrationVersion,
-                                   List[MigrationVersion]] = {}
+        self.migrations: Dict[Tuple[MigrationVersion, MigrationVersion], Migration] = {}
+        self.migration_graph: Dict[MigrationVersion, List[MigrationVersion]] = {}
         self._init_migration_table()
         self._register_builtin_migrations()
 
@@ -306,7 +323,8 @@ class DatabaseMigrator:
         """
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS schema_migrations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     version TEXT NOT NULL,
@@ -316,16 +334,19 @@ class DatabaseMigrator:
                     rollback_sql TEXT,
                     error_message TEXT
                 )
-            """)
+            """
+            )
 
             # Add metadata table for version info
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS database_metadata (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -391,8 +412,7 @@ class DatabaseMigrator:
         # Build migration graph
         if migration.from_version not in self.migration_graph:
             self.migration_graph[migration.from_version] = []
-        self.migration_graph[migration.from_version].append(
-            migration.to_version)
+        self.migration_graph[migration.from_version].append(migration.to_version)
 
     def get_current_version(self) -> Optional[MigrationVersion]:
         """Retrieve the current version of the database.
@@ -423,9 +443,7 @@ class DatabaseMigrator:
 
             # Try to get version from metadata table
             try:
-                cursor.execute(
-                    "SELECT value FROM database_metadata WHERE key = 'version'"
-                )
+                cursor.execute("SELECT value FROM database_metadata WHERE key = 'version'")
                 result = cursor.fetchone()
                 if result:
                     return MigrationVersion.from_string(result[0])
@@ -452,9 +470,7 @@ class DatabaseMigrator:
             conn.close()
 
     def find_migration_path(
-        self,
-        from_version: MigrationVersion,
-        to_version: MigrationVersion
+        self, from_version: MigrationVersion, to_version: MigrationVersion
     ) -> List[Migration]:
         """Determine the optimal sequence of migrations from one version to another.
 
@@ -490,6 +506,7 @@ class DatabaseMigrator:
 
         # BFS to find path
         from collections import deque
+
         queue = deque([(from_version, [])])
         visited = {from_version}
 
@@ -500,18 +517,15 @@ class DatabaseMigrator:
                 for next_version in self.migration_graph[current_version]:
                     if next_version == to_version:
                         # Found the target
-                        migration = self.migrations[(
-                            current_version, next_version)]
+                        migration = self.migrations[(current_version, next_version)]
                         return path + [migration]
 
                     if next_version not in visited:
                         visited.add(next_version)
-                        migration = self.migrations[(
-                            current_version, next_version)]
+                        migration = self.migrations[(current_version, next_version)]
                         queue.append((next_version, path + [migration]))
 
-        raise ValueError(
-            f"No migration path found from {from_version} to {to_version}")
+        raise ValueError(f"No migration path found from {from_version} to {to_version}")
 
     def create_backup(self, suffix: str = "") -> Path:
         """Create a timestamped backup of the current database.
@@ -548,18 +562,22 @@ class DatabaseMigrator:
         shutil.copy2(self.db_path, backup_path)
 
         # Create checksum for verification
-        with open(backup_path, 'rb') as f:
+        with open(backup_path, "rb") as f:
             checksum = hashlib.md5(f.read()).hexdigest()
 
         # Store backup metadata
-        metadata_path = backup_path.with_suffix('.json')
-        with open(metadata_path, 'w') as f:
-            json.dump({
-                'original_path': str(self.db_path),
-                'backup_time': timestamp,
-                'checksum': checksum,
-                'version': str(self.get_current_version())
-            }, f, indent=2)
+        metadata_path = backup_path.with_suffix(".json")
+        with open(metadata_path, "w") as f:
+            json.dump(
+                {
+                    "original_path": str(self.db_path),
+                    "backup_time": timestamp,
+                    "checksum": checksum,
+                    "version": str(self.get_current_version()),
+                },
+                f,
+                indent=2,
+            )
 
         return backup_path
 
@@ -603,26 +621,24 @@ class DatabaseMigrator:
         # Apply autofill defaults for new fields
         if migration.autofill_defaults:
             for table_field, default_value in migration.autofill_defaults.items():
-                if '.' in table_field:
-                    table, field = table_field.split('.')
+                if "." in table_field:
+                    table, field = table_field.split(".")
                 else:
                     # Try to infer table from ALTER statements
                     for sql in migration.up_sql:
-                        if 'ALTER TABLE' in sql and f'ADD COLUMN {table_field}' in sql:
-                            table = sql.split('ALTER TABLE')[1].split()[0]
+                        if "ALTER TABLE" in sql and f"ADD COLUMN {table_field}" in sql:
+                            table = sql.split("ALTER TABLE")[1].split()[0]
                             field = table_field
                             break
                     else:
                         continue
 
-                if default_value is not None and default_value != 'CURRENT_TIMESTAMP':
+                if default_value is not None and default_value != "CURRENT_TIMESTAMP":
                     # Update existing rows with default value
                     if isinstance(default_value, str):
-                        cursor.execute(
-                            f"UPDATE {table} SET {field} = ?", (default_value,))
+                        cursor.execute(f"UPDATE {table} SET {field} = ?", (default_value,))
                     else:
-                        cursor.execute(
-                            f"UPDATE {table} SET {field} = {default_value}")
+                        cursor.execute(f"UPDATE {table} SET {field} = {default_value}")
 
         # Apply custom data transformation if provided
         if migration.data_transform:
@@ -631,14 +647,17 @@ class DatabaseMigrator:
         # Record migration
         cursor.execute(
             "INSERT INTO schema_migrations (version, status, rollback_sql) VALUES (?, ?, ?)",
-            (str(migration.to_version), MigrationStatus.COMPLETED.value,
-             json.dumps(migration.down_sql))
+            (
+                str(migration.to_version),
+                MigrationStatus.COMPLETED.value,
+                json.dumps(migration.down_sql),
+            ),
         )
 
         # Update version in metadata
         cursor.execute(
             "INSERT OR REPLACE INTO database_metadata (key, value) VALUES ('version', ?)",
-            (str(migration.to_version),)
+            (str(migration.to_version),),
         )
 
         conn.commit()
@@ -647,7 +666,7 @@ class DatabaseMigrator:
         self,
         target_version: Optional[MigrationVersion] = None,
         dry_run: bool = False,
-        create_backup: bool = True
+        create_backup: bool = True,
     ) -> Tuple[bool, List[str]]:
         """Migrate the database to a target version.
 
@@ -664,7 +683,7 @@ class DatabaseMigrator:
                 any migrations.
 
         Returns:
-            Tuple[bool, List[str]]: 
+            Tuple[bool, List[str]]:
                 - bool: True if migration succeeded (or dry-run completed), False on failure.
                 - List[str]: Log messages describing migration steps, backups, and errors.
 
@@ -710,8 +729,7 @@ class DatabaseMigrator:
 
         # Find migration path
         try:
-            migration_path = self.find_migration_path(
-                current_version, target_version)
+            migration_path = self.find_migration_path(current_version, target_version)
         except ValueError as e:
             messages.append(f"Error: {e}")
             return False, messages
@@ -722,8 +740,7 @@ class DatabaseMigrator:
 
         messages.append(f"Migration path: {len(migration_path)} steps")
         for m in migration_path:
-            messages.append(
-                f"  - {m.from_version} -> {m.to_version}: {m.description}")
+            messages.append(f"  - {m.from_version} -> {m.to_version}: {m.description}")
 
         if dry_run:
             messages.append("Dry run completed - no changes made")
@@ -741,8 +758,10 @@ class DatabaseMigrator:
             conn.execute("PRAGMA foreign_keys = ON")
 
             for i, migration in enumerate(migration_path, 1):
-                messages.append(f"Applying migration {i}/{len(migration_path)}: "
-                                f"{migration.from_version} -> {migration.to_version}")
+                messages.append(
+                    f"Applying migration {i}/{len(migration_path)}: "
+                    f"{migration.from_version} -> {migration.to_version}"
+                )
                 try:
                     self.apply_migration(migration, conn)
                     messages.append(f"Migration completed successfully")
@@ -755,15 +774,17 @@ class DatabaseMigrator:
                     cursor.execute(
                         "INSERT INTO schema_migrations (version, status, error_message) "
                         "VALUES (?, ?, ?)",
-                        (str(migration.to_version),
-                         MigrationStatus.FAILED.value, str(e))
+                        (
+                            str(migration.to_version),
+                            MigrationStatus.FAILED.value,
+                            str(e),
+                        ),
                     )
                     conn.commit()
 
                     return False, messages
 
-            messages.append(
-                f"Successfully migrated to version {target_version}")
+            messages.append(f"Successfully migrated to version {target_version}")
             return True, messages
 
         finally:
@@ -781,7 +802,7 @@ class DatabaseMigrator:
             target_version (MigrationVersion): The version to rollback to.
 
         Returns:
-            Tuple[bool, List[str]]: 
+            Tuple[bool, List[str]]:
                 - bool: True if rollback succeeded, False if an error occurred
                 or rollback is not possible.
                 - List[str]: Log messages detailing rollback steps, warnings,
@@ -814,13 +835,14 @@ class DatabaseMigrator:
         current_version = self.get_current_version()
 
         if current_version <= target_version:
-            messages.append(f"Cannot rollback: current version {current_version} "
-                            f"is not newer than target {target_version}")
+            messages.append(
+                f"Cannot rollback: current version {current_version} "
+                f"is not newer than target {target_version}"
+            )
             return False, messages
 
         # Create backup before rollback
-        backup_path = self.create_backup(
-            suffix=f"_pre_rollback_{target_version}")
+        backup_path = self.create_backup(suffix=f"_pre_rollback_{target_version}")
         messages.append(f"Backup created: {backup_path}")
 
         conn = sqlite3.connect(str(self.db_path))
@@ -832,7 +854,7 @@ class DatabaseMigrator:
                 "SELECT version, rollback_sql FROM schema_migrations "
                 "WHERE status = 'completed' AND version > ? "
                 "ORDER BY applied_at DESC",
-                (str(target_version),)
+                (str(target_version),),
             )
 
             rollbacks = cursor.fetchall()
@@ -850,18 +872,17 @@ class DatabaseMigrator:
                 # Update migration status
                 cursor.execute(
                     "UPDATE schema_migrations SET status = ? WHERE version = ?",
-                    (MigrationStatus.ROLLED_BACK.value, version)
+                    (MigrationStatus.ROLLED_BACK.value, version),
                 )
 
             # Update current version
             cursor.execute(
                 "INSERT OR REPLACE INTO database_metadata (key, value) VALUES ('version', ?)",
-                (str(target_version),)
+                (str(target_version),),
             )
 
             conn.commit()
-            messages.append(
-                f"Successfully rolled back to version {target_version}")
+            messages.append(f"Successfully rolled back to version {target_version}")
             return True, messages
 
         except Exception as e:
@@ -902,12 +923,14 @@ class DatabaseMigrator:
 
             history = []
             for row in cursor.fetchall():
-                history.append({
-                    'version': row[0],
-                    'applied_at': row[1],
-                    'status': row[2],
-                    'error_message': row[3]
-                })
+                history.append(
+                    {
+                        "version": row[0],
+                        "applied_at": row[1],
+                        "status": row[2],
+                        "error_message": row[3],
+                    }
+                )
 
             return history
 
@@ -945,9 +968,7 @@ class DatabaseMigrator:
             cursor = conn.cursor()
 
             # Check for required tables
-            cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
 
             required_tables = self._REQUIRED_TABLES
@@ -963,11 +984,13 @@ class DatabaseMigrator:
                 issues.append(f"Foreign key violations: {len(fk_errors)}")
 
             # Check for orphaned records
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT COUNT(*) FROM formulation_component fc
                 LEFT JOIN ingredient i ON fc.ingredient_id = i.id
                 WHERE i.id IS NULL
-            """)
+            """
+            )
             orphaned = cursor.fetchone()[0]
             if orphaned > 0:
                 issues.append(f"Orphaned component records: {orphaned}")
@@ -981,12 +1004,13 @@ class DatabaseMigrator:
 # Example usage
 def example_usage():
     import os
+
     try:
         from db import Database
     except (ModuleNotFoundError, ImportError):
         from QATCH.VisQAI.src.db.db import Database
 
-    db_path = os.path.join('assets', 'app.db')
+    db_path = os.path.join("assets", "app.db")
     db = Database(db_path, parse_file_key=True)
     temp_path = db.create_temp_decrypt()
     migrator = DatabaseMigrator(temp_path)
@@ -997,31 +1021,23 @@ def example_usage():
     new_migration = Migration(
         from_version=current,
         to_version=MigrationVersion(1, 1, 0),
-        up_sql=[
-            "ALTER TABLE users ADD COLUMN email TEXT;"
-        ],
-        down_sql=[
-            "ALTER TABLE users DROP COLUMN email;"
-        ],
+        up_sql=["ALTER TABLE users ADD COLUMN email TEXT;"],
+        down_sql=["ALTER TABLE users DROP COLUMN email;"],
         data_transform=lambda conn: conn.execute(
             "UPDATE users SET email = 'example@example.com' WHERE email IS NULL;"
         ),
-        autofill_defaults={
-            "users.email": "example@example.com"
-        },
-        description="Add email column to users table with default values"
+        autofill_defaults={"users.email": "example@example.com"},
+        description="Add email column to users table with default values",
     )
     migrator.register_migration(new_migration)
     # Try a dry-run
-    success, messages = migrator.migrate(
-        target_version=MigrationVersion(1, 1, 0), dry_run=True)
+    success, messages = migrator.migrate(target_version=MigrationVersion(1, 1, 0), dry_run=True)
     for msg in messages:
         print(msg)
 
     # Perform actual migration
     success, messages = migrator.migrate(
-        target_version=MigrationVersion(1, 1, 0),
-        create_backup=True
+        target_version=MigrationVersion(1, 1, 0), create_backup=True
     )
     for msg in messages:
         print(msg)

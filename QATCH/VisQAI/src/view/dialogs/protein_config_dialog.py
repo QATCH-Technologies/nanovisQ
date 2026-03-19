@@ -155,9 +155,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
 
         layout.addLayout(form_layout)
 
-        self.spin_mw.valueChanged.connect(
-            lambda v: self._on_numeric_changed(self.spin_mw, v)
-        )
+        self.spin_mw.valueChanged.connect(lambda v: self._on_numeric_changed(self.spin_mw, v))
         self.spin_pi_mean.valueChanged.connect(
             lambda v: self._on_numeric_changed(self.spin_pi_mean, v)
         )
@@ -272,9 +270,7 @@ class ProteinConfigDialog(QtWidgets.QDialog):
             if not self.has_incomplete_fields():
                 self.lbl_incomplete.setVisible(False)
 
-    def _on_numeric_changed(
-        self, widget: QtWidgets.QDoubleSpinBox, value: float
-    ) -> None:
+    def _on_numeric_changed(self, widget: QtWidgets.QDoubleSpinBox, value: float) -> None:
         """Validates numeric input as the user types.
 
         Args:

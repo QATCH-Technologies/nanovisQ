@@ -1,21 +1,23 @@
-import os
-import sys
-import hashlib
-import send2trash
 import datetime as dt
-from time import sleep
-from xml.dom import minidom
 from enum import Enum
+import hashlib
+import os
+import re
+import sys
+from time import sleep
+from typing import Union
+from xml.dom import minidom
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QDateTime
-from QATCH.common.logger import Logger as Log
+import send2trash
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.fileManager import FileManager
 from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants
 from QATCH.ui.popUp import PopUp
-from typing import Union
-import re
 
 TAG = "[UserProfiles]"
 
@@ -39,11 +41,11 @@ class UserConstants:
 
     try:
         if os.path.isfile(Constants.user_constants_path):
-            with open(Constants.user_constants_path, 'r') as uc:
+            with open(Constants.user_constants_path, "r") as uc:
                 uc_file_contents = uc.read()
             uc_settings = {}
             exec(uc_file_contents, uc_settings)
-            REQ_ADMIN_UPDATES = uc_settings['REQ_ADMIN_UPDATES']
+            REQ_ADMIN_UPDATES = uc_settings["REQ_ADMIN_UPDATES"]
     except:
         Log.e("Failed to import user constants file. Using defaults.")
 
@@ -72,8 +74,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                     newitem = QtWidgets.QTableWidgetItem(item)
                     newitem.setFlags(QtCore.Qt.ItemIsEnabled)
                     if error_cell:
-                        newitem.setForeground(
-                            QtGui.QBrush(QtGui.QColor(255, 0, 0)))
+                        newitem.setForeground(QtGui.QBrush(QtGui.QColor(255, 0, 0)))
                     self.setItem(m, n, newitem)
             self.setHorizontalHeaderLabels(horHeaders)
             header = self.horizontalHeader()
@@ -93,10 +94,11 @@ class UserProfilesManager(QtWidgets.QWidget):
         screen = QtWidgets.QDesktopWidget().availableGeometry()
         pct_width = 50
         pct_height = 50
-        self.resize(int(screen.width()*pct_width/100),
-                    int(screen.height()*pct_height/100))
-        self.move(int(screen.width()*(100-pct_width)/200),
-                  int(screen.height()*(100-pct_width)/200))
+        self.resize(int(screen.width() * pct_width / 100), int(screen.height() * pct_height / 100))
+        self.move(
+            int(screen.width() * (100 - pct_width) / 200),
+            int(screen.height() * (100 - pct_width) / 200),
+        )
 
         self.layout = QtWidgets.QHBoxLayout(self)
 
@@ -145,7 +147,8 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         self.developerLayout = QtWidgets.QHBoxLayout()
         self.developerModeChk = QtWidgets.QCheckBox(
-            "Enable Developer Mode (stores data unencrypted) - NOT compliant with FDA 21 CFR Part 11")
+            "Enable Developer Mode (stores data unencrypted) - NOT compliant with FDA 21 CFR Part 11"
+        )
         self.developerExpires = QtWidgets.QLabel("")
 
         enabled, error, expires = UserProfiles.checkDevMode()
@@ -167,10 +170,10 @@ class UserProfilesManager(QtWidgets.QWidget):
         self.developerLayout.addStretch()
 
         self.reqAdminUpd_chkbox = QtWidgets.QCheckBox(
-            "Require Administrative role to install SW/FW updates")
+            "Require Administrative role to install SW/FW updates"
+        )
         self.reqAdminUpd_chkbox.setChecked(UserConstants.REQ_ADMIN_UPDATES)
-        self.reqAdminUpd_chkbox.stateChanged.connect(
-            self.toggleReqAdminUpdates)
+        self.reqAdminUpd_chkbox.stateChanged.connect(self.toggleReqAdminUpdates)
 
         self.sortNow.pressed.connect(self.sort_user_table)
         self.sort_user_table()  # sort once now at load
@@ -193,35 +196,43 @@ class UserProfilesManager(QtWidgets.QWidget):
         try:
             dev_path = os.path.join(Constants.local_app_data_path, ".dev_mode")
             if self.developerModeChk.isChecked():
-                with open(dev_path, 'w') as dev:
+                with open(dev_path, "w") as dev:
                     expires_at = str(
-                        (dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date())
+                        (dt.datetime.now() + dt.timedelta(days=UserConstants.DEV_EXPIRE_LEN)).date()
+                    )
                     hexify_str1 = expires_at.encode().hex()
                     hexify_str2 = Constants.app_date.encode().hex()
                     encode_key = "DEADBEEFDEADBEEFDEAD"
                     encode_str1 = bytes(
-                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str1, encode_key)]).decode()
+                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str1, encode_key)]
+                    ).decode()
                     encode_str2 = bytes(
-                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str2, encode_key)]).decode()
+                        [(ord(a) ^ ord(b)) for a, b in zip(hexify_str2, encode_key)]
+                    ).decode()
                     dev.write(encode_str1)  # expiration
-                    dev.write('\n')
+                    dev.write("\n")
                     dev.write(encode_str2)  # app_date
                     self.developerModeChk.setStyleSheet("color:green;")
-                    self.developerExpires.setStyleSheet(
-                        "QLabel {color:green;}")
+                    self.developerExpires.setStyleSheet("QLabel {color:green;}")
                     self.developerExpires.setText(f"(Expires on {expires_at})")
-                    PopUp.information(self, "Developer Mode Status", "<b>Developer Mode: ENABLED.</b><br/>" +
-                                      f"This feature will require renewal in {UserConstants.DEV_EXPIRE_LEN} days<br/>" +
-                                      ("and applies only to this build version.<br/>" if not UserConstants.DEV_PERSIST_VER else
-                                       "and it will be applied to all build versions<br/>" +
-                                       "on this PC unless you explicitly turn it off.<br/>") +
-                                      f"<i>Expires on {expires_at}</i>")
+                    PopUp.information(
+                        self,
+                        "Developer Mode Status",
+                        "<b>Developer Mode: ENABLED.</b><br/>"
+                        + f"This feature will require renewal in {UserConstants.DEV_EXPIRE_LEN} days<br/>"
+                        + (
+                            "and applies only to this build version.<br/>"
+                            if not UserConstants.DEV_PERSIST_VER
+                            else "and it will be applied to all build versions<br/>"
+                            + "on this PC unless you explicitly turn it off.<br/>"
+                        )
+                        + f"<i>Expires on {expires_at}</i>",
+                    )
             else:
                 if os.path.exists(dev_path):
                     os.remove(dev_path)
                     self.developerModeChk.setStyleSheet("color:black;")
-                    self.developerExpires.setStyleSheet(
-                        "QLabel {color:black;}")
+                    self.developerExpires.setStyleSheet("QLabel {color:black;}")
                     self.developerExpires.setText("")
                 else:
                     Log.e(f"ERROR: Cannot Delete. File not found: {dev_path}")
@@ -237,7 +248,8 @@ class UserProfilesManager(QtWidgets.QWidget):
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -246,9 +258,8 @@ class UserProfilesManager(QtWidgets.QWidget):
     def toggleReqAdminUpdates(self, arg):
         try:
             if not os.path.isfile(Constants.user_constants_path):
-                os.makedirs(os.path.split(
-                    Constants.user_constants_path)[0], exist_ok=True)
-            with open(Constants.user_constants_path, 'w') as uc:
+                os.makedirs(os.path.split(Constants.user_constants_path)[0], exist_ok=True)
+            with open(Constants.user_constants_path, "w") as uc:
                 UserConstants.REQ_ADMIN_UPDATES = self.reqAdminUpd_chkbox.isChecked()
                 uc_state = str(UserConstants.REQ_ADMIN_UPDATES)
                 uc.write(f"REQ_ADMIN_UPDATES = {uc_state}")
@@ -260,8 +271,7 @@ class UserProfilesManager(QtWidgets.QWidget):
         roles = [e.name for e in UserRoles]
         roles = roles[1:]  # skip NONE
         roles[roles.index(UserRoles.OPERATE.name)] += " (Capture & Analyze)"
-        role, ok = QtWidgets.QInputDialog().getItem(None, action,
-                                                    "Role:", roles, 0, False)
+        role, ok = QtWidgets.QInputDialog().getItem(None, action, "Role:", roles, 0, False)
         if not ok:
             return
         UserProfiles.create_new_user(UserRoles[role.split()[0]])
@@ -275,8 +285,9 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         ok = False
         while not ok:
-            initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            initials, ok = QtWidgets.QInputDialog.getText(
+                None, action, "Initials:", QtWidgets.QLineEdit.Normal
+            )
             if not ok:
                 return
             initials = initials.upper()
@@ -289,10 +300,10 @@ class UserProfilesManager(QtWidgets.QWidget):
             return
         file = os.path.join(UserProfiles.PATH, filename)
 
-        actions = ["Change Role", "Change Password",
-                   "Change Initials", "Change Name"]
-        action, ok = QtWidgets.QInputDialog().getItem(None, f"{action} {initials}",
-                                                      "Action:", actions, 0, False)
+        actions = ["Change Role", "Change Password", "Change Initials", "Change Name"]
+        action, ok = QtWidgets.QInputDialog().getItem(
+            None, f"{action} {initials}", "Action:", actions, 0, False
+        )
         if not ok:
             return
 
@@ -306,12 +317,9 @@ class UserProfilesManager(QtWidgets.QWidget):
                 role = UserRoles(int(u.getAttribute("role")))
             except:
                 role = UserRoles.INVALID
-            password = u.getAttribute("password") if u.hasAttribute(
-                "password") else "[Missing]"
-            initials = u.getAttribute("initials") if u.hasAttribute(
-                "password") else "[Missing]"
-            name = u.getAttribute("name") if u.hasAttribute(
-                "name") else "[Missing]"
+            password = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
+            initials = u.getAttribute("initials") if u.hasAttribute("password") else "[Missing]"
+            name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
             # if not u.hasAttribute("archived"):
             #     u.setAttribute('archived', 'True')
             if u.attributes["password"].value.find("X") < 0:
@@ -324,17 +332,16 @@ class UserProfilesManager(QtWidgets.QWidget):
         if action_id == 0:  # role
             if self.admin_file == UserProfiles.find(None, initials)[1]:
                 Log.e(f"Cannot change role of active ADMIN user {initials}.")
-                Log.e(
-                    f"Create another ADMIN user and change this user role using their access.")
+                Log.e(f"Create another ADMIN user and change this user role using their access.")
                 return
 
             roles = [e.name for e in UserRoles]
             roles = roles[1:]  # skip NONE
             curr_role = roles.index(role.name)
-            roles[roles.index(UserRoles.OPERATE.name)
-                  ] += " (Capture & Analyze)"
-            role, ok = QtWidgets.QInputDialog().getItem(None, action,
-                                                        "Role:", roles, curr_role, False)
+            roles[roles.index(UserRoles.OPERATE.name)] += " (Capture & Analyze)"
+            role, ok = QtWidgets.QInputDialog().getItem(
+                None, action, "Role:", roles, curr_role, False
+            )
             if not ok:
                 return
             role = UserRoles[role.split()[0]]
@@ -344,24 +351,24 @@ class UserProfilesManager(QtWidgets.QWidget):
             while not match:
                 ok = False
                 while not ok:
-                    pwd1, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                              "Password:", QtWidgets.QLineEdit.Password)
+                    pwd1, ok = QtWidgets.QInputDialog.getText(
+                        None, action, "Password:", QtWidgets.QLineEdit.Password
+                    )
                     if not ok:
                         return
                     if len(pwd1) < 8:
-                        Log.w(
-                            "Passwords must be at least 8 characters. Please try again.")
+                        Log.w("Passwords must be at least 8 characters. Please try again.")
                         ok = False
 
                 ok = False
                 while not ok:
-                    pwd2, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                              "Confirm Password:", QtWidgets.QLineEdit.Password)
+                    pwd2, ok = QtWidgets.QInputDialog.getText(
+                        None, action, "Confirm Password:", QtWidgets.QLineEdit.Password
+                    )
                     if not ok:
                         return
                     if len(pwd2) < 8:
-                        Log.w(
-                            "Passwords must be at least 8 characters. Please try again.")
+                        Log.w("Passwords must be at least 8 characters. Please try again.")
                         ok = False
 
                 match = True if pwd1 == pwd2 else False
@@ -372,9 +379,9 @@ class UserProfilesManager(QtWidgets.QWidget):
         if action_id == 2:  # initials
             ok = False
             while not ok:
-                initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                              "Initials:", QtWidgets.QLineEdit.Normal,
-                                                              initials)
+                initials, ok = QtWidgets.QInputDialog.getText(
+                    None, action, "Initials:", QtWidgets.QLineEdit.Normal, initials
+                )
                 if not ok:
                     return
                 initials = initials.upper()
@@ -385,9 +392,9 @@ class UserProfilesManager(QtWidgets.QWidget):
         if action_id == 3:  # name
             ok = False
             while not ok:
-                name, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                          "Full name:", QtWidgets.QLineEdit.Normal,
-                                                          name)
+                name, ok = QtWidgets.QInputDialog.getText(
+                    None, action, "Full name:", QtWidgets.QLineEdit.Normal, name
+                )
                 if not ok:
                     return
                 name = name.title()
@@ -410,13 +417,13 @@ class UserProfilesManager(QtWidgets.QWidget):
         hash.update(password.encode())
         signature = hash.hexdigest()
 
-        info = doc.createElement('secure_user_info')
+        info = doc.createElement("secure_user_info")
         xml.appendChild(info)
-        info.setAttribute('name', name)
-        info.setAttribute('initials', initials)
-        info.setAttribute('role', str(role.value))
-        info.setAttribute('password', password)
-        info.setAttribute('signature', signature)
+        info.setAttribute("name", name)
+        info.setAttribute("initials", initials)
+        info.setAttribute("role", str(role.value))
+        info.setAttribute("password", password)
+        info.setAttribute("signature", signature)
 
         ts_type = "modified"
         ts_val = dt.datetime.now().isoformat()
@@ -426,36 +433,43 @@ class UserProfilesManager(QtWidgets.QWidget):
         hash.update(ts_val.encode())
         signature = hash.hexdigest()
 
-        ts1 = doc.createElement('timestamp')
+        ts1 = doc.createElement("timestamp")
         xml.appendChild(ts1)
-        ts1.setAttribute('type', ts_type)
-        ts1.setAttribute('value', ts_val)
-        ts1.setAttribute('signature', signature)
+        ts1.setAttribute("type", ts_type)
+        ts1.setAttribute("value", ts_val)
+        ts1.setAttribute("signature", signature)
 
         # append new secure_user_info to xml
         try:
             with open(file, "w") as f:
-                xml_str = doc.toxml(encoding='ascii').decode(
-                    encoding='utf-8', errors='ignore')
+                xml_str = doc.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
         except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing '{ts_type}' record: {file}")
             Log.e("Error Details:", ose.strerror)
             PopUp.critical(
-                self, "Save Failed", f"Failed to save user profile changes: {ose.strerror}", ok_only=True)
+                self,
+                "Save Failed",
+                f"Failed to save user profile changes: {ose.strerror}",
+                ok_only=True,
+            )
             # continue, no return
         except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
             Log.e(f"Unicode error writing XML: {file}")
             Log.e("Error Details:", ue.reason)
             PopUp.critical(
-                self, "Save Failed", f"Unicode error writing user profile: {ue.reason}", ok_only=True)
+                self,
+                "Save Failed",
+                f"Unicode error writing user profile: {ue.reason}",
+                ok_only=True,
+            )
             # continue, no return
 
         self.update_table_data()
 
     def remove_user(self, filename: str = None):
-        """ Deletes a user given a path to the user profiles file.
+        """Deletes a user given a path to the user profiles file.
 
         If the filename is not None, administrator authentication is requested.  If an
         administrator is currently logged in, the delete action is allowed to proceed, otherwise,
@@ -474,8 +488,9 @@ class UserProfilesManager(QtWidgets.QWidget):
         if filename == None:
             ok = False
             while not ok:
-                initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                              "Initials:", QtWidgets.QLineEdit.Normal)
+                initials, ok = QtWidgets.QInputDialog.getText(
+                    None, action, "Initials:", QtWidgets.QLineEdit.Normal
+                )
                 if not ok:
                     return
                 initials = initials.upper()
@@ -490,18 +505,21 @@ class UserProfilesManager(QtWidgets.QWidget):
             if self.admin_file == filename:
                 if UserProfiles.count() > 1:
                     Log.e(
-                        f"Cannot delete the active ADMIN user {initials} when other accounts exist.")
-                    Log.e(
-                        "Create another ADMIN user and delete this user using their access.")
+                        f"Cannot delete the active ADMIN user {initials} when other accounts exist."
+                    )
+                    Log.e("Create another ADMIN user and delete this user using their access.")
                     # Log.e("If multiple admins exist: Change \"Role\" of other admins prior to deleting them.")
                     return
                 else:
-                    if PopUp.question(self, "Remove Last User Account",
-                                      "If you delete the only remaining user account, " +
-                                      "anyone will be able to access this application.\n" +
-                                      "\nWARNING: This operation cannot be undone!\n" +
-                                      "You can add new users again in the future (if desired).\n" +
-                                      "\nAre you sure you want to proceed?"):
+                    if PopUp.question(
+                        self,
+                        "Remove Last User Account",
+                        "If you delete the only remaining user account, "
+                        + "anyone will be able to access this application.\n"
+                        + "\nWARNING: This operation cannot be undone!\n"
+                        + "You can add new users again in the future (if desired).\n"
+                        + "\nAre you sure you want to proceed?",
+                    ):
                         UserProfiles.session_end()
                         name = self.parent.username.text()[6:]
                         Log.i(f"Goodbye, {name}! You have been signed out.")
@@ -512,8 +530,7 @@ class UserProfilesManager(QtWidgets.QWidget):
 
                         # Set user names to "Anonymous" if there are no users left.
                         self.parent.ui1.tool_User.setText("Anonymous")
-                        self.parent.parent.AnalyzeProc.tool_User.setText(
-                            "Anonymous")
+                        self.parent.parent.AnalyzeProc.tool_User.setText("Anonymous")
                         self.close()
                     else:
                         return
@@ -534,21 +551,30 @@ class UserProfilesManager(QtWidgets.QWidget):
         signature = hash.hexdigest()
 
         try:
-            with open(file, 'rb+') as f:
+            with open(file, "rb+") as f:
                 f.seek(-15, 2)
                 f.write(
-                    f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+                    f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode()
+                )
         except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing '{ts_type}' record: {file}")
             Log.e("Error Details:", ose.strerror)
             PopUp.critical(
-                self, "Save Failed", f"Failed to save user profile changes: {ose.strerror}", ok_only=True)
+                self,
+                "Save Failed",
+                f"Failed to save user profile changes: {ose.strerror}",
+                ok_only=True,
+            )
             # continue, no return
         except UnicodeError as ue:  # UnicodeEncodeError, UnicodeDecodeError
             Log.e(f"Unicode error writing XML: {file}")
             Log.e("Error Details:", ue.reason)
             PopUp.critical(
-                self, "Save Failed", f"Unicode error writing user profile: {ue.reason}", ok_only=True)
+                self,
+                "Save Failed",
+                f"Unicode error writing user profile: {ue.reason}",
+                ok_only=True,
+            )
             # continue, no return
 
         # Delete the user.
@@ -566,8 +592,9 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         ok = False
         while not ok:
-            initials, ok = QtWidgets.QInputDialog.getText(None, action,
-                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            initials, ok = QtWidgets.QInputDialog.getText(
+                None, action, "Initials:", QtWidgets.QLineEdit.Normal
+            )
             if not ok:
                 return
             initials = initials.upper()
@@ -633,8 +660,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                             col_times[-1] = time
                             if type != "accessed" and col_times[-2] == "[empty]":
                                 col_times[-2] = time
-                                col_notes[-2] = col_notes[-2].format(
-                                    type.upper())
+                                col_notes[-2] = col_notes[-2].format(type.upper())
                             col_notes[-1] = f"[{type.upper()}]"
                         if signature == value:
                             # Log.i(f"Signature audit PASS: {audit_text}")
@@ -645,8 +671,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                         col_audit[-1] = "PASS" if audit_pass else "FAIL"
                     else:
                         try:
-                            val = UserRoles(
-                                int(value)).name if name == "role" else value
+                            val = UserRoles(int(value)).name if name == "role" else value
                             if name == "password":
                                 if value.find("X") > 0:
                                     val = value[:-1]  # remove "X" for audit
@@ -676,8 +701,7 @@ class UserProfilesManager(QtWidgets.QWidget):
                                         change_name = True
                                     last_name = val
                         except:
-                            Log.w(
-                                f"Audit exception for element: '{name}', '{value}'")
+                            Log.w(f"Audit exception for element: '{name}', '{value}'")
                             val = value
                         Log.d(f"Processing audit element: '{name}', '{val}'")
                         hash.update(val.encode())
@@ -703,9 +727,7 @@ class UserProfilesManager(QtWidgets.QWidget):
             audit_failed = True
             Log.w("User file missing. Cannot perform audit.")
 
-        data = {'Timestamp': col_times,
-                'Result': col_audit,
-                'Audit Notes': col_notes}
+        data = {"Timestamp": col_times, "Result": col_audit, "Audit Notes": col_notes}
         self.table.setRowCount(len(col_audit))
         self.table.setColumnCount(3)
         self.table.setData(data)
@@ -715,8 +737,7 @@ class UserProfilesManager(QtWidgets.QWidget):
         # self.sort_user_table()
 
         if audit_failed:
-            PopUp.warning(self, "Audit Result",
-                          "There are failures in this audit!")  # TODO
+            PopUp.warning(self, "Audit Result", "There are failures in this audit!")  # TODO
 
         # Log.e("TODO: Show audit results in a QTableView format")
         # Log.e("TODO: Allow admin to acknowledge/ignore audit failures by creating a file: 'audit.ignore'")
@@ -725,12 +746,15 @@ class UserProfilesManager(QtWidgets.QWidget):
         title = "Delete All Users"
 
         # Confirm user really wants this
-        if not PopUp.question(self, "Remove All User Accounts",
-                              "If you delete all of the user accounts, " +
-                              "anyone will be able to access this application.\n" +
-                              "\nWARNING: This operation cannot be undone!\n" +
-                              "You can add new users again in the future (if desired).\n" +
-                              "\nAre you sure you want to proceed?"):
+        if not PopUp.question(
+            self,
+            "Remove All User Accounts",
+            "If you delete all of the user accounts, "
+            + "anyone will be able to access this application.\n"
+            + "\nWARNING: This operation cannot be undone!\n"
+            + "You can add new users again in the future (if desired).\n"
+            + "\nAre you sure you want to proceed?",
+        ):
             Log.w("User does not really want to delete all users. Aborted.")
             return
 
@@ -740,16 +764,16 @@ class UserProfilesManager(QtWidgets.QWidget):
 
         ok = False
         while not ok:
-            pwd, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                     "Confirm Password:", QtWidgets.QLineEdit.Password)
+            pwd, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Confirm Password:", QtWidgets.QLineEdit.Password
+            )
             if not ok:
                 return None, None, 0
             if len(pwd) < 8:
                 Log.w("Passwords must be at least 8 characters. Please try again.")
                 ok = False
 
-        authenticated, filename, params = UserProfiles.auth(
-            admin_initials, pwd, UserRoles.ADMIN)
+        authenticated, filename, params = UserProfiles.auth(admin_initials, pwd, UserRoles.ADMIN)
         if not authenticated:
             Log.e("User did not authenticate action to delete all users. Aborted.")
             return
@@ -799,12 +823,14 @@ class UserProfilesManager(QtWidgets.QWidget):
         user_accessed = [i[5] for i in user_info]
         Log.d("accessed:", user_accessed)
 
-        data = {'Initials': user_initials,
-                'Name': user_names,
-                'Role': user_roles,
-                'Created': user_created,
-                'Modified': user_modified,
-                'Accessed': user_accessed}
+        data = {
+            "Initials": user_initials,
+            "Name": user_names,
+            "Role": user_roles,
+            "Created": user_created,
+            "Modified": user_modified,
+            "Accessed": user_accessed,
+        }
 
         rows = len(user_info)
         cols = len(user_info[0]) if rows else 0
@@ -812,8 +838,9 @@ class UserProfilesManager(QtWidgets.QWidget):
 
     def sort_user_table(self):
         sort_order = [QtCore.Qt.AscendingOrder, QtCore.Qt.DescendingOrder]
-        self.table.sortItems(self.sortBy.currentIndex(
-        ), sort_order[self.sortOrder.currentIndex()])  # sort by initials
+        self.table.sortItems(
+            self.sortBy.currentIndex(), sort_order[self.sortOrder.currentIndex()]
+        )  # sort by initials
 
 
 ###############################################################################
@@ -854,14 +881,10 @@ class UserProfiles:
             xml = minidom.parse(file)
             up = xml.getElementsByTagName("secure_user_info")
             for u in up:
-                name = u.getAttribute("name") if u.hasAttribute(
-                    "name") else "[Missing]"
-                initials = u.getAttribute("initials") if u.hasAttribute(
-                    "initials") else "[Missing]"
-                p = u.getAttribute("password") if u.hasAttribute(
-                    "password") else "[Missing]"
-                s = u.getAttribute("signature") if u.hasAttribute(
-                    "signature") else "[Missing]"
+                name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
+                initials = u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
+                p = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
+                s = u.getAttribute("signature") if u.hasAttribute("signature") else "[Missing]"
                 try:
                     # allow exception if missing
                     role = UserRoles(int(u.getAttribute("role")))
@@ -870,17 +893,15 @@ class UserProfiles:
 
             ts = xml.getElementsByTagName("timestamp")
             now = dt.datetime.now().isoformat()
-            today = now[0:now.find('T')+1]
+            today = now[0 : now.find("T") + 1]
             created = "[NEVER]"
             modified = "[NEVER]"
             accessed = "[NEVER]"
             for t in ts:
-                x = t.getAttribute("type") if t.hasAttribute(
-                    "type") else "[Missing]"
-                y = t.getAttribute("value") if t.hasAttribute(
-                    "value") else "[Missing]"
+                x = t.getAttribute("type") if t.hasAttribute("type") else "[Missing]"
+                y = t.getAttribute("value") if t.hasAttribute("value") else "[Missing]"
                 if y != "[Missing]":
-                    y = y[0:y.find('.')]  # remove subseconds
+                    y = y[0 : y.find(".")]  # remove subseconds
                 # Log.w(f"processing ts: {x}, {y}")
                 if y.startswith(today):
                     y = y.replace(today, "Today, ")
@@ -905,9 +926,9 @@ class UserProfiles:
         ok = False
         name = QtCore.QDir().home().dirName()
         while not ok:
-            name, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                      "Full name:", QtWidgets.QLineEdit.Normal,
-                                                      name)
+            name, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Full name:", QtWidgets.QLineEdit.Normal, name
+            )
             if not ok:
                 return
             name = name.title()
@@ -918,9 +939,9 @@ class UserProfiles:
         ok = False
         initials = "".join([c for c in name if c.isupper()])
         while not ok:
-            initials, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "Initials:", QtWidgets.QLineEdit.Normal,
-                                                          initials)
+            initials, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Initials:", QtWidgets.QLineEdit.Normal, initials
+            )
             if not ok:
                 return
             initials = initials.upper()
@@ -932,8 +953,9 @@ class UserProfiles:
         while not match:
             ok = False
             while not ok:
-                pwd1, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "Password:", QtWidgets.QLineEdit.Password)
+                pwd1, ok = QtWidgets.QInputDialog.getText(
+                    None, title, "Password:", QtWidgets.QLineEdit.Password
+                )
                 if not ok:
                     return
                 if len(pwd1) < 8:
@@ -942,8 +964,9 @@ class UserProfiles:
 
             ok = False
             while not ok:
-                pwd2, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "Confirm Password:", QtWidgets.QLineEdit.Password)
+                pwd2, ok = QtWidgets.QInputDialog.getText(
+                    None, title, "Confirm Password:", QtWidgets.QLineEdit.Password
+                )
                 if not ok:
                     return
                 if len(pwd2) < 8:
@@ -961,12 +984,15 @@ class UserProfiles:
         if UserProfiles.count() == 0:
             return None, None, 0
 
-        title = "Sign In" if requiredRole.value == UserRoles.ANY.value else requiredRole.name.title()
+        title = (
+            "Sign In" if requiredRole.value == UserRoles.ANY.value else requiredRole.name.title()
+        )
 
         ok = False
         while not ok:
-            initials, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "Initials:", QtWidgets.QLineEdit.Normal)
+            initials, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Initials:", QtWidgets.QLineEdit.Normal
+            )
             if not ok:
                 return None, None, 0
             initials = initials.upper()
@@ -976,19 +1002,18 @@ class UserProfiles:
 
         ok = False
         while not ok:
-            pwd, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                     "Password:", QtWidgets.QLineEdit.Password)
+            pwd, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Password:", QtWidgets.QLineEdit.Password
+            )
             if not ok:
                 return None, None, 0
             if len(pwd) < 8:
                 Log.w("Passwords must be at least 8 characters. Please try again.")
                 ok = False
 
-        authenticated, filename, params = UserProfiles.auth(
-            initials, pwd, requiredRole)
+        authenticated, filename, params = UserProfiles.auth(initials, pwd, requiredRole)
         if authenticated:
-            Log.i(
-                f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
+            Log.i(f"Welcome, {params[0]}! Your assigned role is {params[2].name}.")
             return params[0], params[1], params[2].value
         else:
             return None, None, 0
@@ -1013,20 +1038,18 @@ class UserProfiles:
                 role = UserRoles(int(u.getAttribute("role")))
             except:
                 role = UserRoles.INVALID
-            password = u.getAttribute("password") if u.hasAttribute(
-                "password") else "[Missing]"
-            initials = u.getAttribute("initials") if u.hasAttribute(
-                "password") else "[Missing]"
-            name = u.getAttribute("name") if u.hasAttribute(
-                "name") else "[Missing]"
+            password = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
+            initials = u.getAttribute("initials") if u.hasAttribute("password") else "[Missing]"
+            name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
             if u.attributes["password"].value.find("X") < 0:
                 # invalidate password hash, but allow recovery for audits
                 u.attributes["password"].value += "X"
 
         ok = False
         while not ok:
-            current_password, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                                  "Current Password:", QtWidgets.QLineEdit.Password)
+            current_password, ok = QtWidgets.QInputDialog.getText(
+                None, title, "Current Password:", QtWidgets.QLineEdit.Password
+            )
             if not ok:
                 return
             if len(current_password) < 8:
@@ -1034,7 +1057,8 @@ class UserProfiles:
                 ok = False
 
         authenticated, filename, params = UserProfiles.auth(
-            initials, current_password, UserRoles.ANY)
+            initials, current_password, UserRoles.ANY
+        )
         if not authenticated:
             Log.e("User did not authenticate action to change their password. Aborted.")
             return
@@ -1043,8 +1067,9 @@ class UserProfiles:
         while not match:
             ok = False
             while not ok:
-                pwd1, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "New Password:", QtWidgets.QLineEdit.Password)
+                pwd1, ok = QtWidgets.QInputDialog.getText(
+                    None, title, "New Password:", QtWidgets.QLineEdit.Password
+                )
                 if not ok:
                     return
                 if len(pwd1) < 8:
@@ -1053,8 +1078,9 @@ class UserProfiles:
 
             ok = False
             while not ok:
-                pwd2, ok = QtWidgets.QInputDialog.getText(None, title,
-                                                          "Confirm Password:", QtWidgets.QLineEdit.Password)
+                pwd2, ok = QtWidgets.QInputDialog.getText(
+                    None, title, "Confirm Password:", QtWidgets.QLineEdit.Password
+                )
                 if not ok:
                     return
                 if len(pwd2) < 8:
@@ -1081,13 +1107,13 @@ class UserProfiles:
         hash.update(password.encode())
         signature = hash.hexdigest()
 
-        info = doc.createElement('secure_user_info')
+        info = doc.createElement("secure_user_info")
         xml.appendChild(info)
-        info.setAttribute('name', name)
-        info.setAttribute('initials', initials)
-        info.setAttribute('role', str(role.value))
-        info.setAttribute('password', password)
-        info.setAttribute('signature', signature)
+        info.setAttribute("name", name)
+        info.setAttribute("initials", initials)
+        info.setAttribute("role", str(role.value))
+        info.setAttribute("password", password)
+        info.setAttribute("signature", signature)
 
         ts_type = "modified"
         ts_val = dt.datetime.now().isoformat()
@@ -1097,17 +1123,16 @@ class UserProfiles:
         hash.update(ts_val.encode())
         signature = hash.hexdigest()
 
-        ts1 = doc.createElement('timestamp')
+        ts1 = doc.createElement("timestamp")
         xml.appendChild(ts1)
-        ts1.setAttribute('type', ts_type)
-        ts1.setAttribute('value', ts_val)
-        ts1.setAttribute('signature', signature)
+        ts1.setAttribute("type", ts_type)
+        ts1.setAttribute("value", ts_val)
+        ts1.setAttribute("signature", signature)
 
         # append new secure_user_info to xml
         try:
             with open(file, "w") as f:
-                xml_str = doc.toxml(encoding='ascii').decode(
-                    encoding='utf-8', errors='ignore')
+                xml_str = doc.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                 f.write(xml_str)
                 Log.d(f"Saved XML file: {file}")
         except OSError as ose:  # FileNotFoundError
@@ -1124,19 +1149,18 @@ class UserProfiles:
     @staticmethod
     def session_create(salt):
         file = os.path.join(UserProfiles.PATH, "session.key")
-        today = dt.datetime.now().isoformat().split('T')[0]
+        today = dt.datetime.now().isoformat().split("T")[0]
         hash = hashlib.sha256()
         hash.update(salt.encode())
         hash.update(today.encode())
         session_key = hash.hexdigest()
         try:
-            with open(file, 'w') as f:
+            with open(file, "w") as f:
                 f.write(session_key)
                 Log.d("User session created.")
         except OSError as ose:  # FileNotFoundError
             Log.e(f"Error writing session key: {ose}")
-        UserProfiles.user_preferences = UserPreferences(
-            UserProfiles.get_session_file())
+        UserProfiles.user_preferences = UserPreferences(UserProfiles.get_session_file())
         UserProfiles.user_preferences.set_preferences()
         # print(UserProfiles.user_preferences.get_preferences())
         # print(UserProfiles.user_preferences.get_folder_save_path(
@@ -1147,7 +1171,7 @@ class UserProfiles:
     @staticmethod
     def session_info():
         file = os.path.join(UserProfiles.PATH, "session.key")
-        today = dt.datetime.now().isoformat().split('T')[0]
+        today = dt.datetime.now().isoformat().split("T")[0]
         if os.path.exists(file):
             files, infos = UserProfiles.get_all_user_info()
             try:
@@ -1192,7 +1216,7 @@ class UserProfiles:
             active.
         """
         file = os.path.join(UserProfiles.PATH, "session.key")
-        today = dt.datetime.now().isoformat().split('T')[0]
+        today = dt.datetime.now().isoformat().split("T")[0]
         if os.path.exists(file):
             files, infos = UserProfiles.get_all_user_info()
             try:
@@ -1261,10 +1285,8 @@ class UserProfiles:
                 xml = minidom.parse(file)
                 up = xml.getElementsByTagName("secure_user_info")
                 for u in up:
-                    n = u.getAttribute("name") if u.hasAttribute(
-                        "name") else "[Missing]"
-                    i = u.getAttribute("initials") if u.hasAttribute(
-                        "initials") else "[Missing]"
+                    n = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
+                    i = u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
                 if n == name or i == initials:  # only check most recent secure_user_info record
                     return True, filename
         return False, None
@@ -1275,7 +1297,8 @@ class UserProfiles:
         sign_in_user = UserProfiles.count() == 0
         if not found:
             Log.i(
-                f"Create user, Name: {name}, initials: {initials}, role: {role.name} password: {'*'*len(pwd)}")
+                f"Create user, Name: {name}, initials: {initials}, role: {role.name} password: {'*'*len(pwd)}"
+            )
             while True:
                 salt = os.urandom(8).hex()
                 file = os.path.join(UserProfiles.PATH, f"{salt}.xml")
@@ -1295,16 +1318,16 @@ class UserProfiles:
             Log.d(f"salt = {salt}, hash = {signature}")
 
             doc = minidom.Document()
-            xml = doc.createElement('user_profile')
+            xml = doc.createElement("user_profile")
             doc.appendChild(xml)
 
-            info = doc.createElement('secure_user_info')
+            info = doc.createElement("secure_user_info")
             xml.appendChild(info)
-            info.setAttribute('name', name)
-            info.setAttribute('initials', initials)
-            info.setAttribute('role', str(role.value))
-            info.setAttribute('password', password)
-            info.setAttribute('signature', signature)
+            info.setAttribute("name", name)
+            info.setAttribute("initials", initials)
+            info.setAttribute("role", str(role.value))
+            info.setAttribute("password", password)
+            info.setAttribute("signature", signature)
 
             ts_type = "created"
             ts_val = dt.datetime.now().isoformat()
@@ -1314,11 +1337,11 @@ class UserProfiles:
             hash.update(ts_val.encode())
             signature = hash.hexdigest()
 
-            ts1 = doc.createElement('timestamp')
+            ts1 = doc.createElement("timestamp")
             xml.appendChild(ts1)
-            ts1.setAttribute('type', ts_type)
-            ts1.setAttribute('value', ts_val)
-            ts1.setAttribute('signature', signature)
+            ts1.setAttribute("type", ts_type)
+            ts1.setAttribute("value", ts_val)
+            ts1.setAttribute("signature", signature)
             # ts2 = doc.createElement('timestamp')
             # xml.appendChild(ts2)
             # ts2.setAttribute('name', "modified")
@@ -1327,8 +1350,7 @@ class UserProfiles:
             # Log.d(doc)
             try:
                 with open(file, "w") as f:
-                    xml_str = doc.toxml(encoding='ascii').decode(
-                        encoding='utf-8', errors='ignore')
+                    xml_str = doc.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                     f.write(xml_str)
                     Log.d(f"Saved XML file: {file}")
             except OSError as ose:  # FileNotFoundError
@@ -1346,7 +1368,8 @@ class UserProfiles:
 
         else:
             Log.e(
-                f"Failed to create user. User info conflicts with user profile '{filename[:-4]}'.")
+                f"Failed to create user. User info conflicts with user profile '{filename[:-4]}'."
+            )
 
     ### check() ###
     # RETURNS: One of: [None, False, True]
@@ -1374,7 +1397,8 @@ class UserProfiles:
             maskedRole = UserRoles.INVALID
         result = True if maskedRole == requiredRole else False
         Log.d(
-            f"User role check: user={userRole.name}, required={requiredRole.name}, result={result}")
+            f"User role check: user={userRole.name}, required={requiredRole.name}, result={result}"
+        )
         return result
 
     @staticmethod
@@ -1386,14 +1410,12 @@ class UserProfiles:
                 xml = minidom.parse(file)
                 up = xml.getElementsByTagName("secure_user_info")
                 for u in up:
-                    name = u.getAttribute("name") if u.hasAttribute(
-                        "name") else "[Missing]"
-                    initials = u.getAttribute("initials") if u.hasAttribute(
-                        "initials") else "[Missing]"
-                    p = u.getAttribute("password") if u.hasAttribute(
-                        "password") else "[Missing]"
-                    s = u.getAttribute("signature") if u.hasAttribute(
-                        "signature") else "[Missing]"
+                    name = u.getAttribute("name") if u.hasAttribute("name") else "[Missing]"
+                    initials = (
+                        u.getAttribute("initials") if u.hasAttribute("initials") else "[Missing]"
+                    )
+                    p = u.getAttribute("password") if u.hasAttribute("password") else "[Missing]"
+                    s = u.getAttribute("signature") if u.hasAttribute("signature") else "[Missing]"
 
                     try:
                         # allow exception if missing
@@ -1405,7 +1427,8 @@ class UserProfiles:
                 # only check most recent secure_user_info record
                 if not UserProfiles.check(role, requiredRole):
                     Log.e(
-                        f"User {initials} does not have the required {requiredRole.name} role privileges.")
+                        f"User {initials} does not have the required {requiredRole.name} role privileges."
+                    )
                     UserProfiles.session_end()
                     return False, filename, None
                 salt = filename[:-4]
@@ -1431,10 +1454,11 @@ class UserProfiles:
                     hash.update(ts_val.encode())
                     signature = hash.hexdigest()
                     try:
-                        with open(file, 'rb+') as f:
+                        with open(file, "rb+") as f:
                             f.seek(-15, 2)
                             f.write(
-                                f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode())
+                                f'<timestamp type="{ts_type}" value="{ts_val}" signature="{signature}"/></user_profile>'.encode()
+                            )
                             # f.write(f'</user_profile>\r\n'.encode())
                     except OSError as ose:  # FileNotFoundError
                         Log.e(f"Error writing '{ts_type}' record: {file}")
@@ -1449,22 +1473,23 @@ class UserProfiles:
                 elif p != password and s == signature:
                     Log.e(f"Auth failure: Invalid credentials.")
                     Log.d(
-                        f"Auth failure details: user={initials}, p={p == password}, s={s == signature}")
+                        f"Auth failure details: user={initials}, p={p == password}, s={s == signature}"
+                    )
                     UserProfiles.session_end()
                     return False, filename, None
                 else:  # signature not valid
+                    Log.e(f"Auth failure: Corrupt user profile {initials}. See an administrator.")
                     Log.e(
-                        f"Auth failure: Corrupt user profile {initials}. See an administrator.")
-                    Log.e(
-                        f"File security checks indicate your profile is invalid or had unauthorized changes made to it.")
+                        f"File security checks indicate your profile is invalid or had unauthorized changes made to it."
+                    )
                     Log.d(
-                        f"Auth failure details: file={filename}, p={p == password}, s={s == signature}")
+                        f"Auth failure details: file={filename}, p={p == password}, s={s == signature}"
+                    )
                     UserProfiles.session_end()
                     return False, filename, None
             else:
                 Log.e(f"Auth failure: Invalid user account.")
-                Log.d(
-                    f"Auth failure details: User profile is not a file! Not found: {file}")
+                Log.d(f"Auth failure details: User profile is not a file! Not found: {file}")
                 UserProfiles.session_end()
                 return False, filename, None
         else:
@@ -1482,15 +1507,17 @@ class UserProfiles:
         try:
             dev_path = os.path.join(Constants.local_app_data_path, ".dev_mode")
             if os.path.exists(dev_path):
-                with open(dev_path, 'r') as dev:
+                with open(dev_path, "r") as dev:
                     try:
                         encode_str1 = dev.readline()
                         encode_str2 = dev.readline()
                         encode_key = "DEADBEEFDEADBEEFDEAD"
                         hexify_str1 = bytes(
-                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str1, encode_key)]).decode()
+                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str1, encode_key)]
+                        ).decode()
                         hexify_str2 = bytes(
-                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str2, encode_key)]).decode()
+                            [(ord(a) ^ ord(b)) for a, b in zip(encode_str2, encode_key)]
+                        ).decode()
                         time_stamp = bytearray.fromhex(hexify_str1).decode()
                         build_date = bytearray.fromhex(hexify_str2).decode()
                         expires_on = dt.datetime.fromisoformat(time_stamp)
@@ -1503,11 +1530,13 @@ class UserProfiles:
                     now = dt.datetime.now()
                     if expires_on == "invalid" or expires_on == "exception":
                         Log.e(
-                            f"Developer Mode encoded expiration value could not be parsed ({expires_on})! Please renew or disable.")
+                            f"Developer Mode encoded expiration value could not be parsed ({expires_on})! Please renew or disable."
+                        )
                         is_error = True
                     elif build_date != Constants.app_date and not UserConstants.DEV_PERSIST_VER:
                         Log.e(
-                            "Developer Mode was enabled for another SW version and is invalid here. Please renew or disable.")
+                            "Developer Mode was enabled for another SW version and is invalid here. Please renew or disable."
+                        )
                         is_error = True
                         expires_at = ""
                     elif expires_on > now - dt.timedelta(days=1):
@@ -1515,12 +1544,12 @@ class UserProfiles:
                             enabled = True
                         else:
                             Log.e(
-                                f"Developer Mode expiration date ({expires_at}) is invalid! Please renew or disable.")
+                                f"Developer Mode expiration date ({expires_at}) is invalid! Please renew or disable."
+                            )
                             is_error = True
                             expires_at = ""
                     else:
-                        Log.e(
-                            f"Developer Mode expired on {expires_at}. Please renew or disable.")
+                        Log.e(f"Developer Mode expired on {expires_at}. Please renew or disable.")
                         is_error = True
             else:
                 pass
@@ -1532,7 +1561,8 @@ class UserProfiles:
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -1589,8 +1619,7 @@ class UserPreferences:
 
         # Build file paths for user and global preferences
         user_preferences_path = os.path.join(
-            Constants.local_app_data_path, "profiles/users",
-            f"{user_info}-preferences.json"
+            Constants.local_app_data_path, "profiles/users", f"{user_info}-preferences.json"
         )
         global_preferences_path = os.path.join(
             Constants.local_app_data_path, "global_preferences.json"
@@ -1604,8 +1633,7 @@ class UserPreferences:
             raise
 
         try:
-            os.makedirs(os.path.dirname(
-                global_preferences_path), exist_ok=True)
+            os.makedirs(os.path.dirname(global_preferences_path), exist_ok=True)
         except Exception as e:
             Log.e(TAG, f"Error creating global preferences directory: {e}")
             raise
@@ -1617,11 +1645,9 @@ class UserPreferences:
         if os.path.exists(global_preferences_path):
             self._set_global_preferences_path(global_preferences_path)
         else:
-            Log.e(
-                TAG, "No global file format preferences found. Writing global and using.")
+            Log.e(TAG, "No global file format preferences found. Writing global and using.")
             try:
-                FileStorage.DEV_write_default_preferences(
-                    global_preferences_path)
+                FileStorage.DEV_write_default_preferences(global_preferences_path)
             except Exception as e:
                 Log.e(TAG, f"Error writing default global preferences: {e}")
                 raise
@@ -1635,15 +1661,13 @@ class UserPreferences:
         elif user_info is not None:
             Log.w(TAG, "Creating User Preferences from default format and using global.")
             try:
-                FileStorage.DEV_write_default_preferences(
-                    user_preferences_path)
+                FileStorage.DEV_write_default_preferences(user_preferences_path)
             except Exception as e:
                 Log.e(TAG, f"Error writing default user preferences: {e}")
                 raise
             self._set_user_preferences_path(user_preferences_path)
         else:
-            Log.w(
-                TAG, "User session information is not available. User preferences not created.")
+            Log.w(TAG, "User session information is not available. User preferences not created.")
 
     def set_preferences(self) -> None:
         """
@@ -1653,7 +1677,7 @@ class UserPreferences:
         1. Determines whether to use the global or user preferences file.
         2. Opens and loads the preferences JSON file.
         3. Validates that all required keys are present in the loaded JSON data.
-        4. Extracts the necessary configuration parameters and applies them using 
+        4. Extracts the necessary configuration parameters and applies them using
             the corresponding setter methods.
 
         Raises:
@@ -1663,6 +1687,7 @@ class UserPreferences:
             Exception: For any other errors that occur during file I/O or setting preferences.
         """
         import json
+
         preferences_data = None
 
         # Attempt to open and load the correct preferences file
@@ -1679,8 +1704,7 @@ class UserPreferences:
             Log.e(TAG, f"Preferences file not found: {fnf_err}")
             raise
         except json.JSONDecodeError as json_err:
-            Log.e(
-                TAG, f"Error decoding JSON from preferences file: {json_err}")
+            Log.e(TAG, f"Error decoding JSON from preferences file: {json_err}")
             raise
         except Exception as e:
             Log.e(TAG, f"Unexpected error loading preferences: {e}")
@@ -1710,8 +1734,7 @@ class UserPreferences:
             folder_tag_format = str(preferences_data["folder_format"])
             file_tag_format = str(preferences_data["filename_format"])
             folder_delimiter = str(preferences_data["folder_format_delimiter"])
-            filename_delimiter = str(
-                preferences_data["filename_format_delimiter"])
+            filename_delimiter = str(preferences_data["filename_format_delimiter"])
             date_format = str(preferences_data["date_format"])
             time_format = str(preferences_data["time_format"])
 
@@ -1779,8 +1802,7 @@ class UserPreferences:
         """
         try:
             user_preferences_path = self._get_user_preferences_path()
-            preferences = FileStorage.DEV_load_preferences(
-                user_preferences_path)
+            preferences = FileStorage.DEV_load_preferences(user_preferences_path)
             return preferences
         except Exception as e:
             Log.e(TAG, f"Error loading user preferences: {e}")
@@ -1799,8 +1821,7 @@ class UserPreferences:
         """
         try:
             global_preferences_path = self._get_global_preferences_path()
-            preferences = FileStorage.DEV_load_preferences(
-                global_preferences_path)
+            preferences = FileStorage.DEV_load_preferences(global_preferences_path)
             return preferences
         except Exception as e:
             Log.e(TAG, f"Error loading global preferences: {e}")
@@ -1808,7 +1829,7 @@ class UserPreferences:
 
     def reset_global_preferences(self) -> None:
         """
-        Resets the global preferences to their default values by writing the default 
+        Resets the global preferences to their default values by writing the default
         preferences to the global preferences file.
 
         Raises:
@@ -1816,8 +1837,7 @@ class UserPreferences:
         """
         try:
             global_preferences_path = self._get_global_preferences_path()
-            FileStorage.DEV_write_default_preferences(
-                save_path=global_preferences_path)
+            FileStorage.DEV_write_default_preferences(save_path=global_preferences_path)
         except Exception as e:
             Log.e(TAG, f"Error resetting global preferences: {e}")
             raise
@@ -1835,14 +1855,15 @@ class UserPreferences:
             global_preferences_path = self._get_global_preferences_path()
             preferences = self.get_preferences()
             FileStorage.DEV_write_preferences(
-                save_path=global_preferences_path, preferences=preferences)
+                save_path=global_preferences_path, preferences=preferences
+            )
         except Exception as e:
             Log.e(TAG, f"Error writing global preferences: {e}")
             raise
 
     def reset_user_preferences(self) -> None:
         """
-        Resets the user preferences to their default values by writing the default 
+        Resets the user preferences to their default values by writing the default
         preferences to the user preferences file.
 
         Raises:
@@ -1850,8 +1871,7 @@ class UserPreferences:
         """
         try:
             user_preferences_path = self._get_user_preferences_path()
-            FileStorage.DEV_write_default_preferences(
-                save_path=user_preferences_path)
+            FileStorage.DEV_write_default_preferences(save_path=user_preferences_path)
         except Exception as e:
             Log.e(TAG, f"Error resetting user preferences: {e}")
             raise
@@ -1869,7 +1889,8 @@ class UserPreferences:
             user_preferences_path = self._get_user_preferences_path()
             preferences = self.get_preferences()
             FileStorage.DEV_write_preferences(
-                save_path=user_preferences_path, preferences=preferences)
+                save_path=user_preferences_path, preferences=preferences
+            )
         except Exception as e:
             Log.e(TAG, f"Error writing user preferences: {e}")
             raise
@@ -1896,8 +1917,13 @@ class UserPreferences:
         try:
             pattern = self._get_folder_format_pattern().split(self._get_folder_delimiter())
             delimiter = self._get_folder_delimiter()
-            return self._build_save_path(pattern=pattern, delimiter=delimiter, runname=runname,
-                                         device_id=device_id, port_id=port_id)
+            return self._build_save_path(
+                pattern=pattern,
+                delimiter=delimiter,
+                runname=runname,
+                device_id=device_id,
+                port_id=port_id,
+            )
         except Exception as e:
             Log.e(TAG, f"Error constructing folder save path: {e}")
             raise
@@ -1924,8 +1950,13 @@ class UserPreferences:
         try:
             pattern = self._get_file_format_pattern().split(self._get_file_delimiter())
             delimiter = self._get_file_delimiter()
-            return self._build_save_path(pattern=pattern, delimiter=delimiter, runname=runname,
-                                         device_id=device_id, port_id=port_id)
+            return self._build_save_path(
+                pattern=pattern,
+                delimiter=delimiter,
+                runname=runname,
+                device_id=device_id,
+                port_id=port_id,
+            )
         except Exception as e:
             Log.e(TAG, f"Error constructing file save path: {e}")
             raise
@@ -1957,7 +1988,7 @@ class UserPreferences:
             AttributeError: If the 'use_global' attribute is not defined.
             TypeError: If the value of 'use_global' is not a boolean.
         """
-        if not hasattr(self, 'use_global'):
+        if not hasattr(self, "use_global"):
             error_msg = "The 'use_global' attribute is not set."
             Log.e(TAG, error_msg)
             raise AttributeError(error_msg)
@@ -1966,9 +1997,12 @@ class UserPreferences:
             Log.e(TAG, error_msg)
             raise TypeError(error_msg)
         return self.use_global
+
     # -- Private Utilities -- #
 
-    def _build_save_path(self, pattern: list, runname: str, delimiter: str, device_id: int, port_id: int) -> str:
+    def _build_save_path(
+        self, pattern: list, runname: str, delimiter: str, device_id: int, port_id: int
+    ) -> str:
         save_path = ""
 
         for i, tag in enumerate(pattern):
@@ -1991,14 +2025,14 @@ class UserPreferences:
                 save_path = save_path + self._on_port(port_id)
             elif tag == Constants.subfolder_field:
                 # only add '/' for new folder, stripping any delimeters
-                save_path = save_path.strip(delimiter) + '/'
+                save_path = save_path.strip(delimiter) + "/"
                 continue  # skip adding another delimeter
             elif tag == Constants.select_tag_prompt:
-                Log.w(TAG, 'Ignoring empty folder format tag pattern')
+                Log.w(TAG, "Ignoring empty folder format tag pattern")
                 continue  # skip adding another delimeter
             else:
-                Log.e(TAG, f'Invalid folder format tag pattern: {tag}')
-                raise ValueError('Invalid folder format tag pattern')
+                Log.e(TAG, f"Invalid folder format tag pattern: {tag}")
+                raise ValueError("Invalid folder format tag pattern")
             if i < len(pattern) - 1:
                 save_path = save_path + delimiter
 
@@ -2033,15 +2067,16 @@ class UserPreferences:
 
     def _on_date(self) -> str:
         from datetime import datetime
+
         format_mapping = {
             "YYYY": "%Y",  # Year with century as a decimal number
-            "MM": "%m",    # Month as a zero-padded decimal number
-            "DD": "%d",    # Day of the month as a zero-padded decimal number
+            "MM": "%m",  # Month as a zero-padded decimal number
+            "DD": "%d",  # Day of the month as a zero-padded decimal number
             # Hour (24-hour clock) as a zero-padded decimal number
             "hh": "%H",
-            "mm": "%M",    # Minute as a zero-padded decimal number
-            "ss": "%S",    # Second as a zero-padded decimal number
-            "A": "%p",     # AM/PM (12-hour clock)
+            "mm": "%M",  # Minute as a zero-padded decimal number
+            "ss": "%S",  # Second as a zero-padded decimal number
+            "A": "%p",  # AM/PM (12-hour clock)
         }
         date_format = self._get_date_format()
         for key, value in format_mapping.items():

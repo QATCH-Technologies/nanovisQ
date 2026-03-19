@@ -26,24 +26,21 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from src.io.parser import Parser
-from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt
 from src.models.formulation import Formulation
+from src.models.ingredient import Buffer, Protein, Salt, Stabilizer, Surfactant
 
 
 class TestParser(unittest.TestCase):
     """Unit tests for the `Parser` class that extracts parameters from XML."""
 
     SAMPLE_XML_PATH = os.path.abspath(
-        os.path.join(os.path.dirname(__file__),
-                     "test_assets", "sample_xml.xml")
+        os.path.join(os.path.dirname(__file__), "test_assets", "sample_xml.xml")
     )
 
     def setUp(self):
         """Create a temporary XML file containing parameters and initialize a Parser."""
-        self.temp_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".xml"
-        )
-        xml_content = '''<?xml version="1.0"?>
+        self.temp_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".xml")
+        xml_content = """<?xml version="1.0"?>
 <run_info>
   <params>
     <param name="protein_type" value="BSA" />
@@ -59,7 +56,7 @@ class TestParser(unittest.TestCase):
     <param name="stabilizer_type" value="None" />
     <param name="stabilizer_concentration" value="0.0" units="M" />
   </params>
-</run_info>'''
+</run_info>"""
         self.temp_file.write(xml_content)
         self.temp_file.close()
         self.parser = Parser(self.temp_file.name)
@@ -154,9 +151,7 @@ class TestParser(unittest.TestCase):
         root = ET.Element("run_info")
         params = ET.SubElement(root, "params")
         ET.SubElement(params, "param", name="bad", value="not_a_number")
-        bad_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".xml"
-        )
+        bad_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".xml")
         bad_file.write(ET.tostring(root, encoding="unicode"))
         bad_file.close()
         bad_parser = Parser(bad_file.name)
@@ -171,9 +166,7 @@ class TestParser(unittest.TestCase):
         - 'protein_concentration' has units="mg/mL"
         - Call get_param_attr('protein_concentration', 'units', required=True), expect "mg/mL"
         """
-        units = self.parser.get_param_attr(
-            "protein_concentration", "units", required=True
-        )
+        units = self.parser.get_param_attr("protein_concentration", "units", required=True)
         self.assertEqual(units, "mg/mL")
 
     def test_get_param_attr_missing_not_required(self):
@@ -183,9 +176,7 @@ class TestParser(unittest.TestCase):
         - 'protein_type' has no units attribute
         - Call get_param_attr('protein_type', 'units', required=False), expect None
         """
-        attr = self.parser.get_param_attr(
-            "protein_type", "units", required=False
-        )
+        attr = self.parser.get_param_attr("protein_type", "units", required=False)
         self.assertIsNone(attr)
 
     def test_get_param_attr_missing_required(self):
@@ -205,15 +196,11 @@ class TestParser(unittest.TestCase):
         - Create a temporary XML with no <params>
         - Call get_param_attr('any', 'attr', required=False), expect None
         """
-        no_params_file = tempfile.NamedTemporaryFile(
-            mode="w", delete=False, suffix=".xml"
-        )
+        no_params_file = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".xml")
         no_params_file.write("<run_info></run_info>")
         no_params_file.close()
         no_parser = Parser(no_params_file.name)
-        self.assertIsNone(
-            no_parser.get_param_attr("any", "attr", required=False)
-        )
+        self.assertIsNone(no_parser.get_param_attr("any", "attr", required=False))
         os.remove(no_params_file.name)
 
     def test_get_protein(self):

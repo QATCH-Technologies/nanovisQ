@@ -5,6 +5,7 @@ http://code.activestate.com/recipes/68429-ring-buffer/
 http://stackoverflow.com/questions/4151320/efficient-circular-buffer
 """
 import warnings
+
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 ############################################################################
@@ -41,7 +42,7 @@ class RingBuffer(object):
         if self.size == 0:
             return self.get_all()  # return all empty instead of nothing
         else:
-            return self.get_all()[0:self.size]
+            return self.get_all()[0 : self.size]
 
     ########################
     def get_newest(self):
@@ -60,10 +61,11 @@ class RingBuffer(object):
     def __repr__(self):
         # return string representation
         s = self._data.__repr__()
-        s = s + '\t' + str(self.size)
-        s = s + '\t' + self.get_all()[::-1].__repr__()
-        s = s + '\t' + self.get_partial()[::-1].__repr__()
+        s = s + "\t" + str(self.size)
+        s = s + "\t" + self.get_all()[::-1].__repr__()
+        s = s + "\t" + self.get_partial()[::-1].__repr__()
         return s
+
 
 #############################################################################
 

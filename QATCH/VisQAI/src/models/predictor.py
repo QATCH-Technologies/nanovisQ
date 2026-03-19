@@ -17,12 +17,12 @@ Version:
 import datetime
 import importlib.util
 import os
+from pathlib import Path
 import shutil
 import sys
 import tempfile
-import zipfile
-from pathlib import Path
 from typing import Dict, Optional, Tuple
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -127,9 +127,7 @@ class Predictor:
         inference_module = None
 
         if local_code_path and local_code_path.exists():
-            inference_module = self._dynamic_load_from_path(
-                "visq_inference_local", local_code_path
-            )
+            inference_module = self._dynamic_load_from_path("visq_inference_local", local_code_path)
         elif extracted_code_path.exists():
             inference_module = self._dynamic_load_from_path(
                 "visq_inference_pkg", extracted_code_path
@@ -151,12 +149,8 @@ class Predictor:
 
                     pass
 
-                sklearn.compose._column_transformer._RemainderColsList = (
-                    _RemainderColsList
-                )
-                Log.w(
-                    "Applied sklearn._RemainderColsList monkey-patch for legacy model support."
-                )
+                sklearn.compose._column_transformer._RemainderColsList = _RemainderColsList
+                Log.w("Applied sklearn._RemainderColsList monkey-patch for legacy model support.")
         except ImportError:
             pass
         except Exception as e:
@@ -166,9 +160,7 @@ class Predictor:
         # 2. Initialize Engine
         if inference_module and hasattr(inference_module, "ViscosityPredictorCNP"):
             self.model_type = "CNP"
-            self.engine = inference_module.ViscosityPredictorCNP(
-                model_dir=str(self.extracted_path)
-            )
+            self.engine = inference_module.ViscosityPredictorCNP(model_dir=str(self.extracted_path))
             Log.i("CNP Engine initialized successfully.")
             return
 
@@ -184,9 +176,7 @@ class Predictor:
                 if arch == "CrossSampleCNP":
                     mod = loader.load_inference_module()
                     self.model_type = "CNP"
-                    self.engine = mod.ViscosityPredictorCNP(
-                        model_dir=str(self.extracted_path)
-                    )
+                    self.engine = mod.ViscosityPredictorCNP(model_dir=str(self.extracted_path))
                 else:
                     self._load_legacy_engine(loader)
             except Exception as e:
@@ -413,13 +403,9 @@ class Predictor:
             results["abs_error"] = results["error"].abs()
 
             with np.errstate(divide="ignore", invalid="ignore"):
-                results["pct_error"] = (
-                    results["abs_error"] / np.abs(results["actual"])
-                ) * 100
+                results["pct_error"] = (results["abs_error"] / np.abs(results["actual"])) * 100
 
-            results["pct_error"] = (
-                results["pct_error"].replace([np.inf, -np.inf], 0.0).fillna(0.0)
-            )
+            results["pct_error"] = results["pct_error"].replace([np.inf, -np.inf], 0.0).fillna(0.0)
 
             # Ensure all required columns exist
             for col in base_cols:
@@ -465,9 +451,7 @@ class Predictor:
             processed_indices = set()
             unique_types = eval_data["Protein_type"].unique()
             eval_types = (
-                eval_data["Protein_type"].unique()
-                if "Protein_type" in eval_data.columns
-                else []
+                eval_data["Protein_type"].unique() if "Protein_type" in eval_data.columns else []
             )
             all_types = set(unique_types).union(eval_types)
 
@@ -488,13 +472,9 @@ class Predictor:
                 # Merge history and eval samples for the learning context, then
                 # apply diverse context selection when the engine supports it.
                 # -------------------------------------------------------------
-                combined_learning_set = pd.concat(
-                    [hist_subset, eval_subset], ignore_index=True
-                )
+                combined_learning_set = pd.concat([hist_subset, eval_subset], ignore_index=True)
                 context_for_learn = combined_learning_set.copy()
-                if self.model_type == "CNP" and hasattr(
-                    self.engine, "_select_diverse_context"
-                ):
+                if self.model_type == "CNP" and hasattr(self.engine, "_select_diverse_context"):
                     context_for_learn = self.engine._select_diverse_context(
                         context_for_learn, max_k=15
                     )
@@ -524,13 +504,9 @@ class Predictor:
 
                 self.reset()
 
-            remaining_eval = eval_data.drop(
-                index=list(processed_indices), errors="ignore"
-            )
+            remaining_eval = eval_data.drop(index=list(processed_indices), errors="ignore")
             if not remaining_eval.empty:
-                Log.i(
-                    f"Predicting remaining {len(remaining_eval)} samples with base model."
-                )
+                Log.i(f"Predicting remaining {len(remaining_eval)} samples with base model.")
                 pred_input = prepare_prediction_input(remaining_eval, targets)
                 preds = self.predict(pred_input)
                 try:
@@ -609,9 +585,7 @@ class Predictor:
             import copy
 
             Log.i("Resetting CNP engine state (fast in-place restore)...")
-            self.engine.model.load_state_dict(
-                copy.deepcopy(self.engine._original_state)
-            )
+            self.engine.model.load_state_dict(copy.deepcopy(self.engine._original_state))
             self.engine.memory_vector = None
             self.engine.context_t = None
             Log.i("CNP engine reset complete.")

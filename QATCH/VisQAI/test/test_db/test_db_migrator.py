@@ -18,24 +18,19 @@ Note: If the MigrationVersion class is missing comparison operators, add these t
         return (self.major, self.minor, self.patch) >= (other.major, other.minor, other.patch)
 """
 
-import unittest
-import sqlite3
-import json
-import tempfile
-import shutil
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, call
 import hashlib
+import json
+from pathlib import Path
+import shutil
+import sqlite3
+import tempfile
+import unittest
+from unittest.mock import MagicMock, Mock, call, patch
 
 from src.db.db import Database
 
 # Import the module to test
-from src.db.db_migrator import (
-    DatabaseMigrator,
-    Migration,
-    MigrationVersion,
-    MigrationStatus
-)
+from src.db.db_migrator import DatabaseMigrator, Migration, MigrationStatus, MigrationVersion
 
 
 class TestMigrationVersion(unittest.TestCase):
@@ -139,19 +134,23 @@ class TestDatabaseMigrator(unittest.TestCase):
         """Create a test database with initial schema."""
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS test_table (
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     value INTEGER
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 INSERT INTO test_table (name, value) VALUES 
                 ('item1', 100),
                 ('item2', 200),
                 ('item3', 300)
-            """)
+            """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -167,8 +166,8 @@ class TestDatabaseMigrator(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = {row[0] for row in cursor.fetchall()}
-            self.assertIn('schema_migrations', tables)
-            self.assertIn('database_metadata', tables)
+            self.assertIn("schema_migrations", tables)
+            self.assertIn("database_metadata", tables)
         finally:
             conn.close()
 
@@ -178,7 +177,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN status TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN status"]
+            down_sql=["ALTER TABLE test_table DROP COLUMN status"],
         )
 
         self.migrator.register_migration(migration)
@@ -190,8 +189,7 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Check migration graph
         self.assertIn(MigrationVersion(1, 0, 0), self.migrator.migration_graph)
         self.assertIn(
-            MigrationVersion(1, 1, 0),
-            self.migrator.migration_graph[MigrationVersion(1, 0, 0)]
+            MigrationVersion(1, 1, 0), self.migrator.migration_graph[MigrationVersion(1, 0, 0)]
         )
 
     def test_get_current_version(self):
@@ -203,9 +201,7 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Set a version in metadata
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute(
-                "INSERT INTO database_metadata (key, value) VALUES ('version', '2.3.1')"
-            )
+            conn.execute("INSERT INTO database_metadata (key, value) VALUES ('version', '2.3.1')")
             conn.commit()
         finally:
             conn.close()
@@ -219,20 +215,21 @@ class TestDatabaseMigrator(unittest.TestCase):
         m1 = Migration(
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
-            up_sql=["SQL1"], down_sql=["SQL1_DOWN"]
+            up_sql=["SQL1"],
+            down_sql=["SQL1_DOWN"],
         )
         m2 = Migration(
             from_version=MigrationVersion(1, 1, 0),
             to_version=MigrationVersion(1, 2, 0),
-            up_sql=["SQL2"], down_sql=["SQL2_DOWN"]
+            up_sql=["SQL2"],
+            down_sql=["SQL2_DOWN"],
         )
 
         self.migrator.register_migration(m1)
         self.migrator.register_migration(m2)
 
         path = self.migrator.find_migration_path(
-            MigrationVersion(1, 0, 0),
-            MigrationVersion(1, 2, 0)
+            MigrationVersion(1, 0, 0), MigrationVersion(1, 2, 0)
         )
 
         self.assertEqual(len(path), 2)
@@ -244,22 +241,19 @@ class TestDatabaseMigrator(unittest.TestCase):
         m1 = Migration(
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
-            up_sql=["SQL1"], down_sql=["SQL1_DOWN"]
+            up_sql=["SQL1"],
+            down_sql=["SQL1_DOWN"],
         )
         self.migrator.register_migration(m1)
 
         with self.assertRaises(ValueError) as context:
-            self.migrator.find_migration_path(
-                MigrationVersion(1, 0, 0),
-                MigrationVersion(2, 0, 0)
-            )
+            self.migrator.find_migration_path(MigrationVersion(1, 0, 0), MigrationVersion(2, 0, 0))
         self.assertIn("No migration path found", str(context.exception))
 
     def test_find_migration_path_same_version(self):
         """Test migration path when already at target version."""
         path = self.migrator.find_migration_path(
-            MigrationVersion(1, 0, 0),
-            MigrationVersion(1, 0, 0)
+            MigrationVersion(1, 0, 0), MigrationVersion(1, 0, 0)
         )
         self.assertEqual(path, [])
 
@@ -271,15 +265,15 @@ class TestDatabaseMigrator(unittest.TestCase):
         self.assertIn("_test.db", str(backup_path))
 
         # Check backup metadata file
-        metadata_path = backup_path.with_suffix('.json')
+        metadata_path = backup_path.with_suffix(".json")
         self.assertTrue(metadata_path.exists())
 
-        with open(metadata_path, 'r') as f:
+        with open(metadata_path, "r") as f:
             metadata = json.load(f)
-            self.assertEqual(metadata['original_path'], str(self.db_path))
-            self.assertIn('checksum', metadata)
-            self.assertIn('backup_time', metadata)
-            self.assertIn('version', metadata)
+            self.assertEqual(metadata["original_path"], str(self.db_path))
+            self.assertIn("checksum", metadata)
+            self.assertIn("backup_time", metadata)
+            self.assertIn("version", metadata)
 
     def test_apply_migration_basic(self):
         """Test applying a basic migration."""
@@ -288,13 +282,13 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=[
                 "ALTER TABLE test_table ADD COLUMN status TEXT",
-                "ALTER TABLE test_table ADD COLUMN created_at TIMESTAMP"
+                "ALTER TABLE test_table ADD COLUMN created_at TIMESTAMP",
             ],
             down_sql=[
                 "ALTER TABLE test_table DROP COLUMN status",
-                "ALTER TABLE test_table DROP COLUMN created_at"
+                "ALTER TABLE test_table DROP COLUMN created_at",
             ],
-            description="Add status and timestamp fields"
+            description="Add status and timestamp fields",
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -305,13 +299,13 @@ class TestDatabaseMigrator(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(test_table)")
             columns = {row[1] for row in cursor.fetchall()}
-            self.assertIn('status', columns)
-            self.assertIn('created_at', columns)
+            self.assertIn("status", columns)
+            self.assertIn("created_at", columns)
 
             # Check migration was recorded
             cursor.execute(
                 "SELECT version, status FROM schema_migrations WHERE version = ?",
-                (str(migration.to_version),)
+                (str(migration.to_version),),
             )
             result = cursor.fetchone()
             self.assertIsNotNone(result)
@@ -327,7 +321,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN status TEXT"],
             down_sql=["ALTER TABLE test_table DROP COLUMN status"],
-            autofill_defaults={'status': 'active'}
+            autofill_defaults={"status": "active"},
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -338,13 +332,14 @@ class TestDatabaseMigrator(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("SELECT status FROM test_table")
             statuses = [row[0] for row in cursor.fetchall()]
-            self.assertTrue(all(s == 'active' for s in statuses))
+            self.assertTrue(all(s == "active" for s in statuses))
 
         finally:
             conn.close()
 
     def test_apply_migration_with_transform(self):
         """Test applying migration with data transformation."""
+
         def double_values(conn):
             conn.execute("UPDATE test_table SET value = value * 2")
 
@@ -353,7 +348,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN doubled BOOLEAN"],
             down_sql=["ALTER TABLE test_table DROP COLUMN doubled"],
-            data_transform=double_values
+            data_transform=double_values,
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -377,14 +372,14 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN field1 TEXT"],
             down_sql=["ALTER TABLE test_table DROP COLUMN field1"],
-            description="Add field1"
+            description="Add field1",
         )
         m2 = Migration(
             from_version=MigrationVersion(1, 1, 0),
             to_version=MigrationVersion(1, 2, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN field2 TEXT"],
             down_sql=["ALTER TABLE test_table DROP COLUMN field2"],
-            description="Add field2"
+            description="Add field2",
         )
 
         self.migrator.register_migration(m1)
@@ -392,18 +387,14 @@ class TestDatabaseMigrator(unittest.TestCase):
 
         # Perform migration
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 2, 0),
-            create_backup=True
+            target_version=MigrationVersion(1, 2, 0), create_backup=True
         )
 
         self.assertTrue(success)
         self.assertIn("Successfully migrated to version 1.2.0", messages[-1])
 
         # Verify current version
-        self.assertEqual(
-            self.migrator.get_current_version(),
-            MigrationVersion(1, 2, 0)
-        )
+        self.assertEqual(self.migrator.get_current_version(), MigrationVersion(1, 2, 0))
 
         # Verify backup was created
         backup_files = list(self.backup_dir.glob("*.db"))
@@ -415,43 +406,35 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN field1 TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN field1"]
+            down_sql=["ALTER TABLE test_table DROP COLUMN field1"],
         )
 
         self.migrator.register_migration(m1)
 
         # Perform dry run
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 1, 0),
-            dry_run=True
+            target_version=MigrationVersion(1, 1, 0), dry_run=True
         )
 
         self.assertTrue(success)
-        self.assertIn("Dry run completed", ' '.join(messages))
+        self.assertIn("Dry run completed", " ".join(messages))
 
         # Verify version hasn't changed
-        self.assertEqual(
-            self.migrator.get_current_version(),
-            MigrationVersion(1, 0, 0)
-        )
+        self.assertEqual(self.migrator.get_current_version(), MigrationVersion(1, 0, 0))
 
     def test_migrate_already_at_target(self):
         """Test migration when already at target version."""
-        success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 0, 0)
-        )
+        success, messages = self.migrator.migrate(target_version=MigrationVersion(1, 0, 0))
 
         self.assertTrue(success)
-        self.assertIn("already at target version", ' '.join(messages))
+        self.assertIn("already at target version", " ".join(messages))
 
     def test_migrate_no_path(self):
         """Test migration when no path exists."""
-        success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(5, 0, 0)
-        )
+        success, messages = self.migrator.migrate(target_version=MigrationVersion(5, 0, 0))
 
         self.assertFalse(success)
-        self.assertIn("No migration path found", ' '.join(messages))
+        self.assertIn("No migration path found", " ".join(messages))
 
     def test_migrate_failure(self):
         """Test handling migration failure."""
@@ -460,18 +443,17 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["INVALID SQL STATEMENT"],  # This will fail
-            down_sql=["SELECT 1"]
+            down_sql=["SELECT 1"],
         )
 
         self.migrator.register_migration(m1)
 
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 1, 0),
-            create_backup=False
+            target_version=MigrationVersion(1, 1, 0), create_backup=False
         )
 
         self.assertFalse(success)
-        self.assertIn("Migration failed", ' '.join(messages))
+        self.assertIn("Migration failed", " ".join(messages))
 
         # Check that failure was recorded
         conn = sqlite3.connect(str(self.db_path))
@@ -494,7 +476,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN temp_field TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN temp_field"]
+            down_sql=["ALTER TABLE test_table DROP COLUMN temp_field"],
         )
 
         self.migrator.register_migration(m1)
@@ -504,20 +486,17 @@ class TestDatabaseMigrator(unittest.TestCase):
         success, messages = self.migrator.rollback(MigrationVersion(1, 0, 0))
 
         self.assertTrue(success)
-        self.assertIn("Successfully rolled back", ' '.join(messages))
+        self.assertIn("Successfully rolled back", " ".join(messages))
 
         # Verify version
-        self.assertEqual(
-            self.migrator.get_current_version(),
-            MigrationVersion(1, 0, 0)
-        )
+        self.assertEqual(self.migrator.get_current_version(), MigrationVersion(1, 0, 0))
 
     def test_rollback_invalid_target(self):
         """Test rollback with invalid target version."""
         success, messages = self.migrator.rollback(MigrationVersion(2, 0, 0))
 
         self.assertFalse(success)
-        self.assertIn("Cannot rollback", ' '.join(messages))
+        self.assertIn("Cannot rollback", " ".join(messages))
 
     def test_get_migration_history(self):
         """Test retrieving migration history."""
@@ -526,7 +505,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["SELECT 1"],
-            down_sql=["SELECT 1"]
+            down_sql=["SELECT 1"],
         )
 
         self.migrator.register_migration(m1)
@@ -539,10 +518,10 @@ class TestDatabaseMigrator(unittest.TestCase):
 
         # Check history entry structure
         entry = history[0]
-        self.assertIn('version', entry)
-        self.assertIn('applied_at', entry)
-        self.assertIn('status', entry)
-        self.assertIn('error_message', entry)
+        self.assertIn("version", entry)
+        self.assertIn("applied_at", entry)
+        self.assertIn("status", entry)
+        self.assertIn("error_message", entry)
 
     def test_validate_database_orphaned_records(self):
         """Test database validation with orphaned records."""
@@ -550,15 +529,16 @@ class TestDatabaseMigrator(unittest.TestCase):
         try:
             # Create minimal schema with orphaned records
             conn.execute("CREATE TABLE ingredient (id INTEGER PRIMARY KEY)")
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE formulation_component (
                     id INTEGER PRIMARY KEY,
                     ingredient_id INTEGER
                 )
-            """)
+            """
+            )
             # Insert orphaned record
-            conn.execute(
-                "INSERT INTO formulation_component (ingredient_id) VALUES (999)")
+            conn.execute("INSERT INTO formulation_component (ingredient_id) VALUES (999)")
             conn.commit()
         finally:
             conn.close()
@@ -576,16 +556,13 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=[
                 "ALTER TABLE test_table ADD COLUMN status TEXT",
-                "ALTER TABLE test_table ADD COLUMN priority INTEGER"
+                "ALTER TABLE test_table ADD COLUMN priority INTEGER",
             ],
             down_sql=[
                 "ALTER TABLE test_table DROP COLUMN status",
-                "ALTER TABLE test_table DROP COLUMN priority"
+                "ALTER TABLE test_table DROP COLUMN priority",
             ],
-            autofill_defaults={
-                'test_table.status': 'pending',
-                'test_table.priority': 5
-            }
+            autofill_defaults={"test_table.status": "pending", "test_table.priority": 5},
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -597,7 +574,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             results = cursor.fetchall()
 
             for status, priority in results:
-                self.assertEqual(status, 'pending')
+                self.assertEqual(status, "pending")
                 self.assertEqual(priority, 5)
 
         finally:
@@ -607,26 +584,31 @@ class TestDatabaseMigrator(unittest.TestCase):
         """Test migration path finding with branching paths."""
 
         migrations = [
-            Migration(MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 0),
-                      ["SQL1"], ["SQL1_DOWN"]),
-            Migration(MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 1),
-                      ["SQL2"], ["SQL2_DOWN"]),
-            Migration(MigrationVersion(1, 1, 0), MigrationVersion(1, 2, 0),
-                      ["SQL3"], ["SQL3_DOWN"]),
-            Migration(MigrationVersion(1, 1, 1), MigrationVersion(1, 2, 1),
-                      ["SQL4"], ["SQL4_DOWN"]),
-            Migration(MigrationVersion(1, 2, 0), MigrationVersion(2, 0, 0),
-                      ["SQL5"], ["SQL5_DOWN"]),
-            Migration(MigrationVersion(1, 2, 1), MigrationVersion(2, 0, 0),
-                      ["SQL6"], ["SQL6_DOWN"])
+            Migration(
+                MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 0), ["SQL1"], ["SQL1_DOWN"]
+            ),
+            Migration(
+                MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 1), ["SQL2"], ["SQL2_DOWN"]
+            ),
+            Migration(
+                MigrationVersion(1, 1, 0), MigrationVersion(1, 2, 0), ["SQL3"], ["SQL3_DOWN"]
+            ),
+            Migration(
+                MigrationVersion(1, 1, 1), MigrationVersion(1, 2, 1), ["SQL4"], ["SQL4_DOWN"]
+            ),
+            Migration(
+                MigrationVersion(1, 2, 0), MigrationVersion(2, 0, 0), ["SQL5"], ["SQL5_DOWN"]
+            ),
+            Migration(
+                MigrationVersion(1, 2, 1), MigrationVersion(2, 0, 0), ["SQL6"], ["SQL6_DOWN"]
+            ),
         ]
 
         for m in migrations:
             self.migrator.register_migration(m)
 
         path = self.migrator.find_migration_path(
-            MigrationVersion(1, 0, 0),
-            MigrationVersion(2, 0, 0)
+            MigrationVersion(1, 0, 0), MigrationVersion(2, 0, 0)
         )
 
         # Should be 3 steps through one of the branches
@@ -640,7 +622,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN lock_field TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN lock_field"]
+            down_sql=["ALTER TABLE test_table DROP COLUMN lock_field"],
         )
 
         self.migrator.register_migration(migration)
@@ -676,8 +658,7 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Add some test data
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute(
-                "INSERT INTO test_table (name, value) VALUES ('test', 999)")
+            conn.execute("INSERT INTO test_table (name, value) VALUES ('test', 999)")
             conn.commit()
         finally:
             conn.close()
@@ -689,23 +670,22 @@ class TestDatabaseMigrator(unittest.TestCase):
         backup_conn = sqlite3.connect(str(backup_path))
         try:
             cursor = backup_conn.cursor()
-            cursor.execute(
-                "SELECT COUNT(*) FROM test_table WHERE name='test' AND value=999")
+            cursor.execute("SELECT COUNT(*) FROM test_table WHERE name='test' AND value=999")
             count = cursor.fetchone()[0]
             self.assertEqual(count, 1)
         finally:
             backup_conn.close()
 
         # Verify checksum in metadata
-        metadata_path = backup_path.with_suffix('.json')
-        with open(metadata_path, 'r') as f:
+        metadata_path = backup_path.with_suffix(".json")
+        with open(metadata_path, "r") as f:
             metadata = json.load(f)
 
         # Calculate actual checksum
-        with open(backup_path, 'rb') as f:
+        with open(backup_path, "rb") as f:
             actual_checksum = hashlib.md5(f.read()).hexdigest()
 
-        self.assertEqual(metadata['checksum'], actual_checksum)
+        self.assertEqual(metadata["checksum"], actual_checksum)
 
     def test_edge_case_empty_migration(self):
         """Test handling of empty migrations."""
@@ -713,7 +693,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 0, 1),
             up_sql=[],
-            down_sql=[]
+            down_sql=[],
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -723,8 +703,7 @@ class TestDatabaseMigrator(unittest.TestCase):
 
             # Should still record migration
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT version FROM schema_migrations WHERE version = '1.0.1'")
+            cursor.execute("SELECT version FROM schema_migrations WHERE version = '1.0.1'")
             result = cursor.fetchone()
             self.assertIsNotNone(result)
         finally:
@@ -735,10 +714,9 @@ class TestDatabaseMigrator(unittest.TestCase):
         migration = Migration(
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
-            up_sql=["ALTER TABLE test_table ADD COLUMN \"special'field\" TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN \"special'field\""],
-            autofill_defaults={
-                "special'field": "test'; DROP TABLE test_table; --"}
+            up_sql=['ALTER TABLE test_table ADD COLUMN "special\'field" TEXT'],
+            down_sql=['ALTER TABLE test_table DROP COLUMN "special\'field"'],
+            autofill_defaults={"special'field": "test'; DROP TABLE test_table; --"},
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -749,7 +727,8 @@ class TestDatabaseMigrator(unittest.TestCase):
             # Verify table still exists and wasn't dropped
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'")
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'"
+            )
             result = cursor.fetchone()
             self.assertIsNotNone(result)
 
@@ -760,26 +739,26 @@ class TestDatabaseMigrator(unittest.TestCase):
         """Test handling of large batch migrations."""
         migrations = []
         for i in range(10):
-            migrations.append(Migration(
-                from_version=MigrationVersion(1, i, 0),
-                to_version=MigrationVersion(1, i+1, 0),
-                up_sql=[f"ALTER TABLE test_table ADD COLUMN field_{i} TEXT"],
-                down_sql=[f"ALTER TABLE test_table DROP COLUMN field_{i}"],
-                description=f"Add field_{i}"
-            ))
+            migrations.append(
+                Migration(
+                    from_version=MigrationVersion(1, i, 0),
+                    to_version=MigrationVersion(1, i + 1, 0),
+                    up_sql=[f"ALTER TABLE test_table ADD COLUMN field_{i} TEXT"],
+                    down_sql=[f"ALTER TABLE test_table DROP COLUMN field_{i}"],
+                    description=f"Add field_{i}",
+                )
+            )
 
         for m in migrations:
             self.migrator.register_migration(m)
 
         # Migrate through all versions
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 10, 0),
-            create_backup=False  # Skip backup for speed
+            target_version=MigrationVersion(1, 10, 0), create_backup=False  # Skip backup for speed
         )
 
         self.assertTrue(success)
-        self.assertEqual(self.migrator.get_current_version(),
-                         MigrationVersion(1, 10, 0))
+        self.assertEqual(self.migrator.get_current_version(), MigrationVersion(1, 10, 0))
 
         # Verify all fields were added
         conn = sqlite3.connect(str(self.db_path))
@@ -788,7 +767,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             cursor.execute("PRAGMA table_info(test_table)")
             columns = {row[1] for row in cursor.fetchall()}
             for i in range(10):
-                self.assertIn(f'field_{i}', columns)
+                self.assertIn(f"field_{i}", columns)
         finally:
             conn.close()
 
@@ -814,7 +793,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 0, 0),
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN field1 TEXT"],
-            down_sql=["ALTER TABLE test_table DROP COLUMN field1"]
+            down_sql=["ALTER TABLE test_table DROP COLUMN field1"],
         )
         self.migrator.register_migration(m1)
         self.migrator.migrate(target_version=MigrationVersion(1, 1, 0))
@@ -824,7 +803,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             from_version=MigrationVersion(1, 1, 0),
             to_version=MigrationVersion(1, 2, 0),
             up_sql=["INVALID SQL"],
-            down_sql=["SELECT 1"]
+            down_sql=["SELECT 1"],
         )
         self.migrator.register_migration(m2)
         self.migrator.migrate(target_version=MigrationVersion(1, 2, 0))
@@ -840,16 +819,13 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=[
                 "ALTER TABLE test_table ADD COLUMN nullable_field TEXT",
-                "ALTER TABLE test_table ADD COLUMN timestamp_field TIMESTAMP"
+                "ALTER TABLE test_table ADD COLUMN timestamp_field TIMESTAMP",
             ],
             down_sql=[
                 "ALTER TABLE test_table DROP COLUMN nullable_field",
-                "ALTER TABLE test_table DROP COLUMN timestamp_field"
+                "ALTER TABLE test_table DROP COLUMN timestamp_field",
             ],
-            autofill_defaults={
-                'nullable_field': None,
-                'timestamp_field': 'CURRENT_TIMESTAMP'
-            }
+            autofill_defaults={"nullable_field": None, "timestamp_field": "CURRENT_TIMESTAMP"},
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -871,12 +847,14 @@ class TestDatabaseMigrator(unittest.TestCase):
         conn = sqlite3.connect(str(self.db_path))
         try:
             conn.execute("PRAGMA foreign_keys = ON")
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE parent_table (
                     id INTEGER PRIMARY KEY,
                     name TEXT
                 )
-            """)
+            """
+            )
             conn.execute("INSERT INTO parent_table (name) VALUES ('parent1')")
             conn.commit()
         finally:
@@ -888,10 +866,8 @@ class TestDatabaseMigrator(unittest.TestCase):
             up_sql=[
                 "ALTER TABLE test_table ADD COLUMN parent_id INTEGER REFERENCES parent_table(id)"
             ],
-            down_sql=[
-                "ALTER TABLE test_table DROP COLUMN parent_id"
-            ],
-            autofill_defaults={'parent_id': 1}
+            down_sql=["ALTER TABLE test_table DROP COLUMN parent_id"],
+            autofill_defaults={"parent_id": 1},
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -909,6 +885,7 @@ class TestDatabaseMigrator(unittest.TestCase):
 
     def test_data_transform_error_handling(self):
         """Test error handling in data transformation functions."""
+
         def failing_transform(conn):
             raise ValueError("Transform failed!")
 
@@ -917,7 +894,7 @@ class TestDatabaseMigrator(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE test_table ADD COLUMN transformed BOOLEAN"],
             down_sql=["ALTER TABLE test_table DROP COLUMN transformed"],
-            data_transform=failing_transform
+            data_transform=failing_transform,
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -934,17 +911,21 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Create a more complex initial schema
         conn = sqlite3.connect(str(self.db_path))
         try:
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE complex_table (
                     id INTEGER PRIMARY KEY,
                     data JSON,
                     metadata TEXT,
                     UNIQUE(data, metadata)
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 CREATE INDEX idx_complex_metadata ON complex_table(metadata)
-            """)
+            """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -957,14 +938,14 @@ class TestDatabaseMigrator(unittest.TestCase):
                 "ALTER TABLE complex_table ADD COLUMN version INTEGER DEFAULT 1",
                 "CREATE INDEX idx_complex_version ON complex_table(version)",
                 "CREATE TRIGGER update_version AFTER UPDATE ON complex_table "
-                "BEGIN UPDATE complex_table SET version = version + 1 WHERE id = NEW.id; END"
+                "BEGIN UPDATE complex_table SET version = version + 1 WHERE id = NEW.id; END",
             ],
             down_sql=[
                 "DROP TRIGGER update_version",
                 "DROP INDEX idx_complex_version",
                 "ALTER TABLE complex_table DROP COLUMN version",
-                "CREATE INDEX idx_complex_metadata ON complex_table(metadata)"
-            ]
+                "CREATE INDEX idx_complex_metadata ON complex_table(metadata)",
+            ],
         )
 
         conn = sqlite3.connect(str(self.db_path))
@@ -974,12 +955,14 @@ class TestDatabaseMigrator(unittest.TestCase):
             # Verify new schema
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_complex_version'")
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_complex_version'"
+            )
             result = cursor.fetchone()
             self.assertIsNotNone(result)
 
             cursor.execute(
-                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='update_version'")
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='update_version'"
+            )
             result = cursor.fetchone()
             self.assertIsNotNone(result)
 
@@ -1003,12 +986,11 @@ class TestDatabaseMigrator(unittest.TestCase):
         # Get backup metadata
         backups_with_dates = []
         for backup in backup_files:
-            metadata_path = backup.with_suffix('.json')
+            metadata_path = backup.with_suffix(".json")
             if metadata_path.exists():
-                with open(metadata_path, 'r') as f:
+                with open(metadata_path, "r") as f:
                     metadata = json.load(f)
-                    backups_with_dates.append(
-                        (backup, metadata['backup_time']))
+                    backups_with_dates.append((backup, metadata["backup_time"]))
 
         # Should be able to sort by date
         backups_with_dates.sort(key=lambda x: x[1])
@@ -1047,20 +1029,24 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
         conn = sqlite3.connect(str(self.test_db_path))
         try:
             # Create some basic tables that the migrator expects
-            conn.execute("""
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS ingredient (
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     type TEXT
                 )
-            """)
-            conn.execute("""
+            """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS formulation (
                     id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
-            """)
+            """
+            )
             conn.commit()
         finally:
             conn.close()
@@ -1100,8 +1086,8 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            autofill_defaults={'ingredient.notes': ''},
-            description="Add notes field to ingredient table"
+            autofill_defaults={"ingredient.notes": ""},
+            description="Add notes field to ingredient table",
         )
 
         self.migrator.register_migration(migration)
@@ -1119,14 +1105,14 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
         self.assertTrue(backup_path.name.endswith("test_backup.db"))
 
         # Check that metadata file was created
-        metadata_path = backup_path.with_suffix('.json')
+        metadata_path = backup_path.with_suffix(".json")
         self.assertTrue(metadata_path.exists())
 
-        with open(metadata_path, 'r') as f:
+        with open(metadata_path, "r") as f:
             metadata = json.load(f)
-            self.assertIn('original_path', metadata)
-            self.assertIn('checksum', metadata)
-            self.assertIn('version', metadata)
+            self.assertIn("original_path", metadata)
+            self.assertIn("checksum", metadata)
+            self.assertIn("version", metadata)
 
     def test_find_migration_path_no_path_needed(self):
         """Test finding migration path when versions are the same."""
@@ -1142,13 +1128,12 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            description="Test migration"
+            description="Test migration",
         )
         self.migrator.register_migration(migration)
 
         path = self.migrator.find_migration_path(
-            MigrationVersion(1, 0, 0),
-            MigrationVersion(1, 1, 0)
+            MigrationVersion(1, 0, 0), MigrationVersion(1, 1, 0)
         )
         self.assertEqual(len(path), 1)
         self.assertEqual(path[0], migration)
@@ -1156,10 +1141,7 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
     def test_find_migration_path_no_path_available(self):
         """Test finding migration path when no path exists."""
         with self.assertRaises(ValueError) as context:
-            self.migrator.find_migration_path(
-                MigrationVersion(1, 0, 0),
-                MigrationVersion(2, 0, 0)
-            )
+            self.migrator.find_migration_path(MigrationVersion(1, 0, 0), MigrationVersion(2, 0, 0))
         self.assertIn("No migration path found", str(context.exception))
 
     def test_apply_migration(self):
@@ -1170,8 +1152,8 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            autofill_defaults={'ingredient.notes': 'No notes'},
-            description="Add notes field"
+            autofill_defaults={"ingredient.notes": "No notes"},
+            description="Add notes field",
         )
 
         conn = sqlite3.connect(str(self.test_db_path))
@@ -1182,12 +1164,12 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(ingredient)")
             columns = [row[1] for row in cursor.fetchall()]
-            self.assertIn('notes', columns)
+            self.assertIn("notes", columns)
 
             # Check that migration was recorded
             cursor.execute(
                 "SELECT version, status FROM schema_migrations WHERE version = ?",
-                (str(migration.to_version),)
+                (str(migration.to_version),),
             )
             result = cursor.fetchone()
             self.assertIsNotNone(result)
@@ -1204,18 +1186,16 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            description="Test migration"
+            description="Test migration",
         )
         self.migrator.register_migration(migration)
 
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 1, 0),
-            dry_run=True,
-            create_backup=False
+            target_version=MigrationVersion(1, 1, 0), dry_run=True, create_backup=False
         )
 
         self.assertTrue(success)
-        self.assertIn("Dry run completed", ' '.join(messages))
+        self.assertIn("Dry run completed", " ".join(messages))
 
         # Verify no actual changes were made
         conn = sqlite3.connect(str(self.test_db_path))
@@ -1223,7 +1203,7 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(ingredient)")
             columns = [row[1] for row in cursor.fetchall()]
-            self.assertNotIn('notes', columns)
+            self.assertNotIn("notes", columns)
         finally:
             conn.close()
 
@@ -1235,13 +1215,12 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            description="Test migration"
+            description="Test migration",
         )
         self.migrator.register_migration(migration)
 
         success, messages = self.migrator.migrate(
-            target_version=MigrationVersion(1, 1, 0),
-            create_backup=True
+            target_version=MigrationVersion(1, 1, 0), create_backup=True
         )
 
         self.assertTrue(success)
@@ -1256,7 +1235,7 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             cursor = conn.cursor()
             cursor.execute("PRAGMA table_info(ingredient)")
             columns = [row[1] for row in cursor.fetchall()]
-            self.assertIn('notes', columns)
+            self.assertIn("notes", columns)
         finally:
             conn.close()
 
@@ -1268,7 +1247,7 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            description="Test migration"
+            description="Test migration",
         )
         self.migrator.register_migration(migration)
         self.migrator.migrate(target_version=MigrationVersion(1, 1, 0))
@@ -1277,8 +1256,8 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
         self.assertGreater(len(history), 0)
 
         latest = history[0]  # Most recent first
-        self.assertEqual(latest['version'], '1.1.0')
-        self.assertEqual(latest['status'], MigrationStatus.COMPLETED.value)
+        self.assertEqual(latest["version"], "1.1.0")
+        self.assertEqual(latest["status"], MigrationStatus.COMPLETED.value)
 
     def test_validate_database(self):
         """Test database validation."""
@@ -1297,7 +1276,7 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
             to_version=MigrationVersion(1, 1, 0),
             up_sql=["ALTER TABLE ingredient ADD COLUMN notes TEXT DEFAULT ''"],
             down_sql=["ALTER TABLE ingredient DROP COLUMN notes"],
-            description="Test migration"
+            description="Test migration",
         )
         self.migrator.register_migration(migration)
         self.migrator.migrate(target_version=MigrationVersion(1, 1, 0))
@@ -1311,5 +1290,5 @@ class TestDatabaseMigratorWithAssets(unittest.TestCase):
         self.assertIsInstance(messages, list)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

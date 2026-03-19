@@ -1,7 +1,8 @@
-import unittest
 import time
 from typing import List
-from src.threads.executor import Executor, ExecutionRecord
+import unittest
+
+from src.threads.executor import ExecutionRecord, Executor
 
 
 class DummyWorker:
@@ -33,7 +34,7 @@ class TestExecutionRecord(unittest.TestCase):
             args=(),
             kwargs={},
             thread_name="test-thread",
-            callback=None
+            callback=None,
         )
         with self.assertRaises(RuntimeError) as cm:
             _ = rec.thread
@@ -47,13 +48,12 @@ class TestExecutionRecord(unittest.TestCase):
             args=(),
             kwargs={},
             thread_name="test-thread",
-            callback=None
+            callback=None,
         )
         self.assertFalse(rec.is_alive())
         with self.assertRaises(RuntimeError) as cm:
             rec.join(timeout=0.01)
-        self.assertIn("Cannot join before thread is started",
-                      str(cm.exception))
+        self.assertIn("Cannot join before thread is started", str(cm.exception))
 
 
 class TestExecutor(unittest.TestCase):
@@ -73,7 +73,7 @@ class TestExecutor(unittest.TestCase):
 
     def test_run_success_and_result(self):
         """A normal run should execute the method, set .result, and no exception."""
-        rec = self.executor.run(self.worker, method_name="run",  x=3, y=4)
+        rec = self.executor.run(self.worker, method_name="run", x=3, y=4)
         rec.join(timeout=1.0)
         self.assertEqual(rec.result, 7)
         self.assertIsNone(rec.exception)
@@ -81,11 +81,10 @@ class TestExecutor(unittest.TestCase):
 
     def test_custom_thread_name_and_default_naming(self):
         """Verify that a provided thread_name is used, and default names increment."""
-        rec1 = self.executor.run(
-            self.worker, method_name="run",  x=1, y=2, thread_name="CustomName")
+        rec1 = self.executor.run(self.worker, method_name="run", x=1, y=2, thread_name="CustomName")
         self.assertEqual(rec1.thread.name, "CustomName")
         rec1.join(timeout=1.0)
-        rec2 = self.executor.run(self.worker, method_name="run",  x=2, y=3)
+        rec2 = self.executor.run(self.worker, method_name="run", x=2, y=3)
         self.assertEqual(rec2.thread.name, "Thread-2")
         rec2.join(timeout=1.0)
 
@@ -96,8 +95,7 @@ class TestExecutor(unittest.TestCase):
         def cb(record: ExecutionRecord):
             callback_calls.append(record)
 
-        rec = self.executor.run(
-            self.worker, method_name="run",  x=5, y=6, callback=cb)
+        rec = self.executor.run(self.worker, method_name="run", x=5, y=6, callback=cb)
         rec.join(timeout=1.0)
 
         self.assertEqual(len(callback_calls), 1)
@@ -106,10 +104,11 @@ class TestExecutor(unittest.TestCase):
 
     def test_callback_exception_swallowed(self):
         """If the callback itself raises, Executor should swallow it silently."""
+
         def bad_callback(record: ExecutionRecord):
             raise ValueError("Callback failure")
-        rec = self.executor.run(
-            self.worker, method_name="run",  x=2, y=2, callback=bad_callback)
+
+        rec = self.executor.run(self.worker, method_name="run", x=2, y=2, callback=bad_callback)
         rec.join(timeout=1.0)
         self.assertEqual(rec.result, 4)
         self.assertIsNone(rec.exception)
@@ -125,6 +124,7 @@ class TestExecutor(unittest.TestCase):
 
     def test_active_count_and_join_all(self):
         """Test active_count, join_all, and that join_all waits for tasks to complete."""
+
         class Sleeper:
             def long_run(self):
                 time.sleep(0.1)
@@ -149,8 +149,7 @@ class TestExecutor(unittest.TestCase):
 
     def test_get_all_exceptions_and_results_with_mixed_outcomes(self):
         """Verify get_all_results and get_all_exceptions reflect successes and failures."""
-        rec_success = self.executor.run(
-            self.worker, method_name="run",  x=1, y=1)
+        rec_success = self.executor.run(self.worker, method_name="run", x=1, y=1)
         rec_fail = self.executor.run(self.worker, method_name="raise_error")
 
         rec_success.join(timeout=1.0)
@@ -165,12 +164,12 @@ class TestExecutor(unittest.TestCase):
         self.assertIn(2, results)
         self.assertIn(None, results)
 
-        self.assertTrue(any(isinstance(exc, RuntimeError)
-                        for exc in exceptions))
+        self.assertTrue(any(isinstance(exc, RuntimeError) for exc in exceptions))
         self.assertIn(None, exceptions)
 
     def test_cleanup_finished(self):
         """cleanup_finished should remove records of tasks that are no longer alive."""
+
         class Short:
             def quick(self):
                 return "quick"
@@ -203,7 +202,7 @@ class TestExecutor(unittest.TestCase):
 
     def test_get_task_records_returns_copy(self):
         """Modifying the returned list of records should not affect internal state."""
-        rec = self.executor.run(self.worker, method_name="run",  x=0, y=0)
+        rec = self.executor.run(self.worker, method_name="run", x=0, y=0)
         rec.join(timeout=1.0)
 
         records = self.executor.get_task_records()

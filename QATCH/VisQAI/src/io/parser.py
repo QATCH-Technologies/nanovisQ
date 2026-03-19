@@ -20,10 +20,10 @@ Version:
 """
 
 import os
-import re
-import xml.etree.ElementTree as ET
 from pathlib import Path
+import re
 from typing import Any, List, Optional, Type, Union
+import xml.etree.ElementTree as ET
 
 import numpy as np
 
@@ -51,18 +51,10 @@ try:
     from src.db.db import Database
     from src.io.file_storage import SecureOpen
     from src.models.formulation import Formulation, ViscosityProfile
-    from src.models.ingredient import (
-        Buffer,
-        Excipient,
-        Protein,
-        Salt,
-        Stabilizer,
-        Surfactant,
-    )
+    from src.models.ingredient import Buffer, Excipient, Protein, Salt, Stabilizer, Surfactant
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Parser]"
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.io.file_storage import SecureOpen
@@ -75,6 +67,7 @@ except (ModuleNotFoundError, ImportError):
         Stabilizer,
         Surfactant,
     )
+    from QATCH.common.logger import Logger as Log
 
 
 class Parser:
@@ -272,9 +265,7 @@ class Parser:
         except ValueError:
             raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}")
 
-    def get_param_attr(
-        self, name: str, attr: str, required: bool = False
-    ) -> Optional[str]:
+    def get_param_attr(self, name: str, attr: str, required: bool = False) -> Optional[str]:
         """Retrieves a specific attribute from a `<param>` element.
 
         This method searches the internal parameters collection for a `<param>`
@@ -783,9 +774,7 @@ class Parser:
 
         csv_files = [n for n in namelist if n.endswith("_analyze_out.csv")]
         if not csv_files:
-            raise FileNotFoundError(
-                f"No *_analyze_out.csv found inside {largest_zip_name}"
-            )
+            raise FileNotFoundError(f"No *_analyze_out.csv found inside {largest_zip_name}")
 
         csv_file_name = csv_files[0]
         csv_path = os.path.join(self.base_path, csv_file_name)
@@ -804,9 +793,7 @@ class Parser:
         temp_profile = ViscosityProfile(
             shear_rates=shear_rates_list, viscosities=viscosities_list, units="cP"
         )
-        interpolated_viscosities = [
-            temp_profile.get_viscosity(sr) for sr in self.profile_shears
-        ]
+        interpolated_viscosities = [temp_profile.get_viscosity(sr) for sr in self.profile_shears]
         profile = ViscosityProfile(
             shear_rates=self.profile_shears,
             viscosities=interpolated_viscosities,

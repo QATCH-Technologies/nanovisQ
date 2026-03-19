@@ -1,14 +1,14 @@
 # test_model_version_controller.py
 
-import unittest
-import tempfile
-import os
 import json
-import time
-import shutil
-import threading
-import random
+import os
 from pathlib import Path
+import random
+import shutil
+import tempfile
+import threading
+import time
+import unittest
 
 from src.managers.version_manager import VersionManager
 
@@ -19,8 +19,7 @@ class TestVersionManager(unittest.TestCase):
         self.repo_dir = Path(self.tempdir.name) / "repo"
         self.repo_dir.mkdir()
         self.src_model = Path("test/assets/VisQAI-base.zip")
-        self.assertTrue(self.src_model.exists(),
-                        f"Actual model not found at {self.src_model}")
+        self.assertTrue(self.src_model.exists(), f"Actual model not found at {self.src_model}")
         self.model_file = Path(self.tempdir.name) / self.src_model.name
         shutil.copy2(self.src_model, self.model_file)
         self.mvc = VersionManager(str(self.repo_dir), retention=2)
@@ -39,8 +38,7 @@ class TestVersionManager(unittest.TestCase):
         out_dir = Path(self.tempdir.name) / "restored"
         restored_path = self.mvc.get(sha, str(out_dir))
         self.assertTrue(restored_path.exists())
-        self.assertEqual(restored_path.read_bytes(),
-                         self.model_file.read_bytes())
+        self.assertEqual(restored_path.read_bytes(), self.model_file.read_bytes())
 
     def test_list_order(self):
         sha1 = self.mvc.commit(str(self.model_file), metadata={"seq": 1})
@@ -71,7 +69,7 @@ class TestVersionManager(unittest.TestCase):
                 f.write(os.urandom(256))
 
         # Commit two snapshots
-        sha1 = self.mvc.commit(str(file1))   # not auto-protected
+        sha1 = self.mvc.commit(str(file1))  # not auto-protected
         time.sleep(1.1)
         sha2 = self.mvc.commit(str(file2))
 
@@ -116,8 +114,7 @@ class TestVersionManager(unittest.TestCase):
             sha = self.mvc.commit(str(fp), metadata={"thread": i})
             results.append(sha)
 
-        threads = [threading.Thread(target=worker, args=(i,))
-                   for i in range(10)]
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
         for t in threads:
             t.start()
         for t in threads:

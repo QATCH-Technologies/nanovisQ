@@ -23,10 +23,10 @@ Version:
 
 import json
 import os
+from pathlib import Path
 import random
 import sqlite3
 import tempfile
-from pathlib import Path
 from typing import List, Optional, Union
 
 try:
@@ -62,12 +62,7 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Database]"
-    from QATCH.common.logger import Logger as Log
-    from QATCH.VisQAI.src.models.formulation import (
-        Component,
-        Formulation,
-        ViscosityProfile,
-    )
+    from QATCH.VisQAI.src.models.formulation import Component, Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import (
         Buffer,
         Excipient,
@@ -78,11 +73,10 @@ except (ModuleNotFoundError, ImportError):
         Stabilizer,
         Surfactant,
     )
+    from QATCH.common.logger import Logger as Log
 
 DB_PATH = Path(
-    os.path.join(
-        os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db"
-    )
+    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
 )
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -243,9 +237,7 @@ class Database:
             )
         """
         )
-        c.execute(
-            "CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)"
-        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
@@ -351,9 +343,7 @@ class Database:
                 with all properties populated, or `None` if no ingredient exists with this ID.
         """
         c = self.conn.cursor()
-        c.execute(
-            "SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,)
-        )
+        c.execute("SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
         row = c.fetchone()
         if not row:
             return None
@@ -380,11 +370,7 @@ class Database:
                 molecular_weight=mw,
                 pI_mean=mean,
                 pI_range=rng,
-                class_type=(
-                    ProteinClass.from_value(class_str)
-                    if class_str is not None
-                    else None
-                ),
+                class_type=(ProteinClass.from_value(class_str) if class_str is not None else None),
                 id=id,
             )
         elif typ == "Buffer":
@@ -736,9 +722,7 @@ class Database:
             return True
         return False
 
-    def update_formulation_name_by_signature(
-        self, signature: str, new_name: str
-    ) -> bool:
+    def update_formulation_name_by_signature(self, signature: str, new_name: str) -> bool:
         """Update the name of a formulation identified by its signature.
 
         Args:
@@ -749,9 +733,7 @@ class Database:
             bool: True if the update was successful, False if the signature was not found.
         """
         c = self.conn.cursor()
-        c.execute(
-            "UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature)
-        )
+        c.execute("UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature))
 
         if c.rowcount > 0:
             self._commit()
@@ -904,24 +886,16 @@ class Database:
                 result.append(chr((ord(char) - base + shift) % 26 + base))
             elif ord(char) in range(32, 48):
                 base = 32
-                result.append(
-                    chr((ord(char) - base + shift) % len(range(32, 48)) + base)
-                )
+                result.append(chr((ord(char) - base + shift) % len(range(32, 48)) + base))
             elif ord(char) in range(58, 65):
                 base = 58
-                result.append(
-                    chr((ord(char) - base + shift) % len(range(58, 65)) + base)
-                )
+                result.append(chr((ord(char) - base + shift) % len(range(58, 65)) + base))
             elif ord(char) in range(91, 97):
                 base = 91
-                result.append(
-                    chr((ord(char) - base + shift) % len(range(91, 97)) + base)
-                )
+                result.append(chr((ord(char) - base + shift) % len(range(91, 97)) + base))
             elif ord(char) in range(123, 127):
                 base = 123
-                result.append(
-                    chr((ord(char) - base + shift) % len(range(123, 127)) + base)
-                )
+                result.append(chr((ord(char) - base + shift) % len(range(123, 127)) + base))
         return "".join(result)
 
     def _xor_cipher(self, data: bytes, key: str) -> bytes:
@@ -961,14 +935,10 @@ class Database:
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content
-                decrypted_text = self._xor_cipher(
-                    secure_bytes, self._caesar_cipher(password)
-                )
+                decrypted_text = self._xor_cipher(secure_bytes, self._caesar_cipher(password))
             else:
                 decrypted_text = secure_bytes
-            decrypted_text = decrypted_text.decode(
-                self.metadata.get("app_encoding", "utf-8")
-            )
+            decrypted_text = decrypted_text.decode(self.metadata.get("app_encoding", "utf-8"))
             con.executescript(decrypted_text)
             con.commit()
         return con
@@ -1005,9 +975,7 @@ class Database:
         if self.file_handle is not None:
             self.file_handle.close()
         if self.is_open:
-            if self.conn.total_changes > self.init_changes or not os.path.isfile(
-                self.db_path
-            ):
+            if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
                 if self.use_encryption:
                     self._save_cdb(self.db_path, self.encryption_key)
                 else:
@@ -1149,9 +1117,7 @@ class Database:
         """
         if self.file_handle is not None:
             self.file_handle.close()
-        if self.conn.total_changes > self.init_changes or not os.path.isfile(
-            self.db_path
-        ):
+        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
             if self.use_encryption:
                 self._save_cdb(self.db_path, self.encryption_key)
             else:

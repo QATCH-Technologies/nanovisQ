@@ -19,9 +19,9 @@ Version:
     1.1
 """
 
+from datetime import datetime
 import json
 import os
-from datetime import datetime
 
 from PyQt5.QtCore import QDir, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QIcon
@@ -42,9 +42,9 @@ from PyQt5.QtWidgets import (
 
 try:
     TAG = "[ModelSelectionDialog]"
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.common.architecture import Architecture
     from QATCH.common.logger import Logger as Log
-    from QATCH.VisQAI.src.managers.version_manager import VersionManager
 
 except ImportError:
     TAG = "[ModelSelectionDialog (HEADLESS)]"
@@ -113,9 +113,7 @@ class ModelSelectionDialog(QDialog):
             parent (QWidget, optional): Parent widget. Defaults to None.
         """
         super().__init__(parent)
-        self.models_directory = (
-            models_directory if models_directory is not None else os.getcwd()
-        )
+        self.models_directory = models_directory if models_directory is not None else os.getcwd()
         self.pinned_models = []
         self.pinned_names = {}
         self.selected_model = None
@@ -140,9 +138,7 @@ class ModelSelectionDialog(QDialog):
         _pinned_label_layout.setContentsMargins(0, 0, 0, 0)
         _pin_icon = QLabel()
         _pin_icon.setPixmap(
-            QIcon(os.path.join(_icons_dir, "pin-circle-svgrepo-com.svg")).pixmap(
-                QSize(16, 16)
-            )
+            QIcon(os.path.join(_icons_dir, "pin-circle-svgrepo-com.svg")).pixmap(QSize(16, 16))
         )
         _pinned_label_layout.addWidget(_pin_icon)
         _pinned_section_label = QLabel("PINNED MODELS")
@@ -158,9 +154,9 @@ class ModelSelectionDialog(QDialog):
         _recent_label_layout.setContentsMargins(0, 0, 0, 0)
         _folder_icon = QLabel()
         _folder_icon.setPixmap(
-            QIcon(
-                os.path.join(_icons_dir, "folder-path-connect-svgrepo-com.svg")
-            ).pixmap(QSize(16, 16))
+            QIcon(os.path.join(_icons_dir, "folder-path-connect-svgrepo-com.svg")).pixmap(
+                QSize(16, 16)
+            )
         )
         _recent_label_layout.addWidget(_folder_icon)
         _recent_section_label = QLabel("RECENT MODELS")
@@ -249,9 +245,7 @@ class ModelSelectionDialog(QDialog):
 
         # Separate pinned and unpinned
         pinned = [m for m in self.all_models if m["filename"] in self.pinned_models]
-        unpinned = [
-            m for m in self.all_models if m["filename"] not in self.pinned_models
-        ]
+        unpinned = [m for m in self.all_models if m["filename"] not in self.pinned_models]
 
         # Populate lists
         self.pinned_list.clear()
@@ -289,9 +283,7 @@ class ModelSelectionDialog(QDialog):
                 created_time = f"{age_days} days ago"
         else:
             # show absolute creation time
-            created_time = datetime.fromtimestamp(model["created"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
+            created_time = datetime.fromtimestamp(model["created"]).strftime("%Y-%m-%d %H:%M:%S")
 
         parent_model = model["metadata"].get("parent_model", "N/A")
         if parent_model == "N/A":
@@ -468,12 +460,11 @@ class ModelSelectionDialog(QDialog):
 
         # Find model info
         for model in self.all_models:
-            if (
-                self.pinned_names.get(model["filename"], model["filename"])
-                == model_name
-            ):
+            if self.pinned_names.get(model["filename"], model["filename"]) == model_name:
                 self.selected_model = model["filepath"]
-                detail_text = f"Model: {self.pinned_names.get(model['filename'], model['filename'])}\n"
+                detail_text = (
+                    f"Model: {self.pinned_names.get(model['filename'], model['filename'])}\n"
+                )
                 detail_text += json.dumps(model["metadata"], indent=4)
                 self.detail_panel.setText(detail_text)
                 break
@@ -493,10 +484,7 @@ class ModelSelectionDialog(QDialog):
         else:
             model_names = [model_name]
         for model in self.all_models:
-            if (
-                self.pinned_names.get(model["filename"], model["filename"])
-                in model_names
-            ):
+            if self.pinned_names.get(model["filename"], model["filename"]) in model_names:
                 self.selected_model = model["filepath"]
                 self.fileSelected.emit(self.selected_model)
                 self.accept()
@@ -518,9 +506,7 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
             Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
@@ -558,9 +544,7 @@ class ModelSelectionDialog(QDialog):
 
         # Find index of the selected model in the new list
         select_index = 0
-        current_name = self.pinned_names.get(
-            model_info["filename"], model_info["filename"]
-        )
+        current_name = self.pinned_names.get(model_info["filename"], model_info["filename"])
         for i in range(search_list.count()):
             item = search_list.item(i)
             if item.text().splitlines()[0].split("\t")[0].strip() == current_name:
@@ -588,9 +572,7 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
             Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
@@ -604,9 +586,7 @@ class ModelSelectionDialog(QDialog):
             )
             return
 
-        current_name = self.pinned_names.get(
-            model_info["filename"], model_info["filename"]
-        )
+        current_name = self.pinned_names.get(model_info["filename"], model_info["filename"])
         new_name, ok = QInputDialog.getText(
             self, "Rename Model", "Enter new name:", text=current_name
         )
@@ -632,16 +612,12 @@ class ModelSelectionDialog(QDialog):
             else:
                 return
         else:
-            if new_name.casefold() in [
-                v.casefold() for v in self.pinned_names.values()
-            ]:
+            if new_name.casefold() in [v.casefold() for v in self.pinned_names.values()]:
                 QMessageBox.warning(
                     self, "Duplicate Name", "A model with this name already exists."
                 )
                 return
-            if new_name.casefold() in [
-                m["filename"].casefold() for m in self.all_models
-            ]:
+            if new_name.casefold() in [m["filename"].casefold() for m in self.all_models]:
                 QMessageBox.warning(
                     self, "Duplicate Name", "A model with this filename already exists."
                 )
@@ -682,9 +658,7 @@ class ModelSelectionDialog(QDialog):
 
         # Get the sha of the selected model
         model_name = os.path.basename(self.selected_model)
-        model_info = next(
-            (m for m in self.all_models if m["filename"] == model_name), None
-        )
+        model_info = next((m for m in self.all_models if m["filename"] == model_name), None)
         if not model_info:
             Log.e(TAG, f'Selected model "{model_name}" not found in model list')
             return
@@ -743,19 +717,14 @@ class ModelSelectionDialog(QDialog):
         while True:
             model_found = False
             for model in self.all_models:
-                if (
-                    self.pinned_names.get(model["filename"], model["filename"])
-                    == model_name
-                ):
+                if self.pinned_names.get(model["filename"], model["filename"]) == model_name:
                     metadata = model["metadata"]
                     parent = metadata.get("parent", None)
                     children = metadata.get("children", [])
                     if not key_index in training_tree:
                         training_tree[key_index] = []
                     for child in children:
-                        child_model = next(
-                            (m for m in self.all_models if m["sha"] == child), None
-                        )
+                        child_model = next((m for m in self.all_models if m["sha"] == child), None)
                         if not child_model:
                             Log.w(
                                 TAG,
@@ -819,13 +788,9 @@ class ModelSelectionDialog(QDialog):
                 self.tree.addTopLevelItem(base_tree)
             for parent, child in pair:
                 # detail_text += "    " * (i - first_i) + f"{child}\n"
-                items = self.tree.findItems(
-                    parent, Qt.MatchRecursive | Qt.MatchExactly, 0
-                )
+                items = self.tree.findItems(parent, Qt.MatchRecursive | Qt.MatchExactly, 0)
                 if items:
-                    if self.tree.findItems(
-                        child, Qt.MatchRecursive | Qt.MatchExactly, 0
-                    ):
+                    if self.tree.findItems(child, Qt.MatchRecursive | Qt.MatchExactly, 0):
                         continue  # already added
                     parent_item = items[0]
                     child_item = QTreeWidgetItem([child])
@@ -833,9 +798,7 @@ class ModelSelectionDialog(QDialog):
                 else:
                     Log.w(TAG, f'Parent item "{parent}" not found in tree')
         if selected_model_name:
-            items = self.tree.findItems(
-                selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0
-            )
+            items = self.tree.findItems(selected_model_name, Qt.MatchRecursive | Qt.MatchExactly, 0)
             if items:
                 items[0].setText(0, f"{selected_model_name}\t⬅️")
                 self.tree.setCurrentItem(items[0])
@@ -858,9 +821,7 @@ class ModelSelectionDialog(QDialog):
         close_btn = QPushButton("Close")
 
         switch_btn.clicked.connect(
-            lambda: self.select_model_by_name(
-                self.tree.currentItem().text(0).split("\t")[0]
-            )
+            lambda: self.select_model_by_name(self.tree.currentItem().text(0).split("\t")[0])
         )
         switch_btn.clicked.connect(self.details_win.close)
         close_btn.clicked.connect(self.details_win.close)

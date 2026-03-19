@@ -1,24 +1,23 @@
 # tests/test_constraints.py
 
-import unittest
-import numpy as np
 import os
+import unittest
 from unittest.mock import MagicMock
-from src.models.formulation import ViscosityProfile, Formulation
-from src.models.predictor import Predictor
-from src.controller.ingredient_controller import IngredientController
-from src.managers.asset_manager import AssetManager
 
-from src.models.ingredient import Protein, Buffer, Salt, Stabilizer, Surfactant, Excipient
+import numpy as np
+from src.controller.ingredient_controller import IngredientController
 from src.db.db import Database
+from src.managers.asset_manager import AssetManager
+from src.models.formulation import Formulation, ViscosityProfile
+from src.models.ingredient import Buffer, Excipient, Protein, Salt, Stabilizer, Surfactant
+from src.models.predictor import Predictor
 from src.processors.optimizer import Constraints, Optimizer
 
 
 class TestConstraints(unittest.TestCase):
 
     def setUp(self):
-        self.db = Database(path=os.path.join(
-            "test", "assets", "app.db"), parse_file_key=True)
+        self.db = Database(path=os.path.join("test", "assets", "app.db"), parse_file_key=True)
         self.ing_ctrl = IngredientController(self.db)
         self.constraints = Constraints(db=self.db)
 
@@ -27,8 +26,7 @@ class TestConstraints(unittest.TestCase):
         self.assertEqual(self.constraints._ranges["Protein_conc"], (0.1, 5.0))
 
         self.constraints.add_range("Temperature", -20.0, 80.0)
-        self.assertEqual(
-            self.constraints._ranges["Temperature"], (-20.0, 80.0))
+        self.assertEqual(self.constraints._ranges["Temperature"], (-20.0, 80.0))
 
     def test_add_range_invalid_feature(self):
         with self.assertRaises(ValueError) as cm:
@@ -42,12 +40,10 @@ class TestConstraints(unittest.TestCase):
 
         with self.assertRaises(ValueError) as cm_high:
             self.constraints.add_range("Salt_conc", 0.0, -0.5)
-        self.assertIn("Negative values are not allowed",
-                      str(cm_high.exception))
+        self.assertIn("Negative values are not allowed", str(cm_high.exception))
 
     def test_add_choices_invalid_feature(self):
-        dummy = Protein(enc_id=-1, name="P", molecular_weight=50.0,
-                        pI_mean=6.0, pI_range=0.2)
+        dummy = Protein(enc_id=-1, name="P", molecular_weight=50.0, pI_mean=6.0, pI_range=0.2)
         with self.assertRaises(ValueError) as cm:
             self.constraints.add_choices("Protein_conc", [dummy])
         self.assertIn("Unknown categorical feature", str(cm.exception))
@@ -58,16 +54,13 @@ class TestConstraints(unittest.TestCase):
         self.assertIn("must be Ingredient instances", str(cm.exception))
 
     def test_add_choices_not_persisted(self):
-        prot = Protein(enc_id=-1, name="NewProt", molecular_weight=30.0,
-                       pI_mean=5.0, pI_range=0.1)
+        prot = Protein(enc_id=-1, name="NewProt", molecular_weight=30.0, pI_mean=5.0, pI_range=0.1)
         with self.assertRaises(ValueError) as cm:
             self.constraints.add_choices("Protein_type", [prot])
-        self.assertIn("has not been added to persistent store",
-                      str(cm.exception))
+        self.assertIn("has not been added to persistent store", str(cm.exception))
 
     def test_add_choices_valid(self):
-        prot = Protein(enc_id=-1, name="GoodProt", molecular_weight=25.0,
-                       pI_mean=4.5, pI_range=0.2)
+        prot = Protein(enc_id=-1, name="GoodProt", molecular_weight=25.0, pI_mean=4.5, pI_range=0.2)
         self.ing_ctrl.add(prot)
         self.constraints.add_choices("Protein_type", [prot])
         self.assertIn("Protein_type", self.constraints._choices)
@@ -80,13 +73,12 @@ class TestConstraints(unittest.TestCase):
 
     def test_build_with_defaults_and_ranges(self):
         ing_list = [
-            Protein(enc_id=-1, name="P", molecular_weight=10.0,
-                    pI_mean=6.0, pI_range=0.2),
+            Protein(enc_id=-1, name="P", molecular_weight=10.0, pI_mean=6.0, pI_range=0.2),
             Buffer(enc_id=-1, name="B", pH=7.4),
             Salt(enc_id=-1, name="Salt"),
             Stabilizer(enc_id=-1, name="Stab"),
             Surfactant(enc_id=-1, name="Surf"),
-            Excipient(enc_id=-1, name="ExcipA")
+            Excipient(enc_id=-1, name="ExcipA"),
         ]
         for ing in ing_list:
             self.ing_ctrl.add(ing)
@@ -97,9 +89,7 @@ class TestConstraints(unittest.TestCase):
         self.assertEqual(len(bounds), total_feats)
         self.assertEqual(len(encoding), total_feats)
 
-        numeric_entries = [
-            b for enc, b in zip(encoding, bounds) if enc["type"] == "num"
-        ]
+        numeric_entries = [b for enc, b in zip(encoding, bounds) if enc["type"] == "num"]
         self.assertIn((0.5, 2.5), numeric_entries)
 
         for enc, bnd in zip(encoding, bounds):
@@ -114,25 +104,23 @@ class TestOptimizer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Create one of each Ingredient subclass with distinct names:
-        cls.protein = Protein(enc_id=-1,
-                              name="ProtA", molecular_weight=100, pI_mean=10, pI_range=1)
+        cls.protein = Protein(enc_id=-1, name="ProtA", molecular_weight=100, pI_mean=10, pI_range=1)
         cls.buffer = Buffer(enc_id=-1, name="BuffA", pH=10)
         cls.stabilizer = Stabilizer(enc_id=-1, name="StabA")
         cls.salt = Salt(enc_id=-1, name="SaltA")
         cls.surfactant = Surfactant(enc_id=-1, name="SurfA")
-        cls.excipient = Excipient(enc_id=-1, name='ExcipA')
+        cls.excipient = Excipient(enc_id=-1, name="ExcipA")
         cls.all_ings = [
             cls.protein,
             cls.buffer,
             cls.stabilizer,
             cls.salt,
             cls.surfactant,
-            cls.excipient
+            cls.excipient,
         ]
 
     def setUp(self):
-        self.db = Database(path=os.path.join(
-            "test", "assets", "app.db"), parse_file_key=True)
+        self.db = Database(path=os.path.join("test", "assets", "app.db"), parse_file_key=True)
         self.ing_ctrl = IngredientController(self.db)
         for ing in self.all_ings:
             self.ing_ctrl.add(ing)
@@ -142,11 +130,10 @@ class TestOptimizer(unittest.TestCase):
         self.target = ViscosityProfile(
             shear_rates=[100, 1_000, 10_000, 100_000, 15_000_000],
             viscosities=[10, 10, 10, 10, 10],
-            units="cP"
+            units="cP",
         )
 
-        self.predictor = Predictor(zip_path=os.path.join(
-            "test", "assets", "VisQAI-base.zip"))
+        self.predictor = Predictor(zip_path=os.path.join("test", "assets", "VisQAI-base.zip"))
 
         self.optimizer = Optimizer(
             constraints=self.constraints,
@@ -154,7 +141,7 @@ class TestOptimizer(unittest.TestCase):
             target=self.target,
             maxiter=10,
             popsize=2,
-            seed=42
+            seed=42,
         )
 
     def test_constraints_build_shape(self):
@@ -173,8 +160,7 @@ class TestOptimizer(unittest.TestCase):
         for enc in self.optimizer.encoding:
             if enc["type"] == "cat":
                 feat = enc["feature"]
-                self.assertEqual(
-                    decoded[feat], self.optimizer.cat_choices[feat][0])
+                self.assertEqual(decoded[feat], self.optimizer.cat_choices[feat][0])
 
     def test_build_formulation_no_error(self):
         x = np.zeros(len(self.optimizer.encoding))

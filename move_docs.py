@@ -2,6 +2,7 @@ import os
 import shutil
 
 from QATCH.core.constants import Constants
+
 sw_version = Constants.app_version
 fw_version = Constants.best_fw_version
 
@@ -38,8 +39,7 @@ def move_docs():
 
 def move_fw_changes(path):
 
-    dst1 = os.path.join(to_path, "QATCH_Q-1_FW_py_dev",
-                        "docs", "FW Change Control Doc.pdf")
+    dst1 = os.path.join(to_path, "QATCH_Q-1_FW_py_dev", "docs", "FW Change Control Doc.pdf")
     if os.path.exists(dst1):
         os.remove(dst1)
     else:
@@ -47,8 +47,7 @@ def move_fw_changes(path):
         print(dst1)
     shutil.copy(path, dst1)  # copy first, move later
 
-    dst2 = os.path.join(
-        to_path, f"QATCH_Q-1_FW_py_{fw_version}", "FW Change Control Doc.pdf")
+    dst2 = os.path.join(to_path, f"QATCH_Q-1_FW_py_{fw_version}", "FW Change Control Doc.pdf")
     if os.path.exists(dst2):
         os.remove(dst2)
     else:
@@ -60,10 +59,8 @@ def move_fw_changes(path):
 
 def move_release_notes(path):
 
-    dst = os.path.join(
-        to_path, "docs", f"Release Notes {sw_version}.pdf")
-    files = [f for f in os.listdir(os.path.dirname(
-        dst)) if f.startswith("Release Notes")]
+    dst = os.path.join(to_path, "docs", f"Release Notes {sw_version}.pdf")
+    files = [f for f in os.listdir(os.path.dirname(dst)) if f.startswith("Release Notes")]
     if len(files) == 1:
         full_path = os.path.join(os.path.dirname(dst), files[0])
         os.remove(full_path)
@@ -76,8 +73,7 @@ def move_release_notes(path):
 
 def move_sw_changes(path):
 
-    dst = os.path.join(
-        to_path, "QATCH", "SW Change Control Doc.pdf")
+    dst = os.path.join(to_path, "QATCH", "SW Change Control Doc.pdf")
     if os.path.exists(dst):
         os.remove(dst)
     else:

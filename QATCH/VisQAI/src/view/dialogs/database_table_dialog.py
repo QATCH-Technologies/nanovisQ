@@ -135,9 +135,7 @@ class DatabaseTableDialog(QtWidgets.QDialog):
                         | QtCore.Qt.ItemIsSelectable
                     )
                     is_checked = str(val).lower() in ("true", "1", "yes")
-                    item.setCheckState(
-                        QtCore.Qt.Checked if is_checked else QtCore.Qt.Unchecked
-                    )
+                    item.setCheckState(QtCore.Qt.Checked if is_checked else QtCore.Qt.Unchecked)
                     item.setData(QtCore.Qt.UserRole, val)
                 else:
                     item = QtWidgets.QTableWidgetItem(str(val))
@@ -187,9 +185,7 @@ class DatabaseTableDialog(QtWidgets.QDialog):
         Rows are processed in reverse order to ensure indices remain valid
         as rows are removed from the table widget.
         """
-        rows = sorted(
-            set(index.row() for index in self.table.selectedIndexes()), reverse=True
-        )
+        rows = sorted(set(index.row() for index in self.table.selectedIndexes()), reverse=True)
         for row in rows:
             id_item = self.table.item(row, 0)
             if id_item:

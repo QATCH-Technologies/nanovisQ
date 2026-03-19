@@ -29,15 +29,11 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 try:
     from src.view.architecture import Architecture
     from src.view.components.checkable_combo_box import CheckableComboBox
-    from src.view.dialogs.model_selection_dialog import (
-        ModelSelectionDialog,
-    )
+    from src.view.dialogs.model_selection_dialog import ModelSelectionDialog
 except (ImportError, ModuleNotFoundError):
-    from QATCH.common.architecture import Architecture
     from QATCH.VisQAI.src.view.components.checkable_combo_box import CheckableComboBox
-    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import (
-        ModelSelectionDialog,
-    )
+    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import ModelSelectionDialog
+    from QATCH.common.architecture import Architecture
 
 
 SHEAR_RATE_OPTIONS = [100, 1_000, 10_000, 100_000, 15_000_000]
@@ -94,9 +90,7 @@ class _CompactCheckableComboBox(CheckableComboBox):
         except Exception:
             pass
 
-        self.style().drawComplexControl(
-            QtWidgets.QStyle.CC_ComboBox, opt, painter, self
-        )
+        self.style().drawComplexControl(QtWidgets.QStyle.CC_ComboBox, opt, painter, self)
         self.style().drawControl(QtWidgets.QStyle.CE_ComboBoxLabel, opt, painter, self)
 
 
@@ -149,9 +143,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         super().__init__(parent)
         self.ingredients_by_type = ingredients_by_type
 
-        self.assets_path = os.path.join(
-            Architecture.get_path(), "QATCH", "VisQAI", "assets"
-        )
+        self.assets_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
         os.makedirs(self.assets_path, exist_ok=True)
 
         self.setAttribute(QtCore.Qt.WidgetAttribute.WA_StyledBackground, True)
@@ -262,9 +254,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         layout.addWidget(grp_cfg)
 
         # Viscosity Targets
-        grp_tgt = QtWidgets.QGroupBox(
-            "Viscosity Targets  (1 - 5 shear-rate / target pairs)"
-        )
+        grp_tgt = QtWidgets.QGroupBox("Viscosity Targets  (1 - 5 shear-rate / target pairs)")
         tgt_vbox = QtWidgets.QVBoxLayout(grp_tgt)
         tgt_vbox.setContentsMargins(15, 15, 15, 10)
         tgt_vbox.setSpacing(6)
@@ -310,9 +300,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.btn_add_target.setFixedHeight(28)
         self.btn_add_target.setFixedWidth(120)
         self.btn_add_target.clicked.connect(self.add_target_row)
-        tgt_vbox.addWidget(
-            self.btn_add_target, alignment=QtCore.Qt.AlignmentFlag.AlignLeft
-        )
+        tgt_vbox.addWidget(self.btn_add_target, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(grp_tgt)
 
         # Constraints
@@ -323,9 +311,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.scroll_area = QtWidgets.QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
-        self.scroll_area.setHorizontalScrollBarPolicy(
-            QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
-        )
+        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.constraints_container = QtWidgets.QWidget()
         self.constraints_layout = QtWidgets.QVBoxLayout(self.constraints_container)
         self.constraints_layout.setContentsMargins(0, 0, 5, 0)
@@ -641,12 +627,8 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.constraint_rows.append(row_data)
 
         btn_del.clicked.connect(lambda: self._remove_constraint_row(row_data))
-        cb_ingredient.currentIndexChanged.connect(
-            lambda: self._on_ingredient_changed(row_data)
-        )
-        cb_attribute.currentIndexChanged.connect(
-            lambda: self._on_attribute_changed(row_data)
-        )
+        cb_ingredient.currentIndexChanged.connect(lambda: self._on_ingredient_changed(row_data))
+        cb_attribute.currentIndexChanged.connect(lambda: self._on_attribute_changed(row_data))
         cb_condition.currentIndexChanged.connect(self._validate)
         cb_value.model().dataChanged.connect(self._validate)
         spin_value.valueChanged.connect(lambda _: self._validate())
@@ -883,11 +865,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         targets = []
         for row in self.target_rows:
             idx = row["shear_cb"].currentIndex()
-            shear = (
-                SHEAR_RATE_OPTIONS[idx]
-                if 0 <= idx < len(SHEAR_RATE_OPTIONS)
-                else 10_000
-            )
+            shear = SHEAR_RATE_OPTIONS[idx] if 0 <= idx < len(SHEAR_RATE_OPTIONS) else 10_000
             targets.append({"shear_rate": shear, "viscosity": row["visc_spin"].value()})
 
         constraints_data = []
@@ -906,9 +884,7 @@ class OptimizeWidget(QtWidgets.QFrame):
                 }
             )
 
-        self.optimize_requested.emit(
-            self.model_combo.currentText(), targets, constraints_data
-        )
+        self.optimize_requested.emit(self.model_combo.currentText(), targets, constraints_data)
 
     def close_widget(self):
         """Hide the overlay and notify the parent dashboard.

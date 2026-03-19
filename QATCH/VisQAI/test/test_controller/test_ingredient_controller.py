@@ -21,27 +21,53 @@ Version:
     1.3
 """
 
-import unittest
 from pathlib import Path
+import unittest
 from unittest.mock import patch
 
 try:
-    from src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
-    from src.db.db import Database
     from src.controller.ingredient_controller import IngredientController
+    from src.db.db import Database
+    from src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
 except (ModuleNotFoundError, ImportError):
     # Fallback imports for different project structures
     try:
-        from QATCH.VisQAI.src.models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
-        from QATCH.VisQAI.src.db.db import Database
         from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
+        from QATCH.VisQAI.src.db.db import Database
+        from QATCH.VisQAI.src.models.ingredient import (
+            Buffer,
+            Excipient,
+            Protein,
+            ProteinClass,
+            Salt,
+            Stabilizer,
+            Surfactant,
+        )
     except (ModuleNotFoundError, ImportError):
         # For standalone testing
         import sys
+
         sys.path.insert(0, str(Path(__file__).parent.parent))
-        from models.ingredient import Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient, ProteinClass
-        from db.db import Database
         from controller.ingredient_controller import IngredientController
+        from db.db import Database
+
+        from models.ingredient import (
+            Buffer,
+            Excipient,
+            Protein,
+            ProteinClass,
+            Salt,
+            Stabilizer,
+            Surfactant,
+        )
 
 
 class TestIngredientController(unittest.TestCase):
@@ -99,8 +125,7 @@ class TestIngredientController(unittest.TestCase):
             tuple or None: The database row for the ingredient, or None if not found.
         """
         return self.db.conn.execute(
-            "SELECT id, name, type, enc_id, is_user FROM ingredient WHERE name = ?",
-            (name,)
+            "SELECT id, name, type, enc_id, is_user FROM ingredient WHERE name = ?", (name,)
         ).fetchone()
 
     def _make_protein(self, name="prot1", is_user=True, enc_id=-1):
@@ -111,7 +136,7 @@ class TestIngredientController(unittest.TestCase):
             molecular_weight=50.0,
             pI_mean=6.5,
             pI_range=1.0,
-            class_type=ProteinClass.MAB_IGG1
+            class_type=ProteinClass.MAB_IGG1,
         )
         p.is_user = is_user
         return p
@@ -262,8 +287,7 @@ class TestIngredientController(unittest.TestCase):
         all_ings = self.ctrl.get_all_ingredients()
         self.assertEqual(len(all_ings), 6)
         self.assertEqual(
-            {type(i) for i in all_ings},
-            {Protein, Buffer, Salt, Surfactant, Stabilizer, Excipient}
+            {type(i) for i in all_ings}, {Protein, Buffer, Salt, Surfactant, Stabilizer, Excipient}
         )
 
         self.ctrl.delete_all_ingredients()
@@ -297,8 +321,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Protein by ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_protein_by_id(9999)
-        self.assertIn("Protein with id 9999 does not exist",
-                      str(ctx.exception))
+        self.assertIn("Protein with id 9999 does not exist", str(ctx.exception))
 
     def test_delete_buffer_by_id(self):
         """Test deleting a Buffer by ID removes it from the database."""
@@ -313,8 +336,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Buffer by ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_buffer_by_id(12345)
-        self.assertIn("Buffer with id 12345 does not exist",
-                      str(ctx.exception))
+        self.assertIn("Buffer with id 12345 does not exist", str(ctx.exception))
 
     def test_delete_salt_by_id(self):
         """Test deleting a Salt by ID removes it from the database."""
@@ -344,8 +366,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Surfactant by ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_surfactant_by_id(3333)
-        self.assertIn("Surfactant with id 3333 does not exist",
-                      str(ctx.exception))
+        self.assertIn("Surfactant with id 3333 does not exist", str(ctx.exception))
 
     def test_delete_stabilizer_by_id(self):
         """Test deleting a Stabilizer by ID removes it from the database."""
@@ -360,8 +381,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Stabilizer by ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_stabilizer_by_id(4444)
-        self.assertIn("Stabilizer with id 4444 does not exist",
-                      str(ctx.exception))
+        self.assertIn("Stabilizer with id 4444 does not exist", str(ctx.exception))
 
     def test_delete_excipient_by_id(self):
         """Test deleting an Excipient by ID removes it from the database."""
@@ -376,8 +396,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Excipient by ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_excipient_by_id(5555)
-        self.assertIn("Excipient with id 5555 does not exist",
-                      str(ctx.exception))
+        self.assertIn("Excipient with id 5555 does not exist", str(ctx.exception))
 
     # ----- Deletion Tests by Name ----- #
 
@@ -393,8 +412,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Protein by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_protein_by_name("NON_EXIST")
-        self.assertIn(
-            "Protein with name 'NON_EXIST' does not exist", str(ctx.exception))
+        self.assertIn("Protein with name 'NON_EXIST' does not exist", str(ctx.exception))
 
     def test_delete_buffer_by_name(self):
         """Test deleting a Buffer by name removes it from the database."""
@@ -408,8 +426,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Buffer by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_buffer_by_name("NO_BUFF")
-        self.assertIn("Buffer with name 'NO_BUFF' does not exist",
-                      str(ctx.exception))
+        self.assertIn("Buffer with name 'NO_BUFF' does not exist", str(ctx.exception))
 
     def test_delete_salt_by_name(self):
         """Test deleting a Salt by name removes it from the database."""
@@ -423,8 +440,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Salt by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_salt_by_name("NO_SALT")
-        self.assertIn("Salt with name 'NO_SALT' does not exist",
-                      str(ctx.exception))
+        self.assertIn("Salt with name 'NO_SALT' does not exist", str(ctx.exception))
 
     def test_delete_surfactant_by_name(self):
         """Test deleting a Surfactant by name removes it from the database."""
@@ -438,8 +454,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Surfactant by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_surfactant_by_name("NO_SF")
-        self.assertIn(
-            "Surfactant with name 'NO_SF' does not exist", str(ctx.exception))
+        self.assertIn("Surfactant with name 'NO_SF' does not exist", str(ctx.exception))
 
     def test_delete_stabilizer_by_name(self):
         """Test deleting a Stabilizer by name removes it from the database."""
@@ -453,8 +468,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Stabilizer by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_stabilizer_by_name("NO_STAB")
-        self.assertIn(
-            "Stabilizer with name 'NO_STAB' does not exist", str(ctx.exception))
+        self.assertIn("Stabilizer with name 'NO_STAB' does not exist", str(ctx.exception))
 
     def test_delete_excipient_by_name(self):
         """Test deleting an Excipient by name removes it from the database."""
@@ -468,8 +482,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that deleting a non-existent Excipient by name raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_excipient_by_name("NO_EXCIP")
-        self.assertIn(
-            "Excipient with name 'NO_EXCIP' does not exist", str(ctx.exception))
+        self.assertIn("Excipient with name 'NO_EXCIP' does not exist", str(ctx.exception))
 
     # ----- Delete All Tests ----- #
 
@@ -526,8 +539,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that delete_all_surfactants on an empty database raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_all_surfactants()
-        self.assertIn("No items of type 'Surfactant' found",
-                      str(ctx.exception))
+        self.assertIn("No items of type 'Surfactant' found", str(ctx.exception))
 
     def test_delete_all_surfactants_success(self):
         """Test that delete_all_surfactants removes all Surfactant entries when present."""
@@ -543,8 +555,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that delete_all_stabilizers on an empty database raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.delete_all_stabilizers()
-        self.assertIn("No items of type 'Stabilizer' found",
-                      str(ctx.exception))
+        self.assertIn("No items of type 'Stabilizer' found", str(ctx.exception))
 
     def test_delete_all_stabilizers_success(self):
         """Test that delete_all_stabilizers removes all Stabilizer entries when present."""
@@ -599,8 +610,7 @@ class TestIngredientController(unittest.TestCase):
 
     def test_update_protein_identical_returns_same(self):
         """Test that update_protein returns the same instance when input equals existing record."""
-        orig = self.ctrl.add(self._make_protein(
-            name="SameProt", is_user=False))
+        orig = self.ctrl.add(self._make_protein(name="SameProt", is_user=False))
         orig_id = orig.id
 
         clone = self._make_protein(name="SameProt", is_user=orig.is_user)
@@ -614,8 +624,7 @@ class TestIngredientController(unittest.TestCase):
         """Test that update_protein on a non-existent ID raises ValueError."""
         with self.assertRaises(ValueError) as ctx:
             self.ctrl.update_protein(99999, self._make_protein(name="Nope"))
-        self.assertIn("Protein with id '99999' does not exist",
-                      str(ctx.exception))
+        self.assertIn("Protein with id '99999' does not exist", str(ctx.exception))
 
     def test_update_buffer_successful(self):
         """Test that update_buffer replaces existing record and preserves enc_id and is_user."""
@@ -696,6 +705,7 @@ class TestIngredientController(unittest.TestCase):
 
     def test_dispatch_methods_raise_on_bad_type(self):
         """Test that generic dispatch methods raise ValueError when given an unsupported type."""
+
         class Fake:
             type = "Nope"
             name = "x"
@@ -745,8 +755,7 @@ class TestIngredientController(unittest.TestCase):
         b2 = self._make_buffer(name="Other", is_user=True)
         self.ctrl.add_buffer(b2)
         fetched2 = self.ctrl.get_buffer_by_name("Other")
-        self.assertEqual(
-            fetched2.enc_id, IngredientController.USER_START_ID + 1)
+        self.assertEqual(fetched2.enc_id, IngredientController.USER_START_ID + 1)
 
     def test_no_overlap_dev_and_user(self):
         """Test that developer and user enc_id ranges do not overlap across subclasses."""
@@ -760,8 +769,7 @@ class TestIngredientController(unittest.TestCase):
         sf_user = self._make_surfactant(name="UserSurf", is_user=True)
         self.ctrl.add_surfactant(sf_user)
         fetched_user = self.ctrl.get_surfactant_by_name("UserSurf")
-        self.assertEqual(fetched_user.enc_id,
-                         IngredientController.USER_START_ID)
+        self.assertEqual(fetched_user.enc_id, IngredientController.USER_START_ID)
 
         # Developer Stabilizer
         stab_dev = self._make_stabilizer(name="DevStab", is_user=False)
@@ -773,8 +781,7 @@ class TestIngredientController(unittest.TestCase):
         stab_user = self._make_stabilizer(name="UserStab", is_user=True)
         self.ctrl.add_stabilizer(stab_user)
         fetched_stab_user = self.ctrl.get_stabilizer_by_name("UserStab")
-        self.assertEqual(fetched_stab_user.enc_id,
-                         IngredientController.USER_START_ID)
+        self.assertEqual(fetched_stab_user.enc_id, IngredientController.USER_START_ID)
 
     def test_dev_id_exhaustion_raises(self):
         """Test that when DEV_MAX_ID is exhausted for a subclass, adding another raises RuntimeError."""
@@ -821,8 +828,7 @@ class TestIngredientController(unittest.TestCase):
         self.assertIsInstance(self.ctrl.get_protein_by_name("Common"), Protein)
         self.assertIsInstance(self.ctrl.get_buffer_by_name("Common"), Buffer)
 
-        commons = [ing for ing in self.ctrl.get_all_ingredients()
-                   if ing.name == "Common"]
+        commons = [ing for ing in self.ctrl.get_all_ingredients() if ing.name == "Common"]
         self.assertEqual(len(commons), 2)
 
     # ----- Fuzzy Matching Tests ----- #

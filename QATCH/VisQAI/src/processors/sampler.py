@@ -70,7 +70,6 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Sampler]"
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
@@ -79,6 +78,7 @@ except (ModuleNotFoundError, ImportError):
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.utils.constraints import Constraints
+    from QATCH.common.logger import Logger as Log
 
 
 class Sampler:
@@ -280,9 +280,7 @@ class Sampler:
                 form.to_dataframe(encoded=False, training=False)
             )
             unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
-            score = (
-                self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
-            )
+            score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
             candidates.append((form, score))
 
         if self._last_formulation is not None:
@@ -291,19 +289,13 @@ class Sampler:
                     form.to_dataframe(encoded=False, training=False)
                 )
                 unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
-                score = (
-                    self._acquisition_ucb(vis, unc, kappa)
-                    if use_ucb
-                    else np.nanmean(unc)
-                )
+                score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
                 candidates.append((form, score))
 
         candidates.sort(key=lambda x: -x[1])
         return candidates[0][0] if candidates else None
 
-    def _round_suggestion(
-        self, feat: str, val: float, low: float, high: float
-    ) -> float:
+    def _round_suggestion(self, feat: str, val: float, low: float, high: float) -> float:
         """Rounds a numeric suggestion to the nearest physically meaningful increment.
 
         This method applies domain-specific quantization to candidate values. For
@@ -342,9 +334,7 @@ class Sampler:
 
         return float(np.clip(rounded, low, high))
 
-    def _enforce_none_concentrations(
-        self, suggestions: Dict[str, Union[str, float]]
-    ) -> None:
+    def _enforce_none_concentrations(self, suggestions: Dict[str, Union[str, float]]) -> None:
         """Enforces logical consistency between 'None' ingredients and their concentrations.
 
         This post-processing step ensures that the formulation remains physically
@@ -555,9 +545,7 @@ class Sampler:
             return val
         return get_method(val)
 
-    def _build_formulation(
-        self, suggestions: Dict[str, Union[str, float]]
-    ) -> Formulation:
+    def _build_formulation(self, suggestions: Dict[str, Union[str, float]]) -> Formulation:
         """Assembles a valid Formulation object from a dictionary of sampled features.
 
         This method acts as the bridge between raw sampling results and the
@@ -598,25 +586,19 @@ class Sampler:
             suggestions.get("Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
         )
         if stab:
-            form.set_stabilizer(
-                stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M"
-            )
+            form.set_stabilizer(stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M")
 
         surf = self._resolve_ingredient(
             suggestions.get("Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
         )
         if surf:
-            form.set_surfactant(
-                surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w"
-            )
+            form.set_surfactant(surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w")
 
         excip = self._resolve_ingredient(
             suggestions.get("Excipient_type"), self.ing_ctrl.get_excipient_by_name
         )
         if excip:
-            form.set_excipient(
-                excip, float(suggestions.get("Excipient_conc", 0.0)), "mM"
-            )
+            form.set_excipient(excip, float(suggestions.get("Excipient_conc", 0.0)), "mM")
 
         form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form

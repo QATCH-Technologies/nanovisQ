@@ -333,8 +333,7 @@ class PredictionFilterWidget(QtWidgets.QWidget):
             "temp_min": self.spin_temp_min.value(),
             "temp_max": self.spin_temp_max.value(),
             "ingredients": {
-                ing_type: btn.get_selected_items()
-                for ing_type, btn in self.ing_buttons.items()
+                ing_type: btn.get_selected_items() for ing_type, btn in self.ing_buttons.items()
             },
         }
 

@@ -1,8 +1,8 @@
-import multiprocessing
-from QATCH.common.logger import Logger as Log
 import logging
 from logging.handlers import QueueHandler
+import multiprocessing
 
+from QATCH.common.logger import Logger as Log
 
 TAG = ""  # "[Parser]"
 
@@ -16,14 +16,17 @@ class ParserProcess(multiprocessing.Process):
     ###########################################################################
     # Initializing values for process
     ###########################################################################
-    def __init__(self, queue_log,
-                 data_queue0,
-                 data_queue1,
-                 data_queue2,
-                 data_queue3,
-                 data_queue4,
-                 data_queue5,
-                 data_queue6):
+    def __init__(
+        self,
+        queue_log,
+        data_queue0,
+        data_queue1,
+        data_queue2,
+        data_queue3,
+        data_queue4,
+        data_queue5,
+        data_queue6,
+    ):
         """
         :param data_queue{i}: References to queue where processed data will be put.
         :type data_queue{i}: multiprocessing Queue.

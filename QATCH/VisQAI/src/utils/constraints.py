@@ -84,7 +84,6 @@ try:
 except (ModuleNotFoundError, ImportError):
     TAG = "[Constraints]"
 
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.ingredient import (
@@ -97,6 +96,7 @@ except (ModuleNotFoundError, ImportError):
         Surfactant,
     )
     from QATCH.VisQAI.src.utils.list_utils import ListUtils
+    from QATCH.common.logger import Logger as Log
 
 
 class Constraints:
@@ -204,9 +204,7 @@ class Constraints:
                 f"Unknown numeric feature '{feature}'.  Only {self._NUMERIC} are allowed in add_range()."
             )
         if feature != "Temperature" and (low < 0.0 or high < 0.0):
-            raise ValueError(
-                f"Negative values are not allowed for numeric feature {feature}"
-            )
+            raise ValueError(f"Negative values are not allowed for numeric feature {feature}")
         self._ranges[feature] = (float(low), float(high))
 
     def add_choices(self, feature: str, choices: List[Ingredient]) -> None:
@@ -299,9 +297,7 @@ class Constraints:
                 if not chosen:
                     raise ValueError(f"No choices available for '{feat}'.")
 
-                names = ListUtils.unique_case_insensitive_sort(
-                    [ing.name for ing in chosen]
-                )
+                names = ListUtils.unique_case_insensitive_sort([ing.name for ing in chosen])
                 encoding.append({"feature": feat, "type": "cat", "choices": names})
                 bounds.append((0.0, float(len(names) - 1)))
 
@@ -311,9 +307,7 @@ class Constraints:
                 else:
                     low, high = self._DEFAULT_RANGES[feat]
                 if not (math.isfinite(low) and math.isfinite(high)):
-                    raise ValueError(
-                        f"Bounds for '{feat}' must be finite. Got ({low}, {high})."
-                    )
+                    raise ValueError(f"Bounds for '{feat}' must be finite. Got ({low}, {high}).")
                 encoding.append({"feature": feat, "type": "num"})
                 bounds.append((low, high))
 

@@ -18,10 +18,11 @@ Version:
     1.0
 """
 
-import unittest
 import os
-import tempfile
 import shutil
+import tempfile
+import unittest
+
 import pyzipper
 
 # Import the SecureOpen class and its static methods
@@ -84,8 +85,7 @@ class TestSecureOpen(unittest.TestCase):
             f.write(b"col1,col2\n1,2\n")
 
         zip_path = os.path.join(archive_dir, "archive_dir.zip")
-        self.assertTrue(os.path.isfile(zip_path),
-                        "ZIP archive was not created")
+        self.assertTrue(os.path.isfile(zip_path), "ZIP archive was not created")
 
         # Verify contents using pyzipper
         with pyzipper.AESZipFile(zip_path, "r") as zf:
@@ -98,9 +98,7 @@ class TestSecureOpen(unittest.TestCase):
             expected_crc = hex(info.CRC)
             actual_crc = zf.read(crc_file_name).decode()
             self.assertEqual(
-                actual_crc,
-                expected_crc,
-                "CRC file content does not match calculated CRC"
+                actual_crc, expected_crc, "CRC file content does not match calculated CRC"
             )
 
         # Read back the CSV record via SecureOpen in insecure mode
@@ -129,8 +127,7 @@ class TestSecureOpen(unittest.TestCase):
             f.write(b"header\nvalue\n")
 
         zip_path = os.path.join(archive_dir, "archive2.zip")
-        self.assertTrue(os.path.isfile(zip_path),
-                        "ZIP archive was not created")
+        self.assertTrue(os.path.isfile(zip_path), "ZIP archive was not created")
 
         # Verify CRC file was generated correctly
         with pyzipper.AESZipFile(zip_path, "r") as zf:
@@ -140,11 +137,7 @@ class TestSecureOpen(unittest.TestCase):
             expected_crc = hex(info.CRC)
             with zf.open("data.crc", "r") as crc_fh:
                 actual_crc = crc_fh.read().decode()
-            self.assertEqual(
-                actual_crc,
-                expected_crc,
-                "CRC in .crc file does not match expected"
-            )
+            self.assertEqual(actual_crc, expected_crc, "CRC in .crc file does not match expected")
 
     def test_read_record_missing_crc_raises(self):
         """
@@ -226,16 +219,12 @@ class TestSecureOpen(unittest.TestCase):
             zf.writestr("file1.txt", b"1")
             zf.writestr("file2.txt", b"2")
 
-        namelist = SecureOpen.get_namelist(
-            os.path.join(archive_dir, "file1.txt"), "archive6"
-        )
+        namelist = SecureOpen.get_namelist(os.path.join(archive_dir, "file1.txt"), "archive6")
         self.assertIn("file1.txt", namelist)
         self.assertIn("file2.txt", namelist)
 
         with self.assertRaises(FileNotFoundError):
-            SecureOpen.get_namelist(
-                os.path.join(self.temp_dir, "nonexistent", "no.zip"), "nozip"
-            )
+            SecureOpen.get_namelist(os.path.join(self.temp_dir, "nonexistent", "no.zip"), "nozip")
 
 
 if __name__ == "__main__":

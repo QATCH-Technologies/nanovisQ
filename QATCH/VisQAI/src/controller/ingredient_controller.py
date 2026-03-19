@@ -519,9 +519,7 @@ class IngredientController:
                 return self.update_protein(existing.id, protein)
             return existing
 
-        protein.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Protein"
-        )
+        protein.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Protein")
         db_id = self.db.add_ingredient(protein)
         protein.id = db_id
 
@@ -544,9 +542,7 @@ class IngredientController:
                 return self.update_buffer(existing.id, buffer)
             return existing
 
-        buffer.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Buffer"
-        )
+        buffer.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Buffer")
         db_id = self.db.add_ingredient(buffer)
         buffer.id = db_id
 
@@ -592,9 +588,7 @@ class IngredientController:
                 return self.update_stabilizer(existing.id, stabilizer)
             return existing
 
-        stabilizer.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Stabilizer"
-        )
+        stabilizer.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Stabilizer")
         db_id = self.db.add_ingredient(stabilizer)
         stabilizer.id = db_id
 
@@ -617,9 +611,7 @@ class IngredientController:
                 return self.update_surfactant(existing.id, surfactant)
             return existing
 
-        surfactant.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Surfactant"
-        )
+        surfactant.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Surfactant")
         db_id = self.db.add_ingredient(surfactant)
         surfactant.id = db_id
 
@@ -642,9 +634,7 @@ class IngredientController:
                 return self.update_excipient(existing.id, excipient)
             return existing
 
-        excipient.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Excipient"
-        )
+        excipient.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Excipient")
         db_id = self.db.add_ingredient(excipient)
         excipient.id = db_id
 
@@ -1051,9 +1041,7 @@ class IngredientController:
         self.db.update_ingredient(e_fetch.id, e_new)
         return e_new
 
-    def fuzzy_fetch(
-        self, name: str, max_results: int = 5, score_cutoff: int = 90
-    ) -> list[str]:
+    def fuzzy_fetch(self, name: str, max_results: int = 5, score_cutoff: int = 90) -> list[str]:
         """
         Utility to perform fuzzy matching between ingredient names and persistent names
         stored in the database.  This method operates by fetching all persistent ingredient names
@@ -1150,9 +1138,7 @@ class IngredientController:
                 return max(used) + 1
         else:
             # Developer-created enc_id must be in range [1..DEV_MAX_ID]
-            used = [
-                ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
-            ]
+            used = [ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID]
             if not used:
                 return 1
             next_id = max(used) + 1

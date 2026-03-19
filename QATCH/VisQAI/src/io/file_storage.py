@@ -180,9 +180,7 @@ class SecureOpen:
 
         # Otherwise, close and raise an exception
         zf.close()
-        raise Exception(
-            f"Security checks failed. Cannot open secured file {file_path}."
-        )
+        raise Exception(f"Security checks failed. Cannot open secured file {file_path}.")
 
     def __exit__(self, exc_type, exc_value, traceback) -> None:
         """Exit the context, closing file handles and updating CRC records if needed.

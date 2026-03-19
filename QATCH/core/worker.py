@@ -5,6 +5,7 @@ from time import time
 
 import numpy as np
 
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.logger import Logger as Log
 from QATCH.core.constants import Constants, OperationType
@@ -12,7 +13,6 @@ from QATCH.core.ringBuffer import RingBuffer
 from QATCH.processors.Calibration import CalibrationProcess
 from QATCH.processors.Parser import ParserProcess
 from QATCH.processors.Serial import SerialProcess
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import QModelV6YOLO_LiveProcess
 
 TAG = ""  # "[Worker]"
 
@@ -175,9 +175,7 @@ class Worker:
                 self._reconstruct,
             )
         elif self._source == OperationType.calibration:
-            self._acquisition_process = CalibrationProcess(
-                self._queueLog, self._parser_process
-            )
+            self._acquisition_process = CalibrationProcess(self._queueLog, self._parser_process)
 
         port_and_peak_check = self._acquisition_process.open(
             port=self._port, speed=self._speed, pid=self._pid
@@ -251,18 +249,13 @@ class Worker:
                         self._overtone_name, int(self._overtone_value)
                     ),
                 )
-                Log.i(TAG, "Frequency start: {} Hz".format(
-                    int(self._readFREQ[0])))
-                Log.i(TAG, "Frequency stop:  {} Hz".format(
-                    int(self._readFREQ[-1])))
+                Log.i(TAG, "Frequency start: {} Hz".format(int(self._readFREQ[0])))
+                Log.i(TAG, "Frequency stop:  {} Hz".format(int(self._readFREQ[-1])))
                 Log.i(
                     TAG,
-                    "Frequency range: {} Hz".format(
-                        int(self._readFREQ[-1] - self._readFREQ[0])
-                    ),
+                    "Frequency range: {} Hz".format(int(self._readFREQ[-1] - self._readFREQ[0])),
                 )
-                Log.i(TAG, "Number of samples: {}".format(
-                    int(self._samples - 1)))
+                Log.i(TAG, "Number of samples: {}".format(int(self._samples - 1)))
                 Log.i(TAG, "Sample rate: {} Hz".format(int(self._fStep)))
                 Log.i(TAG, "History buffer size: 5 min\n")
                 Log.i(TAG, "MAIN PROCESSING INFORMATION")
@@ -296,14 +289,9 @@ class Worker:
                 )
                 Log.i(
                     TAG,
-                    "Number of samples: {}".format(
-                        int(Constants.calibration_default_samples - 1)
-                    ),
+                    "Number of samples: {}".format(int(Constants.calibration_default_samples - 1)),
                 )
-                Log.i(
-                    TAG, "Sample rate: {} Hz".format(
-                        int(Constants.calibration_fStep))
-                )
+                Log.i(TAG, "Sample rate: {} Hz".format(int(Constants.calibration_fStep)))
             Log.i(TAG, "Starting processes...\n")
             # Starts processes
             self._acquisition_process.start()
@@ -536,10 +524,7 @@ class Worker:
 
     def is_running(self):
         # :return: True if a process is running :rtype: bool.
-        return (
-            self._acquisition_process is not None
-            and self._acquisition_process.is_alive()
-        )
+        return self._acquisition_process is not None and self._acquisition_process.is_alive()
 
     ###########################################################################
     # Gets the available ports for specified source
@@ -558,7 +543,7 @@ class Worker:
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0: ports[i].index(":")])
+                    port_names.append(ports[i][0 : ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
@@ -569,7 +554,7 @@ class Worker:
             port_names = []
             for i in range(len(ports)):
                 try:
-                    port_names.append(ports[i][0: ports[i].index(":")])
+                    port_names.append(ports[i][0 : ports[i].index(":")])
                 except:
                     # ignore ValueError
                     port_names.append(ports[i])
@@ -622,22 +607,13 @@ class Worker:
             self._data2_buffer.append(np.zeros(samples))  # phase
             # Resonance frequency
             self._d1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._d2_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # Dissipation
-            self._d3_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # temperature
-            self._d4_buffer.append(RingBuffer(
-                Constants.ring_buffer_samples))  # ambient
+            self._d2_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # Dissipation
+            self._d3_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # temperature
+            self._d4_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # ambient
             # time (Resonance frequency)
             self._t1_buffer.append(RingBuffer(Constants.ring_buffer_samples))
-            self._t2_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # time (Dissipation)
-            self._t3_buffer.append(
-                RingBuffer(Constants.ring_buffer_samples)
-            )  # time (temperature)
+            self._t2_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # time (Dissipation)
+            self._t3_buffer.append(RingBuffer(Constants.ring_buffer_samples))  # time (temperature)
 
         # Initialises supporting variables
         self._d1_store = 0
@@ -666,9 +642,7 @@ class Worker:
         :return: overtone :type overtone: float.
         :return: frequency range :type readFREQ: float list.
         """
-        return (
-            self._readFREQ
-        )  # stale after peak tracking kicks in (use _data0_buffer instead)
+        return self._readFREQ  # stale after peak tracking kicks in (use _data0_buffer instead)
 
     ############################################################################
     # Gets overtones name, value and frequency step

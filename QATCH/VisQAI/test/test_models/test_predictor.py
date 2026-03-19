@@ -7,13 +7,14 @@ performing inference, uncertainty estimation, and incremental updates.
 Author: Paul MacNichol
 Date: 2025-10-16
 """
-import unittest
-import tempfile
-import zipfile
+
 import json
-import shutil
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+import shutil
+import tempfile
+import unittest
+from unittest.mock import MagicMock, patch
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -37,7 +38,7 @@ class TestPredictorInitialization(unittest.TestCase):
         # Create a mock zip file
         self._create_mock_zip(self.test_zip_path)
 
-        with patch.object(Predictor, '_load_zip'):
+        with patch.object(Predictor, "_load_zip"):
             predictor = Predictor(str(self.test_zip_path), mc_samples=100)
 
             self.assertEqual(predictor.zip_path, self.test_zip_path)
@@ -49,7 +50,7 @@ class TestPredictorInitialization(unittest.TestCase):
         """Test initialization with default mc_samples."""
         self._create_mock_zip(self.test_zip_path)
 
-        with patch.object(Predictor, '_load_zip'):
+        with patch.object(Predictor, "_load_zip"):
             predictor = Predictor(str(self.test_zip_path))
             self.assertEqual(predictor.mc_samples, 50)
 
@@ -57,13 +58,13 @@ class TestPredictorInitialization(unittest.TestCase):
         """Test that __init__ calls _load_zip."""
         self._create_mock_zip(self.test_zip_path)
 
-        with patch.object(Predictor, '_load_zip') as mock_load:
+        with patch.object(Predictor, "_load_zip") as mock_load:
             predictor = Predictor(str(self.test_zip_path))
             mock_load.assert_called_once_with(self.test_zip_path)
 
     def _create_mock_zip(self, zip_path):
         """Helper to create a minimal mock zip file."""
-        with zipfile.ZipFile(zip_path, 'w') as zf:
+        with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("model/checkpoint.pt", "mock_checkpoint")
             zf.writestr("src/inference.py", "# mock inference")
 
@@ -93,7 +94,7 @@ class TestLoadZip(unittest.TestCase):
     def test_load_zip_missing_model_directory(self):
         """Test loading zip without model/ directory."""
         # Create zip without model directory
-        with zipfile.ZipFile(self.test_zip_path, 'w') as zf:
+        with zipfile.ZipFile(self.test_zip_path, "w") as zf:
             zf.writestr("src/inference.py", "# mock")
 
         predictor = Predictor.__new__(Predictor)
@@ -107,7 +108,7 @@ class TestLoadZip(unittest.TestCase):
     def test_load_zip_missing_src_directory(self):
         """Test loading zip without src/ directory."""
         # Create zip without src directory
-        with zipfile.ZipFile(self.test_zip_path, 'w') as zf:
+        with zipfile.ZipFile(self.test_zip_path, "w") as zf:
             zf.writestr("model/checkpoint.pt", "mock")
 
         predictor = Predictor.__new__(Predictor)
@@ -121,7 +122,7 @@ class TestLoadZip(unittest.TestCase):
     def test_load_zip_missing_checkpoint(self):
         """Test loading zip without checkpoint.pt."""
         # Create zip without checkpoint
-        with zipfile.ZipFile(self.test_zip_path, 'w') as zf:
+        with zipfile.ZipFile(self.test_zip_path, "w") as zf:
             zf.writestr("model/metadata.json", json.dumps({"client": "test"}))
             zf.writestr("src/inference.py", "class Predictor: pass")
             zf.writestr("src/config.py", "class visq3xConfig: pass")
@@ -129,7 +130,7 @@ class TestLoadZip(unittest.TestCase):
         predictor = Predictor.__new__(Predictor)
         predictor._tmpdir = None
 
-        with patch.object(predictor, '_load_source_modules'):
+        with patch.object(predictor, "_load_source_modules"):
             with self.assertRaises(RuntimeError) as context:
                 predictor._load_zip(self.test_zip_path)
 
@@ -137,13 +138,9 @@ class TestLoadZip(unittest.TestCase):
 
     def test_load_zip_with_metadata(self):
         """Test loading zip with metadata.json."""
-        metadata = {
-            "client": "TestClient",
-            "author": "TestAuthor",
-            "version": "1.0"
-        }
+        metadata = {"client": "TestClient", "author": "TestAuthor", "version": "1.0"}
 
-        with zipfile.ZipFile(self.test_zip_path, 'w') as zf:
+        with zipfile.ZipFile(self.test_zip_path, "w") as zf:
             zf.writestr("model/metadata.json", json.dumps(metadata))
             zf.writestr("model/checkpoint.pt", "mock")
             zf.writestr("src/inference.py", "class Predictor: pass")
@@ -159,20 +156,23 @@ class TestLoadZip(unittest.TestCase):
         mock_predictor_instance = MagicMock()
         mock_predictor_class.return_value = mock_predictor_instance
 
-        with patch.object(predictor, '_load_source_modules'):
-            with patch.dict('sys.modules', {
-                'inference': MagicMock(Predictor=mock_predictor_class),
-                'config': MagicMock(visq3xConfig=mock_config_class)
-            }):
+        with patch.object(predictor, "_load_source_modules"):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "inference": MagicMock(Predictor=mock_predictor_class),
+                    "config": MagicMock(visq3xConfig=mock_config_class),
+                },
+            ):
                 predictor._load_zip(self.test_zip_path)
 
         self.assertIsNotNone(predictor.metadata)
-        self.assertEqual(predictor.metadata['client'], "TestClient")
-        self.assertEqual(predictor.metadata['author'], "TestAuthor")
+        self.assertEqual(predictor.metadata["client"], "TestClient")
+        self.assertEqual(predictor.metadata["author"], "TestAuthor")
 
     def test_load_zip_without_metadata(self):
         """Test loading zip without metadata.json."""
-        with zipfile.ZipFile(self.test_zip_path, 'w') as zf:
+        with zipfile.ZipFile(self.test_zip_path, "w") as zf:
             zf.writestr("model/checkpoint.pt", "mock")
             zf.writestr("src/inference.py", "class Predictor: pass")
             zf.writestr("src/config.py", "class visq3xConfig: pass")
@@ -186,11 +186,14 @@ class TestLoadZip(unittest.TestCase):
         mock_predictor_instance = MagicMock()
         mock_predictor_class.return_value = mock_predictor_instance
 
-        with patch.object(predictor, '_load_source_modules'):
-            with patch.dict('sys.modules', {
-                'inference': MagicMock(Predictor=mock_predictor_class),
-                'config': MagicMock(visq3xConfig=mock_config_class)
-            }):
+        with patch.object(predictor, "_load_source_modules"):
+            with patch.dict(
+                "sys.modules",
+                {
+                    "inference": MagicMock(Predictor=mock_predictor_class),
+                    "config": MagicMock(visq3xConfig=mock_config_class),
+                },
+            ):
                 predictor._load_zip(self.test_zip_path)
 
         self.assertIsNone(predictor.metadata)
@@ -221,7 +224,7 @@ class TestLoadSourceModules(unittest.TestCase):
     def test_load_source_modules_priority_order(self):
         """Test that modules are loaded in priority order."""
         # Create mock Python files
-        files = ['inference.py', 'config.py', 'model.py', 'utils.py']
+        files = ["inference.py", "config.py", "model.py", "utils.py"]
         for fname in files:
             (self.src_dir / fname).write_text("# mock module")
 
@@ -232,8 +235,8 @@ class TestLoadSourceModules(unittest.TestCase):
         def mock_exec(module):
             loaded_modules.append(module.__name__)
 
-        with patch('importlib.util.spec_from_file_location') as mock_spec:
-            with patch('importlib.util.module_from_spec') as mock_module:
+        with patch("importlib.util.spec_from_file_location") as mock_spec:
+            with patch("importlib.util.module_from_spec") as mock_module:
                 mock_spec.return_value.loader.exec_module = mock_exec
                 mock_module.return_value.__name__ = "test"
 
@@ -243,11 +246,8 @@ class TestLoadSourceModules(unittest.TestCase):
                     pass
 
         # Verify config is loaded before inference
-        if 'config' in loaded_modules and 'inference' in loaded_modules:
-            self.assertLess(
-                loaded_modules.index('config'),
-                loaded_modules.index('inference')
-            )
+        if "config" in loaded_modules and "inference" in loaded_modules:
+            self.assertLess(loaded_modules.index("config"), loaded_modules.index("inference"))
 
     def test_load_source_modules_failure(self):
         """Test handling of module loading failure."""
@@ -256,7 +256,7 @@ class TestLoadSourceModules(unittest.TestCase):
 
         predictor = Predictor.__new__(Predictor)
 
-        with patch('importlib.util.spec_from_file_location') as mock_spec:
+        with patch("importlib.util.spec_from_file_location") as mock_spec:
             mock_spec.side_effect = Exception("Import failed")
 
             with self.assertRaises(RuntimeError) as context:
@@ -272,10 +272,7 @@ class TestPredictMethods(unittest.TestCase):
         """Set up test fixtures."""
         self.predictor = Predictor.__new__(Predictor)
         self.predictor.mc_samples = 50
-        self.test_df = pd.DataFrame({
-            'feature1': [1, 2, 3],
-            'feature2': [4, 5, 6]
-        })
+        self.test_df = pd.DataFrame({"feature1": [1, 2, 3], "feature2": [4, 5, 6]})
 
     def test_predict_without_loaded_predictor(self):
         """Test predict() when predictor is not loaded."""
@@ -296,10 +293,7 @@ class TestPredictMethods(unittest.TestCase):
 
         result = self.predictor.predict(self.test_df)
 
-        mock_predictor.predict.assert_called_once_with(
-            self.test_df,
-            return_uncertainty=False
-        )
+        mock_predictor.predict.assert_called_once_with(self.test_df, return_uncertainty=False)
         np.testing.assert_array_equal(result, expected_result)
 
     def test_predict_exception_handling(self):
@@ -328,10 +322,7 @@ class TestLearnMethod(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures."""
         self.predictor = Predictor.__new__(Predictor)
-        self.test_df = pd.DataFrame({
-            'feature1': [1, 2, 3],
-            'target': [10, 20, 30]
-        })
+        self.test_df = pd.DataFrame({"feature1": [1, 2, 3], "target": [10, 20, 30]})
 
     def test_learn_without_loaded_predictor(self):
         """Test learn() when predictor is not loaded."""
@@ -346,9 +337,9 @@ class TestLearnMethod(unittest.TestCase):
         """Test learn() with default parameters."""
         mock_predictor = MagicMock()
         expected_result = {
-            'avg_loss': 0.123,
-            'new_categories_added': ['cat1', 'cat2'],
-            'n_epochs': 10
+            "avg_loss": 0.123,
+            "new_categories_added": ["cat1", "cat2"],
+            "n_epochs": 10,
         }
         mock_predictor.learn.return_value = expected_result
 
@@ -356,32 +347,20 @@ class TestLearnMethod(unittest.TestCase):
 
         result = self.predictor.learn(self.test_df)
 
-        mock_predictor.learn.assert_called_once_with(
-            self.test_df,
-            n_epochs=None,
-            verbose=True
-        )
+        mock_predictor.learn.assert_called_once_with(self.test_df, n_epochs=None, verbose=True)
         self.assertEqual(result, expected_result)
 
     def test_learn_with_custom_parameters(self):
         """Test learn() with custom parameters."""
         mock_predictor = MagicMock()
-        expected_result = {'avg_loss': 0.05, 'n_epochs': 20}
+        expected_result = {"avg_loss": 0.05, "n_epochs": 20}
         mock_predictor.learn.return_value = expected_result
 
         self.predictor.predictor = mock_predictor
 
-        result = self.predictor.learn(
-            self.test_df,
-            n_epochs=20,
-            verbose=False
-        )
+        result = self.predictor.learn(self.test_df, n_epochs=20, verbose=False)
 
-        mock_predictor.learn.assert_called_once_with(
-            self.test_df,
-            n_epochs=20,
-            verbose=False
-        )
+        mock_predictor.learn.assert_called_once_with(self.test_df, n_epochs=20, verbose=False)
         self.assertEqual(result, expected_result)
 
     def test_learn_exception_handling(self):
@@ -409,11 +388,7 @@ class TestUtilityMethods(unittest.TestCase):
 
     def test_get_metadata_with_metadata(self):
         """Test get_metadata() when metadata exists."""
-        expected_metadata = {
-            'client': 'TestClient',
-            'author': 'TestAuthor',
-            'version': '1.0'
-        }
+        expected_metadata = {"client": "TestClient", "author": "TestAuthor", "version": "1.0"}
         self.predictor.metadata = expected_metadata
 
         result = self.predictor.get_metadata()
@@ -452,7 +427,7 @@ class TestUtilityMethods(unittest.TestCase):
         """Test reload_archive() method."""
         new_zip_path = "new_model.zip"
 
-        with patch.object(Predictor, '_load_zip') as mock_load:
+        with patch.object(Predictor, "_load_zip") as mock_load:
             self.predictor.reload_archive(new_zip_path)
 
             self.assertEqual(self.predictor.zip_path, Path(new_zip_path))
@@ -474,7 +449,7 @@ class TestContextManager(unittest.TestCase):
         """Test __exit__ calls cleanup."""
         predictor = Predictor.__new__(Predictor)
 
-        with patch.object(predictor, 'cleanup') as mock_cleanup:
+        with patch.object(predictor, "cleanup") as mock_cleanup:
             predictor.__exit__(None, None, None)
             mock_cleanup.assert_called_once()
 
@@ -484,7 +459,7 @@ class TestContextManager(unittest.TestCase):
         predictor._tmpdir = None
         predictor.predictor = None
 
-        with patch.object(predictor, 'cleanup') as mock_cleanup:
+        with patch.object(predictor, "cleanup") as mock_cleanup:
             try:
                 with predictor:
                     raise ValueError("Test exception")
@@ -497,7 +472,7 @@ class TestContextManager(unittest.TestCase):
         """Test __del__ calls cleanup."""
         predictor = Predictor.__new__(Predictor)
 
-        with patch.object(predictor, 'cleanup') as mock_cleanup:
+        with patch.object(predictor, "cleanup") as mock_cleanup:
             predictor.__del__()
             mock_cleanup.assert_called_once()
 
@@ -505,7 +480,7 @@ class TestContextManager(unittest.TestCase):
         """Test __del__ handles cleanup exceptions."""
         predictor = Predictor.__new__(Predictor)
 
-        with patch.object(predictor, 'cleanup') as mock_cleanup:
+        with patch.object(predictor, "cleanup") as mock_cleanup:
             mock_cleanup.side_effect = Exception("Cleanup failed")
 
             # Should not raise exception
@@ -523,28 +498,29 @@ class TestPredictorIntegration(unittest.TestCase):
         # Skip integration tests if model file doesn't exist
         if not cls.model_path.exists():
             raise unittest.SkipTest(
-                f"Model file not found: {cls.model_path}. "
-                "Integration tests will be skipped."
+                f"Model file not found: {cls.model_path}. " "Integration tests will be skipped."
             )
 
     def setUp(self):
         """Set up test fixtures."""
-        self.sample_data = pd.DataFrame({
-            'Protein_type': ['IgG1'],
-            'MW': [150000],
-            'Protein_conc': [145],
-            'Temperature': [25],
-            'Buffer_type': ['PBS'],
-            'Buffer_pH': [7.4],
-            'Buffer_conc': [10],
-            'Salt_type': ['NaCl'],
-            'Salt_conc': [140],
-            'Stabilizer_type': ['Sucrose'],
-            'Stabilizer_conc': [1],
-            'Surfactant_type': ['none'],
-            'Surfactant_conc': [0],
-            'Protein_class_type': ['mAb'],
-        })
+        self.sample_data = pd.DataFrame(
+            {
+                "Protein_type": ["IgG1"],
+                "MW": [150000],
+                "Protein_conc": [145],
+                "Temperature": [25],
+                "Buffer_type": ["PBS"],
+                "Buffer_pH": [7.4],
+                "Buffer_conc": [10],
+                "Salt_type": ["NaCl"],
+                "Salt_conc": [140],
+                "Stabilizer_type": ["Sucrose"],
+                "Stabilizer_conc": [1],
+                "Surfactant_type": ["none"],
+                "Surfactant_conc": [0],
+                "Protein_class_type": ["mAb"],
+            }
+        )
 
     def test_integration_load_model(self):
         """Integration test: Load actual model."""
@@ -572,16 +548,13 @@ class TestPredictorIntegration(unittest.TestCase):
         """Integration test: Make predictions with uncertainty."""
         try:
             predictor = Predictor(str(self.model_path), mc_samples=20)
-            mean, uncertainty = predictor.predict_uncertainty(
-                self.sample_data,
-                n_samples=20
-            )
+            mean, uncertainty = predictor.predict_uncertainty(self.sample_data, n_samples=20)
 
             self.assertIsInstance(mean, np.ndarray)
             self.assertIsInstance(uncertainty, dict)
-            self.assertIn('std', uncertainty)
-            self.assertIn('lower_ci', uncertainty)
-            self.assertIn('upper_ci', uncertainty)
+            self.assertIn("std", uncertainty)
+            self.assertIn("lower_ci", uncertainty)
+            self.assertIn("upper_ci", uncertainty)
 
             predictor.cleanup()
         except Exception as e:
@@ -645,13 +618,13 @@ class TestEdgeCases(unittest.TestCase):
 
     def test_large_mc_samples(self):
         """Test initialization with very large mc_samples."""
-        with patch.object(Predictor, '_load_zip'):
+        with patch.object(Predictor, "_load_zip"):
             predictor = Predictor("dummy.zip", mc_samples=10000)
             self.assertEqual(predictor.mc_samples, 10000)
 
     def test_zero_mc_samples(self):
         """Test initialization with zero mc_samples."""
-        with patch.object(Predictor, '_load_zip'):
+        with patch.object(Predictor, "_load_zip"):
             predictor = Predictor("dummy.zip", mc_samples=0)
             self.assertEqual(predictor.mc_samples, 0)
 
@@ -674,29 +647,20 @@ def suite():
     test_suite = unittest.TestSuite()
 
     # Add all test classes
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestPredictorInitialization))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestLoadZip))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestLoadSourceModules))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestPredictMethods))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestLearnMethod))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestUtilityMethods))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestContextManager))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestPredictorIntegration))
-    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(
-        TestEdgeCases))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestPredictorInitialization))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestLoadZip))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestLoadSourceModules))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestPredictMethods))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestLearnMethod))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestUtilityMethods))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestContextManager))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestPredictorIntegration))
+    test_suite.addTests(unittest.TestLoader().loadTestsFromTestCase(TestEdgeCases))
 
     return test_suite
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Run tests with verbose output
     runner = unittest.TextTestRunner(verbosity=2)
     runner.run(suite())

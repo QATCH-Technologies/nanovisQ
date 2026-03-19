@@ -1,9 +1,7 @@
 import argparse
 
-from QATCH.common.logger import Logger as Log
-from QATCH.common.logger import LoggerLevel
+from QATCH.common.logger import Logger as Log, LoggerLevel
 from QATCH.core.constants import Constants
-
 
 TAG = ""  # "Arguments"
 
@@ -42,28 +40,33 @@ class Arguments:
             -s / --samples: Specify number of samples to show on plot
         """
         parser = argparse.ArgumentParser(
-            description='SOFTWARE\nA real time plotting and logging application')
-        parser.add_argument("-i", "--info",
-                            dest="log_level_info",
-                            action='store_true',
-                            help="Enable info messages"
-                            )
-        parser.add_argument("-d", "--debug",
-                            dest="log_level_debug",
-                            action='store_true',
-                            help="Enable debug messages"
-                            )
-        parser.add_argument("-v", "--verbose",
-                            dest="log_to_console",
-                            action='store_true',
-                            help="Show log messages in console",
-                            default=Constants.log_default_console_log
-                            )
-        parser.add_argument("-s", "--samples",
-                            dest="user_samples",
-                            default=Constants.argument_default_samples,
-                            help="Specify number of sample to show on plot"
-                            )
+            description="SOFTWARE\nA real time plotting and logging application"
+        )
+        parser.add_argument(
+            "-i", "--info", dest="log_level_info", action="store_true", help="Enable info messages"
+        )
+        parser.add_argument(
+            "-d",
+            "--debug",
+            dest="log_level_debug",
+            action="store_true",
+            help="Enable debug messages",
+        )
+        parser.add_argument(
+            "-v",
+            "--verbose",
+            dest="log_to_console",
+            action="store_true",
+            help="Show log messages in console",
+            default=Constants.log_default_console_log,
+        )
+        parser.add_argument(
+            "-s",
+            "--samples",
+            dest="user_samples",
+            default=Constants.argument_default_samples,
+            help="Specify number of sample to show on plot",
+        )
         self._parser = parser.parse_args()
 
     ###########################################################################

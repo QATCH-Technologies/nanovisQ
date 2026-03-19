@@ -423,9 +423,7 @@ class Protein(Ingredient):
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
         self._class_type: ProteinClass = class_type
-        self._molecular_weight: float = self._validate_number(
-            molecular_weight, "molecular_weight"
-        )
+        self._molecular_weight: float = self._validate_number(molecular_weight, "molecular_weight")
         self._pI_mean: float = self._validate_number(pI_mean, "pI_mean")
         self._pI_range: float = self._validate_number(pI_range, "pI_range")
 

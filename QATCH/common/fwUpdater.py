@@ -1,22 +1,24 @@
-from QATCH.ui.popUp import PopUp
-from QATCH.core.constants import Constants
-from QATCH.common.userProfiles import UserProfiles, UserRoles
-from QATCH.common.tyUpdater import QATCH_TyUpdater
-from QATCH.common.logger import Logger as Log
-from QATCH.common.fileStorage import FileStorage
-from QATCH.common.architecture import Architecture, OSType
-from serial import serialutil
-from PyQt5 import QtCore, QtWidgets, QtGui
-from enum import IntEnum, unique
-from time import time, sleep
-from subprocess import Popen, PIPE
 from datetime import datetime
+from enum import IntEnum, unique
 import mmap
 import os
 import shlex
 import shutil
 import stat
+from subprocess import PIPE, Popen
+from time import sleep, time
+
+from PyQt5 import QtCore, QtGui, QtWidgets
 import requests
+from serial import serialutil
+
+from QATCH.common.architecture import Architecture, OSType
+from QATCH.common.fileStorage import FileStorage
+from QATCH.common.logger import Logger as Log
+from QATCH.common.tyUpdater import QATCH_TyUpdater
+from QATCH.common.userProfiles import UserProfiles, UserRoles
+from QATCH.core.constants import Constants
+from QATCH.ui.popUp import PopUp
 
 USE_PROGRESS_BAR_MODULE = False
 if USE_PROGRESS_BAR_MODULE:
@@ -103,8 +105,7 @@ class FW_Updater:
                 if not success:
                     return FW_UPDATE.RESULT_FAILED
 
-                result, version, target, written, abort = self.checkUpdate(
-                    parent, port)
+                result, version, target, written, abort = self.checkUpdate(parent, port)
 
                 if not result == FW_UPDATE.RESULT_FAILED:
                     if not result == FW_UPDATE.RESULT_UPTODATE:
@@ -138,9 +139,7 @@ class FW_Updater:
                                 )
                                 doUpdate = False
                             else:
-                                question += (
-                                    " firmware.\nWould you like to update it now?"
-                                )
+                                question += " firmware.\nWould you like to update it now?"
                                 if userResponse == None:
                                     userResponse = PopUp.question_FW(
                                         parent,
@@ -151,7 +150,9 @@ class FW_Updater:
                                         )
                                         + "Updating only takes a few seconds and guarantees operational compatibility.",
                                     )
-                                doUpdate = userResponse  # remember their answer for multiplex devices
+                                doUpdate = (
+                                    userResponse  # remember their answer for multiplex devices
+                                )
                         elif check_result != True:
                             Log.w(
                                 "A firmware update is available! Please ask your administrator to install update."
@@ -170,38 +171,28 @@ class FW_Updater:
                             parent.ControlsWin.ui1.infobar.repaint()
 
                             # # They said "YES" or we did not ask, attempt the update
-                            multistep = (
-                                f" ({i} of {num_ports})" if num_ports > 1 else ""
-                            )
+                            multistep = f" ({i} of {num_ports})" if num_ports > 1 else ""
                             self.progressBar = QtWidgets.QProgressDialog(
                                 f"Programming FW {target}...", "Cancel", 0, 100, parent
                             )
                             icon_path = os.path.join(
                                 Architecture.get_path(), "QATCH/icons/download_icon.ico"
                             )
-                            self.progressBar.setWindowIcon(
-                                QtGui.QIcon(icon_path))
-                            self.progressBar.setWindowTitle(
-                                f"Programming FW {target}{multistep}"
-                            )
+                            self.progressBar.setWindowIcon(QtGui.QIcon(icon_path))
+                            self.progressBar.setWindowTitle(f"Programming FW {target}{multistep}")
                             self.progressBar.setWindowFlag(
                                 QtCore.Qt.WindowContextHelpButtonHint, False
                             )
-                            self.progressBar.setWindowFlag(
-                                QtCore.Qt.WindowStaysOnTopHint, True
-                            )
+                            self.progressBar.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
                             self.progressBar.canceled.disconnect()
-                            self.progressBar.canceled.connect(
-                                self.update_cancel)
+                            self.progressBar.canceled.connect(self.update_cancel)
                             self.progressBar.setFixedSize(
                                 int(self.progressBar.width() * 1.5),
                                 int(self.progressBar.height() * 1.1),
                             )
 
                             self.upd_thread = QtCore.QThread()
-                            PRIMARY_DEV = (
-                                port if num_ports == 1 else parent.worker._port[0]
-                            )
+                            PRIMARY_DEV = port if num_ports == 1 else parent.worker._port[0]
                             self.updater = UpdaterTask(
                                 port, self._serial, PRIMARY_DEV, self._active_uid
                             )
@@ -210,11 +201,8 @@ class FW_Updater:
 
                             self.upd_thread.started.connect(self.updater.run)
                             self.updater.finished.connect(self.upd_thread.quit)
-                            self.updater.finished.connect(
-                                self.updater.deleteLater)
-                            self.upd_thread.finished.connect(
-                                self.upd_thread.deleteLater
-                            )
+                            self.updater.finished.connect(self.updater.deleteLater)
+                            self.upd_thread.finished.connect(self.upd_thread.deleteLater)
                             self.updater.progress.connect(self.update_progress)
                             self.updater.finished.connect(self.update_finished)
 
@@ -241,8 +229,7 @@ class FW_Updater:
                                 box.setWindowTitle("Program FW Update")
                                 box.setText("Download canceled.")
                                 box.setDetailedText("")
-                                box.setStandardButtons(
-                                    QtWidgets.QMessageBox.Ok)
+                                box.setStandardButtons(QtWidgets.QMessageBox.Ok)
                                 box.exec_()
 
                             result, output, error = self.updater.get_results()
@@ -263,9 +250,7 @@ class FW_Updater:
 
                             tryAgain = False
                             if result == FW_UPDATE.RESULT_UPTODATE:
-                                check, now, _, _, _ = self.checkUpdate(
-                                    parent, self._port
-                                )
+                                check, now, _, _, _ = self.checkUpdate(parent, self._port)
                                 if check == FW_UPDATE.RESULT_UPTODATE:
                                     # Only indicate "success" after all active ports are finished
                                     if i == num_ports:
@@ -281,9 +266,7 @@ class FW_Updater:
                                         )
                                 else:
                                     # Verification Failed (ask to try again)
-                                    message = (
-                                        "UPDATE FAILED\n\nDevice is still running "
-                                    )
+                                    message = "UPDATE FAILED\n\nDevice is still running "
                                     if check == FW_UPDATE.RESULT_REQUIRED:
                                         message += "INCOMPATIBLE"
                                     if check == FW_UPDATE.RESULT_FAILED:
@@ -455,10 +438,7 @@ class FW_Updater:
                 ):  # timeout needed if old FW
                     pass
                 if time() < timeoutAt:
-                    version_reply = (
-                        self._serial.read(
-                            self._serial.in_waiting).decode().split("\n")
-                    )
+                    version_reply = self._serial.read(self._serial.in_waiting).decode().split("\n")
                     length = len(version_reply)
                     if length >= 3:
                         build = version_reply[0].strip()
@@ -585,24 +565,18 @@ class FW_Updater:
                     # check for and resolve any conflicting device infos
                     try:
                         if FileStorage.DEV_get_active(idx) == "" and idx > 0:
-                            FileStorage.DEV_set_active(
-                                idx, name)  # for multiplex
-                        dev_folder = "{}_{}".format(
-                            idx, name) if idx > 0 else name
+                            FileStorage.DEV_set_active(idx, name)  # for multiplex
+                        dev_folder = "{}_{}".format(idx, name) if idx > 0 else name
                         # wrong dev selected, must be a conflict
                         if FileStorage.DEV_get_active(idx) != dev_folder:
                             device_list = FileStorage.DEV_get_device_list()
                             for i, dev_name in device_list:
-                                dev_info = FileStorage.DEV_info_get(
-                                    i, dev_name)
+                                dev_info = FileStorage.DEV_info_get(i, dev_name)
                                 if "USB" in dev_info and "PORT" in dev_info:
-                                    if (
-                                        dev_info["PORT"] == self._com
-                                        and dev_info["USB"] != usb
-                                    ):
-                                        _name = _fw = _hw = _port = _ip = _uid = (
-                                            _mac
-                                        ) = _usb = _pid = _rev = _err = None
+                                    if dev_info["PORT"] == self._com and dev_info["USB"] != usb:
+                                        _name = _fw = _hw = _port = _ip = _uid = _mac = _usb = (
+                                            _pid
+                                        ) = _rev = _err = None
                                         for entry in dev_info.keys():
                                             if entry == "NAME":
                                                 _name = dev_info[entry]
@@ -759,10 +733,11 @@ class FW_Updater:
                 need_repaint = True
                 delay = 500
                 if self.progressBar.labelText().find("Transfer") >= 0:
-                    cancelButton = self.progressBar.findChild(
-                        QtWidgets.QPushButton)
+                    cancelButton = self.progressBar.findChild(QtWidgets.QPushButton)
                     cancelButton.setEnabled(False)
-                    status_str = "Programming device firmware...<br/><b>DO NOT POWER CYCLE DEVICE!</b>"
+                    status_str = (
+                        "Programming device firmware...<br/><b>DO NOT POWER CYCLE DEVICE!</b>"
+                    )
                     self.progressBar.setLabelText(status_str)
                     curr_val = 0
                 if self.upd_finished:  # or int(curr_val / 10) % 2 == 0:
@@ -832,8 +807,7 @@ class UpdaterTask(QtCore.QThread):
         # self._dbx_connection.close() # force abort of active file download
 
     def run(self):
-        self._result, self._output, self._error = self.doUpdate(
-            None, self._port)
+        self._result, self._output, self._error = self.doUpdate(None, self._port)
         self.finished.emit()
 
     def get_results(self):
@@ -942,17 +916,13 @@ class UpdaterTask(QtCore.QThread):
                 # Log.d("GUI: Toggle progress mode")
 
                 if self._serial.net_port != None:
-                    Log.d(
-                        TAG, f"QUERY-PUT: http://{self._serial.net_port}:8080/program"
-                    )
+                    Log.d(TAG, f"QUERY-PUT: http://{self._serial.net_port}:8080/program")
 
                     start = time()
                     d = f.read()
                     d += str(expected).encode()
                     d += b"\r\n"
-                    r = requests.put(
-                        f"http://{self._serial.net_port}:8080/program", data=d
-                    )
+                    r = requests.put(f"http://{self._serial.net_port}:8080/program", data=d)
                     output += r.text
                     if "SUCCESS" in output:
                         error = ""  # success
@@ -969,9 +939,7 @@ class UpdaterTask(QtCore.QThread):
                     while time() - stop < waitFor:
                         sleep(1)  # try once a second, don't go crazy!
                         try:
-                            r = requests.get(
-                                f"http://{self._serial.net_port}:8080/version"
-                            )
+                            r = requests.get(f"http://{self._serial.net_port}:8080/version")
                             if r.ok:
                                 successes += 1
                             if successes > 5:
@@ -1053,8 +1021,7 @@ class UpdaterTask(QtCore.QThread):
                             # Log.w(f"dbg: {lines} : {x}")
                             self._serial.write(x)
                             if False:
-                                reply = self._serial.read(
-                                    self._serial.in_waiting)
+                                reply = self._serial.read(self._serial.in_waiting)
                                 # Log.d(">> {}".format(x.encode()))
                                 # Log.d("<< {}".format(reply))
                                 if b"abort -" in reply:
@@ -1072,9 +1039,7 @@ class UpdaterTask(QtCore.QThread):
                         f.close()
 
                         if not lines == expected:
-                            Log.d(
-                                TAG, f"incorrect # of lines sent: {lines} / {expected}"
-                            )
+                            Log.d(TAG, f"incorrect # of lines sent: {lines} / {expected}")
                             lines = 0  # abort
                             if not "abort" in error:
                                 error = "Incorrect number of lines sent to device."
@@ -1092,8 +1057,7 @@ class UpdaterTask(QtCore.QThread):
                         waitFor = 45  # copy to RAM can take some time
                         while True:
                             try:
-                                reply = self._serial.read(
-                                    self._serial.in_waiting)
+                                reply = self._serial.read(self._serial.in_waiting)
                                 output += reply.decode().lstrip()
                             except Exception as e:
                                 Log.d(
@@ -1138,8 +1102,7 @@ class UpdaterTask(QtCore.QThread):
                                 # exit bootloader, if still stuck in it
                                 self._serial.write("\n".encode())
                         except serialutil.SerialException:
-                            self.progress.emit(
-                                "Waiting for device to reboot...", None)
+                            self.progress.emit("Waiting for device to reboot...", None)
                             Log.d(TAG, "Device reset!")
 
                         if self._port != self._primary:
@@ -1179,13 +1142,10 @@ class UpdaterTask(QtCore.QThread):
                         waitFor = 60  # timeout delay (seconds)
                         msg = ""
                         while time() - stop < waitFor:
-                            while (
-                                time() - stop < waitFor and self._serial.in_waiting == 0
-                            ):
+                            while time() - stop < waitFor and self._serial.in_waiting == 0:
                                 pass
                             if time() - stop < waitFor:
-                                reply = self._serial.read(
-                                    self._serial.in_waiting)
+                                reply = self._serial.read(self._serial.in_waiting)
                                 msg += reply.decode()
                                 if "QATCH" in msg:
                                     sleep(1)
@@ -1193,8 +1153,7 @@ class UpdaterTask(QtCore.QThread):
                                     break
                         if time() - stop >= waitFor:
                             error = "Failed to reboot within one minute."
-                            raise TimeoutError(
-                                "Failed to reboot within one minute.")
+                            raise TimeoutError("Failed to reboot within one minute.")
 
                 # common code for both COM and NET devices
                 status = f"Target build: {os.path.split(path_to_hex)[1]}\n"
@@ -1255,9 +1214,7 @@ class UpdaterTask(QtCore.QThread):
                 # Command is based on OS running
                 if Architecture.get_os() is OSType.windows:
                     prereq_task = Popen(
-                        [
-                            'tasklist /FI "IMAGENAME eq Teensy*" 2>NUL | find /I /C "Teensy">NUL'
-                        ],
+                        ['tasklist /FI "IMAGENAME eq Teensy*" 2>NUL | find /I /C "Teensy">NUL'],
                         shell=True,
                         stdout=PIPE,
                         stderr=PIPE,
@@ -1338,8 +1295,7 @@ class UpdaterTask(QtCore.QThread):
                                     self._serial.write("program\n".encode())
                                     timeoutAt = time() + 1
                                     while (
-                                        self._serial.in_waiting == 0
-                                        and time() < timeoutAt
+                                        self._serial.in_waiting == 0 and time() < timeoutAt
                                     ):  # timeout needed if old FW
                                         pass
                                     deviceReset = False
@@ -1401,8 +1357,7 @@ class UpdaterTask(QtCore.QThread):
                         PopUp.warning(
                             parent,
                             "FW Recovery Tool",
-                            "The following error was reported:\n\n{}".format(
-                                error),
+                            "The following error was reported:\n\n{}".format(error),
                         )
             except:
                 result = FW_UPDATE.RESULT_FAILED
@@ -1414,9 +1369,7 @@ class UpdaterTask(QtCore.QThread):
                 self.close()
 
         parent.ControlsWin.ui1.infobar.setText(
-            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format(
-                "#333333", ""
-            )
+            "<font color=#0000ff> Infobar </font><font color={}>{}</font>".format("#333333", "")
         )
 
         return result, output, error
@@ -1437,23 +1390,16 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if os.path.basename(file).startswith("._"):
                     continue
-                if file[-len(ext):] == ext:
+                if file[-len(ext) :] == ext:
                     try:
                         file = shutil.copy(
                             file,
                             file.replace(
                                 ext,
-                                (
-                                    ".exe"
-                                    if Architecture.get_os() == OSType.windows
-                                    else ""
-                                ),
+                                (".exe" if Architecture.get_os() == OSType.windows else ""),
                             ),
                         )
-                        Log.d(
-                            TAG, 'Unpacking file "{}"...'.format(
-                                os.path.basename(file))
-                        )
+                        Log.d(TAG, 'Unpacking file "{}"...'.format(os.path.basename(file)))
                         os.chmod(
                             file, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO
                         )  # set permissions
@@ -1489,9 +1435,8 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if os.path.basename(file).startswith("._"):
                     continue
-                if file[-len(ext):] == ext:
-                    Log.d(TAG, 'Cleaning file: "{}"...'.format(
-                        os.path.basename(file)))
+                if file[-len(ext) :] == ext:
+                    Log.d(TAG, 'Cleaning file: "{}"...'.format(os.path.basename(file)))
                     os.remove(file)
                     Log.d("DONE!")
 
@@ -1506,19 +1451,14 @@ class UpdaterTask(QtCore.QThread):
             for ext in exts.split("|"):
                 if exec:
                     # remove ".safe" extension
-                    if file[-(len(ext) + 5):] == "{}.safe".format(ext):
-                        Log.d(
-                            TAG, 'Renaming file "{}" to "{}"'.format(
-                                file, file[0:-5])
-                        )
+                    if file[-(len(ext) + 5) :] == "{}.safe".format(ext):
+                        Log.d(TAG, 'Renaming file "{}" to "{}"'.format(file, file[0:-5]))
                         os.rename(file, file[0:-5])
                 else:
                     # add ".safe" extension
-                    if file[-len(ext):] == ext:
+                    if file[-len(ext) :] == ext:
                         Log.d(
                             TAG,
-                            'Renaming file "{}" to "{}"'.format(
-                                file, "{}.safe".format(file)
-                            ),
+                            'Renaming file "{}" to "{}"'.format(file, "{}.safe".format(file)),
                         )
                         os.rename(file, "{}.safe".format(file))

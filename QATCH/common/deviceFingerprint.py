@@ -19,14 +19,14 @@ import json
 import platform
 import subprocess
 import time
+from typing import Dict, Optional, Union
 import winreg
-from typing import Dict, Union, Optional
-
 
 try:
     from QATCH.common.logger import Logger as Log
     from QATCH.core.constants import Constants
 except (ModuleNotFoundError, ImportError):
+
     class Log:
         """Fallback logger implementation when QATCH logger is not available."""
 
@@ -52,7 +52,7 @@ except (ModuleNotFoundError, ImportError):
         def i(msg: str) -> None:
             """
             Log an informational message.
-            
+
             Parameters:
                 msg (str): The message to log.
             """
@@ -69,6 +69,7 @@ except (ModuleNotFoundError, ImportError):
 
     class Constants:
         """Minimal fallback"""
+
         app_publisher = "QATCH"
         app_name = "nanovisQ"
 
@@ -92,9 +93,9 @@ class DeviceFingerprint:
     def reset_failure_flags():
         """
         Reset persistent failure flags that disable PowerShell and WMIC command execution.
-        
+
         Sets DeviceFingerprint.no_powershell_cmds and DeviceFingerprint.no_wmic_cmds to False under the internal lock to ensure a thread-safe update. Call this after environment changes or when retrying command-based probes that were previously disabled.
-        
+
         No return value.
         """
         with DeviceFingerprint._flag_lock:
@@ -102,10 +103,12 @@ class DeviceFingerprint:
             DeviceFingerprint.no_wmic_cmds = False
 
     @staticmethod
-    def run_command(command: str, shell: bool = True, use_powershell: bool = False, timeout: float = 5.0) -> str:
+    def run_command(
+        command: str, shell: bool = True, use_powershell: bool = False, timeout: float = 5.0
+    ) -> str:
         """
         Execute a system command and return its trimmed stdout.
-        
+
         This will run the provided command (optionally via PowerShell) and return the command's
         stdout with surrounding whitespace removed. STDERR is discarded. On failure the function
         returns an empty string and sets class-level failure flags to avoid repeating failing
@@ -114,16 +117,16 @@ class DeviceFingerprint:
         If the corresponding failure flag is already set, matching commands are skipped and an empty
         string is returned immediately. The use of creationflags with PowerShell commands is required
         to prevent console windows from flashing on the screen when running from a frozen EXE process.
-        
+
         Security: accepting arbitrary command strings is potentially dangerous. Callers MUST ensure
         commands are not influenced by untrusted input.
-        
+
         Parameters:
             command (str): Command string to execute.
             shell (bool): If True (default) run the command through the system shell when not using PowerShell.
             use_powershell (bool): If True, invoke PowerShell to run the command; failure will toggle the PowerShell failure flag.
             timeout (float): Timeout in seconds for the command (default 5.0).
-        
+
         Returns:
             str: Trimmed stdout from the command on success, or an empty string on failure or when skipped.
         """
@@ -139,13 +142,18 @@ class DeviceFingerprint:
             if use_powershell:
                 # Windows-specific flag: required to prevent window flicker when frozen
                 CREATE_NO_WINDOW = 0x08000000
-                ps_command = ['powershell', '-Command', command]
+                ps_command = ["powershell", "-Command", command]
                 output = subprocess.check_output(
-                    ps_command, stderr=subprocess.DEVNULL, text=True, timeout=timeout,
-                    creationflags=CREATE_NO_WINDOW)
+                    ps_command,
+                    stderr=subprocess.DEVNULL,
+                    text=True,
+                    timeout=timeout,
+                    creationflags=CREATE_NO_WINDOW,
+                )
             else:
                 output = subprocess.check_output(
-                    command, shell=shell, stderr=subprocess.DEVNULL, text=True, timeout=timeout)
+                    command, shell=shell, stderr=subprocess.DEVNULL, text=True, timeout=timeout
+                )
 
             return output.strip()
 
@@ -159,7 +167,9 @@ class DeviceFingerprint:
                 return ""
 
     @staticmethod
-    def query_registry(key_path: str, value_name: str, hive=winreg.HKEY_LOCAL_MACHINE) -> Optional[str]:
+    def query_registry(
+        key_path: str, value_name: str, hive=winreg.HKEY_LOCAL_MACHINE
+    ) -> Optional[str]:
         """Query a Windows registry value.
 
         Args:
@@ -178,10 +188,9 @@ class DeviceFingerprint:
                 value, _ = winreg.QueryValueEx(key, value_name)
                 return str(value).strip() if value else None
         except Exception as e:
-            Log.w(
-                f"Registry query failed: {key_path}\\{value_name}, Error: {e}")
+            Log.w(f"Registry query failed: {key_path}\\{value_name}, Error: {e}")
             return None
-        
+
     @staticmethod
     def write_reg_sz_value(root_key, subkey_path, value_name, value_data):
         try:
@@ -199,7 +208,7 @@ class DeviceFingerprint:
         except Exception as e:
             Log.e(f"Error writing registry value: {e}")
         finally:
-            if 'key' in locals() and key:
+            if "key" in locals() and key:
                 winreg.CloseKey(key)
 
     @staticmethod
@@ -215,27 +224,24 @@ class DeviceFingerprint:
         hardware_ids = []
 
         machine_guid = DeviceFingerprint.query_registry(
-            r"SOFTWARE\Microsoft\Cryptography",
-            "MachineGuid"
+            r"SOFTWARE\Microsoft\Cryptography", "MachineGuid"
         )
         if machine_guid:
             hardware_ids.append(f"MachineGuid:{machine_guid}")
 
         product_id = DeviceFingerprint.query_registry(
-            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
-            "ProductId"
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "ProductId"
         )
         if product_id:
             hardware_ids.append(f"ProductId:{product_id}")
 
         install_date = DeviceFingerprint.query_registry(
-            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion",
-            "InstallDate"
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion", "InstallDate"
         )
         if install_date:
             hardware_ids.append(f"InstallDate:{install_date}")
 
-        return '|'.join(hardware_ids) if hardware_ids else "UNKNOWN"
+        return "|".join(hardware_ids) if hardware_ids else "UNKNOWN"
 
     @staticmethod
     def get_bios_serial() -> str:
@@ -251,24 +257,21 @@ class DeviceFingerprint:
         """
         serial = DeviceFingerprint.run_command(
             "Get-WmiObject -Class Win32_BIOS | Select-Object -ExpandProperty SerialNumber",
-            use_powershell=True
+            use_powershell=True,
         )
 
         if not serial or serial == "SerialNumber":
-            output = DeviceFingerprint.run_command(
-                "wmic bios get serialnumber")
-            lines = output.split('\n')
+            output = DeviceFingerprint.run_command("wmic bios get serialnumber")
+            lines = output.split("\n")
             if len(lines) > 1:
                 serial = lines[1].strip()
         if not serial or serial == "SerialNumber":
             serial = DeviceFingerprint.query_registry(
-                r"HARDWARE\DESCRIPTION\System\BIOS",
-                "SystemSerialNumber"
+                r"HARDWARE\DESCRIPTION\System\BIOS", "SystemSerialNumber"
             )
             if not serial:
                 serial = DeviceFingerprint.query_registry(
-                    r"SYSTEM\CurrentControlSet\Control\SystemInformation",
-                    "SystemSerialNumber"
+                    r"SYSTEM\CurrentControlSet\Control\SystemInformation", "SystemSerialNumber"
                 )
 
         return serial if serial and serial != "SerialNumber" else "UNKNOWN"
@@ -288,29 +291,25 @@ class DeviceFingerprint:
         """
         serial = DeviceFingerprint.run_command(
             "Get-WmiObject -Class Win32_BaseBoard | Select-Object -ExpandProperty SerialNumber",
-            use_powershell=True
+            use_powershell=True,
         )
 
         if not serial or serial == "SerialNumber":
-            output = DeviceFingerprint.run_command(
-                "wmic baseboard get serialnumber")
-            lines = output.split('\n')
+            output = DeviceFingerprint.run_command("wmic baseboard get serialnumber")
+            lines = output.split("\n")
             if len(lines) > 1:
                 serial = lines[1].strip()
 
         if not serial or serial == "SerialNumber":
             serial = DeviceFingerprint.query_registry(
-                r"SYSTEM\CurrentControlSet\Control\SystemInformation",
-                "SystemProductName"
+                r"SYSTEM\CurrentControlSet\Control\SystemInformation", "SystemProductName"
             )
             if not serial:
                 manufacturer = DeviceFingerprint.query_registry(
-                    r"SYSTEM\CurrentControlSet\Control\SystemInformation",
-                    "SystemManufacturer"
+                    r"SYSTEM\CurrentControlSet\Control\SystemInformation", "SystemManufacturer"
                 )
                 product = DeviceFingerprint.query_registry(
-                    r"SYSTEM\CurrentControlSet\Control\SystemInformation",
-                    "SystemProductName"
+                    r"SYSTEM\CurrentControlSet\Control\SystemInformation", "SystemProductName"
                 )
                 if manufacturer and product:
                     serial = f"{manufacturer}-{product}"
@@ -332,25 +331,23 @@ class DeviceFingerprint:
         # Try PowerShell first
         cpu_id = DeviceFingerprint.run_command(
             "Get-WmiObject -Class Win32_Processor | Select-Object -ExpandProperty ProcessorId",
-            use_powershell=True
+            use_powershell=True,
         )
 
         if not cpu_id or cpu_id == "ProcessorId":
             # Fallback to WMIC
             output = DeviceFingerprint.run_command("wmic cpu get processorid")
-            lines = output.split('\n')
+            lines = output.split("\n")
             if len(lines) > 1:
                 cpu_id = lines[1].strip()
 
         if not cpu_id or cpu_id == "ProcessorId":
             # Try to get CPU information from registry
             cpu_name = DeviceFingerprint.query_registry(
-                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-                "ProcessorNameString"
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "ProcessorNameString"
             )
             cpu_identifier = DeviceFingerprint.query_registry(
-                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-                "Identifier"
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0", "Identifier"
             )
             if cpu_name or cpu_identifier:
                 cpu_id = f"{cpu_identifier or ''}-{cpu_name or ''}"
@@ -373,28 +370,23 @@ class DeviceFingerprint:
         """
         serial = DeviceFingerprint.run_command(
             "Get-WmiObject -Class Win32_DiskDrive | Where-Object {$_.Index -eq 0} | Select-Object -ExpandProperty SerialNumber",
-            use_powershell=True
+            use_powershell=True,
         )
 
         if not serial or serial == "SerialNumber":
-            output = DeviceFingerprint.run_command(
-                "wmic diskdrive where Index=0 get serialnumber"
-            )
-            lines = output.split('\n')
+            output = DeviceFingerprint.run_command("wmic diskdrive where Index=0 get serialnumber")
+            lines = output.split("\n")
             if len(lines) > 1:
                 serial = lines[1].strip()
 
         if not serial or serial == "SerialNumber":
             serial = DeviceFingerprint.run_command(
                 "Get-Disk | Where-Object {$_.Number -eq 0} | Select-Object -ExpandProperty UniqueId",
-                use_powershell=True
+                use_powershell=True,
             )
 
             if not serial:
-                serial = DeviceFingerprint.run_command(
-                    "vol C: | findstr Serial",
-                    shell=True
-                )
+                serial = DeviceFingerprint.run_command("vol C: | findstr Serial", shell=True)
                 if serial and "Serial" in serial:
                     # Extract just the serial number
                     parts = serial.split()
@@ -402,7 +394,7 @@ class DeviceFingerprint:
                         serial = parts[-1]
 
         if serial:
-            serial = ' '.join(serial.split())
+            serial = " ".join(serial.split())
 
         return serial if serial and serial != "SerialNumber" else "UNKNOWN"
 
@@ -420,25 +412,23 @@ class DeviceFingerprint:
         """
         uuid = DeviceFingerprint.run_command(
             "Get-WmiObject -Class Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID",
-            use_powershell=True
+            use_powershell=True,
         )
 
         if not uuid or uuid == "UUID":
             output = DeviceFingerprint.run_command("wmic csproduct get uuid")
-            lines = output.split('\n')
+            lines = output.split("\n")
             if len(lines) > 1:
                 uuid = lines[1].strip()
 
         if not uuid or uuid == "UUID":
             uuid = DeviceFingerprint.query_registry(
-                r"SYSTEM\CurrentControlSet\Control\SystemInformation",
-                "ComputerHardwareId"
+                r"SYSTEM\CurrentControlSet\Control\SystemInformation", "ComputerHardwareId"
             )
 
             if not uuid:
                 uuid = DeviceFingerprint.query_registry(
-                    r"SOFTWARE\Microsoft\Cryptography",
-                    "MachineGuid"
+                    r"SOFTWARE\Microsoft\Cryptography", "MachineGuid"
                 )
 
         return uuid if uuid and uuid != "UUID" else "UNKNOWN"
@@ -452,7 +442,7 @@ class DeviceFingerprint:
 
         The hardware information used includes:
         - BIOS serial number
-        - Motherboard serial number  
+        - Motherboard serial number
         - CPU processor ID
         - Primary disk serial number
         - System UUID
@@ -467,52 +457,65 @@ class DeviceFingerprint:
             making it suitable for software licensing purposes.
         """
         device_info = {
-            'bios_serial': DeviceFingerprint.get_bios_serial(),
-            'motherboard_serial': DeviceFingerprint.get_motherboard_serial(),
-            'cpu_id': DeviceFingerprint.get_cpu_id(),
-            'disk_serial': DeviceFingerprint.get_disk_serial(),
-            'system_uuid': DeviceFingerprint.get_uuid()
+            "bios_serial": DeviceFingerprint.get_bios_serial(),
+            "motherboard_serial": DeviceFingerprint.get_motherboard_serial(),
+            "cpu_id": DeviceFingerprint.get_cpu_id(),
+            "disk_serial": DeviceFingerprint.get_disk_serial(),
+            "system_uuid": DeviceFingerprint.get_uuid(),
         }
 
         if all(v == "UNKNOWN" for v in device_info.values()):
             Log.w("All primary hardware queries failed, using registry fallback")
-            device_info['registry_hw_id'] = DeviceFingerprint.get_registry_hardware_id()
+            device_info["registry_hw_id"] = DeviceFingerprint.get_registry_hardware_id()
 
         device_string = json.dumps(device_info, sort_keys=True)
         hash_obj = hashlib.sha256(device_string.encode())
         full_hash = hash_obj.hexdigest().upper()
-        key_parts = [full_hash[i:i+4] for i in range(0, 20, 4)]
-        license_key = '-'.join(key_parts)
+        key_parts = [full_hash[i : i + 4] for i in range(0, 20, 4)]
+        license_key = "-".join(key_parts)
         license_created = str(int(time.time()))
         license_hash = DeviceFingerprint.get_license_hash(license_key, license_created)
-        
+
         # Write generated key info to AppSettings using direct registry access:
         DeviceFingerprint.write_reg_sz_value(
-            root_key=winreg.HKEY_CURRENT_USER, 
-            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
-            value_name="License_Key", 
-            value_data=license_key)
+            root_key=winreg.HKEY_CURRENT_USER,
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(
+                ORG=Constants.app_publisher, APP=Constants.app_name
+            ),
+            value_name="License_Key",
+            value_data=license_key,
+        )
         DeviceFingerprint.write_reg_sz_value(
-            root_key=winreg.HKEY_CURRENT_USER, 
-            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
-            value_name="License_Created", 
-            value_data=license_created)
+            root_key=winreg.HKEY_CURRENT_USER,
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(
+                ORG=Constants.app_publisher, APP=Constants.app_name
+            ),
+            value_name="License_Created",
+            value_data=license_created,
+        )
         DeviceFingerprint.write_reg_sz_value(
-            root_key=winreg.HKEY_CURRENT_USER, 
-            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name), 
-            value_name="License_Hash", 
-            value_data=license_hash)
+            root_key=winreg.HKEY_CURRENT_USER,
+            subkey_path=r"SOFTWARE\{ORG}\{APP}".format(
+                ORG=Constants.app_publisher, APP=Constants.app_name
+            ),
+            value_name="License_Hash",
+            value_data=license_hash,
+        )
 
         return license_key
-    
+
     @staticmethod
     def get_license_hash(key: str, created: str) -> str:
         if isinstance(key, str) and isinstance(created, str) and created.isnumeric():
             try:
-                license_bytes = f"{key}@{datetime.datetime.fromtimestamp(int(created)).isoformat()}Z".encode('utf-8')
+                license_bytes = (
+                    f"{key}@{datetime.datetime.fromtimestamp(int(created)).isoformat()}Z".encode(
+                        "utf-8"
+                    )
+                )
                 hash_str = hashlib.sha256(license_bytes).hexdigest()
                 return hash_str
-            
+
             except ValueError:
                 return "ValueError"
             except Exception:
@@ -544,25 +547,26 @@ class DeviceFingerprint:
             hardware ID is included as a fallback.
         """
         try:
-            computer_name = subprocess.check_output(
-                "hostname", shell=True, text=True).strip()
+            computer_name = subprocess.check_output("hostname", shell=True, text=True).strip()
         except:
             computer_name = "UNKNOWN"
 
         summary = {
-            'computer_name': computer_name,
-            'os_version': platform.platform(),
-            'bios_serial': DeviceFingerprint.get_bios_serial(),
-            'motherboard_serial': DeviceFingerprint.get_motherboard_serial(),
-            'cpu_id': DeviceFingerprint.get_cpu_id(),
-            'disk_serial': DeviceFingerprint.get_disk_serial(),
-            'system_uuid': DeviceFingerprint.get_uuid(),
+            "computer_name": computer_name,
+            "os_version": platform.platform(),
+            "bios_serial": DeviceFingerprint.get_bios_serial(),
+            "motherboard_serial": DeviceFingerprint.get_motherboard_serial(),
+            "cpu_id": DeviceFingerprint.get_cpu_id(),
+            "disk_serial": DeviceFingerprint.get_disk_serial(),
+            "system_uuid": DeviceFingerprint.get_uuid(),
         }
 
-        if all(v == "UNKNOWN" for k, v in summary.items() if k not in ['computer_name', 'os_version']):
-            summary['registry_hw_id'] = DeviceFingerprint.get_registry_hardware_id()
+        if all(
+            v == "UNKNOWN" for k, v in summary.items() if k not in ["computer_name", "os_version"]
+        ):
+            summary["registry_hw_id"] = DeviceFingerprint.get_registry_hardware_id()
 
-        summary['license_key'] = DeviceFingerprint.generate_key()
+        summary["license_key"] = DeviceFingerprint.generate_key()
 
         return summary
 
@@ -579,33 +583,42 @@ class DeviceFingerprint:
         try:
             license_key = DeviceFingerprint.query_registry(
                 hive=winreg.HKEY_CURRENT_USER,
-                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
-                value_name="License_Key")
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(
+                    ORG=Constants.app_publisher, APP=Constants.app_name
+                ),
+                value_name="License_Key",
+            )
             license_created = DeviceFingerprint.query_registry(
                 hive=winreg.HKEY_CURRENT_USER,
-                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
-                value_name="License_Created")
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(
+                    ORG=Constants.app_publisher, APP=Constants.app_name
+                ),
+                value_name="License_Created",
+            )
             license_hash = DeviceFingerprint.query_registry(
                 hive=winreg.HKEY_CURRENT_USER,
-                key_path=r"SOFTWARE\{ORG}\{APP}".format(ORG=Constants.app_publisher, APP=Constants.app_name),
-                value_name="License_Hash")
-            
+                key_path=r"SOFTWARE\{ORG}\{APP}".format(
+                    ORG=Constants.app_publisher, APP=Constants.app_name
+                ),
+                value_name="License_Hash",
+            )
+
             if license_key and license_created and license_hash:
                 calculated_hash = DeviceFingerprint.get_license_hash(license_key, license_created)
             else:
                 # indicate missing (or partial) key info
                 calculated_hash = "Missing"  # NOTE: Do NOT use `None` here!
                 if license_hash == calculated_hash:
-                    # This could occur if user sets "License_Hash"="Missing" 
+                    # This could occur if user sets "License_Hash"="Missing"
                     # without specifying "License_Created" in AppSettings...
                     # The result, if allowed to proceed, would be a manually
                     # set "License_Key" being used resulting in a spoof hack
                     license_hash = "Invalid"  # Prevent hack attempt
                     license_key = None  # Invalidate key
-            
+
             key = None  # assume failure by default
             if license_hash == calculated_hash:
-                Log.d(f"Pulled a VALID license key \"{license_key}\" from AppSettings")
+                Log.d(f'Pulled a VALID license key "{license_key}" from AppSettings')
                 key = license_key  # success
             elif not license_key:
                 Log.w("No valid license key found in AppSettings")

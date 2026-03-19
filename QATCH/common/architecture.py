@@ -1,8 +1,7 @@
+from enum import Enum
+import os
 import platform
 import sys
-import os
-
-from enum import Enum
 
 ###############################################################################
 # Architecture specific methods: OS types, Python version
@@ -72,7 +71,7 @@ class Architecture:
         Returns:
             str: Path of the current working directory or bundle extraction directory.
         """
-        if getattr(sys, 'frozen', False):
+        if getattr(sys, "frozen", False):
             # we are running in a bundle from an EXE
             bundle_dir = sys._MEIPASS
         else:
@@ -112,6 +111,7 @@ class Architecture:
             return True
         return False
 
+
 ###############################################################################
 # Enum for OS types
 ###############################################################################
@@ -121,6 +121,7 @@ class OSType(Enum):
     """
     Enum representing supported operating system types.
     """
+
     unknown = 0
     linux = 1
     macosx = 2

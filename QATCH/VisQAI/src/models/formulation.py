@@ -74,9 +74,7 @@ class ViscosityProfile:
         self, shear_rates: List[float], viscosities: List[float], units: str = "cP"
     ) -> None:
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
-            raise TypeError(
-                "shear_rates and viscosities must be lists of numeric values"
-            )
+            raise TypeError("shear_rates and viscosities must be lists of numeric values")
         if len(shear_rates) != len(viscosities):
             raise ValueError("shear_rates and viscosities must have the same length")
         if any(not isinstance(sr, (int, float)) for sr in shear_rates):
@@ -188,9 +186,7 @@ class Component:
         units (str): The units for the concentration (e.g., "mg/mL").
     """
 
-    def __init__(
-        self, ingredient: Ingredient, concentration: float, units: str
-    ) -> None:
+    def __init__(self, ingredient: Ingredient, concentration: float, units: str) -> None:
         """Initialize a Component with an ingredient and its concentration.
 
         Validates that the ingredient is of the correct type, the concentration is a non-negative numeric value,
@@ -206,9 +202,7 @@ class Component:
             ValueError: If `concentration` is negative, or if `units` is not a non-empty string.
         """
         if not isinstance(ingredient, Ingredient):
-            raise TypeError(
-                f"ingredient must be an Ingredient object found {ingredient}"
-            )
+            raise TypeError(f"ingredient must be an Ingredient object found {ingredient}")
         if not isinstance(concentration, (int, float)):
             raise TypeError("concentration must be numeric")
         if concentration < 0:
@@ -395,9 +389,7 @@ class Formulation:
         """
         self._components["buffer"] = Component(buffer, concentration, units)
 
-    def set_stabilizer(
-        self, stabilizer: Stabilizer, concentration: float, units: str
-    ) -> None:
+    def set_stabilizer(self, stabilizer: Stabilizer, concentration: float, units: str) -> None:
         """Assign a stabilizer component to the formulation.
 
         Args:
@@ -411,9 +403,7 @@ class Formulation:
         """
         self._components["stabilizer"] = Component(stabilizer, concentration, units)
 
-    def set_surfactant(
-        self, surfactant: Surfactant, concentration: float, units: str
-    ) -> None:
+    def set_surfactant(self, surfactant: Surfactant, concentration: float, units: str) -> None:
         """Assign a surfactant component to the formulation.
 
         Args:
@@ -441,9 +431,7 @@ class Formulation:
         """
         self._components["salt"] = Component(salt, concentration, units)
 
-    def set_excipient(
-        self, excipient: Excipient, concentration: float, units: str
-    ) -> None:
+    def set_excipient(self, excipient: Excipient, concentration: float, units: str) -> None:
         """Assign a excpient component to the formulation.
 
         Args:
@@ -581,9 +569,7 @@ class Formulation:
                 data[key] = comp_dict
         data["temperature"] = self.temperature
         data["viscosity_profile"] = (
-            self.viscosity_profile.to_dict()
-            if self.viscosity_profile is not None
-            else None
+            self.viscosity_profile.to_dict() if self.viscosity_profile is not None else None
         )
         return data
 
@@ -666,9 +652,7 @@ class Formulation:
         row = {
             "ID": self.id,
             "Temperature": (
-                getattr(self, "temperature", 25.0)
-                if self.temperature is not None
-                else 25.0
+                getattr(self, "temperature", 25.0) if self.temperature is not None else 25.0
             ),
             # Protein Defaults
             "Protein_class_type": safe_get(prot, "class_type.value", 0),
@@ -694,12 +678,8 @@ class Formulation:
                     "Buffer_type": getattr(buff_ing, "enc_id", 0) if buff_ing else 0,
                     "Salt_type": getattr(salt_ing, "enc_id", 0) if salt_ing else 0,
                     "Excipient_type": getattr(exc_ing, "enc_id", 0) if exc_ing else 0,
-                    "Stabilizer_type": (
-                        getattr(stab_ing, "enc_id", 0) if stab_ing else 0
-                    ),
-                    "Surfactant_type": (
-                        getattr(surf_ing, "enc_id", 0) if surf_ing else 0
-                    ),
+                    "Stabilizer_type": (getattr(stab_ing, "enc_id", 0) if stab_ing else 0),
+                    "Surfactant_type": (getattr(surf_ing, "enc_id", 0) if surf_ing else 0),
                 }
             )
         else:

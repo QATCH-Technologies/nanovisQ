@@ -258,9 +258,7 @@ class ModelOptionsDialog(QtWidgets.QDialog):
 
     def get_settings(self):
         """Return all current settings as a flat dict suitable for card.ml_params."""
-        checked_fields = [
-            col for col, cb in self._field_checkboxes.items() if cb.isChecked()
-        ]
+        checked_fields = [col for col, cb in self._field_checkboxes.items() if cb.isChecked()]
 
         # Ensure at least one field is always selected so the ICL query is meaningful.
         # If the user unchecked everything fall back to the default field.
