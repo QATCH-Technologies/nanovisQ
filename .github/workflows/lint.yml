@@ -137,8 +137,9 @@ jobs:
       - name: Run mypy
         run: |
           mypy \
-            QATCH/VisQAI \
-            QATCH/common \
-            QATCH/core \
-            QATCH/processors \
-            QATCH/ui
+            -p QATCH.VisQAI \
+            -p QATCH.common \
+            -p QATCH.core \
+            -p QATCH.processors \
+            -p QATCH.ui \
+            -p QATCH.QModel

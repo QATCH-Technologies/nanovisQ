@@ -30,6 +30,21 @@ import tempfile
 from typing import List, Optional, Union
 
 try:
+    TAG = "[Database]"
+    from QATCH.VisQAI.src.models.formulation import Component, Formulation, ViscosityProfile
+    from QATCH.VisQAI.src.models.ingredient import (
+        Buffer,
+        Excipient,
+        Ingredient,
+        Protein,
+        ProteinClass,
+        Salt,
+        Stabilizer,
+        Surfactant,
+    )
+    from QATCH.common.logger import Logger as Log
+
+except ImportError:
     TAG = "[Database (HEADLESS)]"
     from src.models.formulation import Component, Formulation, ViscosityProfile
     from src.models.ingredient import (
@@ -60,20 +75,6 @@ try:
         def e(TAG, msg=""):
             print("ERROR:", TAG, msg)
 
-except (ModuleNotFoundError, ImportError):
-    TAG = "[Database]"
-    from QATCH.VisQAI.src.models.formulation import Component, Formulation, ViscosityProfile
-    from QATCH.VisQAI.src.models.ingredient import (
-        Buffer,
-        Excipient,
-        Ingredient,
-        Protein,
-        ProteinClass,
-        Salt,
-        Stabilizer,
-        Surfactant,
-    )
-    from QATCH.common.logger import Logger as Log
 
 DB_PATH = Path(
     os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
