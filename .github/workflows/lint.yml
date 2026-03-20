@@ -137,7 +137,7 @@ jobs:
       - name: Run mypy
         run: |
           mypy \
-            --explicit-package-bases \
+            --no-namespace-packages \
             QATCH/VisQAI \
             QATCH/common \
             QATCH/core \
