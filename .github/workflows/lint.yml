@@ -137,9 +137,13 @@ jobs:
       - name: Run mypy
         run: |
           mypy \
+            --explicit-package-bases \
             -p QATCH.VisQAI \
             -p QATCH.common \
             -p QATCH.core \
             -p QATCH.processors \
             -p QATCH.ui \
-            -p QATCH.QModel
+            -p QATCH.QModel \
+            -p QATCH.nightly \
+            -p QATCH.models \
+            -p QATCH.FluxControls
