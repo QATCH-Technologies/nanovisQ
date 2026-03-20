@@ -16,18 +16,23 @@ Version:
 """
 
 import logging
-from logging.handlers import QueueHandler
 import multiprocessing
 import os
 import sys
+from logging.handlers import QueueHandler
 from typing import Optional
 
 import pandas as pd
 
-from QATCH.QModel.src.models.v6_yolo.v6_yolo import QModelV6Config, QModelV6YOLO_FillClassifier
-from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import QModelV6YOLO_DataProcessor
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
+from QATCH.QModel.src.models.v6_yolo.v6_yolo import (
+    QModelV6Config,
+    QModelV6YOLO_FillClassifier,
+)
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import (
+    QModelV6YOLO_DataProcessor,
+)
 
 TAG = "[QModelV6YOLO_LiveProcess]"
 
@@ -48,12 +53,15 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
     STATUS_MAP = {
         -1: "No Fill",
-        0: "Initial FIll",
+        0: "Initial Fill",
         1: "1 Channel",
         2: "2 Channels",
         3: "3 Channels",
     }
     TAG = "[QModelV6YOLO_Live]"
+
+    # Number of consecutive identical predictions required before accepting a state change.
+    DEBOUNCE_THRESHOLD = 3
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
         """Initializes the live fill classifier with a model and buffer settings.
@@ -65,12 +73,16 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         """
         super().__init__(model_path)
         self.buffer_window_size = buffer_window_size
-        self.current_prediction = 0
+        self.current_prediction = -1
 
         # New storage attributes
         self._data: Optional[pd.DataFrame] = None
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
+
+        # Debounce state: candidate and consecutive count
+        self._debounce_candidate = -1
+        self._debounce_count = 0
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
@@ -116,11 +128,15 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             self._data = new_data.copy()
             self._prediction_buffer_size = len(self._data)
         else:
-            new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
+            new_data_filtered = new_data[
+                new_data["Relative_time"] > self._last_max_time
+            ]
 
             if not new_data_filtered.empty:
                 new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
-                self._data = pd.concat([self._data, new_data_aligned], ignore_index=True)
+                self._data = pd.concat(
+                    [self._data, new_data_aligned], ignore_index=True
+                )
                 self._prediction_buffer_size += len(new_data_filtered)
         if self._data is not None and not self._data.empty:
             self._last_max_time = self._data["Relative_time"].max()
@@ -150,11 +166,19 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             mask = self._data["Relative_time"] > 0.05
             if mask.any():
                 self._data = self._data.loc[mask]
-                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(self._data.copy())
+                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
+                    self._data.copy()
+                )
                 if processed_df is not None and not processed_df.empty:
                     pred = self.predict(processed_df)
-                    self.current_prediction = pred
-                    return pred
+                    if pred == self._debounce_candidate:
+                        self._debounce_count += 1
+                    else:
+                        self._debounce_candidate = pred
+                        self._debounce_count = 1
+                    if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
+                        self.current_prediction = pred
+                    return self.current_prediction
                 else:
                     Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
             else:

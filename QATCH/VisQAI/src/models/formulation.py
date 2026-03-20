@@ -113,7 +113,10 @@ class ViscosityProfile:
         self._vs_monotonic = vs_monotonic
         if len(self.shear_rates) > 1:
             log_srs = np.log10(np.maximum(self.shear_rates, 1e-10))
-            self._interpolator = PchipInterpolator(log_srs, self._vs_monotonic)
+            _, unique_indices = np.unique(log_srs, return_index=True)
+            log_srs = log_srs[unique_indices]
+            vs_unique = self._vs_monotonic[unique_indices]
+            self._interpolator = PchipInterpolator(log_srs, vs_unique)
         else:
             self._interpolator = None
 

@@ -10,10 +10,17 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
+<<<<<<< HEAD
     2026-03-18
 
 Version:
     1.4
+=======
+    2026-03-19
+
+Version:
+    1.5
+>>>>>>> cce83c44329ee53b1bfb4e012e61363c43baf861
 """
 
 import json
@@ -24,6 +31,11 @@ import random
 import time
 from typing import Any, Dict, Tuple, Union
 import uuid
+<<<<<<< HEAD
+=======
+from pathlib import Path
+from typing import Any, Dict, Tuple, Union
+>>>>>>> cce83c44329ee53b1bfb4e012e61363c43baf861
 
 import pandas as pd
 from rapidfuzz import fuzz, process
@@ -55,19 +67,17 @@ def get_project_paths() -> Tuple[Path, Path]:
     Returns:
         Tuple[Path, Path]: A tuple containing (db_path, csv_path).
     """
-    cwd = Path(os.getcwd())
-    if cwd.name == "VisQAI":
-        root = cwd.parent
-    elif (cwd / "QATCH").is_dir():
-        root = cwd / "QATCH"
-    else:
-        root = cwd
+    script_dir = Path(__file__).resolve().parent
+    for candidate in (script_dir, *script_dir.parents):
+        base_path = candidate / "QATCH" / "VisQAI" / "assets"
+        if base_path.is_dir():
+            db_path = base_path / "app.db"
+            csv_path = base_path / SOURCE_CSV
+            return db_path.resolve(), csv_path.resolve()
 
-    base_path = root / "VisQAI" / "assets"
-    db_path = base_path / "app.db"
-    csv_path = base_path / SOURCE_CSV
-
-    return db_path.resolve(), csv_path.resolve()
+    raise FileNotFoundError(
+        "Could not locate QATCH/VisQAI/assets relative to make_data_db.py"
+    )
 
 
 def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
@@ -86,6 +96,8 @@ def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
     if seed is None:
         milliseconds = int(round(time.time() * 1000))
         seed = milliseconds % 255
+    # seed 10 cannot be used, it breaks metadata parsing because in ASCII it is '\n'
+    # and adding a newline character would mean the end of the metadata header line.
     if seed == 10:
         seed += 1
 
@@ -310,6 +322,9 @@ def verify_database_integrity(db_path: Path, original_df: pd.DataFrame, expected
             logger.info("DataFrame verification passed: DB export matches source CSV.")
         except AssertionError as e:
             logger.error(f"DataFrame mismatch details: {e}")
+            raise ValueError(
+                "DataFrame verification failed: DB export does not match source CSV."
+            ) from e
     finally:
         db.close()
 
@@ -353,10 +368,19 @@ def main():
     logger.info(f"Import completed in {time.perf_counter() - t_import:.2f}s.")
 
     database.close()
-    temp_db = Database(path=":memory:")
-    temp_db.metadata = {"app_encoding": Constants.app_encoding}
 
-    header_bytes = encrypt_metadata_header(metadata, temp_db)
+    # Inject Encrypted Metadata Header
+    header_bytes = None
+    temp_db = Database(path=":memory:")
+    try:
+        temp_db.metadata = {"app_encoding": Constants.app_encoding}
+        header_bytes = encrypt_metadata_header(metadata, temp_db)
+    finally:
+        temp_db.close()
+
+    if not header_bytes:
+        logger.warning("Failed to encrypt metadata header")
+        raise EncodingWarning("Failed to encrypt metadata header")
 
     with open(db_path, "rb") as f:
         f.readline()

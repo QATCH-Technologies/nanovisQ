@@ -36,6 +36,7 @@ Version:
 """
 
 import os
+import tempfile
 from typing import Dict, List, Union
 
 import numpy as np
@@ -45,7 +46,7 @@ try:
     from src.controller.formulation_controller import FormulationController
     from src.controller.ingredient_controller import IngredientController
     from src.db.db import Database
-    from src.managers.asset_manager import AssetError, AssetManager
+    from src.managers.version_manager import VersionManager
     from src.models.formulation import Formulation, ViscosityProfile
     from src.models.ingredient import Ingredient
     from src.models.predictor import Predictor
@@ -70,15 +71,15 @@ try:
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[Sampler]"
+    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
     from QATCH.VisQAI.src.db.db import Database
-    from QATCH.VisQAI.src.managers.asset_manager import AssetError, AssetManager
+    from QATCH.VisQAI.src.managers.version_manager import VersionManager
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import Ingredient
     from QATCH.VisQAI.src.models.predictor import Predictor
     from QATCH.VisQAI.src.utils.constraints import Constraints
-    from QATCH.common.logger import Logger as Log
 
 
 class Sampler:
@@ -99,8 +100,8 @@ class Sampler:
             lifecycle and historical data retrieval.
         ing_ctrl (IngredientController): Logic layer for looking up specific
             biochemical properties of ingredients.
-        asset_ctrl (AssetManager): Manager for loading and verifying `.visq`
-            model packages from the assets directory.
+        version_ctrl (VersionManager): Manager for loading and verifying `.visq`
+            model packages from the versioned model repository.
         predictor (Predictor): The inference engine used to estimate viscosity
             and prediction uncertainty.
         constraints (Constraints): Definition of the search space, including
@@ -141,8 +142,8 @@ class Sampler:
                 sampling operations.
 
         Raises:
-            AssetError: If the specified `asset_name` cannot be found or is
-                incompatible with the required `.visq` format.
+            FileNotFoundError: If the specified `asset_name` cannot be found
+                in the versioned model repository.
         """
         self.database = database
         self.form_ctrl = FormulationController(db=database)
@@ -152,11 +153,18 @@ class Sampler:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         project_root = os.path.abspath(os.path.join(base_dir, os.pardir, os.pardir))
         assets_dir = os.path.join(project_root, "assets")
-        self.asset_ctrl = AssetManager(assets_dir=assets_dir)
-        if not self.asset_ctrl.asset_exists(asset_name, [".visq"]):
-            raise AssetError(f"Asset `{asset_name}` not found.")
-        asset_zip = self.asset_ctrl.get_asset_path(asset_name, [".visq"])
-        self.predictor = Predictor(zip_path=asset_zip)
+        self.version_ctrl = VersionManager(repo_dir=assets_dir)
+        target_filename = f"{asset_name}.visq"
+        match = next(
+            (m for m in self.version_ctrl.list() if m["filename"] == target_filename),
+            None,
+        )
+        Log.d(TAG, f"self.version_ctrl.list() = {self.version_ctrl.list()}")
+        if match is None:
+            raise FileNotFoundError(f"Model `{asset_name}` not found.")
+        self._tmp_dir = tempfile.TemporaryDirectory()
+        asset_zip = self.version_ctrl.get(match["sha"], self._tmp_dir.name)
+        self.predictor = Predictor(zip_path=str(asset_zip))
 
         # Configure constraints
         if constraints is None:
@@ -213,6 +221,16 @@ class Sampler:
         self._current_uncertainty = np.array([])
         self._current_viscosity = None
         self._last_formulation = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        self.cleanup()
+
+    def cleanup(self):
+        if hasattr(self, "_tmp_dir") and hasattr(self._tmp_dir, "cleanup"):
+            self._tmp_dir.cleanup()
 
     def add_sample(self, formulation: Formulation) -> None:
         """Evaluates a formulation candidate and updates internal prediction state.
@@ -280,7 +298,9 @@ class Sampler:
                 form.to_dataframe(encoded=False, training=False)
             )
             unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
-            score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
+            score = (
+                self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
+            )
             candidates.append((form, score))
 
         if self._last_formulation is not None:
@@ -289,13 +309,19 @@ class Sampler:
                     form.to_dataframe(encoded=False, training=False)
                 )
                 unc = unc_dict["std"] if isinstance(unc_dict, dict) else unc_dict
-                score = self._acquisition_ucb(vis, unc, kappa) if use_ucb else np.nanmean(unc)
+                score = (
+                    self._acquisition_ucb(vis, unc, kappa)
+                    if use_ucb
+                    else np.nanmean(unc)
+                )
                 candidates.append((form, score))
 
         candidates.sort(key=lambda x: -x[1])
         return candidates[0][0] if candidates else None
 
-    def _round_suggestion(self, feat: str, val: float, low: float, high: float) -> float:
+    def _round_suggestion(
+        self, feat: str, val: float, low: float, high: float
+    ) -> float:
         """Rounds a numeric suggestion to the nearest physically meaningful increment.
 
         This method applies domain-specific quantization to candidate values. For
@@ -334,7 +360,9 @@ class Sampler:
 
         return float(np.clip(rounded, low, high))
 
-    def _enforce_none_concentrations(self, suggestions: Dict[str, Union[str, float]]) -> None:
+    def _enforce_none_concentrations(
+        self, suggestions: Dict[str, Union[str, float]]
+    ) -> None:
         """Enforces logical consistency between 'None' ingredients and their concentrations.
 
         This post-processing step ensures that the formulation remains physically
@@ -545,7 +573,9 @@ class Sampler:
             return val
         return get_method(val)
 
-    def _build_formulation(self, suggestions: Dict[str, Union[str, float]]) -> Formulation:
+    def _build_formulation(
+        self, suggestions: Dict[str, Union[str, float]]
+    ) -> Formulation:
         """Assembles a valid Formulation object from a dictionary of sampled features.
 
         This method acts as the bridge between raw sampling results and the
@@ -586,19 +616,25 @@ class Sampler:
             suggestions.get("Stabilizer_type"), self.ing_ctrl.get_stabilizer_by_name
         )
         if stab:
-            form.set_stabilizer(stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M")
+            form.set_stabilizer(
+                stab, float(suggestions.get("Stabilizer_conc", 0.0)), "M"
+            )
 
         surf = self._resolve_ingredient(
             suggestions.get("Surfactant_type"), self.ing_ctrl.get_surfactant_by_name
         )
         if surf:
-            form.set_surfactant(surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w")
+            form.set_surfactant(
+                surf, float(suggestions.get("Surfactant_conc", 0.0)), "%w"
+            )
 
         excip = self._resolve_ingredient(
             suggestions.get("Excipient_type"), self.ing_ctrl.get_excipient_by_name
         )
         if excip:
-            form.set_excipient(excip, float(suggestions.get("Excipient_conc", 0.0)), "mM")
+            form.set_excipient(
+                excip, float(suggestions.get("Excipient_conc", 0.0)), "mM"
+            )
 
         form.set_temperature(float(suggestions.get("Temperature", 25.0)))
         return form

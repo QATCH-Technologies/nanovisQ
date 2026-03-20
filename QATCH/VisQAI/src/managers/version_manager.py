@@ -1,11 +1,11 @@
-from datetime import datetime, timezone as tz
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 import shutil
 import threading
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 _INDEX_FILENAME = "index.json"
@@ -142,7 +142,9 @@ class VersionManager:
         """
         # Validate type
         if not isinstance(file_path, Path):
-            raise ValueError(f"`file_path` must be a pathlib.Path, got {type(file_path)}")
+            raise ValueError(
+                f"`file_path` must be a pathlib.Path, got {type(file_path)}"
+            )
 
         # Ensure the file exists and is a regular file
         if not file_path.is_file():
@@ -156,7 +158,9 @@ class VersionManager:
                 for chunk in iter(lambda: f.read(chunk_size), b""):
                     hasher.update(chunk)
         except PermissionError as exc:
-            raise PermissionError(f"Permission denied when reading {file_path}") from exc
+            raise PermissionError(
+                f"Permission denied when reading {file_path}"
+            ) from exc
         except OSError as exc:
             raise OSError(f"I/O error while reading {file_path}: {exc}") from exc
 
@@ -311,7 +315,9 @@ class VersionManager:
             ValueError: If `limit` is not None or a non-negative integer.
         """
         if limit is not None and (not isinstance(limit, int) or limit < 0):
-            raise ValueError(f"limit must be a non-negative integer or None, got {limit!r}")
+            raise ValueError(
+                f"limit must be a non-negative integer or None, got {limit!r}"
+            )
 
         index = self._load_index()
         items = sorted(index.values(), key=lambda m: m["committed_at"], reverse=True)
@@ -328,7 +334,9 @@ class VersionManager:
             OSError: If an error occurs while deleting object directories.
         """
         if not isinstance(self.retention, int) or self.retention < 1:
-            raise ValueError(f"retention must be a positive integer, got {self.retention!r}")
+            raise ValueError(
+                f"retention must be a positive integer, got {self.retention!r}"
+            )
 
         index = self._load_index()
         # Sort ascending by commit time
@@ -348,7 +356,9 @@ class VersionManager:
                     if obj_dir.exists():
                         shutil.rmtree(obj_dir)
                 except OSError as exc:
-                    raise OSError(f"Failed to remove object dir {obj_dir}: {exc}") from exc
+                    raise OSError(
+                        f"Failed to remove object dir {obj_dir}: {exc}"
+                    ) from exc
                 index.pop(sha, None)
 
         if len(index) != original_count:
@@ -431,7 +441,9 @@ class VersionManager:
 
             meta = index[sha].get("metadata", {})
             if meta.get("protected", False):
-                raise PermissionError(f"Cannot delete protected snapshot {meta.get('filename')}")
+                raise PermissionError(
+                    f"Cannot delete protected snapshot {meta.get('filename')}"
+                )
 
             obj_dir = self._object_path(sha)
             try:

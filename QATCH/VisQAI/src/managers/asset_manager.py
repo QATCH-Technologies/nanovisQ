@@ -297,7 +297,9 @@ class AssetManager:
                 names.add(child.stem)
         return sorted(names)
 
-    def update_from_file(self, logical_name: str, source_path: Union[str, Path]) -> Path:
+    def update_from_file(
+        self, logical_name: str, source_path: Union[str, Path]
+    ) -> Path:
         """
         Replace an existing asset (with the same extension) using a new file.
 

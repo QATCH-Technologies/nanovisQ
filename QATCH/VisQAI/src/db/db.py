@@ -15,10 +15,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-16
+    2026-03-18
 
 Version:
-    1.8
+    1.9
 """
 
 import json
@@ -28,6 +28,8 @@ import random
 import sqlite3
 import tempfile
 from typing import List, Optional, Union
+
+import numpy as np
 
 try:
     TAG = "[Database]"
@@ -143,6 +145,8 @@ class Database:
         # Enforce foreign key constraints
         self.conn.execute("PRAGMA foreign_keys = ON")
         self.init_changes = self.conn.total_changes
+        self._defer_backup: bool = False
+        self._defer_commit: bool = False
         self._create_tables()
         self.is_open = True
 
@@ -265,6 +269,10 @@ class Database:
             )
         """
         )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)"
+        )
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -328,7 +336,7 @@ class Database:
             c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
 
         self._commit()
-        if self.use_encryption:
+        if self.use_encryption and not self._defer_backup:
             self.backup()
         ing.id = db_id
         return db_id
@@ -409,6 +417,70 @@ class Database:
         c.execute("SELECT id FROM ingredient")
         ids = [r[0] for r in c.fetchall()]
         return [self.get_ingredient(i) for i in ids]
+
+    def get_ingredients_by_type(self, ing_type: str) -> List[Ingredient]:
+        """Retrieve all ingredients of a specific subclass type.
+
+        Args:
+            ing_type (str): The ingredient type name to filter by (e.g. ``"Protein"``,
+                ``"Buffer"``, ``"Salt"``).
+
+        Returns:
+            List[Ingredient]: A list of `Ingredient` subclass instances matching
+                the given type, reconstructed via `get_ingredient`.
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM ingredient WHERE type = ?", (ing_type,))
+        return [self.get_ingredient(r[0]) for r in c.fetchall()]
+
+    def get_max_enc_id(
+        self, ing_type: str, min_enc_id: int, max_enc_id: int
+    ) -> Optional[int]:
+        """Return the highest ``enc_id`` for a given ingredient type within a range.
+
+        Args:
+            ing_type (str): The ingredient type name to query (e.g. ``"Protein"``).
+            min_enc_id (int): Lower bound of the ``enc_id`` range (inclusive).
+            max_enc_id (int): Upper bound of the ``enc_id`` range (inclusive).
+
+        Returns:
+            Optional[int]: The maximum ``enc_id`` found within the range, or ``None``
+                if no matching rows exist.
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT MAX(enc_id) FROM ingredient WHERE type = ? AND enc_id BETWEEN ? AND ?",
+            (
+                ing_type,
+                min_enc_id,
+                max_enc_id,
+            ),
+        )
+        row = c.fetchone()
+        return row[0] if row and row[0] is not None else None
+
+    def get_ingredient_by_name_type(
+        self, name: str, ing_type: str
+    ) -> Optional[Ingredient]:
+        """Retrieve an ingredient by its name and subclass type.
+
+        Args:
+            name (str): The exact name of the ingredient to look up.
+            ing_type (str): The ingredient type name to match (e.g. ``"Protein"``).
+
+        Returns:
+            Optional[Ingredient]: The matching `Ingredient` subclass instance, or
+                ``None`` if no ingredient with the given name and type exists.
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id, enc_id, is_user FROM ingredient WHERE name = ? AND type = ?",
+            (name, ing_type),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+        return self.get_ingredient(row[0])
 
     def update_ingredient(self, id: int, ing: Ingredient) -> bool:
         """Update an existing ingredient record and its subclass-specific details.
@@ -494,6 +566,52 @@ class Database:
         c.execute("DELETE FROM ingredient")
         self._commit()
 
+    def add_formulations_batch(self, forms: List[Formulation]) -> None:
+        """Batch insert all formulations, components, and viscosity profiles in 3 SQL calls."""
+        if not forms:
+            return
+        c = self.conn.cursor()
+        for f in forms:
+            c.execute(
+                "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
+                (f.name, f.signature, f.temperature, int(f.icl), f.last_model),
+            )
+            f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
+        comp_rows = [
+            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units)
+            for f in forms
+            for comp_type, comp in f._components.items()
+            if comp is not None
+        ]
+        c.executemany(
+            "INSERT INTO formulation_component "
+            "(formulation_id, component_type, ingredient_id, concentration, units) "
+            "VALUES (?, ?, ?, ?, ?)",
+            comp_rows,
+        )
+        vp_rows = [
+            (
+                f.id,
+                json.dumps(f.viscosity_profile.shear_rates),
+                json.dumps(f.viscosity_profile.viscosities),
+                f.viscosity_profile.units,
+                int(f.viscosity_profile.is_measured),
+            )
+            for f in forms
+            if f.viscosity_profile
+        ]
+        if vp_rows:
+            c.executemany(
+                "INSERT INTO viscosity_profile "
+                "(formulation_id, shear_rates, viscosities, units, is_measured) "
+                "VALUES (?, ?, ?, ?, ?)",
+                vp_rows,
+            )
+
+        self._commit()
+        if self.use_encryption and not self._defer_backup:
+            self.backup()
+
     def add_formulation(self, form: Formulation) -> int:
         """Insert a new formulation, its components, and viscosity profile into the database.
 
@@ -522,7 +640,11 @@ class Database:
         for comp_type, comp in form._components.items():
             if comp is None:
                 continue
-            iid = self.add_ingredient(comp.ingredient)
+            iid = (
+                comp.ingredient.id
+                if comp.ingredient.id is not None
+                else self.add_ingredient(comp.ingredient)
+            )
             c.execute(
                 "INSERT INTO formulation_component "
                 "(formulation_id, component_type, ingredient_id, concentration, units) "
@@ -547,7 +669,7 @@ class Database:
             )
 
         self._commit()
-        if self.use_encryption:
+        if self.use_encryption and not self._defer_backup:
             self.backup()
         form.id = fid
         return fid
@@ -854,6 +976,17 @@ class Database:
                 - Resets `self.init_changes` to match the connection's
                   total change count to prevent redundant backups.
         """
+        if not self._defer_commit:
+            self.conn.commit()
+        if self.use_encryption and not self._defer_backup:
+            if self.file_handle is not None:
+                self.file_handle.close()
+            self._save_cdb(str(self.db_path), self.encryption_key)
+            self.file_handle = open(self.db_path, "rb")
+            self.init_changes = self.conn.total_changes
+
+    def flush(self) -> None:
+        """Force a commit and optional backup — call at end of bulk operations."""
         self.conn.commit()
         if self.use_encryption:
             if self.file_handle is not None:
@@ -910,8 +1043,11 @@ class Database:
             bytes: Resulting encrypted or decrypted bytes.
         """
         key_bytes = key.encode(self.metadata.get("app_encoding", "utf-8"))
-        key_length = len(key_bytes)
-        return bytes([b ^ key_bytes[i % key_length] for i, b in enumerate(data)])
+        data_arr = np.frombuffer(data, dtype=np.uint8)
+        # Tile key to match data length, then XOR in one vectorized op
+        repeats = len(data) // len(key_bytes) + 1
+        key_arr = np.frombuffer(key_bytes * repeats, dtype=np.uint8)[: len(data)]
+        return (data_arr ^ key_arr).tobytes()
 
     def _open_cdb(self, filepath: str, password: str) -> sqlite3.Connection:
         """Open an AES+Caesar+XOR encrypted database file into an in-memory SQLite connection.
@@ -954,9 +1090,9 @@ class Database:
             filepath (str): Path to write the encrypted database.
             password (str): Encryption key used to encrypt.
         """
+        encoding = self.metadata.get("app_encoding", "utf-8")
         dump_bytes = b"".join(
-            (line + "\n").encode(self.metadata.get("app_encoding", "utf-8"))
-            for line in self.conn.iterdump()
+            (line + "\n").encode(encoding) for line in self.conn.iterdump()
         )
         if password:
             encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
@@ -1125,3 +1261,21 @@ class Database:
                 self._commit()
             self.init_changes = self.conn.total_changes
         self.file_handle = open(self.db_path, "rb")
+
+    def begin_bulk(self) -> None:
+        """Apply performance PRAGMAs to speed up bulk insert operations.
+
+        Switches the journal mode to in-memory and relaxes synchronization
+        constraints so that large batches of inserts complete faster. Call
+        `end_bulk()` when the batch is finished to restore safe write settings.
+        """
+        self.conn.execute("PRAGMA journal_mode = MEMORY")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA temp_store = MEMORY")
+        self.conn.execute("PRAGMA cache_size = -64000")
+
+    def end_bulk(self) -> None:
+        """Restore safe write settings after bulk imports."""
+        self.conn.commit()
+        self.conn.execute("PRAGMA journal_mode = DELETE")
+        self.conn.execute("PRAGMA synchronous = FULL")
