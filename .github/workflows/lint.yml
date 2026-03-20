@@ -146,4 +146,3 @@ jobs:
             -p QATCH.QModel \
             -p QATCH.nightly \
             -p QATCH.models \
-            -p QATCH.FluxControls
