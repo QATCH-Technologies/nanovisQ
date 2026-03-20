@@ -144,7 +144,7 @@ class ElaborateProcess(multiprocessing.Process):
 
         finally:
             # Log.d("ElaborateProcess stopping...")
-            FileStorage.CSVflush_all()
+            FileStorage.csv_flush_all()
             Log.d(" ElaborateProcess stopped.")
 
             # gracefully end subprocess
@@ -389,13 +389,13 @@ class ElaborateProcess(multiprocessing.Process):
                 Constants.csv_sweeps_filename, self._overtone_name, self._count
             )
             path = "{}_{}".format(Constants.csv_sweeps_export_path, self._overtone_name)
-            path = FileStorage.DEV_populate_path(path, 0)
+            path = FileStorage.dev_populate_path(path, 0)
             if not phase is None:
-                FileStorage.TXT_sweeps_save(
+                FileStorage.txt_sweeps_save(
                     0, filename, path, self._readFREQ, filtered_mag, phase, appendNameToPath=False
                 )
             else:
-                FileStorage.TXT_sweeps_save(
+                FileStorage.txt_sweeps_save(
                     0, filename, path, self._readFREQ, filtered_mag, appendNameToPath=False
                 )
             self._count += 1
@@ -424,7 +424,7 @@ class ElaborateProcess(multiprocessing.Process):
                 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
             )
 
-            FileStorage.CSVsave(
+            FileStorage.csv_save(
                 0,
                 filenameCSV,
                 Constants.csv_export_path,
@@ -443,7 +443,7 @@ class ElaborateProcess(multiprocessing.Process):
                 if w_time < Constants.downsample_after
                 else Constants.downsample_file_count * Constants.base_overtone_freq
             )
-            FileStorage.CSVsave(
+            FileStorage.csv_save(
                 0,
                 "overtone_upper",
                 Constants.csv_export_path,
@@ -462,7 +462,7 @@ class ElaborateProcess(multiprocessing.Process):
                 if w_time < Constants.downsample_after
                 else Constants.downsample_file_count * Constants.base_overtone_freq
             )
-            FileStorage.CSVsave(
+            FileStorage.csv_save(
                 0,
                 "overtone_lower",
                 Constants.csv_export_path,

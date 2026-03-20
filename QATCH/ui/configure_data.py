@@ -152,7 +152,7 @@ class UIConfigureData(QtWidgets.QWidget):
                 self.global_preferences = json.load(preferences_file)
         else:
             Log.e(tag=TAG, msg="No global file, writing default preferences and using.")
-            FileStorage.DEV_write_default_preferences(global_preferences_path)
+            FileStorage.dev_write_default_preferences(global_preferences_path)
             with open(global_preferences_path, "r") as preferences_file:
                 self.global_preferences = json.load(preferences_file)
 
@@ -162,7 +162,7 @@ class UIConfigureData(QtWidgets.QWidget):
                 self.user_preferences = json.load(preferences_file)
         else:
             Log.e(TAG, "No user preferences file, writing default preferences and using.")
-            FileStorage.DEV_write_default_preferences(user_preferences_path)
+            FileStorage.dev_write_default_preferences(user_preferences_path)
             with open(user_preferences_path, "r") as preferences_file:
                 self.user_preferences = json.load(preferences_file)
 
@@ -605,7 +605,7 @@ class UIConfigureData(QtWidgets.QWidget):
             to be replaced.
         """
         # Example data for preview
-        device_preview = FileStorage.DEV_get_active(0)
+        device_preview = FileStorage.dev_get_active(0)
         if device_preview == "":
             device_preview = "[DEVICEID]"
 

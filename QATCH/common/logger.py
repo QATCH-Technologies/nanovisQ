@@ -221,13 +221,13 @@ class Logger:
         Logger.i(tag, f"Python version: {Architecture.get_python_version()}")
         Logger.i(tag, f"Path: {os.getcwd()}")
         if getattr(sys, "frozen", False):
-            Logger.d(tag, f"_MEIPASS: {sys._MEIPASS}")
+            Logger.d(tag, f"_MEIPASS: {sys._MEIPASS}")  # type: ignore[attr-defined]
         Logger.i("-" * len(header))
 
         frozen = "not"
         if getattr(sys, "frozen", False):
             frozen = "ever so"
-            bundle_dir = sys._MEIPASS
+            bundle_dir = sys._MEIPASS  # type: ignore[attr-defined]
         else:
             bundle_dir = os.path.dirname(os.path.abspath(__file__))
         Logger.d("=== DEBUG INFORMATIONS ===")

@@ -20,7 +20,7 @@ from QATCH.VisQAI.src.models.ingredient import (
 )
 from QATCH.VisQAI.src.utils.list_utils import ListUtils
 from QATCH.common.architecture import Architecture
-from QATCH.common.fileStorage import FileStorage, secure_open
+from QATCH.common.fileStorage import FileStorage, SecureOpen
 from QATCH.common.logger import Logger as Log
 from QATCH.common.userProfiles import UserProfiles
 from QATCH.core.constants import Constants
@@ -1286,9 +1286,9 @@ class QueryRunInfo(QtWidgets.QWidget):
         auto_dn = 0
         auto_nc = 0
         try:
-            if secure_open.file_exists(self.recall_xml):
+            if SecureOpen.file_exists(self.recall_xml):
                 xml_text = ""
-                # secure_open(self.recall_xml, 'r') as f:
+                # SecureOpen(self.recall_xml, 'r') as f:
                 with open(self.recall_xml, "r", encoding="utf-8") as f:
                     xml_text = f.read()
                 if isinstance(xml_text, bytes):
@@ -2746,7 +2746,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         # If the xml_path is new, the action is to CAPTURE i.e. write a new XML file
         # for a new run.  This mode of operation writes the entire run_info tag and all
         # child tags of run_info to a new XML document object.
-        if secure_open.file_exists(self.xml_path):
+        if SecureOpen.file_exists(self.xml_path):
             audit_action = "PARAMS"
             run = minidom.parse(self.xml_path)
             xml = run.documentElement
@@ -2757,7 +2757,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             run.appendChild(xml)
 
             try:
-                dev_name = FileStorage.DEV_get_active(self.run_idx + 1)
+                dev_name = FileStorage.dev_get_active(self.run_idx + 1)
             except Exception as e:
                 Log.e(
                     tag=TAG,
@@ -2782,7 +2782,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     raise Exception()
 
                 if self.run_path.endswith(".csv"):
-                    with secure_open(self.run_path, "r", "capture") as file:
+                    with SecureOpen(self.run_path, "r", "capture") as file:
                         header_line = file.readline()
                         first_line = file.readline()
                         samples = 1
@@ -2818,7 +2818,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                 # Get time of last cal - based on file timestamp
                 cal_file_path = Constants.cvs_peakfrequencies_path
-                cal_file_path = FileStorage.DEV_populate_path(cal_file_path, self.run_idx + 1)
+                cal_file_path = FileStorage.dev_populate_path(cal_file_path, self.run_idx + 1)
                 timestamp = os.path.getmtime(cal_file_path)
                 last_modified = dt.datetime.fromtimestamp(timestamp)
                 cal_time = last_modified.isoformat().split(".")[0]
@@ -3142,7 +3142,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                 Log.e(tag=TAG, msg="Could not update directory due path error.")
                 # return False
             # os.makedirs(os.path.split(self.xml_path)[0], exist_ok=True)
-            # secure_open(self.xml_path, 'w', "audit") as f:
+            # SecureOpen(self.xml_path, 'w', "audit") as f:
             elif old_name != new_name:
                 # self.run_name = new_name
                 if xml.hasAttribute("name"):
@@ -3184,7 +3184,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
             try:
                 os.makedirs(os.path.split(self.recall_xml)[0], exist_ok=True)
-                # secure_open(self.recall_xml, 'w') as f:
+                # SecureOpen(self.recall_xml, 'w') as f:
                 with open(self.recall_xml, "w") as f:
                     xml_str = run.toxml(encoding="ascii").decode(encoding="utf-8", errors="ignore")
                     f.write(xml_str)
@@ -3381,7 +3381,7 @@ class QueryRunInfo(QtWidgets.QWidget):
 
                         # Get a secure list of the contents of a capture.zip archive using the
                         # path to the zip folder.
-                        capture_contents = secure_open.get_namelist(zip_path=file_path)
+                        capture_contents = SecureOpen.get_namelist(zip_path=file_path)
                         # Set the path of the temporary archive to write renamed files to.
                         temp_dir = os.path.join(root, "~capture.zip")
 
@@ -3389,7 +3389,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                         # the bytes to the temporary zip directory.
                         for capture_file in capture_contents:
                             capture_path = os.path.join(root, capture_file)
-                            with secure_open(capture_path, "r", "capture") as f:
+                            with SecureOpen(capture_path, "r", "capture") as f:
                                 f_bytes = BytesIO(f.read())
 
                                 # Create each new file name for the contents of the secure

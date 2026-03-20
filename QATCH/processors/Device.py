@@ -144,7 +144,7 @@ class serial:
         if _net:
             Log.d("Enumerating IP addresses...")
             # perform IP address sniff lookup
-            nets_connected = Discovery().doDiscover()
+            nets_connected = Discovery().do_discover()
             devices.extend(nets_connected)
 
         if _hid:

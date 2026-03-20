@@ -565,7 +565,7 @@ class PreferencesUI(QWidget):
         file_delimiter = self.file_delimiter_combo.currentText()
         folder_delimiter = self.folder_delimiter_combo.currentText()
         port_id = 0
-        device_id = FileStorage.DEV_get_active(0)
+        device_id = FileStorage.dev_get_active(0)
         if device_id == "" or device_id is None:
             device_id = "12345678"
             Log.w(

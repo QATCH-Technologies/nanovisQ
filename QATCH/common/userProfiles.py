@@ -1647,7 +1647,7 @@ class UserPreferences:
         else:
             Log.e(TAG, "No global file format preferences found. Writing global and using.")
             try:
-                FileStorage.DEV_write_default_preferences(global_preferences_path)
+                FileStorage.dev_write_default_preferences(global_preferences_path)
             except Exception as e:
                 Log.e(TAG, f"Error writing default global preferences: {e}")
                 raise
@@ -1661,7 +1661,7 @@ class UserPreferences:
         elif user_info is not None:
             Log.w(TAG, "Creating User Preferences from default format and using global.")
             try:
-                FileStorage.DEV_write_default_preferences(user_preferences_path)
+                FileStorage.dev_write_default_preferences(user_preferences_path)
             except Exception as e:
                 Log.e(TAG, f"Error writing default user preferences: {e}")
                 raise
@@ -1802,7 +1802,7 @@ class UserPreferences:
         """
         try:
             user_preferences_path = self._get_user_preferences_path()
-            preferences = FileStorage.DEV_load_preferences(user_preferences_path)
+            preferences = FileStorage.dev_load_preferences(user_preferences_path)
             return preferences
         except Exception as e:
             Log.e(TAG, f"Error loading user preferences: {e}")
@@ -1821,7 +1821,7 @@ class UserPreferences:
         """
         try:
             global_preferences_path = self._get_global_preferences_path()
-            preferences = FileStorage.DEV_load_preferences(global_preferences_path)
+            preferences = FileStorage.dev_load_preferences(global_preferences_path)
             return preferences
         except Exception as e:
             Log.e(TAG, f"Error loading global preferences: {e}")
@@ -1837,7 +1837,7 @@ class UserPreferences:
         """
         try:
             global_preferences_path = self._get_global_preferences_path()
-            FileStorage.DEV_write_default_preferences(save_path=global_preferences_path)
+            FileStorage.dev_write_default_preferences(save_path=global_preferences_path)
         except Exception as e:
             Log.e(TAG, f"Error resetting global preferences: {e}")
             raise
@@ -1854,7 +1854,7 @@ class UserPreferences:
         try:
             global_preferences_path = self._get_global_preferences_path()
             preferences = self.get_preferences()
-            FileStorage.DEV_write_preferences(
+            FileStorage.dev_write_preferences(
                 save_path=global_preferences_path, preferences=preferences
             )
         except Exception as e:
@@ -1871,7 +1871,7 @@ class UserPreferences:
         """
         try:
             user_preferences_path = self._get_user_preferences_path()
-            FileStorage.DEV_write_default_preferences(save_path=user_preferences_path)
+            FileStorage.dev_write_default_preferences(save_path=user_preferences_path)
         except Exception as e:
             Log.e(TAG, f"Error resetting user preferences: {e}")
             raise
@@ -1888,7 +1888,7 @@ class UserPreferences:
         try:
             user_preferences_path = self._get_user_preferences_path()
             preferences = self.get_preferences()
-            FileStorage.DEV_write_preferences(
+            FileStorage.dev_write_preferences(
                 save_path=user_preferences_path, preferences=preferences
             )
         except Exception as e:

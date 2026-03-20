@@ -1414,6 +1414,6 @@ class CalibrationProcess(multiprocessing.Process):
             if p == port:
                 return True
         if port == None:
-            if len(dm.doDiscover()) > 0:
+            if len(dm.do_discover()) > 0:
                 return net_exists
         return False

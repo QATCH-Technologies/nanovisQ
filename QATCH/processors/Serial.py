@@ -757,7 +757,7 @@ class SerialProcess(multiprocessing.Process):
                                                     if w_time < Constants.downsample_after
                                                     else Constants.downsample_file_count
                                                 )
-                                                FileStorage.CSVsave(
+                                                FileStorage.csv_save(
                                                     i + 1,
                                                     filenameCSV,
                                                     Constants.csv_export_path,
@@ -776,7 +776,7 @@ class SerialProcess(multiprocessing.Process):
                                                     else Constants.downsample_file_count
                                                     * Constants.base_overtone_freq
                                                 )
-                                                FileStorage.CSVsave(
+                                                FileStorage.csv_save(
                                                     i + 1,
                                                     "overtone_upper",
                                                     Constants.csv_export_path,
@@ -798,7 +798,7 @@ class SerialProcess(multiprocessing.Process):
                                                     else Constants.downsample_file_count
                                                     * Constants.base_overtone_freq
                                                 )
-                                                FileStorage.CSVsave(
+                                                FileStorage.csv_save(
                                                     i + 1,
                                                     "overtone_lower",
                                                     Constants.csv_export_path,
@@ -814,7 +814,7 @@ class SerialProcess(multiprocessing.Process):
                                                     ),
                                                 )
                                     # Thread ending...
-                                    FileStorage.CSVflush_all()
+                                    FileStorage.csv_flush_all()
                                     Log.d("stopped thread 'data_logger'")
 
                                 def export_swps():
@@ -863,9 +863,9 @@ class SerialProcess(multiprocessing.Process):
                                                 Constants.csv_sweeps_export_path,
                                                 self._overtone_name,
                                             )
-                                            path = FileStorage.DEV_populate_path(path, i + 1)
+                                            path = FileStorage.dev_populate_path(path, i + 1)
                                             if not phase is None:
-                                                FileStorage.TXT_sweeps_save(
+                                                FileStorage.txt_sweeps_save(
                                                     i + 1,
                                                     filename,
                                                     path,
@@ -875,7 +875,7 @@ class SerialProcess(multiprocessing.Process):
                                                     appendNameToPath=False,
                                                 )
                                             else:
-                                                FileStorage.TXT_sweeps_save(
+                                                FileStorage.txt_sweeps_save(
                                                     i + 1,
                                                     filename,
                                                     path,
@@ -1757,7 +1757,7 @@ class SerialProcess(multiprocessing.Process):
         # Loads frequencies from  file (path: 'common\')
         try:
             path = Constants.cvs_peakfrequencies_path
-            path = FileStorage.DEV_populate_path(path, i)
+            path = FileStorage.dev_populate_path(path, i)
             data = loadtxt(path)
             peaks_mag = data[:, 0]
             reversed_peaks_mag = peaks_mag[::-1]
@@ -1786,7 +1786,7 @@ class SerialProcess(multiprocessing.Process):
             if p == port:
                 return True
         if port == None:
-            if len(dm.doDiscover()) > 0:
+            if len(dm.do_discover()) > 0:
                 return net_exists
         return False
 
@@ -1958,7 +1958,7 @@ class SerialProcess(multiprocessing.Process):
 
     def load_frequencies_file(self, i):
         path = Constants.cvs_peakfrequencies_path
-        path = FileStorage.DEV_populate_path(path, i)
+        path = FileStorage.dev_populate_path(path, i)
         data = loadtxt(path)
         peaks_mag = data[:, 0]
         peaks_phase = data[:, 1]  # unused at the moment
@@ -1993,7 +1993,7 @@ class SerialProcess(multiprocessing.Process):
             filename = Constants.csv_calibration_path
         elif peaks_mag[0] > 9e06 and peaks_mag[0] < 11e06:
             filename = Constants.csv_calibration_path10
-        filename = FileStorage.DEV_populate_path(filename, i)
+        filename = FileStorage.dev_populate_path(filename, i)
 
         data = loadtxt(filename)
         freq_all = data[:, 0]
