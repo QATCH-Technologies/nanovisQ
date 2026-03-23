@@ -128,15 +128,11 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             self._data = new_data.copy()
             self._prediction_buffer_size = len(self._data)
         else:
-            new_data_filtered = new_data[
-                new_data["Relative_time"] > self._last_max_time
-            ]
+            new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
 
             if not new_data_filtered.empty:
                 new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
-                self._data = pd.concat(
-                    [self._data, new_data_aligned], ignore_index=True
-                )
+                self._data = pd.concat([self._data, new_data_aligned], ignore_index=True)
                 self._prediction_buffer_size += len(new_data_filtered)
         if self._data is not None and not self._data.empty:
             self._last_max_time = self._data["Relative_time"].max()
@@ -166,9 +162,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             mask = self._data["Relative_time"] > 0.05
             if mask.any():
                 self._data = self._data.loc[mask]
-                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
-                    self._data.copy()
-                )
+                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(self._data.copy())
                 if processed_df is not None and not processed_df.empty:
                     pred = self.predict(processed_df)
                     if pred == self._debounce_candidate:

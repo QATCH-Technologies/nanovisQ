@@ -4,11 +4,12 @@ licenseManager.py
 This module provides a comprehensive license management solution that handles trial licenses,
 license validation, and caching with Dropbox as the remote storage backend.
 
-Author: 
+Author(s):
+    Alexander J. Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
-
-Date: 
-    2025-09-02
+    
+Date:
+    2026-03-23
 """
 
 import base64
@@ -19,59 +20,17 @@ import json
 import os
 from pathlib import Path
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 import zipfile
 
-import cryptography  # required by pymysql
 import dropbox
 from dropbox.exceptions import ApiError
-import pymysql
+import pymysql  # type: ignore[import-untyped]
 
-try:
-    from QATCH.common.architecture import Architecture
-    from QATCH.common.deviceFingerprint import DeviceFingerprint
-    from QATCH.common.logger import Logger as Log
-    from QATCH.core.constants import Constants
-except (ModuleNotFoundError, ImportError):
-    print("Running standalone, or import of main app logging and/or other modules failed.")
-
-    class Log:
-        @staticmethod
-        def d(tag, msg=""):
-            print("DEBUG:", tag, msg)
-
-        @staticmethod
-        def i(tag, msg=""):
-            print("INFO:", tag, msg)
-
-        @staticmethod
-        def w(tag, msg=""):
-            print("WARNING:", tag, msg)
-
-        @staticmethod
-        def e(tag, msg=""):
-            print("ERROR:", tag, msg)
-
-    class DeviceFingerprint:  # minimal fallback
-        @staticmethod
-        def generate_key() -> str:
-            return "THIS-IS-AN-UNKNOWN-KEY"
-
-        @staticmethod
-        def get_device_summary() -> dict:
-            return {
-                "license_key": "THIS-IS-AN-UNKNOWN-KEY",
-                "reason": "standalone minimal fallback class",
-            }
-
-    class Architecture:  # minimal fallback
-        @staticmethod
-        def get_path() -> str:
-            return os.getcwd()
-
-    class Constants:  # minimal fallback
-        license_cache_path = None
-
+from QATCH.common.architecture import Architecture
+from QATCH.common.deviceFingerprint import DeviceFingerprint
+from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants
 
 TAG = "[LicenseManager]"
 
@@ -104,18 +63,6 @@ class AVN_Database:
 
     def __init__(self):
         self.conn = pymysql.connect(**AVN_Database._load_avn_key_store())
-
-        # with self.conn.cursor() as cursor:
-        #     cursor.execute(
-        #         """
-        #         ALTER TABLE licenses
-        #         RENAME COLUMN trial_days TO term_days;
-        #         """
-        #     )
-        #     cursor.execute("SELECT * FROM subscribers")
-        #     print(cursor.fetchall())
-        #     cursor.execute("SELECT * FROM licenses")
-        #     print(cursor.fetchall())
 
     def license_select(self, license_table, device_key):
         try:
@@ -156,7 +103,8 @@ class AVN_Database:
                     ]
                 )
                 cursor.execute(
-                    "INSERT INTO {} ({}) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)".format(
+                    "INSERT INTO {} ({}) VALUES "
+                    "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)".format(
                         license_table, DB_COLS_1
                     ),
                     (
@@ -188,9 +136,8 @@ class AVN_Database:
             self.conn.ping(reconnect=True)
             with self.conn.cursor() as cursor:
                 cursor.execute(
-                    "UPDATE {} SET status=%s, expiration=%s, term_days=%s WHERE license_key=%s".format(
-                        license_table
-                    ),
+                    "UPDATE {} SET status=%s, expiration=%s, "
+                    "term_days=%s WHERE license_key=%s".format(license_table),
                     (
                         license_data["status"],
                         license_data["expiration"],
@@ -206,7 +153,7 @@ class AVN_Database:
             self.close()
 
     def log_mysqlerror(self, e: pymysql.err.MySQLError):
-        from pymysql.constants import CR, ER
+        from pymysql.constants import CR, ER  # type: ignore[import-untyped]
 
         # Defensive extraction of errno/message
         errno = -1
@@ -229,14 +176,14 @@ class AVN_Database:
                 # internal object or variable value is not an integer
                 continue  # skip it
             error_map[_errno] = _errname
-            # print(f"{_err} = {_errno}")
         errname = error_map.get(errno, type(e).__name__)
         sqlhost = str(getattr(self.conn, "host", None))
         if sqlhost and sqlhost in errmsg:  # supress full URL of AVN database host
             errmsg = str(errmsg).replace(sqlhost, sqlhost[: sqlhost.find(".")])
         Log.e(f"AVN ERROR: [{errno}] {errname} - {errmsg}")
-        if getattr(e, "traceback", None) and isinstance(e.traceback, str):
-            for tb_line in str(e.traceback).splitlines():
+        e_traceback = getattr(e, "traceback", None)
+        if e_traceback and isinstance(e_traceback, str):
+            for tb_line in e_traceback.splitlines():
                 if len(tb_line.replace("^", "").strip()):
                     Log.d(tb_line)
 
@@ -283,7 +230,7 @@ class LicenseCache:
     network requests and improve application responsiveness.
     """
 
-    def __init__(self, cache_dir: str = None, cache_duration_hours: int = 24):
+    def __init__(self, cache_dir: Optional[str] = None, cache_duration_hours: int = 24):
         """Initialize the license cache.
 
         Args:
@@ -464,7 +411,7 @@ class LicenseManager:
         trial_duration_days: int = _TRIAL_PERIOD,
         cache_enabled: bool = True,
         cache_duration_hours: int = 24,
-        cache_dir: str = None,
+        cache_dir: Optional[str] = None,
         background_refresh: bool = True,
     ):
         """Initialize License Manager with cache-first approach.
@@ -486,7 +433,10 @@ class LicenseManager:
                 Defaults to True.
         """
         # Compute device identity first; used by both backends
-        self.device_key = DeviceFingerprint.get_key()
+        _key = DeviceFingerprint.get_key()
+        if not _key:
+            raise RuntimeError("Failed to determine device fingerprint key")
+        self.device_key: str = _key
         # self.device_summary = DeviceFingerprint.get_device_summary()
 
         if DB_SERVER == LicenseServer.AIVENIO:
@@ -509,8 +459,8 @@ class LicenseManager:
         self.cache = LicenseCache(cache_dir, cache_duration_hours) if cache_enabled else None
 
         # Track refresh status
-        self._refresh_thread = None
-        self._last_refresh_attempt = None
+        self._refresh_thread: Optional[threading.Thread] = None
+        self._last_refresh_attempt: Optional[datetime] = None
 
     def _ensure_directory_exists(self) -> bool:
         """Prepares the directory or database for use as a license manager.
@@ -559,7 +509,7 @@ class LicenseManager:
                     license_table=self.license_table, device_key=self.device_key
                 )
                 self.license_exists = True if license_data else False
-                if self.license_exists:
+                if license_data is not None:
                     # Convert datetime fields to iso-format strings
                     license_data["creation_date"] = license_data["creation_date"].isoformat()
                     license_data["expiration"] = license_data["expiration"].isoformat()
@@ -589,12 +539,13 @@ class LicenseManager:
 
             # Update cache with fresh data
             if self.cache_enabled:
+                assert self.cache is not None
                 self.cache.save(self.device_key, license_data)
 
             return license_data
 
         except pymysql.err.Error as e:
-            Log.e("Failed to download license from remote DB.")
+            Log.e(TAG, "Failed to download license from remote DB.")
             self.avn.log_mysqlerror(e)
             return None
 
@@ -649,6 +600,7 @@ class LicenseManager:
 
         # ALWAYS check cache first if enabled
         if self.cache_enabled:
+            assert self.cache is not None
             cached_data, is_expired = self.cache.load(self.device_key)
 
             if cached_data is not None:
@@ -710,12 +662,13 @@ class LicenseManager:
 
             # Update cache with new license data
             if self.cache_enabled:
+                assert self.cache is not None
                 self.cache.save(self.device_key, license_data)
 
             return True
 
         except pymysql.err.Error as e:
-            Log.e("Failed to upload license to remote DB.")
+            Log.e(TAG, "Failed to upload license to remote DB.")
             self.avn.log_mysqlerror(e)
             return False
 
@@ -723,7 +676,7 @@ class LicenseManager:
             Log.e(TAG, f"Error uploading license file: {e}")
             return False
 
-    def register(self, additional_info: Dict = None) -> Tuple[bool, str, Dict]:
+    def register(self, additional_info: Optional[Dict] = None) -> Tuple[bool, str, Dict]:
         """Register a new trial license for the current device.
 
         Args:
@@ -760,6 +713,106 @@ class LicenseManager:
         else:
             return False, "Failed to create trial license", {}
 
+    def _build_source_msg(self, source: str) -> str:
+        """Build the human-readable suffix indicating where license data came from.
+
+        Args:
+            source (str): One of ``"cache"``, ``"expired_cache"``, or ``"remote"``.
+
+        Returns:
+            str: A parenthesised suffix string, or ``""`` for unknown sources.
+        """
+        if source == "cache":
+            return " (cached)"
+        if source == "remote":
+            return " (fresh)"
+        if source == "expired_cache" and self.cache is not None:
+            cache_age = self.cache.get_cache_age(self.device_key)
+            if cache_age:
+                hours_old = cache_age.total_seconds() / 3600
+                return f" (cached {hours_old:.1f}h old, refreshing)"
+        return ""
+
+    def _handle_missing_license(
+        self, auto_create_if_missing: Optional[bool]
+    ) -> Tuple[bool, str, Dict]:
+        """Handle the case where no license record exists for this device.
+
+        Attempts auto-registration when configured to do so, otherwise returns
+        an appropriate error tuple.
+
+        Args:
+            auto_create_if_missing (Optional[bool]): Override for the instance-level
+                ``auto_register_trial`` flag. Uses the instance setting when ``None``.
+
+        Returns:
+            Tuple[bool, str, Dict]: ``(is_valid, message, license_data)``.
+        """
+        if not self._ensure_directory_exists():
+            return False, "Cannot access license directory and no cached license available", {}
+
+        should_auto_register = (
+            auto_create_if_missing
+            if auto_create_if_missing is not None
+            else self.auto_register_trial
+        )
+
+        if should_auto_register:
+            Log.i(TAG, f"No license found for device {self.device_key}. Creating trial license...")
+            success, message, new_license_data = self.register()
+            if success:
+                return True, message, new_license_data
+            return False, f"Failed to auto-register trial: {message}", {}
+
+        if DB_SERVER == LicenseServer.DROPBOX:
+            return False, f"No license file found for device: {self.license_filename}", {}
+        return False, f"No license record found for device: {self.device_key}", {}
+
+    def _check_expiration(
+        self,
+        expiration_str: Optional[str],
+        source_msg: str,
+        license_data: Dict,
+    ) -> Tuple[bool, str, Dict]:
+        """Validate that the license has not expired and report time remaining.
+
+        Args:
+            expiration_str (Optional[str]): ISO-format expiration timestamp from the
+                license record.
+            source_msg (str): Pre-built source suffix appended to every message.
+            license_data (Dict): The full license data dict, returned unchanged.
+
+        Returns:
+            Tuple[bool, str, Dict]: ``(is_valid, message, license_data)``.
+        """
+        if not expiration_str:
+            return False, f"License has no expiration date set{source_msg}", license_data
+
+        try:
+            expiration_date = datetime.fromisoformat(expiration_str)
+            now = datetime.now()
+            if now > expiration_date:
+                days_expired = (now - expiration_date).days
+                return False, f"License expired {days_expired} days ago{source_msg}", license_data
+
+            days_remaining = (expiration_date - now).days
+            if days_remaining == 0:
+                hours_remaining = (expiration_date - now).seconds // 3600
+                return (
+                    True,
+                    f"License valid - expires in {hours_remaining} hours{source_msg}",
+                    license_data,
+                )
+            return (
+                True,
+                f"License valid - {days_remaining} days remaining{source_msg}",
+                license_data,
+            )
+
+        except (ValueError, TypeError) as e:
+            Log.e(TAG, f"Error parsing expiration date: {e}")
+            return False, f"Invalid expiration date format{source_msg}", license_data
+
     def validate_license(
         self, auto_create_if_missing: Optional[bool] = None, force_remote: bool = False
     ) -> Tuple[bool, str, Dict]:
@@ -777,54 +830,16 @@ class LicenseManager:
                 - message: Human-readable status message with source info
                 - license_data: The license data (empty dict if no license)
         """
-
-        # Get license data (cache-first unless forced)
         license_data, source = self._get_license_data(force_remote=force_remote)
+        source_msg = self._build_source_msg(source)
 
-        # Add source info to message suffix
-        source_msg = ""
-        if source == "cache":
-            source_msg = " (cached)"
-        elif source == "expired_cache":
-            cache_age = self.cache.get_cache_age(self.device_key)
-            if cache_age:
-                hours_old = cache_age.total_seconds() / 3600
-                source_msg = f" (cached {hours_old:.1f}h old, refreshing)"
-        elif source == "remote":
-            source_msg = " (fresh)"
-
-        # If no license exists, need to create one
         if license_data is None:
-            # For new licenses, we need to ensure directory exists
-            if not self._ensure_directory_exists():
-                return False, "Cannot access license directory and no cached license available", {}
+            return self._handle_missing_license(auto_create_if_missing)
 
-            should_auto_register = (
-                auto_create_if_missing
-                if auto_create_if_missing is not None
-                else self.auto_register_trial
-            )
-
-            if should_auto_register:
-                Log.i(
-                    TAG, f"No license found for device {self.device_key}. Creating trial license..."
-                )
-                success, message, new_license_data = self.register()
-                if success:
-                    return True, message, new_license_data
-                else:
-                    return False, f"Failed to auto-register trial: {message}", {}
-            else:
-                if DB_SERVER == LicenseServer.DROPBOX:
-                    return False, f"No license file found for device: {self.license_filename}", {}
-                else:
-                    return False, f"No license record found for device: {self.device_key}", {}
-
-        # Verify the key in the file matches this device
         file_key = license_data.get("license_key", "")
         if file_key != self.device_key:
-            # Clear bad cache
             if self.cache_enabled:
+                assert self.cache is not None
                 self.cache.clear(self.device_key)
             return (
                 False,
@@ -832,7 +847,6 @@ class LicenseManager:
                 {},
             )
 
-        # Check license status
         raw_status = license_data.get("status", LicenseStatus.INACTIVE)
         if isinstance(raw_status, str):
             try:
@@ -846,47 +860,10 @@ class LicenseManager:
 
         if status == LicenseStatus.INACTIVE:
             return False, f"License is inactive{source_msg}", license_data
-
         if status == LicenseStatus.ADMIN:
             return True, f"Admin license - always valid{source_msg}", license_data
-
-        # Check expiration for trial and active licenses
-        if status in [LicenseStatus.TRIAL, LicenseStatus.ACTIVE]:
-            expiration_str = license_data.get("expiration")
-            if not expiration_str:
-                return False, f"License has no expiration date set{source_msg}", license_data
-
-            try:
-                expiration_date = datetime.fromisoformat(expiration_str)
-                now = datetime.now()
-
-                if now > expiration_date:
-                    days_expired = (now - expiration_date).days
-                    return (
-                        False,
-                        f"License expired {days_expired} days ago{source_msg}",
-                        license_data,
-                    )
-                else:
-                    days_remaining = (expiration_date - now).days
-                    hours_remaining = ((expiration_date - now).seconds // 3600) % 24
-
-                    if days_remaining == 0:
-                        return (
-                            True,
-                            f"License valid - expires in {hours_remaining} hours{source_msg}",
-                            license_data,
-                        )
-                    else:
-                        return (
-                            True,
-                            f"License valid - {days_remaining} days remaining{source_msg}",
-                            license_data,
-                        )
-
-            except (ValueError, TypeError) as e:
-                Log.e(TAG, f"Error parsing expiration date: {e}")
-                return False, f"Invalid expiration date format{source_msg}", license_data
+        if status in (LicenseStatus.TRIAL, LicenseStatus.ACTIVE):
+            return self._check_expiration(license_data.get("expiration"), source_msg, license_data)
 
         return False, f"Unknown license status: {status}{source_msg}", license_data
 
@@ -920,7 +897,8 @@ class LicenseManager:
             return False, f"Cannot extend license with status: {status}", license_data
 
         try:
-            current_expiration = datetime.fromisoformat(license_data.get("expiration"))
+            expiration_val = license_data.get("expiration") or ""
+            current_expiration = datetime.fromisoformat(str(expiration_val))
             # If already expired, extend from today; otherwise extend from current expiration
             base_date = max(current_expiration, datetime.now())
             new_expiration = base_date + timedelta(days=additional_days)
@@ -933,7 +911,8 @@ class LicenseManager:
                 days_remaining = (new_expiration - datetime.now()).days
                 return (
                     True,
-                    f"License extended by {additional_days} days. New total: {days_remaining} days remaining",
+                    f"License extended by {additional_days} days. "
+                    f"New total: {days_remaining} days remaining",
                     license_data,
                 )
             else:
@@ -964,6 +943,7 @@ class LicenseManager:
                 or clear failed.
         """
         if self.cache_enabled:
+            assert self.cache is not None
             return self.cache.clear(self.device_key)
         return False
 
@@ -993,6 +973,7 @@ class LicenseManager:
         if not self.cache_enabled:
             return {"enabled": False}
 
+        assert self.cache is not None
         cache_filepath = self.cache._get_cache_filepath(self.device_key)
         status = {
             "enabled": True,
@@ -1026,47 +1007,3 @@ class LicenseManager:
             self._refresh_thread.join(timeout)
             return not self._refresh_thread.is_alive()
         return True
-
-
-# Example usage
-if __name__ == "__main__":
-    if DB_SERVER == LicenseServer.AIVENIO:
-        AVN_Database()
-
-    else:
-
-        # Initialize with cache-first approach
-        license_mgr = LicenseManager(
-            dropbox_token="YOUR_DROPBOX_TOKEN",
-            auto_register_trial=True,
-            trial_duration_days=90,
-            cache_enabled=True,  # Enable caching
-            cache_duration_hours=24,  # Cache valid for 24 hours
-            background_refresh=True,  # Refresh in background when expired
-        )
-
-        # First call - checks cache first, only goes online if no cache or expired
-        # If cache is expired, returns expired data immediately and refreshes in background
-        is_valid, message, license_data = license_mgr.validate_license()
-        print(f"License valid: {is_valid}")
-        # Will show (cached) or (cached Xh old, refreshing)
-        print(f"Message: {message}")
-
-        # Subsequent calls within cache period are instant
-        is_valid, message, license_data = license_mgr.validate_license()
-        print(f"License valid: {is_valid}")
-        print(f"Message: {message}")  # Will show (cached)
-
-        # Force fresh check from remote (only when needed)
-        is_valid, message, license_data = license_mgr.refresh_license()
-        print(f"Fresh license valid: {is_valid}")
-
-        # Check cache status
-        cache_status = license_mgr.get_cache_status()
-        print(f"Cache status: {json.dumps(cache_status, indent=2)}")
-
-        # Wait for background refresh if one is running
-        if license_mgr.wait_for_background_refresh(timeout=5.0):
-            print("Background refresh completed")
-        else:
-            print("Background refresh still running")

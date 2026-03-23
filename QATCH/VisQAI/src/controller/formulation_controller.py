@@ -146,9 +146,7 @@ class FormulationController:
         for f in formulations:
             if f == formulation:
                 return f.id
-        raise ValueError(
-            f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found."
-        )
+        raise ValueError(f"Formulation with params\n\t'{formulation.to_dict()}'\nnot found.")
 
     @staticmethod
     def _normalize_label(value) -> str:
@@ -202,24 +200,16 @@ class FormulationController:
                 return existing
 
         # Ensure each ingredient is persisted and update the formulation's component references
-        formulation.buffer.ingredient = self._ensure_ingredient(
-            formulation.buffer.ingredient
-        )
-        formulation.protein.ingredient = self._ensure_ingredient(
-            formulation.protein.ingredient
-        )
-        formulation.salt.ingredient = self._ensure_ingredient(
-            formulation.salt.ingredient
-        )
+        formulation.buffer.ingredient = self._ensure_ingredient(formulation.buffer.ingredient)
+        formulation.protein.ingredient = self._ensure_ingredient(formulation.protein.ingredient)
+        formulation.salt.ingredient = self._ensure_ingredient(formulation.salt.ingredient)
         formulation.surfactant.ingredient = self._ensure_ingredient(
             formulation.surfactant.ingredient
         )
         formulation.stabilizer.ingredient = self._ensure_ingredient(
             formulation.stabilizer.ingredient
         )
-        formulation.excipient.ingredient = self._ensure_ingredient(
-            formulation.excipient.ingredient
-        )
+        formulation.excipient.ingredient = self._ensure_ingredient(formulation.excipient.ingredient)
 
         # Otherwise, add a new formulation record
         self.db.add_formulation(formulation)
@@ -272,12 +262,8 @@ class FormulationController:
         f_new.buffer.ingredient = self._ensure_ingredient(f_new.buffer.ingredient)
         f_new.protein.ingredient = self._ensure_ingredient(f_new.protein.ingredient)
         f_new.salt.ingredient = self._ensure_ingredient(f_new.salt.ingredient)
-        f_new.surfactant.ingredient = self._ensure_ingredient(
-            f_new.surfactant.ingredient
-        )
-        f_new.stabilizer.ingredient = self._ensure_ingredient(
-            f_new.stabilizer.ingredient
-        )
+        f_new.surfactant.ingredient = self._ensure_ingredient(f_new.surfactant.ingredient)
+        f_new.stabilizer.ingredient = self._ensure_ingredient(f_new.stabilizer.ingredient)
         f_new.excipient.ingredient = self._ensure_ingredient(f_new.excipient.ingredient)
 
         # Delete the old formulation and re-add the new data
@@ -431,14 +417,10 @@ class FormulationController:
                     )
                 )
                 stabilizer = self.ingredient_controller.add_stabilizer(
-                    Stabilizer(
-                        enc_id=0, name=self._normalize_label(row.Stabilizer_type)
-                    )
+                    Stabilizer(enc_id=0, name=self._normalize_label(row.Stabilizer_type))
                 )
                 surfactant = self.ingredient_controller.add_surfactant(
-                    Surfactant(
-                        enc_id=0, name=self._normalize_label(row.Surfactant_type)
-                    )
+                    Surfactant(enc_id=0, name=self._normalize_label(row.Surfactant_type))
                 )
                 salt = self.ingredient_controller.add_salt(
                     Salt(enc_id=0, name=self._normalize_label(row.Salt_type))
@@ -461,12 +443,8 @@ class FormulationController:
                     )
 
                 # SET COMPONENTS
-                form.set_buffer(
-                    buffer=buffer, concentration=row.Buffer_conc, units="mM"
-                )
-                form.set_protein(
-                    protein=protein, concentration=row.Protein_conc, units="mg/mL"
-                )
+                form.set_buffer(buffer=buffer, concentration=row.Buffer_conc, units="mM")
+                form.set_protein(protein=protein, concentration=row.Protein_conc, units="mg/mL")
                 form.set_stabilizer(
                     stabilizer=stabilizer, concentration=row.Stabilizer_conc, units="M"
                 )

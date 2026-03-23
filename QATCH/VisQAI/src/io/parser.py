@@ -281,9 +281,7 @@ class Parser:
         try:
             return cast_type(val)
         except ValueError as e:
-            raise ValueError(
-                f"Cannot cast param '{name}' value '{val}' to {cast_type}"
-            ) from e
+            raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}") from e
 
     def get_param_attr(self, name: str, attr: str, required: bool = False) -> Optional[str]:
         """Retrieves a specific attribute from a `<param>` element.
