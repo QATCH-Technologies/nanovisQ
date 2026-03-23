@@ -36,6 +36,13 @@ TAG = "[LicenseManager]"
 
 
 class LicenseServer(Enum):
+    """Remote storage backend used for license file persistence.
+
+    Attributes:
+        DROPBOX (str): Dropbox file storage backend.
+        AIVENIO (str): Aiven-hosted MySQL database backend.
+    """
+
     DROPBOX = "dbx"
     AIVENIO = "avn"
 
@@ -60,11 +67,27 @@ class LicenseStatus(Enum):
 
 
 class AVN_Database:
+    """Low-level interface to the Aiven-hosted MySQL license database.
+
+    Handles connection management, CRUD operations for license records, and
+    structured error logging for pymysql exceptions.
+    """
 
     def __init__(self):
+        """Initialize the database connection using credentials from the key store."""
         self.conn = pymysql.connect(**AVN_Database._load_avn_key_store())
 
     def license_select(self, license_table, device_key):
+        """Fetch a license record from the database by device key.
+
+        Args:
+            license_table (str): Name of the database table to query.
+            device_key (str): Unique device identifier used as the primary lookup key.
+
+        Returns:
+            dict | None: The license row as a dictionary if found, or None if no
+                record exists or a database error occurs.
+        """
         try:
             self.conn.ping(reconnect=True)
             with self.conn.cursor() as cursor:
@@ -81,6 +104,13 @@ class AVN_Database:
             self.close()
 
     def license_insert(self, license_table, license_data):
+        """Insert a new license record into the database.
+
+        Args:
+            license_table (str): Name of the database table to insert into.
+            license_data (dict): License payload containing all required fields,
+                including device info sub-dict and trial metadata.
+        """
         try:
             self.conn.ping(reconnect=True)
             with self.conn.cursor() as cursor:
@@ -132,6 +162,13 @@ class AVN_Database:
             self.close()
 
     def license_update(self, license_table, license_data):
+        """Update status, expiration, and term for an existing license record.
+
+        Args:
+            license_table (str): Name of the database table to update.
+            license_data (dict): License payload containing ``status``,
+                ``expiration``, ``trial_days``, and ``license_key`` fields.
+        """
         try:
             self.conn.ping(reconnect=True)
             with self.conn.cursor() as cursor:
@@ -153,6 +190,15 @@ class AVN_Database:
             self.close()
 
     def log_mysqlerror(self, e: pymysql.err.MySQLError):
+        """Log a structured error message for a pymysql exception.
+
+        Resolves the numeric error code to a human-readable constant name from
+        the ``CR`` and ``ER`` namespaces, redacts the database hostname from the
+        message, and emits any embedded traceback lines at debug level.
+
+        Args:
+            e (pymysql.err.MySQLError): The caught pymysql exception to log.
+        """
         from pymysql.constants import CR, ER  # type: ignore[import-untyped]
 
         # Defensive extraction of errno/message
@@ -188,6 +234,11 @@ class AVN_Database:
                     Log.d(tb_line)
 
     def close(self):
+        """Commit pending changes and close the database connection.
+
+        Suppresses any exceptions raised during teardown and logs them as
+        warnings to avoid masking the original caller's error context.
+        """
         try:
             if self.conn.open:
                 self.conn.commit()
@@ -197,10 +248,21 @@ class AVN_Database:
             Log.w(TAG, f"AVN close() suppressed error: {e}")
 
     def __del__(self):
+        """Ensure the database connection is closed when the instance is garbage collected."""
         self.close()
 
     @staticmethod
     def _load_avn_key_store():
+        """Load database connection parameters from the encrypted key store.
+
+        Searches for ``avn_key_store.zip`` first in the current working directory,
+        then in the bundled application path. Decodes and decrypts the embedded
+        PEM file to produce a pymysql-compatible connection config dict.
+
+        Returns:
+            dict: A pymysql ``connect()``-compatible keyword argument dictionary,
+                or an empty dict if the key store file cannot be found.
+        """
         DB_CONFIG = {}
         PATH_TO_AVN_KEY = "QATCH/resources/avn_key_store.zip"
 
