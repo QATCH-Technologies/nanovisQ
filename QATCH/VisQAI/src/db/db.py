@@ -1285,7 +1285,11 @@ class Database:
         self.conn.execute("PRAGMA cache_size = -64000")
 
     def end_bulk(self) -> None:
-        """Restore safe write settings after bulk imports."""
-        self.conn.commit()
+        """Restore safe write settings after bulk imports.
+
+        This method only resets the connection PRAGMAs; it does **not** commit
+        the current transaction.  The caller is responsible for committing (via
+        ``_commit()``) or rolling back after calling this method.
+        """
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = FULL")

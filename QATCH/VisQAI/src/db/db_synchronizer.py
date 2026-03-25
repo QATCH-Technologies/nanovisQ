@@ -177,7 +177,8 @@ class DatabaseSynchronizer:
 
         All ``CREATE TABLE`` and ``ALTER TABLE`` statements are collected first
         and executed in a second pass so that the cursor is not advanced while
-        iterating over the result set.
+        iterating over the result set.  Index synchronization runs after all
+        table and column migrations have been applied.
 
         Args:
             c: An active SQLite cursor connected to ``main`` with the bundled
@@ -212,23 +213,24 @@ class DatabaseSynchronizer:
                         f"ALTER TABLE main.{table_name} ADD COLUMN {col_data[1]} {col_data[2]};",
                     )
                 )
-            c.execute(
-                "SELECT name, sql FROM bundled.sqlite_master "
-                "WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%';"
-            )
-            bundled_indexes = c.fetchall()
-
-            for index_name, index_sql in bundled_indexes:
-                c.execute(
-                    "SELECT name FROM main.sqlite_master WHERE type='index' AND name=?;",
-                    (index_name,),
-                )
-                if not c.fetchone():
-                    Log.i(TAG, f"Creating missing index: {index_name}")
-                    c.execute(index_sql)
         for description, sql in migrations:
             Log.i(TAG, description)
             c.execute(sql)
+
+        c.execute(
+            "SELECT name, sql FROM bundled.sqlite_master "
+            "WHERE type='index' AND sql IS NOT NULL AND name NOT LIKE 'sqlite_%';"
+        )
+        bundled_indexes = c.fetchall()
+
+        for index_name, index_sql in bundled_indexes:
+            c.execute(
+                "SELECT name FROM main.sqlite_master WHERE type='index' AND name=?;",
+                (index_name,),
+            )
+            if not c.fetchone():
+                Log.i(TAG, f"Creating missing index: {index_name}")
+                c.execute(index_sql)
 
     @staticmethod
     def _sync_seed_data(c: sqlite3.Cursor):
