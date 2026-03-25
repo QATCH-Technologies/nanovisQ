@@ -60,22 +60,26 @@ Author:
     Paul MacNichol (paulmacnichol@gmail.com)
 """
 
+import io
+import math
 import os
 import sys
-import math
-import io
-import numpy as np
-import matplotlib.pyplot as plt
+
 import joblib
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+
 # import tensorflow
 from keras.applications.vgg16 import VGG16
 from keras.models import Model
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+
 try:
     from keras_preprocessing.image import img_to_array
 except:
     from keras.preprocessing.image import img_to_array
+
 from PIL import Image
 from tqdm import tqdm
 
@@ -115,15 +119,11 @@ class QClusterer:
             loaded for prediction.
         """
         # Load pre-trained VGG16 model + higher level layers
-        base_model = VGG16(
-            weights="imagenet", include_top=False, input_shape=(224, 224, 3)
-        )
+        base_model = VGG16(weights="imagenet", include_top=False, input_shape=(224, 224, 3))
         self.model = Model(inputs=base_model.input, outputs=base_model.output)
 
         if model_path:
-            print(
-                f"[INFO] Operating in prediction mode using KMeans model from {model_path}"
-            )
+            print(f"[INFO] Operating in prediction mode using KMeans model from {model_path}")
             self.kmeans = joblib.load(model_path)
         else:
             print("[INFO] Operating in training mode.")
@@ -253,8 +253,7 @@ class QClusterer:
         for k in tqdm(k_values, desc="<<Optimal K>>"):
             kmeans = KMeans(n_clusters=k)
             predicted_labels = kmeans.fit_predict(features)
-            silhouette_scores.append(
-                silhouette_score(features, predicted_labels))
+            silhouette_scores.append(silhouette_score(features, predicted_labels))
 
         plt.figure(figsize=(10, 5))
         plt.plot(k_values, silhouette_scores, "bx-")
@@ -263,14 +262,10 @@ class QClusterer:
         plt.title("Silhouette Analysis For Optimal K")
         plt.show()
         optimal_k = k_values[np.argmax(silhouette_scores)]
-        print(
-            f"[INFO] Optimal number of clusters based on silhouette analysis: {optimal_k}"
-        )
+        print(f"[INFO] Optimal number of clusters based on silhouette analysis: {optimal_k}")
         return optimal_k
 
-    def perform_clustering(
-        self, features: np.ndarray = None, n_clusters: int = 2
-    ) -> np.ndarray:
+    def perform_clustering(self, features: np.ndarray = None, n_clusters: int = 2) -> np.ndarray:
         """Performs KMeans clustering.
 
         Args:
@@ -295,8 +290,7 @@ class QClusterer:
             labels (np.ndarray): Cluster labels.
         """
         print("[STATUS] Visualizing")
-        plt.scatter(features[:, 0], features[:, 1],
-                    c=predicted_labels, cmap="viridis")
+        plt.scatter(features[:, 0], features[:, 1], c=predicted_labels, cmap="viridis")
         plt.title("Clusters of 2D Line Plot Images")
         plt.show()
 
@@ -365,16 +359,13 @@ class QClusterer:
 
         features = self.extract_features(processed_images)
 
-        optimal_k = self.find_optimal_clusters(
-            features, min_k=min_k, max_k=max_k)
+        optimal_k = self.find_optimal_clusters(features, min_k=min_k, max_k=max_k)
 
-        predicted_labels = self.perform_clustering(
-            features, n_clusters=optimal_k)
+        predicted_labels = self.perform_clustering(features, n_clusters=optimal_k)
         if plotting:
             self.visualize_clusters(features, predicted_labels)
 
-            self.display_cluster_images(
-                images, predicted_labels, n_clusters=optimal_k)
+            self.display_cluster_images(images, predicted_labels, n_clusters=optimal_k)
 
         return predicted_labels
 
@@ -389,9 +380,7 @@ class QClusterer:
             int : An integer value representing the cluster number to which the parameterized CSV.
         """
         if self.kmeans is None:
-            raise ValueError(
-                "Model is not trained or loaded. Please train the model first."
-            )
+            raise ValueError("Model is not trained or loaded. Please train the model first.")
         file_buffer_2 = file_buffer
         if not isinstance(file_buffer_2, str):
             if hasattr(file_buffer_2, "seekable") and file_buffer_2.seekable():
@@ -399,9 +388,7 @@ class QClusterer:
                 file_buffer_2.seek(0)
             else:
                 # ERROR: 'file_buffer_2' must be 'BytesIO' type here, but it's not seekable!
-                raise IOError(
-                    "Cannot 'seek' stream prior to passing to 'QDataPipeline'."
-                )
+                raise IOError("Cannot 'seek' stream prior to passing to 'QDataPipeline'.")
         else:
             # Assuming 'file_buffer_2' is a string to a file path, this will work fine as-is
             pass
@@ -439,8 +426,7 @@ class QClusterer:
             model_path (str): Path where the KMeans model should be saved.
         """
         if self.kmeans is None:
-            raise ValueError(
-                "Model is not trained. Please train the model first.")
+            raise ValueError("Model is not trained. Please train the model first.")
         print(f"[STATUS] Saving model as {model_path}")
         joblib.dump(self.kmeans, model_path)
 
@@ -449,13 +435,10 @@ class QClusterer:
 if __name__ == "__main__":
     # Example Usage
     qcr = QClusterer()
-    labels = qcr.train(
-        "content/training_data/test_clusters", min_k=3, max_k=10)
+    labels = qcr.train("content/training_data/test_clusters", min_k=3, max_k=10)
     qcr.save_model("QModel/SavedModels/cluster.joblib")
 
     # For prediction
     qcp = QClusterer("QModel/SavedModels/cluster.joblib")
-    label = qcp.predict_label(
-        "content/dropbox_dump/01154/MM231106W10_Y60P_PROBLEM_D10_3rd.csv"
-    )
+    label = qcp.predict_label("content/dropbox_dump/01154/MM231106W10_Y60P_PROBLEM_D10_3rd.csv")
     print(f"The image belongs to cluster {label}")

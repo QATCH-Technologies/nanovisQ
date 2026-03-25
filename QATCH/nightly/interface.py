@@ -1,11 +1,10 @@
+import os
+from threading import Event, Thread
+
 from QATCH.common.logger import Logger as Log
 from QATCH.nightly.artifacts import GH_Artifacts
 from QATCH.ui.mainWindow import UpdaterTask
 from QATCH.ui.popUp import PopUp
-
-from threading import Thread, Event
-
-import os
 
 
 class GH_Interface:
@@ -32,8 +31,7 @@ class GH_Interface:
         else:
             labelweb3 = f"{update_result[1]['name'].split('_')[-1]} available!"
 
-        Log.i("[NightBuild]",
-              'Checking your internet connection {} '.format(labelweb2))
+        Log.i("[NightBuild]", "Checking your internet connection {} ".format(labelweb2))
         Log.i("Update Status:", labelweb3)
 
         update_available = False
@@ -44,14 +42,17 @@ class GH_Interface:
             update_available = True
             running, latest, key = update_result
             latest_bundle = (latest, key)
-            if PopUp.question_FW(self.parent,
-                                 "QATCH Update Available!",
-                                 "A new nightly software build is available!\nWould you like to download it now?",
-                                 "Running SW: {}\nRecommended: {}\n".format(
-                                     running['name'].split('_')[-1],
-                                     latest['name'].split('_')[-1]) +
-                                 "Created: {}\n\nPlease save your work before updating.".format(
-                                     str(latest['created_at']).replace("T", " @ ").replace("Z", " UTC"))):
+            if PopUp.question_FW(
+                self.parent,
+                "QATCH Update Available!",
+                "A new nightly software build is available!\nWould you like to download it now?",
+                "Running SW: {}\nRecommended: {}\n".format(
+                    running["name"].split("_")[-1], latest["name"].split("_")[-1]
+                )
+                + "Created: {}\n\nPlease save your work before updating.".format(
+                    str(latest["created_at"]).replace("T", " @ ").replace("Z", " UTC")
+                ),
+            ):
                 update_now = True
 
         return ((update_available, update_now), latest_bundle)
@@ -81,7 +82,8 @@ class UpdaterTask_Nightly(UpdaterTask):
 
             self.progressTaskHandle = Thread(
                 target=artifacts.prepare_for_update,
-                args=(latest_bundle, save_to, self.progress, self.abort_flag))
+                args=(latest_bundle, save_to, self.progress, self.abort_flag),
+            )
             self.progressTaskHandle.start()
 
             while True:

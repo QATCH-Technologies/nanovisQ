@@ -170,12 +170,8 @@ class RangeSlider(QtWidgets.QWidget):
         painter.setBrush(QtGui.QColor("#ffffff"))
         painter.setPen(QtGui.QPen(QtGui.QColor("#0078D4"), 2))
 
-        painter.drawEllipse(
-            QtCore.QPointF(x_low, cy), self._handle_radius, self._handle_radius
-        )
-        painter.drawEllipse(
-            QtCore.QPointF(x_high, cy), self._handle_radius, self._handle_radius
-        )
+        painter.drawEllipse(QtCore.QPointF(x_low, cy), self._handle_radius, self._handle_radius)
+        painter.drawEllipse(QtCore.QPointF(x_high, cy), self._handle_radius, self._handle_radius)
 
     def mousePressEvent(self, event):
         """Identifies which handle is closest to the click to begin dragging.

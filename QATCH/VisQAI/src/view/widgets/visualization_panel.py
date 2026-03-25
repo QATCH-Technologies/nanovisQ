@@ -37,10 +37,10 @@ Version:
 
 import os
 
-import numpy as np
-import pyqtgraph as pg
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import Qt
+import numpy as np
+import pyqtgraph as pg
 from scipy import interpolate
 
 try:
@@ -68,9 +68,9 @@ try:
     from styles.style_loader import load_stylesheet
 except (ModuleNotFoundError, ImportError):
     TAG = "[VisualizationPanel]"
-    from QATCH.common.architecture import Architecture
     from QATCH.VisQAI.src.models.formulation import ViscosityProfile
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
+    from QATCH.common.architecture import Architecture
 
 
 class VisualizationPanel(QtWidgets.QWidget):
@@ -178,9 +178,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.graph_container = QtWidgets.QFrame()
-        self.graph_container.setStyleSheet(
-            "background-color: transparent; border: none;"
-        )
+        self.graph_container.setStyleSheet("background-color: transparent; border: none;")
 
         graph_layout = QtWidgets.QVBoxLayout(self.graph_container)
         graph_layout.setContentsMargins(0, 0, 0, 0)
@@ -441,9 +439,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.act_log_y.setChecked(False)
         self.act_log_y.toggled.connect(self.update_plot)
 
-        self.act_axis_labels = QtWidgets.QAction(
-            "Show Axis Labels", self, checkable=True
-        )
+        self.act_axis_labels = QtWidgets.QAction("Show Axis Labels", self, checkable=True)
         self.act_axis_labels.setChecked(True)
         self.act_axis_labels.toggled.connect(lambda: self.axis_debounce.start())
 
@@ -451,9 +447,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.act_crosshairs.setChecked(False)
         self.act_crosshairs.toggled.connect(self.toggle_crosshairs)
 
-        self.act_ci = QtWidgets.QAction(
-            "Show Confidence Interval", self, checkable=True
-        )
+        self.act_ci = QtWidgets.QAction("Show Confidence Interval", self, checkable=True)
         self.act_ci.setChecked(True)
         self.act_ci.toggled.connect(self.update_plot)
 
@@ -461,9 +455,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         self.act_cp.setChecked(True)
         self.act_cp.toggled.connect(self._toggle_cp_overlay)
 
-        self.act_measured = QtWidgets.QAction(
-            "Show Measured Profile", self, checkable=True
-        )
+        self.act_measured = QtWidgets.QAction("Show Measured Profile", self, checkable=True)
         self.act_measured.setChecked(False)
         self.act_measured.setEnabled(False)
         self.act_measured.toggled.connect(self.update_plot)
@@ -708,13 +700,9 @@ class VisualizationPanel(QtWidgets.QWidget):
 
             mode = getattr(self, "plot_mode", "standard")
             if mode == "parity":
-                x_label_text = (
-                    "Log True Viscosity (cP)" if log_x else "True Viscosity (cP)"
-                )
+                x_label_text = "Log True Viscosity (cP)" if log_x else "True Viscosity (cP)"
                 y_label_text = (
-                    "Log Predicted Viscosity (cP)"
-                    if log_y
-                    else "Predicted Viscosity (cP)"
+                    "Log Predicted Viscosity (cP)" if log_y else "Predicted Viscosity (cP)"
                 )
             else:
                 x_label_text = "Log Shear Rate (1/s)" if log_x else "Shear Rate (1/s)"
@@ -1094,24 +1082,12 @@ class VisualizationPanel(QtWidgets.QWidget):
             spots = []
             annotations = []
             for pt in series["points"]:
-                px = (
-                    np.log10(max(pt["true"], 1e-10))
-                    if self.parity_log_visc
-                    else pt["true"]
-                )
-                py = (
-                    np.log10(max(pt["pred"], 1e-10))
-                    if self.parity_log_visc
-                    else pt["pred"]
-                )
+                px = np.log10(max(pt["true"], 1e-10)) if self.parity_log_visc else pt["true"]
+                py = np.log10(max(pt["pred"], 1e-10)) if self.parity_log_visc else pt["pred"]
                 spots.append({"pos": (px, py), "data": pt})
 
                 # Build label
-                shear_label = (
-                    f"{int(pt['shear']):,}"
-                    if pt["shear"] < 1e6
-                    else f"{pt['shear']:.2e}"
-                )
+                shear_label = f"{int(pt['shear']):,}" if pt["shear"] < 1e6 else f"{pt['shear']:.2e}"
                 label_text = (
                     f"{series['config_name']}\n"
                     f"Shear: {shear_label} 1/s\n"
@@ -1235,9 +1211,7 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         raw_color = data.get("color")
         default_colors = ["#2596be", "#be4d25", "#25be4d", "#be2596", "#96be25"]
-        main_color = (
-            raw_color if raw_color else default_colors[index % len(default_colors)]
-        )
+        main_color = raw_color if raw_color else default_colors[index % len(default_colors)]
         min_shear = self.spin_min_shear.value()
         max_shear = self.spin_max_shear.value()
 
@@ -1255,9 +1229,7 @@ class VisualizationPanel(QtWidgets.QWidget):
 
         vp_pred = None
         try:
-            vp_pred = ViscosityProfile(
-                list(x_full.astype(float)), list(y_full.astype(float))
-            )
+            vp_pred = ViscosityProfile(list(x_full.astype(float)), list(y_full.astype(float)))
             x = dense_sr
             y = np.array([vp_pred.get_viscosity(sr) for sr in dense_sr])
 
@@ -1278,16 +1250,8 @@ class VisualizationPanel(QtWidgets.QWidget):
             Log.w(TAG, f"ViscosityProfile interpolation failed, falling back: {e}")
             mask = (x_full >= min_shear) & (x_full <= max_shear)
             x, y = x_full[mask], y_full[mask]
-            lower = (
-                lower_full[mask]
-                if has_ci and len(lower_full) == len(x_full)
-                else np.array([])
-            )
-            upper = (
-                upper_full[mask]
-                if has_ci and len(upper_full) == len(x_full)
-                else np.array([])
-            )
+            lower = lower_full[mask] if has_ci and len(lower_full) == len(x_full) else np.array([])
+            upper = upper_full[mask] if has_ci and len(upper_full) == len(x_full) else np.array([])
 
         if len(x) == 0:
             return series_items
@@ -1334,15 +1298,11 @@ class VisualizationPanel(QtWidgets.QWidget):
                             list(x_full.astype(float)), list(meas_arr.astype(float))
                         )
                         meas_x = dense_sr
-                        meas_y = np.array(
-                            [vp_meas.get_viscosity(sr) for sr in dense_sr]
-                        )
+                        meas_y = np.array([vp_meas.get_viscosity(sr) for sr in dense_sr])
                     except Exception:
                         mask = (x_full >= min_shear) & (x_full <= max_shear)
                         meas_x = x_full[mask]
-                        meas_y = (
-                            meas_arr[mask] if len(meas_arr) == len(x_full) else meas_arr
-                        )
+                        meas_y = meas_arr[mask] if len(meas_arr) == len(x_full) else meas_arr
                 else:
                     mask = (x_full >= min_shear) & (x_full <= max_shear)
                     meas_x = x_full[mask]
@@ -1505,9 +1465,7 @@ class VisualizationPanel(QtWidgets.QWidget):
             offset_visc = viscosity * 1.08
             text_y = np.log10(max(offset_visc, 1e-10)) if log_y else offset_visc
 
-            sr_label = (
-                f"{int(shear_rate):,}" if shear_rate < 1e6 else f"{shear_rate:.2e}"
-            )
+            sr_label = f"{int(shear_rate):,}" if shear_rate < 1e6 else f"{shear_rate:.2e}"
             label_text = f"{sr_label} 1/s\n{viscosity:.2f} cP"
 
             text_item = pg.TextItem(
@@ -1588,9 +1546,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         pred_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=3))
         self.legend.addItem(pred_item, "Predicted")
         if self.act_measured.isChecked() and self.act_measured.isEnabled():
-            meas_item = pg.PlotDataItem(
-                pen=pg.mkPen("#555555", width=2, style=Qt.DashLine)
-            )
+            meas_item = pg.PlotDataItem(pen=pg.mkPen("#555555", width=2, style=Qt.DashLine))
             self.legend.addItem(meas_item, "Measured")
 
     def toggle_card_series(self, card_name: str) -> bool:
@@ -1616,9 +1572,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 new_hidden = not self.series_hidden[i]
                 self.series_hidden[i] = new_hidden
                 if i < len(self.series_plot_items):
-                    self._set_series_items_visible(
-                        self.series_plot_items[i], not new_hidden
-                    )
+                    self._set_series_items_visible(self.series_plot_items[i], not new_hidden)
                 return new_hidden
         return False
 
@@ -1643,9 +1597,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         while len(self.series_hidden) <= series_index:
             self.series_hidden.append(False)
         self.series_hidden[series_index] = new_hidden
-        self._set_series_items_visible(
-            self.series_plot_items[series_index], not new_hidden
-        )
+        self._set_series_items_visible(self.series_plot_items[series_index], not new_hidden)
         self._make_legend_clickable()
 
     def _apply_global_limits(self):
@@ -1760,9 +1712,7 @@ class VisualizationPanel(QtWidgets.QWidget):
         if not found_data:
             fallback_y_min = -1.0 if log_y else 0.0
             fallback_y_max = 3.0 if log_y else 100.0
-            self.plot_widget.plotItem.vb.setYRange(
-                fallback_y_min, fallback_y_max, padding=0
-            )
+            self.plot_widget.plotItem.vb.setYRange(fallback_y_min, fallback_y_max, padding=0)
             return
 
         # Intelligent View Range Snapping
@@ -1774,9 +1724,7 @@ class VisualizationPanel(QtWidgets.QWidget):
                 y_max_target += 1
                 y_min_target -= 1
 
-            self.plot_widget.plotItem.vb.setYRange(
-                y_min_target, y_max_target, padding=0
-            )
+            self.plot_widget.plotItem.vb.setYRange(y_min_target, y_max_target, padding=0)
 
         else:
             # Calculate the Order of Magnitude of the data spread to find a clean step interval
@@ -1801,9 +1749,7 @@ class VisualizationPanel(QtWidgets.QWidget):
             if global_min_y >= 0 and y_min_target < 0:
                 y_min_target = 0
 
-            self.plot_widget.plotItem.vb.setYRange(
-                y_min_target, y_max_target, padding=0
-            )
+            self.plot_widget.plotItem.vb.setYRange(y_min_target, y_max_target, padding=0)
 
     def mouse_moved(self, evt):
         """Handle throttled mouse-move events from the ``SignalProxy``.
@@ -1883,10 +1829,7 @@ class VisualizationPanel(QtWidgets.QWidget):
             point_data = scatter._point_data
             px = np.log10(max(point_data["x"], 1e-10)) if log_x else point_data["x"]
             py = np.log10(max(point_data["y"], 1e-10)) if log_y else point_data["y"]
-            if (
-                abs(mouse_x_view - px) < tolerance_x
-                and abs(mouse_y_view - py) < tolerance_y
-            ):
+            if abs(mouse_x_view - px) < tolerance_x and abs(mouse_y_view - py) < tolerance_y:
                 hovered_item = scatter
                 break
 

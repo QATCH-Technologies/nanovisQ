@@ -34,6 +34,7 @@ Date:
 Version:
     1.0
 """
+
 from pathlib import Path
 from typing import Optional, Union
 
@@ -42,6 +43,7 @@ class AssetError(Exception):
     """
     Raised whenever an asset cannot be found, loaded, stored, updated, or deleted.
     """
+
     pass
 
 
@@ -100,10 +102,7 @@ class AssetController:
             )
 
     def _resolve_asset_path(
-        self,
-        logical_name: str,
-        extensions: list[str],
-        must_exist: bool = True
+        self, logical_name: str, extensions: list[str], must_exist: bool = True
     ) -> Optional[Path]:
         """
         Internal helper: locate a file under self.assets_dir matching logical_name + one of the extensions.
@@ -113,7 +112,7 @@ class AssetController:
         Args:
             logical_name: Filename without extension (e.g. "model_v1").
             extensions: List of extensions to try, e.g., [".pkl", ".joblib"].
-            must_exist: 
+            must_exist:
                 - If True, raises AssetError when no matching file is found.
                 - If False, returns the candidate Path for the first extension (even if it does not exist).
 
@@ -142,10 +141,7 @@ class AssetController:
         return None
 
     def store_from_file(
-        self,
-        logical_name: str,
-        source_path: Union[str, Path],
-        overwrite: bool = False
+        self, logical_name: str, source_path: Union[str, Path], overwrite: bool = False
     ) -> Path:
         """
         Copy an existing file on disk into the assets directory, preserving its extension.
@@ -153,7 +149,7 @@ class AssetController:
         Args:
             logical_name: New name (without extension) under assets_dir.
             source_path: Path to an existing file; its extension will be preserved.
-            overwrite: 
+            overwrite:
                 - If False, raises AssetError if the destination already exists.
                 - If True, replaces any existing file with the same name and extension.
 
@@ -169,9 +165,7 @@ class AssetController:
         """
         src = Path(source_path)
         if not src.exists() or not src.is_file():
-            raise AssetError(
-                f"Source asset '{src}' does not exist or is not a file."
-            )
+            raise AssetError(f"Source asset '{src}' does not exist or is not a file.")
 
         ext = src.suffix
         if ext == "":
@@ -194,11 +188,7 @@ class AssetController:
             raise AssetError(f"Failed to copy '{src}' to '{dest}': {e!s}")
 
     def store_bytes(
-        self,
-        logical_name: str,
-        data: bytes,
-        extension: str,
-        overwrite: bool = False
+        self, logical_name: str, data: bytes, extension: str, overwrite: bool = False
     ) -> Path:
         """
         Write raw bytes into a new file named <logical_name><extension> in assets_dir.
@@ -207,7 +197,7 @@ class AssetController:
             logical_name: Filename (without extension) under assets_dir.
             data: Bytes to write to the file.
             extension: File extension (e.g., ".bin", ".json", ".pkl"). Must start with a dot.
-            overwrite: 
+            overwrite:
                 - If False, raises AssetError if a file with the same name already exists.
                 - If True, replaces any existing file.
 
@@ -237,11 +227,7 @@ class AssetController:
         except Exception as e:
             raise AssetError(f"Failed to write bytes to '{dest}': {e!s}")
 
-    def get_asset_path(
-        self,
-        logical_name: str,
-        extensions: list[str]
-    ) -> Path:
+    def get_asset_path(self, logical_name: str, extensions: list[str]) -> Path:
         """
         Retrieve the Path of an existing asset by logical name, trying each extension until one is found.
 
@@ -257,11 +243,7 @@ class AssetController:
         """
         return self._resolve_asset_path(logical_name, extensions, must_exist=True)
 
-    def load_bytes(
-        self,
-        logical_name: str,
-        extensions: list[str]
-    ) -> bytes:
+    def load_bytes(self, logical_name: str, extensions: list[str]) -> bytes:
         """
         Load and return the raw bytes of an existing asset file.
 
@@ -283,11 +265,7 @@ class AssetController:
         except Exception as e:
             raise AssetError(f"Failed to read bytes from '{path}': {e!s}")
 
-    def asset_exists(
-        self,
-        logical_name: str,
-        extensions: list[str]
-    ) -> bool:
+    def asset_exists(self, logical_name: str, extensions: list[str]) -> bool:
         """
         Check if any file matching logical_name + ext exists under assets_dir.
 
@@ -318,11 +296,7 @@ class AssetController:
                 names.add(child.stem)
         return sorted(names)
 
-    def update_from_file(
-        self,
-        logical_name: str,
-        source_path: Union[str, Path]
-    ) -> Path:
+    def update_from_file(self, logical_name: str, source_path: Union[str, Path]) -> Path:
         """
         Replace an existing asset (with the same extension) using a new file.
 
@@ -346,16 +320,13 @@ class AssetController:
         """
         src = Path(source_path)
         if not src.exists() or not src.is_file():
-            raise AssetError(
-                f"Source asset '{src}' does not exist or is not a file."
-            )
+            raise AssetError(f"Source asset '{src}' does not exist or is not a file.")
 
         ext = src.suffix
         if ext == "":
             raise AssetError(f"Source '{src}' has no extension to preserve.")
 
-        existing = self._resolve_asset_path(
-            logical_name, [ext], must_exist=True)
+        existing = self._resolve_asset_path(logical_name, [ext], must_exist=True)
 
         try:
             existing.unlink()
@@ -363,15 +334,9 @@ class AssetController:
             existing.write_bytes(data)
             return existing
         except Exception as e:
-            raise AssetError(
-                f"Failed to update '{existing}' with '{src}': {e!s}")
+            raise AssetError(f"Failed to update '{existing}' with '{src}': {e!s}")
 
-    def update_bytes(
-        self,
-        logical_name: str,
-        data: bytes,
-        extension: str
-    ) -> Path:
+    def update_bytes(self, logical_name: str, data: bytes, extension: str) -> Path:
         """
         Replace an existing asset’s contents by writing new bytes.
 
@@ -396,8 +361,7 @@ class AssetController:
                 f"Invalid extension '{extension}'. Must begin with a period, e.g., '.bin'."
             )
 
-        existing = self._resolve_asset_path(
-            logical_name, [extension], must_exist=True)
+        existing = self._resolve_asset_path(logical_name, [extension], must_exist=True)
 
         try:
             existing.unlink()
@@ -406,11 +370,7 @@ class AssetController:
         except Exception as e:
             raise AssetError(f"Failed to update bytes in '{existing}': {e!s}")
 
-    def delete_asset(
-        self,
-        logical_name: str,
-        extensions: list[str]
-    ) -> None:
+    def delete_asset(self, logical_name: str, extensions: list[str]) -> None:
         """
         Delete an existing asset by logical name, trying each extension until found.
 

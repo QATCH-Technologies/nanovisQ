@@ -52,14 +52,11 @@ try:
         Stabilizer,
         Surfactant,
     )
-    from src.view.dialogs.model_selection_dialog import (
-        ModelSelectionDialog,
-    )
+    from src.view.dialogs.model_selection_dialog import ModelSelectionDialog
     from styles.style_loader import load_stylesheet
 
 except (ModuleNotFoundError, ImportError):
     TAG = "[FormulationConfigCard]"
-    from QATCH.common.architecture import Architecture
     from QATCH.VisQAI.src.models.formulation import Formulation, ViscosityProfile
     from QATCH.VisQAI.src.models.ingredient import (
         Buffer,
@@ -72,15 +69,12 @@ except (ModuleNotFoundError, ImportError):
     )
     from QATCH.VisQAI.src.view.components.drag_handle import DragHandle
     from QATCH.VisQAI.src.view.dialogs.buffer_config_dialog import BufferConfigDialog
-    from QATCH.VisQAI.src.view.dialogs.generic_ingredient_dialog import (
-        GenericIngredientDialog,
-    )
+    from QATCH.VisQAI.src.view.dialogs.generic_ingredient_dialog import GenericIngredientDialog
     from QATCH.VisQAI.src.view.dialogs.model_options_dialog import ModelOptionsDialog
-    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import (
-        ModelSelectionDialog,
-    )
+    from QATCH.VisQAI.src.view.dialogs.model_selection_dialog import ModelSelectionDialog
     from QATCH.VisQAI.src.view.dialogs.protein_config_dialog import ProteinConfigDialog
     from QATCH.VisQAI.src.view.styles.style_loader import load_stylesheet
+    from QATCH.common.architecture import Architecture
 
 
 class FormulationConfigCard(QtWidgets.QFrame):
@@ -252,9 +246,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         self.color_swatch = QtWidgets.QFrame()
         self.color_swatch.setFixedSize(6, 24)
-        self.color_swatch.setStyleSheet(
-            f"background-color: {self.plot_color}; border-radius: 3px;"
-        )
+        self.color_swatch.setStyleSheet(f"background-color: {self.plot_color}; border-radius: 3px;")
         self.color_swatch.setToolTip("Plot Color")
         header_layout.addWidget(self.color_swatch)
 
@@ -329,15 +321,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.act_hide_series = self.options_menu.addAction("Hide from Plot")
         self.act_hide_series.setCheckable(True)
         self.act_hide_series.setChecked(False)
-        self.act_hide_series.toggled.connect(
-            lambda _: self.visibility_toggled.emit(self)
-        )
+        self.act_hide_series.toggled.connect(lambda _: self.visibility_toggled.emit(self))
         self.act_pick_color = self.options_menu.addAction("Select Plot Color...")
         self.act_pick_color.triggered.connect(self.select_plot_color)
         self.options_menu.addSeparator()
-        self.options_menu.addAction("Export Formulation").triggered.connect(
-            self.export_formulation
-        )
+        self.options_menu.addAction("Export Formulation").triggered.connect(self.export_formulation)
         self.act_clear = self.options_menu.addAction("Clear Formulation")
         self.act_clear.triggered.connect(self.clear_formulation)
         self._update_clear_state()
@@ -364,9 +352,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         # Content Body
         self.content_frame = QtWidgets.QFrame()
-        self.content_frame.setAttribute(
-            QtCore.Qt.WidgetAttribute.WA_LayoutUsesWidgetRect
-        )
+        self.content_frame.setAttribute(QtCore.Qt.WidgetAttribute.WA_LayoutUsesWidgetRect)
         self.content_frame.setSizePolicy(
             QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Maximum
         )
@@ -374,9 +360,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         content_layout.setContentsMargins(5, 0, 5, 0)
         content_layout.setSpacing(15)
         content_layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
-        self.assets_path = os.path.join(
-            Architecture.get_path(), "QATCH", "VisQAI", "assets"
-        )
+        self.assets_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
         if not os.path.exists(self.assets_path):
             os.makedirs(self.assets_path, exist_ok=True)
 
@@ -460,9 +444,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.spin_temp.setFixedWidth(90)
         self.spin_temp.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-        self.slider_temp.valueChanged.connect(
-            lambda v: self.spin_temp.setValue(float(v))
-        )
+        self.slider_temp.valueChanged.connect(lambda v: self.spin_temp.setValue(float(v)))
         self.spin_temp.valueChanged.connect(lambda v: self.slider_temp.setValue(int(v)))
 
         temp_layout.addWidget(self.slider_temp)
@@ -611,9 +593,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         btn_help.setText("?")
         btn_help.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
         btn_help.setProperty("class", "help-btn")
-        btn_help.clicked.connect(
-            lambda: QtWidgets.QMessageBox.information(self, title, help_text)
-        )
+        btn_help.clicked.connect(lambda: QtWidgets.QMessageBox.information(self, title, help_text))
         h_layout.addWidget(lbl)
         h_layout.addWidget(btn_help)
         h_layout.addStretch()
@@ -705,17 +685,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
             self.emit_run_request()
 
         self.is_expanded = not self.is_expanded
-        arrow = (
-            QtCore.Qt.ArrowType.UpArrow
-            if self.is_expanded
-            else QtCore.Qt.ArrowType.DownArrow
-        )
+        arrow = QtCore.Qt.ArrowType.UpArrow if self.is_expanded else QtCore.Qt.ArrowType.DownArrow
         self.btn_toggle.setArrowType(arrow)
 
         if not hasattr(self, "_anim_accordion"):
-            self._anim_accordion = QtCore.QPropertyAnimation(
-                self.content_frame, b"maximumHeight"
-            )
+            self._anim_accordion = QtCore.QPropertyAnimation(self.content_frame, b"maximumHeight")
             self._anim_accordion.setDuration(250)
             self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
@@ -793,9 +767,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.btn_toggle.setArrowType(QtCore.Qt.ArrowType.DownArrow)
 
         if not hasattr(self, "_anim_accordion"):
-            self._anim_accordion = QtCore.QPropertyAnimation(
-                self.content_frame, b"maximumHeight"
-            )
+            self._anim_accordion = QtCore.QPropertyAnimation(self.content_frame, b"maximumHeight")
             self._anim_accordion.setDuration(250)
             self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
@@ -828,9 +800,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
             model_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
             model_dialog.setNameFilter("VisQAI Models (*.visq)")
             model_dialog.setViewMode(QtWidgets.QFileDialog.Detail)
-            model_path = os.path.join(
-                Architecture.get_path(), "QATCH", "VisQAI", "assets"
-            )
+            model_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
             if os.path.exists(model_path):
                 model_dialog.setDirectory(model_path)
             if model_dialog.exec_():
@@ -1019,9 +989,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
             btn_rem.setEnabled(False)
             btn_rem.setToolTip("This component is mandatory")
 
-        btn_rem.clicked.connect(
-            lambda: self.remove_ingredient_row(ing_type, row_widget)
-        )
+        btn_rem.clicked.connect(lambda: self.remove_ingredient_row(ing_type, row_widget))
 
         row_layout.addWidget(lbl)
         row_layout.addWidget(combo, stretch=1)
@@ -1093,9 +1061,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
             )
             # Add matching error style to the combo box
             combo.setStyleSheet(
-                "border: 1.5px solid #e53935;"
-                "border-radius: 4px;"
-                "background-color: #fff5f5;"
+                "border: 1.5px solid #e53935;" "border-radius: 4px;" "background-color: #fff5f5;"
             )
         else:
             btn_configure.setStyleSheet("")
@@ -1114,9 +1080,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         controller = self.controller
         if not controller:
-            QtWidgets.QMessageBox.critical(
-                self, "Error", "Database controller not found."
-            )
+            QtWidgets.QMessageBox.critical(self, "Error", "Database controller not found.")
             return
 
         if ing_type == "Protein":
@@ -1152,9 +1116,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                 if not is_edit_mode:
                     if ing_type not in self.ingredients_master:
                         self.ingredients_master[ing_type] = []
-                    existing_names = [
-                        ing.name for ing in self.ingredients_master[ing_type]
-                    ]
+                    existing_names = [ing.name for ing in self.ingredients_master[ing_type]]
                     if new_ingredient.name in existing_names:
                         index = combo.findText(new_ingredient.name)
                         if index >= 0:
@@ -1253,9 +1215,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         old_id = self.formulation.id if self.formulation else None
         old_name = self.formulation.name if self.formulation else None
         old_signature = self.formulation.signature if self.formulation else None
-        self.formulation = Formulation(
-            id=old_id, name=old_name, signature=old_signature
-        )
+        self.formulation = Formulation(id=old_id, name=old_name, signature=old_signature)
         self.formulation.icl = self.use_in_icl
 
         current_model = self.model_combo.currentText()
@@ -1306,9 +1266,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 if len(x_vals) > 0 and len(y_vals) > 0 and len(x_vals) == len(y_vals):
                     clean_pairs = [
-                        (x, y)
-                        for x, y in zip(x_vals, y_vals)
-                        if x is not None and y is not None
+                        (x, y) for x, y in zip(x_vals, y_vals) if x is not None and y is not None
                     ]
                     if clean_pairs:
                         sx, sy = zip(*clean_pairs)
@@ -1344,16 +1302,14 @@ class FormulationConfigCard(QtWidgets.QFrame):
                         is_ready = False
                         msg = "Check Conc."
                         break
-                    if (
-                        ing_type == "Protein"
-                        and ProteinConfigDialog.protein_needs_completion(ingredient)
+                    if ing_type == "Protein" and ProteinConfigDialog.protein_needs_completion(
+                        ingredient
                     ):
                         is_ready = False
                         msg = "Incomplete Data"
                         break
-                    if (
-                        ing_type == "Buffer"
-                        and BufferConfigDialog.buffer_needs_completion(ingredient)
+                    if ing_type == "Buffer" and BufferConfigDialog.buffer_needs_completion(
+                        ingredient
                     ):
                         is_ready = False
                         msg = "Incomplete Data"
@@ -1382,14 +1338,11 @@ class FormulationConfigCard(QtWidgets.QFrame):
             if ingredient is not None:
                 if spin.value() <= 0.0:
                     return False
-                if (
-                    ing_type == "Protein"
-                    and ProteinConfigDialog.protein_needs_completion(ingredient)
-                ):
-                    return False
-                if ing_type == "Buffer" and BufferConfigDialog.buffer_needs_completion(
+                if ing_type == "Protein" and ProteinConfigDialog.protein_needs_completion(
                     ingredient
                 ):
+                    return False
+                if ing_type == "Buffer" and BufferConfigDialog.buffer_needs_completion(ingredient):
                     return False
         return True
 
@@ -1533,9 +1486,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                         if idx >= 0:
                             combo.setCurrentIndex(idx)
                         else:
-                            new_ingredient = self._create_ingredient_instance(
-                                ing_type, **details
-                            )
+                            new_ingredient = self._create_ingredient_instance(ing_type, **details)
                             if ing_type not in self.ingredients_master:
                                 self.ingredients_master[ing_type] = []
                             self.ingredients_master[ing_type].append(new_ingredient)
@@ -1561,12 +1512,8 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
                 if ing_type in self.active_ingredients:
                     combo, spin, _, _ = self.active_ingredients[ing_type]
-                    combo.setStyleSheet(
-                        "border: 1px solid #e53935; background-color: #ffebee;"
-                    )
-                    combo.setToolTip(
-                        f"Missing {ing_type} in imported file. Please select."
-                    )
+                    combo.setStyleSheet("border: 1px solid #e53935; background-color: #ffebee;")
+                    combo.setToolTip(f"Missing {ing_type} in imported file. Please select.")
 
             # Handle Missing Viscosity Data
             elif field == "Viscosity Data":
@@ -1607,9 +1554,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
     def clear_formulation(self):
         if self.is_measured:
-            QtWidgets.QMessageBox.warning(
-                self, "Action Denied", "Cannot clear imported data."
-            )
+            QtWidgets.QMessageBox.warning(self, "Action Denied", "Cannot clear imported data.")
             return
 
         for ing_type in list(self.active_ingredients.keys()):
@@ -1637,9 +1582,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
         self.btn_toggle.setArrowType(QtCore.Qt.ArrowType.UpArrow)
 
         if not hasattr(self, "_anim_accordion"):
-            self._anim_accordion = QtCore.QPropertyAnimation(
-                self.content_frame, b"maximumHeight"
-            )
+            self._anim_accordion = QtCore.QPropertyAnimation(self.content_frame, b"maximumHeight")
             self._anim_accordion.setDuration(250)
             self._anim_accordion.setEasingCurve(QtCore.QEasingCurve.OutCubic)
 
@@ -1655,9 +1598,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         self._anim_accordion.setStartValue(0)
         self._anim_accordion.setEndValue(target_height)
-        self._anim_accordion.finished.connect(
-            lambda: self.content_frame.setMaximumHeight(16777215)
-        )
+        self._anim_accordion.finished.connect(lambda: self.content_frame.setMaximumHeight(16777215))
         self._anim_accordion.start()
 
     def export_formulation(self):

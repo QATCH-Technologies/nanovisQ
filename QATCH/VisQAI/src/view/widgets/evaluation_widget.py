@@ -158,9 +158,7 @@ class EvaluationWidget(QtWidgets.QFrame):
         self.combo_metric = QtWidgets.QComboBox()
         self.combo_metric.setFixedHeight(28)
         self.combo_metric.setStyleSheet("background-color: #ffffff;")
-        dynamic_metrics = [
-            k for k in self.metric_mapping.keys() if k != "True vs. Predicted Plot"
-        ]
+        dynamic_metrics = [k for k in self.metric_mapping.keys() if k != "True vs. Predicted Plot"]
         sorted_display_names = ["True vs. Predicted Plot"] + sorted(dynamic_metrics)
         self.combo_metric.addItems(sorted_display_names)
         self.combo_metric.setCurrentIndex(0)

@@ -14,6 +14,7 @@ has been marked as finished; otherwise, runs may be compressed partially process
 Author: Alexander Ross
 Date: 2025-03-27
 """
+
 from datetime import datetime
 from enum import Enum
 import logging
@@ -27,11 +28,12 @@ import numpy as np
 
 try:
     from QATCH.common.logger import Logger as Log
+
     STANDALONE_MODE = False
 except:
     STANDALONE_MODE = True
 
-    class Log():
+    class Log:
         @staticmethod
         def d(t, s=""):
             logging.debug(f"{t} {s}")
@@ -44,6 +46,7 @@ except:
 
         def e(t, s=""):
             logging.error(f"{t} {s}")
+
 
 TAG = "[InterpTemps]"
 
@@ -151,10 +154,12 @@ class InterpTempsProcess(multiprocessing.Process):
     application to provide non-blocking prediction updates.
     """
 
-    def __init__(self,
-                 queue_log: multiprocessing.Queue,
-                 queue_cmd: multiprocessing.Queue,
-                 queue_out: multiprocessing.Queue) -> None:
+    def __init__(
+        self,
+        queue_log: multiprocessing.Queue,
+        queue_cmd: multiprocessing.Queue,
+        queue_out: multiprocessing.Queue,
+    ) -> None:
         """Initializes the InterpTempsProcess.
 
         Command Format:
@@ -267,24 +272,23 @@ class InterpTempsProcess(multiprocessing.Process):
             # Cache is blank if load fails.
             self._cache_reset()
 
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 # Read and validate header row.
                 csv_headers = next(f, "")
                 if not csv_headers:
-                    raise ValueError(
-                        f"CSV file '{filename}' is missing header row.")
+                    raise ValueError(f"CSV file '{filename}' is missing header row.")
 
                 # Read and validate first data row.
                 csv_firstrow = next(f, "")
                 if not csv_firstrow:
-                    raise ValueError(
-                        f"CSV file '{filename}' is missing data rows.")
+                    raise ValueError(f"CSV file '{filename}' is missing data rows.")
 
                 # Extract start time from the first data row.
                 parts = csv_firstrow.split(",")
                 if len(parts) < 2:
                     raise ValueError(
-                        f"CSV file '{filename}' first data row does not contain enough columns to extract start time.")
+                        f"CSV file '{filename}' first data row does not contain enough columns to extract start time."
+                    )
                 time_start = parts[1]
                 if not time_start:
                     raise ValueError("Start time is empty.")
@@ -297,9 +301,9 @@ class InterpTempsProcess(multiprocessing.Process):
                 lines = f.readlines()
                 if not lines:
                     raise ValueError(
-                        f"CSV file '{filename}' does not contain any data rows after the header.")
-                data = np.loadtxt(lines, delimiter=",",
-                                  skiprows=0, usecols=csv_cols)
+                        f"CSV file '{filename}' does not contain any data rows after the header."
+                    )
+                data = np.loadtxt(lines, delimiter=",", skiprows=0, usecols=csv_cols)
                 relative_time = data[:, 0]
                 temperature = data[:, 1]
 
@@ -308,9 +312,7 @@ class InterpTempsProcess(multiprocessing.Process):
 
             self._queueOut.put(
                 QueueResultFormat(
-                    filename=filename,
-                    result=True,
-                    details="Loaded temperature values to cache."
+                    filename=filename, result=True, details="Loaded temperature values to cache."
                 ).asdict()
             )
 
@@ -319,7 +321,8 @@ class InterpTempsProcess(multiprocessing.Process):
             limit: Optional[int] = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list += format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -327,9 +330,7 @@ class InterpTempsProcess(multiprocessing.Process):
 
             self._queueOut.put(
                 QueueResultFormat(
-                    filename=filename,
-                    result=False,
-                    details='\n'.join(a_list)
+                    filename=filename, result=False, details="\n".join(a_list)
                 ).asdict()
             )
 
@@ -362,12 +363,13 @@ class InterpTempsProcess(multiprocessing.Process):
         try:
             if not self._cache_valid:
                 Log.e(
-                    TAG, f"(FAIL): Cannot 'interp' with an invalid cache. Hint: Call 'load' first!")
+                    TAG, f"(FAIL): Cannot 'interp' with an invalid cache. Hint: Call 'load' first!"
+                )
                 self._queueOut.put(
                     QueueResultFormat(
                         filename=filename,
                         result=False,
-                        details="Cannot 'interp' with an invalid cache.\n Hint: Call 'load' first!"
+                        details="Cannot 'interp' with an invalid cache.\n Hint: Call 'load' first!",
                     ).asdict()
                 )
                 return
@@ -377,7 +379,7 @@ class InterpTempsProcess(multiprocessing.Process):
             interp_temps = []  # The array of interpolated temperatures.
             updated_rows = 0
 
-            with open(filename, 'r') as f:
+            with open(filename, "r") as f:
                 # Read and validate the CSV file contains a header row.
                 csv_headers = next(f, "")
                 if not csv_headers:
@@ -391,8 +393,7 @@ class InterpTempsProcess(multiprocessing.Process):
                 # Read and validate that the first row contains at least 2 columns
                 parts: List[str] = csv_firstrow.split(",")
                 if len(parts) < 2:
-                    raise ValueError(
-                        "CSV file's first data row does not contain enough columns.")
+                    raise ValueError("CSV file's first data row does not contain enough columns.")
                 time_start = parts[1]
 
                 # Reset file pointer and read lines at file head.
@@ -405,7 +406,10 @@ class InterpTempsProcess(multiprocessing.Process):
                     csv_cols: Tuple[int, int] = (2, 3)
 
                 data = np.loadtxt(
-                    lines.copy(), delimiter=",", skiprows=1, usecols=csv_cols,
+                    lines.copy(),
+                    delimiter=",",
+                    skiprows=1,
+                    usecols=csv_cols,
                 )
                 # Data is formated as (relative_time, temperature)
                 relative_time = data[:, 0]
@@ -415,22 +419,28 @@ class InterpTempsProcess(multiprocessing.Process):
                 file_start = self.time_string_to_seconds(time_start)
                 time_delta = file_start - self._cached_start
                 Log.d(TAG, f"time_delta = {time_delta}s")
-                Log.d(TAG, "Moved start relative time from " +
-                      f"{relative_time[0]} to {relative_time[0]+time_delta} secs")
+                Log.d(
+                    TAG,
+                    "Moved start relative time from "
+                    + f"{relative_time[0]} to {relative_time[0]+time_delta} secs",
+                )
                 relative_time += time_delta
 
                 # Calculate interpolated temperatures for missing ('nan') temperature values,
                 # then round to the nearest quarter.
                 interp_temps = self.round_to_quarter(
-                    np.interp(relative_time,
-                              self._cached_xp, self._cached_fp))
+                    np.interp(relative_time, self._cached_xp, self._cached_fp)
+                )
 
                 Log.d(
-                    TAG, f"Temps({len(interp_temps)}) = [{interp_temps[0]}, ..., {interp_temps[-1]}]")
+                    TAG,
+                    f"Temps({len(interp_temps)}) = [{interp_temps[0]}, ..., {interp_temps[-1]}]",
+                )
                 Log.d(
-                    TAG, f"np.min(Temps) = {np.min(interp_temps)}, np.max(Temps) = {np.max(interp_temps)}")
-                Log.d(
-                    TAG, f"Propagating temperatures for run \"{filename}\"...")
+                    TAG,
+                    f"np.min(Temps) = {np.min(interp_temps)}, np.max(Temps) = {np.max(interp_temps)}",
+                )
+                Log.d(TAG, f'Propagating temperatures for run "{filename}"...')
 
                 # Process each line, replacing occurrences of "nan" with interpolated temperatures.
                 temp_idx = 4
@@ -442,10 +452,11 @@ class InterpTempsProcess(multiprocessing.Process):
                             temp_idx = line.split(",").index("Temperature")
                         except:
                             Log.e(
-                                "Failed to find index of temperature data in secondary device capture.")
+                                "Failed to find index of temperature data in secondary device capture."
+                            )
                         continue
                     current_row = line.split(",")
-                    if current_row[temp_idx] in ['0.0', 'nan']:
+                    if current_row[temp_idx] in ["0.0", "nan"]:
                         # Missing temperature row.
                         try:
                             # NOTE: offset index by 1 due to skipped header row
@@ -454,13 +465,11 @@ class InterpTempsProcess(multiprocessing.Process):
                             lines[i] = ",".join(current_row)
                             updated_rows += 1
                         except IndexError as ie:
-                            Log.e(
-                                TAG, f"IndexError while processing line {i}: {ie}")
+                            Log.e(TAG, f"IndexError while processing line {i}: {ie}")
                             raise
                     else:
                         # Empty row, or non-nan/zero entry.
-                        Log.w(
-                            TAG, f"Skipping row {i}: it already is a valid temp value!")
+                        Log.w(TAG, f"Skipping row {i}: it already is a valid temp value!")
 
             # NOTE: uncomment the line below to compare in/out files
             # STANDALONE_MODE = True
@@ -469,7 +478,7 @@ class InterpTempsProcess(multiprocessing.Process):
                 filename = filename.replace(".csv", "_filled.csv")
 
             # Re-write the file with the updated temperature data.
-            with open(filename, 'w') as w:
+            with open(filename, "w") as w:
                 w.writelines(lines)
 
             Log.d(TAG, f"Written to file: '{filename}'")
@@ -481,22 +490,23 @@ class InterpTempsProcess(multiprocessing.Process):
             # Sanity check: ensure the number of updated rows equals the number of interpolated values.
             if updated_rows != len(interp_temps):
                 Log.e(
-                    TAG, f"(FAIL): Not all temperatures were propagated in the file! ({updated_rows} != {len(interp_temps)})")
+                    TAG,
+                    f"(FAIL): Not all temperatures were propagated in the file! ({updated_rows} != {len(interp_temps)})",
+                )
                 self._queueOut.put(
                     QueueResultFormat(
                         filename=filename,
                         result=False,
-                        details="Not all temperatures were propagated in the file."
+                        details="Not all temperatures were propagated in the file.",
                     ).asdict()
                 )
             else:
-                Log.d(
-                    TAG, "(SUCCESS): Propagated all temperature values to file.")
+                Log.d(TAG, "(SUCCESS): Propagated all temperature values to file.")
                 self._queueOut.put(
                     QueueResultFormat(
                         filename=filename,
                         result=True,
-                        details="Successfully propagated temperature values to file."
+                        details="Successfully propagated temperature values to file.",
                     ).asdict()
                 )
         except:
@@ -504,7 +514,8 @@ class InterpTempsProcess(multiprocessing.Process):
             limit: Optional[int] = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list += format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -512,9 +523,7 @@ class InterpTempsProcess(multiprocessing.Process):
 
             self._queueOut.put(
                 QueueResultFormat(
-                    filename=filename,
-                    result=False,
-                    details='\n'.join(a_list)
+                    filename=filename, result=False, details="\n".join(a_list)
                 ).asdict()
             )
 
@@ -529,13 +538,11 @@ class InterpTempsProcess(multiprocessing.Process):
             float: The number of seconds represented by the time string.
 
         Raises:
-            ValueError: When the input string does not match the format string provided. 
+            ValueError: When the input string does not match the format string provided.
         """
         time_object = datetime.strptime(time_string, format).time()
-        seconds = (time_object.hour * 3600) + \
-            (time_object.minute * 60) + time_object.second
-        Log.d(TAG, f"Time \"{time_string}\" converted to " +
-              f"{seconds} seconds (since midnight)")
+        seconds = (time_object.hour * 3600) + (time_object.minute * 60) + time_object.second
+        Log.d(TAG, f'Time "{time_string}" converted to ' + f"{seconds} seconds (since midnight)")
         return seconds
 
     def round_to_quarter(self, floats: np.ndarray):
@@ -584,15 +591,20 @@ class InterpTempsProcess(multiprocessing.Process):
         """
         try:
             # Verify essential attributes exist
-            if not hasattr(self, '_queueCmd') or not hasattr(self, '_queueOut') or not hasattr(self, '_queueLog'):
+            if (
+                not hasattr(self, "_queueCmd")
+                or not hasattr(self, "_queueOut")
+                or not hasattr(self, "_queueLog")
+            ):
                 raise AttributeError(
-                    "Required queue attributes '_queueCmd` and '_queueLog' are not set in the InterpTemps object.")
+                    "Required queue attributes '_queueCmd` and '_queueLog' are not set in the InterpTemps object."
+                )
             self._started.set()
 
             # Redirect stdout and stderr
             try:
-                sys.stdout = open(os.devnull, 'w')
-                sys.stderr = open(os.devnull, 'w')
+                sys.stdout = open(os.devnull, "w")
+                sys.stderr = open(os.devnull, "w")
             except Exception as e:
                 Log.e(TAG, f"Error redirecting stdout/stderr: {e}")
                 raise
@@ -608,10 +620,10 @@ class InterpTempsProcess(multiprocessing.Process):
             # Configure the multiprocessing logger
             try:
                 from multiprocessing.util import get_logger
+
                 multiprocessing_logger = get_logger()
                 if not multiprocessing_logger.handlers:
-                    raise RuntimeError(
-                        "No handlers found in multiprocessing logger.")
+                    raise RuntimeError("No handlers found in multiprocessing logger.")
                 multiprocessing_logger.handlers[0].setStream(sys.stderr)
                 multiprocessing_logger.setLevel(logging.WARNING)
             except Exception as e:
@@ -645,7 +657,7 @@ class InterpTempsProcess(multiprocessing.Process):
                             QueueResultFormat(
                                 filename=filename,
                                 result=False,
-                                details="Invalid command, missing required key(s)."
+                                details="Invalid command, missing required key(s).",
                             ).asdict()
                         )
                     elif action == str(ActionType.load):
@@ -654,8 +666,7 @@ class InterpTempsProcess(multiprocessing.Process):
                         self._interp(filename)
                 else:
                     if self._count:
-                        Log.i(
-                            TAG, f"Propagated temps to {self._count} secondary files (DONE)")
+                        Log.i(TAG, f"Propagated temps to {self._count} secondary files (DONE)")
                     else:
                         Log.i(TAG, "No run files modified (DONE)")
                     self.stop()
@@ -665,7 +676,8 @@ class InterpTempsProcess(multiprocessing.Process):
             limit: Optional[int] = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list += format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -673,9 +685,7 @@ class InterpTempsProcess(multiprocessing.Process):
 
             self._queueOut.put(
                 QueueResultFormat(
-                    filename="[MainLoop]",
-                    result=False,
-                    details='\n'.join(a_list)
+                    filename="[MainLoop]", result=False, details="\n".join(a_list)
                 ).asdict()
             )
 
@@ -717,8 +727,7 @@ class InterpTempsTest:
         self._queueLog = q
         self._queueCmd = multiprocessing.Queue()
         self._queueOut = multiprocessing.Queue()
-        self._test_process = InterpTempsProcess(
-            self._queueLog, self._queueCmd, self._queueOut)
+        self._test_process = InterpTempsProcess(self._queueLog, self._queueCmd, self._queueOut)
 
     def run(self):
         # start test process
@@ -731,25 +740,25 @@ class InterpTempsTest:
         self._test_process._queueCmd.put(
             QueueCommandFormat(
                 r"logged_data\1_13820290\D250224W3_4CP_B_1_1\capture\D250224W3_4CP_B_1_3rd.csv",
-                ActionType.load
+                ActionType.load,
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
                 r"logged_data\2_15548760\D250224W3_4CP_B_1_2\capture\D250224W3_4CP_B_1_3rd.csv",
-                ActionType.interp
+                ActionType.interp,
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
                 r"logged_data\3_15519000\D250224W3_4CP_B_1_3\capture\D250224W3_4CP_B_1_3rd.csv",
-                ActionType.interp
+                ActionType.interp,
             ).asdict()
         )
         self._test_process._queueCmd.put(
             QueueCommandFormat(
                 r"logged_data\4_15549230\D250224W3_4CP_B_1_4\capture\D250224W3_4CP_B_1_3rd.csv",
-                ActionType.interp
+                ActionType.interp,
             ).asdict()
         )
         # signal finished, ok to end process
@@ -759,9 +768,8 @@ class InterpTempsTest:
         while self._test_process.is_running():
             if not self._test_process._queueOut.empty():
                 result = self._test_process._queueOut.get()
-                Log.i(
-                    f"Got Result: '{result['result']}' for filename '{result['filename']}'")
-                if len(result['details']):
+                Log.i(f"Got Result: '{result['result']}' for filename '{result['filename']}'")
+                if len(result["details"]):
                     Log.i(f"Result Details: {result['details']}")
         self._test_process.join()
 
@@ -769,8 +777,9 @@ class InterpTempsTest:
         q = multiprocessing.Queue()
         # this is the handler for all log records
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(
-            "%(levelname)s: %(asctime)s - %(process)s - %(message)s"))
+        handler.setFormatter(
+            logging.Formatter("%(levelname)s: %(asctime)s - %(process)s - %(message)s")
+        )
         # ql gets records from the queue and sends them to the handler
         ql = QueueListener(q, handler)
         ql.start()
@@ -781,5 +790,5 @@ class InterpTempsTest:
         return ql, q
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     InterpTempsTest().run()

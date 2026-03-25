@@ -20,8 +20,8 @@ Version:
 import base64
 import importlib.util
 import json
-import sys
 from pathlib import Path
+import sys
 from typing import Any, Dict
 
 from cryptography.exceptions import InvalidSignature

@@ -118,23 +118,17 @@ class FilterMenuButton(QtWidgets.QPushButton):
         if len(selected) == 0:
             self.setText("None selected")
             self.setStyleSheet(
-                self.styleSheet().replace(
-                    "border: 1px solid #d1d5db", "border: 1px solid #e57373"
-                )
+                self.styleSheet().replace("border: 1px solid #d1d5db", "border: 1px solid #e57373")
             )  # Red border warning
         elif len(selected) == total:
             self.setText("All selected")
             self.setStyleSheet(
-                self.styleSheet().replace(
-                    "border: 1px solid #e57373", "border: 1px solid #d1d5db"
-                )
+                self.styleSheet().replace("border: 1px solid #e57373", "border: 1px solid #d1d5db")
             )
         else:
             self.setText(f"{len(selected)} selected")
             self.setStyleSheet(
-                self.styleSheet().replace(
-                    "border: 1px solid #e57373", "border: 1px solid #d1d5db"
-                )
+                self.styleSheet().replace("border: 1px solid #e57373", "border: 1px solid #d1d5db")
             )
 
     def get_selected_items(self):

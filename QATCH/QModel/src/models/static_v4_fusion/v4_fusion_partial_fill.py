@@ -1,7 +1,8 @@
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Set, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List, Optional, Set
-from dataclasses import dataclass
 
 
 @dataclass
@@ -13,24 +14,24 @@ class POICandidate:
 
 
 class PartialFillDetector:
-    def __init__(self,
-                 min_confidence_threshold: float = 0.3,
-                 confidence_decay_factor: float = 0.8,
-                 min_relative_distance: float = 0.1,
-                 confidence_boost_threshold: float = 0.45):
+    def __init__(
+        self,
+        min_confidence_threshold: float = 0.3,
+        confidence_decay_factor: float = 0.8,
+        min_relative_distance: float = 0.1,
+        confidence_boost_threshold: float = 0.45,
+    ):
         self.min_confidence_threshold = min_confidence_threshold
         self.confidence_decay_factor = confidence_decay_factor
         self.min_relative_distance = min_relative_distance
         self.confidence_boost_threshold = confidence_boost_threshold
 
-    def process_predictions(self,
-                            df: pd.DataFrame,
-                            clf_results: Dict[int, Tuple[int, float]],
-                            poi2_idx: int = -1) -> Dict[int, Tuple[int, float]]:
+    def process_predictions(
+        self, df: pd.DataFrame, clf_results: Dict[int, Tuple[int, float]], poi2_idx: int = -1
+    ) -> Dict[int, Tuple[int, float]]:
         # First, check if we have valid detections for all POIs
         all_pois_detected = all(
-            poi_num in clf_results and clf_results[poi_num][0] != -1
-            for poi_num in [4, 5, 6]
+            poi_num in clf_results and clf_results[poi_num][0] != -1 for poi_num in [4, 5, 6]
         )
 
         # Extract initial positions
@@ -51,11 +52,10 @@ class PartialFillDetector:
         # Partial fill case - apply original logic
         return self._handle_partial_fill(df, clf_results, poi2_idx)
 
-    def _validate_full_configuration(self,
-                                     df: pd.DataFrame,
-                                     positions: Dict[int, Tuple[int, float]],
-                                     poi2_idx: int) -> bool:
-        r_time = df['Relative_time']
+    def _validate_full_configuration(
+        self, df: pd.DataFrame, positions: Dict[int, Tuple[int, float]], poi2_idx: int
+    ) -> bool:
+        r_time = df["Relative_time"]
         poi4_time = r_time[positions[4][0]]
         poi5_time = r_time[positions[5][0]]
         poi6_time = r_time[positions[6][0]]
@@ -84,9 +84,9 @@ class PartialFillDetector:
 
         return True
 
-    def _boost_valid_configuration(self,
-                                   df: pd.DataFrame,
-                                   positions: Dict[int, Tuple[int, float]]) -> Dict[int, Tuple[int, float]]:
+    def _boost_valid_configuration(
+        self, df: pd.DataFrame, positions: Dict[int, Tuple[int, float]]
+    ) -> Dict[int, Tuple[int, float]]:
         boosted_positions = {}
 
         for poi_num, (idx, conf) in positions.items():
@@ -98,18 +98,13 @@ class PartialFillDetector:
 
         return boosted_positions
 
-    def _fix_invalid_configuration(self,
-                                   df: pd.DataFrame,
-                                   positions: Dict[int, Tuple[int, float]],
-                                   poi2_idx: int) -> Dict[int, Tuple[int, float]]:
-        high_conf_pois = {
-            poi_num for poi_num, (_, conf) in positions.items()
-            if conf > 0.7
-        }
+    def _fix_invalid_configuration(
+        self, df: pd.DataFrame, positions: Dict[int, Tuple[int, float]], poi2_idx: int
+    ) -> Dict[int, Tuple[int, float]]:
+        high_conf_pois = {poi_num for poi_num, (_, conf) in positions.items() if conf > 0.7}
 
         if not high_conf_pois:
-            confidences = [(conf, poi_num)
-                           for poi_num, (_, conf) in positions.items()]
+            confidences = [(conf, poi_num) for poi_num, (_, conf) in positions.items()]
             confidences.sort(reverse=True)
             high_conf_pois = {confidences[0][1], confidences[1][1]}
 
@@ -130,12 +125,14 @@ class PartialFillDetector:
 
         return fixed_positions
 
-    def _find_valid_position(self,
-                             df: pd.DataFrame,
-                             target_poi: int,
-                             fixed_positions: Dict[int, Tuple[int, float]],
-                             original_positions: Dict[int, Tuple[int, float]],
-                             poi2_idx: int) -> Optional[Tuple[int, float]]:
+    def _find_valid_position(
+        self,
+        df: pd.DataFrame,
+        target_poi: int,
+        fixed_positions: Dict[int, Tuple[int, float]],
+        original_positions: Dict[int, Tuple[int, float]],
+        poi2_idx: int,
+    ) -> Optional[Tuple[int, float]]:
 
         min_idx = 0
         max_idx = len(df) - 1
@@ -163,17 +160,15 @@ class PartialFillDetector:
                 suggested_idx = int(poi4_idx + (poi6_idx - poi4_idx) * 0.45)
                 original_idx = original_positions[5][0]
                 distance_penalty = abs(suggested_idx - original_idx) / len(df)
-                new_conf = max(
-                    0.4, original_positions[5][1] - distance_penalty)
+                new_conf = max(0.4, original_positions[5][1] - distance_penalty)
 
                 return (suggested_idx, new_conf)
 
         return None
 
-    def _handle_partial_fill(self,
-                             df: pd.DataFrame,
-                             clf_results: Dict[int, Tuple[int, float]],
-                             poi2_idx: int) -> Dict[int, Tuple[int, float]]:
+    def _handle_partial_fill(
+        self, df: pd.DataFrame, clf_results: Dict[int, Tuple[int, float]], poi2_idx: int
+    ) -> Dict[int, Tuple[int, float]]:
         detected_pois = set()
         missing_pois = set()
         positions = {}
@@ -187,22 +182,21 @@ class PartialFillDetector:
         if missing_pois:
             if 6 in detected_pois:
                 if 4 in missing_pois:
-                    positions[4] = self._backtrack_find_poi(
-                        df, 4, positions, poi2_idx)
+                    positions[4] = self._backtrack_find_poi(df, 4, positions, poi2_idx)
                 if 5 in missing_pois:
-                    positions[5] = self._backtrack_find_poi(
-                        df, 5, positions, poi2_idx)
+                    positions[5] = self._backtrack_find_poi(df, 5, positions, poi2_idx)
             elif 5 in detected_pois and 4 in missing_pois:
-                positions[4] = self._backtrack_find_poi(
-                    df, 4, positions, poi2_idx)
+                positions[4] = self._backtrack_find_poi(df, 4, positions, poi2_idx)
 
         return positions
 
-    def _backtrack_find_poi(self,
-                            df: pd.DataFrame,
-                            target_poi: int,
-                            existing_positions: Dict[int, Tuple[int, float]],
-                            poi2_idx: int) -> Tuple[int, float]:
+    def _backtrack_find_poi(
+        self,
+        df: pd.DataFrame,
+        target_poi: int,
+        existing_positions: Dict[int, Tuple[int, float]],
+        poi2_idx: int,
+    ) -> Tuple[int, float]:
         min_idx = poi2_idx + 1 if poi2_idx != -1 else 0
         max_idx = len(df) - 1
 
@@ -232,8 +226,7 @@ class PartialFillDetector:
         suggested_idx = (min_idx + max_idx) // 2
         return (suggested_idx, self.min_confidence_threshold * self.confidence_decay_factor * 0.8)
 
-    def _calculate_dynamic_threshold(self,
-                                     positions: Dict[int, Tuple[int, float]]) -> float:
+    def _calculate_dynamic_threshold(self, positions: Dict[int, Tuple[int, float]]) -> float:
         confidences = [conf for _, conf in positions.values()]
 
         if not confidences:
@@ -247,7 +240,6 @@ class PartialFillDetector:
         elif max_conf > 0.6:
             dynamic_threshold = max(0.4, mean_conf * 0.7)
         else:
-            dynamic_threshold = max(
-                self.min_confidence_threshold, mean_conf * 0.6)
+            dynamic_threshold = max(self.min_confidence_threshold, mean_conf * 0.6)
 
         return dynamic_threshold

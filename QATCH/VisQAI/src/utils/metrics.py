@@ -150,9 +150,7 @@ class Metrics:
         mask = denominator != 0
         if not mask.any():
             return 0.0
-        smape = 100 * np.mean(
-            2 * np.abs(actual[mask] - predicted[mask]) / denominator[mask]
-        )
+        smape = 100 * np.mean(2 * np.abs(actual[mask] - predicted[mask]) / denominator[mask])
         return smape
 
     @staticmethod
@@ -285,9 +283,7 @@ class Metrics:
         lower_bound = actual * (1 - tolerance)
         upper_bound = actual * (1 + tolerance)
 
-        within_tolerance = (
-            (predicted >= lower_bound) & (predicted <= upper_bound)
-        ).sum()
+        within_tolerance = ((predicted >= lower_bound) & (predicted <= upper_bound)).sum()
         return (within_tolerance / len(df)) * 100
 
     @staticmethod
@@ -485,9 +481,7 @@ class Metrics:
 
                 if include_confidence_intervals and not np.isnan(value):
                     # Bootstrap confidence intervals
-                    ci_low, ci_high = self._bootstrap_ci(
-                        results_df, metric_name, n_bootstrap=1000
-                    )
+                    ci_low, ci_high = self._bootstrap_ci(results_df, metric_name, n_bootstrap=1000)
                     overall_metrics[f"{metric_name}_ci_low"] = ci_low
                     overall_metrics[f"{metric_name}_ci_high"] = ci_high
 

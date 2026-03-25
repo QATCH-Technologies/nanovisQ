@@ -1,13 +1,14 @@
-from QATCH.core.constants import Constants
-from subprocess import Popen, PIPE
+import argparse
 from datetime import date
 import logging
 import os
 import shutil
-import argparse
+from subprocess import PIPE, Popen
+
+from QATCH.core.constants import Constants
 
 
-class QatchTagger():
+class QatchTagger:
 
     def __init__(self):
 
@@ -15,10 +16,8 @@ class QatchTagger():
         log.setLevel(logging.DEBUG)
 
         # set up argument parser
-        parser = argparse.ArgumentParser(
-            description='QATCH nanovisQ software tagger utility')
-        parser.add_argument("--nightly", action="store_true",
-                            help="Set to build a nightly build")
+        parser = argparse.ArgumentParser(description="QATCH nanovisQ software tagger utility")
+        parser.add_argument("--nightly", action="store_true", help="Set to build a nightly build")
 
         # get arguments
         args = parser.parse_args()
@@ -58,15 +57,18 @@ class QatchTagger():
 
         # MOVE TRUNK TO TAG (IF NOT EXISTS)
         try:
-            skippers = [f for f in os.listdir(path_to_trunk) if f.startswith(
-                "QATCH_Q-1_FW_py") and f != f"QATCH_Q-1_FW_py_{Constants.best_fw_version}"]
+            skippers = [
+                f
+                for f in os.listdir(path_to_trunk)
+                if f.startswith("QATCH_Q-1_FW_py")
+                and f != f"QATCH_Q-1_FW_py_{Constants.best_fw_version}"
+            ]
             # NOTE: tools files copied separately, below
             skippers.extend(["build", "tools"])
             if os.path.exists(path_to_tag):
                 if len(os.listdir(path_to_tag)) == 0:
                     # remove empty folder
-                    logging.warning(
-                        "Removing empty tag directory (probably from failed prior run)")
+                    logging.warning("Removing empty tag directory (probably from failed prior run)")
                     os.rmdir(path_to_tag)
 
             os.makedirs(path_to_tag)  # may raise OSError
@@ -82,9 +84,14 @@ class QatchTagger():
 
             # Copy required files from "tools"
             tools_files = [  # NOTE: skip "installer" files
-                "gpl3.txt", "README.md", "teensy_loader_cli.exe",   # tool-teensy
-                "LICENSE.txt", "README.md", "tycmd.exe",            # tytools
-                "clear_tokens.bat", "reset_app_db.bat"              # scripts
+                "gpl3.txt",
+                "README.md",
+                "teensy_loader_cli.exe",  # tool-teensy
+                "LICENSE.txt",
+                "README.md",
+                "tycmd.exe",  # tytools
+                "clear_tokens.bat",
+                "reset_app_db.bat",  # scripts
             ]
             if self.args.nightly:  # add debug tools for nightly builds
                 tools_files.extend(["TyCommander.exe", "TyUploader.exe"])
@@ -92,8 +99,7 @@ class QatchTagger():
                 for f in filenames:
                     if f in tools_files:
                         src = os.path.join(dirpath, f)
-                        dst = os.path.join(path_to_tag,
-                                           os.path.relpath(src, path_to_trunk))
+                        dst = os.path.join(path_to_tag, os.path.relpath(src, path_to_trunk))
                         os.makedirs(os.path.dirname(dst), exist_ok=True)
                         shutil.copy2(src, dst)
 
@@ -115,11 +121,17 @@ class QatchTagger():
 
         # ONLY KEEP THE KEEPERS IN TAG FOR PYTHON CODE
         try:
-            keepers = ["docs", "QATCH", f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
-                       "tools", "app.py", "launch.bat", "requirements.txt"]
+            keepers = [
+                "docs",
+                "QATCH",
+                f"QATCH_Q-1_FW_py_{Constants.best_fw_version}",
+                "tools",
+                "app.py",
+                "launch.bat",
+                "requirements.txt",
+            ]
             if not self.args.nightly:
-                path_to_nightly_dir = os.path.join(
-                    path_to_tag, "QATCH", "nightly")
+                path_to_nightly_dir = os.path.join(path_to_tag, "QATCH", "nightly")
                 if os.path.isdir(path_to_nightly_dir):
                     logging.debug(f"Removing: {path_to_nightly_dir}")
                     shutil.rmtree(path_to_nightly_dir)
@@ -138,31 +150,28 @@ class QatchTagger():
                         os.remove(f)
                     else:
                         raise Exception(
-                            f"Unknown file type: '{os.path.basename(f)}' is not a file or folder.")
+                            f"Unknown file type: '{os.path.basename(f)}' is not a file or folder."
+                        )
 
             fw_build_path = os.path.join(path_to_tag, keepers[2], "build")
             if os.path.exists(fw_build_path):
                 logging.debug(f"Removing FW Build path: {fw_build_path}")
                 shutil.rmtree(fw_build_path)
 
-            fw_image_path = os.path.join(
-                path_to_tag, keepers[2], f"{keepers[2]}.ino.TEENSY41.hex")
+            fw_image_path = os.path.join(path_to_tag, keepers[2], f"{keepers[2]}.ino.TEENSY41.hex")
             if os.path.exists(fw_image_path):
                 logging.debug(f"Found FW image: {fw_image_path}")
             else:
                 if self.args.nightly:
-                    logging.warning(
-                        f"Missing FW image (nightly build): {fw_image_path}")
+                    logging.warning(f"Missing FW image (nightly build): {fw_image_path}")
                 else:
                     raise Exception(f"Missing FW image: {fw_image_path}")
 
-            assets_path = os.path.join(
-                path_to_tag,  "QATCH", "VisQAI", "assets")
+            assets_path = os.path.join(path_to_tag, "QATCH", "VisQAI", "assets")
             for filename in os.listdir(assets_path):
                 if filename.lower().endswith(".csv"):
                     formula_csv = os.path.join(assets_path, filename)
-                    logging.debug(
-                        f"Removing Formulation CSV from tag: {formula_csv}")
+                    logging.debug(f"Removing Formulation CSV from tag: {formula_csv}")
                     os.remove(formula_csv)
 
         except Exception as e:
@@ -172,13 +181,14 @@ class QatchTagger():
         # CREATE THE PYTHON CODE ZIP
         try:
             logging.info("Making ZIP of python code... (may take a while)")
-            archive_name = os.path.join(os.path.dirname(
-                path_to_tag), os.path.basename(path_to_tag).split()[0]) + "_py"
+            archive_name = (
+                os.path.join(os.path.dirname(path_to_tag), os.path.basename(path_to_tag).split()[0])
+                + "_py"
+            )
             zip_py = shutil.make_archive(archive_name, "zip", path_to_tag)
             logging.debug(f"Created: {zip_py}")
             logging.debug("Moving to 'dist' folder...")
-            move_to = os.path.join(path_to_tag, "dist",
-                                   os.path.basename(zip_py))
+            move_to = os.path.join(path_to_tag, "dist", os.path.basename(zip_py))
             os.makedirs(os.path.dirname(move_to))
             os.rename(zip_py, move_to)
             zip_py = move_to
@@ -193,10 +203,8 @@ class QatchTagger():
             # MOVE BACK IN THE PRE-COMPILED EXE TO DIST FOLDER
             try:
                 logging.debug("Moving EXE dist to tag...")
-                path_to_dist_src = os.path.join(
-                    path_to_trunk, "dist", "QATCH nanovisQ")
-                path_to_dist_dst = os.path.join(
-                    path_to_tag, "dist", "QATCH nanovisQ")
+                path_to_dist_src = os.path.join(path_to_trunk, "dist", "QATCH nanovisQ")
+                path_to_dist_dst = os.path.join(path_to_tag, "dist", "QATCH nanovisQ")
                 shutil.copytree(path_to_dist_src, path_to_dist_dst)
                 logging.debug("Moved successfully.")
 
@@ -232,12 +240,12 @@ class QatchTagger():
 
             # CREATE THE EXE CODE ZIP
             try:
-                logging.info(
-                    "Making ZIP of bundled code... (may take a while)")
-                archive_name = os.path.join(
-                    path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_exe"
-                zip_exe = shutil.make_archive(
-                    archive_name, "zip", path_to_dist_dst)
+                logging.info("Making ZIP of bundled code... (may take a while)")
+                archive_name = (
+                    os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0])
+                    + "_exe"
+                )
+                zip_exe = shutil.make_archive(archive_name, "zip", path_to_dist_dst)
                 logging.debug(f"Removing {path_to_dist_dst}")
                 shutil.rmtree(path_to_dist_dst)
                 logging.info(f"Bundled ZIP: {zip_exe}")
@@ -248,14 +256,27 @@ class QatchTagger():
 
             # CREATE THE INSTALLER CODE ZIP USING INSTALLER FROM DEV TOOLS
             try:
-                logging.info(
-                    "Making ZIP of installer code... (may take a while)")
+                logging.info("Making ZIP of installer code... (may take a while)")
                 installer_version = "1.0.2.3"
                 # archive_name = os.path.join(path_to_tag, "dist", os.path.basename(path_to_tag).split()[0]) + "_installer"
                 installer_src = os.path.join(
-                    path_to_trunk, "tools", "installer", "tags", installer_version, "dist", "QATCH.installer.exe")
+                    path_to_trunk,
+                    "tools",
+                    "installer",
+                    "tags",
+                    installer_version,
+                    "dist",
+                    "QATCH.installer.exe",
+                )
                 installer_crc = os.path.join(
-                    path_to_trunk, "tools", "installer", "tags", installer_version, "dist", "installer.checksum")
+                    path_to_trunk,
+                    "tools",
+                    "installer",
+                    "tags",
+                    installer_version,
+                    "dist",
+                    "installer.checksum",
+                )
                 # installer_dst = os.path.join(path_to_tag, "dist")  # , "installer")
                 os.makedirs(installer_dst, exist_ok=True)
                 shutil.copy2(installer_src, installer_dst)
@@ -265,40 +286,31 @@ class QatchTagger():
                 # logging.debug(f"Removing {installer_dst}")
                 # shutil.rmtree(installer_dst)
                 # logging.info(f"Installer ZIP: {zip_installer}")
-                logging.info(
-                    f"Installer EXE: {os.path.join(installer_dst, 'QATCH.installer.exe')}")
+                logging.info(f"Installer EXE: {os.path.join(installer_dst, 'QATCH.installer.exe')}")
 
             except Exception as e:
                 logging.error(e)
                 return
 
         # CREATE DEFAULT TARGETS FILE
-        targets_path = os.path.join(installer_dst, 'targets.csv')
+        targets_path = os.path.join(installer_dst, "targets.csv")
         os.makedirs(installer_dst, exist_ok=True)
-        with open(targets_path, 'w') as f:
+        with open(targets_path, "w") as f:
             # change file contents to "ALL" after tag verification tests PASS
             f.write("WINDOWS-AN4Q851")
 
         # PUSH THE NEW TAG TO THE REPO
         try:
             # installer_dst = os.path.join(path_to_tag, "dist")
-            script_path = os.path.join(os.getcwd(), 'push_tag.bat')
-            logging.info(
-                f"Updating '{os.path.basename(script_path)}' script...")
-            with open(script_path, 'w') as f:
-                f.write(
-                    f"git tag -a {Constants.app_version} -m \"{tag_name}\"\n")
-                f.write(
-                    f"git push origin {Constants.app_version}\n")
-                f.write(
-                    f"git tag -l --sort=taggerdate > tags.txt\n")
-                f.write(
-                    f"call filter_yanked_tags\n")
-                f.write(
-                    f"REM move 'tags.txt' to 'dist' folder\n")
-                f.write(
-                    f"pause"
-                )
+            script_path = os.path.join(os.getcwd(), "push_tag.bat")
+            logging.info(f"Updating '{os.path.basename(script_path)}' script...")
+            with open(script_path, "w") as f:
+                f.write(f'git tag -a {Constants.app_version} -m "{tag_name}"\n')
+                f.write(f"git push origin {Constants.app_version}\n")
+                f.write(f"git tag -l --sort=taggerdate > tags.txt\n")
+                f.write(f"call filter_yanked_tags\n")
+                f.write(f"REM move 'tags.txt' to 'dist' folder\n")
+                f.write(f"pause")
 
             if self.args.nightly:
                 push = "no"
@@ -306,9 +318,15 @@ class QatchTagger():
                 push = input("Enter 'push' to tag now: ").lower()
             if push == "push":
                 logging.info("Pushing tag to origin...")
-                p = Popen(script_path, cwd=os.path.dirname(script_path),
-                          shell=True, stdin=PIPE, stdout=PIPE, stderr=PIPE)
-                stdout, stderr = p.communicate(b'exit\n')
+                p = Popen(
+                    script_path,
+                    cwd=os.path.dirname(script_path),
+                    shell=True,
+                    stdin=PIPE,
+                    stdout=PIPE,
+                    stderr=PIPE,
+                )
+                stdout, stderr = p.communicate(b"exit\n")
                 if stdout is not None:
                     for line in stdout.decode().splitlines():
                         line = line.strip()
@@ -323,28 +341,27 @@ class QatchTagger():
                     logging.info("Successfully pushed tag to origin.")
                 else:
                     logging.error(
-                        f"Failed to push tag. Return code: {p.returncode}. Check debug script output above.")
+                        f"Failed to push tag. Return code: {p.returncode}. Check debug script output above."
+                    )
 
                 logging.info("Moving 'tags.txt' to 'dist' folder...")
-                tags_path = os.path.join(os.getcwd(), 'tags.txt')
-                move_to = os.path.join(
-                    installer_dst, os.path.basename(tags_path))
+                tags_path = os.path.join(os.getcwd(), "tags.txt")
+                move_to = os.path.join(installer_dst, os.path.basename(tags_path))
                 if not os.path.exists(tags_path):
-                    raise FileNotFoundError(
-                        f"Missing file: \"{tags_path}\"")
+                    raise FileNotFoundError(f'Missing file: "{tags_path}"')
                 if os.path.exists(move_to):
-                    raise PermissionError(
-                        f"File already exists: \"{move_to}\"")
+                    raise PermissionError(f'File already exists: "{move_to}"')
                 shutil.copyfile(tags_path, move_to)
 
             else:
                 logging.warning(
-                    "User declined tagging. Not pushing tag to repo. Run 'push_tag.bat' when ready.")
+                    "User declined tagging. Not pushing tag to repo. Run 'push_tag.bat' when ready."
+                )
 
         except Exception as e:
             logging.error(e)
             return
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     QatchTagger().run()

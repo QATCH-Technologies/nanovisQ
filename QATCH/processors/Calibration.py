@@ -1,21 +1,24 @@
+import logging
+from logging.handlers import QueueHandler
 import multiprocessing
-from QATCH.core.constants import Constants
+import os
+import sys
+from time import time
+
+import numpy as np
+
+# import scipy.signal # unused
+from numpy import loadtxt
+from serial.tools import list_ports
+
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.logger import Logger as Log
+from QATCH.core.constants import Constants
 
 # from progress.bar import Bar
 # from progressbar import Bar, Percentage, ProgressBar, RotatingMarker, Timer
 
-import sys
-import os
-from time import time
-from serial.tools import list_ports
-import numpy as np
-# import scipy.signal # unused
-from numpy import loadtxt
-import logging
-from logging.handlers import QueueHandler
 
 if Constants.serial_simulate_device:
     from QATCH.processors.Simulator import serial  # simulator
@@ -51,8 +54,7 @@ class CalibrationProcess(multiprocessing.Process):
     def baseline_correction(self, readFREQ, data_mag, data_ph=None):
 
         # input signal Amplitude
-        (self._polyfitted_all, self._coeffs_all) = self.baseline_estimation(
-            readFREQ, data_mag, 8)
+        (self._polyfitted_all, self._coeffs_all) = self.baseline_estimation(readFREQ, data_mag, 8)
         self._mag_baseline_corrected_all = data_mag - self._polyfitted_all
 
         # self._mag_baseline_corrected_all = self.fft_filter(readFREQ, self._mag_baseline_corrected_all)
@@ -62,28 +64,29 @@ class CalibrationProcess(multiprocessing.Process):
 
         # input signal Phase
         (self._polyfitted_all_phase, self._coeffs_all_phase) = self.baseline_estimation(
-            readFREQ, data_ph, 8)
+            readFREQ, data_ph, 8
+        )
         self._phase_beseline_corrected_all = data_ph - self._polyfitted_all_phase
         return self._mag_baseline_corrected_all, self._phase_beseline_corrected_all
 
     def fft_filter(self, x, y):
-        import numpy as np
         import matplotlib.pyplot as plt
-        from scipy.fftpack import rfft, irfft, fftfreq, fft
+        import numpy as np
+        from scipy.fftpack import fft, fftfreq, irfft, rfft
 
         # Number of samplepoints
         N = len(x)
         # sample spacing
-        T = x[1]-x[0]
+        T = x[1] - x[0]
 
         yf = fft(y)
-        xf = np.linspace(0.0, 1.0/(2.0*T), N//2)
+        xf = np.linspace(0.0, 1.0 / (2.0 * T), N // 2)
         # fft end
 
         f_signal = rfft(y)
 
         cut_f_signal = f_signal.copy()
-        limit = np.amax(f_signal)/10
+        limit = np.amax(f_signal) / 10
         for i in range(len(cut_f_signal)):
             if np.abs(cut_f_signal[i]) > limit:
                 cut_f_signal[i] = 0
@@ -120,11 +123,11 @@ class CalibrationProcess(multiprocessing.Process):
         #######################################
 
         # sort frequencies of peaks in order of descending magnitude
-        dtypes = [('freq', int), ('mag', float)]
+        dtypes = [("freq", int), ("mag", float)]
         values = np.vstack((freq, mag)).T
         values = list(map(tuple, values))
         array = np.array(values, dtype=dtypes)
-        sorted = np.sort(array, order='mag')[::-1]
+        sorted = np.sort(array, order="mag")[::-1]
 
         # find the relative extrema for magnitude
         tmp_max_mag = np.linspace(0, 0, 10)
@@ -140,13 +143,17 @@ class CalibrationProcess(multiprocessing.Process):
             this_freq = sorted[x][0]
             this_peak = int(this_freq / 10e6)
             if this_peak in peaks_to_find:
-                allow_drift = (2.5 + 1*this_peak) * 1e6
-                target_freq = (5 + 10*this_peak) * 1e6
+                allow_drift = (2.5 + 1 * this_peak) * 1e6
+                target_freq = (5 + 10 * this_peak) * 1e6
                 actual_drift = abs(target_freq - this_freq)
                 if actual_drift < allow_drift:
                     peaks_to_find.remove(this_peak)
-                    Log.i(TAG, "Found peak {} at {:8.0f} with drift (allowed = {:7.0f}, actual = {:7.0f}) Hz".format(
-                        this_peak, this_freq, allow_drift, actual_drift))
+                    Log.i(
+                        TAG,
+                        "Found peak {} at {:8.0f} with drift (allowed = {:7.0f}, actual = {:7.0f}) Hz".format(
+                            this_peak, this_freq, allow_drift, actual_drift
+                        ),
+                    )
                     tmp_max_mag[numPeaks] = this_freq
                     tmp_max_mag_i[numPeaks] = np.where(freq == this_freq)[0][0]
                     numPeaks += 1
@@ -160,12 +167,19 @@ class CalibrationProcess(multiprocessing.Process):
             if len(peaks_to_find) == 0:
                 break
         if ignored_count != 0:
-            Log.w(TAG, "WARNING: {} bigger peaks were ignored (too much drift) for the following overtone(s): {}".format(
-                ignored_count, ignored_peaks))
             Log.w(
-                TAG, "Please confirm these peaks were detected correctly. Repeat Initialize if needed.")
+                TAG,
+                "WARNING: {} bigger peaks were ignored (too much drift) for the following overtone(s): {}".format(
+                    ignored_count, ignored_peaks
+                ),
+            )
+            Log.w(
+                TAG,
+                "Please confirm these peaks were detected correctly. Repeat Initialize if needed.",
+            )
         Log.i(
-            TAG, f"The largest peak magnitude detected is: {max_peak_mag} dB @ {tmp_max_mag[0]} Hz")
+            TAG, f"The largest peak magnitude detected is: {max_peak_mag} dB @ {tmp_max_mag[0]} Hz"
+        )
         # trigger failure if largest peak is too small (no crystal)
         if max_peak_mag < padding_size_dB:
             tmp_max_mag[numPeaks] = freq[0]
@@ -178,13 +192,13 @@ class CalibrationProcess(multiprocessing.Process):
         for x in range(numPeaks):  # for each peak found
             i = int(tmp_max_mag_i[x])
             limit = mag[i] - padding_size_dB
-            for y in range(1, max_search_dist+1):  # scan left and right from peak
-                if i-y >= 0:
-                    if (mag[i-y] < limit or y == max_search_dist) and mag_bounds_L[x] == 0:
-                        mag_bounds_L[x] = freq[i-y]  # record L bound
-                if i+y < len(mag):
-                    if (mag[i+y] < limit or y == max_search_dist) and mag_bounds_R[x] == 0:
-                        mag_bounds_R[x] = freq[i+y]  # record R bound
+            for y in range(1, max_search_dist + 1):  # scan left and right from peak
+                if i - y >= 0:
+                    if (mag[i - y] < limit or y == max_search_dist) and mag_bounds_L[x] == 0:
+                        mag_bounds_L[x] = freq[i - y]  # record L bound
+                if i + y < len(mag):
+                    if (mag[i + y] < limit or y == max_search_dist) and mag_bounds_R[x] == 0:
+                        mag_bounds_R[x] = freq[i + y]  # record R bound
                 if not (mag_bounds_L[x] == 0 or mag_bounds_R[x] == 0):
                     break  # continue to next peak
 
@@ -228,13 +242,17 @@ class CalibrationProcess(multiprocessing.Process):
             for x in range(numPeaks):  # for each peak found
                 i = int(tmp_max_phase_i[x])
                 limit = phase[i] - padding_size_dB
-                for y in range(1, max_search_dist+1):  # scan left and right from peak
-                    if i-y >= 0:
-                        if (phase[i-y] < limit or y == max_search_dist) and phase_bounds_L[x] == 0:
-                            phase_bounds_L[x] = freq[i-y]  # record L bound
-                    if i+y < len(phase):
-                        if (phase[i+y] < limit or y == max_search_dist) and phase_bounds_R[x] == 0:
-                            phase_bounds_R[x] = freq[i+y]  # record R bound
+                for y in range(1, max_search_dist + 1):  # scan left and right from peak
+                    if i - y >= 0:
+                        if (phase[i - y] < limit or y == max_search_dist) and phase_bounds_L[
+                            x
+                        ] == 0:
+                            phase_bounds_L[x] = freq[i - y]  # record L bound
+                    if i + y < len(phase):
+                        if (phase[i + y] < limit or y == max_search_dist) and phase_bounds_R[
+                            x
+                        ] == 0:
+                            phase_bounds_R[x] = freq[i + y]  # record R bound
                     if not (phase_bounds_L[x] == 0 or phase_bounds_R[x] == 0):
                         break  # continue to next peak
 
@@ -251,25 +269,32 @@ class CalibrationProcess(multiprocessing.Process):
         # STORE OFF RESULTS AND RETURN #
         ################################
 
-        self.max_indexes_mag = list(tmp_max_mag_i.astype('int32'))
-        self.max_indexes_phase = list(tmp_max_phase_i.astype('int32'))
+        self.max_indexes_mag = list(tmp_max_mag_i.astype("int32"))
+        self.max_indexes_phase = list(tmp_max_phase_i.astype("int32"))
 
         # local maxima amplitude and baselines
         # freq[self.max_indexes_mag]
         self.max_freq_mag = np.asarray([freq[i] for i in self.max_indexes_mag])
         self.max_value_mag = np.asarray(
-            [mag[i] for i in self.max_indexes_mag])  # mag[self.max_indexes_mag]
-        polyfit_all = np.asarray([self._polyfitted_all[i]
-                                 for i in self.max_indexes_mag])
+            [mag[i] for i in self.max_indexes_mag]
+        )  # mag[self.max_indexes_mag]
+        polyfit_all = np.asarray([self._polyfitted_all[i] for i in self.max_indexes_mag])
         self.max_baselines = self._convertMagnitudeToADC(polyfit_all).astype(
-            int)  # self._polyfitted_all[self.max_indexes_mag]).astype(int)
+            int
+        )  # self._polyfitted_all[self.max_indexes_mag]).astype(int)
 
         Log.d(TAG, "size_L = {}".format(self.max_freq_mag - mag_bounds_L))
         Log.d(TAG, "size_R = {}".format(mag_bounds_R - self.max_freq_mag))
         Log.d(TAG, "baselines = {}".format(self.max_baselines))
 
         if phase is None:
-            return self.max_freq_mag, self.max_value_mag, self.max_freq_mag-mag_bounds_L, mag_bounds_R-self.max_freq_mag, self.max_baselines
+            return (
+                self.max_freq_mag,
+                self.max_value_mag,
+                self.max_freq_mag - mag_bounds_L,
+                mag_bounds_R - self.max_freq_mag,
+                self.max_baselines,
+            )
 
         phase_bounds_L = np.resize(phase_bounds_L, len(mag_bounds_L))
         phase_bounds_R = np.resize(phase_bounds_R, len(mag_bounds_R))
@@ -289,7 +314,14 @@ class CalibrationProcess(multiprocessing.Process):
         self.max_freq_phase = freq[self.max_indexes_phase]
         self.max_value_phase = phase[self.max_indexes_phase]
 
-        return self.max_freq_mag, self.max_value_mag, self.max_freq_phase, self.max_value_phase, self.max_freq_mag-mag_bounds_L, mag_bounds_R-self.max_freq_mag
+        return (
+            self.max_freq_mag,
+            self.max_value_mag,
+            self.max_freq_phase,
+            self.max_value_phase,
+            self.max_freq_mag - mag_bounds_L,
+            mag_bounds_R - self.max_freq_mag,
+        )
 
     def _convertADCtoMagnitude(self, adc):
         return (adc * Constants.ADCtoVolt - Constants.VCP) / 0.029
@@ -329,10 +361,14 @@ class CalibrationProcess(multiprocessing.Process):
     ###########################################################################
     # Opens a specified serial port
     ###########################################################################
-    def open(self, port, pid,
-             speed=Constants.serial_default_QCS,
-             timeout=Constants.serial_timeout_ms,
-             writeTimeout=Constants.serial_writetimeout_ms):
+    def open(
+        self,
+        port,
+        pid,
+        speed=Constants.serial_default_QCS,
+        timeout=Constants.serial_timeout_ms,
+        writeTimeout=Constants.serial_writetimeout_ms,
+    ):
         """
         :param port: Serial port name :type port: str.
         :param speed: Baud rate, in bps, to connect to port :type speed: int.
@@ -355,9 +391,9 @@ class CalibrationProcess(multiprocessing.Process):
         self._QCStype = speed
 
         # Checks QCStype to calibrate
-        if self._QCStype == '@5MHz_QCM':
+        if self._QCStype == "@5MHz_QCM":
             self._QCStype_int = 0
-        elif self._QCStype == '@10MHz_QCM':
+        elif self._QCStype == "@10MHz_QCM":
             self._QCStype_int = 1
         Log.i(TAG, f"Selected Quartz Crystal Sensor: {self._QCStype}")
 
@@ -394,14 +430,15 @@ class CalibrationProcess(multiprocessing.Process):
         """
         try:
             # Log.create()
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
+            sys.stdout = open(os.devnull, "w")
+            sys.stderr = open(os.devnull, "w")
 
             logger = logging.getLogger("QATCH.logger")
             logger.addHandler(QueueHandler(self._queueLog))
             logger.setLevel(logging.DEBUG)
 
             from multiprocessing.util import get_logger
+
             multiprocessing_logger = get_logger()
             multiprocessing_logger.handlers[0].setStream(sys.stderr)
             multiprocessing_logger.setLevel(logging.WARNING)
@@ -461,8 +498,7 @@ class CalibrationProcess(multiprocessing.Process):
                     # port already open
                     Log.w(TAG, "WARNING: Cannot connect! Serial port is already open.")
                     Log.w(TAG, "Please, repeat Initialize again!")
-                    raise PermissionError(
-                        "Cannot connect! Serial port is already open.")
+                    raise PermissionError("Cannot connect! Serial port is already open.")
 
                 for j in range(len(self._serial)):
 
@@ -478,16 +514,17 @@ class CalibrationProcess(multiprocessing.Process):
 
                     # define missing vars to indicate error without exception
                     samples = Constants.calibration_default_samples
-                    data_mag_baseline = data_ph_baseline = np.linspace(
-                        0, 0, samples)
+                    data_mag_baseline = data_ph_baseline = np.linspace(0, 0, samples)
                     data_ph = None
 
                     # Initializes the sweep counter
                     k = 0
                     if not self._exit.is_set():
-                        Log.i(TAG, 'Initialize Process Started')
+                        Log.i(TAG, "Initialize Process Started")
                         Log.i(
-                            TAG, 'The operation will take a few seconds to complete... please wait...')
+                            TAG,
+                            "The operation will take a few seconds to complete... please wait...",
+                        )
                         # raise Exception("This is a dummy exception!")
 
                     format = -1
@@ -503,15 +540,13 @@ class CalibrationProcess(multiprocessing.Process):
                         data_ph = np.linspace(0, 0, samples)
                         try:
                             # CREATE command string
-                            cmd = str(startFreq) + ';' + \
-                                str(stopFreq) + ';' + str(int(fStep))
+                            cmd = str(startFreq) + ";" + str(stopFreq) + ";" + str(int(fStep))
 
                             # append newline to end of command (it's prepared for sending now)
                             cmd += "\n"
 
                             if j > 0:  # primary port already open, indicate initializing
-                                self._serial[0].write(
-                                    "MULTI INIT 1\n".encode())
+                                self._serial[0].write("MULTI INIT 1\n".encode())
                             else:
                                 self._serial[j].write(b"MSGBOX\n")
 
@@ -519,7 +554,7 @@ class CalibrationProcess(multiprocessing.Process):
                             self._serial[j].write(cmd.encode())
 
                             # Initialize buffer
-                            buffer = ''
+                            buffer = ""
 
                             # Initialize ProgressBar
                             # bar = ProgressBar(widgets=[TAG,' ', Bar(marker='>'),' ',Percentage(),' ', Timer()]).start()
@@ -537,7 +572,9 @@ class CalibrationProcess(multiprocessing.Process):
                                 buffer = self._serial[j].read(1).hex()
                                 if buffer == "51":  # Q
                                     buffer = "Q"
-                                    while self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        self._serial[j].in_waiting == 0 and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
                                         break
@@ -550,7 +587,11 @@ class CalibrationProcess(multiprocessing.Process):
                                     ignored += 1
                             if not ignored == 0:
                                 Log.d(
-                                    TAG, "Bad or partial packet received! Threw away {} bytes...".format(ignored))
+                                    TAG,
+                                    "Bad or partial packet received! Threw away {} bytes...".format(
+                                        ignored
+                                    ),
+                                )
 
                             format = -1  # Unrecognized if all else fails
                             if buffer.startswith("Q"):
@@ -578,7 +619,7 @@ class CalibrationProcess(multiprocessing.Process):
                                 # raw deltas w/o phase w/o temp
                                 elif buffer.startswith("QH"):
                                     format = 8
-                            elif not buffer == '':
+                            elif not buffer == "":
                                 format = 0
 
                             # Timeout exception / connection lost
@@ -589,7 +630,8 @@ class CalibrationProcess(multiprocessing.Process):
                             # Unrecognized format
                             if format == -1:
                                 raise RuntimeError(
-                                    "Unrecognized serial response format from device")
+                                    "Unrecognized serial response format from device"
+                                )
 
                             # Original format (plain text)
                             if format == 0:
@@ -600,37 +642,45 @@ class CalibrationProcess(multiprocessing.Process):
                                 # READS and decodes sweep from the serial port
                                 while 1:
                                     start = time()
-                                    while self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        self._serial[j].in_waiting == 0 and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
-                                        Log.e(
-                                            TAG, "Stopping, due to missing data...")
+                                        Log.e(TAG, "Stopping, due to missing data...")
                                         raise Exception()
                                     start = time()
                                     # Constants.app_encoding
-                                    buffer += self._serial[j].read(
-                                        self._serial[j].in_waiting).decode()
+                                    buffer += (
+                                        self._serial[j].read(self._serial[j].in_waiting).decode()
+                                    )
                                     len_buffer = len(buffer)
                                     self._parser.add6(
-                                        [self._flag, self._flag2, self._flag2, len_buffer / 17, False, False])
+                                        [
+                                            self._flag,
+                                            self._flag2,
+                                            self._flag2,
+                                            len_buffer / 17,
+                                            False,
+                                            False,
+                                        ]
+                                    )
                                     # bar.update(len_buffer / 17)
-                                    if 's' in buffer:
+                                    if "s" in buffer:
                                         break
 
                                 # from a full buffer to a list of string
-                                data_raw = buffer.split('\n')
+                                data_raw = buffer.split("\n")
                                 length = len(data_raw)
 
                                 # PERFORMS split with the semicolon delimiter
                                 for i in range(length):
-                                    strs[i] = data_raw[i].split(';')
+                                    strs[i] = data_raw[i].split(";")
 
                                 # converts the sweep samples before adding to queue
                                 for i in range(length - 2):
-                                    data_mag[i] = self._convertADCtoMagnitude(
-                                        float(strs[i][0]))
-                                    data_ph[i] = self._convertADCtoPhase(
-                                        float(strs[i][1]))
+                                    data_mag[i] = self._convertADCtoMagnitude(float(strs[i][0]))
+                                    data_ph[i] = self._convertADCtoPhase(float(strs[i][1]))
 
                             # Faster format (raw bytes) w/ phase
                             if format == 1 or format == 2:
@@ -645,44 +695,50 @@ class CalibrationProcess(multiprocessing.Process):
                                 # READS and decodes sweep from the serial port simultaneously
                                 while 1:
                                     start = time()
-                                    while head == tail and self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        head == tail
+                                        and self._serial[j].in_waiting == 0
+                                        and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
-                                        Log.e(
-                                            TAG, "Stopping, due to missing data...")
+                                        Log.e(TAG, "Stopping, due to missing data...")
                                         raise Exception()
                                     start = time()
                                     # Constants.app_encoding
-                                    buffer += self._serial[j].read(
-                                        self._serial[j].in_waiting).hex()
+                                    buffer += self._serial[j].read(self._serial[j].in_waiting).hex()
                                     tail = len(buffer)
 
                                     if head != tail:
                                         if (tail - head) >= size:
                                             i = int(valsRxd / 2)
                                             valsRxd += 1
-                                            val = float(
-                                                int(buffer[head:head+size], 16))
+                                            val = float(int(buffer[head : head + size], 16))
                                             head += size
 
                                             # end loop once all samples are populated (ignore temp for cal)
                                             if i >= samples:
-                                                self._serial[j].reset_input_buffer(
-                                                )
+                                                self._serial[j].reset_input_buffer()
                                                 break
 
                                             # converts the sweep samples before adding to queue
                                             if valsRxd % 2:
-                                                data_mag[i] = self._convertADCtoMagnitude(
-                                                    val)
+                                                data_mag[i] = self._convertADCtoMagnitude(val)
                                             else:
-                                                data_ph[i] = self._convertADCtoPhase(
-                                                    val)
+                                                data_ph[i] = self._convertADCtoPhase(val)
 
                                             # Update progress every 1% samples to focus on speed
                                             if valsRxd % int(self.maxval / 100) == 0:
                                                 self._parser.add6(
-                                                    [self._flag, self._flag2, self._flag2, i, False, False])
+                                                    [
+                                                        self._flag,
+                                                        self._flag2,
+                                                        self._flag2,
+                                                        i,
+                                                        False,
+                                                        False,
+                                                    ]
+                                                )
                                                 # bar.update(i)
 
                             # Faster format (raw bytes) w/o phase
@@ -698,40 +754,47 @@ class CalibrationProcess(multiprocessing.Process):
                                 # READS and decodes sweep from the serial port simultaneously
                                 while 1:
                                     start = time()
-                                    while head == tail and self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        head == tail
+                                        and self._serial[j].in_waiting == 0
+                                        and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
-                                        Log.e(
-                                            TAG, "Stopping, due to missing data...")
+                                        Log.e(TAG, "Stopping, due to missing data...")
                                         raise Exception()
                                     start = time()
                                     # Constants.app_encoding
-                                    buffer += self._serial[j].read(
-                                        self._serial[j].in_waiting).hex()
+                                    buffer += self._serial[j].read(self._serial[j].in_waiting).hex()
                                     tail = len(buffer)
 
                                     if head != tail:
                                         if (tail - head) >= size:
                                             # i = int(valsRxd / 2)
                                             i += 1
-                                            val = float(
-                                                int(buffer[head:head+size], 16))
+                                            val = float(int(buffer[head : head + size], 16))
                                             head += size
 
                                             # end loop once all samples are populated (ignore temp for cal)
                                             if i >= samples:
-                                                self._serial[j].reset_input_buffer(
-                                                )
+                                                self._serial[j].reset_input_buffer()
                                                 break
 
                                             # converts the sweep samples before adding to queue
-                                            data_mag[i] = self._convertADCtoMagnitude(
-                                                val)
+                                            data_mag[i] = self._convertADCtoMagnitude(val)
 
                                             # Update progress every 1% samples to focus on speed
                                             if i % int(self.maxval / 100) == 0:
                                                 self._parser.add6(
-                                                    [self._flag, self._flag2, self._flag2, i, False, False])
+                                                    [
+                                                        self._flag,
+                                                        self._flag2,
+                                                        self._flag2,
+                                                        i,
+                                                        False,
+                                                        False,
+                                                    ]
+                                                )
                                                 # bar.update(i)
 
                             # Faster format (delta bytes) w/ phase
@@ -749,34 +812,38 @@ class CalibrationProcess(multiprocessing.Process):
                                 # READS and decodes sweep from the serial port simultaneously
                                 while 1:
                                     start = time()
-                                    while head == tail and self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        head == tail
+                                        and self._serial[j].in_waiting == 0
+                                        and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
-                                        Log.e(
-                                            TAG, "Stopping, due to missing data...")
+                                        Log.e(TAG, "Stopping, due to missing data...")
                                         raise Exception()
                                     start = time()
-                                    if (format == 5 and tail <= samples*2 + 13) or (format == 6 and tail <= samples*2 + 9):
+                                    if (format == 5 and tail <= samples * 2 + 13) or (
+                                        format == 6 and tail <= samples * 2 + 9
+                                    ):
                                         while self._serial[j].in_waiting:
                                             # Constants.app_encoding
-                                            buffer += self._serial[j].read(
-                                                1).hex()
+                                            buffer += self._serial[j].read(1).hex()
                                             tail = len(buffer)
-                                            if (format == 5 and tail >= samples*2 + 13) or (format == 6 and tail >= samples*2 + 9):
+                                            if (format == 5 and tail >= samples * 2 + 13) or (
+                                                format == 6 and tail >= samples * 2 + 9
+                                            ):
                                                 break
 
                                     if head != tail:
                                         if (tail - head) >= size:
                                             if i == -1:
                                                 # get overtone indicator byte on first sample only
-                                                overtone = int(
-                                                    buffer[head:head+2], 16)
+                                                overtone = int(buffer[head : head + 2], 16)
                                                 head += 2
 
                                             i = int(valsRxd / 2)
                                             valsRxd += 1
-                                            val = float(
-                                                int(buffer[head:head+size], 16))
+                                            val = float(int(buffer[head : head + size], 16))
                                             head += size
 
                                             if valsRxd == 2:
@@ -784,41 +851,54 @@ class CalibrationProcess(multiprocessing.Process):
 
                                             # end loop once all samples are populated (ignore temp for cal)
                                             if i >= samples:
-                                                self._serial[j].reset_input_buffer(
-                                                )
+                                                self._serial[j].reset_input_buffer()
                                                 break
 
                                             if not i == 0:
-                                                val = val if val < 8 else val - 16  # wrap 4-bit val to negative
+                                                val = (
+                                                    val if val < 8 else val - 16
+                                                )  # wrap 4-bit val to negative
                                                 # compression ratio (MUST MATCH FW)
                                                 val *= 4
 
                                             # converts the sweep samples before adding to queue
                                             if valsRxd == 1:
-                                                lastVal_mag = val  # store off ADC counts for next delta
-                                                data_mag[i] = self._convertADCtoMagnitude(
-                                                    val)
+                                                lastVal_mag = (
+                                                    val  # store off ADC counts for next delta
+                                                )
+                                                data_mag[i] = self._convertADCtoMagnitude(val)
                                             elif valsRxd == 2:
-                                                lastVal_ph = val  # store off ADC counts for next delta
-                                                data_ph[i] = self._convertADCtoPhase(
-                                                    val)
-                                            elif (valsRxd-3) % 4 < 2:
+                                                lastVal_ph = (
+                                                    val  # store off ADC counts for next delta
+                                                )
+                                                data_ph[i] = self._convertADCtoPhase(val)
+                                            elif (valsRxd - 3) % 4 < 2:
                                                 val += lastVal_mag
-                                                lastVal_mag = val  # store off ADC counts for next delta
-                                                i += (valsRxd-1) % 2
-                                                data_mag[i] = self._convertADCtoMagnitude(
-                                                    val)
+                                                lastVal_mag = (
+                                                    val  # store off ADC counts for next delta
+                                                )
+                                                i += (valsRxd - 1) % 2
+                                                data_mag[i] = self._convertADCtoMagnitude(val)
                                             else:
                                                 val += lastVal_ph
-                                                lastVal_ph = val  # store off ADC counts for next delta
-                                                i += (valsRxd-1) % 2 - 1
-                                                data_ph[i] = self._convertADCtoPhase(
-                                                    val)
+                                                lastVal_ph = (
+                                                    val  # store off ADC counts for next delta
+                                                )
+                                                i += (valsRxd - 1) % 2 - 1
+                                                data_ph[i] = self._convertADCtoPhase(val)
 
                                             # Update progress every 1% samples to focus on speed
                                             if i % int(self.maxval / 100) == 0:
                                                 self._parser.add6(
-                                                    [self._flag, self._flag2, self._flag2, i, False, False])
+                                                    [
+                                                        self._flag,
+                                                        self._flag2,
+                                                        self._flag2,
+                                                        i,
+                                                        False,
+                                                        False,
+                                                    ]
+                                                )
                                                 # bar.update(i)
 
                             # Faster format (delta bytes) w/o phase
@@ -835,70 +915,80 @@ class CalibrationProcess(multiprocessing.Process):
                                 # READS and decodes sweep from the serial port simultaneously
                                 while 1:
                                     start = time()
-                                    while head == tail and self._serial[j].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        head == tail
+                                        and self._serial[j].in_waiting == 0
+                                        and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
-                                        Log.e(
-                                            TAG, "Stopping, due to missing data...")
+                                        Log.e(TAG, "Stopping, due to missing data...")
                                         raise Exception()
-                                    if (format == 7 and tail <= samples + 9) or (format == 8 and tail <= samples + 5):
+                                    if (format == 7 and tail <= samples + 9) or (
+                                        format == 8 and tail <= samples + 5
+                                    ):
                                         while self._serial[j].in_waiting:
                                             # ASCII format specifier: space character 0x20 (see FW code)
                                             if overtone == 0x20:
                                                 # Constants.app_encoding
-                                                buffer += self._serial[j].read(
-                                                    1).decode()
+                                                buffer += self._serial[j].read(1).decode()
                                             else:
                                                 # Constants.app_encoding
-                                                buffer += self._serial[j].read(
-                                                    1).hex()
+                                                buffer += self._serial[j].read(1).hex()
                                             tail = len(buffer)
                                             if head != tail:
                                                 break
-                                            if (format == 7 and tail >= samples + 9) or (format == 8 and tail >= samples + 5):
+                                            if (format == 7 and tail >= samples + 9) or (
+                                                format == 8 and tail >= samples + 5
+                                            ):
                                                 break
 
                                     if head != tail:
                                         if (tail - head) >= size:
                                             if i == -1:
                                                 # get overtone indicator byte on first sample only
-                                                overtone = int(
-                                                    buffer[head:head+2], 16)
+                                                overtone = int(buffer[head : head + 2], 16)
                                                 head += 2
 
                                             i += 1
-                                            val = float(
-                                                int(buffer[head:head+size], 16))
+                                            val = float(int(buffer[head : head + size], 16))
                                             head += size
                                             size = 1  # deltas are just 4-bits
 
                                             # end loop once all samples are populated (ignore temp for cal)
                                             if i >= samples:
-                                                self._serial[j].reset_input_buffer(
-                                                )
+                                                self._serial[j].reset_input_buffer()
                                                 break
 
                                             if not i == 0:
-                                                val = val if val < 8 else val - 16  # wrap 4-bit val to negative
+                                                val = (
+                                                    val if val < 8 else val - 16
+                                                )  # wrap 4-bit val to negative
                                                 # compression ratio (MUST MATCH FW)
                                                 val *= 4
                                                 val += lastVal
                                             lastVal = val  # store off ADC counts for next delta
-                                            data_mag[i] = self._convertADCtoMagnitude(
-                                                val)
+                                            data_mag[i] = self._convertADCtoMagnitude(val)
 
                                             # Update progress every 1% samples to focus on speed
                                             if i % int(self.maxval / 100) == 0:
-                                                self._parser.add6([self._flag, self._flag2, self._flag2, int(
-                                                    (samples*j + i)/len(self._serial)), False, False])
+                                                self._parser.add6(
+                                                    [
+                                                        self._flag,
+                                                        self._flag2,
+                                                        self._flag2,
+                                                        int((samples * j + i) / len(self._serial)),
+                                                        False,
+                                                        False,
+                                                    ]
+                                                )
                                                 # bar.update(i)
 
                             # bar.finish()
 
                             # primary port already open, indicate idle (between ports)
                             if j > 0:
-                                self._serial[0].write(
-                                    "MULTI INIT 0\n".encode())
+                                self._serial[0].write("MULTI INIT 0\n".encode())
 
                             Log.i(TAG, "Signals acquired successfully\n")
 
@@ -906,40 +996,46 @@ class CalibrationProcess(multiprocessing.Process):
                         except ValueError:
                             Log.w(TAG, "WARNING: ValueError during calibration!")
                             Log.w(
-                                TAG, "Please, repeat the calibration after disconnecting/reconnecting device!")
+                                TAG,
+                                "Please, repeat the calibration after disconnecting/reconnecting device!",
+                            )
                             self._flag = 1
                             # Log.w(TAG, "Warning: ValueError during calibration!"))
                         except RuntimeError:
+                            Log.w(TAG, "WARNING: Unrecognized serial response format from device!")
                             Log.w(
-                                TAG, "WARNING: Unrecognized serial response format from device!")
-                            Log.w(
-                                TAG, "Please, make sure the device and software are both up-to-date!")
+                                TAG,
+                                "Please, make sure the device and software are both up-to-date!",
+                            )
                             self._flag = 1
                         except:
                             # raise
                             Log.w(TAG, "WARNING: Exception during calibration!")
                             Log.w(
-                                TAG, "Please, repeat the calibration after disconnecting/reconnecting device!")
+                                TAG,
+                                "Please, repeat the calibration after disconnecting/reconnecting device!",
+                            )
                             self._flag = 1
                             # Log.w(TAG, "Warning (ValueError): convert Raw to float failed")
 
-                        if False:  # Set True to enable debug code to read a custom file as device input for calibration
+                        if (
+                            False
+                        ):  # Set True to enable debug code to read a custom file as device input for calibration
                             # update path to CAL file accordingly
                             path = "config/6628700/Calibration_5MHz.txt"
                             fake_data = loadtxt(path)
                             readFREQ = fake_data[:, 0]
                             data_mag = fake_data[:, 1]
-                            Log.d(
-                                "DEBUG ONLY: Parsing CAL data from '{}'\n".format(path))
+                            Log.d("DEBUG ONLY: Parsing CAL data from '{}'\n".format(path))
 
                         # CALLS baseline_correction method
                         if data_ph is None:
-                            data_mag_baseline = self.baseline_correction(
-                                readFREQ, data_mag)
+                            data_mag_baseline = self.baseline_correction(readFREQ, data_mag)
                             multi_mag_baseline.append(data_mag_baseline)
                         else:
                             (data_mag_baseline, data_ph_baseline) = self.baseline_correction(
-                                readFREQ, data_mag, data_ph)
+                                readFREQ, data_mag, data_ph
+                            )
                             multi_mag_baseline.append(data_mag_baseline)
                             multi_ph_baseline.append(data_ph_baseline)
 
@@ -987,19 +1083,41 @@ class CalibrationProcess(multiprocessing.Process):
                         try:
                             # CALLS FindPeak method
                             if data_ph is None:
-                                (max_freq_mag, max_value_mag, left_bounds, right_bounds, max_baselines) = self.FindPeak(
-                                    readFREQ, data_mag_baseline, dist=distance)
+                                (
+                                    max_freq_mag,
+                                    max_value_mag,
+                                    left_bounds,
+                                    right_bounds,
+                                    max_baselines,
+                                ) = self.FindPeak(readFREQ, data_mag_baseline, dist=distance)
                             else:
-                                (max_freq_mag, max_value_mag, max_freq_phase, max_value_phase, left_bounds, right_bounds) = self.FindPeak(
-                                    readFREQ, data_mag_baseline, data_ph_baseline, dist=distance)
+                                (
+                                    max_freq_mag,
+                                    max_value_mag,
+                                    max_freq_phase,
+                                    max_value_phase,
+                                    left_bounds,
+                                    right_bounds,
+                                ) = self.FindPeak(
+                                    readFREQ, data_mag_baseline, data_ph_baseline, dist=distance
+                                )
 
-                            Log.i(TAG, "{} peaks were found at frequencies: {} Hz\n".format(
-                                len(max_freq_mag), max_freq_mag))
+                            Log.i(
+                                TAG,
+                                "{} peaks were found at frequencies: {} Hz\n".format(
+                                    len(max_freq_mag), max_freq_mag
+                                ),
+                            )
                             if (
-                                (len(max_freq_mag) == 2 and stopFreq < 25e6 and fStep < 500) or
-                                (len(max_freq_mag) == 5 and (max_freq_mag[0] > 3e+06 and max_freq_mag[0] < 6e+06)) or
-                                (len(max_freq_mag) == 3 and (
-                                    max_freq_mag[0] > 9e+06 and max_freq_mag[0] < 11e+06))
+                                (len(max_freq_mag) == 2 and stopFreq < 25e6 and fStep < 500)
+                                or (
+                                    len(max_freq_mag) == 5
+                                    and (max_freq_mag[0] > 3e06 and max_freq_mag[0] < 6e06)
+                                )
+                                or (
+                                    len(max_freq_mag) == 3
+                                    and (max_freq_mag[0] > 9e06 and max_freq_mag[0] < 11e06)
+                                )
                             ):
                                 # SAVES independently of the state of the export box
                                 Log.i(TAG, "Saving data in file...")
@@ -1019,33 +1137,75 @@ class CalibrationProcess(multiprocessing.Process):
 
                                 if data_ph is None:
                                     FileStorage.TXT_sweeps_save(
-                                        j+1, filename_calib, Constants.csv_calibration_export_path, readFREQ, data_mag)
-                                    np.savetxt(path, np.column_stack(
-                                        [max_freq_mag, max_freq_mag, left_bounds, right_bounds, max_baselines]))
+                                        j + 1,
+                                        filename_calib,
+                                        Constants.csv_calibration_export_path,
+                                        readFREQ,
+                                        data_mag,
+                                    )
+                                    np.savetxt(
+                                        path,
+                                        np.column_stack(
+                                            [
+                                                max_freq_mag,
+                                                max_freq_mag,
+                                                left_bounds,
+                                                right_bounds,
+                                                max_baselines,
+                                            ]
+                                        ),
+                                    )
                                 else:
                                     FileStorage.TXT_sweeps_save(
-                                        j+1, filename_calib, Constants.csv_calibration_export_path, readFREQ, data_mag, data_ph)
-                                    np.savetxt(path, np.column_stack(
-                                        [max_freq_mag, max_freq_phase, left_bounds, right_bounds]))
+                                        j + 1,
+                                        filename_calib,
+                                        Constants.csv_calibration_export_path,
+                                        readFREQ,
+                                        data_mag,
+                                        data_ph,
+                                    )
+                                    np.savetxt(
+                                        path,
+                                        np.column_stack(
+                                            [
+                                                max_freq_mag,
+                                                max_freq_phase,
+                                                left_bounds,
+                                                right_bounds,
+                                            ]
+                                        ),
+                                    )
 
-                                Log.i(TAG, "Peak frequencies for {} saved in: {}".format(
-                                    self._QCStype, path))
-                                Log.i(TAG, "Calibration for {} saved in: {}".format(
-                                    self._QCStype, path_calib))
+                                Log.i(
+                                    TAG,
+                                    "Peak frequencies for {} saved in: {}".format(
+                                        self._QCStype, path
+                                    ),
+                                )
+                                Log.i(
+                                    TAG,
+                                    "Calibration for {} saved in: {}".format(
+                                        self._QCStype, path_calib
+                                    ),
+                                )
                             else:
                                 Log.w(
-                                    TAG, "WARNING: Error during peak detection, incompatible peaks number or frequencies!")
+                                    TAG,
+                                    "WARNING: Error during peak detection, incompatible peaks number or frequencies!",
+                                )
                                 Log.w(TAG, "Please, repeat Initialize again!")
                                 self._flag2 = 1
                         except Exception as e:
                             Log.e(
-                                TAG, "WARNING: Error during peak detection, exception finding peaks number or frequencies!")
+                                TAG,
+                                "WARNING: Error during peak detection, exception finding peaks number or frequencies!",
+                            )
                             Log.e(TAG, "Please, repeat Initialize again!")
                             self._flag2 = 1
 
                     temp_fail = False
                     if self._flag == 0 and self._flag2 == 0:
-                        Log.i(TAG, 'Initialize success for baseline correction!\n')
+                        Log.i(TAG, "Initialize success for baseline correction!\n")
 
                         if j == 0:
                             # Read and show the TEC temp check from the device
@@ -1054,47 +1214,54 @@ class CalibrationProcess(multiprocessing.Process):
                                 log_at_level = Log.d if i == 0 else Log.w
                                 log_at_level(f"Attempt #{i+1}...")
 
-                                self._serial[j].write("temp check {}\n".format(
-                                    str(int(max_freq_mag[1]))).encode())
+                                self._serial[j].write(
+                                    "temp check {}\n".format(str(int(max_freq_mag[1]))).encode()
+                                )
                                 timeoutAt = time() + 3
                                 temp_reply = ""
                                 lines_in_reply = 7
                                 # timeout needed if old FW
-                                while temp_reply.count('\n') < lines_in_reply and time() < timeoutAt:
+                                while (
+                                    temp_reply.count("\n") < lines_in_reply and time() < timeoutAt
+                                ):
                                     # timeout needed if old FW:
                                     while self._serial[j].in_waiting == 0 and time() < timeoutAt:
                                         pass
-                                    temp_reply += self._serial[j].read(
-                                        self._serial[j].in_waiting).decode()
+                                    temp_reply += (
+                                        self._serial[j].read(self._serial[j].in_waiting).decode()
+                                    )
 
                                 if time() < timeoutAt:
-                                    temp_reply = temp_reply.strip().split('\n')
+                                    temp_reply = temp_reply.strip().split("\n")
                                     Log.d(TAG, temp_reply[-3])  # print result
                                     Log.d(TAG, temp_reply[-2])  # print result
                                     Log.d(TAG, temp_reply[-1])  # print result
-                                    if 'nan' in temp_reply[-2]:
+                                    if "nan" in temp_reply[-2]:
                                         self._flag2 = 1
                                         Log.e(
-                                            TAG, "WARNING: Temperature sensor not working. Please verify hardware contacts.")
-                                        Log.e(
-                                            TAG, "Please, repeat Initialize again!")
+                                            TAG,
+                                            "WARNING: Temperature sensor not working. Please verify hardware contacts.",
+                                        )
+                                        Log.e(TAG, "Please, repeat Initialize again!")
                                     elif not "PASS" in temp_reply[-1]:
                                         self._flag2 = 1
                                         Log.e(
-                                            TAG, "ERROR: Temperature check failed. Please verify hardware contacts.")
-                                        Log.e(
-                                            TAG, "Please, repeat Initialize again!")
+                                            TAG,
+                                            "ERROR: Temperature check failed. Please verify hardware contacts.",
+                                        )
+                                        Log.e(TAG, "Please, repeat Initialize again!")
                                     else:
                                         self._flag2 = 0
-                                        plurality = '' if i == 0 else 's'
-                                        Log.i(
-                                            f"Temperature Check: PASS ({i+1} attempt{plurality})")
+                                        plurality = "" if i == 0 else "s"
+                                        Log.i(f"Temperature Check: PASS ({i+1} attempt{plurality})")
                                         break  # do not try check again
                                 else:
                                     # not a cal failure, fw might not support cmd, but if an earlier attempt failed, it failed
                                     Log.w(TAG, "CHECK RESULT: TIMEOUT")
                                     Log.w(
-                                        TAG, "WARNING: Temperature check timeout. Skipped verification of hardware contacts.")
+                                        TAG,
+                                        "WARNING: Temperature check timeout. Skipped verification of hardware contacts.",
+                                    )
                                 continue  # try check again, up to 3 times
 
                             # if check pass,then  self._flag2 = 0
@@ -1104,13 +1271,13 @@ class CalibrationProcess(multiprocessing.Process):
                                 Log.e("Temperature Check: FAILED (3x in a row)")
                                 try:
                                     Log.d(
-                                        "Removing calibration file due to failed temp check. Please try again.")
+                                        "Removing calibration file due to failed temp check. Please try again."
+                                    )
                                     if os.path.exists(path):
                                         # guarantee stale calibration result
                                         os.remove(path)
                                 except Exception as e:
-                                    Log.e(
-                                        "Failed to delete existing calibration file.")
+                                    Log.e("Failed to delete existing calibration file.")
                                     Log.d("ERROR msg:", str(e))
                         else:
                             Log.d("Skipping temperature check on secondary device.")
@@ -1122,15 +1289,18 @@ class CalibrationProcess(multiprocessing.Process):
                         if self._flag == 0 and self._flag2 == 0:
                             # successful cal
                             self._serial[j].write(
-                                b"msgbox pass:initialize pass;press start then apply drop\n")
+                                b"msgbox pass:initialize pass;press start then apply drop\n"
+                            )
                         elif temp_fail:
                             # temp sensor fail
                             self._serial[j].write(
-                                b"msgbox error:initialize error;temperature sensor fault\n")
+                                b"msgbox error:initialize error;temperature sensor fault\n"
+                            )
                         else:
                             # peak detect failed
                             self._serial[j].write(
-                                b"msgbox fail:initialize failed;check sensor contact\n")
+                                b"msgbox fail:initialize failed;check sensor contact\n"
+                            )
 
             else:
                 # port not available
@@ -1141,7 +1311,8 @@ class CalibrationProcess(multiprocessing.Process):
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -1153,8 +1324,7 @@ class CalibrationProcess(multiprocessing.Process):
                     # ADDS new serial data to internal queue
                     self._parser.add0([j, Constants.calibration_readFREQ])
                     if j < len(multi_mag_baseline):
-                        self._parser.add1(
-                            [j, np.clip(multi_mag_baseline[j], 0, None)])
+                        self._parser.add1([j, np.clip(multi_mag_baseline[j], 0, None)])
                     if j < len(multi_ph_baseline) and not data_ph is None:
                         self._parser.add2([j, multi_ph_baseline[j]])
                     #### END CALIBRATION ####
@@ -1195,11 +1365,14 @@ class CalibrationProcess(multiprocessing.Process):
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType
+
         if Architecture.get_os() is OSType.macosx:
             import glob
+
             return glob.glob("/dev/tty.usbmodem*")
         elif Architecture.get_os() is OSType.linux:
             import glob
+
             return glob.glob("/dev/ttyACM*")
         else:
             found_ports = []
@@ -1221,7 +1394,7 @@ class CalibrationProcess(multiprocessing.Process):
     @staticmethod
     def get_speeds():
         # :return: List of the common baud rates, in bps :rtype: str list.
-        return [str(v) for v in ['@5MHz_QCM', '@10MHz_QCM']]
+        return [str(v) for v in ["@5MHz_QCM", "@10MHz_QCM"]]
 
     ###########################################################################
     # Checks if the serial port is currently connected
@@ -1241,6 +1414,6 @@ class CalibrationProcess(multiprocessing.Process):
             if p == port:
                 return True
         if port == None:
-            if len(dm.doDiscover()) > 0:
+            if len(dm.do_discover()) > 0:
                 return net_exists
         return False

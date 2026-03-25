@@ -147,8 +147,7 @@ class SampleGenerationWorker(QtCore.QThread):
                                 getattr(
                                     p.class_type,
                                     "value",
-                                    getattr(p.class_type, "name",
-                                            str(p.class_type)),
+                                    getattr(p.class_type, "name", str(p.class_type)),
                                 )
                             )
                             if c_val in values:
@@ -176,8 +175,7 @@ class SampleGenerationWorker(QtCore.QThread):
                         )
                         continue
 
-                    constraints.add_choices(
-                        feature=feature_key, choices=choices)
+                    constraints.add_choices(feature=feature_key, choices=choices)
 
                 elif feature_key in Constraints._NUMERIC:
                     v = float(values)
@@ -186,14 +184,11 @@ class SampleGenerationWorker(QtCore.QThread):
                             feature=feature_key, low=v + 0.001, high=10000.0
                         )
                     elif cond == ">=":
-                        constraints.add_range(
-                            feature=feature_key, low=v, high=10000.0)
+                        constraints.add_range(feature=feature_key, low=v, high=10000.0)
                     elif cond == "=":
-                        constraints.add_range(
-                            feature=feature_key, low=v, high=v)
+                        constraints.add_range(feature=feature_key, low=v, high=v)
                     elif cond == "<=":
-                        constraints.add_range(
-                            feature=feature_key, low=0.0, high=v)
+                        constraints.add_range(feature=feature_key, low=0.0, high=v)
                     elif cond == "<":
                         constraints.add_range(
                             feature=feature_key, low=0.0, high=max(0.0, v - 0.001)
@@ -228,7 +223,8 @@ class SampleGenerationWorker(QtCore.QThread):
 
                     progress_val = int(5 + ((i / self.num_samples) * 90))
                     self.progress_update.emit(
-                        progress_val, f"Generating sample {i + 1} of {self.num_samples}..."
+                        progress_val,
+                        f"Generating sample {i + 1} of {self.num_samples}...",
                     )
 
                     new_formulation = sampler.get_next_sample(use_ucb=True)
@@ -259,7 +255,9 @@ class SampleGenerationWorker(QtCore.QThread):
                             "name": f"Generated Sample {i + 1}",
                             "measured": False,
                             "model": self.model_file,
-                            "temperature": getattr(new_formulation, "temperature", 25.0),
+                            "temperature": getattr(
+                                new_formulation, "temperature", 25.0
+                            ),
                             "ingredients": ingredients_map,
                         }
                         generated_cards_data.append(card_data)

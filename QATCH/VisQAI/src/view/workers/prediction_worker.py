@@ -21,9 +21,9 @@ Version:
 import os
 import traceback
 
+from PyQt5 import QtCore
 import numpy as np
 import pandas as pd
-from PyQt5 import QtCore
 
 try:
     TAG = "[PredictionWorker (HEADLESS)]"
@@ -51,13 +51,11 @@ try:
     from src.models.predictor import Predictor
 except (ImportError, ModuleNotFoundError):
     TAG = "[PredictionWorker]"
-    from QATCH.common.architecture import Architecture
-    from QATCH.common.logger import Logger as Log
-    from QATCH.VisQAI.src.controller.formulation_controller import (
-        FormulationController,
-    )
+    from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
     from QATCH.VisQAI.src.db.db import Database
     from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.common.architecture import Architecture
+    from QATCH.common.logger import Logger as Log
 
 
 class PredictionThread(QtCore.QThread):
@@ -111,9 +109,7 @@ class PredictionThread(QtCore.QThread):
         db_conn = None
         try:
             model_filename = self.config.get("model")
-            assets_path = os.path.join(
-                Architecture.get_path(), "QATCH", "VisQAI", "assets"
-            )
+            assets_path = os.path.join(Architecture.get_path(), "QATCH", "VisQAI", "assets")
             model_path = os.path.join(assets_path, model_filename)
 
             if not os.path.exists(model_path):
@@ -137,9 +133,7 @@ class PredictionThread(QtCore.QThread):
                 try:
                     db_conn = Database(parse_file_key=True)
                     form_ctrl = FormulationController(db_conn)
-                    learn_df = self._fetch_icl_context(
-                        form_ctrl, formulation, icl_filter
-                    )
+                    learn_df = self._fetch_icl_context(form_ctrl, formulation, icl_filter)
                 except Exception as e:
                     Log.e(TAG, f"ICL Data Fetch Error: {e}")
                     learn_df = None
@@ -166,9 +160,7 @@ class PredictionThread(QtCore.QThread):
                 means, unc_dict = predictor.predict_with_uncertainty(
                     df_input, n_samples=50, ci_range=ci_range
                 )
-                std_shear_rates = np.array(
-                    [100, 1000, 10000, 100000, 15000000], dtype=float
-                )
+                std_shear_rates = np.array([100, 1000, 10000, 100000, 15000000], dtype=float)
                 y_pred_full = np.asanyarray(means).flatten()
                 if y_pred_full.size >= 5:
                     y_pred = y_pred_full[:5]
@@ -263,9 +255,7 @@ class PredictionThread(QtCore.QThread):
         all_forms = form_ctrl.get_all_formulations()
         if not all_forms:
             return None
-        df_curr_readable = current_formulation.to_dataframe(
-            encoded=False, training=False
-        )
+        df_curr_readable = current_formulation.to_dataframe(encoded=False, training=False)
 
         matching_forms = []
         ref_values = {}

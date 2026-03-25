@@ -1,7 +1,9 @@
+import os
+
+from PyQt5 import QtCore, QtGui, QtWidgets
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from PyQt5 import QtCore, QtGui, QtWidgets
-import os
 
 TAG = "[PopUp]"
 
@@ -43,19 +45,18 @@ class PopUp:
         box.setWindowTitle(title)
         box.setGeometry(left, top, width, height)
         box.setText(message)
-        box.setStandardButtons(QtWidgets.QMessageBox.Yes |
-                               QtWidgets.QMessageBox.No)
+        box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         button1 = box.button(QtWidgets.QMessageBox.Yes)
-        button1.setText('@10MHz')
+        button1.setText("@10MHz")
         button2 = box.button(QtWidgets.QMessageBox.No)
-        button2.setText(' @5MHz')
+        button2.setText(" @5MHz")
         box.exec_()
 
         if box.clickedButton() == button1:
-            Log.i(TAG, 'Quartz Crystal Sensor installed on the QATCH Q-1 Device: @10MHz')
+            Log.i(TAG, "Quartz Crystal Sensor installed on the QATCH Q-1 Device: @10MHz")
             return 1
         elif box.clickedButton() == button2:
-            Log.i(TAG, 'Quartz Crystal Sensor installed on the QATCH Q-1 Device: @5MHz')
+            Log.i(TAG, "Quartz Crystal Sensor installed on the QATCH Q-1 Device: @5MHz")
             return 0
 
     ###########################################################################
@@ -85,8 +86,7 @@ class PopUp:
         left = int((area.width() - width) / 2)
         top = int((area.height() - height) / 2)
         box = QtWidgets.QMessageBox(parent)
-        icon_path = os.path.join(
-            Architecture.get_path(), 'QATCH/icons/download_icon.ico')
+        icon_path = os.path.join(Architecture.get_path(), "QATCH/icons/download_icon.ico")
         box.setIconPixmap(QtGui.QPixmap(icon_path))
         box.setWindowTitle(title)
         box.setGeometry(left, top, width, height)
@@ -94,18 +94,17 @@ class PopUp:
         box.setDetailedText(details)
 
         if not onlyOK:
-            box.setStandardButtons(
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
             box.setDefaultButton(QtWidgets.QMessageBox.Yes)
             button1 = box.button(QtWidgets.QMessageBox.Yes)
-            button1.setText('Yes')
+            button1.setText("Yes")
             button2 = box.button(QtWidgets.QMessageBox.No)
-            button2.setText('No')
+            button2.setText("No")
         else:
             box.setStandardButtons(QtWidgets.QMessageBox.Ok)
             box.setDefaultButton(QtWidgets.QMessageBox.Ok)
             button1 = box.button(QtWidgets.QMessageBox.Ok)
-            button1.setText('Awesome!')
+            button1.setText("Awesome!")
 
         box.exec_()
 
@@ -124,8 +123,7 @@ class PopUp:
         if not isinstance(parent, QtWidgets.QWidget):
             parent = None  # make dialog have no parent if invalid type
 
-        QtWidgets.QMessageBox.warning(
-            parent, title, message, QtWidgets.QMessageBox.Ok)
+        QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox = QtWidgets.QMessageBox()
         # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
@@ -147,7 +145,12 @@ class PopUp:
 
         defaultButton = QtWidgets.QMessageBox.Yes if default else QtWidgets.QMessageBox.No
         ans = QtWidgets.QMessageBox.question(  # center dialog over parent (by default)
-            parent, title, message, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No, defaultButton)
+            parent,
+            title,
+            message,
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+            defaultButton,
+        )
         if ans == QtWidgets.QMessageBox.Yes:
             return True
         else:
@@ -157,7 +160,9 @@ class PopUp:
     # Shows a Pop up critical dialog with Retry/Ignore buttons
     ###########################################################################
     @staticmethod
-    def critical(parent, title, message, details="", question=False, ok_only=False, btn1_text="Retry"):
+    def critical(
+        parent, title, message, details="", question=False, ok_only=False, btn1_text="Retry"
+    ):
         """
         :param parent: Parent window for the dialog (must inherit QWidget).
         :param title: Title of the dialog :type title: str.
@@ -184,26 +189,24 @@ class PopUp:
         box.setText(message)
         box.setDetailedText(details)
         if question:
-            box.setStandardButtons(
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+            box.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
             box.setDefaultButton(QtWidgets.QMessageBox.No)
             button1 = box.button(QtWidgets.QMessageBox.Yes)
-            button1.setText('Yes')
+            button1.setText("Yes")
             button2 = box.button(QtWidgets.QMessageBox.No)
-            button2.setText('No')
+            button2.setText("No")
         elif ok_only:
             box.setStandardButtons(QtWidgets.QMessageBox.Ok)
             box.setDefaultButton(QtWidgets.QMessageBox.Ok)
             button1 = box.button(QtWidgets.QMessageBox.Ok)
-            button1.setText('Ok')
+            button1.setText("Ok")
         else:
-            box.setStandardButtons(
-                QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Ignore)
+            box.setStandardButtons(QtWidgets.QMessageBox.Retry | QtWidgets.QMessageBox.Ignore)
             box.setDefaultButton(QtWidgets.QMessageBox.Retry)
             button1 = box.button(QtWidgets.QMessageBox.Retry)
             button1.setText(btn1_text)
             button2 = box.button(QtWidgets.QMessageBox.Ignore)
-            button2.setText('Ignore')
+            button2.setText("Ignore")
         box.exec_()
 
         return box.clickedButton() == button1
@@ -221,8 +224,7 @@ class PopUp:
         if not isinstance(parent, QtWidgets.QWidget):
             parent = None  # make dialog have no parent if invalid type
 
-        QtWidgets.QMessageBox.information(
-            parent, title, message, QtWidgets.QMessageBox.Ok)
+        QtWidgets.QMessageBox.information(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox=QtWidgets.QMessageBox.warning(parent, title, message, QtWidgets.QMessageBox.Ok)
         # msgBox = QtWidgets.QMessageBox()
         # msgBox.setIconPixmap( QtGui.QPixmap("favicon.png"))
@@ -247,7 +249,7 @@ class QueryComboBox(QtWidgets.QWidget):
 
         layout_v = QtWidgets.QVBoxLayout()
         self.tb = QtWidgets.QLabel()
-        vowel = 'aeiou'
+        vowel = "aeiou"
         a_n = "an" if type[0].lower() in vowel else "a"
         self.tb.setText("Select {} {}:".format(a_n, type))
         layout_v.addWidget(self.tb)

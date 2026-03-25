@@ -18,7 +18,7 @@ class HorizontalTabBar(QtWidgets.QTabBar):
         opt = QtWidgets.QStyleOptionTab()
         for idx in range(self.count()):
             self.initStyleOption(opt, idx)
-            opt.shape = QtWidgets.QTabBar.RoundedNorth    # draw as if tabs were on top
+            opt.shape = QtWidgets.QTabBar.RoundedNorth  # draw as if tabs were on top
             # draw the tab “shell”
             painter.drawControl(QtWidgets.QStyle.CE_TabBarTab, opt)
             # draw the label

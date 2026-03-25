@@ -1,15 +1,18 @@
 import json as j
 import os as o
-import requests as r
+
 import pyzipper as z
+import requests as r
 
 try:
     from QATCH.common.logger import Logger as Log
 except:
+
     class Log:
         """
         Minimal drop-in replacement for QATCH.common.logger.Logger
         """
+
         @staticmethod
         def d(tag, msg=""):
             print("DEBUG:", tag, msg)
@@ -26,13 +29,15 @@ except:
         def e(tag, msg=""):
             print("ERROR:", tag, msg)
 
+
 try:
     from QATCH.nightly.security import GH_Security
 except:
     from security import GH_Security
 
-from PyQt5.QtCore import pyqtBoundSignal
 from threading import Event as event
+
+from PyQt5.QtCore import pyqtBoundSignal
 
 # NOTE: Assuming at most 1 build is compiled per day,
 # the code will return (at minimum) 1 week of builds.
@@ -43,89 +48,90 @@ RETURN_PAGE_NUM = 1  # only look at the 1st page
 
 class GH_Artifacts:
 
-    headers = \
-        {
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28"
-        }
-    latest_build_file = o.path.join(
-        o.path.dirname(__file__), "latest_build.json")
+    headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28"}
+    latest_build_file = o.path.join(o.path.dirname(__file__), "latest_build.json")
 
     def __init__(self) -> None:
         self.security = GH_Security()
 
     def raw(self) -> dict:
         resp = r.get(
-            self.security.caesar_decipher("*".join(self.security.GHAPIURL)) +
-            f"?per_page={ARTIFACTS_PER_PAGE}&page={RETURN_PAGE_NUM}",
-            headers=self.headers)
+            self.security.caesar_decipher("*".join(self.security.GHAPIURL))
+            + f"?per_page={ARTIFACTS_PER_PAGE}&page={RETURN_PAGE_NUM}",
+            headers=self.headers,
+        )
         resp.raise_for_status()
         return resp.json()
 
     def all(self) -> tuple[dict, str]:
         resp = self.raw()
         keys = []
-        for i, a in enumerate(resp['artifacts']):
+        for i, a in enumerate(resp["artifacts"]):
             artifact: dict = a
             for j in list(artifact.keys()).copy():
                 k: str = j
-                if any(list([
-                    k.startswith('a'),
-                    k.startswith('c'),
-                    k.startswith('e'),
-                    k.startswith('na'),
-                    k.startswith('s')
-                ])):
+                if any(
+                    list(
+                        [
+                            k.startswith("a"),
+                            k.startswith("c"),
+                            k.startswith("e"),
+                            k.startswith("na"),
+                            k.startswith("s"),
+                        ]
+                    )
+                ):
                     continue
                 else:
-                    del resp['artifacts'][i][k]
+                    del resp["artifacts"][i][k]
                     keys.append(k)
         key = self.security.caesar_decipher("+".join(sorted(set(keys))))
-        return resp['artifacts'], key
+        return resp["artifacts"], key
 
     def available(self) -> tuple[dict, str]:
         resp, key = self.all()
         for i in list(range(len(resp)))[::-1]:
-            valid = not resp[i]['expired']
+            valid = not resp[i]["expired"]
             if valid:
-                del resp[i]['expired']
+                del resp[i]["expired"]
             else:
                 del resp[i]  # delete expired artifact
         return resp, key
 
-    def get(self,
-            artifact: dict | None = None,
-            name: str | None = None,
-            size: int | None = None,
-            url: str | None = None,
-            key: list | None = None,
-            progress: pyqtBoundSignal = None,
-            abort_flag: event = None) -> str:
+    def get(
+        self,
+        artifact: dict | None = None,
+        name: str | None = None,
+        size: int | None = None,
+        url: str | None = None,
+        key: list | None = None,
+        progress: pyqtBoundSignal = None,
+        abort_flag: event = None,
+    ) -> str:
 
         if key is None:
             raise ValueError("Key parameter is required and cannot be None.")
         if artifact is not None:
             try:
                 if name is None:
-                    name = artifact['name']
+                    name = artifact["name"]
                 if size is None:
-                    size = artifact['size_in_bytes']
+                    size = artifact["size_in_bytes"]
                 if url is None:
-                    url = artifact['archive_download_url']
+                    url = artifact["archive_download_url"]
             except:
                 raise ValueError(
-                    "Dictionary artifact is missing one or more required fields: name, size, url.")
+                    "Dictionary artifact is missing one or more required fields: name, size, url."
+                )
         elif url is None or size is None:
             raise ValueError(
-                "These parameters are required when artifact is not provided: name, size, url.")
+                "These parameters are required when artifact is not provided: name, size, url."
+            )
 
-        resp = r.get(url=url,
-                     headers=self.security.authorize(self.headers, key),
-                     stream=True)
+        resp = r.get(url=url, headers=self.security.authorize(self.headers, key), stream=True)
         resp.raise_for_status()
-        local_filename = o.path.expanduser(
-            o.path.join("~", "Downloads", f"{name}.zip"))
-        with open(local_filename, 'wb') as f:
+        local_filename = o.path.expanduser(o.path.join("~", "Downloads", f"{name}.zip"))
+        with open(local_filename, "wb") as f:
             curr_size = 0
             last_pct = 0
             chunk_size = 8192
@@ -143,7 +149,7 @@ class GH_Artifacts:
                     if progress is None:
                         Log.d("[GH_Artifacts]", status_str)
                     else:
-                        progress.emit(status_str[:status_str.rfind(' (')], pct)
+                        progress.emit(status_str[: status_str.rfind(" (")], pct)
                     last_pct = pct
                 if abort_flag is not None and abort_flag.is_set():
                     return local_filename
@@ -156,30 +162,29 @@ class GH_Artifacts:
             update_recommended = False
 
             if o.path.exists(self.latest_build_file):
-                with open(self.latest_build_file, 'r') as fp:
+                with open(self.latest_build_file, "r") as fp:
                     running_build = {}
                     try:
                         running_build: dict = j.load(fp)
                     except:
-                        Log.e(
-                            "[ERROR]", "Cannot parse latest build file. Repairing it.")
+                        Log.e("[ERROR]", "Cannot parse latest build file. Repairing it.")
                         self.write_latest_build_file(latest_build)
                         Log.w(
-                            "[WARN]", "You *may* be out-of-date. Assuming no update is available.")
+                            "[WARN]", "You *may* be out-of-date. Assuming no update is available."
+                        )
                         update_recommended = False
-                    if 'created_at' not in running_build.keys():
-                        Log.w(
-                            "[WARN]", "Running build date is unknown. Update IS recommended...")
+                    if "created_at" not in running_build.keys():
+                        Log.w("[WARN]", "Running build date is unknown. Update IS recommended...")
                         update_recommended = True
-                    elif 'created_at' not in latest_build.keys():
+                    elif "created_at" not in latest_build.keys():
                         Log.w(
-                            "[WARN]", "Most recent build date is unknown. Update NOT recommended...")
+                            "[WARN]", "Most recent build date is unknown. Update NOT recommended..."
+                        )
                         update_recommended = False
-                    elif running_build['created_at'] != latest_build['created_at']:
+                    elif running_build["created_at"] != latest_build["created_at"]:
                         update_recommended = True
                     else:
-                        Log.i(
-                            "[INFO]", "You are running the most recent nightly build available.")
+                        Log.i("[INFO]", "You are running the most recent nightly build available.")
                         update_recommended = False
                     if "dev_branch" in running_build.keys() and running_build["dev_branch"]:
                         # Never recommend a nightly build update for a development branch.
@@ -188,39 +193,36 @@ class GH_Artifacts:
                         # raise NotImplementedError(
                         #     "'dev_branch' = True; skipping Nightly update checks.")
             else:
-                Log.i(
-                    "[INFO]", "Writing latest build file as none exists. Assuming no update.")
+                Log.i("[INFO]", "Writing latest build file as none exists. Assuming no update.")
                 self.write_latest_build_file(latest_build)
                 update_recommended = False
 
             if update_recommended:
-                Log.d("Current:", running_build['name'])
-                Log.d("Upgrade:", latest_build['name'])
-                Log.d("Created:", latest_build['created_at'])
+                Log.d("Current:", running_build["name"])
+                Log.d("Upgrade:", latest_build["name"])
+                Log.d("Created:", latest_build["created_at"])
                 return [running_build, latest_build, key]
         except (r.HTTPError, NotImplementedError):
             raise
         except:
-            Log.e(
-                "[ERROR]", "Failed to fetch the most recent nightly build information.")
+            Log.e("[ERROR]", "Failed to fetch the most recent nightly build information.")
             # raise  # TODO: testing only, comment out!
             return
 
-    def prepare_for_update(self,
-                           latest: tuple[dict, str] | None,
-                           extract_to: str = None,
-                           progress: pyqtBoundSignal = None,
-                           abort_flag: event = None) -> list[str] | str | None:
+    def prepare_for_update(
+        self,
+        latest: tuple[dict, str] | None,
+        extract_to: str = None,
+        progress: pyqtBoundSignal = None,
+        abort_flag: event = None,
+    ) -> list[str] | str | None:
         if latest is None:
             Log.d("Nothing to prepare.")
             return
 
         latest_build, key = latest
         filename = self.get(
-            artifact=latest_build,
-            key=key,
-            progress=progress,
-            abort_flag=abort_flag
+            artifact=latest_build, key=key, progress=progress, abort_flag=abort_flag
         )
         Log.d("[GH_Artifacts]", f"Saved artifact to: {filename}")
         if abort_flag is not None and abort_flag.is_set():
@@ -237,7 +239,7 @@ class GH_Artifacts:
         else:
             extract_to_dir = extract_to
             extract_to_file = None
-        with z.AESZipFile(filename, 'r') as zf:
+        with z.AESZipFile(filename, "r") as zf:
             zipped_filenames = zf.namelist()
             zf.extractall(extract_to_dir)
         extracted: str | list = []
@@ -257,7 +259,7 @@ class GH_Artifacts:
         # do not export the download url to json file
         latest.pop("archive_download_url", None)
         latest["dev_branch"] = False
-        with open(self.latest_build_file, 'w') as fp:
+        with open(self.latest_build_file, "w") as fp:
             j.dump(latest, fp, indent=2)
 
     def delete_latest_build_file(self) -> None:

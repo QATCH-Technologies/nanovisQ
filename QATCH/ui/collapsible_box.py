@@ -6,22 +6,16 @@ class CollapsibleBox(QtWidgets.QWidget):
         super(CollapsibleBox, self).__init__(parent)
         self._collapsed = True
 
-        self.toggle_button = QtWidgets.QToolButton(
-            text=title, checkable=True, checked=False
-        )
+        self.toggle_button = QtWidgets.QToolButton(text=title, checkable=True, checked=False)
 
         self.toggle_button.setStyleSheet("QToolButton { border: none; }")
-        self.toggle_button.setToolButtonStyle(
-            QtCore.Qt.ToolButtonTextBesideIcon
-        )
+        self.toggle_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         self.toggle_button.setArrowType(QtCore.Qt.RightArrow)
         self.toggle_button.pressed.connect(self.toggle)
 
         self.toggle_animation = QtCore.QParallelAnimationGroup(self)
 
-        self.content_area = QtWidgets.QScrollArea(
-            maximumHeight=0, minimumHeight=0
-        )
+        self.content_area = QtWidgets.QScrollArea(maximumHeight=0, minimumHeight=0)
         self.content_area.setSizePolicy(
             QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed
         )
@@ -33,12 +27,8 @@ class CollapsibleBox(QtWidgets.QWidget):
         lay.addWidget(self.toggle_button)
         lay.addWidget(self.content_area)
 
-        self.toggle_animation.addAnimation(
-            QtCore.QPropertyAnimation(self, b"minimumHeight")
-        )
-        self.toggle_animation.addAnimation(
-            QtCore.QPropertyAnimation(self, b"maximumHeight")
-        )
+        self.toggle_animation.addAnimation(QtCore.QPropertyAnimation(self, b"minimumHeight"))
+        self.toggle_animation.addAnimation(QtCore.QPropertyAnimation(self, b"maximumHeight"))
         self.toggle_animation.addAnimation(
             QtCore.QPropertyAnimation(self.content_area, b"maximumHeight")
         )
@@ -61,9 +51,7 @@ class CollapsibleBox(QtWidgets.QWidget):
             QtCore.Qt.DownArrow if not checked else QtCore.Qt.RightArrow
         )
         self.toggle_animation.setDirection(
-            QtCore.QAbstractAnimation.Forward
-            if not checked
-            else QtCore.QAbstractAnimation.Backward
+            QtCore.QAbstractAnimation.Forward if not checked else QtCore.QAbstractAnimation.Backward
         )
 
         self.toggle_animation.start()
@@ -72,9 +60,7 @@ class CollapsibleBox(QtWidgets.QWidget):
         lay = self.content_area.layout()
         del lay
         self.content_area.setLayout(layout)
-        collapsed_height = (
-            self.sizeHint().height() - self.content_area.maximumHeight()
-        )
+        collapsed_height = self.sizeHint().height() - self.content_area.maximumHeight()
         content_height = layout.sizeHint().height()
         for i in range(self.toggle_animation.animationCount()):
             animation = self.toggle_animation.animationAt(i)

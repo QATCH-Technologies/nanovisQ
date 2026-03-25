@@ -10,29 +10,41 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
+<<<<<<< HEAD
+    2026-03-18
+
+Version:
+    1.4
+=======
     2026-03-19
 
 Version:
     1.5
+>>>>>>> cce83c44329ee53b1bfb4e012e61363c43baf861
 """
 
 import json
 import logging
 import os
+from pathlib import Path
 import random
 import time
+from typing import Any, Dict, Tuple, Union
 import uuid
+<<<<<<< HEAD
+=======
 from pathlib import Path
 from typing import Any, Dict, Tuple, Union
+>>>>>>> cce83c44329ee53b1bfb4e012e61363c43baf861
 
 import pandas as pd
 from rapidfuzz import fuzz, process
 
-from QATCH.core.constants import Constants
 from QATCH.VisQAI.src.controller.formulation_controller import FormulationController
 from QATCH.VisQAI.src.controller.ingredient_controller import IngredientController
 from QATCH.VisQAI.src.db.db import Database
 from QATCH.VisQAI.src.models.ingredient import ProteinClass
+from QATCH.core.constants import Constants
 
 logging.basicConfig(
     level=logging.INFO,
@@ -137,9 +149,6 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     if "Protein_class_type" in df.columns:
         normalized_classes = []
         for val in df["Protein_class_type"]:
-            # Preserve NaN/null values as-is — these represent rows with no protein
-            # and must not be fuzzy-matched (str(NaN) == "nan" scores above cutoff
-            # against enum members like "Polyclonal", producing incorrect assignments).
             if pd.isna(val):
                 normalized_classes.append(None)
                 continue
@@ -159,9 +168,6 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
                 normalized_classes.append(val_str)
         df["Protein_class_type"] = normalized_classes
 
-    # Fill NaN optional ingredient type columns with "none" to prevent the string
-    # "nan" (produced by str(float('nan'))) from being stored as an ingredient name.
-    # Affects poly-hIgG rows that have empty cells for unused ingredient slots.
     optional_ing_cols = [
         "Salt_type",
         "Stabilizer_type",
@@ -180,9 +186,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def verify_database_integrity(
-    db_path: Path, original_df: pd.DataFrame, expected_key: str
-):
+def verify_database_integrity(db_path: Path, original_df: pd.DataFrame, expected_key: str):
     """Performs rigorous integrity checks on the generated database.
 
     Verifies metadata keys, viscosity profile validity, ingredient uniqueness,
@@ -216,9 +220,7 @@ def verify_database_integrity(
 
             viscs = f.viscosity_profile.viscosities
             if any(v <= 0 for v in viscs):
-                logger.warning(
-                    f"Formulation {f.id} has non-positive viscosities: {viscs}"
-                )
+                logger.warning(f"Formulation {f.id} has non-positive viscosities: {viscs}")
 
         logger.info("Viscosity verification passed.")
 
@@ -240,9 +242,7 @@ def verify_database_integrity(
 
         if duplicates:
             raise ValueError(f"Duplicate ingredients found: {duplicates}")
-        logger.info(
-            f"Ingredient verification passed ({len(ingredients)} unique ingredients)."
-        )
+        logger.info(f"Ingredient verification passed ({len(ingredients)} unique ingredients).")
 
         # Verify DataFrame Equality
         db_df = form_ctrl.get_all_as_dataframe(encoded=False)
@@ -265,8 +265,6 @@ def verify_database_integrity(
                 # Attempt numeric conversion first
                 src_numeric = pd.to_numeric(df_src[col])
                 db_numeric = pd.to_numeric(df_db[col])
-
-                # Force float to ensure 100 == 100.0, handling NaNs as 0.0
                 df_src[col] = src_numeric.fillna(0.0).astype(float)
                 df_db[col] = db_numeric.fillna(0.0).astype(float)
 
@@ -286,8 +284,6 @@ def verify_database_integrity(
                     .str.strip()
                     .replace({"nan": "none", "none": "none"})
                 )
-
-        # Deduplicate source data (DB handles duplicates on insertion)
         df_src_dedup = df_src.drop_duplicates()
         dedup_count = len(df_src) - len(df_src_dedup)
 
@@ -298,12 +294,8 @@ def verify_database_integrity(
             df_src = df_src_dedup
 
         if len(df_src) != len(df_db):
-            logger.error(
-                f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}"
-            )
-            raise ValueError(
-                f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}"
-            )
+            logger.error(f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}")
+            raise ValueError(f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}")
 
         try:
             # Sort by stable columns to ensure alignment
@@ -391,7 +383,7 @@ def main():
         raise EncodingWarning("Failed to encrypt metadata header")
 
     with open(db_path, "rb") as f:
-        f.readline()  # Skip default header
+        f.readline()
         content = f.read()
 
     with open(db_path, "wb") as f:

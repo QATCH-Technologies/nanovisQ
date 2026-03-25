@@ -1,5 +1,6 @@
 import os
 import shutil
+
 from QATCH.core.constants import Constants
 
 CLEAN_PATH = os.getcwd()
@@ -10,11 +11,11 @@ SKIP_DOT_DIRS = True
 
 def delete_folders_by_patterns(root_path, patterns, skip_dirs, skip_dot_dirs):
     """
-    Recursively walk through `root_path`, and delete all directories 
+    Recursively walk through `root_path`, and delete all directories
     where the full path ends with one of the given `patterns`.
 
     NOTE: Why `topdown=False`?
-        This ensures that subdirectories are visited before their parents - 
+        This ensures that subdirectories are visited before their parents -
         important when deleting parent folders and not break the traversal.
 
     Args:
@@ -40,5 +41,6 @@ def delete_folders_by_patterns(root_path, patterns, skip_dirs, skip_dot_dirs):
                     print(f"Deleting folder: {full_path}")
                     shutil.rmtree(full_path)
     print(f"The following folders were skipped: {skipped_dirs}")
+
 
 delete_folders_by_patterns(CLEAN_PATH, CLEAN_PATTERNS, SKIP_DIRS, SKIP_DOT_DIRS)

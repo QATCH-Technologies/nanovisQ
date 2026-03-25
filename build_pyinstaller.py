@@ -1,9 +1,10 @@
-import subprocess
 import logging
+from pathlib import Path
+import subprocess
 import sys
 import threading
-from colorama import init, Fore, Style
-from pathlib import Path
+
+from colorama import Fore, Style, init
 from dateutil import parser
 
 # Files
@@ -59,6 +60,7 @@ def strip_time_and_levelname(line: str) -> str:
                 line = line.split(maxsplit=3)[-1]
     return line.strip()
 
+
 # Formatter with color for new warnings
 
 
@@ -75,7 +77,7 @@ class SmartFormatter(logging.Formatter):
                     new = False
                     break
             if new:
-                color = Fore.RED                    # new warning!
+                color = Fore.RED  # new warning!
                 new_warnings.append(line)
             else:
                 color = Fore.YELLOW + Style.BRIGHT  # old warning
@@ -92,7 +94,7 @@ class SmartFormatter(logging.Formatter):
 logger = logging.getLogger("build_watchdog")
 logger.setLevel(logging.DEBUG)
 
-file_handler = logging.FileHandler(MAIN_LOG_FILE, mode='w', encoding='utf-8')
+file_handler = logging.FileHandler(MAIN_LOG_FILE, mode="w", encoding="utf-8")
 file_handler.setFormatter(logging.Formatter("%(message)s"))
 
 console_handler = logging.StreamHandler(sys.stdout)
@@ -106,7 +108,7 @@ logger.addHandler(console_handler)
 
 def stream_output(pipe):
     level = logging.NOTSET
-    for line in iter(pipe.readline, ''):
+    for line in iter(pipe.readline, ""):
         line = str(line).strip()
         if line.find(":"):
             # parse timestamp (in ms) and log level from line (if present)
@@ -125,20 +127,17 @@ def stream_output(pipe):
         logger.debug(f"Total runtime: {runtime} ms")
     pipe.close()
 
+
 # Run subprocess and capture
 
 
 def run_and_log(command):
     process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-        bufsize=1
+        command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, bufsize=1
     )
     threads = [
         threading.Thread(target=stream_output, args=(process.stdout,)),
-        threading.Thread(target=stream_output, args=(process.stderr,))
+        threading.Thread(target=stream_output, args=(process.stderr,)),
     ]
     for t in threads:
         t.start()
@@ -148,13 +147,12 @@ def run_and_log(command):
 
 
 # Main usage
-run_and_log(['pyinstaller',
-             '--log-level', logging.getLevelName(logging.INFO),
-             'QATCH nanovisQ.spec'])
+run_and_log(
+    ["pyinstaller", "--log-level", logging.getLevelName(logging.INFO), "QATCH nanovisQ.spec"]
+)
 
 # Calculate missing warnings (if any)
-all_same = len(previous_warnings) == len(seen_warnings) \
-    and len(new_warnings) == 0
+all_same = len(previous_warnings) == len(seen_warnings) and len(new_warnings) == 0
 if all_same:
     logger.debug("No new warnings/errors encountered.")
 else:
@@ -184,14 +182,20 @@ if len(missing_warnings):
 
 # Ask what to do about new warnings (if any)
 if len(new_warnings):
-    if input(
-            "Should new entries be added to the list of acceptable warnings (Y/N)? ").upper() == "Y":
+    if (
+        input("Should new entries be added to the list of acceptable warnings (Y/N)? ").upper()
+        == "Y"
+    ):
         merged_warnings.extend(new_warnings)
 
 # Ask what to do about missing warnings (if any)
 if len(missing_warnings):
-    if input(
-            "Should missing entries be removed to the list of acceptable warnings (Y/N)? ").upper() == "Y":
+    if (
+        input(
+            "Should missing entries be removed to the list of acceptable warnings (Y/N)? "
+        ).upper()
+        == "Y"
+    ):
         for missing in missing_warnings:
             if missing in merged_warnings:
                 merged_warnings.remove(missing)

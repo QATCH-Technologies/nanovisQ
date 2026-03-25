@@ -1,21 +1,23 @@
+# from progressbar import Bar, Percentage, ProgressBar, RotatingMarker,Timer
+import logging
+from logging.handlers import QueueHandler
 import multiprocessing
-from QATCH.core.constants import Constants
+from multiprocessing import Queue
+import os
+import sys
+import threading
+from time import sleep, time
+
+import numpy as np
+from numpy import loadtxt
+from serial.tools import list_ports
+
 from QATCH.common.fileStorage import FileStorage
 from QATCH.common.findDevices import Discovery
 from QATCH.common.logger import Logger as Log
 from QATCH.common.switcher import Overtone_Switcher_5MHz, Overtone_Switcher_10MHz
+from QATCH.core.constants import Constants
 from QATCH.processors.Elaborate import ElaborateProcess
-from multiprocessing import Queue
-import threading
-from time import time, sleep
-from serial.tools import list_ports
-import numpy as np
-from numpy import loadtxt
-# from progressbar import Bar, Percentage, ProgressBar, RotatingMarker,Timer
-import logging
-from logging.handlers import QueueHandler
-import sys
-import os
 
 if Constants.serial_simulate_device:
     from QATCH.processors.Simulator import serial  # simulator
@@ -60,16 +62,20 @@ class SerialProcess(multiprocessing.Process):
 
         # Baseline correction: input signal Amplitude (sweep all frequencies)
         (self.polyfitted_all, self.coeffs_all) = self.baseline_correction(
-            self.freq_all, self.mag_all, 8)
-        self.mag_beseline_corrected_all = self.mag_all-self.polyfitted_all
+            self.freq_all, self.mag_all, 8
+        )
+        self.mag_beseline_corrected_all = self.mag_all - self.polyfitted_all
 
         # Baseline correction: input signal Phase (sweep all frequencies)
         if not self.phase_all is None:
             (self.polyfitted_all_phase, self.coeffs_all_phase) = self.baseline_correction(
-                self.freq_all, self.phase_all, 8)
-            self.phase_beseline_corrected_all = self.phase_all-self.polyfitted_all_phase
+                self.freq_all, self.phase_all, 8
+            )
+            self.phase_beseline_corrected_all = self.phase_all - self.polyfitted_all_phase
         else:
-            self.polyfitted_all_phase = self.coeffs_all_phase = self.phase_beseline_corrected_all = None
+            self.polyfitted_all_phase = self.coeffs_all_phase = (
+                self.phase_beseline_corrected_all
+            ) = None
 
         return self.coeffs_all
 
@@ -89,7 +95,17 @@ class SerialProcess(multiprocessing.Process):
     # Initializing values for process
     ###########################################################################
 
-    def __init__(self, queue_log, parser_process, time_start, freq_hopping, export_enabled=False, reconstruct=False, driedValue=None, appliedValue=None):
+    def __init__(
+        self,
+        queue_log,
+        parser_process,
+        time_start,
+        freq_hopping,
+        export_enabled=False,
+        reconstruct=False,
+        driedValue=None,
+        appliedValue=None,
+    ):
         """
         :param parser_process: Reference to a ParserProcess instance.
         :type parser_process: ParserProcess.
@@ -124,10 +140,14 @@ class SerialProcess(multiprocessing.Process):
     # Opens a specified serial port
     ###########################################################################
 
-    def open(self, port, pid,
-             speed=Constants.serial_default_overtone,
-             timeout=Constants.serial_timeout_ms,
-             writeTimeout=Constants.serial_writetimeout_ms):
+    def open(
+        self,
+        port,
+        pid,
+        speed=Constants.serial_default_overtone,
+        timeout=Constants.serial_timeout_ms,
+        writeTimeout=Constants.serial_writetimeout_ms,
+    ):
         """
         :param port: Serial port name :type port: str.
         :param speed: Overtone selected for the analysis :type speed: str.
@@ -172,7 +192,7 @@ class SerialProcess(multiprocessing.Process):
                 peaks_mag, _, _, _, _ = self.load_frequencies_file(j)
                 all_peaks_mag.append(peaks_mag)
         except:
-            Log.w('No peak magnitudes found. Rerun Initialize.')
+            Log.w("No peak magnitudes found. Rerun Initialize.")
             return -1
 
         # handles the exceptions
@@ -181,8 +201,12 @@ class SerialProcess(multiprocessing.Process):
         except:
             fallback_idx = 1 if len(peaks_mag) > 1 else 0
             overtone_label = "3rd Overtone" if fallback_idx == 1 else "Fundamental"
-            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz {}".format(
-                peaks_mag[fallback_idx], overtone_label))
+            Log.w(
+                TAG,
+                "Warning: wrong frequency selection, set default to {} Hz {}".format(
+                    peaks_mag[fallback_idx], overtone_label
+                ),
+            )
             self._overtone = peaks_mag[fallback_idx]
 
         self._overtone_int = None
@@ -196,8 +220,12 @@ class SerialProcess(multiprocessing.Process):
         if self._overtone_int == None:
             fallback_idx = 1 if len(peaks_mag) > 1 else 0
             overtone_label = "3rd Overtone" if fallback_idx == 1 else "Fundamental"
-            Log.w(TAG, "Warning: wrong frequency selection, set default to {} Hz {}".format(
-                peaks_mag[fallback_idx], overtone_label))
+            Log.w(
+                TAG,
+                "Warning: wrong frequency selection, set default to {} Hz {}".format(
+                    peaks_mag[fallback_idx], overtone_label
+                ),
+            )
             self._overtone_int = fallback_idx
 
         is_open = False  # default, fail
@@ -234,14 +262,15 @@ class SerialProcess(multiprocessing.Process):
         """
         try:
             # Log.create()
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
+            sys.stdout = open(os.devnull, "w")
+            sys.stderr = open(os.devnull, "w")
 
             logger = logging.getLogger("QATCH.logger")
             logger.addHandler(QueueHandler(self._queueLog))
             logger.setLevel(logging.DEBUG)
 
             from multiprocessing.util import get_logger
+
             multiprocessing_logger = get_logger()
             multiprocessing_logger.handlers[0].setStream(sys.stderr)
             multiprocessing_logger.setLevel(logging.WARNING)
@@ -280,9 +309,38 @@ class SerialProcess(multiprocessing.Process):
                         # Calls get_frequencies method:
                         # ACQUIRES overtone, sets start and stop frequencies, the step and range frequency according to the number of samples
                         if self._freq_hopping:
-                            (self._overtone_name, overtone_value, fStep, readFREQ, SG_window_size, Spline_points, Spline_factor, baseline, start, stop,
-                             self._overtone_name_up, overtone_value_up, fStep_up, readFREQ_up, SG_window_size_up, Spline_points_up, Spline_factor_up, baseline_up, start_up, stop_up,
-                             self._overtone_name_down, overtone_value_down, fStep_down, readFREQ_down, SG_window_size_down, Spline_points_down, Spline_factor_down, baseline_down, start_down, stop_down) = self.get_frequencies(samples, j)
+                            (
+                                self._overtone_name,
+                                overtone_value,
+                                fStep,
+                                readFREQ,
+                                SG_window_size,
+                                Spline_points,
+                                Spline_factor,
+                                baseline,
+                                start,
+                                stop,
+                                self._overtone_name_up,
+                                overtone_value_up,
+                                fStep_up,
+                                readFREQ_up,
+                                SG_window_size_up,
+                                Spline_points_up,
+                                Spline_factor_up,
+                                baseline_up,
+                                start_up,
+                                stop_up,
+                                self._overtone_name_down,
+                                overtone_value_down,
+                                fStep_down,
+                                readFREQ_down,
+                                SG_window_size_down,
+                                Spline_points_down,
+                                Spline_factor_down,
+                                baseline_down,
+                                start_down,
+                                stop_down,
+                            ) = self.get_frequencies(samples, j)
 
                             if len(self._serial) > 1:
                                 # Store these for later (when hopping)
@@ -293,8 +351,18 @@ class SerialProcess(multiprocessing.Process):
                                 self._startFreqs_down[i] = start_down
                                 self._stopFreqs_down[i] = stop_down
                         else:
-                            (self._overtone_name, overtone_value, fStep, readFREQ, SG_window_size, Spline_points,
-                             Spline_factor, baseline, start, stop) = self.get_frequencies(samples, j)
+                            (
+                                self._overtone_name,
+                                overtone_value,
+                                fStep,
+                                readFREQ,
+                                SG_window_size,
+                                Spline_points,
+                                Spline_factor,
+                                baseline,
+                                start,
+                                stop,
+                            ) = self.get_frequencies(samples, j)
 
                         if len(self._serial) > 1:
                             # Store these for later (all the time)
@@ -302,7 +370,7 @@ class SerialProcess(multiprocessing.Process):
                             self._startFreqs[i] = start
                             self._stopFreqs[i] = stop
                     except IOError:
-                        Log.w('No peak magnitudes available. Rerun Initialize.')
+                        Log.w("No peak magnitudes available. Rerun Initialize.")
 
                 # Gets the state of the serial ports
                 all_ports_open = True
@@ -323,22 +391,24 @@ class SerialProcess(multiprocessing.Process):
                         # START elaborate process (and associated queues)
                         self._elaborate_in_q = Queue()  # used to pass data to elaborate process
                         self._elaborate_out_q = Queue()  # used to get data from elaborate process
-                        self._elaborate_process = ElaborateProcess(self._queueLog,
-                                                                   self._parser,
-                                                                   self._elaborate_in_q,
-                                                                   self._elaborate_out_q,
-                                                                   self._export,
-                                                                   self._overtone_name,
-                                                                   self._reconstruct,
-                                                                   self._driedValue,
-                                                                   self._appliedValue)
+                        self._elaborate_process = ElaborateProcess(
+                            self._queueLog,
+                            self._parser,
+                            self._elaborate_in_q,
+                            self._elaborate_out_q,
+                            self._export,
+                            self._overtone_name,
+                            self._reconstruct,
+                            self._driedValue,
+                            self._appliedValue,
+                        )
                         self._elaborate_process.start()
 
                     # Initializes the sweep counter
                     k = 0
                     if not self._exit.is_set():
-                        Log.i(TAG, 'Capturing raw data...')
-                        Log.i(TAG, 'Wait, processing early data...')
+                        Log.i(TAG, "Capturing raw data...")
+                        Log.i(TAG, "Wait, processing early data...")
 
                     # creates a timestamp
                     timestamp = time()
@@ -358,12 +428,9 @@ class SerialProcess(multiprocessing.Process):
                     if self._freq_hopping:
                         pending_readFREQ_up = readFREQ_up
                         pending_readFREQ_down = readFREQ_down
-                        readFREQs = [pending_readFREQ,
-                                     pending_readFREQ_up, pending_readFREQ_down]
-                        startFreqs = [self._startFreq,
-                                      self._startFreq_up, self._startFreq_down]
-                        stopFreqs = [self._stopFreq,
-                                     self._stopFreq_up, self._stopFreq_down]
+                        readFREQs = [pending_readFREQ, pending_readFREQ_up, pending_readFREQ_down]
+                        startFreqs = [self._startFreq, self._startFreq_up, self._startFreq_down]
+                        stopFreqs = [self._stopFreq, self._stopFreq_up, self._stopFreq_down]
                         fSteps = [fStep, fStep_up, fStep_down]
                         baselines = [baseline, baseline_up, baseline_down]
                         c = 0
@@ -400,25 +467,61 @@ class SerialProcess(multiprocessing.Process):
                                 if streaming:
                                     c = overtone = 0
                                 # readFREQ = readFREQs[c] if not streaming else readFREQs[overtone]
-                                cmd = (str(int(startFreqs[c])) + ';' + str(int(stopFreqs[c])) + ';' + str(int(baselines[c])) + ';' +
-                                       str(int(startFreqs[1])) + ';' + str(int(stopFreqs[1])) + ';' + str(int(baselines[1])) + ';' +
-                                       str(int(startFreqs[2])) + ';' + str(int(stopFreqs[2])) + ';' + str(int(baselines[2])) + ';' +
-                                       str(int(base_overtones_per_cycle)))
+                                cmd = (
+                                    str(int(startFreqs[c]))
+                                    + ";"
+                                    + str(int(stopFreqs[c]))
+                                    + ";"
+                                    + str(int(baselines[c]))
+                                    + ";"
+                                    + str(int(startFreqs[1]))
+                                    + ";"
+                                    + str(int(stopFreqs[1]))
+                                    + ";"
+                                    + str(int(baselines[1]))
+                                    + ";"
+                                    + str(int(startFreqs[2]))
+                                    + ";"
+                                    + str(int(stopFreqs[2]))
+                                    + ";"
+                                    + str(int(baselines[2]))
+                                    + ";"
+                                    + str(int(base_overtones_per_cycle))
+                                )
                             else:
-                                cmd = (str(int(self._startFreq)) + ';' +
-                                       str(int(self._stopFreq)) + ';' + str(int(baseline)))
+                                cmd = (
+                                    str(int(self._startFreq))
+                                    + ";"
+                                    + str(int(self._stopFreq))
+                                    + ";"
+                                    + str(int(baseline))
+                                )
 
                             # Add SPEED CMD to send to device
-                            max_speed = Constants.max_speed_single if len(
-                                self._serial) == 1 else Constants.max_speed_multi4
-                            cmd = ('SPEED {:.0f}'.format(
-                                max_speed) + '\n' + cmd)
+                            max_speed = (
+                                Constants.max_speed_single
+                                if len(self._serial) == 1
+                                else Constants.max_speed_multi4
+                            )
+                            cmd = "SPEED {:.0f}".format(max_speed) + "\n" + cmd
 
                             # Add AVG CMD to send to device
-                            cmd = ('AVG ' + str(int(Constants.avg_in)) + ';' + str(int(Constants.avg_out)) + ';' + str(int(Constants.step_size))
-                                   + ';' + str(int(Constants.max_drift_l_hz)) +
-                                   ';' + str(int(Constants.max_drift_r_hz))
-                                   + ';' + "{:0.3f}".format(10**(Constants.track_width_db/20)) + '\n' + cmd)
+                            cmd = (
+                                "AVG "
+                                + str(int(Constants.avg_in))
+                                + ";"
+                                + str(int(Constants.avg_out))
+                                + ";"
+                                + str(int(Constants.step_size))
+                                + ";"
+                                + str(int(Constants.max_drift_l_hz))
+                                + ";"
+                                + str(int(Constants.max_drift_r_hz))
+                                + ";"
+                                + "{:0.3f}".format(10 ** (Constants.track_width_db / 20))
+                                + "\n"
+                                + cmd
+                            )
 
                             # TODO: All the frequency sweeps set on the devices are for the primary, must reset CMD frequencies for each PID
 
@@ -428,75 +531,87 @@ class SerialProcess(multiprocessing.Process):
                                 self._maxDriftLeft = []
                                 self._maxDriftRight = []
                                 for i in range(len(self._serial)):
-                                    self._maxDriftLeft.append(
-                                        Constants.max_drift_l_hz)
-                                    self._maxDriftRight.append(
-                                        Constants.max_drift_r_hz)
+                                    self._maxDriftLeft.append(Constants.max_drift_l_hz)
+                                    self._maxDriftRight.append(Constants.max_drift_r_hz)
 
                                 try:
                                     # look for and avoid any sweep overlap between ports
                                     # strategy: move max drift to midpoint of center frequencies found during calibration
                                     freqRanges = []
                                     for x in range(len(self._serial)):
-                                        freqRanges.append(range(int(self._startFreqs[x] - Constants.max_drift_l_hz),
-                                                                int(self._stopFreqs[x] + Constants.max_drift_r_hz)))
+                                        freqRanges.append(
+                                            range(
+                                                int(self._startFreqs[x] - Constants.max_drift_l_hz),
+                                                int(self._stopFreqs[x] + Constants.max_drift_r_hz),
+                                            )
+                                        )
                                     for x in range(len(self._serial)):
                                         for y in range(len(self._serial)):
                                             if x == y:
                                                 continue
                                             start = int(
-                                                self._startFreqs[y] - Constants.max_drift_l_hz)
+                                                self._startFreqs[y] - Constants.max_drift_l_hz
+                                            )
                                             stop = int(
-                                                self._stopFreqs[y] + Constants.max_drift_r_hz)
+                                                self._stopFreqs[y] + Constants.max_drift_r_hz
+                                            )
                                             if start in freqRanges[x]:
-                                                midpt = int(np.average(
-                                                    [self._startFreqs[y], self._stopFreqs[x]]))
-                                                freqRanges[x] = range(
-                                                    freqRanges[x][0], midpt - 1)
-                                                freqRanges[y] = range(
-                                                    midpt + 1, freqRanges[y][-1])
+                                                midpt = int(
+                                                    np.average(
+                                                        [self._startFreqs[y], self._stopFreqs[x]]
+                                                    )
+                                                )
+                                                freqRanges[x] = range(freqRanges[x][0], midpt - 1)
+                                                freqRanges[y] = range(midpt + 1, freqRanges[y][-1])
                                             if stop in freqRanges[x]:
-                                                midpt = int(np.average(
-                                                    [self._startFreqs[x], self._stopFreqs[y]]))
-                                                freqRanges[x] = range(
-                                                    midpt + 1, freqRanges[x][-1])
-                                                freqRanges[y] = range(
-                                                    freqRanges[y][0], midpt - 1)
+                                                midpt = int(
+                                                    np.average(
+                                                        [self._startFreqs[x], self._stopFreqs[y]]
+                                                    )
+                                                )
+                                                freqRanges[x] = range(midpt + 1, freqRanges[x][-1])
+                                                freqRanges[y] = range(freqRanges[y][0], midpt - 1)
 
                                     self._maxDriftLeft = []
                                     self._maxDriftRight = []
                                     peaks_too_close = False
                                     for i in range(len(self._serial)):
                                         self._maxDriftLeft.append(
-                                            abs(self._startFreqs[i] - freqRanges[i][0]))
+                                            abs(self._startFreqs[i] - freqRanges[i][0])
+                                        )
                                         self._maxDriftRight.append(
-                                            abs(freqRanges[i][-1] - self._stopFreqs[i]))
-                                        minLimit_L = int(
-                                            Constants.max_drift_l_hz / 2)
+                                            abs(freqRanges[i][-1] - self._stopFreqs[i])
+                                        )
+                                        minLimit_L = int(Constants.max_drift_l_hz / 2)
                                         if self._maxDriftLeft[i] < minLimit_L:
-                                            Log.w(f"Port {i}: (Left Drift) " +
-                                                  f"Actual = {self._maxDriftLeft[i]}, Min-Limit = {minLimit_L}")
+                                            Log.w(
+                                                f"Port {i}: (Left Drift) "
+                                                + f"Actual = {self._maxDriftLeft[i]}, Min-Limit = {minLimit_L}"
+                                            )
                                             self._maxDriftLeft[i] = minLimit_L
                                             peaks_too_close = True
-                                        minLimit_R = int(
-                                            Constants.max_drift_r_hz / 2)
+                                        minLimit_R = int(Constants.max_drift_r_hz / 2)
                                         if self._maxDriftRight[i] < minLimit_R:
-                                            Log.w(f"Port {i}: (Right Drift) " +
-                                                  f"Actual = {self._maxDriftRight[i]}, Min-Limit = {minLimit_R}")
+                                            Log.w(
+                                                f"Port {i}: (Right Drift) "
+                                                + f"Actual = {self._maxDriftRight[i]}, Min-Limit = {minLimit_R}"
+                                            )
                                             self._maxDriftRight[i] = minLimit_R
                                             peaks_too_close = True
 
                                     if peaks_too_close:
+                                        Log.w("Peaks may be too close to reliably track.")
                                         Log.w(
-                                            "Peaks may be too close to reliably track.")
-                                        Log.w(
-                                            "If you experience tracking issues, please re-calibrate or try another crystal.")
+                                            "If you experience tracking issues, please re-calibrate or try another crystal."
+                                        )
 
                                 except Exception as e:
                                     Log.e(
-                                        "Error checking peak proximity and tracking reliability prior to start.")
+                                        "Error checking peak proximity and tracking reliability prior to start."
+                                    )
                                     Log.w(
-                                        "If you experience tracking issues, please re-calibrate or try another crystal.")
+                                        "If you experience tracking issues, please re-calibrate or try another crystal."
+                                    )
 
                                 cmd_split = cmd.splitlines()
                                 avg_parts = cmd_split[0].split(";")
@@ -504,8 +619,7 @@ class SerialProcess(multiprocessing.Process):
                                 avg_parts[4] = "{}"
                                 cmd_split[0] = ";".join(avg_parts)
                                 cmd_format_len = 10 if self._freq_hopping else 3
-                                cmd_split[-1] = ";".join(
-                                    ["{}" for i in range(cmd_format_len)])
+                                cmd_split[-1] = ";".join(["{}" for i in range(cmd_format_len)])
                                 cmd = "\n".join(cmd_split)
 
                                 SerBuffer = Queue()
@@ -514,33 +628,41 @@ class SerialProcess(multiprocessing.Process):
 
                                 for i in range(len(self._serial)):
                                     self._serial[i].open()
-                                    Log.d("Port {} opened!".format(i+1))
+                                    Log.d("Port {} opened!".format(i + 1))
                                     if i == 0:  # primary device must have MSGBOX cleared
                                         this_cmd = b"MSGBOX\n"
-                                        Log.d("Port {} write: {}".format(
-                                            i+1, this_cmd))
+                                        Log.d("Port {} write: {}".format(i + 1, this_cmd))
                                         self._serial[i].write(this_cmd)
-                                        bs = self._serial[i].read_until(
-                                        ).decode()  # byte stream
-                                        Log.d(
-                                            "Port {} read: {}!".format(i+1, bs))
+                                        bs = self._serial[i].read_until().decode()  # byte stream
+                                        Log.d("Port {} read: {}!".format(i + 1, bs))
                                     if self._freq_hopping:
                                         this_cmd = cmd.format(
-                                            self._maxDriftLeft[i], self._maxDriftRight[i],
-                                            self._startFreqs[i], self._stopFreqs[i], self._baselines[i],
-                                            self._startFreqs_up[i], self._stopFreqs_up[i], self._baselines_up[i],
-                                            self._startFreqs_down[i], self._stopFreqs_down[i], self._baselines_down[i],
-                                            base_overtones_per_cycle).encode()
+                                            self._maxDriftLeft[i],
+                                            self._maxDriftRight[i],
+                                            self._startFreqs[i],
+                                            self._stopFreqs[i],
+                                            self._baselines[i],
+                                            self._startFreqs_up[i],
+                                            self._stopFreqs_up[i],
+                                            self._baselines_up[i],
+                                            self._startFreqs_down[i],
+                                            self._stopFreqs_down[i],
+                                            self._baselines_down[i],
+                                            base_overtones_per_cycle,
+                                        ).encode()
                                     else:
-                                        this_cmd = cmd.format(self._maxDriftLeft[i], self._maxDriftRight[i],
-                                                              self._startFreqs[i], self._stopFreqs[i], self._baselines[i]).encode()
-                                    Log.d("Port {} write: {}".format(
-                                        i+1, this_cmd))
+                                        this_cmd = cmd.format(
+                                            self._maxDriftLeft[i],
+                                            self._maxDriftRight[i],
+                                            self._startFreqs[i],
+                                            self._stopFreqs[i],
+                                            self._baselines[i],
+                                        ).encode()
+                                    Log.d("Port {} write: {}".format(i + 1, this_cmd))
                                     self._serial[i].write(this_cmd)
-                                    bs = self._serial[i].read_until(
-                                    ).decode()  # byte stream
+                                    bs = self._serial[i].read_until().decode()  # byte stream
                                     # SerBuffer.put([i, bs])
-                                    Log.d("Port {} read: {}".format(i+1, bs))
+                                    Log.d("Port {} read: {}".format(i + 1, bs))
                                     # sleep(0.25) # TODO: Testing only, remove ideally
 
                                 def get_mode(freq):
@@ -559,37 +681,41 @@ class SerialProcess(multiprocessing.Process):
 
                                 def serial_read(s, i):
                                     # TODO: Testing only, remove ideally
-                                    sleep(0.25*i)
+                                    sleep(0.25 * i)
                                     send_stream_cmd = True
                                     while not self._exit.is_set():
                                         start = time()
                                         waitFor = 3
                                         now = time()
-                                        while s[i].in_waiting == 0 and now - start < waitFor and not send_stream_cmd:
+                                        while (
+                                            s[i].in_waiting == 0
+                                            and now - start < waitFor
+                                            and not send_stream_cmd
+                                        ):
                                             now = time()
                                             pass
                                         if now - start >= waitFor:  # timeout occurred
                                             send_stream_cmd = True
                                         if send_stream_cmd:
                                             send_stream_cmd = False
-                                            cmd = "STREAM\n" + \
-                                                'SPEED {:.0f}'.format(
-                                                    Constants.max_speed_multi4) + '\n'
+                                            cmd = (
+                                                "STREAM\n"
+                                                + "SPEED {:.0f}".format(Constants.max_speed_multi4)
+                                                + "\n"
+                                            )
                                             s[i].write(cmd.encode())
-                                            Log.d(
-                                                "Port {} streaming".format(i+1))
+                                            Log.d("Port {} streaming".format(i + 1))
                                         if s[i].in_waiting != 0:
-                                            SerBuffer.put(
-                                                [i, s[i].read_until().decode()])
+                                            SerBuffer.put([i, s[i].read_until().decode()])
                                     # Thread ending...
-                                    Log.d("Port {} stopping...".format(i+1))
+                                    Log.d("Port {} stopping...".format(i + 1))
                                     if s[i].is_open:
                                         # TODO: Testing only, remove ideally
-                                        sleep(0.25*(4-i))
+                                        sleep(0.25 * (4 - i))
                                         s[i].write("STOP\n".encode())
                                         # s[i].flush() # does not exist
                                         s[i].close()
-                                    Log.d("Port {} stopped".format(i+1))
+                                    Log.d("Port {} stopped".format(i + 1))
 
                                 def data_logger():
                                     while not self._exit.is_set() or not LogBuffer.empty():
@@ -609,32 +735,86 @@ class SerialProcess(multiprocessing.Process):
                                             with self._driedValue.get_lock():
                                                 if self.sensorDriedTime != self._driedValue.value:
                                                     self.sensorDriedTime = self._driedValue.value
-                                                    Log.d("[SerialProcess]",
-                                                          f"Sensor dried time = {self.sensorDriedTime}")
+                                                    Log.d(
+                                                        "[SerialProcess]",
+                                                        f"Sensor dried time = {self.sensorDriedTime}",
+                                                    )
                                             with self._appliedValue.get_lock():
                                                 if self.dropAppliedTime != self._appliedValue.value:
                                                     self.dropAppliedTime = self._appliedValue.value
-                                                    Log.d("[SerialProcess]",
-                                                          f"Drop applied time = {self.dropAppliedTime}")
+                                                    Log.d(
+                                                        "[SerialProcess]",
+                                                        f"Drop applied time = {self.dropAppliedTime}",
+                                                    )
 
                                             if overtone in (0, 255):
                                                 filenameCSV = "{}_{}".format(
-                                                    Constants.csv_filename, self._overtone_name.split(' ')[0])
-                                                write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count
-                                                FileStorage.CSVsave(i+1, filenameCSV, Constants.csv_export_path, w_time, temperature,
-                                                                    peak_mag, peak_freq, dissipation, t_amb, (k % write_interval == 0))
+                                                    Constants.csv_filename,
+                                                    self._overtone_name.split(" ")[0],
+                                                )
+                                                write_interval = (
+                                                    1000
+                                                    if w_time < Constants.downsample_after
+                                                    else Constants.downsample_file_count
+                                                )
+                                                FileStorage.csv_save(
+                                                    i + 1,
+                                                    filenameCSV,
+                                                    Constants.csv_export_path,
+                                                    w_time,
+                                                    temperature,
+                                                    peak_mag,
+                                                    peak_freq,
+                                                    dissipation,
+                                                    t_amb,
+                                                    (k % write_interval == 0),
+                                                )
                                             elif overtone == 1:
-                                                write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count * \
-                                                    Constants.base_overtone_freq
-                                                FileStorage.CSVsave(i+1, "overtone_upper", Constants.csv_export_path, w_time, temperature,
-                                                                    peak_mag, peak_freq, dissipation, t_amb, (k % write_interval < Constants.base_overtone_freq))
+                                                write_interval = (
+                                                    1000
+                                                    if w_time < Constants.downsample_after
+                                                    else Constants.downsample_file_count
+                                                    * Constants.base_overtone_freq
+                                                )
+                                                FileStorage.csv_save(
+                                                    i + 1,
+                                                    "overtone_upper",
+                                                    Constants.csv_export_path,
+                                                    w_time,
+                                                    temperature,
+                                                    peak_mag,
+                                                    peak_freq,
+                                                    dissipation,
+                                                    t_amb,
+                                                    (
+                                                        k % write_interval
+                                                        < Constants.base_overtone_freq
+                                                    ),
+                                                )
                                             elif overtone == 2:
-                                                write_interval = 1000 if w_time < Constants.downsample_after else Constants.downsample_file_count * \
-                                                    Constants.base_overtone_freq
-                                                FileStorage.CSVsave(i+1, "overtone_lower", Constants.csv_export_path, w_time, temperature,
-                                                                    peak_mag, peak_freq, dissipation, t_amb, (k % write_interval < Constants.base_overtone_freq))
+                                                write_interval = (
+                                                    1000
+                                                    if w_time < Constants.downsample_after
+                                                    else Constants.downsample_file_count
+                                                    * Constants.base_overtone_freq
+                                                )
+                                                FileStorage.csv_save(
+                                                    i + 1,
+                                                    "overtone_lower",
+                                                    Constants.csv_export_path,
+                                                    w_time,
+                                                    temperature,
+                                                    peak_mag,
+                                                    peak_freq,
+                                                    dissipation,
+                                                    t_amb,
+                                                    (
+                                                        k % write_interval
+                                                        < Constants.base_overtone_freq
+                                                    ),
+                                                )
                                     # Thread ending...
-                                    FileStorage.CSVflush_all()
+                                    FileStorage.csv_flush_all()
                                     Log.d("stopped thread 'data_logger'")
 
                                 def export_swps():
@@ -650,49 +830,79 @@ class SerialProcess(multiprocessing.Process):
                                             left = out[6]
                                             right = out[7]
                                             phase = None
-                                            baseline_offset = min(self._convertMagnitudeToADC(
-                                                np.polyval(self._coeffs_all[i], peak_freq)), peak_mag)
+                                            baseline_offset = min(
+                                                self._convertMagnitudeToADC(
+                                                    np.polyval(self._coeffs_all[i], peak_freq)
+                                                ),
+                                                peak_mag,
+                                            )
                                             mag_result_fit = ElaborateProcess.build_curve(
-                                                readFREQ, peak_mag - baseline_offset, peak_freq, left, right)
-                                            self._readFREQ[np.argmax(
-                                                mag_result_fit)] = peak_freq
-                                            mag_result_fit[np.argmax(
-                                                mag_result_fit)] = peak_mag - baseline_offset
+                                                readFREQ,
+                                                peak_mag - baseline_offset,
+                                                peak_freq,
+                                                left,
+                                                right,
+                                            )
+                                            self._readFREQ[np.argmax(mag_result_fit)] = peak_freq
+                                            mag_result_fit[np.argmax(mag_result_fit)] = (
+                                                peak_mag - baseline_offset
+                                            )
                                             mag_result_fit = self._convertADCtoMagnitude(
-                                                mag_result_fit)
+                                                mag_result_fit
+                                            )
                                             # zero offset
-                                            mag_result_fit -= self._convertADCtoMagnitude(
-                                                0)
+                                            mag_result_fit -= self._convertADCtoMagnitude(0)
                                             filtered_mag = mag_result_fit
                                             # Storing acquired sweeps
                                             filename = "{}_{}_{}".format(
-                                                Constants.csv_sweeps_filename, self._overtone_name, k)
+                                                Constants.csv_sweeps_filename,
+                                                self._overtone_name,
+                                                k,
+                                            )
                                             path = "{}_{}".format(
-                                                Constants.csv_sweeps_export_path, self._overtone_name)
-                                            path = FileStorage.DEV_populate_path(
-                                                path, i+1)
+                                                Constants.csv_sweeps_export_path,
+                                                self._overtone_name,
+                                            )
+                                            path = FileStorage.dev_populate_path(path, i + 1)
                                             if not phase is None:
-                                                FileStorage.TXT_sweeps_save(
-                                                    i+1, filename, path, readFREQ, filtered_mag, phase, appendNameToPath=False)
+                                                FileStorage.txt_sweeps_save(
+                                                    i + 1,
+                                                    filename,
+                                                    path,
+                                                    readFREQ,
+                                                    filtered_mag,
+                                                    phase,
+                                                    appendNameToPath=False,
+                                                )
                                             else:
-                                                FileStorage.TXT_sweeps_save(
-                                                    i+1, filename, path, readFREQ, filtered_mag, appendNameToPath=False)
+                                                FileStorage.txt_sweeps_save(
+                                                    i + 1,
+                                                    filename,
+                                                    path,
+                                                    readFREQ,
+                                                    filtered_mag,
+                                                    appendNameToPath=False,
+                                                )
                                     # Thread ending...
                                     Log.d("stopped thread 'export_swps'")
 
                                 Log.d("starting serial threads...")
                                 for i in range(len(self._serial)):
-                                    threading.Thread(target=serial_read, args=(
-                                        self._serial, i),).start()
+                                    threading.Thread(
+                                        target=serial_read,
+                                        args=(self._serial, i),
+                                    ).start()
                                 # thread0 = threading.Thread(target=serial_read, args=(self._serial,0),).start()
                                 # thread1 = threading.Thread(target=serial_read, args=(self._serial,1),).start()
                                 # thread2 = threading.Thread(target=serial_read, args=(self._serial,2),).start()
                                 # thread3 = threading.Thread(target=serial_read, args=(self._serial,3),).start()
                                 thread4 = threading.Thread(
-                                    target=data_logger,).start()
+                                    target=data_logger,
+                                ).start()
                                 if self._export:
                                     thread5 = threading.Thread(
-                                        target=export_swps,).start()
+                                        target=export_swps,
+                                    ).start()
                                 Log.d("threads started!")
 
                                 self._minFREQ = Constants.calibration_frequency_stop
@@ -703,12 +913,12 @@ class SerialProcess(multiprocessing.Process):
                                     self._minFREQ_down = Constants.calibration_frequency_stop
                                     self._maxFREQ_down = Constants.calibration_frequency_start
 
-                                self._seq = np.zeros(
-                                    len(self._serial), dtype=int)
-                                self._ts = np.zeros(
-                                    len(self._serial), dtype=int)
+                                self._seq = np.zeros(len(self._serial), dtype=int)
+                                self._ts = np.zeros(len(self._serial), dtype=int)
 
-                                while not self._exit.is_set():  # break immediately upon stop request (no need to flush buffered serial data)
+                                while (
+                                    not self._exit.is_set()
+                                ):  # break immediately upon stop request (no need to flush buffered serial data)
                                     if not SerBuffer.empty():
                                         out = SerBuffer.get_nowait()
                                         device = out[0]
@@ -717,7 +927,7 @@ class SerialProcess(multiprocessing.Process):
                                         # if self._reconstruct:
                                         #     Log.d(f"[STREAM] {device} {buffer.strip()}")
 
-                                        data_raw = buffer.split(';')
+                                        data_raw = buffer.split(";")
                                         length = len(data_raw)
 
                                         if length == 6 or length == 8:
@@ -742,41 +952,84 @@ class SerialProcess(multiprocessing.Process):
                                                 data_temp = float(data_raw[7])
 
                                             if self._freq_hopping:
-                                                if self._startFreqs[device] - Constants.max_drift_l_hz < peak_freq < self._stopFreqs[device] + Constants.max_drift_r_hz:
+                                                if (
+                                                    self._startFreqs[device]
+                                                    - Constants.max_drift_l_hz
+                                                    < peak_freq
+                                                    < self._stopFreqs[device]
+                                                    + Constants.max_drift_r_hz
+                                                ):
                                                     overtone = 0
-                                                elif self._startFreqs_up[device] - Constants.max_drift_l_hz < peak_freq < self._stopFreqs_up[device] + Constants.max_drift_r_hz:
+                                                elif (
+                                                    self._startFreqs_up[device]
+                                                    - Constants.max_drift_l_hz
+                                                    < peak_freq
+                                                    < self._stopFreqs_up[device]
+                                                    + Constants.max_drift_r_hz
+                                                ):
                                                     overtone = 1
-                                                elif self._startFreqs_down[device] - Constants.max_drift_l_hz < peak_freq < self._stopFreqs_down[device] + Constants.max_drift_r_hz:
+                                                elif (
+                                                    self._startFreqs_down[device]
+                                                    - Constants.max_drift_l_hz
+                                                    < peak_freq
+                                                    < self._stopFreqs_down[device]
+                                                    + Constants.max_drift_r_hz
+                                                ):
                                                     overtone = 2
                                                 else:
                                                     overtone = 0xFF
                                             else:
                                                 overtone = 0xFF
                                         else:
-                                            print(
-                                                "Message response length incorrect!")
+                                            print("Message response length incorrect!")
                                             continue
 
                                         # Track and detect USB serial stream anomalies
                                         # i.e. dropped, corrupt or out-of-order packets
                                         if self._freq_hopping and overtone == 0xFF:
-                                            Log.d(TAG, "WARN: Received USB packet dev{} #{} @{} with out-of-range frequency ({})".format(
-                                                int(device), sequence, w_time, peak_freq))
-                                        if sequence != self._seq[device] + 1 and self._seq[device] != 0:
-                                            Log.d(TAG, "WARN: Missing {:.0f} USB packets dev{} @{} (SEQ was {}, now {})".format(
-                                                sequence - self._seq[device], int(device), w_time, self._seq[device], sequence))
+                                            Log.d(
+                                                TAG,
+                                                "WARN: Received USB packet dev{} #{} @{} with out-of-range frequency ({})".format(
+                                                    int(device), sequence, w_time, peak_freq
+                                                ),
+                                            )
+                                        if (
+                                            sequence != self._seq[device] + 1
+                                            and self._seq[device] != 0
+                                        ):
+                                            Log.d(
+                                                TAG,
+                                                "WARN: Missing {:.0f} USB packets dev{} @{} (SEQ was {}, now {})".format(
+                                                    sequence - self._seq[device],
+                                                    int(device),
+                                                    w_time,
+                                                    self._seq[device],
+                                                    sequence,
+                                                ),
+                                            )
                                         if sequence <= self._seq[device]:
-                                            Log.d(TAG, "WARN: Malformed USB packet dev{} @{} (SEQ was {}, now {})".format(
-                                                int(device), w_time, self._seq[device], sequence))
-                                        if w_time <= self._ts[device] and overtone in [0, 0xFF] and sequence != 1:
-                                            Log.d(TAG, "WARN: Malformed USB packet dev{} #{} (TS was {}, now {})".format(
-                                                int(device), sequence, self._ts[device], w_time))
+                                            Log.d(
+                                                TAG,
+                                                "WARN: Malformed USB packet dev{} @{} (SEQ was {}, now {})".format(
+                                                    int(device), w_time, self._seq[device], sequence
+                                                ),
+                                            )
+                                        if (
+                                            w_time <= self._ts[device]
+                                            and overtone in [0, 0xFF]
+                                            and sequence != 1
+                                        ):
+                                            Log.d(
+                                                TAG,
+                                                "WARN: Malformed USB packet dev{} #{} (TS was {}, now {})".format(
+                                                    int(device), sequence, self._ts[device], w_time
+                                                ),
+                                            )
                                         self._seq[device] = sequence
                                         if overtone in [0, 0xFF]:
                                             self._ts[device] = w_time
 
-                                        peak_dB = self._convertADCtoMagnitude(
-                                            peak_mag)
+                                        peak_dB = self._convertADCtoMagnitude(peak_mag)
                                         dissipation = 10.0 ** (-peak_dB / 20)
 
                                         self._mode = get_mode(peak_freq)
@@ -812,20 +1065,28 @@ class SerialProcess(multiprocessing.Process):
                                             _min = self._minFREQ_down
                                             _max = self._maxFREQ_down
                                         self._readFREQ = np.linspace(
-                                            _min, _max, Constants.argument_default_samples)
-                                        baseline_offset = min(self._convertMagnitudeToADC(
-                                            np.polyval(self._coeffs_all[device], peak_freq)), peak_mag)
+                                            _min, _max, Constants.argument_default_samples
+                                        )
+                                        baseline_offset = min(
+                                            self._convertMagnitudeToADC(
+                                                np.polyval(self._coeffs_all[device], peak_freq)
+                                            ),
+                                            peak_mag,
+                                        )
                                         mag_result_fit = ElaborateProcess.build_curve(
-                                            self._readFREQ, peak_mag - baseline_offset, peak_freq, left, right)
-                                        self._readFREQ[np.argmax(
-                                            mag_result_fit)] = peak_freq
-                                        mag_result_fit[np.argmax(
-                                            mag_result_fit)] = peak_mag - baseline_offset
-                                        mag_result_fit = self._convertADCtoMagnitude(
-                                            mag_result_fit)
+                                            self._readFREQ,
+                                            peak_mag - baseline_offset,
+                                            peak_freq,
+                                            left,
+                                            right,
+                                        )
+                                        self._readFREQ[np.argmax(mag_result_fit)] = peak_freq
+                                        mag_result_fit[np.argmax(mag_result_fit)] = (
+                                            peak_mag - baseline_offset
+                                        )
+                                        mag_result_fit = self._convertADCtoMagnitude(mag_result_fit)
                                         # zero offset
-                                        mag_result_fit -= self._convertADCtoMagnitude(
-                                            0)
+                                        mag_result_fit -= self._convertADCtoMagnitude(0)
                                         filtered_mag = mag_result_fit
 
                                         # Make sure peaks on Amplitudes plot for MULTI are not clipped at edges
@@ -837,35 +1098,66 @@ class SerialProcess(multiprocessing.Process):
                                         w_time /= 1e4
 
                                         LogBuffer.put(
-                                            [device, sequence, overtone, w_time, data_temp, peak_mag, peak_freq, dissipation, tec_temp])
+                                            [
+                                                device,
+                                                sequence,
+                                                overtone,
+                                                w_time,
+                                                data_temp,
+                                                peak_mag,
+                                                peak_freq,
+                                                dissipation,
+                                                tec_temp,
+                                            ]
+                                        )
                                         if self._export:
                                             ExpBuffer.put(
-                                                [device, sequence, overtone, self._readFREQ, peak_mag, peak_freq, left, right])
+                                                [
+                                                    device,
+                                                    sequence,
+                                                    overtone,
+                                                    self._readFREQ,
+                                                    peak_mag,
+                                                    peak_freq,
+                                                    left,
+                                                    right,
+                                                ]
+                                            )
 
                                         k = sequence
                                         settle_samples = Constants.initial_settle_samples
-                                        if overtone in (0, 255) and k > settle_samples and k % (4*1) == device:
-                                            self._parser.add0(
-                                                [device, self._readFREQ])
-                                            self._parser.add1(
-                                                [device, filtered_mag])
-                                            self._parser.add2(
-                                                [device, tec_state])
-                                            self._parser.add3(
-                                                [device, w_time, peak_freq])
-                                            self._parser.add4(
-                                                [device, w_time, dissipation])
-                                            self._parser.add5(
-                                                [device, w_time, data_temp, tec_temp])
+                                        if (
+                                            overtone in (0, 255)
+                                            and k > settle_samples
+                                            and k % (4 * 1) == device
+                                        ):
+                                            self._parser.add0([device, self._readFREQ])
+                                            self._parser.add1([device, filtered_mag])
+                                            self._parser.add2([device, tec_state])
+                                            self._parser.add3([device, w_time, peak_freq])
+                                            self._parser.add4([device, w_time, dissipation])
+                                            self._parser.add5([device, w_time, data_temp, tec_temp])
                                             self._parser.add6(
-                                                [False, False, False, False, np.sum(self._seq), False])
+                                                [
+                                                    False,
+                                                    False,
+                                                    False,
+                                                    False,
+                                                    np.sum(self._seq),
+                                                    False,
+                                                ]
+                                            )
                                         if k <= settle_samples:
                                             self._minFREQ = Constants.calibration_frequency_stop
                                             self._maxFREQ = Constants.calibration_frequency_start
                                             self._minFREQ_up = Constants.calibration_frequency_stop
                                             self._maxFREQ_up = Constants.calibration_frequency_start
-                                            self._minFREQ_down = Constants.calibration_frequency_stop
-                                            self._maxFREQ_down = Constants.calibration_frequency_start
+                                            self._minFREQ_down = (
+                                                Constants.calibration_frequency_stop
+                                            )
+                                            self._maxFREQ_down = (
+                                                Constants.calibration_frequency_start
+                                            )
 
                                 # Stopping...
                                 Log.d("Waiting for logger threads to finish... ")
@@ -883,8 +1175,7 @@ class SerialProcess(multiprocessing.Process):
                                 #     if not at_least_1_open:
                                 #         break # all have closed
 
-                                Log.d(
-                                    "Logger threads and serial ports have closed. Task Finished!")
+                                Log.d("Logger threads and serial ports have closed. Task Finished!")
                                 self._done.set()
 
                                 return  # unwind process
@@ -920,8 +1211,7 @@ class SerialProcess(multiprocessing.Process):
                                 # Proceed with streaming, regardless of success or timeout
                                 Log.i(TAG, "Starting data stream...")
                                 while time() - start < waitFor:  # delay timeout
-                                    buffer = self._serial[0].read_until(
-                                    ).decode().strip().lower()
+                                    buffer = self._serial[0].read_until().decode().strip().lower()
                                     if buffer in ["stop", ""]:
                                         break  # proceed on STOP or no reply
                                 cmd = "STREAM\n"  # start streaming
@@ -942,8 +1232,7 @@ class SerialProcess(multiprocessing.Process):
                             if len(cmd.strip()) and not streaming:
                                 # WRITES encoded command to the serial port
                                 self._serial[0].write(cmd.encode())
-                                Log.d(
-                                    TAG, "{} {} - Sending FREQ CMD {}".format(k, streaming, cmd))
+                                Log.d(TAG, "{} {} - Sending FREQ CMD {}".format(k, streaming, cmd))
 
                             # if buffer is pre-filled (even just once) we don't need to send CMD again (ever, this RUN)
                             if self._serial[0].in_waiting and elaborating:
@@ -964,21 +1253,26 @@ class SerialProcess(multiprocessing.Process):
                                     time_last_speed_adjust = time()
                                 else:
                                     factor = (
-                                        1000/10 if k == 20 else
-                                        1000/100 if k == 120 else
-                                        1000/880 if k == 1000 else
-                                        1000/1000)
-                                    last_speed = speed if not speed == 0 else 1000  # initial FW loop timing
-                                    speed = (
-                                        time() - time_last_speed_adjust)*1e3
+                                        1000 / 10
+                                        if k == 20
+                                        else (
+                                            1000 / 100
+                                            if k == 120
+                                            else 1000 / 880 if k == 1000 else 1000 / 1000
+                                        )
+                                    )
+                                    last_speed = (
+                                        speed if not speed == 0 else 1000
+                                    )  # initial FW loop timing
+                                    speed = (time() - time_last_speed_adjust) * 1e3
                                     # only the first check (from k=10 to k=20) gets x100; all else 1:1
                                     speed *= factor
                                     if k <= 1000:
                                         # round down to nearest 100us
-                                        speed -= (speed % 100)
+                                        speed -= speed % 100
                                     else:
                                         # round up to nearest 100us
-                                        speed += (100 - speed % 100)
+                                        speed += 100 - speed % 100
                                     time_last_speed_adjust = time()
                                     if self._err1 and self._err2:
                                         speed = 1000  # initial SW loop timing
@@ -991,7 +1285,7 @@ class SerialProcess(multiprocessing.Process):
                                             self._serial[0].write(cmd.encode())
 
                             # Initializes buffer and strs record
-                            buffer = ''
+                            buffer = ""
 
                             # Read the leading 2 bytes on the serial response to decide the FW string format
                             # only recognize new formats (not legacy, for speed)
@@ -1002,32 +1296,38 @@ class SerialProcess(multiprocessing.Process):
                             rx_ex = False
                             while retry:
                                 while time() - start < waitFor:
-                                    while self._serial[0].in_waiting == 0 and time() - start < waitFor:
+                                    while (
+                                        self._serial[0].in_waiting == 0 and time() - start < waitFor
+                                    ):
                                         pass
                                     if not time() - start < waitFor:
                                         break
-                                    buffer = self._serial[0].read_until(
-                                    ).decode()  # (1).hex()
-                                    if '\n' in buffer:
+                                    buffer = self._serial[0].read_until().decode()  # (1).hex()
+                                    if "\n" in buffer:
                                         retry = False  # message RX'd, exit loop to process packet!
                                         break
                                     if buffer == "51":  # Q
                                         buffer = "Q"
-                                        while self._serial[0].in_waiting == 0 and time() - start < waitFor:
+                                        while (
+                                            self._serial[0].in_waiting == 0
+                                            and time() - start < waitFor
+                                        ):
                                             pass
                                         if not time() - start < waitFor:
                                             break
-                                        buffer += self._serial[0].read(
-                                            1).decode()
+                                        buffer += self._serial[0].read(1).decode()
                                         retry = False  # message RX'd, exit loop to process packet!
                                         break
                                     else:
                                         ignored += 1
-                                        Log.d(TAG, "E = {}, bad = {}".format(
-                                            ignored, buffer))
+                                        Log.d(TAG, "E = {}, bad = {}".format(ignored, buffer))
                                 if not ignored == 0:
                                     Log.d(
-                                        TAG, "Bad or partial packet received! Threw away {} bytes...".format(ignored))
+                                        TAG,
+                                        "Bad or partial packet received! Threw away {} bytes...".format(
+                                            ignored
+                                        ),
+                                    )
 
                                 # Log.d(TAG, "E = {}, buff = {}".format(ignored, buffer))
                                 # Log.d(TAG, "E = {}".format((time() - time_elaborate_begin)*1e3))
@@ -1064,14 +1364,14 @@ class SerialProcess(multiprocessing.Process):
                                     # QUACK! (timeout)
                                     elif buffer.startswith("QU"):
                                         Log.w(
-                                            "Session auto-ended. Timeout due to lack of interaction.")
+                                            "Session auto-ended. Timeout due to lack of interaction."
+                                        )
                                         # throw away "ACK!\r\n"
-                                        self._serial[0].read(
-                                            self._serial[0].in_waiting)
+                                        self._serial[0].read(self._serial[0].in_waiting)
                                         self.stop()
                                         rx_ex = True
                                         break
-                                elif not buffer == '':
+                                elif not buffer == "":
                                     format = 0
 
                                 # Timeout exception / connection lost
@@ -1084,7 +1384,11 @@ class SerialProcess(multiprocessing.Process):
                                 # Unrecognized format
                                 if format == -1:
                                     Log.d(
-                                        TAG, "Unrecognized serial response \"{}\" format from device".format(buffer))
+                                        TAG,
+                                        'Unrecognized serial response "{}" format from device'.format(
+                                            buffer
+                                        ),
+                                    )
                                     retry = True
 
                                 if format == 0:
@@ -1094,7 +1398,11 @@ class SerialProcess(multiprocessing.Process):
 
                                 if format != 9:
                                     Log.d(
-                                        TAG, "Unsupported serial response \"{}\" format from device".format(buffer))
+                                        TAG,
+                                        'Unsupported serial response "{}" format from device'.format(
+                                            buffer
+                                        ),
+                                    )
                                     retry = True
 
                             # If stop() called above, do not proceed to processing serial data
@@ -1111,7 +1419,7 @@ class SerialProcess(multiprocessing.Process):
                                 #     buffer += self._serial[0].read_until().decode() # (1).decode(Constants.app_encoding)
                                 #     if '\n' in buffer:
                                 #       break
-                                data_raw = buffer.split(';')
+                                data_raw = buffer.split(";")
                                 length = len(data_raw)
 
                                 if length == 6 or length == 8:
@@ -1136,11 +1444,23 @@ class SerialProcess(multiprocessing.Process):
                                         data_temp = float(data_raw[7])
 
                                     if self._freq_hopping:
-                                        if startFreqs[0] - Constants.max_drift_l_hz < peak_freq < stopFreqs[0] + Constants.max_drift_r_hz:
+                                        if (
+                                            startFreqs[0] - Constants.max_drift_l_hz
+                                            < peak_freq
+                                            < stopFreqs[0] + Constants.max_drift_r_hz
+                                        ):
                                             overtone = 0
-                                        elif startFreqs[1] - Constants.max_drift_l_hz < peak_freq < stopFreqs[1] + Constants.max_drift_r_hz:
+                                        elif (
+                                            startFreqs[1] - Constants.max_drift_l_hz
+                                            < peak_freq
+                                            < stopFreqs[1] + Constants.max_drift_r_hz
+                                        ):
                                             overtone = 1
-                                        elif startFreqs[2] - Constants.max_drift_l_hz < peak_freq < stopFreqs[2] + Constants.max_drift_r_hz:
+                                        elif (
+                                            startFreqs[2] - Constants.max_drift_l_hz
+                                            < peak_freq
+                                            < stopFreqs[2] + Constants.max_drift_r_hz
+                                        ):
                                             overtone = 2
                                         else:
                                             overtone = 0xFF
@@ -1153,17 +1473,33 @@ class SerialProcess(multiprocessing.Process):
                                 # Track and detect USB serial stream anomalies
                                 # i.e. dropped, corrupt or out-of-order packets
                                 if self._freq_hopping and overtone == 0xFF:
-                                    Log.w(TAG, "WARN: Received USB packet #{} @{} with out-of-range frequency ({})".format(
-                                        sequence, w_time, peak_freq))
+                                    Log.w(
+                                        TAG,
+                                        "WARN: Received USB packet #{} @{} with out-of-range frequency ({})".format(
+                                            sequence, w_time, peak_freq
+                                        ),
+                                    )
                                 if sequence != self._seq + 1 and self._seq != 0:
-                                    Log.w(TAG, "WARN: Missing {} USB packets @{} (SEQ was {}, now {})".format(
-                                        sequence - self._seq, w_time, self._seq, sequence))
+                                    Log.w(
+                                        TAG,
+                                        "WARN: Missing {} USB packets @{} (SEQ was {}, now {})".format(
+                                            sequence - self._seq, w_time, self._seq, sequence
+                                        ),
+                                    )
                                 if sequence <= self._seq:
                                     Log.w(
-                                        TAG, "WARN: Malformed USB packet @{} (SEQ was {}, now {})".format(w_time, self._seq, sequence))
+                                        TAG,
+                                        "WARN: Malformed USB packet @{} (SEQ was {}, now {})".format(
+                                            w_time, self._seq, sequence
+                                        ),
+                                    )
                                 if w_time <= self._ts and overtone in [0, 0xFF] and sequence != 1:
-                                    Log.w(TAG, "WARN: Malformed USB packet #{} (TS was {}, now {})".format(
-                                        sequence, self._ts, w_time))
+                                    Log.w(
+                                        TAG,
+                                        "WARN: Malformed USB packet #{} (TS was {}, now {})".format(
+                                            sequence, self._ts, w_time
+                                        ),
+                                    )
                                 self._seq = sequence
                                 if overtone in [0, 0xFF]:
                                     self._ts = w_time
@@ -1171,57 +1507,62 @@ class SerialProcess(multiprocessing.Process):
                             # this applies to every format
                             if self._freq_hopping:
                                 # Update frequencies based on response type (with a safety/sanity check)
-                                readFREQ = readFREQs[overtone] if overtone < len(
-                                    readFREQs) else readFREQs[0]
+                                readFREQ = (
+                                    readFREQs[overtone]
+                                    if overtone < len(readFREQs)
+                                    else readFREQs[0]
+                                )
 
                             # Timeout exception / connection lost
                             if time() - start >= 3:
-                                Log.d(TAG, "buffer = {}, size = {}".format(
-                                    buffer, len(buffer)))
-                                raise TimeoutError(
-                                    "No serial response from device")
+                                Log.d(TAG, "buffer = {}, size = {}".format(buffer, len(buffer)))
+                                raise TimeoutError("No serial response from device")
 
                         # specify handlers for different exceptions
                         except ValueError:
                             # , end='\r')
-                            Log.w(
-                                TAG, "WARNING (ValueError): convert raw to float failed")
+                            Log.w(TAG, "WARNING (ValueError): convert raw to float failed")
                             # Log.w(TAG, "Warning (ValueError): convert Raw to float failed")
                         except TimeoutError:
                             if self._flag_error_usb == 0:
                                 Log.w(
-                                    TAG, "WARNING: (TimeoutError): No serial response from device")
+                                    TAG, "WARNING: (TimeoutError): No serial response from device"
+                                )
                             self._flag_error_usb += 1
                         except RuntimeError:
                             # , end='\r')
                             Log.w(
-                                TAG, "WARNING (RuntimeError): Unrecognized serial response format")
+                                TAG, "WARNING (RuntimeError): Unrecognized serial response format"
+                            )
                             # Log.d(TAG, "Please, make sure the device and software are both up-to-date!")
                         except IOError as e:
                             if self._flag_error_usb == 0:
                                 Log.w(
-                                    TAG, "WARNING (IOError): Device stopped responding\n{}".format(e))
+                                    TAG,
+                                    "WARNING (IOError): Device stopped responding\n{}".format(e),
+                                )
                             self._flag_error_usb += 1
                         except:
                             # , end='\r')
-                            Log.w(
-                                TAG, "WARNING (Exception): convert raw to float failed")
+                            Log.w(TAG, "WARNING (Exception): convert raw to float failed")
                             # Log.w(TAG, "Warning (ValueError): convert Raw to float failed")
 
                         # Calls elaborate method to performs results
                         try:
                             # invoke elaborate queue
                             self._elaborate_in_q.put(
-                                [k,
-                                 sequence,
-                                 w_time,
-                                 peak_mag,
-                                 peak_freq,
-                                 left,
-                                 right,
-                                 data_temp,
-                                 coeffs_all,
-                                 overtone]
+                                [
+                                    k,
+                                    sequence,
+                                    w_time,
+                                    peak_mag,
+                                    peak_freq,
+                                    left,
+                                    right,
+                                    data_temp,
+                                    coeffs_all,
+                                    overtone,
+                                ]
                             )
                         except ValueError:
                             self._flag_error = 1
@@ -1257,14 +1598,26 @@ class SerialProcess(multiprocessing.Process):
                         last_overtone = overtone
 
                         self._parser.add6(
-                            [self._err1, self._err2, self._err3, self._err4, k, self._flag_error_usb])
+                            [
+                                self._err1,
+                                self._err2,
+                                self._err3,
+                                self._err4,
+                                k,
+                                self._flag_error_usb,
+                            ]
+                        )
                         if k <= self._environment:
                             pass  # bar.update(k)
-                        if k/50 == k//50:
+                        if k / 50 == k // 50:
                             if k == 1000:
                                 # Log.i('\n')
-                                Log.i(TAG, "sweep #{} in {}s              ".format(
-                                    k, (time()-timestamp)))
+                                Log.i(
+                                    TAG,
+                                    "sweep #{} in {}s              ".format(
+                                        k, (time() - timestamp)
+                                    ),
+                                )
                         # Increases sweep counter
                         k += 1
 
@@ -1289,8 +1642,10 @@ class SerialProcess(multiprocessing.Process):
                                     stop = time()
                                     waitFor = 3  # timeout delay (seconds)
                                     while time() - stop < waitFor:
-                                        while (time() - stop < waitFor and
-                                               self._serial[0].in_waiting == 0):
+                                        while (
+                                            time() - stop < waitFor
+                                            and self._serial[0].in_waiting == 0
+                                        ):
                                             pass
                                         if time() - stop < waitFor:
                                             # "S"
@@ -1305,24 +1660,26 @@ class SerialProcess(multiprocessing.Process):
                                                         # "\r"
                                                         if self._serial[0].read(1).hex() == "0d":
                                                             # "\n"
-                                                            if self._serial[0].read(1).hex() == "0a":
+                                                            if (
+                                                                self._serial[0].read(1).hex()
+                                                                == "0a"
+                                                            ):
                                                                 # Log.i(TAG, "Serial stream stopped!   ")
                                                                 stopped = 1
                                                                 break
                                     if stopped == 1:
                                         break
                                     if x == 2:
-                                        Log.e(
-                                            TAG, "Failed to stop serial stream!")
+                                        Log.e(TAG, "Failed to stop serial stream!")
                     except:
                         # failed to stop stream
-                        Log.w(
-                            TAG, "WARNING: Failed to stop device stream. Error parsing response.")
+                        Log.w(TAG, "WARNING: Failed to stop device stream. Error parsing response.")
         except:
             limit = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
-            a_list = ['Traceback (most recent call last):']
+
+            a_list = ["Traceback (most recent call last):"]
             a_list = a_list + format_tb(tb, limit)
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
@@ -1368,11 +1725,14 @@ class SerialProcess(multiprocessing.Process):
     def get_ports():
         return serial.enumerate()
         from QATCH.common.architecture import Architecture, OSType
+
         if Architecture.get_os() is OSType.macosx:
             import glob
+
             return glob.glob("/dev/tty.usbmodem*")
         elif Architecture.get_os() is OSType.linux:
             import glob
+
             return glob.glob("/dev/ttyACM*")
         else:
             found_ports = []
@@ -1397,7 +1757,7 @@ class SerialProcess(multiprocessing.Process):
         # Loads frequencies from  file (path: 'common\')
         try:
             path = Constants.cvs_peakfrequencies_path
-            path = FileStorage.DEV_populate_path(path, i)
+            path = FileStorage.dev_populate_path(path, i)
             data = loadtxt(path)
             peaks_mag = data[:, 0]
             reversed_peaks_mag = peaks_mag[::-1]
@@ -1426,7 +1786,7 @@ class SerialProcess(multiprocessing.Process):
             if p == port:
                 return True
         if port == None:
-            if len(dm.doDiscover()) > 0:
+            if len(dm.do_discover()) > 0:
                 return net_exists
         return False
 
@@ -1442,24 +1802,44 @@ class SerialProcess(multiprocessing.Process):
         :return: readFREQ, frequency range :rtype: float list.
         """
         # Loads frequencies from file
-        peaks_mag, _, left_bounds, right_bounds, baselines = self.load_frequencies_file(
-            i)
+        peaks_mag, _, left_bounds, right_bounds, baselines = self.load_frequencies_file(i)
 
         # Checks QCS type 5Mhz or 10MHz
         # Sets start and stop frequencies for the corresponding overtone
-        if (peaks_mag[0] > 4e+06 and peaks_mag[0] < 6e+06):
+        if peaks_mag[0] > 4e06 and peaks_mag[0] < 6e06:
             switch = Overtone_Switcher_5MHz(
-                peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds)
+                peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds
+            )
             # 0=fundamental, 1=3rd overtone and so on
-            (overtone_name, overtone_value, self._startFreq, self._stopFreq, SG_window_size,
-             spline_factor) = switch.overtone5MHz_to_freq_range(self._overtone_int)
+            (
+                overtone_name,
+                overtone_value,
+                self._startFreq,
+                self._stopFreq,
+                SG_window_size,
+                spline_factor,
+            ) = switch.overtone5MHz_to_freq_range(self._overtone_int)
 
             # Added for freq hopping
             if self._freq_hopping:
-                (overtone_name_up, overtone_value_up, self._startFreq_up, self._stopFreq_up, SG_window_size_up,
-                 spline_factor_up) = switch.overtone5MHz_to_freq_range(min(self._overtone_int+1, len(peaks_mag)-1))
-                (overtone_name_down, overtone_value_down, self._startFreq_down, self._stopFreq_down, SG_window_size_down,
-                 spline_factor_down) = switch.overtone5MHz_to_freq_range(max(self._overtone_int-1, 0))
+                (
+                    overtone_name_up,
+                    overtone_value_up,
+                    self._startFreq_up,
+                    self._stopFreq_up,
+                    SG_window_size_up,
+                    spline_factor_up,
+                ) = switch.overtone5MHz_to_freq_range(
+                    min(self._overtone_int + 1, len(peaks_mag) - 1)
+                )
+                (
+                    overtone_name_down,
+                    overtone_value_down,
+                    self._startFreq_down,
+                    self._stopFreq_down,
+                    SG_window_size_down,
+                    spline_factor_down,
+                ) = switch.overtone5MHz_to_freq_range(max(self._overtone_int - 1, 0))
             else:
                 self._startFreq_up = 0
                 self._stopFreq_up = 0
@@ -1467,66 +1847,110 @@ class SerialProcess(multiprocessing.Process):
                 self._stopFreq_down = 0
             ###################################################################
             Log.i(TAG, "QATCH Device setup: @5MHz")
-        elif (peaks_mag[0] > 9e+06 and peaks_mag[0] < 11e+06):
+        elif peaks_mag[0] > 9e06 and peaks_mag[0] < 11e06:
             switch = Overtone_Switcher_10MHz(
-                peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds)
-            (overtone_name, overtone_value, self._startFreq, self._stopFreq, SG_window_size,
-             spline_factor) = switch.overtone10MHz_to_freq_range(self._overtone_int)
+                peak_frequencies=peaks_mag, left_bounds=left_bounds, right_bounds=right_bounds
+            )
+            (
+                overtone_name,
+                overtone_value,
+                self._startFreq,
+                self._stopFreq,
+                SG_window_size,
+                spline_factor,
+            ) = switch.overtone10MHz_to_freq_range(self._overtone_int)
             Log.i(TAG, "QATCH Device setup: @10MHz")
 
         # Sets the frequency step
-        fStep = (self._stopFreq-self._startFreq)/(samples-1)
+        fStep = (self._stopFreq - self._startFreq) / (samples - 1)
         # Added for freq hopping
         if self._freq_hopping:
-            fStep_up = (self._stopFreq_up-self._startFreq_up)/(samples-1)
-            fStep_down = (self._stopFreq_down-self._startFreq_down)/(samples-1)
+            fStep_up = (self._stopFreq_up - self._startFreq_up) / (samples - 1)
+            fStep_down = (self._stopFreq_down - self._startFreq_down) / (samples - 1)
 
         # Handle step-size remainders and adjust stops accordingly
         d = fStep - int(fStep)
         if not d == 0:
-            self._stopFreq -= d*(samples-1)
+            self._stopFreq -= d * (samples - 1)
             fStep = int(fStep)
         # Added for freq hopping
         if self._freq_hopping:
             d_up = fStep_up - int(fStep_up)
             if not d_up == 0:
-                self._stopFreq_up -= d*(samples-1)
+                self._stopFreq_up -= d * (samples - 1)
                 fStep_up = int(fStep_up)
             d_down = fStep_down - int(fStep_down)
             if not d_down == 0:
-                self._stopFreq_down -= d*(samples-1)
+                self._stopFreq_down -= d * (samples - 1)
                 fStep_down = int(fStep_down)
 
         # Sets spline points for fitting
-        spline_points = int((self._stopFreq-self._startFreq))+1
+        spline_points = int((self._stopFreq - self._startFreq)) + 1
         # Added for freq hopping
         if self._freq_hopping:
-            spline_points_up = int((self._stopFreq_up-self._startFreq_up))+1
-            spline_points_down = int(
-                (self._stopFreq_down-self._startFreq_down))+1
+            spline_points_up = int((self._stopFreq_up - self._startFreq_up)) + 1
+            spline_points_down = int((self._stopFreq_down - self._startFreq_down)) + 1
 
         # Sets the frequency range for the corresponding overtone
         readFREQ = np.arange(samples) * (fStep) + self._startFreq
         # Added for freq hopping
         if self._freq_hopping:
             readFREQ_up = np.arange(samples) * (fStep_up) + self._startFreq_up
-            readFREQ_down = np.arange(
-                samples) * (fStep_down) + self._startFreq_down
+            readFREQ_down = np.arange(samples) * (fStep_down) + self._startFreq_down
 
         # Sets the baseline counts for the corresponding overtone
         baseline = baselines[self._overtone_int]
         if self._freq_hopping:
-            baseline_up = baselines[min(
-                self._overtone_int+1, len(peaks_mag)-1)]
-            baseline_down = baselines[max(self._overtone_int-1, 0)]
+            baseline_up = baselines[min(self._overtone_int + 1, len(peaks_mag) - 1)]
+            baseline_down = baselines[max(self._overtone_int - 1, 0)]
 
         # Added bottom 2 lines for freq hopping
         if self._freq_hopping:
-            return (overtone_name, overtone_value, fStep, readFREQ, SG_window_size, spline_points, spline_factor, baseline, self._startFreq, self._stopFreq,
-                    overtone_name_up, overtone_value_up, fStep_up, readFREQ_up, SG_window_size_up, spline_points_up, spline_factor_up, baseline_up, self._startFreq_up, self._stopFreq_up,
-                    overtone_name_down, overtone_value_down, fStep_down, readFREQ_down, SG_window_size_down, spline_points_down, spline_factor_down, baseline_down, self._startFreq_down, self._stopFreq_down)
+            return (
+                overtone_name,
+                overtone_value,
+                fStep,
+                readFREQ,
+                SG_window_size,
+                spline_points,
+                spline_factor,
+                baseline,
+                self._startFreq,
+                self._stopFreq,
+                overtone_name_up,
+                overtone_value_up,
+                fStep_up,
+                readFREQ_up,
+                SG_window_size_up,
+                spline_points_up,
+                spline_factor_up,
+                baseline_up,
+                self._startFreq_up,
+                self._stopFreq_up,
+                overtone_name_down,
+                overtone_value_down,
+                fStep_down,
+                readFREQ_down,
+                SG_window_size_down,
+                spline_points_down,
+                spline_factor_down,
+                baseline_down,
+                self._startFreq_down,
+                self._stopFreq_down,
+            )
         else:
-            return (overtone_name, overtone_value, fStep, readFREQ, SG_window_size, spline_points, spline_factor, baseline, self._startFreq, self._stopFreq)
+            return (
+                overtone_name,
+                overtone_value,
+                fStep,
+                readFREQ,
+                SG_window_size,
+                spline_points,
+                spline_factor,
+                baseline,
+                self._startFreq,
+                self._stopFreq,
+            )
 
     ###########################################################################
     # Loads Fundamental frequency and Overtones from file
@@ -1534,7 +1958,7 @@ class SerialProcess(multiprocessing.Process):
 
     def load_frequencies_file(self, i):
         path = Constants.cvs_peakfrequencies_path
-        path = FileStorage.DEV_populate_path(path, i)
+        path = FileStorage.dev_populate_path(path, i)
         data = loadtxt(path)
         peaks_mag = data[:, 0]
         peaks_phase = data[:, 1]  # unused at the moment
@@ -1565,11 +1989,11 @@ class SerialProcess(multiprocessing.Process):
         peaks_mag, _, _, _, _ = self.load_frequencies_file(i)
 
         # Checks QCS type 5Mhz or 10MHz
-        if (peaks_mag[0] > 4e+06 and peaks_mag[0] < 6e+06):
+        if peaks_mag[0] > 4e06 and peaks_mag[0] < 6e06:
             filename = Constants.csv_calibration_path
-        elif (peaks_mag[0] > 9e+06 and peaks_mag[0] < 11e+06):
+        elif peaks_mag[0] > 9e06 and peaks_mag[0] < 11e06:
             filename = Constants.csv_calibration_path10
-        filename = FileStorage.DEV_populate_path(filename, i)
+        filename = FileStorage.dev_populate_path(filename, i)
 
         data = loadtxt(filename)
         freq_all = data[:, 0]

@@ -1,12 +1,14 @@
 from functools import partial as callback_args
+from os import path, system
 from pathlib import Path
-from queue import Queue, Empty
-from subprocess import Popen, PIPE, STDOUT
+from queue import Empty, Queue
+from subprocess import PIPE, STDOUT, Popen
 from threading import Thread
+
 from PyQt5.QtCore import pyqtSignal
+
 from QATCH.common.architecture import Architecture
 from QATCH.common.logger import Logger as Log
-from os import system, path
 
 
 class QATCH_TyUpdater:
@@ -24,8 +26,7 @@ class QATCH_TyUpdater:
         queue_timeout = 5  # seconds of no subprocess.stdout bytes to trigger a timeout exception
         tools_path = path.join(Architecture.get_path(), "tools")
         path_to_tycmd = path.join(tools_path, "tytools", "tycmd.exe")
-        path_to_loader = path.join(
-            tools_path, "tool-teensy", "teensy_loader_cli.exe")
+        path_to_loader = path.join(tools_path, "tool-teensy", "teensy_loader_cli.exe")
         teensy_mcu = "TEENSY41"
 
         Log.d("Path to TyCmd: ", path_to_tycmd)
@@ -48,12 +49,11 @@ class QATCH_TyUpdater:
             finally:
                 queue.put(None)
 
-        cmd_updater = f'{path_to_tycmd}  upload  --board  {device_sernum}  {firmware_path}'.split(
-            '  ')
-        cmd_restart = f'{path_to_tycmd}  reset  --board  {device_sernum}  --bootloader'.split(
-            '  ')
-        cmd_flasher = f'{path_to_loader}  --mcu={teensy_mcu}  -v  {firmware_path}  -w'.split(
-            '  ')
+        cmd_updater = f"{path_to_tycmd}  upload  --board  {device_sernum}  {firmware_path}".split(
+            "  "
+        )
+        cmd_restart = f"{path_to_tycmd}  reset  --board  {device_sernum}  --bootloader".split("  ")
+        cmd_flasher = f"{path_to_loader}  --mcu={teensy_mcu}  -v  {firmware_path}  -w".split("  ")
 
         p_updater, p_flasher, p_restart = None, None, None
         t_updater, t_flasher, t_restart = None, None, None
@@ -66,19 +66,23 @@ class QATCH_TyUpdater:
 
             q = Queue()
 
-            p_flasher = Popen(cmd_flasher, stdout=PIPE,
-                              stderr=STDOUT, shell=True)
+            p_flasher = Popen(cmd_flasher, stdout=PIPE, stderr=STDOUT, shell=True)
             t_flasher = Thread(target=reader, args=[p_flasher, q])
             t_flasher.daemon = True
             t_flasher.start()
 
-            p_restart = Popen(cmd_restart, stdout=PIPE,
-                              stderr=STDOUT, shell=True)
+            p_restart = Popen(cmd_restart, stdout=PIPE, stderr=STDOUT, shell=True)
             t_restart = Thread(target=reader, args=[p_restart, q])
             t_restart.daemon = True
             t_restart.start()
 
-            line_restart, line_flasher, = b"", b""
+            (
+                line_restart,
+                line_flasher,
+            ) = (
+                b"",
+                b"",
+            )
             total_pages, num_pages, curr_pct = 0, 0, 0
             last_pct = -1
 
@@ -89,36 +93,36 @@ class QATCH_TyUpdater:
                     # print("%s: %s" % (source, data))
                     if source == Path(cmd_restart[0]).stem:
                         line_restart += byte
-                        if byte == b'\n':
+                        if byte == b"\n":
                             most_recent_line = line_restart.splitlines()[-1]
                             print("%s: %s" % (source, most_recent_line))
                             if most_recent_line.find(b"Board is already in bootloader mode") >= 0:
-                                print(
-                                    "Warning: Board is already in bootloader mode")
+                                print("Warning: Board is already in bootloader mode")
                                 pass_restart = True
                             if most_recent_line.find(b"Triggering board reboot") >= 0:
-                                print(
-                                    "SUCCESS: Board reset and entering bootloader...")
+                                print("SUCCESS: Board reset and entering bootloader...")
                                 pass_restart = True
                     if source == Path(cmd_flasher[0]).stem:
                         line_flasher += byte
-                        if byte == b'\n':
+                        if byte == b"\n":
                             most_recent_line = line_flasher.splitlines()[-1]
                             print("%s: %s" % (source, most_recent_line))
                             if most_recent_line.startswith(b"Read"):
-                                total_pages = int(
-                                    most_recent_line.split(b' ')[-4]) / 1024
+                                total_pages = int(most_recent_line.split(b" ")[-4]) / 1024
                             if most_recent_line.startswith(b"Booting"):
                                 pass_flasher = True
-                            if most_recent_line.find(b"error writing to Teensy") >= 0 and p_updater == None:
+                            if (
+                                most_recent_line.find(b"error writing to Teensy") >= 0
+                                and p_updater == None
+                            ):
                                 # try again, no wait (likely pass)
                                 p_updater = Popen(
-                                    cmd_flasher[:-1], stdout=PIPE, stderr=STDOUT, shell=True)
-                                t_updater = Thread(
-                                    target=reader, args=[p_updater, q])
+                                    cmd_flasher[:-1], stdout=PIPE, stderr=STDOUT, shell=True
+                                )
+                                t_updater = Thread(target=reader, args=[p_updater, q])
                                 t_updater.daemon = True
                                 t_updater.start()
-                        if byte == b'.':
+                        if byte == b".":
                             most_recent_line = line_flasher.splitlines()[-1]
                             if most_recent_line.startswith(b"Programming"):
                                 num_pages = most_recent_line.count(b".")

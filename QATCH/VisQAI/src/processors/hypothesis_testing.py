@@ -65,9 +65,9 @@ try:
 except (ImportError, ModuleNotFoundError):
     TAG = "[HypothesisTesting]"
 
-    from QATCH.common.logger import Logger as Log
     from QATCH.VisQAI.src.models.formulation import Formulation
     from QATCH.VisQAI.src.models.predictor import Predictor
+    from QATCH.common.logger import Logger as Log
 
 
 class HypothesisTesting:
@@ -144,9 +144,7 @@ class HypothesisTesting:
                 bounds=bounds,
                 shear_rates=shear_rates,
             )
-        elif (
-            hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf
-        ):
+        elif hypothesis_type == "between" and bounds[0] > -np.inf and bounds[1] < np.inf:
             result = self._between_bound_test(
                 mean_pred=mean_pred,
                 upper_ci=upper_ci,
@@ -190,12 +188,9 @@ class HypothesisTesting:
 
         # Create CI polygon
         # Points go clockwise: upper boundary (left to right), then lower boundary (right to left)
-        upper_points = [
-            (log_shear_rates[i], upper_ci[i]) for i in range(len(shear_rates))
-        ]
+        upper_points = [(log_shear_rates[i], upper_ci[i]) for i in range(len(shear_rates))]
         lower_points = [
-            (log_shear_rates[i], lower_ci[i])
-            for i in range(len(shear_rates) - 1, -1, -1)
+            (log_shear_rates[i], lower_ci[i]) for i in range(len(shear_rates) - 1, -1, -1)
         ]
 
         try:
@@ -233,9 +228,7 @@ class HypothesisTesting:
             else:
                 clipped_area = clipped_polygon.area
 
-            pct_contained = (
-                (clipped_area / total_area * 100.0) if total_area > 0 else 0.0
-            )
+            pct_contained = (clipped_area / total_area * 100.0) if total_area > 0 else 0.0
 
             return {
                 "pct_contained": pct_contained,
