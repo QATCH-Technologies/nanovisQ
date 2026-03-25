@@ -1214,7 +1214,7 @@ class UpdaterTask(QtCore.QThread):
             folder_name,
             f"{folder_name}.ino.{self._hw.name}.hex",
         )
-        # SIM115 FIX: replaced bare open() with a context manager so the file
+        # Replaced bare open() with a context manager so the file
         # handle is guaranteed to close even if the generator raises.
         with open(path_to_hex) as fh:
             expected = sum(1 for _ in fh)
@@ -1630,7 +1630,6 @@ class UpdaterTask(QtCore.QThread):
 
         if self._hw == HWType.UNKNOWN or port is None:
             self._hw = HWType.TEENSY41  # default (don't ask)
-            # E501 FIX: wrapped commented-out legacy lines to stay under 100 chars
             # force legacy CLI (but these files don't exist anymore)
             self.do_legacy_updates = True
             # if PopUp.question(
