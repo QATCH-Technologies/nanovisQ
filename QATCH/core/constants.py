@@ -364,7 +364,7 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
+                           "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
