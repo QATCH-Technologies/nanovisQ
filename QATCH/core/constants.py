@@ -129,8 +129,8 @@ class Constants:
     tune_pid_ci = 0.12
     tune_pid_cd = 0
     # heat mode PID:
-    tune_pid_hp = 20
-    tune_pid_hi = 0.045
+    tune_pid_hp = 30
+    tune_pid_hi = 0.06
     tune_pid_hd = 0
 
     ###################
@@ -364,7 +364,7 @@ class Constants:
     # MODEL # parameters #
     ######################
     list_predict_models = ["ModelData",
-                           "QModel v4 (Fusion)", "QModel V6 (YOLO11)"]
+                           "QModel v4 (Fusion)", "QModel V6 (YOLO26)"]
     QModel6_predict = True
     QModel4_predict = True
     ModelData_predict = True
