@@ -296,7 +296,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
                     # Invert difference curve if drop applied to outlet
                     if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                        abs(ys_diff[t_1p0:].min()) > 5 * ys_diff[t_1p0:].max()):
+                        abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
                         Log.w(
                             "Inverting DIFFERENCE curve due to negative initial fill deltas"
                         )
@@ -5162,7 +5162,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
 
             # Invert difference curve if drop applied to outlet
             if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                abs(ys_diff[t_1p0:].min()) > 5 * ys_diff[t_1p0:].max()):
+                abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
@@ -6267,7 +6267,7 @@ class AnalyzerWorker(QtCore.QObject):
 
             # Invert difference curve if drop applied to outlet
             if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                abs(ys_diff[t_1p0:].min()) > 5 * ys_diff[t_1p0:].max()):
+                abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
