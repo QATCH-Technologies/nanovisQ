@@ -149,9 +149,8 @@ class Predictor:
             Log.w(TAG, f"Failed to apply sklearn patch: {e}")
 
         if not SECURITY_AVAILABLE:
-            Log.e("SecurePackageLoader unavailable - cannot load package.")
-            return
-
+            Log.e(TAG, "SecurePackageLoader unavailable - cannot load package.")
+            raise RuntimeError("SecurePackageLoader unavailable - cannot load package.")
         try:
             loader = create_secure_loader_for_extracted_package(
                 self.extracted_path, enforce_signatures=True
@@ -201,8 +200,13 @@ class Predictor:
             init_kwargs = {"model_dir": str(self.extracted_path)}
 
         self.engine = engine_cls(**init_kwargs)
-        self.model_type = self.manifest.get("architecture", "unknown")
-        Log.i(TAG, f"{engine_cls.__name__} engine initialized " f"(arch={self.model_type}).")
+        raw_arch = self.manifest.get("architecture", "unknown")
+        self.model_type = "CNP" if "CNP" in raw_arch else raw_arch
+        Log.i(
+            TAG,
+            f"{engine_cls.__name__} engine initialized "
+            f"(arch={raw_arch!r} -> model_type={self.model_type!r}).",
+        )
 
     def _load_single_inference_module(self, loader: "SecurePackageLoader"):
         """Load a single inference module using the legacy v1 path.
@@ -320,8 +324,8 @@ class Predictor:
             eval_data (pd.DataFrame): DataFrame containing input features and
                 ground-truth target viscosity values.
             targets (list[str]): List of target column names (e.g.
-                ``['Viscosity_100', 'Viscosity_1000']``).  Currently overridden
-                internally to the full five-shear-rate set.
+                ``['Viscosity_100', 'Viscosity_1000']``).  When empty or not
+                provided, defaults to the full five-shear-rate set.
             n_samples (int | None): Accepted for UI signature compatibility;
                 not used internally.
             fine_tune (bool): If ``True``, adapt the engine per ``Protein_type``
@@ -338,13 +342,14 @@ class Predictor:
         """
         shear_rates = [100, 1000, 10000, 100000, 15000000]
 
-        targets = [
-            "Viscosity_100",
-            "Viscosity_1000",
-            "Viscosity_10000",
-            "Viscosity_100000",
-            "Viscosity_15000000",
-        ]
+        if not targets:
+            targets = [
+                "Viscosity_100",
+                "Viscosity_1000",
+                "Viscosity_10000",
+                "Viscosity_100000",
+                "Viscosity_15000000",
+            ]
 
         def calc_metrics(actuals_df, pred_df, unc_dict):
             """Compute per-row, per-target error metrics.
@@ -462,19 +467,22 @@ class Predictor:
 
                 Log.i(
                     TAG,
-                    f"Fine-tuning on protein type: {p_type} (History: {len(hist_subset)} + Eval: {len(eval_subset)})",
+                    f"Calibrating for protein type: {p_type} (History: {len(hist_subset)}, Eval: {len(eval_subset)})",
                 )
 
-                combined_learning_set = pd.concat([hist_subset, eval_subset], ignore_index=True)
-                context_for_learn = combined_learning_set.copy()
-                if self.model_type == "CNP" and hasattr(self.engine, "_select_diverse_context"):
+                context_for_learn = hist_subset.copy()
+                if (
+                    self.model_type == "CNP"
+                    and self.engine is not None
+                    and hasattr(self.engine, "_select_diverse_context")
+                ):
                     context_for_learn = self.engine._select_diverse_context(
                         context_for_learn, max_k=15
                     )
                     Log.d(
                         TAG,
-                        f"  Diverse context for {p_type}: "
-                        f"{len(combined_learning_set)} → {len(context_for_learn)} samples",
+                        f"  Context for {p_type}: "
+                        f"{len(hist_subset)} -> {len(context_for_learn)} samples",
                     )
                 self.learn(context_for_learn)
 

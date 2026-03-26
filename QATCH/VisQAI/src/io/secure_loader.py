@@ -247,10 +247,6 @@ class SecurePackageLoader:
         self.manifest_data: Dict[str, Any] = {}
         self.loaded_modules: Dict[str, Any] = {}
 
-    # ------------------------------------------------------------------
-    # Manifest
-    # ------------------------------------------------------------------
-
     def load_manifest(self) -> Dict[str, Any]:
         """Loads and verifies the package manifest and asset integrity.
 
@@ -385,6 +381,9 @@ class SecurePackageLoader:
             module_name = f"visq_pkg.{module_path.stem}"
             Log.i(TAG, f"Loading module: {filename} as {module_name}")
             mod = self.loader.load_module_from_path(module_name, module_path)
+            # Also register under the plain stem so that ``import <stem>``
+            # resolves to the same object instead of creating a duplicate.
+            sys.modules.setdefault(module_path.stem, mod)
             self.loaded_modules[filename] = mod
 
         return self.loaded_modules
