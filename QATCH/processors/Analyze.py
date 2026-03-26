@@ -5468,6 +5468,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
         ax3.addItem(self.gstars3)
 
         if len(poi_vals) > 0:
+            for i in range(len(poi_vals)):
+                if poi_vals[i] >= len(xs):
+                    Log.w(
+                        f"Model point {poi_vals[i]} cannot be used. Skipping point {i+1}.")
+                    poi_vals[i] = -1
             start_stop = poi_vals
 
         self.poi_markers = []
