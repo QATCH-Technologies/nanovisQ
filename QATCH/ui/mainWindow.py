@@ -457,7 +457,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO11 v{} ({})".format(QModel6_version, QModel6_release),
+            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
