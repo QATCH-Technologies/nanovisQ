@@ -2036,6 +2036,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
             if success:
                 # Write to global port variable
                 self.parent.parent.active_multi_ch = self.tool_NextPortRow.value()
+                self.parent.parent.set_multi_mode()
 
             else:
                 self.tool_NextPortRow.setIconError()  # trasient red text, resets on next update
@@ -2173,6 +2174,9 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         # Dynamically specify plate dimensions and number of devices connected to constructor
         # num port currently detected / connected
         num_ports = self.cBox_Port.count() - 1
+        # allow 5 for flux controller (pid 0x80)
+        if num_ports == 5:
+            num_ports = 4
         i = self.cBox_Port.currentText()
         i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
         if i % 9 == i:  # 4x1 system
@@ -2186,7 +2190,7 @@ class Ui_Controls(object):  # QtWidgets.QMainWindow
         num_channels = (
             self.cBox_MultiMode.currentIndex() + 1
         )  # user define device count
-        if num_ports not in [well_width, well_height] and num_ports != 1:
+        if num_ports not in [well_width, well_height] or num_ports == 1:
             PopUp.warning(
                 self.parent,
                 "Plate Configuration",
