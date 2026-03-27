@@ -1008,11 +1008,11 @@ class Rename_Output_Files(QtCore.QObject):
                             _dev_pid != 0
                         ):  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                             # Convert PID to multiplex designation (i.e. int(1) -> int(162) for "A2")
-                            if self.has_active_multi_port():  # 4x6 system
+                            if self.parent.has_active_multi_port():  # 4x6 system
                                 # mask in port, e.g. "A" -> "A1"
                                 _dev_pid = (
                                     (_dev_pid + 9) << 4
-                                ) | self.get_active_multi_port()
+                                ) | self.parent.get_active_multi_port()
                             # else: 4x1 system, nothing to do
                     except:
                         Log.e(TAG, f"Unable to lookup device info for: {dev_name}")
@@ -1292,18 +1292,6 @@ class Rename_Output_Files(QtCore.QObject):
         # For 4x1 system: expect pid 1-4, return "1" thru "4"
         # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
         return hex(pid)[2:].upper()
-
-    def has_active_multi_port(self):
-        i = self.parent.ControlsWin.ui1.cBox_Port.currentText()
-        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
-        if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
-            return os.path.exists("plate-config.json")
-        return False
-
-    def get_active_multi_port(self):
-        # returns 1-6, depending on active 4x6 port on MUX of active device
-        return self.parent.active_multi_ch
-        # NOTE: setting 'active_multi_ch' is not implemented, only defined as 1 (always)
 
 
 # ------------------------------------------------------------------------------
@@ -1877,6 +1865,17 @@ class MainWindow(QtWidgets.QMainWindow):
                     active_ports.append(port_name)
 
         return ports_dict, active_ports
+
+    def has_active_multi_port(self):
+        i = self.ControlsWin.ui1.cBox_Port.currentText()
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
+        if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
+            return os.path.exists("plate-config.json")
+        return False
+
+    def get_active_multi_port(self):
+        # returns 1-6, depending on active 4x6 port on MUX of active device
+        return self.active_multi_ch  # defaults to 1 in non-flux systems
 
     ###########################################################################
     # Starts the acquisition of the selected serial port
@@ -2554,9 +2553,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ----------------------------------------------------------------------
         # defines the graph title
-        title1 = "Real-Time Plot: Amplitude"
-        title2 = "Real-Time Plot: Resonance Frequency / Dissipation"
-        title3 = "Real-Time Plot: Temperature"
+        title1 = "Plot: Amplitude"
+        title2 = "Plot: Resonance Frequency / Dissipation"
+        title3 = "Plot: Temperature"
         # --------------------------------------------------------------------------------------------------------------
         # Configures elements of the PyQtGraph plots: amplitude
         self.PlotsWin.ui2.plt.setAntialiasing(True)
@@ -2579,7 +2578,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 col=x,
                 row=y,
                 colspan=span,
-                title=title1 + f" {i + 1}",
+                title=title1
+                + (
+                    f" {i + 1}"
+                    if not self.has_active_multi_port()
+                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+                ),
                 **{"font-size": "10pt"},
             )
             p.showGrid(x=True, y=True)
@@ -2615,7 +2619,12 @@ class MainWindow(QtWidgets.QMainWindow):
             p = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
-                title=title2 + f" {i + 1}",
+                title=title2
+                + (
+                    f" {i + 1}"
+                    if not self.has_active_multi_port()
+                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+                ),
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
@@ -4347,7 +4356,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                 relative_time=relative_time,
                             )
                             if not dry_status:
-
                                 # Set and signal all receivers that new time is available (if unset)
                                 with self._sensorDriedTimeValue.get_lock():
                                     # For multiplex, take the most recent (latest) dry time
