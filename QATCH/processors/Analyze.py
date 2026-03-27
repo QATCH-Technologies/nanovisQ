@@ -2974,7 +2974,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                         self.progressBarDiag.setRange(0, 100)  # percentage
                         predict_result = predictor.predict(
                             file_buffer=fh,
-                            visualize=True,
+                            visualize=False,
                             progress_signal=self.v4_predict_progress,
                             use_partial_fills=self.partial_fills_checkbox.isChecked(),
                         )
@@ -3288,7 +3288,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
                                 file_buffer=fh,
-                                visualize=True,
+                                visualize=False,
                                 progress_signal=self.v4_predict_progress,
                                 use_partial_fills=self.partial_fills_checkbox.isChecked(),
                             )
@@ -4585,7 +4585,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                             predictor = self.QModel_v4_predictor
                             predict_result = predictor.predict(
                                 file_buffer=fh,
-                                visualize=True,
+                                visualize=False,
                                 progress_signal=self.v4_predict_progress,
                                 use_partial_fills=self.partial_fills_checkbox.isChecked(),
                             )
