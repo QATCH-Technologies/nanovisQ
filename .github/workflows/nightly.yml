@@ -3,24 +3,33 @@ name: "nightly"
 on:
   workflow_dispatch: # allows manual triggering
   schedule:
-    - cron: '5 5 * * 1-5' # runs daily at 05:05 UTC, Mon - Fri only
+    - cron: '5 5 * * *' # runs daily at 05:05 UTC
 
 jobs:
   nightly_build:
-    needs: check_date
-    if: ${{ needs.check_date.outputs.should_run == 'true' }}
+    # NOTE: By default, a job with `needs` will refuse to run
+    # if any dependency was skipped or failed. Use of `always()`
+    # overrides that gate so the `if` itself controls execution.
+    needs: [check_date]
+    if: |
+      ${{ always() &&
+        ( 
+          github.event_name == 'workflow_dispatch' ||
+          needs.check_date.outputs.should_run == 'true' 
+        )
+      }}
     runs-on: windows-latest
     name: Build nanovisQ nightly
     outputs:
       tag_name: ${{ steps.tagger.outputs.tag_name }}
     steps:
       - name: Checkout repo to 'trunk'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           path: trunk
         
       - name: Setup Python environment
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
           # cache: 'pip' # caching pip dependencies
@@ -38,7 +47,7 @@ jobs:
           echo "tag_name: ${{ steps.tagger.outputs.tag_name }}"
 
       - name: Archive build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         env:
           tag_name: ${{ steps.tagger.outputs.tag_name }}
         with:
@@ -50,10 +59,12 @@ jobs:
   check_date:
     runs-on: ubuntu-latest
     name: Check latest commit
+    # Only bother running this job if triggered by schedule
+    if: github.event_name == 'schedule'
     outputs:
       should_run: ${{ steps.should_run.outputs.should_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Print latest_commit
         run: echo ${{ github.sha }}
       - id: should_run

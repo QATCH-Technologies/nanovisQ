@@ -54,8 +54,8 @@
 
 // Build Info can be queried serially using command: "VERSION"
 #define DEVICE_BUILD "QATCH Q-1"
-#define CODE_VERSION "v2.6r69"
-#define RELEASE_DATE "2026-02-24"
+#define CODE_VERSION "v2.6b70"
+#define RELEASE_DATE "2026-03-27"
 
 /************************** LIBRARIES **************************/
 
@@ -124,7 +124,7 @@
 
 // TEMP_CIRCUIT pin
 #define TEMP_CIRCUIT 5 // relay pin for reject fan (on/off)
-#define TEC_SENSE 41      // now: follow pin 5; future use: TEC_SENSE
+#define TEC_SENSE 41   // now: follow pin 5; future use: TEC_SENSE
 // #define FAN_HIGH_LOW 6 // relay pin for reject fan (speed) (unused)
 
 // Pins for ILI9341 TFT Touchscreen connections:
@@ -142,7 +142,7 @@
 #define POGO_SERVO_1_PIN 7
 #define POGO_SERVO_2_PIN 8
 #define POGO_BTN_LED_PIN 35
-#define POGO_BUTTON_PIN_N 36  // active low
+#define POGO_BUTTON_PIN_N 36 // active low
 
 /*********************** DEFINE CONSTANTS **********************/
 
@@ -194,13 +194,13 @@
 #define L298NHB_VOLTAGE_VALID(v) (abs(L298NHB_VOLTAGE_EXPECTED - v) < L298NHB_VOLTAGE_DEVIATION)
 
 // Accessor macros for NVMEM values
-#define POS_OPENED_1   (NVMEM.POGO_PosOpened1)
-#define POS_CLOSED_1   (NVMEM.POGO_PosClosed1)
-#define POS_INIT_1     ((POS_OPENED_1 + POS_CLOSED_1) / 2)
-#define POS_OPENED_2   (NVMEM.POGO_PosOpened2)
-#define POS_CLOSED_2   (NVMEM.POGO_PosClosed2)
-#define POS_INIT_2     ((POS_OPENED_2 + POS_CLOSED_2) / 2)
-#define MOVE_DELAY   (NVMEM.POGO_MoveDelay)
+#define POS_OPENED_1 (NVMEM.POGO_PosOpened1)
+#define POS_CLOSED_1 (NVMEM.POGO_PosClosed1)
+#define POS_INIT_1 ((POS_OPENED_1 + POS_CLOSED_1) / 2)
+#define POS_OPENED_2 (NVMEM.POGO_PosOpened2)
+#define POS_CLOSED_2 (NVMEM.POGO_PosClosed2)
+#define POS_INIT_2 ((POS_OPENED_2 + POS_CLOSED_2) / 2)
+#define MOVE_DELAY (NVMEM.POGO_MoveDelay)
 
 // Define stepper types
 #define STEPPER_NONE -1
@@ -213,11 +213,11 @@
 #include "DualHBridgeStepper.h"
 
 // Stepper pins
-#define STEPPER_M1 1                     // motor signal pin 1 (0=forward,1=back)
-#define STEPPER_E1 2                     // motor enable pin 1 (PWM)
-#define STEPPER_M2 3                     // motor signal pin 2 (0=forward,1=back)
-#define STEPPER_E2 4                     // motor enable pin 2 (PWM)
-#define STEPPER_SW 7                     // motor limit switch (HIGH on contact)
+#define STEPPER_M1 1 // motor signal pin 1 (0=forward,1=back)
+#define STEPPER_E1 2 // motor enable pin 1 (PWM)
+#define STEPPER_M2 3 // motor signal pin 2 (0=forward,1=back)
+#define STEPPER_E2 4 // motor enable pin 2 (PWM)
+#define STEPPER_SW 7 // motor limit switch (HIGH on contact)
 #endif
 
 // Flux TEC select pins
@@ -265,7 +265,8 @@ double freq_factor = 1.0;
 // use Ambient temperature to correct external K-probe temperature readings
 // NOTE: This correction only applies during active measurement runs
 #define USE_TEMP_CORRECTION true
-#define TEMP_CORRECT_COOLDOWN (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_INTERVAL (1000 * 60 * 2)
+#define TEMP_CORRECT_COOLDOWN_DELTA 0.25
 #else
 // no MAX31855 support, no ambient correction available
 #define USE_TEMP_CORRECTION false
@@ -400,7 +401,7 @@ float ambient = NAN;
 
 #if USE_TEMP_CORRECTION
 float starting_ambient = NAN;
-unsigned long temp_correct_auto_off_at = 0; // time to auto-off (after last run stop)
+unsigned long temp_correct_adjust_delta_at = 0; // time to auto-adjust (after last run stop)
 #endif
 
 // Create servo object for POGO lid
@@ -548,7 +549,7 @@ bool force_hw_error = false;
 
 bool tft_msgbox = false;
 bool msgbox_visible = false; // only used in tft_tempcontrol
-byte msgbox_icon = 0; // error, fail, pass, info
+byte msgbox_icon = 0;        // error, fail, pass, info
 char msgbox_title[32] = "QATCH nanovisQ";
 char msgbox_text[32] = "No message provided.";
 
@@ -563,16 +564,16 @@ DualHBridgeStepper stepper(STEPPER_M1, STEPPER_E1, STEPPER_M2, STEPPER_E2);
 #if STEPPER_MATCH(STEPPER_SCREW)
 // Linear Screw Stepper settings:
 const bool stepperHomingDir = true; // forwards
-long stepSize = -980; // assumes equal step sizes
-long stepperOffset = -110; // position of Port 1 relative to L1 switch
+long stepSize = -980;               // assumes equal step sizes
+long stepperOffset = -110;          // position of Port 1 relative to L1 switch
 #endif
 #if STEPPER_MATCH(STEPPER_ROTARY)
 // Circular Rotary Stepper settings
 const bool stepperHomingDir = false; // forwards
-long stepSize = 135; // assumes equal step sizes
-long stepperOffset = 60; // position of Port 1 relative to L1 switch
+long stepSize = 135;                 // assumes equal step sizes
+long stepperOffset = 60;             // position of Port 1 relative to L1 switch
 #endif
-long stepperPositions[6] = {0, stepSize, 2*stepSize, 3*stepSize, 4*stepSize, 5*stepSize};
+long stepperPositions[6] = {0, stepSize, 2 * stepSize, 3 * stepSize, 4 * stepSize, 5 * stepSize};
 void stepper_home(); // prototype
 #endif
 
@@ -724,7 +725,7 @@ bool detect_hw_revision(void)
       if (HW_REVs[i] == HW_REVISION_2)
       {
         // Finally, check for HW existence of POGO button for cartridge (un)lock only with HW Rev. 2
-        //   If at least one servo exists: 
+        //   If at least one servo exists:
         //     - Servo will pull down POGO_SERVO_[x]_PIN when it is an input with pulldown
         //     - HW Rev. will be set to 3 (regardless of prior Rev value)
         //   Otherwise, when POGO servo is missing:
@@ -753,8 +754,8 @@ void config_hw_revision(byte hw_rev)
   Serial.printf("Configuring HW Rev: %u\n", hw_rev);
   if (PID_IS_SECONDARY(NVMEM.pid) && HW_REV_MATCH(HW_REVISION_3))
     Serial.println(
-      "INVALID HW CONFIG: PID_IS_SECONDARY && HW_REVISION_3(POGO_SERVO)\n"
-      "These settings are mutually exclusive! Only primary has pogo servo.");
+        "INVALID HW CONFIG: PID_IS_SECONDARY && HW_REVISION_3(POGO_SERVO)\n"
+        "These settings are mutually exclusive! Only primary has pogo servo.");
   switch (hw_rev)
   {
   case HW_REVISION_0:
@@ -1152,19 +1153,26 @@ void stepper_home()
   client->println("Stepper: Homing...");
   stepper.enableOutputs();
   stepper.moveTo(stepperHomingDir ? 10000 : -10000);
-  while (!digitalRead(STEPPER_SW) && stepper.isRunning() && !client->available()) {
+  while (!digitalRead(STEPPER_SW) && stepper.isRunning() && !client->available())
+  {
     stepper.run();
   }
-  if (stepper.isRunning()) {
+  if (stepper.isRunning())
+  {
     stepper.stop();
-    if (client->available()) {
+    if (client->available())
+    {
       client->println("Stepper: Stopped finding home (serial pending)");
       return; // Don't move to position without valid home
-    } else {
+    }
+    else
+    {
       client->println("Stepper: Found home position");
       stepper.setCurrentPosition(-stepperOffset);
     }
-  } else {
+  }
+  else
+  {
     client->println("Stepper: Failed to find home!");
     return; // Don't move to position without valid home
   }
@@ -1427,7 +1435,7 @@ void QATCH_loop()
     {
       l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
       // special case in event of rollover in prior line math
-      if (l298nhb_auto_off_at == 0) 
+      if (l298nhb_auto_off_at == 0)
       {
         l298nhb_auto_off_at = 1;
       }
@@ -1702,10 +1710,9 @@ void QATCH_loop()
         client->printf("LAST DRIFT: %i\n", drift_TS); // this must be printed as a signed value
         getSystemTime(true);                          // reports NOW DRIFT
 #if USE_TEMP_CORRECTION
-        if (DEBUG) {
-          client->printf("CORR. TEMP: %f\n", starting_ambient); // DEBUG ONLY
-          client->printf("CORR. TIME: %u\n", temp_correct_auto_off_at); // DEBUG ONLY
-        }
+        client->printf("CORR. TEMP: %f\n", starting_ambient);
+        client->printf("CORR. TIME: %u\n", temp_correct_adjust_delta_at);
+        client->printf("         n: %u\n", n);
 #endif
       }
       return;
@@ -1730,7 +1737,7 @@ void QATCH_loop()
       {
         l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
         // special case in event of rollover in prior line math
-        if (l298nhb_auto_off_at == 0) 
+        if (l298nhb_auto_off_at == 0)
         {
           l298nhb_auto_off_at = 1;
         }
@@ -1743,8 +1750,8 @@ void QATCH_loop()
           updateAmbient = true;
         l298nhb.wakeup();
 #endif
-        digitalWrite(TEMP_CIRCUIT, HIGH);  // turn on fan
-        digitalWrite(TEC_SENSE, LOW);  // low speed
+        digitalWrite(TEMP_CIRCUIT, HIGH); // turn on fan
+        digitalWrite(TEC_SENSE, LOW);     // low speed
       }
       else if (message_str.substring(5) == "OFF")
       {
@@ -1757,13 +1764,7 @@ void QATCH_loop()
           //        tft_tempcontrol(); // draw "OFF" state
           tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-          if (temp_correct_auto_off_at != 0)
-          {
-            if (DEBUG)
-              Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-            temp_correct_auto_off_at = 0; // off
-            starting_ambient = NAN;
-          }
+          temp_correct_adjust(true); // force off immediately
 #endif
         }
 #else
@@ -1921,7 +1922,7 @@ void QATCH_loop()
       {
         l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
         // special case in event of rollover in prior line math
-        if (l298nhb_auto_off_at == 0) 
+        if (l298nhb_auto_off_at == 0)
         {
           l298nhb_auto_off_at = 1;
         }
@@ -2046,7 +2047,7 @@ void QATCH_loop()
       mcp9808.shutdown();
 #endif
 #if USE_MAX31855
-      if (isnan(temperature) || (millis() - last_temp > 2000)) 
+      if (isnan(temperature) || (millis() - last_temp > 2000))
       {
         temperature = max31855.readCelsius();
 #if USE_TEMP_CORRECTION
@@ -2204,7 +2205,8 @@ void QATCH_loop()
       }
       else if (message_str.substring(4, 7) == "CAL")
       {
-        if (message_str.endsWith("CAL")) {
+        if (message_str.endsWith("CAL"))
+        {
           // Report stored calibration values to user
           client->printf("LID CAL %i,%i,%i,%i,%i\n",
                          POS_OPENED_1,
@@ -2218,9 +2220,9 @@ void QATCH_loop()
           // Reset lid calibration to default values
           client->println("LID CAL DEFAULT");
           setLidCalibration(
-            DEFAULT_POS_OPENED_1, DEFAULT_POS_CLOSED_1, 
-            DEFAULT_POS_OPENED_2, DEFAULT_POS_CLOSED_2, 
-            DEFAULT_MOVE_DELAY);
+              DEFAULT_POS_OPENED_1, DEFAULT_POS_CLOSED_1,
+              DEFAULT_POS_OPENED_2, DEFAULT_POS_CLOSED_2,
+              DEFAULT_MOVE_DELAY);
         }
         else
         {
@@ -2260,9 +2262,9 @@ void QATCH_loop()
             }
           }
           setLidCalibration(
-            atoi(pid[0]), atoi(pid[1]),
-            atoi(pid[2]), atoi(pid[3]),
-            atoi(pid[4]));
+              atoi(pid[0]), atoi(pid[1]),
+              atoi(pid[2]), atoi(pid[3]),
+              atoi(pid[4]));
         }
       }
       return;
@@ -2391,14 +2393,16 @@ void QATCH_loop()
 #if USE_TEMP_CORRECTION
       if (l298nhb.active())
       {
+        if (temp_correct_adjust_delta_at == 0) // only if NOT in cooldown from prior run
+          starting_ambient = ambient;
+        else
+          temp_correct_adjust_delta_at = 0; // turn on, use prior base, prevent auto-adjust
         if (DEBUG)
         {
           Serial.println("CORRECTION ON!");
           Serial.print("Ambient: ");
-          Serial.println(ambient);
+          Serial.println(starting_ambient);
         }
-        starting_ambient = ambient;
-        temp_correct_auto_off_at = 0; // turn on, prevent auto-off
       }
 #endif
       return;
@@ -2408,7 +2412,8 @@ void QATCH_loop()
     {
 #if (!STEPPER_MATCH(STEPPER_NONE))
       if (PID_IS_CONTROLLER(NVMEM.pid))
-        if (stepper.isRunning()) stepper.stop();
+        if (stepper.isRunning())
+          stepper.stop();
 #endif
       stopStreaming();
       client->println("STOP"); // SW listens for this reply
@@ -2458,7 +2463,7 @@ void QATCH_loop()
       {
         do_hw_error = true;
       }
-      else 
+      else
       {
         // endsWith("3"), default action
         do_force_hw_error = do_hw_error = true;
@@ -2499,23 +2504,36 @@ void QATCH_loop()
         // first-case: non-zero offsets, explicitly positive◘
         if (cmd_value != 0 && message_str.indexOf("+") == 5)
           position = stepper.currentPosition() + cmd_value;
-        else if (cmd_value == 0) { stepper_home(); return; } // home
-        else if (cmd_value == 1) position = stepperPositions[0];
-        else if (cmd_value == 2) position = stepperPositions[1];
-        else if (cmd_value == 3) position = stepperPositions[2];
-        else if (cmd_value == 4) position = stepperPositions[3];
-        else if (cmd_value == 5) position = stepperPositions[4];
-        else if (cmd_value == 6) position = stepperPositions[5];
+        else if (cmd_value == 0)
+        {
+          stepper_home();
+          return;
+        } // home
+        else if (cmd_value == 1)
+          position = stepperPositions[0];
+        else if (cmd_value == 2)
+          position = stepperPositions[1];
+        else if (cmd_value == 3)
+          position = stepperPositions[2];
+        else if (cmd_value == 4)
+          position = stepperPositions[3];
+        else if (cmd_value == 5)
+          position = stepperPositions[4];
+        else if (cmd_value == 6)
+          position = stepperPositions[5];
         // catch-all: negative offsets, or greater than 6
-        else position = stepper.currentPosition() + cmd_value;
+        else
+          position = stepper.currentPosition() + cmd_value;
         client->printf("Stepper: Moving to position %i\n", position);
         stepper.enableOutputs();
         stepper.moveTo(position);
         // main loop handles `stepper.run()` and `disableOutputs()`
-      } else {
+      }
+      else
+      {
         client->println("HW_CONFIG_ERROR: STEP cmd not supported (PID must be 0x80)");
       }
-    return;
+      return;
     }
 #endif
 
@@ -2531,32 +2549,39 @@ void QATCH_loop()
         bool _l = LOW, _c = LOW, _r = LOW;
         bool valid = false, read_only = false;
 
-        if (message_str.toUpperCase().endsWith("NONE")) {
+        if (message_str.toUpperCase().endsWith("NONE"))
+        {
           _l = _c = _r = LOW;
           valid = true;
-        } 
-        if (message_str.toUpperCase().endsWith("ALL")) {
+        }
+        if (message_str.toUpperCase().endsWith("ALL"))
+        {
           _l = _c = _r = HIGH;
           valid = true;
-        } 
-        if (message_str.toUpperCase().indexOf(" L") > 0) {
+        }
+        if (message_str.toUpperCase().indexOf(" L") > 0)
+        {
           _l = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" C") > 0) { 
+        if (message_str.toUpperCase().indexOf(" C") > 0)
+        {
           // endsWith("(space)C") required to differentiate "TEC C" from "TEC"
           _c = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" R") > 0) {
+        if (message_str.toUpperCase().indexOf(" R") > 0)
+        {
           _r = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().endsWith("TEC")) {
+        if (message_str.toUpperCase().endsWith("TEC"))
+        {
           valid = read_only = true;
         }
-        
-        if (!valid) {
+
+        if (!valid)
+        {
           client->println("TEC: Unknown input. Ignoring line.");
           return;
         }
@@ -2569,19 +2594,20 @@ void QATCH_loop()
           digitalWrite(PIN_TEC_R, _r);
         }
 
-        client->printf("TEC: %u, %u, %u\n", 
-          digitalRead(PIN_TEC_L), 
-          digitalRead(PIN_TEC_C), 
-          digitalRead(PIN_TEC_R));
-
-      } else {
+        client->printf("TEC: %u, %u, %u\n",
+                       digitalRead(PIN_TEC_L),
+                       digitalRead(PIN_TEC_C),
+                       digitalRead(PIN_TEC_R));
+      }
+      else
+      {
         client->println("HW_CONFIG_ERROR: TEC cmd not supported (PID must be 0x80)");
       }
 
       return;
     }
 
-    if (message_str.toUpperCase().startsWith("PROBE")) 
+    if (message_str.toUpperCase().startsWith("PROBE"))
     {
       if (PID_IS_CONTROLLER(NVMEM.pid))
       {
@@ -2593,43 +2619,53 @@ void QATCH_loop()
         bool _1 = LOW, _2 = LOW, _3 = LOW, _4 = LOW, _5 = LOW, _6 = LOW;
         bool valid = false, read_only = false;
 
-        if (message_str.toUpperCase().endsWith("NONE")) {
+        if (message_str.toUpperCase().endsWith("NONE"))
+        {
           _1 = _2 = _3 = _4 = _5 = _6 = LOW;
           valid = true;
-        } 
-        if (message_str.toUpperCase().endsWith("ALL")) {
+        }
+        if (message_str.toUpperCase().endsWith("ALL"))
+        {
           _1 = _2 = _3 = _4 = _5 = _6 = HIGH;
           valid = true;
-        } 
-        if (message_str.toUpperCase().indexOf(" 1") > 0) {
+        }
+        if (message_str.toUpperCase().indexOf(" 1") > 0)
+        {
           _1 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" 2") > 0) {
+        if (message_str.toUpperCase().indexOf(" 2") > 0)
+        {
           _2 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" 3") > 0) {
+        if (message_str.toUpperCase().indexOf(" 3") > 0)
+        {
           _3 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" 4") > 0) {
+        if (message_str.toUpperCase().indexOf(" 4") > 0)
+        {
           _4 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" 5") > 0) {
+        if (message_str.toUpperCase().indexOf(" 5") > 0)
+        {
           _5 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().indexOf(" 6") > 0) {
+        if (message_str.toUpperCase().indexOf(" 6") > 0)
+        {
           _6 = HIGH;
           valid = true;
         }
-        if (message_str.toUpperCase().endsWith("PROBE")) {
+        if (message_str.toUpperCase().endsWith("PROBE"))
+        {
           valid = read_only = true;
         }
-        
-        if (!valid) {
+
+        if (!valid)
+        {
           client->println("PROBE: Unknown input. Ignoring line.");
           return;
         }
@@ -2645,15 +2681,16 @@ void QATCH_loop()
           digitalWrite(PIN_PROBE_6, _6);
         }
 
-        client->printf("PROBE: %u, %u, %u, %u, %u, %u\n", 
-          digitalRead(PIN_PROBE_1), 
-          digitalRead(PIN_PROBE_2), 
-          digitalRead(PIN_PROBE_3), 
-          digitalRead(PIN_PROBE_4), 
-          digitalRead(PIN_PROBE_5), 
-          digitalRead(PIN_PROBE_6));
-
-      } else {
+        client->printf("PROBE: %u, %u, %u, %u, %u, %u\n",
+                       digitalRead(PIN_PROBE_1),
+                       digitalRead(PIN_PROBE_2),
+                       digitalRead(PIN_PROBE_3),
+                       digitalRead(PIN_PROBE_4),
+                       digitalRead(PIN_PROBE_5),
+                       digitalRead(PIN_PROBE_6));
+      }
+      else
+      {
         client->println("HW_CONFIG_ERROR: PROBE cmd not supported (PID must be 0x80)");
       }
 
@@ -2794,14 +2831,8 @@ void QATCH_loop()
 #if USE_MAX31855
         float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-        // check for auto-off, stop if due
-        if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-        {
-          if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-          temp_correct_auto_off_at = 0; // off
-          starting_ambient = NAN;
-        }
+        // check for auto-off, adjust and/or stop if due
+        temp_correct_adjust(false);
         if (!isnan(starting_ambient)) // active
         {
           if (DEBUG)
@@ -2819,7 +2850,7 @@ void QATCH_loop()
 #endif
         if (isnan(temperature))
           temperature = temp_temp;
-        else if (n != 1) // skip temperature blip at start of stream
+        else if (n != 1 || !streaming)                                           // skip temperature blip at start of stream
           temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
         ambient = max31855.readInternal(false);
         // AJR TODO 2023-09-12: Disabled for old PID controller code
@@ -3330,14 +3361,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3355,7 +3380,7 @@ void QATCH_loop()
 #endif
       if (isnan(temperature))
         temperature = temp_temp;
-      else if (n != 1) // skip temperature blip at start of stream
+      else if (n != 1 || !streaming)                                           // skip temperature blip at start of stream
         temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
       ambient = max31855.readInternal(false);
       // AJR TODO 2023-09-12: Disabled for old PID controller code
@@ -3405,7 +3430,7 @@ void QATCH_loop()
     {
       l298nhb_auto_off_at = millis() + L298NHB_AUTOOFF; // calculate time to auto off
       // special case in event of rollover in prior line math
-      if (l298nhb_auto_off_at == 0) 
+      if (l298nhb_auto_off_at == 0)
       {
         l298nhb_auto_off_at = 1;
       }
@@ -3559,14 +3584,8 @@ void QATCH_loop()
 #if USE_MAX31855
       float temp_temp = max31855.readCelsius(); // temporary temperature (local scope)
 #if USE_TEMP_CORRECTION
-      // check for auto-off, stop if due
-      if (last_temp > temp_correct_auto_off_at && temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      // check for auto-off, adjust and/or stop if due
+      temp_correct_adjust(false);
       if (!isnan(starting_ambient)) // active
       {
         if (DEBUG)
@@ -3584,7 +3603,7 @@ void QATCH_loop()
 #endif
       if (isnan(temperature))
         temperature = temp_temp;
-      else if (n != 1) // skip temperature blip at start of stream
+      else if (n != 1 || !streaming)                                           // skip temperature blip at start of stream
         temperature = (((TEMP_AVG - 1) * temperature) + temp_temp) / TEMP_AVG; // accumulate, averaging ratio (for smoother readings)
       ambient = max31855.readInternal(false);
       // AJR TODO 2023-09-12: Disabled for old PID controller code
@@ -3606,13 +3625,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
 
@@ -3683,13 +3696,7 @@ void QATCH_loop()
       //      tft_tempcontrol(); // draw "OFF" state
       tft_cooldown_start(); // change status to "cooldown" and start countdown
 #if USE_TEMP_CORRECTION
-      if (temp_correct_auto_off_at != 0)
-      {
-        if (DEBUG)
-          Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
-        temp_correct_auto_off_at = 0; // off
-        starting_ambient = NAN;
-      }
+      temp_correct_adjust(true); // force off immediately
 #endif
     }
   }
@@ -3737,7 +3744,8 @@ void QATCH_loop()
     {
       // Button IS actively being pressed
       // Check button debounce delay timer
-      if ((now - lastInterruptHitTime) > debounceDelay) {
+      if ((now - lastInterruptHitTime) > debounceDelay)
+      {
         pogo_pressed_flag = true; // queue movement
       }
     }
@@ -3746,9 +3754,11 @@ void QATCH_loop()
       // Button is NOT actively being pressed
       // Time to fire POGO movement (if queued)
       lastInterruptHitTime = now;
-      if (pogo_pressed_flag) {
+      if (pogo_pressed_flag)
+      {
         // Ignore button press if running an active sweep:
-        if (!is_running) {
+        if (!is_running)
+        {
           pogo_button_pressed(false);
           tft_idle(); // update cartridge lock state
         }
@@ -3763,20 +3773,21 @@ void QATCH_loop()
     stepper.run();
     if (stepper.isRunning())
     {
-    // client->print("Stepper: ");
-    // client->print(digitalRead(STEPPER_M1));
-    // client->print(digitalRead(STEPPER_E1));
-    // client->print(digitalRead(STEPPER_M2));
-    // client->println(digitalRead(STEPPER_E2));
-    } else {
-      if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) || 
+      // client->print("Stepper: ");
+      // client->print(digitalRead(STEPPER_M1));
+      // client->print(digitalRead(STEPPER_E1));
+      // client->print(digitalRead(STEPPER_M2));
+      // client->println(digitalRead(STEPPER_E2));
+    }
+    else
+    {
+      if (digitalRead(STEPPER_M1) || digitalRead(STEPPER_E1) ||
           digitalRead(STEPPER_M2) || digitalRead(STEPPER_E2))
         client->println("Stepper: DONE!");
       stepper.disableOutputs();
     }
   }
 #endif
-
 }
 
 /************************** FUNCTION ***************************/
@@ -3930,8 +3941,9 @@ void calibrate(long start, long stop, long step)
     temperature = max31855.readCelsius();
   if (isnan(temperature)) // if still NAN, use internal (ambient)
     temperature = max31855.readInternal(false);
-  else
+  else if (!l298nhb.active())
     temperature = max31855.readCelsius(); // (((TEMP_AVG - 1)*temperature) + max31855.readCelsius()) / TEMP_AVG;
+  // else, do nothing (TEC is running, and is updating temperature for us)
 #endif
 
   // serial write temperature data at the end of the sweep
@@ -4071,7 +4083,7 @@ bool check_and_correct_micros_rollover(void)
   // adjusts time variables on rollover event
   if (peak_time < peak_time_avg)
   {
-    //Serial.println("A rollover event has occurred!"); // DEBUG ONLY
+    // Serial.println("A rollover event has occurred!"); // DEBUG ONLY
     peak_time_l_up = peak_time_l_down = peak_time_l = 0;
     peak_time_h_up = peak_time_h_down = peak_time_h = 0;
     return true;
@@ -4092,15 +4104,15 @@ void stopStreaming(void)
 #if USE_TEMP_CORRECTION
   if (l298nhb.active() && !isnan(starting_ambient))
   {
-    temp_correct_auto_off_at = millis() + TEMP_CORRECT_COOLDOWN; // calculate time to reset
+    temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
     // special case in event of rollover in prior line math
-    if (temp_correct_auto_off_at == 0) 
+    if (temp_correct_adjust_delta_at == 0)
     {
-      temp_correct_auto_off_at = 1;
+      temp_correct_adjust_delta_at = 1;
     }
-    if (DEBUG) 
+    if (DEBUG)
     {
-      Serial.printf("CORRECTION off @ t = %u\n", temp_correct_auto_off_at);
+      Serial.printf("CORRECTION adjust @ t = %u\n", temp_correct_adjust_delta_at);
     }
   }
 #endif
@@ -4149,11 +4161,12 @@ FASTRUN void pogo_button_ISR(void)
 void pogo_button_pressed(bool init)
 {
   // Validate servo positions are within safe range
-  if (POS_OPENED_1 < 0 || POS_OPENED_1 > 180 || 
+  if (POS_OPENED_1 < 0 || POS_OPENED_1 > 180 ||
       POS_CLOSED_1 < 0 || POS_CLOSED_1 > 180 ||
-      POS_OPENED_2 < 0 || POS_OPENED_2 > 180 || 
+      POS_OPENED_2 < 0 || POS_OPENED_2 > 180 ||
       POS_CLOSED_2 < 0 || POS_CLOSED_2 > 180 ||
-      MOVE_DELAY < 0 || MOVE_DELAY > 254) {
+      MOVE_DELAY < 0 || MOVE_DELAY > 254)
+  {
     client->println("ERROR: Invalid servo calibration values");
     return;
   }
@@ -4161,7 +4174,7 @@ void pogo_button_pressed(bool init)
   // Kick the screensaver timer
   time_of_last_msg = micros();
 
-  // switch state: open <-> closed 
+  // switch state: open <-> closed
   pogo_lid_opened = !pogo_lid_opened;
 
   // Attach pogo servos (prep for movement)
@@ -4170,36 +4183,54 @@ void pogo_button_pressed(bool init)
 
   // Declare an in-line helper function to control servo motors by specifying
   // their start and end positions and a delay (in milliseconds).
-  auto move_servos = [](byte start1, byte end1, byte start2, byte end2, byte delayMs) {
-    int dir1 = (end1 > start1) ? 1 : (end1 < start1) ? -1 : 0;
-    int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1 : 0;
+  auto move_servos = [](byte start1, byte end1, byte start2, byte end2, byte delayMs)
+  {
+    int dir1 = (end1 > start1) ? 1 : (end1 < start1) ? -1
+                                                     : 0;
+    int dir2 = (end2 > start2) ? 1 : (end2 < start2) ? -1
+                                                     : 0;
     int pos1 = start1;
     int pos2 = start2;
     bool done1 = false, done2 = false;
-    while (!done1 || !done2) {
-      if (DEBUG) client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
-      if (!done1) pogoServo1.write(pos1);
-      if (!done2) pogoServo2.write(pos2);
+    while (!done1 || !done2)
+    {
+      if (DEBUG)
+        client->printf("Servo1 to %i, Servo2 to %i\n", pos1, pos2);
+      if (!done1)
+        pogoServo1.write(pos1);
+      if (!done2)
+        pogoServo2.write(pos2);
       delay(delayMs);
-      if (!done1) {
-        if (pos1 == end1) done1 = true;
-        else pos1 += dir1;
+      if (!done1)
+      {
+        if (pos1 == end1)
+          done1 = true;
+        else
+          pos1 += dir1;
       }
-      if (!done2) {
-        if (pos2 == end2) done2 = true;
-        else pos2 += dir2;
+      if (!done2)
+      {
+        if (pos2 == end2)
+          done2 = true;
+        else
+          pos2 += dir2;
       }
     }
   };
 
   // Move pogo servos to target(s)
-  if (init) { // init -> opened
+  if (init)
+  {                                      // init -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
     move_servos(POS_INIT_1, POS_OPENED_1, POS_INIT_2, POS_OPENED_2, MOVE_DELAY);
-  } else if (pogo_lid_opened) {  // closed -> opened
+  }
+  else if (pogo_lid_opened)
+  {                                      // closed -> opened
     digitalWrite(POGO_BTN_LED_PIN, LOW); // LED off before movement
     move_servos(POS_CLOSED_1, POS_OPENED_1, POS_CLOSED_2, POS_OPENED_2, MOVE_DELAY);
-  } else {  // opened -> closed
+  }
+  else
+  { // opened -> closed
     move_servos(POS_OPENED_1, POS_CLOSED_1, POS_OPENED_2, POS_CLOSED_2, MOVE_DELAY);
     digitalWrite(POGO_BTN_LED_PIN, HIGH); // LED on after movement
   }
@@ -4230,13 +4261,13 @@ void pogo_button_pressed(bool init)
  * @param closed_2 Servo 2 angle (degrees) for the fully closed lid. Range: 0–180.
  * @param delay_ms Per-step move delay in milliseconds. Range: 0–254.
  */
-void setLidCalibration(byte opened_1, byte closed_1, 
-                       byte opened_2, byte closed_2, 
+void setLidCalibration(byte opened_1, byte closed_1,
+                       byte opened_2, byte closed_2,
                        byte delay_ms)
 {
-  if (opened_1 < 0  || opened_1 > 180 || 
-      closed_1 < 0 || closed_1 > 180 || 
-      opened_2 < 0  || opened_2 > 180 || 
+  if (opened_1 < 0 || opened_1 > 180 ||
+      closed_1 < 0 || closed_1 > 180 ||
+      opened_2 < 0 || opened_2 > 180 ||
       closed_2 < 0 || closed_2 > 180 ||
       delay_ms < 0 || delay_ms > 254)
   {
@@ -4253,6 +4284,57 @@ void setLidCalibration(byte opened_1, byte closed_1,
     nv.save();
   else
     client->println("ERROR: Failed to save lid calibration in EEPROM. NVMEM struct is invalid.");
+}
+
+void temp_correct_adjust(bool force_off)
+{
+#if !USE_TEMP_CORRECTION
+  return; // skip it
+#endif
+
+  // check for auto-off, adjust and/or stop if due
+  if ((force_off) || (last_temp >
+                          temp_correct_adjust_delta_at &&
+                      temp_correct_adjust_delta_at != 0))
+  {
+    float now_ambient = max31855.readInternal(false);
+    if ((!force_off) && (abs(now_ambient - starting_ambient) >
+                         TEMP_CORRECT_COOLDOWN_DELTA))
+    {
+      // kick adjust timer for another interval:
+      temp_correct_adjust_delta_at = millis() + TEMP_CORRECT_COOLDOWN_INTERVAL; // calculate time to next adjust
+      // special case in event of rollover in prior line math
+      if (temp_correct_adjust_delta_at == 0)
+      {
+        temp_correct_adjust_delta_at = 1;
+      }
+
+      // adjust starting ambient closer to actual ambient by delta temp:
+      if (DEBUG)
+      {
+        Serial.print("CORRECTION adjust: ");
+        Serial.print(starting_ambient);
+      }
+      if (now_ambient > starting_ambient)
+        starting_ambient += TEMP_CORRECT_COOLDOWN_DELTA;
+      else
+        starting_ambient -= TEMP_CORRECT_COOLDOWN_DELTA;
+      if (DEBUG)
+      {
+        Serial.print(" -> ");
+        Serial.println(starting_ambient);
+      }
+    }
+    else if (temp_correct_adjust_delta_at != 0)
+    {
+      // fall here immediately if `force_off` set, or
+      // stop the adjustment timer when delta is minimized:
+      if (DEBUG)
+        Serial.println("CORRECTION AUTO-OFF!"); // DEBUG ONLY
+      temp_correct_adjust_delta_at = 0;         // off
+      starting_ambient = NAN;
+    }
+  }
 }
 
 /************************** ILI9341 ****************************/
@@ -4368,7 +4450,7 @@ void tft_identify(bool identifying)
     return;
 
   tft_wakeup();
-  if (!identifying) 
+  if (!identifying)
     tft.fillScreen(ILI9341_BLACK); // force full UI redraw on normal state resume
   tft_idle();
   if (identifying)
@@ -4486,7 +4568,7 @@ void tft_idle()
     tft.setFont(Poppins_16_Bold);
 
     String line1 = tft_msgbox ? String(msgbox_title) : "Hardware Error"; // hw_error ? "Temp Sensor Error" : "TFT Display Error";
-    char buff1[line1.length() + 1];                                               // trailing NULL
+    char buff1[line1.length() + 1];                                      // trailing NULL
     line1.toCharArray(buff1, sizeof(buff1));
 
     pad = 10;
@@ -4604,7 +4686,8 @@ void tft_idle()
   {
     x = ICON_X;
     y = ICON_Y;
-    if (pogo_lid_opened) {
+    if (pogo_lid_opened)
+    {
       msgbox_visible = true;
 
       tft.writeRect(x, y, unlocked_icon.width, unlocked_icon.height, (uint16_t *)(unlocked_icon.pixel_data));
@@ -4638,9 +4721,11 @@ void tft_idle()
       // restore font and color to original values:
       tft.setFont(Poppins_12_Bold);
       tft.setTextColor(ILI9341_BLACK);
-
-    } else {
-      if (msgbox_visible) {
+    }
+    else
+    {
+      if (msgbox_visible)
+      {
         msgbox_visible = false;
 
         // Clear message box text, excluding icons (if any shown)
@@ -4678,24 +4763,24 @@ void tft_idle()
     // Calculate cartridge top-left position and size:
     pad = 15;
     x = x + 50 - pad;
-    y = y + 35 - 1.5*pad;
-    w = 2*pad;
-    h = 3*pad;
+    y = y + 35 - 1.5 * pad;
+    w = 2 * pad;
+    h = 3 * pad;
 
     // Draw cartridge icon in parts
-    tft.fillRect(x, y, w+1, h, ILI9341_BLACK); // base rectangle
-    tft.fillTriangle(x+w-5, y, x+w, y+5, x+w, y, QATCH_BLUE_FG); // top-right corner notch
-    tft.fillRect(x+9, y+14, 13, 13, QATCH_GREY_BG); // metal block, middle
-    tft.fillRect(x+12, y+8, 7, 6, QATCH_GREY_BG); // metal block, top
-    tft.fillRect(x+7, y+20, 17, 3, QATCH_GREY_BG); // metal block, left and right notches
-    tft.fillCircle(x+15, y+20, 5, QATCH_BLUE_FG); // sensor circle, inside metal block
-    tft.drawCircle(x+15, y+h-7, 3, ILI9341_DARKGREY); // handle circle, bottom
-    tft.drawRect(x+4, y+34, 3, 6, ILI9341_DARKGREY); // left arrow
-    tft.drawTriangle(x+3, y+34, x+5, y+32, x+7, y+34, ILI9341_DARKGREY); // left arrowhead
-    tft.drawRect(x+w-6, y+34, 3, 6, ILI9341_DARKGREY); // right arrow
-    tft.drawTriangle(x+w-3, y+34, x+w-5, y+32, x+w-7, y+34, ILI9341_DARKGREY); // right arrowhead
-    tft.drawFastVLine(x+12, y, 8, ILI9341_DARKGREY); // left top slide line
-    tft.drawFastVLine(x+18, y, 8, ILI9341_DARKGREY); // right top slide line
+    tft.fillRect(x, y, w + 1, h, ILI9341_BLACK);                                                 // base rectangle
+    tft.fillTriangle(x + w - 5, y, x + w, y + 5, x + w, y, QATCH_BLUE_FG);                       // top-right corner notch
+    tft.fillRect(x + 9, y + 14, 13, 13, QATCH_GREY_BG);                                          // metal block, middle
+    tft.fillRect(x + 12, y + 8, 7, 6, QATCH_GREY_BG);                                            // metal block, top
+    tft.fillRect(x + 7, y + 20, 17, 3, QATCH_GREY_BG);                                           // metal block, left and right notches
+    tft.fillCircle(x + 15, y + 20, 5, QATCH_BLUE_FG);                                            // sensor circle, inside metal block
+    tft.drawCircle(x + 15, y + h - 7, 3, ILI9341_DARKGREY);                                      // handle circle, bottom
+    tft.drawRect(x + 4, y + 34, 3, 6, ILI9341_DARKGREY);                                         // left arrow
+    tft.drawTriangle(x + 3, y + 34, x + 5, y + 32, x + 7, y + 34, ILI9341_DARKGREY);             // left arrowhead
+    tft.drawRect(x + w - 6, y + 34, 3, 6, ILI9341_DARKGREY);                                     // right arrow
+    tft.drawTriangle(x + w - 3, y + 34, x + w - 5, y + 32, x + w - 7, y + 34, ILI9341_DARKGREY); // right arrowhead
+    tft.drawFastVLine(x + 12, y, 8, ILI9341_DARKGREY);                                           // left top slide line
+    tft.drawFastVLine(x + 18, y, 8, ILI9341_DARKGREY);                                           // right top slide line
 
     tft.setFont(Poppins_11_Bold);
 
@@ -4931,11 +5016,11 @@ void tft_cooldown_start()
   // Serial.println("TFT Cooldown started");
   l298nhb_auto_off_at = millis() + L298NHB_COOLDOWN; // calculate time to idle
   // special case in event of rollover in prior line math
-  if (l298nhb_auto_off_at == 0) 
+  if (l298nhb_auto_off_at == 0)
   {
     l298nhb_auto_off_at = 1;
   }
-  tft_cooldown();                                    // will also call _prepare() when drawing full cooldown UI
+  tft_cooldown(); // will also call _prepare() when drawing full cooldown UI
 }
 
 void tft_cooldown_prepare()
@@ -4943,9 +5028,10 @@ void tft_cooldown_prepare()
   // prepare cooldown variables init
   // const short num_ring_steps = 4;                           // outer ring is broken into four segments
   // short total_time = L298NHB_COOLDOWN / 1000;               // total countdown duration, in seconds
-  last_pct = (((l298nhb_auto_off_at - millis())                // total seconds for cooldown, decremented, aligned with task timer
-             - (l298nhb_auto_off_at % 1000)
-             + (l298nhb_task_timer % 1000)) / 1000) + 1;
+  last_pct = (((l298nhb_auto_off_at - millis()) // total seconds for cooldown, decremented, aligned with task timer
+               - (l298nhb_auto_off_at % 1000) + (l298nhb_task_timer % 1000)) /
+              1000) +
+             1;
   // last_pct = max(0, min(total_time, last_pct));             // bound within range of 0 to 'total_time'
   // last_op = floor(total_time / num_ring_steps);             // seconds between ring steps, constant
   // last_sp = num_ring_steps - floor(last_pct / last_op) - 1; // ring step counter, incremented
@@ -5221,24 +5307,26 @@ void tft_cooldown()
   //   // No concerns about overwriting, and no need to blink when in cooldown
 
   //   // clear out MSGBOX area at top (without requiring a full redraw)
-  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK);
   // }
   // if (!tft_msgbox) {
   //     tft.setTextColor(QATCH_BLUE_FG); // TODO: indicate lid lock state
   // }
 
-   /* INTENDED MESSAGE LINE BEHAVIOR (COOLDOWN MODE):
-  - HARDWARE ERROR icon should persist (if still true from TEMP CONTROL)
-  - However, the HARDWARE ERROR message text will be cleared in COOLDOWN
-  - Message box and lid unlocked text will blink in COOLDOWN mode
-  - Message line will be explicitly cleared when nothing is to be shown
-  */
- 
-  if ((tft_msgbox || pogo_lid_opened)) {
+  /* INTENDED MESSAGE LINE BEHAVIOR (COOLDOWN MODE):
+ - HARDWARE ERROR icon should persist (if still true from TEMP CONTROL)
+ - However, the HARDWARE ERROR message text will be cleared in COOLDOWN
+ - Message box and lid unlocked text will blink in COOLDOWN mode
+ - Message line will be explicitly cleared when nothing is to be shown
+ */
+
+  if ((tft_msgbox || pogo_lid_opened))
+  {
     // clear hw error message on LCD
     tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, ILI9341_BLACK);
 
-    if (!msgbox_visible) {
+    if (!msgbox_visible)
+    {
       msgbox_visible = true;
 
       if (pogo_lid_opened)
@@ -5267,11 +5355,14 @@ void tft_cooldown()
       // restore font and color to original values:
       tft.setFont(Poppins_12_Bold);
       tft.setTextColor(ILI9341_BLACK);
-
-    } else {
+    }
+    else
+    {
       msgbox_visible = false;
     }
-  } else if (msgbox_visible) {
+  }
+  else if (msgbox_visible)
+  {
     msgbox_visible = false;
 
     // Clear message box text, excluding icons (if any shown)
@@ -5586,10 +5677,10 @@ void tft_tempcontrol()
   if (tft.readPixel(rect_x / 2, rect_y - 2 * pad) != QATCH_BLUE_FG)
   {
     //    Serial.println("Drawing TEC scale...");
-    last_temp_label = 255;             // none
-    last_line_label[0] = '\0';         // invalidate string
-    last_pv = last_sp = 255;           // impossible values
-    last_op = last_pct = 0;            // not started (yet)
+    last_temp_label = 255;     // none
+    last_line_label[0] = '\0'; // invalidate string
+    last_pv = last_sp = 255;   // impossible values
+    last_op = last_pct = 0;    // not started (yet)
 
     tft.fillScreen(ILI9341_BLACK);
     //    tft.fillRect(0, 22, TFT_WIDTH, 115, fillColor); // only do once, not on every bar update
@@ -5598,21 +5689,21 @@ void tft_tempcontrol()
 
     tft.setCursor((TFT_WIDTH - w) / 2, rect_y + rect_h + 5 * pad);
     tft.print(buf);
-    
+
     //    tft.fillRoundRect(rect_x - 101 - pad, rect_y - pad, rect_w + 2 * pad, rect_h + 2 * pad, rect_r, ILI9341_WHITE);
     //    tft.drawFastVLine(rect_x - 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
     //    tft.drawFastVLine(rect_x + 1, rect_y - pad, rect_h + 2 * pad, QATCH_BLUE_FG);
   }
-  
+
   // if (!tft_msgbox || msgbox_visible) {
   //   // This will make the message title flash while in this mode
-  //   // which is required to prevent a new message from overdrawing 
+  //   // which is required to prevent a new message from overdrawing
   //   // a prior message (i.e. "INITIALIZE SUCCESS" -> "CARTRIDGE UNLOCKED")
   //   msgbox_visible = false;
 
   //   // clear out MSGBOX area at top (without requiring a full redraw)
-  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK); 
+  //   tft.fillRect(0, 0, TFT_WIDTH, 32, ILI9341_BLACK);
   // }
   // if (tft_msgbox && !msgbox_visible) {
   //   msgbox_visible = true;
@@ -5694,7 +5785,7 @@ void tft_tempcontrol()
   //   tft.print(line0);
 
   //   tft.setFont(Poppins_10_Bold);
-  //   tft.setTextColor(QATCH_BLUE_FG); 
+  //   tft.setTextColor(QATCH_BLUE_FG);
   // }
   // else if (tft_msgbox) {} // do nothing
 
@@ -5704,11 +5795,13 @@ void tft_tempcontrol()
   - Message line will be explicitly cleared when nothing is to be shown
   */
 
-  if ((tft_msgbox || pogo_lid_opened)) {
+  if ((tft_msgbox || pogo_lid_opened))
+  {
     // clear hw error message on LCD
     tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
 
-    if (!msgbox_visible) {
+    if (!msgbox_visible)
+    {
       msgbox_visible = true;
 
       if (pogo_lid_opened)
@@ -5737,27 +5830,29 @@ void tft_tempcontrol()
       // restore font and color to original values:
       tft.setFont(Poppins_10_Bold);
       tft.setTextColor(QATCH_BLUE_FG);
-
-    } else {
+    }
+    else
+    {
       msgbox_visible = false;
     }
   }
   else if (max31855.status() != 0 || force_hw_error)
-  {  
-    if (!msgbox_visible || !hw_error) {
+  {
+    if (!msgbox_visible || !hw_error)
+    {
       msgbox_visible = true;
       hw_error = true;
 
       // clear hw error message on LCD
       tft.fillRect(0, 0, TFT_WIDTH - (TFT_MAX_ICONS * TFT_ICON_WIDTH) - 1, 32, fillColor);
-      
+
       tft.setTextColor(ILI9341_RED);
       tft.setFont(Poppins_16_Bold);
-      
+
       String line0 = "Hardware Error";
       char buff0[line0.length() + 1]; // trailing NULL
       line0.toCharArray(buff0, sizeof(buff0));
-      
+
       uint16_t _pad = 10;
       uint16_t _w = tft.measureTextWidth(buff0);
       // uint16_t _h = tft.measureTextHeight(buff0);
@@ -5988,7 +6083,9 @@ void tft_tempcontrol()
         if (toggle_state)
         {
           textColor = QATCH_BLUE_FG; // Ready
-        } else {
+        }
+        else
+        {
           toggle_state = (getSystemTime() % 1000 <= 500); // flash 'Apply Drop' message
           textColor = toggle_state ? ILI9341_GREEN : QATCH_BLUE_FG;
         }
@@ -6094,7 +6191,7 @@ void tft_initialize()
   // void tft_initialize_styleB()
   //{
 
-  //unsigned long start = micros();
+  // unsigned long start = micros();
   uint16_t x, y, w, h; // , pad;
 
   tft_wakeup();
@@ -6208,7 +6305,7 @@ void tft_draw_status_icons()
 
   uint16_t center_px_x, center_px_y;
   uint16_t center_px_color;
-  
+
   x -= spacing; // shift for next icon
 
   center_px_x = x + (status_lock_icon.width / 2);
@@ -6217,24 +6314,30 @@ void tft_draw_status_icons()
 
   if (!pogo_lid_opened)
   {
-    if (center_px_color == ILI9341_BLACK) {
+    if (center_px_color == ILI9341_BLACK)
+    {
       tft.writeRect(x, y, status_lock_icon.width, status_lock_icon.height, (uint16_t *)(status_lock_icon.pixel_data));
-    } else {
+    }
+    else
+    {
       // Do nothing. Icon already drawn.
       // Serial.println("Not redrawing lock icon. Already drawn.");
     }
   }
   else
   {
-    if (center_px_color != ILI9341_BLACK) {
+    if (center_px_color != ILI9341_BLACK)
+    {
       tft.fillRect(x, y, status_lock_icon.width, status_lock_icon.height, ILI9341_BLACK);
-    } else {
+    }
+    else
+    {
       // Do nothing. Icon already cleared.
     }
   }
-  
+
   x -= spacing; // shift for first icon
-  
+
   center_px_x = x + (status_error_icon.width / 2);
   center_px_y = y + (status_error_icon.height / 2);
   center_px_color = tft.readPixel(center_px_x, center_px_y);
@@ -6242,18 +6345,24 @@ void tft_draw_status_icons()
   bool transient_error = (max31855.error() != "OK[NONE]");
   if (hw_error || tft_error || transient_error || PID_IS_SECONDARY(NVMEM.pid))
   {
-    if (center_px_color == ILI9341_BLACK) {
+    if (center_px_color == ILI9341_BLACK)
+    {
       tft.writeRect(x, y, status_error_icon.width, status_error_icon.height, (uint16_t *)(status_error_icon.pixel_data));
-    } else {
+    }
+    else
+    {
       // Do nothing. Icon already drawn.
       // Serial.println("Not redrawing error icon. Already drawn.");
     }
   }
   else
   {
-    if (center_px_color != ILI9341_BLACK) {
+    if (center_px_color != ILI9341_BLACK)
+    {
       tft.fillRect(x, y, status_error_icon.width, status_error_icon.height, ILI9341_BLACK);
-    } else {
+    }
+    else
+    {
       // Do nothing. Icon already cleared.
     }
   }
@@ -6364,7 +6473,7 @@ bool connect_to_ethernet()
   // Per DP83825I datasheet: The RST_N pin is an input with internal pull-up
   // NOTE: On Teensy 4.0-4.1, GPIO7 is used for non-DMA access to GPIO2 pins
   bool phy_chip_exists = GPIO7_PSR & (1 << 14); // true if PHY chip present
-  if (!phy_chip_exists) 
+  if (!phy_chip_exists)
   {
     client->println("HW Variant: TEENSY41_NE (Without Ethernet Chip)");
     delay(3000); // pause to show boot screen

@@ -242,7 +242,9 @@ class QModelV6YOLO_DataProcessor:
         """
         if len(values) < 2:
             return None
-        v_min, v_max = np.nanmin(values), np.nanmax(values)
+        # Fixes head and tail clipping.
+        p_lower, p_upper = 1.0, 99.0
+        v_min, v_max = np.nanpercentile(values, [p_lower, p_upper])
 
         if scaling_limits and col_name and col_name in scaling_limits:
             v_min, v_max = scaling_limits[col_name]
@@ -251,7 +253,6 @@ class QModelV6YOLO_DataProcessor:
         if diff == 0:
             diff = cls.EPSILON
             v_min -= cls.EPSILON
-
         norm = (values - v_min) / diff
         norm = np.clip(norm, 0, 1)
         x_points = np.linspace(0, img_w - 1, len(values)).astype(np.int32)
@@ -318,9 +319,7 @@ class QModelV6YOLO_DataProcessor:
         return img
 
     @classmethod
-    def generate_channel_det(
-        cls, df: pd.DataFrame, img_w: int, img_h: int
-    ) -> np.ndarray:
+    def generate_channel_det(cls, df: pd.DataFrame, img_w: int, img_h: int) -> np.ndarray:
         """
         Generates the visualization input for the YOLO Detection Model.
 

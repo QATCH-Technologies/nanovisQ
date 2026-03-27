@@ -1,19 +1,17 @@
-from typing import Any, Dict
-import os
-import json
 import hashlib
+import json
+import os
+import re
 import shutil
 import threading
-from pathlib import Path
-from typing import Optional, Dict, Any, List
-import re
 from datetime import datetime
-from datetime import timezone as tz
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 _INDEX_FILENAME = "index.json"
 _OBJECTS_DIR = "objects"
 _DEFAULT_RETENTION = 50
-_SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 
 # NOTE: VisQAI-base.zip is treated as a protected artifact by VersionManager.
 #       It is auto-pinned on commit and marked as protected; prune will never remove it.
@@ -21,7 +19,8 @@ _SHA256_HEX_RE = re.compile(r'^[0-9a-f]{64}$')
 
 
 class VersionManager:
-    """ Protected file names to prevent pruning seed model. """
+    """Protected file names to prevent pruning seed model."""
+
     _PROTECTED_FILENAMES = {"VisQAI-base.zip"}
 
     def __init__(self, repo_dir: str, retention: int = _DEFAULT_RETENTION) -> None:
@@ -38,11 +37,9 @@ class VersionManager:
             ValueError: If `retention` is not a positive integer.
         """
         if not isinstance(repo_dir, str):
-            raise TypeError(
-                f"repo_dir must be a str, got {type(repo_dir).__name__}")
+            raise TypeError(f"repo_dir must be a str, got {type(repo_dir).__name__}")
         if not isinstance(retention, int) or retention < 1:
-            raise ValueError(
-                f"retention must be a positive integer, got {retention}")
+            raise ValueError(f"retention must be a positive integer, got {retention}")
 
         # Core paths
         self.repo_dir = Path(repo_dir)
@@ -106,10 +103,10 @@ class VersionManager:
             OSError: If an I/O error occurs during write, fsync, or replace.
         """
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.index_path.with_suffix(self.index_path.suffix + '.tmp')
+        tmp_path = self.index_path.with_suffix(self.index_path.suffix + ".tmp")
         try:
             # Write JSON to temporary file
-            with tmp_path.open('w', encoding='utf-8') as f:
+            with tmp_path.open("w", encoding="utf-8") as f:
                 json.dump(idx, f, indent=2, sort_keys=True)
                 f.flush()
                 os.fsync(f.fileno())
@@ -120,8 +117,7 @@ class VersionManager:
 
         except (TypeError, ValueError) as exc:
             tmp_path.unlink(missing_ok=True)
-            raise ValueError(
-                f"Failed to serialize index to JSON: {exc}") from exc
+            raise ValueError(f"Failed to serialize index to JSON: {exc}") from exc
         except OSError as exc:
             tmp_path.unlink(missing_ok=True)
             raise OSError(f"Failed to write index file: {exc}") from exc
@@ -147,7 +143,8 @@ class VersionManager:
         # Validate type
         if not isinstance(file_path, Path):
             raise ValueError(
-                f"`file_path` must be a pathlib.Path, got {type(file_path)}")
+                f"`file_path` must be a pathlib.Path, got {type(file_path)}"
+            )
 
         # Ensure the file exists and is a regular file
         if not file_path.is_file():
@@ -162,10 +159,10 @@ class VersionManager:
                     hasher.update(chunk)
         except PermissionError as exc:
             raise PermissionError(
-                f"Permission denied when reading {file_path}") from exc
+                f"Permission denied when reading {file_path}"
+            ) from exc
         except OSError as exc:
-            raise OSError(
-                f"I/O error while reading {file_path}: {exc}") from exc
+            raise OSError(f"I/O error while reading {file_path}: {exc}") from exc
 
         return hasher.hexdigest()
 
@@ -220,8 +217,7 @@ class VersionManager:
         metadata = metadata or {}
         # Disallow caller-supplied 'protected'; only VersionManager sets it.
         metadata.pop("protected", None)
-        committed_at = datetime.now().astimezone().replace(
-            microsecond=0).isoformat()
+        committed_at = datetime.now().astimezone().replace(microsecond=0).isoformat()
         meta = {
             "sha": sha,
             "committed_at": committed_at,
@@ -261,13 +257,11 @@ class VersionManager:
 
             except (TypeError, ValueError) as exc:
                 shutil.rmtree(obj_dir, ignore_errors=True)
-                raise ValueError(
-                    f"Metadata serialization failed: {exc}") from exc
+                raise ValueError(f"Metadata serialization failed: {exc}") from exc
 
             except OSError as exc:
                 shutil.rmtree(obj_dir, ignore_errors=True)
-                raise OSError(
-                    f"Failed to commit snapshot {sha}: {exc}") from exc
+                raise OSError(f"Failed to commit snapshot {sha}: {exc}") from exc
         return sha
 
     def get(self, sha: str, dest_dir: str) -> Path:
@@ -322,14 +316,11 @@ class VersionManager:
         """
         if limit is not None and (not isinstance(limit, int) or limit < 0):
             raise ValueError(
-                f"limit must be a non-negative integer or None, got {limit!r}")
+                f"limit must be a non-negative integer or None, got {limit!r}"
+            )
 
         index = self._load_index()
-        items = sorted(
-            index.values(),
-            key=lambda m: m["committed_at"],
-            reverse=True
-        )
+        items = sorted(index.values(), key=lambda m: m["committed_at"], reverse=True)
         return items if limit is None else items[:limit]
 
     def prune(self) -> None:
@@ -344,7 +335,8 @@ class VersionManager:
         """
         if not isinstance(self.retention, int) or self.retention < 1:
             raise ValueError(
-                f"retention must be a positive integer, got {self.retention!r}")
+                f"retention must be a positive integer, got {self.retention!r}"
+            )
 
         index = self._load_index()
         # Sort ascending by commit time
@@ -365,7 +357,8 @@ class VersionManager:
                         shutil.rmtree(obj_dir)
                 except OSError as exc:
                     raise OSError(
-                        f"Failed to remove object dir {obj_dir}: {exc}") from exc
+                        f"Failed to remove object dir {obj_dir}: {exc}"
+                    ) from exc
                 index.pop(sha, None)
 
         if len(index) != original_count:
@@ -420,4 +413,44 @@ class VersionManager:
 
         if "pin" in meta:
             meta.pop("pin")
+            self._write_index(index)
+
+    def delete(self, sha: str) -> None:
+        """Permanently remove a snapshot from the repository.
+
+        Removes the snapshot's entry from the index and deletes its object
+        directory from disk.  Protected snapshots cannot be deleted.
+
+        Args:
+            sha (str): 64-character lowercase SHA-256 hex digest of the snapshot
+                to delete.
+
+        Raises:
+            ValueError: If ``sha`` is not a valid SHA-256 hex digest.
+            KeyError: If no snapshot with the given ``sha`` exists.
+            PermissionError: If the snapshot is marked as protected.
+            OSError: If the on-disk object directory cannot be removed.
+        """
+        if not isinstance(sha, str) or not _SHA256_HEX_RE.match(sha):
+            raise ValueError(f"Invalid SHA-256 hex digest: {sha!r}")
+
+        with self._lock:
+            index = self._load_index()
+            if sha not in index:
+                raise KeyError(f"No snapshot with hash {sha}")
+
+            meta = index[sha].get("metadata", {})
+            if meta.get("protected", False):
+                raise PermissionError(
+                    f"Cannot delete protected snapshot {meta.get('filename')}"
+                )
+
+            obj_dir = self._object_path(sha)
+            try:
+                if obj_dir.exists():
+                    shutil.rmtree(obj_dir)
+            except OSError as exc:
+                raise OSError(f"Failed to remove object dir {obj_dir}: {exc}") from exc
+
+            index.pop(sha)
             self._write_index(index)
