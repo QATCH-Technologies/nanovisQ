@@ -195,9 +195,7 @@ class Predictor:
             for k, v in raw_kwargs.items()
         }
 
-        # Default: pass model_dir if no explicit kwargs
-        if not init_kwargs:
-            init_kwargs = {"model_dir": str(self.extracted_path)}
+        init_kwargs.setdefault("model_dir", str(self.extracted_path))
 
         self.engine = engine_cls(**init_kwargs)
         raw_arch = self.manifest.get("architecture", "unknown")
@@ -470,7 +468,8 @@ class Predictor:
                     f"Calibrating for protein type: {p_type} (History: {len(hist_subset)}, Eval: {len(eval_subset)})",
                 )
 
-                context_for_learn = hist_subset.copy()
+                context_for_learn = pd.concat([hist_subset, eval_subset], ignore_index=True)
+
                 if (
                     self.model_type == "CNP"
                     and self.engine is not None
