@@ -280,11 +280,10 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     )  # NOTE: For temporary testing as of Pi Day 2023! (3 places in this file)
 
                     # Invert difference curve if drop applied to outlet
-                    if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                        abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
-                        Log.w(
-                            "Inverting DIFFERENCE curve due to negative initial fill deltas"
-                        )
+                    if np.average(np.abs(ys_freq_fit)) < np.average(
+                        np.abs(diff_factor * ys_fit)
+                    ) and abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max()):
+                        Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                         ys_diff *= -1
 
                     # ys_diff_fit = savgol_filter(ys_diff, smooth_factor, 1)
@@ -2626,9 +2625,11 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     "detectors": {
                         "init": os.path.join(v6_base_path, "detectors", "init_detector", "init.pt"),
                         "ch1": os.path.join(v6_base_path, "detectors", "ch1_detector", "ch1.pt"),
-                        "ch2": os.path.join(v6_base_path, "detectors", "ch2_detector",  "ch2.pt"),
-                        "ch3": os.path.join(v6_base_path, "detectors", "ch3_detector",  "ch3.pt"),
-                        "poi5_fine": os.path.join(v6_base_path, "detectors", "eof_detector", "eof.pt"),
+                        "ch2": os.path.join(v6_base_path, "detectors", "ch2_detector", "ch2.pt"),
+                        "ch3": os.path.join(v6_base_path, "detectors", "ch3_detector", "ch3.pt"),
+                        "poi5_fine": os.path.join(
+                            v6_base_path, "detectors", "eof_detector", "eof.pt"
+                        ),
                     },
                 }
                 self.QModel_v6_predictor = QModelV6YOLO(model_assets=model_assets)
@@ -4881,8 +4882,9 @@ class AnalyzeProcess(QtWidgets.QWidget):
             ys_diff = ys_freq - (diff_factor * ys)
 
             # Invert difference curve if drop applied to outlet
-            if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
+            if np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and abs(
+                ys_diff[t_1p0:].min()
+            ) > 5 * abs(ys_diff[t_1p0:].max()):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
@@ -5150,8 +5152,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         if len(poi_vals) > 0:
             for i, pt in enumerate(poi_vals):
                 if pt != -1 and not 0 <= pt < len(xs):
-                    Log.w(
-                        f"Model point {pt} cannot be used. Skipping point {i+1}.")
+                    Log.w(f"Model point {pt} cannot be used. Skipping point {i+1}.")
                     poi_vals[i] = -1
             start_stop = poi_vals
 
@@ -5900,8 +5901,9 @@ class AnalyzerWorker(QtCore.QObject):
             ys_diff = ys_freq - (diff_factor * ys)
 
             # Invert difference curve if drop applied to outlet
-            if (np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and
-                abs(ys_diff[t_1p0:].min()) > 5 * abs(ys_diff[t_1p0:].max())):
+            if np.average(np.abs(ys_freq_fit)) < np.average(np.abs(diff_factor * ys_fit)) and abs(
+                ys_diff[t_1p0:].min()
+            ) > 5 * abs(ys_diff[t_1p0:].max()):
                 Log.w("Inverting DIFFERENCE curve due to negative initial fill deltas")
                 ys_diff *= -1
 
