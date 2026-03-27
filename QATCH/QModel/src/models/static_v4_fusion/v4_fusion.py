@@ -1229,5 +1229,5 @@ if __name__ == "__main__":
             print(f"{poi_name}: not detected")
 
     # You can also save the visualization
-    # predictions = fusion.predict(file_buffer=test_file, visualize=False)
+    # predictions = fusion.predict(file_buffer=test_file, visualize=True)
     # fusion.visualize(save_path="poi_detection_results.png")
