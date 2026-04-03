@@ -110,20 +110,23 @@ class Predictor:
     def _load_package(self):
         """Unzip the package and dynamically load the inference engine.
 
-        Loading strategy (in priority order):
+        Two load paths are supported (checked in order):
 
-        1. **Manifest-driven (v2):** If the manifest contains a ``modules``
-           section, all declared code modules are loaded in the specified
-           order and the entry-point class is resolved from the manifest.
-        2. **Secure-loader legacy (v1):** Falls back to scanning ``files``
-           for a single ``inference_code`` entry.
-        3. **Hardcoded legacy:** Last-resort for very old packages that
-           pre-date the secure loader.
+        1. **Manifest-driven (v2):** When ``loader.has_module_manifest`` is
+           ``True``, all modules declared in the manifest ``modules`` section
+           are loaded via :meth:`_load_from_module_manifest` and the
+           entry-point class is resolved from the manifest.
+        2. **CrossSampleCNP legacy (v1):** When the manifest ``architecture``
+           field equals ``"CrossSampleCNP"``, a single inference module is
+           loaded via :meth:`_load_single_inference_module`.
+
+        Any package that does not match either path raises
+        :exc:`NotImplementedError`.
 
         Raises:
             FileNotFoundError: If ``self.zip_path`` does not exist.
-            NotImplementedError: If the package architecture is not supported.
-            Exception: Propagated from the secure loader on any loading failure.
+            NotImplementedError: If the package is neither manifest-driven nor
+                a ``CrossSampleCNP`` v1 package.
         """
         if not self.zip_path.exists():
             raise FileNotFoundError(f"Package not found: {self.zip_path}")
@@ -142,7 +145,7 @@ class Predictor:
                     pass
 
                 sklearn.compose._column_transformer._RemainderColsList = _RemainderColsList
-                Log.w("Applied sklearn._RemainderColsList for legacy model support.")
+                Log.w(TAG, "Applied sklearn._RemainderColsList for legacy model support.")
         except ImportError:
             pass
         except Exception as e:
@@ -338,8 +341,6 @@ class Predictor:
                 ``abs_error``, ``lower_ci``, ``upper_ci``.  Returns an empty
                 DataFrame with those columns if no predictions were produced.
         """
-        shear_rates = [100, 1000, 10000, 100000, 15000000]
-
         if not targets:
             targets = [
                 "Viscosity_100",
@@ -365,12 +366,32 @@ class Predictor:
                     ``shear_rate``, ``actual``, ``predicted``, ``pct_error``,
                     ``abs_error``, ``lower_ci``, ``upper_ci``.
             """
+            _canonical_targets = [
+                "Viscosity_100",
+                "Viscosity_1000",
+                "Viscosity_10000",
+                "Viscosity_100000",
+                "Viscosity_15000000",
+            ]
             results = []
-            for idx, target in enumerate(targets):
+            for target in targets:
                 if target not in actuals_df.columns:
                     continue
                 if target not in pred_df.columns:
                     continue
+                # Derive shear rate from the target column name rather than a
+                # fixed positional list so reordered/subset targets stay correct.
+                try:
+                    shear_rate = int(target.rsplit("_", 1)[-1])
+                except (ValueError, IndexError):
+                    shear_rate = None
+                # Position within the canonical target list used to index
+                # per-target CI arrays returned by predict_with_uncertainty.
+                ci_idx = (
+                    _canonical_targets.index(target)
+                    if target in _canonical_targets
+                    else None
+                )
                 for row_idx in range(len(actuals_df)):
                     actual = actuals_df.iloc[row_idx][target]
                     predicted = pred_df.iloc[row_idx][target]
@@ -387,14 +408,22 @@ class Predictor:
                         else None
                     )
                     if isinstance(lower, np.ndarray):
-                        lower = lower[idx] if idx < len(lower) else None
+                        lower = (
+                            lower[ci_idx]
+                            if ci_idx is not None and ci_idx < len(lower)
+                            else None
+                        )
                     if isinstance(upper, np.ndarray):
-                        upper = upper[idx] if idx < len(upper) else None
+                        upper = (
+                            upper[ci_idx]
+                            if ci_idx is not None and ci_idx < len(upper)
+                            else None
+                        )
 
                     results.append(
                         {
-                            "sample_idx": row_idx,
-                            "shear_rate": shear_rates[idx],
+                            "sample_idx": actuals_df.index[row_idx],
+                            "shear_rate": shear_rate,
                             "actual": actual,
                             "predicted": predicted,
                             "pct_error": pct_err,

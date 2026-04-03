@@ -33,6 +33,10 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+# Sentinel used by SecurePackageLoader to distinguish "key was absent from
+# sys.modules" from "key mapped to None" when saving prior alias values.
+_MISSING = object()
+
 try:
     TAG = "[SecureLoader]"
     from QATCH.common.logger import Logger as Log
@@ -231,7 +235,7 @@ class SecurePackageLoader:
         enforce_signatures (bool): Security policy for the loader.
         loader (SecureModuleLoader): The worker instance for crypto operations.
         manifest_data (dict): Cached dictionary of the manifest contents.
-        loaded_modules (dict): Filename → module mapping after loading.
+        loaded_modules (dict): Filename -> module mapping after loading.
     """
 
     def __init__(self, extracted_dir: Path, enforce_signatures: bool = True):
@@ -246,6 +250,9 @@ class SecurePackageLoader:
         self.loader = SecureModuleLoader(enforce_signatures)
         self.manifest_data: Dict[str, Any] = {}
         self.loaded_modules: Dict[str, Any] = {}
+        # Maps plain stem -> prior sys.modules value (or _MISSING sentinel) so
+        # that unload/reset can restore the interpreter state cleanly.
+        self.injected_aliases: Dict[str, Any] = {}
 
     def load_manifest(self) -> Dict[str, Any]:
         """Loads and verifies the package manifest and asset integrity.
@@ -381,9 +388,14 @@ class SecurePackageLoader:
             module_name = f"visq_pkg.{module_path.stem}"
             Log.i(TAG, f"Loading module: {filename} as {module_name}")
             mod = self.loader.load_module_from_path(module_name, module_path)
-            # Also register under the plain stem so that ``import <stem>``
-            # resolves to the same object instead of creating a duplicate.
-            sys.modules.setdefault(module_path.stem, mod)
+            # Inject a plain-stem alias so ``import <stem>`` resolves to the
+            # same object.  Save whatever was there before (or _MISSING if the
+            # key was absent) so unload/reset can restore the prior state.
+            stem = module_path.stem
+            prior = sys.modules.get(stem, _MISSING)
+            if stem not in self.injected_aliases:
+                self.injected_aliases[stem] = prior
+            sys.modules[stem] = mod
             self.loaded_modules[filename] = mod
 
         return self.loaded_modules
