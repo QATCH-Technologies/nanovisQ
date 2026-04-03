@@ -8,10 +8,10 @@ Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
-    2026-03-26
+    2026-04-03
 
 Version:
-    6.1
+    6.2
 """
 
 import os
@@ -387,11 +387,7 @@ class Predictor:
                     shear_rate = None
                 # Position within the canonical target list used to index
                 # per-target CI arrays returned by predict_with_uncertainty.
-                ci_idx = (
-                    _canonical_targets.index(target)
-                    if target in _canonical_targets
-                    else None
-                )
+                ci_idx = _canonical_targets.index(target) if target in _canonical_targets else None
                 for row_idx in range(len(actuals_df)):
                     actual = actuals_df.iloc[row_idx][target]
                     predicted = pred_df.iloc[row_idx][target]
@@ -409,15 +405,11 @@ class Predictor:
                     )
                     if isinstance(lower, np.ndarray):
                         lower = (
-                            lower[ci_idx]
-                            if ci_idx is not None and ci_idx < len(lower)
-                            else None
+                            lower[ci_idx] if ci_idx is not None and ci_idx < len(lower) else None
                         )
                     if isinstance(upper, np.ndarray):
                         upper = (
-                            upper[ci_idx]
-                            if ci_idx is not None and ci_idx < len(upper)
-                            else None
+                            upper[ci_idx] if ci_idx is not None and ci_idx < len(upper) else None
                         )
 
                     results.append(
