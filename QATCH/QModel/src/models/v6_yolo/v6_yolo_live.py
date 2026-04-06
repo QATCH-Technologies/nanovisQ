@@ -291,9 +291,10 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
             from multiprocessing.util import get_logger
 
+            mp_devnull = open(os.devnull, "w")
             mp_logger = get_logger()
             if mp_logger.handlers:
-                mp_logger.handlers[0].setStream(open(os.devnull, "w"))
+                mp_logger.handlers[0].setStream(mp_devnull)
             mp_logger.setLevel(logging.WARNING)
 
             self._classifier = QModelV6YOLO_Live(
@@ -344,6 +345,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 Log.e(TAG, line)
         finally:
             Log.d(TAG, "QModelV6YOLO_LiveProcess stopped.")
+            mp_devnull.close()
             devnull.close()
             self._done.set()
 
