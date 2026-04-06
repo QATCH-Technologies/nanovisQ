@@ -21,6 +21,7 @@ import multiprocessing
 import os
 import sys
 from logging.handlers import QueueHandler
+from queue import Empty
 from typing import Optional
 
 import pandas as pd
@@ -282,6 +283,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 ``Log.e``, and then the ``finally`` block cleans up.
         """
         devnull = open(os.devnull, "w")
+        mp_devnull = None
         try:
             sys.stdout = sys.stderr = devnull
 
@@ -306,15 +308,15 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             while not self._exit.is_set():
                 try:
                     raw_data = self._queue_in.get(timeout=0.05)
-                except Exception:
+                except Empty:
                     continue
 
                 chunks = [raw_data]
                 # Drain any additional queued items
-                while not self._queue_in.empty():
+                while True:
                     try:
                         chunks.append(self._queue_in.get_nowait())
-                    except Exception:
+                    except Empty:
                         break
                 data_received = False
                 for chunk in chunks:
@@ -345,7 +347,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 Log.e(TAG, line)
         finally:
             Log.d(TAG, "QModelV6YOLO_LiveProcess stopped.")
-            mp_devnull.close()
+            if mp_devnull is not None:
+                mp_devnull.close()
             devnull.close()
             self._done.set()
 
