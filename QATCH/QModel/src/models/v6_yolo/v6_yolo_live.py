@@ -1,5 +1,6 @@
-# v6_yolo_live.py
 """
+v6_yolo_live.py
+
 This module provides the infrastructure for running a YOLO-based fill classifier
 in a live, multiprocessing environment. It includes a classification logic class
 that manages data buffering and prediction, as well as a dedicated multiprocessing
@@ -9,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-01-12
+    2026-04-06
 
 Version:
-    2.0.1
+    2.0.2
 """
 
 import logging
@@ -40,15 +41,17 @@ TAG = "[QModelV6YOLO_LiveProcess]"
 class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     """Manages data buffering and executes predictions for real-time fill classification.
 
-    This class handles the accumulation of streaming sensor data, maintains a fixed-size
-    sliding window buffer, and triggers inference using a YOLO-based model when conditions
-    are met.
+    Handles accumulation of streaming sensor data, maintains a fixed-size sliding window
+    buffer, and triggers inference using a YOLO-based model when conditions are met.
 
     Attributes:
+        STATUS_MAP (dict): Mapping of integer classification codes to human-readable strings.
+        TAG (str): Log tag prefix for this class.
+        DEBOUNCE_THRESHOLD (int): Number of consecutive identical predictions required
+            before a state change is accepted.
         buffer_window_size (Optional[int]): The maximum number of rows to retain in the
             rolling buffer. If None, the buffer grows indefinitely.
         current_prediction (int): The most recent classification result class ID.
-        STATUS_MAP (dict): Mapping of integer classification codes to human-readable strings.
     """
 
     STATUS_MAP = {
@@ -122,31 +125,24 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             return
 
         if "Relative_time" not in new_data.columns:
-            raise ValueError(
-                "new_data must contain the 'Relative_time' column.")
+            raise ValueError("new_data must contain the 'Relative_time' column.")
 
         if self._data is None or self._data.empty:
             self._data = new_data.copy()
             self._prediction_buffer_size = len(self._data)
         else:
-            new_data_filtered = new_data[
-                new_data["Relative_time"] > self._last_max_time
-            ]
+            new_data_filtered = new_data[new_data["Relative_time"] > self._last_max_time]
 
             if not new_data_filtered.empty:
-                new_data_aligned = new_data_filtered.reindex(
-                    columns=self._data.columns)
-                self._data = pd.concat(
-                    [self._data, new_data_aligned], ignore_index=True
-                )
+                new_data_aligned = new_data_filtered.reindex(columns=self._data.columns)
+                self._data = pd.concat([self._data, new_data_aligned], ignore_index=True)
                 self._prediction_buffer_size += len(new_data_filtered)
         if self._data is not None and not self._data.empty:
             self._last_max_time = self._data["Relative_time"].max()
-            self._data.sort_values(
-                by="Relative_time", ascending=True, inplace=True)
+            self._data.sort_values(by="Relative_time", ascending=True, inplace=True)
             self._data.reset_index(drop=True, inplace=True)
             if self.buffer_window_size and len(self._data) > self.buffer_window_size:
-                self._data = self._data.iloc[-self.buffer_window_size:]
+                self._data = self._data.iloc[-self.buffer_window_size :]
                 self._data.reset_index(drop=True, inplace=True)
 
     def attempt_classification(self) -> int:
@@ -164,28 +160,24 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             return self.current_prediction
 
         try:
-            processed_df = self._data.copy()
-
-            mask = self._data["Relative_time"] > 0.05
-            if mask.any():
-                self._data = self._data.loc[mask]
-                processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(
-                    self._data.copy()
-                )
-                if processed_df is not None and not processed_df.empty:
-                    pred = self.predict(processed_df)
-                    if pred == self._debounce_candidate:
-                        self._debounce_count += 1
-                    else:
-                        self._debounce_candidate = pred
-                        self._debounce_count = 1
-                    if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
-                        self.current_prediction = pred
-                    return self.current_prediction
-                else:
-                    Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
-            else:
+            filtered = self._data[self._data["Relative_time"] > 0.05]
+            if filtered.empty:
                 Log.d(self.TAG, "Waiting for > 0.05s of buffer data.")
+                return self.current_prediction
+
+            processed_df = QModelV6YOLO_DataProcessor.preprocess_dataframe(filtered.copy())
+            if processed_df is not None and not processed_df.empty:
+                pred = self.predict(processed_df)
+                if pred == self._debounce_candidate:
+                    self._debounce_count += 1
+                else:
+                    self._debounce_candidate = pred
+                    self._debounce_count = 1
+                if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
+                    self.current_prediction = pred
+            else:
+                Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
+
         except Exception as e:
             Log.e(self.TAG, f"Inference failed: {str(e)}")
 
@@ -230,16 +222,20 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         queue_out: multiprocessing.Queue,
         buffer_window_size: Optional[int] = None,
     ) -> None:
-        """
-        Initializes the LiveProcess configuration.
+        """Initializes the LiveProcess with queue handles and buffer configuration.
+
+        The YOLO model is intentionally not loaded here; it is loaded inside ``run()``
+        to avoid pickling errors when the process is spawned.
 
         Args:
-            queue_log (multiprocessing.Queue): Queue for logging messages back to the main process.
-            queue_in (multiprocessing.Queue): Input queue for receiving raw data from workers.
-            queue_out (multiprocessing.Queue): Output queue for sending prediction tuples.
-            model_path (str): The file path to the trained YOLO model.
-            buffer_window_size (Optional[int], optional): The maximum size of the rolling
-                data buffer. Defaults to None.
+            queue_log (multiprocessing.Queue): Queue for forwarding log records back to
+                the main process.
+            queue_in (multiprocessing.Queue): Input queue that delivers raw worker data
+                chunks for inference.
+            queue_out (multiprocessing.Queue): Output queue that receives ``(int, str)``
+                prediction tuples produced after each inference batch.
+            buffer_window_size (Optional[int]): Maximum number of rows to keep in the
+                rolling data buffer. Defaults to None (unbounded).
         """
         Log.d(self.TAG, "Starting multiprocess fill status")
         self._queueLog: multiprocessing.Queue = queue_log
@@ -255,7 +251,8 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
         )
         type_cls_asset = os.path.join(
-            v6_base_path, "type_cls", "weights", "best.pt")
+            v6_base_path, "classifiers", "fill_classifier", "weights", "best.pt"
+        )
         self.model_path = type_cls_asset
         self.buffer_window_size = buffer_window_size
 
@@ -263,68 +260,79 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         self._classifier: Optional[QModelV6YOLO_Live] = None
 
     def run(self) -> None:
-        """
-        Executes the main process loop.
+        """Executes the main inference loop for the live fill classification process.
 
-        Steps:
-        1. Redirects stdout/stderr to prevent console spam.
-        2. Configures logging to use the main process's queue.
-        3. Initializes the `QModelV6YOLO_Live` classifier (must happen here to avoid pickling).
-        4. Enters a loop to consume data from `_queue_in`, convert it to DataFrames,
-           update the classifier, and run inference.
-        5. Puts results into `_queue_out`.
+        This method is called automatically when the process is started via
+        ``multiprocessing.Process.start()``. It performs the following steps in order:
+
+        1. Redirects ``stdout`` and ``stderr`` to ``/dev/null`` to suppress console output
+           from the YOLO runtime.
+        2. Configures the process-local logger to forward records through ``_queueLog``
+           so they appear in the main-process log.
+        3. Initializes the ``QModelV6YOLO_Live`` classifier (must occur here to avoid
+           pickling errors).
+        4. Enters the main loop: blocks on ``_queue_in`` with a short timeout, drains
+           any additional queued chunks, feeds them to the classifier, then runs a single
+           inference pass and publishes the result to ``_queue_out``.
+        5. On exit (normal or exceptional), closes the devnull handle and sets
+           ``_done`` to signal callers that the process has finished.
+
+        Raises:
+            Exception: Any unhandled exception is caught, logged line-by-line via
+                ``Log.e``, and then the ``finally`` block cleans up.
         """
+        devnull = open(os.devnull, "w")
         try:
-            # Redirect stdout/stderr
-            sys.stdout = open(os.devnull, "w")
-            sys.stderr = open(os.devnull, "w")
+            sys.stdout = sys.stderr = devnull
 
-            # Configure Logging
             logger = logging.getLogger("QATCH.logger")
             logger.addHandler(QueueHandler(self._queueLog))
             logger.setLevel(logging.DEBUG)
 
             from multiprocessing.util import get_logger
 
-            multiprocessing_logger = get_logger()
-            if multiprocessing_logger.handlers:
-                multiprocessing_logger.handlers[0].setStream(sys.stderr)
-            multiprocessing_logger.setLevel(logging.WARNING)
+            mp_logger = get_logger()
+            if mp_logger.handlers:
+                mp_logger.handlers[0].setStream(open(os.devnull, "w"))
+            mp_logger.setLevel(logging.WARNING)
 
-            # Initialize the Model (Must be done inside run to avoid pickling issues)
             self._classifier = QModelV6YOLO_Live(
-                model_path=self.model_path, buffer_window_size=self.buffer_window_size
+                model_path=self.model_path,
+                buffer_window_size=self.buffer_window_size,
             )
             Log.i(TAG, "YOLO Live Process Started and Model Loaded.")
 
             while not self._exit.is_set():
+                try:
+                    raw_data = self._queue_in.get(timeout=0.05)
+                except Exception:
+                    continue
 
-                # Idle wait if queue is empty
-                while self._queue_in.empty() and not self._exit.is_set():
-                    pass
-
-                data_received = False
+                chunks = [raw_data]
+                # Drain any additional queued items
                 while not self._queue_in.empty():
-                    raw_data = self._queue_in.get()
-                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(
-                        raw_data)
+                    try:
+                        chunks.append(self._queue_in.get_nowait())
+                    except Exception:
+                        break
+                data_received = False
+                for chunk in chunks:
+                    df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
                     try:
                         if df_chunk is not None and not df_chunk.empty:
                             self._classifier.add_chunk(df_chunk)
                             data_received = True
-
                     except ValueError as ve:
                         Log.w(TAG, f"Skipping worker data chunk: {ve}")
                     except Exception as e:
                         Log.e(TAG, f"Error converting worker data: {e}")
 
-                    if data_received:
-                        pred_int = self._classifier.attempt_classification()
-                        pred_str = self._classifier.get_status_str()
-                        self._queue_out.put((pred_int, pred_str))
+                if data_received:
+                    pred_int = self._classifier.attempt_classification()
+                    pred_str = self._classifier.get_status_str()
+                    self._queue_out.put((pred_int, pred_str))
 
         except Exception:
-            # Capture traceback
             limit: Optional[int] = None
             t, v, tb = sys.exc_info()
             from traceback import format_tb
@@ -334,24 +342,25 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
             a_list.append(f"{t.__name__}: {str(v)}")
             for line in a_list:
                 Log.e(TAG, line)
-
         finally:
             Log.d(TAG, "QModelV6YOLO_LiveProcess stopped.")
+            devnull.close()
             self._done.set()
 
     def is_running(self) -> bool:
-        """
-        Checks if the process is currently running.
+        """Checks whether the process is still executing.
 
         Returns:
-            bool: True if the process is active, False if it has finished.
+            bool: ``True`` if the process has not yet set its completion event,
+            ``False`` once ``run()`` has exited (successfully or otherwise).
         """
         return not self._done.is_set()
 
     def stop(self) -> None:
-        """
-        Signals the process to stop execution.
+        """Signals the process to terminate gracefully.
 
-        Sets the exit event, which will cause the main loop in `run()` to terminate.
+        Sets the internal exit event. The main loop in ``run()`` checks this event
+        on each iteration and will exit at the next opportunity without interrupting
+        an in-progress inference call.
         """
         self._exit.set()
