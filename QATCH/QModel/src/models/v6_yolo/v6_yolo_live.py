@@ -22,7 +22,7 @@ import os
 import sys
 from logging.handlers import QueueHandler
 from queue import Empty
-from typing import Dict, Optional, Tuple
+from typing import Dict, NamedTuple, Optional, Tuple
 
 import pandas as pd
 
@@ -37,6 +37,17 @@ from QATCH.QModel.src.models.v6_yolo.v6_yolo_dataprocessor import (
 )
 
 TAG = "[QModelV6YOLO_LiveProcess]"
+
+
+class DropEpochSignal(NamedTuple):
+    """Sentinel put into the forecaster input queue by the UI when the drop is
+    detected ('Sample detected' state).  The ``relative_time`` value is the
+    Relative_time (seconds) at that moment and is used to seed ``_fill_epoch``
+    in ``QModelV6YOLO_Live`` so fill-duration timers start at drop application
+    rather than at the first 'Filling started' model prediction.
+    """
+
+    relative_time: float
 
 
 class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
@@ -117,8 +128,40 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # confirmed. All fill-duration thresholds are measured from this point, not
         # from Relative_time = 0 (run start), so pre-fill time is excluded.
         self._fill_epoch: Optional[float] = None
+        # Tracks which channels have already had their timed duration warning fired so
+        # that _evaluate_duration_threshold never double-emits for the same channel.
+        self._channel_warning_fired: Dict[int, bool] = {}
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
+
+    def set_drop_applied_timestamp(self, relative_time: float) -> None:
+        """Seeds the fill epoch from the UI-detected drop-application timestamp.
+
+        Called by :class:`QModelV6YOLO_LiveProcess` when a
+        :class:`DropEpochSignal` arrives in the input queue.  Sets
+        ``_fill_epoch`` immediately so that all duration thresholds are measured
+        from the moment the drop was physically applied, not from the later point
+        at which the model first predicts 'Filling started' (channel 0).
+
+        The epoch is only set once; subsequent calls are silently ignored so that
+        the channel-0 confirmation path cannot accidentally overwrite it.
+
+        Args:
+            relative_time: The Relative_time value (seconds) recorded by the UI
+                at the instant the drop was detected.
+        """
+        if self._fill_epoch is None:
+            self._fill_epoch = relative_time
+            Log.i(
+                self.TAG,
+                f"Fill epoch seeded from drop-applied timestamp: {relative_time:.1f} s.",
+            )
+        else:
+            Log.d(
+                self.TAG,
+                f"Fill epoch already set ({self._fill_epoch:.1f} s) - ignoring "
+                f"drop-applied timestamp {relative_time:.1f} s.",
+            )
 
     def add_chunk(self, df_chunk: pd.DataFrame) -> None:
         """Ingests a new chunk of data into the rolling buffer.
@@ -217,9 +260,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     previous_prediction = self.current_prediction
                     self.current_prediction = pred
 
-                    # Fire diagnostic logic only on genuine state transitions
+                    # Fire one-time bookkeeping only on genuine state transitions.
                     if pred != previous_prediction:
                         self._on_channel_confirmed(pred)
+
+                    # Re-evaluate timed thresholds every cycle so warnings fire even
+                    # when the channel has been stable since first confirmation.
+                    self._evaluate_duration_threshold(self.current_prediction)
             else:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
@@ -229,18 +276,20 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         return self.current_prediction
 
     def _on_channel_confirmed(self, channel: int) -> None:
-        """Handles side-effects triggered when a new channel state is debounce-confirmed.
+        """Handles one-time bookkeeping when a new channel state is debounce-confirmed.
 
-        Records the confirmation time, evaluates fill-duration thresholds relative
-        to the Initial Fill epoch, emits warning logs for extended fills, and sets
-        the pending on-display message.
+        Records the confirmation timestamp, sets the fill epoch when channel 0
+        (Initial Fill) is first confirmed, and immediately emits any
+        unconditional display message (``DURATION_THRESHOLDS`` entries whose
+        threshold is ``None``).
 
-        The epoch is set on the first confirmation of channel 0 (Initial Fill).
-        All duration thresholds for channels 1, 2, and 3 are measured from that
-        epoch so that pre-fill dead time (device startup, baseline capture, etc.)
-        is excluded from the comparison.
+        Timed threshold evaluation (120 s / 240 s) is **not** performed here;
+        it runs every classification cycle via
+        :meth:`_evaluate_duration_threshold` so that warnings fire even when
+        the channel has been stable since initial confirmation.
 
-        This method is live-only; it does not alter prediction values or buffer state.
+        This method is live-only; it does not alter prediction values or buffer
+        state.
 
         Args:
             channel (int): The newly confirmed channel count (e.g., 0, 1, 2, 3).
@@ -262,60 +311,82 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     self.TAG,
                     f"Initial Fill reconfirmed at {confirm_time:.1f} s - keeping original epoch "
                     f"{self._fill_epoch:.1f} s.",
-                )  # No duration threshold applies to channel 0 itself.
+                )
 
         if channel not in self.DURATION_THRESHOLDS:
             return
 
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
-        # Compute elapsed time since Initial Fill was confirmed.
-        if self._fill_epoch is not None:
-            elapsed_s: float = confirm_time - self._fill_epoch
-            epoch_note = f"{elapsed_s:.1f} s since Initial Fill"
-        else:
-            # Edge case: classifier jumped straight past channel 0 (e.g. model
-            # started mid-fill). Fall back to absolute run time so the logic
-            # still functions, but flag it clearly in the log.
-            elapsed_s = confirm_time
-            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
-            Log.w(
-                self.TAG,
-                f"Channel {channel} confirmed but no Initial Fill epoch was recorded. "
-                "Duration threshold will be evaluated against absolute run time.",
-            )
-
-        elapsed_min: float = elapsed_s / 60.0
-        Log.i(
-            self.TAG,
-            f"Channel {channel} confirmed - {epoch_note} ({elapsed_min:.2f} min).",
-        )
-
         if threshold_s is None:
-            # Unconditional - always emit (e.g. 3-channel complete).
+            # Unconditional - emit immediately on confirmation (e.g. 3-channel complete).
             Log.i(
                 self.TAG,
                 f"Channel {channel} fill complete - displaying: '{message}'",
             )
             self._pending_display_message = message
+            self._channel_warning_fired[channel] = True
 
-        elif elapsed_s >= threshold_s:
-            threshold_min = threshold_s / 60.0
+    def _evaluate_duration_threshold(self, channel: int) -> None:
+        """Evaluates timed fill-duration thresholds for the currently stable channel.
+
+        Called on every classification cycle (not just at state transitions) so
+        that 120 s / 240 s warnings fire even when the channel has been
+        stable since its first confirmation.
+
+        Only channels with a non-``None`` threshold in :attr:`DURATION_THRESHOLDS`
+        are evaluated.  Each warning fires at most once per channel, guarded by
+        :attr:`_channel_warning_fired`.
+
+        Args:
+            channel (int): The currently confirmed channel count.
+        """
+        if channel not in self.DURATION_THRESHOLDS:
+            return
+
+        threshold_s, message = self.DURATION_THRESHOLDS[channel]
+
+        if threshold_s is None:
+            # Unconditional messages are already handled in _on_channel_confirmed.
+            return
+
+        if self._channel_warning_fired.get(channel, False):
+            return
+
+        confirm_time = self._channel_confirm_times.get(channel)
+        if confirm_time is None:
+            # Channel not yet confirmed - nothing to evaluate.
+            return
+
+        current_time: float = max(self._last_max_time, 0.0)
+
+        # Compute elapsed time since Initial Fill was confirmed.
+        if self._fill_epoch is not None:
+            elapsed_s: float = current_time - self._fill_epoch
+            epoch_note = f"{elapsed_s:.1f} s since Initial Fill"
+        else:
+            # Edge case: classifier jumped straight past channel 0 (e.g. model
+            # started mid-fill). Fall back to absolute run time so the logic
+            # still functions, but flag it clearly in the log.
+            elapsed_s = current_time
+            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
             Log.w(
                 self.TAG,
-                f"Extended fill detected: channel {channel} took {epoch_note} "
-                f"(threshold {threshold_min:.0f} min). "
+                f"Channel {channel} threshold check but no Initial Fill epoch recorded. "
+                "Duration will be evaluated against absolute run time.",
+            )
+
+        if elapsed_s >= threshold_s:
+            threshold_min = threshold_s / 60.0
+            elapsed_min = elapsed_s / 60.0
+            Log.w(
+                self.TAG,
+                f"Extended fill detected: channel {channel} at {epoch_note} "
+                f"(threshold {threshold_min:.0f} min, elapsed {elapsed_min:.2f} min). "
                 f"Displaying: '{message}'",
             )
             self._pending_display_message = message
-
-        else:
-            Log.d(
-                self.TAG,
-                f"Channel {channel} fill within normal duration "
-                f"({elapsed_min:.2f} min < {threshold_s / 60.0:.0f} min threshold). "
-                "No display message emitted.",
-            )
+            self._channel_warning_fired[channel] = True
 
     def get_and_clear_display_message(self) -> Optional[str]:
         """Returns the pending on-display message and clears it atomically.
@@ -485,6 +556,9 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
 
                 data_received = False
                 for chunk in chunks:
+                    if isinstance(chunk, DropEpochSignal):
+                        self._classifier.set_drop_applied_timestamp(chunk.relative_time)
+                        continue
                     df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
                     try:
                         if df_chunk is not None and not df_chunk.empty:

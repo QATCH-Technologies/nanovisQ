@@ -38,6 +38,7 @@ from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.InterpTemps import (
@@ -1371,6 +1372,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
+        self._drop_epoch_sent = False
         self._run_finished = [False, False, False, False]
         self._baselinedata = [
             [[0, 0], [0, 0]],
@@ -2102,6 +2104,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
+            self._drop_epoch_sent = False
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -3498,6 +3501,12 @@ class MainWindow(QtWidgets.QMainWindow):
                             else:
                                 status_msg = "Sample detected"
                                 ui_step = 1
+                                if not self._drop_epoch_sent:
+                                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+                                    self.worker._forecaster_in.put(
+                                        DropEpochSignal(drop_epoch)
+                                    )
+                                    self._drop_epoch_sent = True
                         elif pred_int == 0:
                             status_msg = "Filling started"
                             ui_step = 2
