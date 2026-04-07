@@ -2696,9 +2696,10 @@ class MainWindow(QtWidgets.QMainWindow):
             path_to_mydocs_data = os.path.join(os.getcwd(), Constants.app_publisher)
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
-                subprocess.call(f"cd {local_app_data_path} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_logged_data} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_mydocs_data} & attrib -r -a -s -h /s /d", shell=True)
+                _attrib_cmd = ["attrib", "-r", "-a", "-s", "-h", "/s", "/d"]
+                subprocess.run(_attrib_cmd, check=True, cwd=local_app_data_path)
+                subprocess.run(_attrib_cmd, check=True, cwd=path_to_logged_data)
+                subprocess.run(_attrib_cmd, check=True, cwd=path_to_mydocs_data)
             else:
                 os.chmod(local_app_data_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
                 for root, dirs, files in os.walk(local_app_data_path):
@@ -4915,7 +4916,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = ""  # Dissallow Action
 
             if len(self._selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 return
 
@@ -6638,7 +6639,7 @@ class TECTask(QtCore.QThread):
             self._tec_initialized = True
 
             if len(selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
