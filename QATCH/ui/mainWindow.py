@@ -1184,7 +1184,7 @@ class Rename_Output_Files(QtCore.QObject):
                     self.indicate_finalizing()
                     self.bThread.append(QtCore.QThread())
                     user_name = (
-                        None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                        None if self.parent is None else self.parent.ControlsWin.username.text()[6:]
                     )
                     # TODO: more secure to pass user_hash (filename)
                     self.bWorker.append(
@@ -2697,9 +2697,14 @@ class MainWindow(QtWidgets.QMainWindow):
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
                 _attrib_cmd = ["attrib", "-r", "-a", "-s", "-h", "/s", "/d"]
-                subprocess.run(_attrib_cmd, check=True, cwd=local_app_data_path)
-                subprocess.run(_attrib_cmd, check=True, cwd=path_to_logged_data)
-                subprocess.run(_attrib_cmd, check=True, cwd=path_to_mydocs_data)
+                for _attrib_path in (local_app_data_path, path_to_logged_data, path_to_mydocs_data):
+                    if not os.path.isdir(_attrib_path):
+                        Log.w(f"Skipping attrib on missing directory: {_attrib_path}")
+                        continue
+                    try:
+                        subprocess.run(_attrib_cmd, check=True, cwd=_attrib_path)
+                    except subprocess.CalledProcessError as e:
+                        Log.w(f"attrib failed for '{_attrib_path}': {e}")
             else:
                 os.chmod(local_app_data_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
                 for root, dirs, files in os.walk(local_app_data_path):
