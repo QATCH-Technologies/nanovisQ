@@ -1184,7 +1184,7 @@ class Rename_Output_Files(QtCore.QObject):
                     self.indicate_finalizing()
                     self.bThread.append(QtCore.QThread())
                     user_name = (
-                        None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                        None if self.parent is None else self.parent.ControlsWin.username.text()[6:]
                     )
                     # TODO: more secure to pass user_hash (filename)
                     self.bWorker.append(
@@ -2696,9 +2696,15 @@ class MainWindow(QtWidgets.QMainWindow):
             path_to_mydocs_data = os.path.join(os.getcwd(), Constants.app_publisher)
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
-                subprocess.call(f"cd {local_app_data_path} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_logged_data} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_mydocs_data} & attrib -r -a -s -h /s /d", shell=True)
+                _attrib_cmd = ["attrib", "-r", "-a", "-s", "-h", "/s", "/d"]
+                for _attrib_path in (local_app_data_path, path_to_logged_data, path_to_mydocs_data):
+                    if not os.path.isdir(_attrib_path):
+                        Log.w(f"Skipping attrib on missing directory: {_attrib_path}")
+                        continue
+                    try:
+                        subprocess.run(_attrib_cmd, check=True, cwd=_attrib_path)
+                    except subprocess.CalledProcessError as e:
+                        Log.w(f"attrib failed for '{_attrib_path}': {e}")
             else:
                 os.chmod(local_app_data_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
                 for root, dirs, files in os.walk(local_app_data_path):
@@ -3481,22 +3487,22 @@ class MainWindow(QtWidgets.QMainWindow):
                         status_msg = "Unknown"
                         if pred_int == -1:
                             if not is_drop_applied:
-                                status_msg = "Waiting for drop"
+                                status_msg = "Add sample"
                                 ui_step = 0
                             else:
-                                status_msg = "Drop applied, waiting for init data"
+                                status_msg = "Sample detected"
                                 ui_step = 1
                         elif pred_int == 0:
-                            status_msg = "Init points detected"
+                            status_msg = "Filling started"
                             ui_step = 2
                         elif pred_int == 1:
-                            status_msg = "1st ch detected"
+                            status_msg = "Filling"
                             ui_step = 3
                         elif pred_int == 2:
-                            status_msg = "2nd ch detected"
+                            status_msg = "Almost full"
                             ui_step = 4
                         elif pred_int == 3:
-                            status_msg = "Fill complete"
+                            status_msg = "Complete, stop"
                             ui_step = 5
 
                         if hasattr(self.ControlsWin.ui1, "run_controls"):
@@ -4915,7 +4921,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 selected_port = ""  # Dissallow Action
 
             if len(self._selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 return
 
@@ -6638,7 +6644,7 @@ class TECTask(QtCore.QThread):
             self._tec_initialized = True
 
             if len(selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
