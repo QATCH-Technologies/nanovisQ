@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-06
+    2026-04-07
 
 Version:
-    2.0.2
+    2.1.1
 """
 
 import logging
@@ -22,7 +22,7 @@ import os
 import sys
 from logging.handlers import QueueHandler
 from queue import Empty
-from typing import Optional
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 
@@ -45,11 +45,19 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     Handles accumulation of streaming sensor data, maintains a fixed-size sliding window
     buffer, and triggers inference using a YOLO-based model when conditions are met.
 
+    In addition to standard classification, this class tracks when each channel state is
+    first confirmed (post-debounce) and applies duration thresholds to emit one-shot
+    on-display messages and warning logs. These diagnostics are live-only and do not
+    affect the underlying model or prediction values.
+
     Attributes:
         STATUS_MAP (dict): Mapping of integer classification codes to human-readable strings.
         TAG (str): Log tag prefix for this class.
         DEBOUNCE_THRESHOLD (int): Number of consecutive identical predictions required
             before a state change is accepted.
+        DURATION_THRESHOLDS (dict): Per-channel fill duration thresholds in seconds above
+            which a warning is logged and a display message is emitted. A ``None`` threshold
+            means the message is always emitted on that channel's confirmation.
         buffer_window_size (Optional[int]): The maximum number of rows to retain in the
             rolling buffer. If None, the buffer grows indefinitely.
         current_prediction (int): The most recent classification result class ID.
@@ -67,6 +75,18 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     # Number of consecutive identical predictions required before accepting a state change.
     DEBOUNCE_THRESHOLD = 3
 
+    # Per-channel fill duration rules applied at the moment debounce confirmation fires.
+    # Key   : channel count (matches current_prediction after state change)
+    # Value : (threshold_seconds, display_message)
+    #   threshold_seconds = None  -> message fires unconditionally on confirmation.
+    #   threshold_seconds = float -> message fires only if the run's Relative_time at
+    #                               confirmation equals or exceeds the threshold.
+    DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
+        1: (120.0, "Data Ready, You Can Stop"),  # ≥ 2 minutes
+        2: (240.0, "Data Ready, You Can Stop"),  # ≥ 4 minutes
+        3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
+    }
+
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
         """Initializes the live fill classifier with a model and buffer settings.
 
@@ -79,7 +99,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         self.buffer_window_size = buffer_window_size
         self.current_prediction = -1
 
-        # New storage attributes
+        # Core buffer attributes
         self._data: Optional[pd.DataFrame] = None
         self._last_max_time = -float("inf")
         self._prediction_buffer_size = 0
@@ -87,6 +107,16 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Debounce state: candidate and consecutive count
         self._debounce_candidate = -1
         self._debounce_count = 0
+
+        # Records the Relative_time (seconds) at which each channel was first confirmed.
+        self._channel_confirm_times: Dict[int, float] = {}
+        # Holds the next on-display message to be consumed by the process layer.
+        # Cleared to None immediately after being read via get_and_clear_display_message().
+        self._pending_display_message: Optional[str] = None
+        # Records the Relative_time (seconds) when Initial Fill (channel 0) is first
+        # confirmed. All fill-duration thresholds are measured from this point, not
+        # from Relative_time = 0 (run start), so pre-fill time is excluded.
+        self._fill_epoch: Optional[float] = None
 
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
@@ -153,6 +183,14 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         filters for valid time ranges (Relative_time > 0.05), applies preprocessing,
         and runs the model inference.
 
+        When debounce confirms a new channel state this method also:
+
+        * Records the confirmation time in ``_channel_confirm_times``.
+        * Compares the elapsed run time against ``DURATION_THRESHOLDS``.
+        * Emits a ``Log.w`` warning if the fill exceeded the expected duration.
+        * Stores a one-shot display message in ``_pending_display_message`` for the
+          process layer to forward to the main UI.
+
         Returns:
             int: The classification result class ID. Returns the previous `current_prediction`
             if the buffer is insufficient, empty, or if inference fails.
@@ -174,8 +212,14 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 else:
                     self._debounce_candidate = pred
                     self._debounce_count = 1
+
                 if self._debounce_count >= self.DEBOUNCE_THRESHOLD:
+                    previous_prediction = self.current_prediction
                     self.current_prediction = pred
+
+                    # Fire diagnostic logic only on genuine state transitions
+                    if pred != previous_prediction:
+                        self._on_channel_confirmed(pred)
             else:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
@@ -183,6 +227,103 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             Log.e(self.TAG, f"Inference failed: {str(e)}")
 
         return self.current_prediction
+
+    def _on_channel_confirmed(self, channel: int) -> None:
+        """Handles side-effects triggered when a new channel state is debounce-confirmed.
+
+        Records the confirmation time, evaluates fill-duration thresholds relative
+        to the Initial Fill epoch, emits warning logs for extended fills, and sets
+        the pending on-display message.
+
+        The epoch is set on the first confirmation of channel 0 (Initial Fill).
+        All duration thresholds for channels 1, 2, and 3 are measured from that
+        epoch so that pre-fill dead time (device startup, baseline capture, etc.)
+        is excluded from the comparison.
+
+        This method is live-only; it does not alter prediction values or buffer state.
+
+        Args:
+            channel (int): The newly confirmed channel count (e.g., 0, 1, 2, 3).
+        """
+        confirm_time: float = max(self._last_max_time, 0.0)
+        self._channel_confirm_times[channel] = confirm_time
+
+        # Capture the epoch on Initial Fill confirmation — all thresholds are
+        # measured from this moment forward.
+        if channel == 0:
+            self._fill_epoch = confirm_time
+            Log.i(
+                self.TAG,
+                f"Initial Fill confirmed at {confirm_time:.1f} s — fill epoch set.",
+            )
+            return  # No duration threshold applies to channel 0 itself.
+
+        if channel not in self.DURATION_THRESHOLDS:
+            return
+
+        threshold_s, message = self.DURATION_THRESHOLDS[channel]
+
+        # Compute elapsed time since Initial Fill was confirmed.
+        if self._fill_epoch is not None:
+            elapsed_s: float = confirm_time - self._fill_epoch
+            epoch_note = f"{elapsed_s:.1f} s since Initial Fill"
+        else:
+            # Edge case: classifier jumped straight past channel 0 (e.g. model
+            # started mid-fill). Fall back to absolute run time so the logic
+            # still functions, but flag it clearly in the log.
+            elapsed_s = confirm_time
+            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch — using absolute time)"
+            Log.w(
+                self.TAG,
+                f"Channel {channel} confirmed but no Initial Fill epoch was recorded. "
+                "Duration threshold will be evaluated against absolute run time.",
+            )
+
+        elapsed_min: float = elapsed_s / 60.0
+        Log.i(
+            self.TAG,
+            f"Channel {channel} confirmed — {epoch_note} ({elapsed_min:.2f} min).",
+        )
+
+        if threshold_s is None:
+            # Unconditional - always emit (e.g. 3-channel complete).
+            Log.i(
+                self.TAG,
+                f"Channel {channel} fill complete — displaying: '{message}'",
+            )
+            self._pending_display_message = message
+
+        elif elapsed_s >= threshold_s:
+            threshold_min = threshold_s / 60.0
+            Log.w(
+                self.TAG,
+                f"Extended fill detected: channel {channel} took {elapsed_min:.2f} min "
+                f"since Initial Fill (threshold {threshold_min:.0f} min). "
+                f"Displaying: '{message}'",
+            )
+            self._pending_display_message = message
+
+        else:
+            Log.d(
+                self.TAG,
+                f"Channel {channel} fill within normal duration "
+                f"({elapsed_min:.2f} min < {threshold_s / 60.0:.0f} min threshold). "
+                "No display message emitted.",
+            )
+
+    def get_and_clear_display_message(self) -> Optional[str]:
+        """Returns the pending on-display message and clears it atomically.
+
+        The message is set at most once per state transition and is consumed by
+        the process layer so the main UI displays it exactly once.
+
+        Returns:
+            Optional[str]: The pending display message, or ``None`` if no message
+            is waiting to be displayed.
+        """
+        msg = self._pending_display_message
+        self._pending_display_message = None
+        return msg
 
     def get_status_str(self) -> str:
         """Retrieves the human-readable string representation of the current prediction.
@@ -203,15 +344,25 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
     runs inference, and pushes the results to an output queue. This design ensures
     that computationally expensive inference does not block the main application loop.
 
+    Output queue items are ``(int, str, Optional[str])`` tuples:
+
+    * ``int``  - the raw prediction class ID (e.g., -1, 0, 1, 2, 3).
+    * ``str``  - the human-readable status label (e.g., "2 Channels").
+    * ``Optional[str]`` - a one-shot on-display message for the main UI, or ``None``
+      if no message is pending. The message is emitted at most once per channel
+      state transition and is consumed by the first call that reads it.
+
     Attributes:
         _queueLog (multiprocessing.Queue): Queue for thread-safe logging.
         _exit (multiprocessing.Event): Event flag to signal process termination.
         _done (multiprocessing.Event): Event flag to signal process completion.
         _queue_in (multiprocessing.Queue): Input queue receiving raw worker data.
-        _queue_out (multiprocessing.Queue): Output queue sending prediction results (int, str).
+        _queue_out (multiprocessing.Queue): Output queue sending
+            ``(int, str, Optional[str])`` prediction tuples.
         model_path (str): Path to the YOLO model file.
         buffer_window_size (Optional[int]): Rolling window size for the model buffer.
-        _classifier (Optional[QModelV6YOLO_Live]): The internal classifier instance (created in run).
+        _classifier (Optional[QModelV6YOLO_Live]): The internal classifier instance
+            (created inside ``run()``).
     """
 
     TAG = "[QModelV6YOLO_LiveProcess]"
@@ -233,8 +384,10 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 the main process.
             queue_in (multiprocessing.Queue): Input queue that delivers raw worker data
                 chunks for inference.
-            queue_out (multiprocessing.Queue): Output queue that receives ``(int, str)``
-                prediction tuples produced after each inference batch.
+            queue_out (multiprocessing.Queue): Output queue that receives
+                ``(int, str, Optional[str])`` tuples produced after each inference batch.
+                The third element is a one-shot display message for the main UI, or
+                ``None`` when no message is pending.
             buffer_window_size (Optional[int]): Maximum number of rows to keep in the
                 rolling data buffer. Defaults to None (unbounded).
         """
@@ -274,8 +427,13 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
            pickling errors).
         4. Enters the main loop: blocks on ``_queue_in`` with a short timeout, drains
            any additional queued chunks, feeds them to the classifier, then runs a single
-           inference pass and publishes the result to ``_queue_out``.
-        5. On exit (normal or exceptional), closes the devnull handle and sets
+           inference pass.
+        5. Publishes ``(pred_int, pred_str, display_message)`` to ``_queue_out`` after
+           each inference batch.  ``display_message`` is the result of
+           ``get_and_clear_display_message()`` - a non-``None`` value means the main UI
+           should display it; subsequent puts will carry ``None`` until the next
+           qualifying state transition.
+        6. On exit (normal or exceptional), closes the devnull handle and sets
            ``_done`` to signal callers that the process has finished.
 
         Raises:
@@ -318,6 +476,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                         chunks.append(self._queue_in.get_nowait())
                     except Empty:
                         break
+
                 data_received = False
                 for chunk in chunks:
                     df_chunk = QModelV6YOLO_DataProcessor.convert_to_dataframe(chunk)
@@ -333,7 +492,11 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
                 if data_received:
                     pred_int = self._classifier.attempt_classification()
                     pred_str = self._classifier.get_status_str()
-                    self._queue_out.put((pred_int, pred_str))
+                    # Consume the one-shot display message (None if nothing pending).
+                    display_message: Optional[str] = (
+                        self._classifier.get_and_clear_display_message()
+                    )
+                    self._queue_out.put((pred_int, pred_str, display_message))
 
         except Exception:
             limit: Optional[int] = None
