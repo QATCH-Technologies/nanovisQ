@@ -248,15 +248,21 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         confirm_time: float = max(self._last_max_time, 0.0)
         self._channel_confirm_times[channel] = confirm_time
 
-        # Capture the epoch on Initial Fill confirmation — all thresholds are
+        # Capture the epoch on Initial Fill confirmation - all thresholds are
         # measured from this moment forward.
         if channel == 0:
-            self._fill_epoch = confirm_time
-            Log.i(
-                self.TAG,
-                f"Initial Fill confirmed at {confirm_time:.1f} s — fill epoch set.",
-            )
-            return  # No duration threshold applies to channel 0 itself.
+            if self._fill_epoch is None:
+                self._fill_epoch = confirm_time
+                Log.i(
+                    self.TAG,
+                    f"Initial Fill confirmed at {confirm_time:.1f} s - fill epoch set.",
+                )
+            else:
+                Log.d(
+                    self.TAG,
+                    f"Initial Fill reconfirmed at {confirm_time:.1f} s - keeping original epoch "
+                    f"{self._fill_epoch:.1f} s.",
+                )  # No duration threshold applies to channel 0 itself.
 
         if channel not in self.DURATION_THRESHOLDS:
             return
@@ -272,7 +278,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             # started mid-fill). Fall back to absolute run time so the logic
             # still functions, but flag it clearly in the log.
             elapsed_s = confirm_time
-            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch — using absolute time)"
+            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
             Log.w(
                 self.TAG,
                 f"Channel {channel} confirmed but no Initial Fill epoch was recorded. "
@@ -282,14 +288,14 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         elapsed_min: float = elapsed_s / 60.0
         Log.i(
             self.TAG,
-            f"Channel {channel} confirmed — {epoch_note} ({elapsed_min:.2f} min).",
+            f"Channel {channel} confirmed - {epoch_note} ({elapsed_min:.2f} min).",
         )
 
         if threshold_s is None:
             # Unconditional - always emit (e.g. 3-channel complete).
             Log.i(
                 self.TAG,
-                f"Channel {channel} fill complete — displaying: '{message}'",
+                f"Channel {channel} fill complete - displaying: '{message}'",
             )
             self._pending_display_message = message
 
