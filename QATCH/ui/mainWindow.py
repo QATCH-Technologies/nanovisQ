@@ -7062,51 +7062,53 @@ class DryingDetection:
                 dried:  True if drying has just been detected (only once).
                 status: A newline-separated string of one or more status messages.
         """
-        status = ""
         if self._dried:
-            status += "Dried<br>"
-            return True, status
+            return True, "Dried"
+
         f_arr = np.asarray(resonance_frequency)[::-1]
         d_arr = np.asarray(dissipation)[::-1]
         t_arr = np.asarray(relative_time)[::-1]
+
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
-            status += "Error: input shapes do not match; skipping this batch.<br>"
-            return False, status
+            return False, "Error: input shapes do not match; skipping this batch."
 
         batch_size = f_arr.size
         self._sample_count += batch_size
         self.freq_w.extend(f_arr)
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
+
         if len(self.freq_w) < self.win_n:
-            status += f"Calibrating...<br>"
-            return False, status
+            return False, "Calibrating..."
+
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
+
         nf = self._normalize(arr_f)
         nd = self._normalize(arr_d)
+
         sigma_f = float(np.nanstd(nf))
         sigma_d = float(np.nanstd(nd))
         slope_f = self._compute_slope(nf)
         slope_d = self._compute_slope(nd)
-        if (
-            sigma_f < self.sigma_stable_freq
-            and sigma_d < self.sigma_stable_diss
-            and abs(slope_f) < self.flat_eps
-            and abs(slope_d) < self.flat_eps
-        ):
-            self._dried = True
-            self._dry_time = float(self.time_w[-1])
-            status += "Dried<br>"
-            Log.w(f"Dry time was {self._dry_time}")
-            return True, status
-        status += "Drying in progress:<br>"
-        if sigma_f >= self.sigma_stable_freq or abs(slope_f) >= self.flat_eps:
-            status += " - Resonance frequency unstable<br>"
-        if sigma_d >= self.sigma_stable_diss or abs(slope_d) >= self.flat_eps:
-            status += " - Dissipation unstable<br>"
-        status += " " * 33
-        return False, status
+
+        # Detect if sensor is not dry (any instability condition)
+        sensor_not_dry = (
+            sigma_f >= self.sigma_stable_freq
+            or abs(slope_f) >= self.flat_eps
+            or sigma_d >= self.sigma_stable_diss
+            or abs(slope_d) >= self.flat_eps
+        )
+
+        if sensor_not_dry:
+            return False, "Sensor not dry, stop"
+
+        # If we reach here, all stability conditions are met
+        self._dried = True
+        self._dry_time = float(self.time_w[-1])
+        Log.w(f"Dry time was {self._dry_time}")
+
+        return True, "Dried"
 
     def _normalize(self, arr: np.ndarray) -> np.ndarray:
         """Min-max normalize an array to the [0, 1] range.
