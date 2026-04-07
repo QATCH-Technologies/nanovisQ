@@ -303,8 +303,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             threshold_min = threshold_s / 60.0
             Log.w(
                 self.TAG,
-                f"Extended fill detected: channel {channel} took {elapsed_min:.2f} min "
-                f"since Initial Fill (threshold {threshold_min:.0f} min). "
+                f"Extended fill detected: channel {channel} took {epoch_note} "
+                f"(threshold {threshold_min:.0f} min). "
                 f"Displaying: '{message}'",
             )
             self._pending_display_message = message
