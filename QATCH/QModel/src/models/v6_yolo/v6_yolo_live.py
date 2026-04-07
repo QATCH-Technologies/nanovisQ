@@ -86,15 +86,17 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     # Number of consecutive identical predictions required before accepting a state change.
     DEBOUNCE_THRESHOLD = 3
 
-    # Per-channel fill duration rules applied at the moment debounce confirmation fires.
+    # Per-channel fill duration rules for confirmed channels.
+    # Timed thresholds are re-evaluated each debounce-satisfied cycle so
+    # warnings can fire even when the channel remains stable.
     # Key   : channel count (matches current_prediction after state change)
     # Value : (threshold_seconds, display_message)
     #   threshold_seconds = None  -> message fires unconditionally on confirmation.
     #   threshold_seconds = float -> message fires only if the run's Relative_time at
     #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        1: (120.0, "Data Ready, You Can Stop"),  # ≥ 2 minutes
-        2: (240.0, "Data Ready, You Can Stop"),  # ≥ 4 minutes
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 minutes
+        2: (240.0, "Data Ready, You Can Stop"),  # >= 4 minutes
         3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
     }
 
@@ -124,9 +126,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Holds the next on-display message to be consumed by the process layer.
         # Cleared to None immediately after being read via get_and_clear_display_message().
         self._pending_display_message: Optional[str] = None
-        # Records the Relative_time (seconds) when Initial Fill (channel 0) is first
-        # confirmed. All fill-duration thresholds are measured from this point, not
-        # from Relative_time = 0 (run start), so pre-fill time is excluded.
+        # Records the fill epoch (Relative_time, seconds) used for duration thresholds.
+        # Primary source is the UI-provided drop-applied timestamp; channel-0
+        # confirmation only seeds this as a fallback if no drop epoch was provided.
         self._fill_epoch: Optional[float] = None
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
