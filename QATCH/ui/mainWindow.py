@@ -16,13 +16,17 @@ from xml.dom import minidom
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
+import os
+import shutil
 import pyzipper
 import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import AxisItem
 from serial import serialutil
+from pathlib import Path
 
+from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
@@ -2735,35 +2739,30 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
 
     def _configure_database(self, exec_migrations: bool = False):
-        # check if local app data contains a database file already
+        """Configure the local VisQAI SQLite database used by the application.
+
+        Handles two distinct scenarios on startup: if no local database exists but
+        a bundled one does, the bundled database is copied directly into the local
+        application data directory. If both exist, defers to ``DatabaseSynchronizer``
+        to safely compare schema versions and merge any missing tables, columns, or
+        seed data into the local database without overwriting user data.
+
+        Args:
+            exec_migrations (bool): Reserved for future use. If ``True``, indicates
+                that pending schema migrations should be executed during configuration.
+                Defaults to ``False``.
+
+        Raises:
+            Exception: Re-raises any exception encountered during path resolution,
+                file copying, database initialization, or synchronization, after
+                logging the error.
+
+        Note:
+            If neither a local nor a bundled database file is found, a warning is
+            logged and the method returns without error. The local database connection
+            is always closed after synchronization to avoid leaving open handles.
         """
-        Configure the local VisQAI SQLite database used by the application.
 
-        If a bundled database exists in the application install assets and no database
-        is present in the local application data folder, this function copies the
-        bundled database into the local application data path. If a local database
-        already exists, it compares the bundled database and adds any missing core
-        ingredients from the bundled copy into the local database.
-
-        When exec_migrations is True, the function attempts a non-destructive migration
-        dry-run against a temporary decrypted copy of the local database to detect
-        required schema/data migrations (no migrations are applied here; this is a
-        safety check).
-
-        Parameters:
-            exec_migrations (bool): If True, perform a migration dry-run check on a
-                temporary decrypted copy of the local database before merging missing
-                core data. Defaults to False.
-
-        Side effects:
-        - May create directories and copy the bundled database file into local app
-          data.
-        - May add records (core ingredients) to the existing local database.
-        - Logs progress and warnings.
-
-        Exceptions:
-        - Exceptions from filesystem or database operations are propagated to the caller.
-        """
         try:
             machine_database_path = os.path.join(Constants.local_app_data_path, "database/app.db")
             bundled_database_path = os.path.join(
@@ -2772,87 +2771,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
+
             if bundled_exists and not localapp_exists:
-                # On first run, bundled will exist, but localapp won't: copy it to localapp
                 os.makedirs(os.path.dirname(machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
-                Log.w(f"Copied the bundled core database to machine folder")
-                # Populate DB with core training samples
-                # TODO: This should be done when tagging, not here
-                # Log.w(
-                #     f"Adding core training samples to database (happens once; may take a bit)...")
-                # machine_database = Database(
-                #     path=machine_database_path, parse_file_key=True)
-                # form_ctrl = FormulationController(db=machine_database)
-                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                #                         "VisQAI", "assets", "formulation_data_10082025.csv")
-                # if not os.path.isfile(csv_path):
-                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                # df = pd.read_csv(csv_path)
-                # added_forms = form_ctrl.add_all_from_dataframe(df)
-                # machine_database.close()
-                # Log.w(f"Added {len(added_forms)} core training samples!")
-            elif localapp_exists:
-                # After update, both files will exist: add any missing core ingredients to localapp
-                # TODO: Add a quicker way to check if there are missing core ingredients in database
-                bundled_database = Database(path=bundled_database_path, parse_file_key=True)
+                Log.w("Copied the bundled core database to machine folder")
+
+            elif localapp_exists and bundled_exists:
                 machine_database = Database(path=machine_database_path, parse_file_key=True)
+                DatabaseSynchronizer.sync_on_launch(
+                    local_db=machine_database, bundled_db_path=Path(bundled_database_path)
+                )
 
-                if exec_migrations:
-                    from QATCH.VisQAI.src.db.db_migrator import (
-                        DatabaseMigrator,
-                        Migration,
-                        MigrationStatus,
-                        MigrationVersion,
-                    )
-
-                    tmp_path = machine_database.create_temp_decrypt()
-                    try:
-                        if tmp_path:
-                            migrator = DatabaseMigrator(tmp_path, backup_dir=None)
-                            current_version = migrator.get_current_version()
-                            target_version = MigrationVersion(1, 1, 0)
-                            if current_version < target_version:
-                                new_migration = Migration(
-                                    from_version=current_version,
-                                    to_version=target_version,
-                                    up_sql=[""],
-                                    down_sql=[""],
-                                    data_transform=lambda conn: conn.execute(""),
-                                    autofill_defaults={""},
-                                    description="",
-                                )
-                                migrator.register_migration(new_migration)
-                                status, msgs = migrator.migrate(
-                                    target_version=MigrationVersion(1, 1, 0),
-                                    dry_run=True,
-                                )
-                                if not status:
-                                    Log.e(f"Database migration dry-run failed: {'; '.join(msgs)}")
-                        else:
-                            Log.w("Skipping migration check: could not create temp decrypted DB.")
-                    finally:
-                        machine_database.cleanup_temp_decrypt()
-
-                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
-                # update machine db with changes from bundled db.
-                for ing in bundled_database.get_all_ingredients():
-                    if machine_database.get_ingredient(ing.id) is None:
-                        # We must use the same `enc_id`, do not use `ingctrl.add()`
-                        machine_database.add_ingredient(ing)
-                        Log.w(f"Added missing core ingredient to database: {ing.name}")
-                bundled_database.close()
                 machine_database.close()
-                # TODO: Think of a better way to do this!
-                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
-                #     shutil.copy(bundled_database_path, machine_database_path)
-                #     Log.w(
-                #         "Operating in development mode, copying bundled db into log data.")
             else:
-                Log.w("Nothing to do. No local bundled database file found.")
+                Log.w("Nothing to do. No local or bundled database file found.")
+
         except Exception as e:
-            Log.e("ERROR: Unable to configure database file in local application data folder.")
-            raise e  # TODO remove
+            Log.e("Unable to configure database file in local application data folder.")
+            raise e
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
