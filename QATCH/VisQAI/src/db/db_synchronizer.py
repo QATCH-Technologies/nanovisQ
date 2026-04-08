@@ -207,10 +207,45 @@ class DatabaseSynchronizer:
 
             for col in set(bundled_cols.keys()) - main_cols:
                 col_data = bundled_cols[col]
+                col_name = col_data[1]
+                col_type = col_data[2]
+                notnull = col_data[3]
+                dflt_value = col_data[4]
+                pk = col_data[5]
+
+                if pk:
+                    Log.w(
+                        TAG,
+                        f"Column '{col_name}' in '{table_name}' is a PRIMARY KEY; "
+                        "SQLite cannot add PRIMARY KEY via ALTER TABLE — skipping PK constraint.",
+                    )
+
+                col_def = f"{col_name} {col_type}"
+                if dflt_value is not None:
+                    # Quote string literals; leave numeric/keyword literals bare
+                    if isinstance(dflt_value, str) and not dflt_value.upper() in (
+                        "NULL", "TRUE", "FALSE", "CURRENT_TIME", "CURRENT_DATE",
+                        "CURRENT_TIMESTAMP",
+                    ) and not dflt_value.lstrip("-").replace(".", "", 1).isdigit():
+                        escaped = dflt_value.replace("'", "''")
+                        col_def += f" DEFAULT '{escaped}'"
+                    else:
+                        col_def += f" DEFAULT {dflt_value}"
+                elif notnull:
+                    Log.w(
+                        TAG,
+                        f"Column '{col_name}' in '{table_name}' is NOT NULL but has no "
+                        "DEFAULT; SQLite disallows adding NOT NULL columns without a DEFAULT — "
+                        "omitting NOT NULL constraint.",
+                    )
+
+                if notnull and dflt_value is not None:
+                    col_def += " NOT NULL"
+
                 migrations.append(
                     (
-                        f"Adding column '{col_data[1]}' to '{table_name}'",
-                        f"ALTER TABLE main.{table_name} ADD COLUMN {col_data[1]} {col_data[2]};",
+                        f"Adding column '{col_name}' to '{table_name}'",
+                        f"ALTER TABLE main.{table_name} ADD COLUMN {col_def};",
                     )
                 )
         for description, sql in migrations:
