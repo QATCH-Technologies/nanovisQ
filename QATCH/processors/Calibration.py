@@ -329,7 +329,7 @@ class CalibrationProcess(multiprocessing.Process):
     ###########################################################################
     # Opens a specified serial port
     ###########################################################################
-    def open(self, port, pid,
+    def open(self, port, pid, lid_auto,
              speed=Constants.serial_default_QCS,
              timeout=Constants.serial_timeout_ms,
              writeTimeout=Constants.serial_writetimeout_ms):
@@ -380,6 +380,7 @@ class CalibrationProcess(multiprocessing.Process):
             is_open = False  # no ports available
 
         self._pid = pid
+        self._lid_auto = lid_auto
 
         return is_open
 
@@ -456,6 +457,30 @@ class CalibrationProcess(multiprocessing.Process):
                             self._flag = self._flag2 = 1
                             # return
                     all_ports_open &= self._serial[j].is_open
+
+                if all_ports_open:
+
+                    # For primary only, send LID CLOSE if in auto mode
+                    if self._lid_auto:
+                        self._serial[0].write(b"LID CLOSE\n")
+
+                        reply = ""
+                        while len(reply) <= 1:
+                            reply = self._serial[0].read_until(
+                            ).decode().strip()
+                        Log.d("Lid close reply:", reply)
+                    else:
+                        self._serial[0].write(b"LID STATE\n")
+
+                        reply = ""
+                        while len(reply) <= 1:
+                            reply = self._serial[0].read_until(
+                            ).decode().strip()
+                        Log.d("Lid state reply:", reply)
+
+                        if "CLOSED" not in reply:
+                            raise PermissionError(
+                                "Cannot proceed! Lid state is not closed.")
 
                 if not all_ports_open:
                     # port already open
@@ -1136,6 +1161,8 @@ class CalibrationProcess(multiprocessing.Process):
                 # port not available
                 Log.w(TAG, "WARNING: Cannot connect! Serial port is not available.")
                 Log.w(TAG, "Please, repeat Initialize again!")
+                raise PermissionError(
+                    "Cannot connect! Serial port is not available.")
 
         except:
             limit = None

@@ -124,7 +124,7 @@ class SerialProcess(multiprocessing.Process):
     # Opens a specified serial port
     ###########################################################################
 
-    def open(self, port, pid,
+    def open(self, port, pid, lid_auto,
              speed=Constants.serial_default_overtone,
              timeout=Constants.serial_timeout_ms,
              writeTimeout=Constants.serial_writetimeout_ms):
@@ -219,6 +219,7 @@ class SerialProcess(multiprocessing.Process):
             is_open = False  # no ports available
 
         self._pid = pid
+        self._lid_auto = lid_auto
 
         return is_open
 
@@ -319,6 +320,29 @@ class SerialProcess(multiprocessing.Process):
                     all_ports_open &= self._serial[i].is_open
 
                 if all_ports_open:
+
+                    # For primary only, send LID CLOSE if in auto mode
+                    if self._lid_auto:
+                        self._serial[0].write(b"LID CLOSE\n")
+
+                        reply = ""
+                        while len(reply) <= 1:
+                            reply = self._serial[0].read_until(
+                            ).decode().strip()
+                        Log.d("Lid close reply:", reply)
+                    else:
+                        self._serial[0].write(b"LID STATE\n")
+
+                        reply = ""
+                        while len(reply) <= 1:
+                            reply = self._serial[0].read_until(
+                            ).decode().strip()
+                        Log.d("Lid state reply:", reply)
+
+                        if "CLOSED" not in reply:
+                            raise PermissionError(
+                                "Cannot proceed! Lid state is not closed.")
+
                     if len(self._serial) == 1:
                         # START elaborate process (and associated queues)
                         self._elaborate_in_q = Queue()  # used to pass data to elaborate process
