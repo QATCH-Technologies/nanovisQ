@@ -903,7 +903,7 @@ class Parser:
         buffer_data = self.get_buffer()
         if not buffer_data["found"]["name"]:
             missing_fields.append("Buffer Type")
-        if not buffer_data["found"]["pH"]:
+        if buffer_data["found"]["name"] and not buffer_data["found"]["pH"]:
             missing_fields.append("Buffer pH")
 
         protein_data = self.get_protein()
