@@ -10,7 +10,7 @@ import sys
 import threading
 from collections import deque
 from time import localtime, mktime, strftime, strptime, time
-from typing import List
+from typing import List, Optional
 from xml.dom import minidom
 
 import numpy as np
@@ -38,6 +38,7 @@ from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.InterpTemps import (
@@ -575,7 +576,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         name = self.username.text()[6:]
         allow, admin = UserProfiles().manage(name, self.userrole)
 
-        if admin == None and not UserProfiles.session_info()[0]:
+        if admin is None and not UserProfiles.session_info()[0]:
             if name != "[NONE]":
                 Log.i(f"Goodbye, {name}! You have been signed out.")
             self.username.setText("User: [NONE]")
@@ -616,14 +617,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk2.isChecked():
             Log.d("Hiding Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(False)
                 self.parent._plt0_arr[i] = p
         else:
             Log.d("Showing Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
@@ -1371,6 +1372,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
+        self._drop_epoch_sent = False
         self._run_finished = [False, False, False, False]
         self._baselinedata = [
             [[0, 0], [0, 0]],
@@ -1484,6 +1486,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
+        # Messaging attribute for early stop messages.
+        self._fill_display_msg: Optional[str] = None
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -1491,7 +1495,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def analyze_data(self, data_device=None, data_folder=None, data_file=None):
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result == None:  # user check required, but no user signed in
+        if check_result is None:  # user check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
@@ -1509,7 +1513,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_device = data_device
         self.data_folder = data_folder
         self.data_run = data_file
-        if data_device == None:
+        if data_device is None:
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
@@ -1523,7 +1527,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data devices available for selection.")
             return
-        if data_folder == None:
+        if data_folder is None:
             self.data_folders = FileStorage.DEV_get_logged_data_folders(data_device)
             if len(self.data_folders) > 0:
                 self.aThread = QtCore.QThread()
@@ -1535,7 +1539,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data folders available for selection.")
             return
-        if data_file == None:
+        if data_file is None:
             self.data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             if "capture.zip" in self.data_files:
                 zn = os.path.join(
@@ -1812,7 +1816,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        # if check_result == None:  # user check required, but no user signed in
+        # if check_result is None:  # user check required, but no user signed in
         #     Log.w(
         #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
         #     Log.i("Please sign in to continue.")
@@ -1825,7 +1829,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #     return  # deny action
 
         # User check required, but no user signed in.
-        if check_result == None:
+        if check_result is None:
             Log.w(
                 tag=TAG,
                 msg=f"Not signed in: User with role {action_role.name} is required to perform this action.",
@@ -1920,7 +1924,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
         # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -2100,6 +2104,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
+            self._drop_epoch_sent = False
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -2980,7 +2985,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Open or close the port accordingly
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -3055,7 +3060,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Set active port to update speeds in real-time
         self._selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if self._selected_port == None:
+        if self._selected_port is None:
             self._selected_port = ""  # Dissallow None
         if self._selected_port == "CMD_DEV_INFO":
             self._selected_port = ""  # Dissallow Action
@@ -3479,7 +3484,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not self.worker._forecaster_out.empty():
                     try:
                         # Get raw model prediction (-1=Empty, 0=Init, 1=Ch1, 2=Ch2, 3=Ch3)
-                        pred_int, _ = self.worker._forecaster_out.get()
+                        pred_int, _, display_msg = self.worker._forecaster_out.get()
+                        # Latch the message - once set, keep it visible until the run ends
+                        # or a newer message supersedes it.
+                        if display_msg is not None:
+                            self._fill_display_msg = display_msg
                         # This logic handles drop application code.
                         is_drop_applied = all(self._drop_applied)
                         # Refactored messages out of constants.  Can move them back if we like the messages.
@@ -3492,6 +3501,12 @@ class MainWindow(QtWidgets.QMainWindow):
                             else:
                                 status_msg = "Sample detected"
                                 ui_step = 1
+                                if not self._drop_epoch_sent:
+                                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+                                    self.worker._forecaster_in.put(
+                                        DropEpochSignal(drop_epoch)
+                                    )
+                                    self._drop_epoch_sent = True
                         elif pred_int == 0:
                             status_msg = "Filling started"
                             ui_step = 2
@@ -3634,7 +3649,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                             if not all(self._drop_applied):
                                 for i, p in enumerate(self._plt2_arr):
-                                    if p == None:
+                                    if p is None:
                                         self._drop_applied[i] = True
                                         self._run_finished[i] = True
                                         continue
@@ -3902,7 +3917,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ############################################################################################################################
         if self._reference_flag:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -3931,7 +3946,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -3945,7 +3960,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # updates for multiple plot y-axes
             updateViews1()
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews1)
                 p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
@@ -3966,7 +3981,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Resonance frequency and dissipation multiple Plot
             def updateViews2():
                 for i, p in enumerate(self._plt3_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     _p2 = self._plt2_arr[i]
                     _p2.clear()
@@ -3982,7 +3997,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews2()
 
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews2)
                 self._vector_1 = (
@@ -4008,7 +4023,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._plt2_arr[i] = p
 
             for i, p in enumerate(self._plt3_arr):
-                if p == None:
+                if p is None:
                     continue
                 self._vector_2 = (
                     np.array(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
@@ -4055,7 +4070,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ###########################################################################################################################
         else:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -4086,7 +4101,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -4101,7 +4116,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews1()
             self._amps = {}  # empty dict for showing combined amplitudes
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 _plt2 = self._plt2_arr[i]
                 _plt3 = self._plt3_arr[i]
@@ -4144,7 +4159,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # Add apply drop message to those still pending drop
                     try:
-                        if self._text4[i] == None:
+                        if self._text4[i] is None:
                             # 'size' and 'bold' retained when calling 'setText()'
                             self._text4[i] = pg.LabelItem(size="11pt", bold=True)
                             self._text4[i].setParentItem(_plt2.graphicsItem())
@@ -4183,6 +4198,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                         np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
                                     ],
                                 ]
+                            elif self._fill_display_msg:
+                                # Fill classifier has flagged an actionable state
+                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
                             else:
                                 self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
                         else:
@@ -4420,7 +4438,7 @@ class MainWindow(QtWidgets.QMainWindow):
         flux_controller_exists = False
 
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -4756,7 +4774,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._reference_value_dissipation.clear()
         self._vector_reference_dissipation.clear()
         for i, p in enumerate(self._plt2_arr):
-            if p == None:
+            if p is None:
                 continue
             # _plt2 = self._plt2_arr[i]
             # _plt3 = self._plt3_arr[i]
@@ -4893,7 +4911,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.tecWorker._tec_state == "OFF" or self.tecWorker._tec_locked:
             # check version and write device info (if needed)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
@@ -4915,7 +4933,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Restore single selected port (even when multiplex mode)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
@@ -5510,7 +5528,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if is_target_build:
                         most_recent = build
                         break  # found, stop searching
-            if most_recent == None:
+            if most_recent is None:
                 Log.d(f"requires EXE: {require_EXE}")
                 Log.d(f"release ONLY: {release_builds_only}")
                 Log.d(f"found builds: {builds}")
@@ -6129,7 +6147,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # monitor the script output for application launch
                     line = ""
-                    while proc.poll() == None:  # still running
+                    while proc.poll() is None:  # still running
                         line += proc.stdout.read(1)
                         if "Application will launch" in line:
                             Log.i("FINISHED:", "Launching application...")
@@ -6635,7 +6653,7 @@ class TECTask(QtCore.QThread):
     def _tec_update(self, dac=""):
         # Open, write, read and close the port accordingly
         selected_port = self.port
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -6962,14 +6980,14 @@ class TECTask(QtCore.QThread):
         :return: True if the port is connected to the host :rtype: bool.
         """
         # dm = Discovery()
-        # if self._serial.net_port == None:
+        # if self._serial.net_port is None:
         #     net_exists = False
         # else:
         #     net_exists = dm.ping(self._serial.net_port)
         for p in self.get_ports():
             if p == port:
                 return True
-        # if port == None:
+        # if port is None:
         #     if len(dm.doDiscover()) > 0:
         #         return net_exists
         return False
