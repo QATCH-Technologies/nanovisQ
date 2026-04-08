@@ -82,7 +82,9 @@ except (ModuleNotFoundError, ImportError):
     )
 
 DB_PATH = Path(
-    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
+    os.path.join(
+        os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db"
+    )
 )
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -196,6 +198,7 @@ class Database:
             rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
+                pH REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """
@@ -244,7 +247,9 @@ class Database:
             )
         """
         )
-        c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)"
+        )
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS formulation_component (
@@ -253,7 +258,6 @@ class Database:
                 ingredient_id INTEGER NOT NULL,
                 concentration REAL NOT NULL,
                 units TEXT NOT NULL,
-                pH REAL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
@@ -273,7 +277,9 @@ class Database:
         """
         )
         c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
-        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
+        c.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)"
+        )
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -326,7 +332,7 @@ class Database:
                 (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?)", (db_id,))
+            c.execute("INSERT INTO buffer VALUES (?, ?)", (db_id, ing.pH))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (db_id,))
         elif isinstance(ing, Surfactant):
@@ -353,7 +359,9 @@ class Database:
                 with all properties populated, or `None` if no ingredient exists with this ID.
         """
         c = self.conn.cursor()
-        c.execute("SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
+        c.execute(
+            "SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,)
+        )
         row = c.fetchone()
         if not row:
             return None
@@ -380,11 +388,17 @@ class Database:
                 molecular_weight=mw,
                 pI_mean=mean,
                 pI_range=rng,
-                class_type=(ProteinClass.from_value(class_str) if class_str is not None else None),
+                class_type=(
+                    ProteinClass.from_value(class_str)
+                    if class_str is not None
+                    else None
+                ),
                 id=id,
             )
         elif typ == "Buffer":
-            ing = Buffer(enc_id, name)
+            c.execute("SELECT pH FROM buffer WHERE ingredient_id = ?", (id,))
+            (pH,) = c.fetchone()
+            ing = Buffer(enc_id, name, pH)
 
         elif typ == "Stabilizer":
             ing = Stabilizer(enc_id, name)
@@ -432,7 +446,9 @@ class Database:
         c.execute("SELECT id FROM ingredient WHERE type = ?", (ing_type,))
         return [self.get_ingredient(r[0]) for r in c.fetchall()]
 
-    def get_max_enc_id(self, ing_type: str, min_enc_id: int, max_enc_id: int) -> Optional[int]:
+    def get_max_enc_id(
+        self, ing_type: str, min_enc_id: int, max_enc_id: int
+    ) -> Optional[int]:
         """Return the highest ``enc_id`` for a given ingredient type within a range.
 
         Args:
@@ -456,7 +472,9 @@ class Database:
         row = c.fetchone()
         return row[0] if row and row[0] is not None else None
 
-    def get_ingredient_by_name_type(self, name: str, ing_type: str) -> Optional[Ingredient]:
+    def get_ingredient_by_name_type(
+        self, name: str, ing_type: str
+    ) -> Optional[Ingredient]:
         """Retrieve an ingredient by its name and subclass type.
 
         Args:
@@ -526,7 +544,7 @@ class Database:
                 (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?, ?)", (id,))
+            c.execute("INSERT INTO buffer VALUES (?, ?)", (id, ing.pH))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (id,))
         elif isinstance(ing, Surfactant):
@@ -573,15 +591,15 @@ class Database:
             )
             f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
         comp_rows = [
-            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units, comp.pH)
+            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units)
             for f in forms
             for comp_type, comp in f._components.items()
             if comp is not None
         ]
         c.executemany(
             "INSERT INTO formulation_component "
-            "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(formulation_id, component_type, ingredient_id, concentration, units) "
+            "VALUES (?, ?, ?, ?, ?)",
             comp_rows,
         )
         vp_rows = [
@@ -642,10 +660,11 @@ class Database:
             )
             c.execute(
                 "INSERT INTO formulation_component "
-                "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
-                "VALUES (?, ?, ?, ?, ?, ?)",
-                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH),
+                "(formulation_id, component_type, ingredient_id, concentration, units) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (fid, comp_type, iid, comp.concentration, comp.units),
             )
+
         # Insert viscosity profile if present
         if form.viscosity_profile:
             vp = form.viscosity_profile
@@ -706,18 +725,18 @@ class Database:
         form.last_model = last_model
 
         c.execute(
-            "SELECT component_type, ingredient_id, concentration, units, pH "
+            "SELECT component_type, ingredient_id, concentration, units "
             "FROM formulation_component WHERE formulation_id = ?",
             (id,),
         )
         rows = c.fetchall()
 
         for r in rows:
-            comp_type, iid, conc, units, ph = r
+            comp_type, iid, conc, units = r
             ingredient = self.get_ingredient(iid)
             if ingredient:
                 if comp_type in form._components:
-                    form._components[comp_type] = Component(ingredient, conc, units, pH=ph)
+                    form._components[comp_type] = Component(ingredient, conc, units)
 
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
@@ -839,7 +858,9 @@ class Database:
             return True
         return False
 
-    def update_formulation_name_by_signature(self, signature: str, new_name: str) -> bool:
+    def update_formulation_name_by_signature(
+        self, signature: str, new_name: str
+    ) -> bool:
         """Update the name of a formulation identified by its signature.
 
         Args:
@@ -850,7 +871,9 @@ class Database:
             bool: True if the update was successful, False if the signature was not found.
         """
         c = self.conn.cursor()
-        c.execute("UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature))
+        c.execute(
+            "UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature)
+        )
 
         if c.rowcount > 0:
             self._commit()
@@ -1014,16 +1037,24 @@ class Database:
                 result.append(chr((ord(char) - base + shift) % 26 + base))
             elif ord(char) in range(32, 48):
                 base = 32
-                result.append(chr((ord(char) - base + shift) % len(range(32, 48)) + base))
+                result.append(
+                    chr((ord(char) - base + shift) % len(range(32, 48)) + base)
+                )
             elif ord(char) in range(58, 65):
                 base = 58
-                result.append(chr((ord(char) - base + shift) % len(range(58, 65)) + base))
+                result.append(
+                    chr((ord(char) - base + shift) % len(range(58, 65)) + base)
+                )
             elif ord(char) in range(91, 97):
                 base = 91
-                result.append(chr((ord(char) - base + shift) % len(range(91, 97)) + base))
+                result.append(
+                    chr((ord(char) - base + shift) % len(range(91, 97)) + base)
+                )
             elif ord(char) in range(123, 127):
                 base = 123
-                result.append(chr((ord(char) - base + shift) % len(range(123, 127)) + base))
+                result.append(
+                    chr((ord(char) - base + shift) % len(range(123, 127)) + base)
+                )
         return "".join(result)
 
     def _xor_cipher(self, data: bytes, key: str) -> bytes:
@@ -1066,10 +1097,14 @@ class Database:
             secure_bytes = self.file_handle.read()
             if password:
                 # Decrypt the file content
-                decrypted_text = self._xor_cipher(secure_bytes, self._caesar_cipher(password))
+                decrypted_text = self._xor_cipher(
+                    secure_bytes, self._caesar_cipher(password)
+                )
             else:
                 decrypted_text = secure_bytes
-            decrypted_text = decrypted_text.decode(self.metadata.get("app_encoding", "utf-8"))
+            decrypted_text = decrypted_text.decode(
+                self.metadata.get("app_encoding", "utf-8")
+            )
             con.executescript(decrypted_text)
             con.commit()
         return con
@@ -1085,7 +1120,9 @@ class Database:
             password (str): Encryption key used to encrypt.
         """
         encoding = self.metadata.get("app_encoding", "utf-8")
-        dump_bytes = b"".join((line + "\n").encode(encoding) for line in self.conn.iterdump())
+        dump_bytes = b"".join(
+            (line + "\n").encode(encoding) for line in self.conn.iterdump()
+        )
         if password:
             encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
         else:
@@ -1104,7 +1141,9 @@ class Database:
         if self.file_handle is not None:
             self.file_handle.close()
         if self.is_open:
-            if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+            if self.conn.total_changes > self.init_changes or not os.path.isfile(
+                self.db_path
+            ):
                 if self.use_encryption:
                     self._save_cdb(self.db_path, self.encryption_key)
                 else:
@@ -1246,7 +1285,9 @@ class Database:
         """
         if self.file_handle is not None:
             self.file_handle.close()
-        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+        if self.conn.total_changes > self.init_changes or not os.path.isfile(
+            self.db_path
+        ):
             if self.use_encryption:
                 self._save_cdb(self.db_path, self.encryption_key)
             else:

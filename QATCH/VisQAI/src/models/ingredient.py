@@ -423,7 +423,9 @@ class Protein(Ingredient):
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
         self._class_type: ProteinClass = class_type
-        self._molecular_weight: float = self._validate_number(molecular_weight, "molecular_weight")
+        self._molecular_weight: float = self._validate_number(
+            molecular_weight, "molecular_weight"
+        )
         self._pI_mean: float = self._validate_number(pI_mean, "pI_mean")
         self._pI_range: float = self._validate_number(pI_range, "pI_range")
 
@@ -547,16 +549,17 @@ class Protein(Ingredient):
 
 
 class Buffer(Ingredient):
-    """Represents a buffer ingredient (e.g., histidine, PBS, acetate).
+    """Represents a buffer ingredient with an optional pH value.
 
-    pH is a per-formulation attribute and is stored on the Component,
-    not on the Buffer ingredient itself.
+    Attributes:
+        _pH (Optional[float]): pH of the buffer, if provided.
     """
 
     def __init__(
         self,
         enc_id: int,
         name: str,
+        pH: Union[int, float] = None,
         id: Optional[int] = None,
     ) -> None:
         """Initialize a Buffer instance with encoded ID, name, and optional pH.
@@ -564,30 +567,61 @@ class Buffer(Ingredient):
         Args:
             enc_id (int): Encoded identifier (must be an integer).
             name (str): Name of the buffer (must be a non-empty string).
+            pH (Union[int, float], optional): pH value. Must be between 0 and 14, or None.
             id (Optional[int], optional): Database primary key (if already created). Must be an integer or None.
 
         Raises:
             TypeError: If `enc_id` is not an integer, or if `name` is not a string,
                 or if `pH` is not numeric or None, or if `id` is not an integer or None.
+            ValueError: If `name` is empty or whitespace-only,
+                or if `pH` is outside the range 0 to 14 when provided.
         """
         super().__init__(enc_id=enc_id, name=name, id=id)
+        self.pH = pH
+
+    @property
+    def pH(self) -> Union[float, None]:
+        """Get the pH of the buffer.
+
+        Returns:
+            Union[float, None]: The pH value if set, otherwise None.
+        """
+        return self._pH
+
+    @pH.setter
+    def pH(self, value: Any) -> None:
+        """Set the pH of the buffer.
+
+        Args:
+            value (Any): New pH value. Must be a number between 0 and 14, or None.
+
+        Raises:
+            TypeError: If `value` is not numeric or None.
+            ValueError: If `value` is not between 0 and 14 when provided.
+        """
+        if value is not None and not isinstance(value, (int, float)):
+            raise TypeError("pH must be a number or None")
+        if value is not None and not (0.0 <= value <= 14.0):
+            raise ValueError("pH must be between 0 and 14 or None")
+        self._pH = value
 
     def __eq__(self, other: Any) -> bool:
         """Check equality between two Buffer instances.
 
-        Two Buffers are equal if they share the same concrete attributes
+        Two Buffers are equal if they share the same concrete attributes:
+        base (see Ingredient), pH
 
         Args:
             other (Any): The object to compare.
 
         Returns:
-            bool: True if `other` is a Buffer of the same type with identical attributes; False otherwise.
+            bool: True if `other` is a Protein of the same type with identical attributes; False otherwise.
         """
         super().__eq__(other)
 
-        if not isinstance(other, Buffer):
+        if not isinstance(other, Protein):
             return NotImplemented
-        return type(self) is type(other) and self.name == other.name
+        return type(self) is type(other) and self.pH == other.pH
 
 
 class Stabilizer(Ingredient):

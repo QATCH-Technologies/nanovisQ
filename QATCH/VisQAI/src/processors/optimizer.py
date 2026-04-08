@@ -114,7 +114,9 @@ class OptimizationStatus:
         self.best_value = best_value
         self.population_size = population_size
         self.convergence = convergence
-        self.progress_percent = iteration / num_iterations * 100 if num_iterations > 0 else 0.0
+        self.progress_percent = (
+            iteration / num_iterations * 100 if num_iterations > 0 else 0.0
+        )
 
     def __repr__(self) -> str:
         """Returns a string representation of the optimization status."""
@@ -179,7 +181,9 @@ class OptimizationProgressTracker:
         if self.best_value is None or status.best_value < self.best_value:
             self.best_value = status.best_value
 
-        improvement = (self.start_value - status.best_value) if self.start_value else 0.0
+        improvement = (
+            (self.start_value - status.best_value) if self.start_value else 0.0
+        )
         Log.d(
             TAG,
             f"[{status.iteration:3d}/{status.num_iterations}] "
@@ -383,7 +387,9 @@ class Optimizer:
                     aligned.append(ing)
 
             if not aligned:
-                raise ValueError("Could not align any ingredients for categorical feature.")
+                raise ValueError(
+                    "Could not align any ingredients for categorical feature."
+                )
 
             self.cat_choices[feat] = aligned
         self._fixed_cats: Dict[str, Any] = {}
@@ -433,8 +439,12 @@ class Optimizer:
         self._num_idx = [i for i, e in enumerate(self.encoding) if e["type"] == "num"]
 
         # Pre-compute log-space targets
-        self._target_log_shear = np.log10(np.array(target.shear_rates, dtype=float) + _EPS)
-        self._target_log_visc = np.log10(np.array(target.viscosities, dtype=float) + _EPS)
+        self._target_log_shear = np.log10(
+            np.array(target.shear_rates, dtype=float) + _EPS
+        )
+        self._target_log_visc = np.log10(
+            np.array(target.viscosities, dtype=float) + _EPS
+        )
 
         if target_weights is not None:
             w = np.asarray(target_weights, dtype=float)
@@ -569,10 +579,7 @@ class Optimizer:
             if conc == 0.0:
                 continue
 
-            if setter == "set_buffer":
-                getattr(form, setter)(ing, conc, units, pH=feat_dict.get("Buffer_pH"))
-            else:
-                getattr(form, setter)(ing, conc, units)
+            getattr(form, setter)(ing, conc, units)
 
         form.set_temperature(temp=feat_dict.get("Temperature", 25.0))
         return form
@@ -740,7 +747,9 @@ class Optimizer:
         for i in self._cat_idx:
             lo, hi = self.bounds[i]
             n_choices = int(round(hi)) + 1
-            pop[:, i] = rng.integers(0, n_choices, size=popsize_total, dtype=int).astype(float)
+            pop[:, i] = rng.integers(
+                0, n_choices, size=popsize_total, dtype=int
+            ).astype(float)
 
         return pop
 
@@ -863,7 +872,9 @@ class Optimizer:
             if early_stopping_rounds is not None
             else self.early_stopping_rounds
         )
-        _imp_tol = improvement_tol if improvement_tol is not None else self.improvement_tol
+        _imp_tol = (
+            improvement_tol if improvement_tol is not None else self.improvement_tol
+        )
 
         tracker = OptimizationProgressTracker()
         best_obj_value = [float("inf")]

@@ -288,9 +288,13 @@ class Parser:
         try:
             return cast_type(val)
         except ValueError as e:
-            raise ValueError(f"Cannot cast param '{name}' value '{val}' to {cast_type}") from e
+            raise ValueError(
+                f"Cannot cast param '{name}' value '{val}' to {cast_type}"
+            ) from e
 
-    def get_param_attr(self, name: str, attr: str, required: bool = False) -> Optional[str]:
+    def get_param_attr(
+        self, name: str, attr: str, required: bool = False
+    ) -> Optional[str]:
         """Retrieves a specific attribute from a `<param>` element.
 
         This method searches the internal parameters collection for a `<param>`
@@ -412,23 +416,21 @@ class Parser:
         }
 
     def get_buffer(self) -> dict:
-        """Constructs and returns buffer-related data from the XML params.
+        """Constructs and returns buffer-related data using XML params and DB lookups.
 
-        This method retrieves 'buffer_type', 'buffer_concentration', and
-        'buffer_pH' from the run parameters. pH is treated as a per-run
-        attribute of how the buffer is used in this formulation, not a fixed
-        property of the buffer ingredient itself. No database lookup is
-        performed; the Buffer object represents only the buffer species.
+        This method attempts to retrieve the 'buffer_type' and 'buffer_concentration'
+        from the run parameters. It performs a lookup via the ingredient controller
+        to determine the buffer's pH. If the buffer is not found in the database
+        or if the XML parameters are missing, it provides default placeholder
+        values (pH 0.0, concentration 0.0) to signal that user completion is required.
 
         Returns:
             dict: A dictionary containing:
-                - 'buffer' (Buffer): A Buffer object initialized with name only.
+                - 'buffer' (Buffer): A Buffer object initialized with name and pH.
                 - 'concentration' (float): The buffer concentration value.
                 - 'units' (str): The measurement units (defaults to "mM").
-                - 'pH' (Optional[float]): The buffer pH for this formulation,
-                or None if not present in the XML.
                 - 'found' (dict): A mapping of boolean flags indicating if 'name',
-                'conc', 'units', and 'pH' were successfully parsed from the XML.
+                  'conc', and 'units' were successfully parsed from the XML.
 
         Notes:
             If 'buffer_type' is missing from the XML, a warning is logged and a
@@ -439,15 +441,22 @@ class Parser:
         except Exception:
             Log.w(
                 TAG,
-                "<buffer_type> param could not be found in XML; returning default.",
+                f"<buffer_type> param could not be found in XML; returning default.",
             )
             return {
-                "buffer": Buffer(enc_id=-1, name="None"),
+                "buffer": Buffer(enc_id=-1, name="None", pH=0.0),
                 "concentration": 0.0,
                 "units": "mM",
-                "pH": None,
-                "found": {"name": False, "conc": False, "units": False, "pH": False},
+                "found": {"name": False, "conc": False, "units": False},
             }
+
+        buffer_obj = self.ing_ctrl.get_buffer_by_name(name)
+
+        # If unseen in DB, create a placeholder with 0.0 to force user completion
+        if buffer_obj is None:
+            buffer_ph = 0.0
+        else:
+            buffer_ph = buffer_obj.pH if buffer_obj.pH is not None else 0.0
 
         try:
             conc = self.get_param("buffer_concentration", float, required=True)
@@ -458,20 +467,16 @@ class Parser:
         if units is None:
             units = "mM"
 
-        ph = self.get_param("buffer_ph", float, required=False)
-
         found = {
             "name": name is not None,
             "conc": conc is not None,
             "units": units is not None,
-            "pH": ph is not None,
         }
 
         return {
-            "buffer": Buffer(enc_id=-1, name=name),
+            "buffer": Buffer(enc_id=-1, name=name, pH=buffer_ph),
             "concentration": conc,
             "units": units,
-            "pH": ph,
             "found": found,
         }
 
@@ -798,7 +803,9 @@ class Parser:
 
         csv_files = [n for n in namelist if n.endswith("_analyze_out.csv")]
         if not csv_files:
-            raise FileNotFoundError(f"No *_analyze_out.csv found inside {largest_zip_name}")
+            raise FileNotFoundError(
+                f"No *_analyze_out.csv found inside {largest_zip_name}"
+            )
 
         csv_file_name = csv_files[0]
         csv_path = os.path.join(self.base_path, csv_file_name)
@@ -817,7 +824,9 @@ class Parser:
         temp_profile = ViscosityProfile(
             shear_rates=shear_rates_list, viscosities=viscosities_list, units="cP"
         )
-        interpolated_viscosities = [temp_profile.get_viscosity(sr) for sr in self.profile_shears]
+        interpolated_viscosities = [
+            temp_profile.get_viscosity(sr) for sr in self.profile_shears
+        ]
         profile = ViscosityProfile(
             shear_rates=self.profile_shears,
             viscosities=interpolated_viscosities,
@@ -903,8 +912,6 @@ class Parser:
         buffer_data = self.get_buffer()
         if not buffer_data["found"]["name"]:
             missing_fields.append("Buffer Type")
-        if not buffer_data["found"]["pH"]:
-            missing_fields.append("Buffer pH")
 
         protein_data = self.get_protein()
         if not protein_data["found"]["name"]:
@@ -929,7 +936,6 @@ class Parser:
             buffer=buffer_data["buffer"],
             concentration=buffer_data["concentration"],
             units=buffer_data["units"],
-            pH=buffer_data["pH"],
         )
         formulation.set_protein(
             protein=protein_data["protein"],

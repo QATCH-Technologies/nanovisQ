@@ -74,7 +74,9 @@ class ViscosityProfile:
         self, shear_rates: List[float], viscosities: List[float], units: str = "cP"
     ) -> None:
         if not isinstance(shear_rates, list) or not isinstance(viscosities, list):
-            raise TypeError("shear_rates and viscosities must be lists of numeric values")
+            raise TypeError(
+                "shear_rates and viscosities must be lists of numeric values"
+            )
         if len(shear_rates) != len(viscosities):
             raise ValueError("shear_rates and viscosities must have the same length")
         if any(not isinstance(sr, (int, float)) for sr in shear_rates):
@@ -190,43 +192,36 @@ class Component:
     """
 
     def __init__(
-        self,
-        ingredient: Ingredient,
-        concentration: float,
-        units: str,
-        pH: Optional[float] = None,
+        self, ingredient: Ingredient, concentration: float, units: str
     ) -> None:
-        """Initialize a Component.
+        """Initialize a Component with an ingredient and its concentration.
+
+        Validates that the ingredient is of the correct type, the concentration is a non-negative numeric value,
+        and the units string is non-empty.
 
         Args:
             ingredient (Ingredient): The ingredient for this component.
-            concentration (float): Concentration of the ingredient (must be >= 0).
-            units (str): A non-empty string specifying units of concentration.
-            pH (Optional[float]): pH value, only applicable to buffer components.
-                Must be between 0 and 14 if provided, or None.
+            concentration (float): The concentration of the ingredient (must be ≥ 0).
+            units (str): A non-empty string specifying the units of concentration.
 
         Raises:
-            TypeError: If `pH` is not numeric or None.
-            ValueError: If `pH` is outside the range 0–14.
+            TypeError: If `ingredient` is not an instance of Ingredient, or if `concentration` is not numeric.
+            ValueError: If `concentration` is negative, or if `units` is not a non-empty string.
         """
         if not isinstance(ingredient, Ingredient):
-            raise TypeError(f"ingredient must be an Ingredient object found {ingredient}")
+            raise TypeError(
+                f"ingredient must be an Ingredient object found {ingredient}"
+            )
         if not isinstance(concentration, (int, float)):
             raise TypeError("concentration must be numeric")
         if concentration < 0:
             raise ValueError("concentration must be non-negative")
         if not isinstance(units, str) or not units.strip():
             raise ValueError("units must be a non-empty string")
-        if pH is not None:
-            if not isinstance(pH, (int, float)):
-                raise TypeError("pH must be a number or None")
-            if not (0.0 <= pH <= 14.0):
-                raise ValueError("pH must be between 0 and 14")
 
         self.ingredient: Ingredient = ingredient
         self.concentration: float = float(concentration)
         self.units: str = units.strip()
-        self.pH: Optional[float] = float(pH) if pH is not None else None
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert the component to a dictionary representation.
@@ -237,21 +232,17 @@ class Component:
                 - "concentration" (float): The concentration value of the component.
                 - "units" (str): The units for the concentration.
         """
-        d = {
+        return {
             "type": self.ingredient.to_dict(),
             "concentration": self.concentration,
             "units": self.units,
         }
-        if self.pH is not None:
-            d["pH"] = self.pH
-        return d
 
     def __repr__(self) -> str:
         cls = self.ingredient.__class__.__name__
-        ph_str = f", pH={self.pH}" if self.pH is not None else ""
         return (
             f"Component({cls}={self.ingredient.name!r}, "
-            f"conc={self.concentration}, units={self.units!r}{ph_str})"
+            f"conc={self.concentration}, units={self.units!r})"
         )
 
 
@@ -393,25 +384,23 @@ class Formulation:
         """
         self._components["protein"] = Component(protein, concentration, units)
 
-    def set_buffer(
-        self,
-        buffer: Buffer,
-        concentration: float,
-        units: str,
-        pH: Optional[float] = None,
-    ) -> None:
+    def set_buffer(self, buffer: Buffer, concentration: float, units: str) -> None:
         """Assign a buffer component to the formulation.
 
         Args:
             buffer (Buffer): An instance of `Buffer` to include.
             concentration (float): Concentration of the buffer (must be ≥ 0).
             units (str): Units for the concentration (non-empty string).
-            pH (Optional[float]): The pH of the buffer in this formulation.
-                Must be between 0 and 14, or None.
-        """
-        self._components["buffer"] = Component(buffer, concentration, units, pH=pH)
 
-    def set_stabilizer(self, stabilizer: Stabilizer, concentration: float, units: str) -> None:
+        Raises:
+            TypeError: If `buffer` is not a `Buffer`, or if concentration is not numeric.
+            ValueError: If concentration is negative, or if `units` is an empty string.
+        """
+        self._components["buffer"] = Component(buffer, concentration, units)
+
+    def set_stabilizer(
+        self, stabilizer: Stabilizer, concentration: float, units: str
+    ) -> None:
         """Assign a stabilizer component to the formulation.
 
         Args:
@@ -425,7 +414,9 @@ class Formulation:
         """
         self._components["stabilizer"] = Component(stabilizer, concentration, units)
 
-    def set_surfactant(self, surfactant: Surfactant, concentration: float, units: str) -> None:
+    def set_surfactant(
+        self, surfactant: Surfactant, concentration: float, units: str
+    ) -> None:
         """Assign a surfactant component to the formulation.
 
         Args:
@@ -453,7 +444,9 @@ class Formulation:
         """
         self._components["salt"] = Component(salt, concentration, units)
 
-    def set_excipient(self, excipient: Excipient, concentration: float, units: str) -> None:
+    def set_excipient(
+        self, excipient: Excipient, concentration: float, units: str
+    ) -> None:
         """Assign a excpient component to the formulation.
 
         Args:
@@ -591,7 +584,9 @@ class Formulation:
                 data[key] = comp_dict
         data["temperature"] = self.temperature
         data["viscosity_profile"] = (
-            self.viscosity_profile.to_dict() if self.viscosity_profile is not None else None
+            self.viscosity_profile.to_dict()
+            if self.viscosity_profile is not None
+            else None
         )
         return data
 
@@ -674,7 +669,9 @@ class Formulation:
         row = {
             "ID": self.id,
             "Temperature": (
-                getattr(self, "temperature", 25.0) if self.temperature is not None else 25.0
+                getattr(self, "temperature", 25.0)
+                if self.temperature is not None
+                else 25.0
             ),
             # Protein Defaults
             "Protein_class_type": safe_get(prot, "class_type.value", 0),
@@ -685,7 +682,7 @@ class Formulation:
             "PI_mean": safe_get(prot, "pI_mean", 0),
             "PI_range": safe_get(prot, "pI_range", 0),
             "Protein_conc": prot.concentration if prot else 0.0,
-            "Buffer_pH": buff.pH if buff is not None else 0,
+            "Buffer_pH": safe_get(buff, "pH", 0),
             "Buffer_conc": buff.concentration if buff else 0.0,
             "Salt_conc": salt.concentration if salt else 0.0,
             "Excipient_conc": exc.concentration if exc else 0.0,
@@ -700,8 +697,12 @@ class Formulation:
                     "Buffer_type": getattr(buff_ing, "enc_id", 0) if buff_ing else 0,
                     "Salt_type": getattr(salt_ing, "enc_id", 0) if salt_ing else 0,
                     "Excipient_type": getattr(exc_ing, "enc_id", 0) if exc_ing else 0,
-                    "Stabilizer_type": (getattr(stab_ing, "enc_id", 0) if stab_ing else 0),
-                    "Surfactant_type": (getattr(surf_ing, "enc_id", 0) if surf_ing else 0),
+                    "Stabilizer_type": (
+                        getattr(stab_ing, "enc_id", 0) if stab_ing else 0
+                    ),
+                    "Surfactant_type": (
+                        getattr(surf_ing, "enc_id", 0) if surf_ing else 0
+                    ),
                 }
             )
         else:
