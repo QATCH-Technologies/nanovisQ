@@ -10,19 +10,23 @@ import sys
 import threading
 from collections import deque
 from time import localtime, mktime, strftime, strptime, time
-from typing import List
+from typing import List, Optional
 from xml.dom import minidom
 
 import numpy as np
 import pandas as pd
 import pyqtgraph as pg
+import os
+import shutil
 import pyzipper
 import requests
 from dateutil import parser
 from PyQt5 import QtCore, QtGui, QtWidgets
 from pyqtgraph import AxisItem
 from serial import serialutil
+from pathlib import Path
 
+from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
 from QATCH.common.fileManager import FileManager
@@ -38,6 +42,7 @@ from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.InterpTemps import (
@@ -590,7 +595,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         name = self.username.text()[6:]
         allow, admin = UserProfiles().manage(name, self.userrole)
 
-        if admin == None and not UserProfiles.session_info()[0]:
+        if admin is None and not UserProfiles.session_info()[0]:
             if name != "[NONE]":
                 Log.i(f"Goodbye, {name}! You have been signed out.")
             self.username.setText("User: [NONE]")
@@ -632,14 +637,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk2.isChecked():
             Log.d("Hiding Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(False)
                 self.parent._plt0_arr[i] = p
         else:
             Log.d("Showing Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
@@ -1410,6 +1415,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
+        self._drop_epoch_sent = False
         self._run_finished = [False, False, False, False]
         self._baselinedata = [
             [[0, 0], [0, 0]],
@@ -1515,15 +1521,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for _ in range(4):
             self.dry_detect.append(
                 DryingDetection(
-                    window_size=2000,
-                    sigma_stable_diss=0.25,
-                    sigma_stable_freq=0.25,
-                    flat_slope_eps=0.000015,
+                    window_size=Constants.DRYING_WINDOW_SIZE,
+                    sigma_stable_diss=Constants.DRYING_SIGMA_STABLE_DISSIPATION,
+                    sigma_stable_freq=Constants.DRYING_SIGMA_STABLE_FREQUENCY,
+                    flat_slope_eps=Constants.DRYING_FLAT_SLOPE_EPS,
                 )
             )
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
+        # Messaging attribute for early stop messages.
+        self._fill_display_msg: Optional[str] = None
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -1531,7 +1539,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def analyze_data(self, data_device=None, data_folder=None, data_file=None):
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result == None:  # user check required, but no user signed in
+        if check_result is None:  # user check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
@@ -1549,7 +1557,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_device = data_device
         self.data_folder = data_folder
         self.data_run = data_file
-        if data_device == None:
+        if data_device is None:
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
@@ -1563,9 +1571,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data devices available for selection.")
             return
-        if data_folder == None:
-            self.data_folders = FileStorage.DEV_get_logged_data_folders(
-                data_device)
+        if data_folder is None:
+            self.data_folders = FileStorage.DEV_get_logged_data_folders(data_device)
             if len(self.data_folders) > 0:
                 self.aThread = QtCore.QThread()
                 self.aWorker = QueryComboBox(self.data_folders, "run")
@@ -1577,9 +1584,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data folders available for selection.")
             return
-        if data_file == None:
-            self.data_files = FileStorage.DEV_get_logged_data_files(
-                data_device, data_folder)
+        if data_file is None:
+            self.data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             if "capture.zip" in self.data_files:
                 zn = os.path.join(
                     Constants.log_prefer_path, data_device, data_folder, "capture.zip"
@@ -1873,7 +1879,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        # if check_result == None:  # user check required, but no user signed in
+        # if check_result is None:  # user check required, but no user signed in
         #     Log.w(
         #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
         #     Log.i("Please sign in to continue.")
@@ -1886,7 +1892,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #     return  # deny action
 
         # User check required, but no user signed in.
-        if check_result == None:
+        if check_result is None:
             Log.w(
                 tag=TAG,
                 msg=f"Not signed in: User with role {action_role.name} is required to perform this action.",
@@ -1986,7 +1992,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
         # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -2170,6 +2176,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
+            self._drop_epoch_sent = False
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -2827,35 +2834,30 @@ class MainWindow(QtWidgets.QMainWindow):
     ###########################################################################
 
     def _configure_database(self, exec_migrations: bool = False):
-        # check if local app data contains a database file already
+        """Configure the local VisQAI SQLite database used by the application.
+
+        Handles two distinct scenarios on startup: if no local database exists but
+        a bundled one does, the bundled database is copied directly into the local
+        application data directory. If both exist, defers to ``DatabaseSynchronizer``
+        to safely compare schema versions and merge any missing tables, columns, or
+        seed data into the local database without overwriting user data.
+
+        Args:
+            exec_migrations (bool): Reserved for future use. If ``True``, indicates
+                that pending schema migrations should be executed during configuration.
+                Defaults to ``False``.
+
+        Raises:
+            Exception: Re-raises any exception encountered during path resolution,
+                file copying, database initialization, or synchronization, after
+                logging the error.
+
+        Note:
+            If neither a local nor a bundled database file is found, a warning is
+            logged and the method returns without error. The local database connection
+            is always closed after synchronization to avoid leaving open handles.
         """
-        Configure the local VisQAI SQLite database used by the application.
 
-        If a bundled database exists in the application install assets and no database
-        is present in the local application data folder, this function copies the
-        bundled database into the local application data path. If a local database
-        already exists, it compares the bundled database and adds any missing core
-        ingredients from the bundled copy into the local database.
-
-        When exec_migrations is True, the function attempts a non-destructive migration
-        dry-run against a temporary decrypted copy of the local database to detect
-        required schema/data migrations (no migrations are applied here; this is a
-        safety check).
-
-        Parameters:
-            exec_migrations (bool): If True, perform a migration dry-run check on a
-                temporary decrypted copy of the local database before merging missing
-                core data. Defaults to False.
-
-        Side effects:
-        - May create directories and copy the bundled database file into local app
-          data.
-        - May add records (core ingredients) to the existing local database.
-        - Logs progress and warnings.
-
-        Exceptions:
-        - Exceptions from filesystem or database operations are propagated to the caller.
-        """
         try:
             machine_database_path = os.path.join(
                 Constants.local_app_data_path, "database/app.db")
@@ -2865,96 +2867,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
             localapp_exists = os.path.isfile(machine_database_path)
             bundled_exists = os.path.isfile(bundled_database_path)
+
             if bundled_exists and not localapp_exists:
-                # On first run, bundled will exist, but localapp won't: copy it to localapp
-                os.makedirs(os.path.dirname(
-                    machine_database_path), exist_ok=True)
+                os.makedirs(os.path.dirname(machine_database_path), exist_ok=True)
                 shutil.copy(bundled_database_path, machine_database_path)
-                Log.w(f"Copied the bundled core database to machine folder")
-                # Populate DB with core training samples
-                # TODO: This should be done when tagging, not here
-                # Log.w(
-                #     f"Adding core training samples to database (happens once; may take a bit)...")
-                # machine_database = Database(
-                #     path=machine_database_path, parse_file_key=True)
-                # form_ctrl = FormulationController(db=machine_database)
-                # csv_path = os.path.join(Architecture.get_path(), "QATCH",
-                #                         "VisQAI", "assets", "formulation_data_10082025.csv")
-                # if not os.path.isfile(csv_path):
-                #     raise FileNotFoundError(f"CSV file not found: {csv_path}")
-                # df = pd.read_csv(csv_path)
-                # added_forms = form_ctrl.add_all_from_dataframe(df)
-                # machine_database.close()
-                # Log.w(f"Added {len(added_forms)} core training samples!")
-            elif localapp_exists:
-                # After update, both files will exist: add any missing core ingredients to localapp
-                # TODO: Add a quicker way to check if there are missing core ingredients in database
-                bundled_database = Database(
-                    path=bundled_database_path, parse_file_key=True)
-                machine_database = Database(
-                    path=machine_database_path, parse_file_key=True)
+                Log.w("Copied the bundled core database to machine folder")
 
-                if exec_migrations:
-                    from QATCH.VisQAI.src.db.db_migrator import (
-                        DatabaseMigrator,
-                        Migration,
-                        MigrationStatus,
-                        MigrationVersion,
-                    )
+            elif localapp_exists and bundled_exists:
+                machine_database = Database(path=machine_database_path, parse_file_key=True)
+                DatabaseSynchronizer.sync_on_launch(
+                    local_db=machine_database, bundled_db_path=Path(bundled_database_path)
+                )
 
-                    tmp_path = machine_database.create_temp_decrypt()
-                    try:
-                        if tmp_path:
-                            migrator = DatabaseMigrator(
-                                tmp_path, backup_dir=None)
-                            current_version = migrator.get_current_version()
-                            target_version = MigrationVersion(1, 1, 0)
-                            if current_version < target_version:
-                                new_migration = Migration(
-                                    from_version=current_version,
-                                    to_version=target_version,
-                                    up_sql=[""],
-                                    down_sql=[""],
-                                    data_transform=lambda conn: conn.execute(
-                                        ""),
-                                    autofill_defaults={""},
-                                    description="",
-                                )
-                                migrator.register_migration(new_migration)
-                                status, msgs = migrator.migrate(
-                                    target_version=MigrationVersion(1, 1, 0),
-                                    dry_run=True,
-                                )
-                                if not status:
-                                    Log.e(
-                                        f"Database migration dry-run failed: {'; '.join(msgs)}")
-                        else:
-                            Log.w(
-                                "Skipping migration check: could not create temp decrypted DB.")
-                    finally:
-                        machine_database.cleanup_temp_decrypt()
-
-                # TODO: Make this more robust to just check ids. Do equivalence check instead of id check to
-                # update machine db with changes from bundled db.
-                for ing in bundled_database.get_all_ingredients():
-                    if machine_database.get_ingredient(ing.id) is None:
-                        # We must use the same `enc_id`, do not use `ingctrl.add()`
-                        machine_database.add_ingredient(ing)
-                        Log.w(
-                            f"Added missing core ingredient to database: {ing.name}")
-                bundled_database.close()
                 machine_database.close()
-                # TODO: Think of a better way to do this!
-                # if "_dev" in Constants.app_version or "_nightly" in Constants.app_version:
-                #     shutil.copy(bundled_database_path, machine_database_path)
-                #     Log.w(
-                #         "Operating in development mode, copying bundled db into log data.")
             else:
-                Log.w("Nothing to do. No local bundled database file found.")
+                Log.w("Nothing to do. No local or bundled database file found.")
+
         except Exception as e:
-            Log.e(
-                "ERROR: Unable to configure database file in local application data folder.")
-            raise e  # TODO remove
+            Log.e("Unable to configure database file in local application data folder.")
+            raise e
 
     ###########################################################################
     # Configures the tutorials interface for user interaction
@@ -3091,7 +3022,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Open or close the port accordingly
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -3167,7 +3098,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Set active port to update speeds in real-time
         self._selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if self._selected_port == None:
+        if self._selected_port is None:
             self._selected_port = ""  # Dissallow None
         if self._selected_port == "CMD_DEV_INFO":
             self._selected_port = ""  # Dissallow Action
@@ -3600,7 +3531,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not self.worker._forecaster_out.empty():
                     try:
                         # Get raw model prediction (-1=Empty, 0=Init, 1=Ch1, 2=Ch2, 3=Ch3)
-                        pred_int, _ = self.worker._forecaster_out.get()
+                        pred_int, _, display_msg = self.worker._forecaster_out.get()
+                        # Latch the message - once set, keep it visible until the run ends
+                        # or a newer message supersedes it.
+                        if display_msg is not None:
+                            self._fill_display_msg = display_msg
                         # This logic handles drop application code.
                         is_drop_applied = all(self._drop_applied)
                         # Refactored messages out of constants.  Can move them back if we like the messages.
@@ -3613,6 +3548,12 @@ class MainWindow(QtWidgets.QMainWindow):
                             else:
                                 status_msg = "Sample detected"
                                 ui_step = 1
+                                if not self._drop_epoch_sent:
+                                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+                                    self.worker._forecaster_in.put(
+                                        DropEpochSignal(drop_epoch)
+                                    )
+                                    self._drop_epoch_sent = True
                         elif pred_int == 0:
                             status_msg = "Filling started"
                             ui_step = 2
@@ -3764,7 +3705,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                             if not all(self._drop_applied):
                                 for i, p in enumerate(self._plt2_arr):
-                                    if p == None:
+                                    if p is None:
                                         self._drop_applied[i] = True
                                         self._run_finished[i] = True
                                         continue
@@ -4048,7 +3989,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ############################################################################################################################
         if self._reference_flag:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -4077,7 +4018,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -4092,7 +4033,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # updates for multiple plot y-axes
             updateViews1()
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews1)
                 p.setLimits(yMax=None, yMin=None,
@@ -4114,7 +4055,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Resonance frequency and dissipation multiple Plot
             def updateViews2():
                 for i, p in enumerate(self._plt3_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     _p2 = self._plt2_arr[i]
                     _p2.clear()
@@ -4130,7 +4071,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews2()
 
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews2)
                 self._vector_1 = (
@@ -4157,7 +4098,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._plt2_arr[i] = p
 
             for i, p in enumerate(self._plt3_arr):
-                if p == None:
+                if p is None:
                     continue
                 self._vector_2 = (
                     np.array(self.worker.get_d2_buffer(i)) -
@@ -4205,7 +4146,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ###########################################################################################################################
         else:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -4236,7 +4177,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -4252,7 +4193,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews1()
             self._amps = {}  # empty dict for showing combined amplitudes
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 _plt2 = self._plt2_arr[i]
                 _plt3 = self._plt3_arr[i]
@@ -4296,7 +4237,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # Add apply drop message to those still pending drop
                     try:
-                        if self._text4[i] == None:
+                        if self._text4[i] is None:
                             # 'size' and 'bold' retained when calling 'setText()'
                             self._text4[i] = pg.LabelItem(
                                 size="11pt", bold=True)
@@ -4342,6 +4283,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                             i)[:numPoints]),
                                     ],
                                 ]
+                            elif self._fill_display_msg:
+                                # Fill classifier has flagged an actionable state
+                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
                             else:
                                 self._text4[i].setText(
                                     "Apply drop now!", color=(0, 200, 0))
@@ -4593,7 +4537,7 @@ class MainWindow(QtWidgets.QMainWindow):
         flux_controller_exists = False
 
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -4947,7 +4891,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._reference_value_dissipation.clear()
         self._vector_reference_dissipation.clear()
         for i, p in enumerate(self._plt2_arr):
-            if p == None:
+            if p is None:
                 continue
             # _plt2 = self._plt2_arr[i]
             # _plt3 = self._plt3_arr[i]
@@ -5094,7 +5038,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.tecWorker._tec_state == "OFF" or self.tecWorker._tec_locked:
             # check version and write device info (if needed)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
@@ -5117,7 +5061,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Restore single selected port (even when multiplex mode)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
@@ -5743,7 +5687,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if is_target_build:
                         most_recent = build
                         break  # found, stop searching
-            if most_recent == None:
+            if most_recent is None:
                 Log.d(f"requires EXE: {require_EXE}")
                 Log.d(f"release ONLY: {release_builds_only}")
                 Log.d(f"found builds: {builds}")
@@ -6395,7 +6339,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # monitor the script output for application launch
                     line = ""
-                    while proc.poll() == None:  # still running
+                    while proc.poll() is None:  # still running
                         line += proc.stdout.read(1)
                         if "Application will launch" in line:
                             Log.i("FINISHED:", "Launching application...")
@@ -6913,7 +6857,7 @@ class TECTask(QtCore.QThread):
     def _tec_update(self, dac=""):
         # Open, write, read and close the port accordingly
         selected_port = self.port
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -7250,14 +7194,14 @@ class TECTask(QtCore.QThread):
         :return: True if the port is connected to the host :rtype: bool.
         """
         # dm = Discovery()
-        # if self._serial.net_port == None:
+        # if self._serial.net_port is None:
         #     net_exists = False
         # else:
         #     net_exists = dm.ping(self._serial.net_port)
         for p in self.get_ports():
             if p == port:
                 return True
-        # if port == None:
+        # if port is None:
         #     if len(dm.doDiscover()) > 0:
         #         return net_exists
         return False
