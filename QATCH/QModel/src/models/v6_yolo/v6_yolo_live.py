@@ -130,6 +130,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Primary source is the UI-provided drop-applied timestamp; channel-0
         # confirmation only seeds this as a fallback if no drop epoch was provided.
         self._fill_epoch: Optional[float] = None
+        self._fill_epoch_source: Optional[str] = None  # "drop_timestamp" or "channel_0_confirm"
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
@@ -152,8 +153,9 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             relative_time: The Relative_time value (seconds) recorded by the UI
                 at the instant the drop was detected.
         """
-        if self._fill_epoch is None:
+        if self._fill_epoch is None or self._fill_epoch_source == "channel_0_fallback":
             self._fill_epoch = relative_time
+            self._fill_epoch_source = "drop_signal"
             Log.i(
                 self.TAG,
                 f"Fill epoch seeded from drop-applied timestamp: {relative_time:.1f} s.",
@@ -304,6 +306,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         if channel == 0:
             if self._fill_epoch is None:
                 self._fill_epoch = confirm_time
+                self._fill_epoch_source = "channel_0_fallback"
                 Log.i(
                     self.TAG,
                     f"Initial Fill confirmed at {confirm_time:.1f} s - fill epoch set.",
@@ -362,10 +365,10 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
         current_time: float = max(self._last_max_time, 0.0)
 
-        # Compute elapsed time since Initial Fill was confirmed.
+        # Compute elapsed time since the fill epoch was established.
         if self._fill_epoch is not None:
             elapsed_s: float = current_time - self._fill_epoch
-            epoch_note = f"{elapsed_s:.1f} s since Initial Fill"
+            epoch_note = f"{elapsed_s:.1f} s since fill epoch"
         else:
             # Edge case: classifier jumped straight past channel 0 (e.g. model
             # started mid-fill). Fall back to absolute run time so the logic
