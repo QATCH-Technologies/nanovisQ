@@ -1,12 +1,17 @@
 """
-ingredient_controller.py
+database.py
 
-This module defines the `IngredientController` class for managing CRUD operations
-on `Ingredient` objects and their subclasses (Protein, Buffer, Stabilizer, Surfactant, Salt)
-in the database. The controller handles adding new ingredients with auto-assigned `enc_id`,
-retrieving by ID or name, updating, and deleting both single and all instances of a given type.
+This module provides the `Database` class for managing persistence of ingredients,
+formulations, components, and viscosity profiles using SQLite. It supports optional
+in-memory encryption via a simple XOR+Caesar cipher. The database file can support
+an encoded metadata on the first line for storing relevant information including an
+ `app_key` which can be automatically parsed on load. The schema includes tables for
+generic ingredients, subclass-specific ingredient details, formulation records, and
+associated component and viscosity profile data. Utility methods handle CRUD operations,
+schema initialization, and optional encryption/decryption of the entire database.
 
 Author:
+    Alexander Ross (alexander.ross@qatchtech.com)
     Paul MacNichol (paul.macnichol@qatchtech.com)
 
 Date:
@@ -16,1234 +21,1253 @@ Version:
     1.9
 """
 
-from typing import List, Optional
+import json
+import os
+import random
+import sqlite3
+import tempfile
+from pathlib import Path
+from typing import List, Optional, Union
 
-from rapidfuzz import fuzz, process
+import numpy as np
 
 try:
-    from src.db.db import Database
+    TAG = "[Database (HEADLESS)]"
+    from src.models.formulation import Component, Formulation, ViscosityProfile
     from src.models.ingredient import (
         Buffer,
         Excipient,
         Ingredient,
         Protein,
+        ProteinClass,
         Salt,
         Stabilizer,
         Surfactant,
     )
+
+    class Log:
+        @staticmethod
+        def d(TAG, msg=""):
+            print("DEBUG:", TAG, msg)
+
+        @staticmethod
+        def i(TAG, msg=""):
+            print("INFO:", TAG, msg)
+
+        @staticmethod
+        def w(TAG, msg=""):
+            print("WARNING:", TAG, msg)
+
+        @staticmethod
+        def e(TAG, msg=""):
+            print("ERROR:", TAG, msg)
+
 except (ModuleNotFoundError, ImportError):
-    from QATCH.VisQAI.src.db.db import Database
+    TAG = "[Database]"
+    from QATCH.common.logger import Logger as Log
+    from QATCH.VisQAI.src.models.formulation import (
+        Component,
+        Formulation,
+        ViscosityProfile,
+    )
     from QATCH.VisQAI.src.models.ingredient import (
         Buffer,
         Excipient,
         Ingredient,
         Protein,
+        ProteinClass,
         Salt,
         Stabilizer,
         Surfactant,
     )
 
+DB_PATH = Path(
+    os.path.join(os.path.expandvars(r"%LOCALAPPDATA%"), "QATCH", "nanovisQ", "database", "app.db")
+)
+DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-class IngredientController:
-    """Controller for managing `Ingredient` persistence and retrieval.
+allowed_vals = ",".join(f"'{v}'" for v in ProteinClass.all_strings())
 
-    This class wraps a `Database` instance to handle CRUD operations on `Ingredient`
-    and its subclasses. It supports adding new ingredients with auto-incremented `enc_id`
-    values, retrieving ingredients by ID or name, updating existing records, and deleting
-    single or all records of a given ingredient type.
+
+class Database:
+    """Manages SQLite persistence for ingredients, formulations, and viscosity profiles.
+
+    This class initializes the required tables for storing generic ingredients
+    and their subclass-specific attributes, as well as formulations with associated
+    components and viscosity profiles. It supports optional in-memory encryption
+    and decryption of the database file using a Caesar+XOR cipher. CRUD methods
+    handle insertion, retrieval, updating, and deletion of ingredients and formulations.
 
     Attributes:
-        DEV_MAX_ID (int): Maximum `enc_id` reserved for developer-created ingredients.
-        USER_START_ID (int): Starting `enc_id` for user-created ingredients.
-        db (Database): The database instance used for storing and retrieving ingredients.
+        db_path (Path): Filesystem path to the SQLite database file.
+        file_handle (Optional[IO]): Handle used when an encrypted database is opened.
+        encryption_key (Optional[str]): Key used for Caesar+XOR encryption.
+        use_encryption (bool): Whether to use in-memory encryption.
+        conn (sqlite3.Connection): SQLite connection object.
+        init_changes (int): Initial change count to detect unsaved changes.
     """
 
-    # Reserve 1..DEV_MAX_ID for developer ingredients of each TYPE
-    DEV_MAX_ID = 8000
-    # User IDs start at DEV_MAX_ID+1 for each TYPE
-    USER_START_ID = DEV_MAX_ID + 1
-
-    def __init__(self, db: Database, user_mode: bool = True) -> None:
-        """Initialize the IngredientController with a database instance.
+    def __init__(
+        self,
+        path: Union[str, Path] = DB_PATH,
+        encryption_key: Union[str, None] = None,
+        parse_file_key: bool = False,
+    ) -> None:
+        """Initialize the Database, apply encryption if requested, and create tables.
 
         Args:
-            db (Database): An initialized `Database` instance for persisting ingredients.
+            path (Union[str, Path]): Filesystem path to the SQLite database file.
+                Defaults to a standard `app.db` location under %LOCALAPPDATA%.
+            encryption_key (Union[str, None], optional): If provided, uses
+                in-memory Caesar+XOR encryption/decryption. If None, plain SQLite
+                is used. Defaults to None.
+            parse_file_key (bool): If True, the `encryption_key` will be loaded
+                from the `app_key` that is embedded in the `path` database file.
+                Defaults to False. Flag ignored if `encryption_key` is provided.
+
+        Raises:
+            ValueError: If `encryption_key` is None but `use_encryption` is True
+                (e.g., encryption_key provided as empty).
         """
-        self.db: Database = db
-        self._user_mode: bool = user_mode
-        self._cache: dict[int, Ingredient] = {}
-        self._name_cache: dict[tuple[str, str], Ingredient] = {}
+        self.db_path = Path(path)
+        self.file_handle = None  # used for locking when encrypted
+        self.encryption_key = encryption_key
+        self.use_encryption = parse_file_key if self.encryption_key is None else True
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._load_metadata()
 
-    def _invalidate_cache(self):
-        self._cache.clear()
-        self._name_cache.clear()
+        if self.use_encryption:
+            if parse_file_key and not self.encryption_key:
+                self.set_encryption_key(self.metadata.get("app_key", None))
+            if not self.encryption_key:
+                Log.e(TAG, "Encryption key missing for encrypted database")
+            self.conn = self._open_cdb(str(self.db_path), self.encryption_key)
+        else:
+            self.conn = sqlite3.connect(str(self.db_path))
 
-    def _get_ingredient(self, id: int) -> Optional["Ingredient"]:
-        if id not in self._cache:
-            ing = self.db.get_ingredient(id)
-            if ing and ing.id is not None:
-                self._cache[ing.id] = ing
-        return self._cache.get(id)
+        # Enforce foreign key constraints
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self.init_changes = self.conn.total_changes
+        self._defer_backup: bool = False
+        self._defer_commit: bool = False
+        self._create_tables()
+        self.is_open = True
+
+    def _create_tables(self) -> None:
+        """Create all necessary tables if they do not already exist.
+
+        The tables include:
+            - ingredient: core table with common fields (id, enc_id, name, type, is_user).
+            - protein, buffer, stabilizer, surfactant, salt, excipient: subclass tables referencing ingredient.
+            - formulation: core formulation table (id, temperature).
+            - formulation_component: linking table between formulations and ingredient components.
+            - viscosity_profile: table storing JSON-serialized shear_rates and viscosities.
+
+        This method commits the changes to the database.
+        """
+        c = self.conn.cursor()
+        # Ingredient core table
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS ingredient (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                enc_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                is_user INTEGER NOT NULL DEFAULT 0
+            )
+        """
+        )
+        # Subclass tables
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS protein (
+                ingredient_id    INTEGER PRIMARY KEY,
+                class_type       TEXT NOT NULL DEFAULT 'None'
+                                CHECK (class_type IN ({allowed_vals})),
+                molecular_weight REAL,
+                pI_mean          REAL,
+                pI_range         REAL,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS buffer (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS stabilizer (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS surfactant (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS salt (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS excipient (
+                ingredient_id INTEGER PRIMARY KEY,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS formulation (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                signature TEXT UNIQUE,
+                temperature REAL,
+                icl INTEGER DEFAULT 1,
+                last_model TEXT
+            )
+        """
+        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_formulation_signature ON formulation(signature)")
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS formulation_component (
+                formulation_id INTEGER NOT NULL,
+                component_type TEXT NOT NULL,
+                ingredient_id INTEGER NOT NULL,
+                concentration REAL NOT NULL,
+                units TEXT NOT NULL,
+                pH REAL,
+                PRIMARY KEY (formulation_id, component_type),
+                FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
+                FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute(
+            rf"""
+            CREATE TABLE IF NOT EXISTS viscosity_profile (
+                formulation_id INTEGER PRIMARY KEY,
+                shear_rates TEXT NOT NULL,
+                viscosities TEXT NOT NULL,
+                units TEXT NOT NULL,
+                is_measured INTEGER NOT NULL,
+                FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
+            )
+        """
+        )
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
+        self._commit()
+
+    def add_ingredient(self, ing: Ingredient) -> int:
+        """Insert a new ingredient and its subclass-specific details into the database.
+
+        Args:
+            ing (Ingredient): An instance of a subclass of `Ingredient` (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient).
+                The `enc_id` and `name` fields must be set, and subclass-specific attributes populated.
+
+        Returns:
+            int: The database-assigned primary key (`id`) of the newly inserted ingredient.
+
+        Raises:
+            ValueError: If `ing.enc_id` is None (indicating improper usage).
+        """
+        if ing.enc_id is None:
+            raise ValueError(
+                "ing.enc_id is None: you must call IngredientController.add_* so that enc_id is auto-assigned."
+            )
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id FROM ingredient WHERE name = ? AND type = ?",
+            (ing.name, type(ing).__name__),
+        )
+        existing = c.fetchone()
+        if existing:
+            ing.id = existing[0]
+            return existing[0]
+
+        # Only insert if no match found
+        c.execute(
+            "INSERT INTO ingredient (enc_id, name, type, is_user) VALUES (?, ?, ?, ?)",
+            (ing.enc_id, ing.name, type(ing).__name__, int(ing.is_user)),
+        )
+        db_id = c.lastrowid
+
+        # Insert into the subclass table based on runtime type
+        if isinstance(ing, Protein):
+            if isinstance(ing.class_type, ProteinClass):
+                class_val = ing.class_type.value
+            else:
+                class_val = ing.class_type or ProteinClass.NONE.value
+
+            c.execute(
+                """
+                INSERT INTO protein
+                    (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
+            )
+        elif isinstance(ing, Buffer):
+            c.execute("INSERT INTO buffer VALUES (?)", (db_id,))
+        elif isinstance(ing, Stabilizer):
+            c.execute("INSERT INTO stabilizer VALUES (?)", (db_id,))
+        elif isinstance(ing, Surfactant):
+            c.execute("INSERT INTO surfactant VALUES (?)", (db_id,))
+        elif isinstance(ing, Salt):
+            c.execute("INSERT INTO salt VALUES (?)", (db_id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (db_id,))
+
+        self._commit()
+        if self.use_encryption and not self._defer_backup:
+            self.backup()
+        ing.id = db_id
+        return db_id
+
+    def get_ingredient(self, id: int) -> Optional[Ingredient]:
+        """Retrieve an ingredient by its database ID, reconstructing the correct subclass.
+
+        Args:
+            id (int): The primary key of the ingredient to fetch.
+
+        Returns:
+            Optional[Ingredient]: An instance of the appropriate `Ingredient` subclass
+                with all properties populated, or `None` if no ingredient exists with this ID.
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT enc_id, name, type, is_user FROM ingredient WHERE id = ?", (id,))
+        row = c.fetchone()
+        if not row:
+            return None
+        enc_id, name, typ, is_user = row
+
+        # Reconstruct subclass-specific object
+        if typ == "Protein":
+            row = c.execute(
+                """
+                SELECT class_type, molecular_weight, pI_mean, pI_range
+                FROM protein
+                WHERE ingredient_id = ?
+            """,
+                (id,),
+            ).fetchone()
+
+            if row is None:
+                raise LookupError(f"No protein row for ingredient_id {id}")
+
+            class_str, mw, mean, rng = row
+            ing = Protein(
+                enc_id=enc_id,
+                name=name,
+                molecular_weight=mw,
+                pI_mean=mean,
+                pI_range=rng,
+                class_type=(ProteinClass.from_value(class_str) if class_str is not None else None),
+                id=id,
+            )
+        elif typ == "Buffer":
+            ing = Buffer(enc_id, name)
+
+        elif typ == "Stabilizer":
+            ing = Stabilizer(enc_id, name)
+
+        elif typ == "Surfactant":
+            ing = Surfactant(enc_id, name)
+
+        elif typ == "Excipient":
+            ing = Excipient(enc_id, name)
+
+        elif typ == "Salt":
+            ing = Salt(enc_id, name)
+
+        else:
+            return None
+
+        ing.id = id
+        ing.is_user = bool(is_user)
+        return ing
 
     def get_all_ingredients(self) -> List[Ingredient]:
         """Retrieve all ingredients stored in the database.
 
         Returns:
-            List[Ingredient]: A list of all `Ingredient` instances in the database.
+            List[Ingredient]: A list of `Ingredient` subclass instances, one per row
+                in the `ingredient` table, reconstructed using `get_ingredient`.
         """
-        return self.db.get_all_ingredients()
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM ingredient")
+        ids = [r[0] for r in c.fetchall()]
+        return [self.get_ingredient(i) for i in ids]
 
-    def get_all_ingredient_names(self) -> List[str]:
-        """Retrieve the names of every ingredient in the database.
+    def get_ingredients_by_type(self, ing_type: str) -> List[Ingredient]:
+        """Retrieve all ingredients of a specific subclass type.
+
+        Args:
+            ing_type (str): The ingredient type name to filter by (e.g. ``"Protein"``,
+                ``"Buffer"``, ``"Salt"``).
 
         Returns:
-            List[str]: A list of all stored ingredient names.
+            List[Ingredient]: A list of `Ingredient` subclass instances matching
+                the given type, reconstructed via `get_ingredient`.
         """
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM ingredient WHERE type = ?", (ing_type,))
+        return [self.get_ingredient(r[0]) for r in c.fetchall()]
 
-        names = [
-            ing.name
-            for ing in self.get_all_ingredients()
-            if self._user_mode and ing.is_user or not self._user_mode
-        ]
-
-        return list(set(names))
-
-    def delete_all_ingredients(self) -> None:
-        """Delete all ingredients from the database."""
-        self.db.delete_all_ingredients()
-        self._invalidate_cache()
-
-    def get_by_id(self, id: int, ingredient: Ingredient) -> Ingredient:
-        """Retrieve a specific ingredient by ID, dispatching to the correct subclass method.
+    def get_max_enc_id(self, ing_type: str, min_enc_id: int, max_enc_id: int) -> Optional[int]:
+        """Return the highest ``enc_id`` for a given ingredient type within a range.
 
         Args:
-            id (int): The primary key of the ingredient to fetch.
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine lookup.
+            ing_type (str): The ingredient type name to query (e.g. ``"Protein"``).
+            min_enc_id (int): Lower bound of the ``enc_id`` range (inclusive).
+            max_enc_id (int): Upper bound of the ``enc_id`` range (inclusive).
 
         Returns:
-            Ingredient: The retrieved `Ingredient` subclass instance, or None if not found.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
+            Optional[int]: The maximum ``enc_id`` found within the range, or ``None``
+                if no matching rows exist.
         """
-        t = ingredient.type
-        if t == "Protein":
-            return self.get_protein_by_id(id)
-        elif t == "Buffer":
-            return self.get_buffer_by_id(id)
-        elif t == "Stabilizer":
-            return self.get_stabilizer_by_id(id)
-        elif t == "Salt":
-            return self.get_salt_by_id(id)
-        elif t == "Surfactant":
-            return self.get_surfactant_by_id(id)
-        elif t == "Excipient":
-            return self.get_excipient_by_id(id)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT MAX(enc_id) FROM ingredient WHERE type = ? AND enc_id BETWEEN ? AND ?",
+            (
+                ing_type,
+                min_enc_id,
+                max_enc_id,
+            ),
+        )
+        row = c.fetchone()
+        return row[0] if row and row[0] is not None else None
 
-    def get_by_name(self, name: str, ingredient: Ingredient) -> Ingredient:
-        """Retrieve a specific ingredient by name, dispatching to the correct subclass method.
+    def get_ingredient_by_name_type(self, name: str, ing_type: str) -> Optional[Ingredient]:
+        """Retrieve an ingredient by its name and subclass type.
 
         Args:
-            name (str): The name of the ingredient to fetch.
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine lookup.
+            name (str): The exact name of the ingredient to look up.
+            ing_type (str): The ingredient type name to match (e.g. ``"Protein"``).
 
         Returns:
-            Ingredient: The retrieved `Ingredient` subclass instance, or None if not found.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
+            Optional[Ingredient]: The matching `Ingredient` subclass instance, or
+                ``None`` if no ingredient with the given name and type exists.
         """
-        t = ingredient.type
-        if t == "Protein":
-            return self.get_protein_by_name(name)
-        elif t == "Buffer":
-            return self.get_buffer_by_name(name)
-        elif t == "Stabilizer":
-            return self.get_stabilizer_by_name(name)
-        elif t == "Salt":
-            return self.get_salt_by_name(name)
-        elif t == "Surfactant":
-            return self.get_surfactant_by_name(name)
-        elif t == "Excipient":
-            return self.get_excipient_by_name(name)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
+        c = self.conn.cursor()
+        c.execute(
+            "SELECT id, enc_id, is_user FROM ingredient WHERE name = ? AND type = ?",
+            (name, ing_type),
+        )
+        row = c.fetchone()
+        if not row:
+            return None
+        return self.get_ingredient(row[0])
 
-    def get_by_type(self, ingredient: Ingredient) -> List[Ingredient]:
-        """Retrieve all ingredients of a given subclass type.
-
-        Args:
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine lookup.
-
-        Returns:
-            List[Ingredient]: A list of all ingredients of the specified type.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.get_all_proteins()
-        elif t == "Buffer":
-            return self.get_all_buffers()
-        elif t == "Stabilizer":
-            return self.get_all_stabilizers()
-        elif t == "Salt":
-            return self.get_all_salts()
-        elif t == "Surfactant":
-            return self.get_all_surfactants()
-        elif t == "Excipient":
-            return self.get_all_excipients()
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    def delete_by_id(self, id: int, ingredient: Ingredient) -> None:
-        """Delete a specific ingredient by ID, dispatching to the correct subclass method.
-
-        Args:
-            id (int): The primary key of the ingredient to delete.
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine deletion method.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.delete_protein_by_id(id)
-        elif t == "Buffer":
-            return self.delete_buffer_by_id(id)
-        elif t == "Stabilizer":
-            return self.delete_stabilizer_by_id(id)
-        elif t == "Salt":
-            return self.delete_salt_by_id(id)
-        elif t == "Surfactant":
-            return self.delete_surfactant_by_id(id)
-        elif t == "Excipient":
-            return self.delete_excipient_by_id(id)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    def delete_by_name(self, name: str, ingredient: Ingredient) -> None:
-        """Delete a specific ingredient by name, dispatching to the correct subclass method.
-
-        Args:
-            name (str): The name of the ingredient to delete.
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine deletion method.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.delete_protein_by_name(name)
-        elif t == "Buffer":
-            return self.delete_buffer_by_name(name)
-        elif t == "Stabilizer":
-            return self.delete_stabilizer_by_name(name)
-        elif t == "Salt":
-            return self.delete_salt_by_name(name)
-        elif t == "Surfactant":
-            return self.delete_surfactant_by_name(name)
-        elif t == "Excipient":
-            return self.delete_excipient_by_name(name)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    def delete_by_type(self, ingredient: Ingredient) -> None:
-        """Delete all ingredients of a given subclass type.
-
-        Args:
-            ingredient (Ingredient): An instance of the ingredient subclass type to determine deletion method.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.delete_all_proteins()
-        elif t == "Buffer":
-            return self.delete_all_buffers()
-        elif t == "Stabilizer":
-            return self.delete_all_stabilizers()
-        elif t == "Salt":
-            return self.delete_all_salts()
-        elif t == "Surfactant":
-            return self.delete_all_surfactants()
-        elif t == "Excipient":
-            return self.delete_all_excipients()
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    def add(self, ingredient: Ingredient) -> Ingredient:
-        """Add a new ingredient to the database, dispatching to the correct subclass method.
-
-        If an ingredient with the same name already exists, returns the existing instance.
-
-        Args:
-            ingredient (Ingredient): The `Ingredient` subclass instance to add.
-
-        Returns:
-            Ingredient: The newly added or existing `Ingredient` instance.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.add_protein(ingredient)
-        elif t == "Buffer":
-            return self.add_buffer(ingredient)
-        elif t == "Salt":
-            return self.add_salt(ingredient)
-        elif t == "Stabilizer":
-            return self.add_stabilizer(ingredient)
-        elif t == "Surfactant":
-            return self.add_surfactant(ingredient)
-        elif t == "Excipient":
-            return self.add_excipient(ingredient)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    def update(self, id: int, ingredient: Ingredient) -> None:
-        """Update an existing ingredient by ID, dispatching to the correct subclass method.
+    def update_ingredient(self, id: int, ing: Ingredient) -> bool:
+        """Update an existing ingredient record and its subclass-specific details.
 
         Args:
             id (int): The primary key of the ingredient to update.
-            ingredient (Ingredient): The new `Ingredient` subclass instance containing updated data.
-
-        Raises:
-            ValueError: If the provided `ingredient` type is not supported.
-        """
-        t = ingredient.type
-        if t == "Protein":
-            return self.update_protein(id, ingredient)
-        elif t == "Buffer":
-            return self.update_buffer(id, ingredient)
-        elif t == "Salt":
-            return self.update_salt(id, ingredient)
-        elif t == "Stabilizer":
-            return self.update_stabilizer(id, ingredient)
-        elif t == "Surfactant":
-            return self.update_surfactant(id, ingredient)
-        elif t == "Excipient":
-            return self.update_excipient(id, ingredient)
-        else:
-            raise ValueError(f"Ingredient type '{t}' not supported.")
-
-    # ----- Accessors ----- #
-
-    def get_protein_by_id(self, id: int) -> Optional[Protein]:
-        """Retrieve a `Protein` by its database ID.
-
-        Args:
-            id (int): The primary key of the protein to fetch.
+            ing (Ingredient): An instance of an `Ingredient` subclass containing new data.
+                The `id` of `ing` is not used; only `enc_id`, `name`, `is_user`, and subclass fields are updated.
 
         Returns:
-            Optional[Protein]: The `Protein` instance if found, otherwise None.
+            bool: True if the update succeeded (ingredient existed), False if no ingredient with `id` existed.
         """
-        return self._get_ingredient(id)  # type: ignore[return-value]
+        c = self.conn.cursor()
+        c.execute("SELECT 1 FROM ingredient WHERE id = ?", (id,))
+        if not c.fetchone():
+            return False
 
-    def get_protein_by_name(self, name: str) -> Optional[Protein]:
-        """Retrieve a `Protein` by its name.
-
-        Args:
-            name (str): Name of the protein to fetch.
-
-        Returns:
-            Optional[Protein]: The `Protein` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Protein")
-
-    def get_all_proteins(self) -> List[Protein]:
-        """Retrieve all `Protein` instances from the database.
-
-        Returns:
-            List[Protein]: A list of all proteins in the database.
-        """
-        return self._fetch_by_type(type="Protein", unique=True)
-
-    def get_buffer_by_id(self, id: int) -> Optional[Buffer]:
-        """Retrieve a `Buffer` by its database ID.
-
-        Args:
-            id (int): The primary key of the buffer to fetch.
-
-        Returns:
-            Optional[Buffer]: The `Buffer` instance if found, otherwise None.
-        """
-        return self._get_ingredient(id)  # type: ignore[return-value]
-
-    def get_buffer_by_name(self, name: str) -> Optional[Buffer]:
-        """Retrieve a `Buffer` by its name.
-
-        Args:
-            name (str): Name of the buffer to fetch.
-
-        Returns:
-            Optional[Buffer]: The `Buffer` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Buffer")
-
-    def get_all_buffers(self) -> List[Buffer]:
-        """Retrieve all `Buffer` instances from the database.
-
-        Returns:
-            List[Buffer]: A list of all buffers in the database.
-        """
-        return self._fetch_by_type(type="Buffer", unique=True)
-
-    def get_salt_by_id(self, id: int) -> Optional[Salt]:
-        """Retrieve a `Salt` by its database ID.
-
-        Args:
-            id (int): The primary key of the salt to fetch.
-
-        Returns:
-            Optional[Salt]: The `Salt` instance if found, otherwise None.
-        """
-        return self._get_ingredient(id)  # type: ignore[return-value]
-
-    def get_salt_by_name(self, name: str) -> Optional[Salt]:
-        """Retrieve a `Salt` by its name.
-
-        Args:
-            name (str): Name of the salt to fetch.
-
-        Returns:
-            Optional[Salt]: The `Salt` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Salt")
-
-    def get_all_salts(self) -> List[Salt]:
-        """Retrieve all `Salt` instances from the database.
-
-        Returns:
-            List[Salt]: A list of all salts in the database.
-        """
-        return self._fetch_by_type(type="Salt", unique=True)
-
-    def get_excipient_by_id(self, id: int) -> Optional[Excipient]:
-        """Retrieve a `Excipient` by its database ID.
-
-        Args:
-            id (int): The primary key of the surfactant to fetch.
-
-        Returns:
-            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
-        """
-        return self._get_ingredient(id)  # type: ignore[return-value]
-
-    def get_excipient_by_name(self, name: str) -> Optional[Excipient]:
-        """Retrieve a `Excipient` by its name.
-
-        Args:
-            name (str): Name of the excipient to fetch.
-
-        Returns:
-            Optional[Excipient]: The `Excipient` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Excipient")
-
-    def get_all_excipients(self) -> List[Excipient]:
-        """Retrieve all `Excipients` instances from the database.
-
-        Returns:
-            List[Excipient]: A list of all excipients in the database.
-        """
-        return self._fetch_by_type(type="Excipient", unique=True)
-
-    def get_surfactant_by_id(self, id: int) -> Optional[Surfactant]:
-        """Retrieve a `Surfactant` by its database ID.
-
-        Args:
-            id (int): The primary key of the surfactant to fetch.
-
-        Returns:
-            Optional[Surfactant]: The `Surfactant` instance if found, otherwise None.
-        """
-        return self._get_ingredient(id)  # type: ignore[return-value]
-
-    def get_surfactant_by_name(self, name: str) -> Optional[Surfactant]:
-        """Retrieve a `Surfactant` by its name.
-
-        Args:
-            name (str): Name of the surfactant to fetch.
-
-        Returns:
-            Optional[Surfactant]: The `Surfactant` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Surfactant")
-
-    def get_all_surfactants(self) -> List[Surfactant]:
-        """Retrieve all `Surfactant` instances from the database.
-
-        Returns:
-            List[Surfactant]: A list of all surfactants in the database.
-        """
-        return self._fetch_by_type(type="Surfactant", unique=True)
-
-    def get_stabilizer_by_id(self, id: int) -> Optional[Stabilizer]:
-        """Retrieve a `Stabilizer` by its database ID.
-
-        Args:
-            id (int): The primary key of the stabilizer to fetch.
-
-        Returns:
-            Optional[Stabilizer]: The `Stabilizer` instance if found, otherwise None.
-        """
-        return self._get_ingredient(id)  # type: ignore[return-value]
-
-    def get_stabilizer_by_name(self, name: str) -> Optional[Stabilizer]:
-        """Retrieve a `Stabilizer` by its name.
-
-        Args:
-            name (str): Name of the stabilizer to fetch.
-
-        Returns:
-            Optional[Stabilizer]: The `Stabilizer` instance if found, otherwise None.
-        """
-        return self._fetch_by_name(name, type="Stabilizer")
-
-    def get_all_stabilizers(self) -> List[Stabilizer]:
-        """Retrieve all `Stabilizer` instances from the database.
-
-        Returns:
-            List[Stabilizer]: A list of all stabilizers in the database.
-        """
-        return self._fetch_by_type(type="Stabilizer", unique=True)
-
-    # ----- Creators (per‐type, with auto‐assignment of enc_id) ----- #
-
-    def add_protein(self, protein: Protein) -> Protein:
-        """Add a new `Protein` to the database, assigning a unique `enc_id` if needed.
-
-        If a protein with the same name already exists, returns the existing instance.
-
-        Args:
-            protein (Protein): A `Protein` instance with `name` and optional properties.
-
-        Returns:
-            Protein: The newly added or existing `Protein` instance.
-        """
-        existing = self.get_protein_by_name(protein.name)
-        if existing is not None:
-            if existing != protein:
-                return self.update_protein(existing.id, protein)
-            return existing
-
-        protein.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Protein"
+        c.execute(
+            "UPDATE ingredient SET enc_id = ?, name = ?, type = ?, is_user = ? WHERE id = ?",
+            (ing.enc_id, ing.name, type(ing).__name__, int(ing.is_user), id),
         )
-        db_id = self.db.add_ingredient(protein)
-        protein.id = db_id
-        self._cache[db_id] = protein
-        self._name_cache[(protein.name, "Protein")] = protein
-        return protein
-
-    def add_buffer(self, buffer: Buffer) -> Buffer:
-        """Add a new `Buffer` to the database, assigning a unique `enc_id` if needed.
-
-        If a buffer with the same name already exists, returns the existing instance.
-
-        Args:
-            buffer (Buffer): A `Buffer` instance with `name` and optional pH.
-
-        Returns:
-            Buffer: The newly added or existing `Buffer` instance.
-        """
-        existing = self.get_buffer_by_name(buffer.name)
-        if existing is not None:
-            if existing != buffer:
-                return self.update_buffer(existing.id, buffer)
-            return existing
-
-        buffer.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Buffer"
-        )
-        db_id = self.db.add_ingredient(buffer)
-        buffer.id = db_id
-        self._cache[db_id] = buffer
-        self._name_cache[(buffer.name, "Buffer")] = buffer
-        return buffer
-
-    def add_salt(self, salt: Salt) -> Salt:
-        """Add a new `Salt` to the database, assigning a unique `enc_id` if needed.
-
-        If a salt with the same name already exists, returns the existing instance.
-
-        Args:
-            salt (Salt): A `Salt` instance with `name`.
-
-        Returns:
-            Salt: The newly added or existing `Salt` instance.
-        """
-        existing = self.get_salt_by_name(salt.name)
-        if existing is not None:
-            if existing != salt:
-                return self.update_salt(existing.id, salt)
-            return existing
-
-        salt.enc_id = self._get_next_enc_id(is_user=self._user_mode, ing_type="Salt")
-        db_id = self.db.add_ingredient(salt)
-        salt.id = db_id
-        self._cache[db_id] = salt
-        self._name_cache[(salt.name, "Salt")] = salt
-        return salt
-
-    def add_stabilizer(self, stabilizer: Stabilizer) -> Stabilizer:
-        """Add a new `Stabilizer` to the database, assigning a unique `enc_id` if needed.
-
-        If a stabilizer with the same name already exists, returns the existing instance.
-
-        Args:
-            stabilizer (Stabilizer): A `Stabilizer` instance with `name`.
-
-        Returns:
-            Stabilizer: The newly added or existing `Stabilizer` instance.
-        """
-        existing = self.get_stabilizer_by_name(stabilizer.name)
-        if existing is not None:
-            if existing != stabilizer:
-                return self.update_stabilizer(existing.id, stabilizer)
-            return existing
-
-        stabilizer.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Stabilizer"
-        )
-        db_id = self.db.add_ingredient(stabilizer)
-        stabilizer.id = db_id
-        self._cache[db_id] = stabilizer
-        self._name_cache[(stabilizer.name, "Stabilizer")] = stabilizer
-        return stabilizer
-
-    def add_surfactant(self, surfactant: Surfactant) -> Surfactant:
-        """Add a new `Surfactant` to the database, assigning a unique `enc_id` if needed.
-
-        If a surfactant with the same name already exists, returns the existing instance.
-
-        Args:
-            surfactant (Surfactant): A `Surfactant` instance with `name`.
-
-        Returns:
-            Surfactant: The newly added or existing `Surfactant` instance.
-        """
-        existing = self.get_surfactant_by_name(surfactant.name)
-        if existing is not None:
-            if existing != surfactant:
-                return self.update_surfactant(existing.id, surfactant)
-            return existing
-
-        surfactant.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Surfactant"
-        )
-        db_id = self.db.add_ingredient(surfactant)
-        surfactant.id = db_id
-        self._cache[db_id] = surfactant
-        self._name_cache[(surfactant.name, "Surfactant")] = surfactant
-        return surfactant
-
-    def add_excipient(self, excipient: Excipient) -> Excipient:
-        """Add a new `Excipient` to the database, assigning a unique `enc_id` if needed.
-
-        If a Excipient with the same name already exists, returns the existing instance.
-
-        Args:
-            excipient (Excipient): A `Excipient` instance with `name`.
-
-        Returns:
-            Excipient: The newly added or existing `Excipient` instance.
-        """
-        existing = self.get_excipient_by_name(excipient.name)
-        if existing is not None:
-            if existing != excipient:
-                return self.update_excipient(existing.id, excipient)
-            return existing
-
-        excipient.enc_id = self._get_next_enc_id(
-            is_user=self._user_mode, ing_type="Excipient"
-        )
-        db_id = self.db.add_ingredient(excipient)
-        excipient.id = db_id
-        self._cache[db_id] = excipient
-        self._name_cache[(excipient.name, "Excipient")] = excipient
-        return excipient
-
-    # ----- Deletion ----- #
-
-    def delete_protein_by_id(self, id: int) -> None:
-        """Delete a `Protein` by its database ID.
-
-        Args:
-            id (int): The primary key of the protein to delete.
-
-        Raises:
-            ValueError: If no protein exists with the given ID.
-        """
-        if self.get_protein_by_id(id) is None:
-            raise ValueError(f"Protein with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_protein_by_name(self, name: str) -> None:
-        """Delete a `Protein` by its name.
-
-        Args:
-            name (str): The name of the protein to delete.
-
-        Raises:
-            ValueError: If no protein exists with the given name.
-        """
-        protein = self.get_protein_by_name(name)
-        if protein is None:
-            raise ValueError(f"Protein with name '{name}' does not exist.")
-        self.db.delete_ingredient(protein.id)
-        self._invalidate_cache()
-
-    def delete_all_proteins(self) -> None:
-        """Delete all `Protein` instances from the database.
-
-        Raises:
-            ValueError: If no proteins are found.
-        """
-        proteins = self.get_all_proteins()
-        if not proteins:
-            raise ValueError("No items of type 'Protein' found.")
-        for p in proteins:
-            self.db.delete_ingredient(p.id)
-        self._invalidate_cache()
-
-    def delete_buffer_by_id(self, id: int) -> None:
-        """Delete a `Buffer` by its database ID.
-
-        Args:
-            id (int): The primary key of the buffer to delete.
-
-        Raises:
-            ValueError: If no buffer exists with the given ID.
-        """
-        if self.get_buffer_by_id(id) is None:
-            raise ValueError(f"Buffer with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_buffer_by_name(self, name: str) -> None:
-        """Delete a `Buffer` by its name.
-
-        Args:
-            name (str): The name of the buffer to delete.
-
-        Raises:
-            ValueError: If no buffer exists with the given name.
-        """
-        buffer = self.get_buffer_by_name(name)
-        if buffer is None:
-            raise ValueError(f"Buffer with name '{name}' does not exist.")
-        self.db.delete_ingredient(buffer.id)
-        self._invalidate_cache()
-
-    def delete_all_buffers(self) -> None:
-        """Delete all `Buffer` instances from the database.
-
-        Raises:
-            ValueError: If no buffers are found.
-        """
-        buffers = self.get_all_buffers()
-        if not buffers:
-            raise ValueError("No items of type 'Buffer' found.")
-        for b in buffers:
-            self.db.delete_ingredient(b.id)
-        self._invalidate_cache()
-
-    def delete_salt_by_id(self, id: int) -> None:
-        """Delete a `Salt` by its database ID.
-
-        Args:
-            id (int): The primary key of the salt to delete.
-
-        Raises:
-            ValueError: If no salt exists with the given ID.
-        """
-        if self.get_salt_by_id(id) is None:
-            raise ValueError(f"Salt with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_salt_by_name(self, name: str) -> None:
-        """Delete a `Salt` by its name.
-
-        Args:
-            name (str): The name of the salt to delete.
-
-        Raises:
-            ValueError: If no salt exists with the given name.
-        """
-        salt = self.get_salt_by_name(name)
-        if salt is None:
-            raise ValueError(f"Salt with name '{name}' does not exist.")
-        self.db.delete_ingredient(salt.id)
-        self._invalidate_cache()
-
-    def delete_all_salts(self) -> None:
-        """Delete all `Salt` instances from the database.
-
-        Raises:
-            ValueError: If no salts are found.
-        """
-        salts = self.get_all_salts()
-        if not salts:
-            raise ValueError("No items of type 'Salt' found.")
-        for s in salts:
-            self.db.delete_ingredient(s.id)
-        self._invalidate_cache()
-
-    def delete_surfactant_by_id(self, id: int) -> None:
-        """Delete a `Surfactant` by its database ID.
-
-        Args:
-            id (int): The primary key of the surfactant to delete.
-
-        Raises:
-            ValueError: If no surfactant exists with the given ID.
-        """
-        if self.get_surfactant_by_id(id) is None:
-            raise ValueError(f"Surfactant with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_surfactant_by_name(self, name: str) -> None:
-        """Delete a `Surfactant` by its name.
-
-        Args:
-            name (str): The name of the surfactant to delete.
-
-        Raises:
-            ValueError: If no surfactant exists with the given name.
-        """
-        surf = self.get_surfactant_by_name(name)
-        if surf is None:
-            raise ValueError(f"Surfactant with name '{name}' does not exist.")
-        self.db.delete_ingredient(surf.id)
-        self._invalidate_cache()
-
-    def delete_all_surfactants(self) -> None:
-        """Delete all `Surfactant` instances from the database.
-
-        Raises:
-            ValueError: If no surfactants are found.
-        """
-        surfs = self.get_all_surfactants()
-        if not surfs:
-            raise ValueError("No items of type 'Surfactant' found.")
-        for s in surfs:
-            self.db.delete_ingredient(s.id)
-        self._invalidate_cache()
-
-    def delete_stabilizer_by_id(self, id: int) -> None:
-        """Delete a `Stabilizer` by its database ID.
-
-        Args:
-            id (int): The primary key of the stabilizer to delete.
-
-        Raises:
-            ValueError: If no stabilizer exists with the given ID.
-        """
-        if self.get_stabilizer_by_id(id) is None:
-            raise ValueError(f"Stabilizer with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_stabilizer_by_name(self, name: str) -> None:
-        """Delete a `Stabilizer` by its name.
-
-        Args:
-            name (str): The name of the stabilizer to delete.
-
-        Raises:
-            ValueError: If no stabilizer exists with the given name.
-        """
-        stab = self.get_stabilizer_by_name(name)
-        if stab is None:
-            raise ValueError(f"Stabilizer with name '{name}' does not exist.")
-        self.db.delete_ingredient(stab.id)
-        self._invalidate_cache()
-
-    def delete_all_stabilizers(self) -> None:
-        """Delete all `Stabilizer` instances from the database.
-
-        Raises:
-            ValueError: If no stabilizers are found.
-        """
-        stabs = self.get_all_stabilizers()
-        if not stabs:
-            raise ValueError("No items of type 'Stabilizer' found.")
-        for s in stabs:
-            self.db.delete_ingredient(s.id)
-        self._invalidate_cache()
-
-    def delete_excipient_by_id(self, id: int) -> None:
-        """Delete a `Excipient` by its database ID.
-
-        Args:
-            id (int): The primary key of the excipient to delete.
-
-        Raises:
-            ValueError: If no excipient exists with the given ID.
-        """
-        if self.get_excipient_by_id(id) is None:
-            raise ValueError(f"Excipient with id {id} does not exist.")
-        self.db.delete_ingredient(id)
-        self._invalidate_cache()
-
-    def delete_excipient_by_name(self, name: str) -> None:
-        """Delete a `Excipient` by its name.
-
-        Args:
-            name (str): The name of the Excipient to delete.
-
-        Raises:
-            ValueError: If no Excipient exists with the given name.
-        """
-        excip = self.get_excipient_by_name(name)
-        if excip is None:
-            raise ValueError(f"Excipient with name '{name}' does not exist.")
-        self.db.delete_ingredient(excip.id)
-        self._invalidate_cache()
-
-    def delete_all_excipients(self) -> None:
-        """Delete all `Excipient` instances from the database.
-
-        Raises:
-            ValueError: If no Excipients are found.
-        """
-        excips = self.get_all_excipients()
-        if not excips:
-            raise ValueError("No items of type 'Excipient' found.")
-        for e in excips:
-            self.db.delete_ingredient(e.id)
-        self._invalidate_cache()
-
-    def update_protein(self, id: int, p_new: Protein) -> Protein:
-        """Update an existing `Protein` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing protein to update.
-            p_new (Protein): The new `Protein` instance containing updated data.
-
-        Returns:
-            Protein: The updated `Protein` instance.
-
-        Raises:
-            ValueError: If no protein exists with the given ID.
-        """
-        p_fetch = self.get_protein_by_id(id)
-        if p_fetch is None:
-            raise ValueError(f"Protein with id '{id}' does not exist.")
-        if p_fetch == p_new:
-            return p_fetch
-
-        # Preserve enc_id and is_user
-        p_new.enc_id = p_fetch.enc_id
-        p_new.is_user = p_fetch.is_user
-
-        self.db.update_ingredient(p_fetch.id, p_new)
-        p_new.id = p_fetch.id
-        self._cache[p_fetch.id] = p_new
-        if p_fetch.name != p_new.name:
-            self._name_cache.pop((p_fetch.name, "Protein"), None)
-        self._name_cache[(p_new.name, "Protein")] = p_new
-        return p_new
-
-    def update_buffer(self, id: int, b_new: Buffer) -> Buffer:
-        """Update an existing `Buffer` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing buffer to update.
-            b_new (Buffer): The new `Buffer` instance containing updated data.
-
-        Returns:
-            Buffer: The updated `Buffer` instance.
-
-        Raises:
-            ValueError: If no buffer exists with the given ID.
-        """
-        b_fetch = self.get_buffer_by_id(id)
-        if b_fetch is None:
-            raise ValueError(f"Buffer with id '{id}' does not exist.")
-        if b_fetch == b_new:
-            return b_new
-
-        b_new.enc_id = b_fetch.enc_id
-        b_new.is_user = b_fetch.is_user
-
-        self.db.update_ingredient(b_fetch.id, b_new)
-        b_new.id = b_fetch.id
-        self._cache[b_fetch.id] = b_new
-        if b_fetch.name != b_new.name:
-            self._name_cache.pop((b_fetch.name, "Buffer"), None)
-        self._name_cache[(b_new.name, "Buffer")] = b_new
-        return b_new
-
-    def update_salt(self, id: int, s_new: Salt) -> Salt:
-        """Update an existing `Salt` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing salt to update.
-            s_new (Salt): The new `Salt` instance containing updated data.
-
-        Returns:
-            Salt: The updated `Salt` instance.
-
-        Raises:
-            ValueError: If no salt exists with the given ID.
-        """
-        s_fetch = self.get_salt_by_id(id)
-        if s_fetch is None:
-            raise ValueError(f"Salt with id '{id}' does not exist.")
-        if s_fetch == s_new:
-            return s_new
-
-        s_new.enc_id = s_fetch.enc_id
-        s_new.is_user = s_fetch.is_user
-
-        self.db.update_ingredient(s_fetch.id, s_new)
-        s_new.id = s_fetch.id
-        self._cache[s_fetch.id] = s_new
-        if s_fetch.name != s_new.name:
-            self._name_cache.pop((s_fetch.name, "Salt"), None)
-        self._name_cache[(s_new.name, "Salt")] = s_new
-        return s_new
-
-    def update_surfactant(self, id: int, s_new: Surfactant) -> Surfactant:
-        """Update an existing `Surfactant` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing surfactant to update.
-            s_new (Surfactant): The new `Surfactant` instance containing updated data.
-
-        Returns:
-            Surfactant: The updated `Surfactant` instance.
-
-        Raises:
-            ValueError: If no surfactant exists with the given ID.
-        """
-        s_fetch = self.get_surfactant_by_id(id)
-        if s_fetch is None:
-            raise ValueError(f"Surfactant with id '{id}' does not exist.")
-        if s_fetch == s_new:
-            return s_new
-
-        s_new.enc_id = s_fetch.enc_id
-        s_new.is_user = s_fetch.is_user
-
-        self.db.update_ingredient(s_fetch.id, s_new)
-        s_new.id = s_fetch.id
-        self._cache[s_fetch.id] = s_new
-        if s_fetch.name != s_new.name:
-            self._name_cache.pop((s_fetch.name, "Surfactant"), None)
-        self._name_cache[(s_new.name, "Surfactant")] = s_new
-        return s_new
-
-    def update_stabilizer(self, id: int, s_new: Stabilizer) -> Stabilizer:
-        """Update an existing `Stabilizer` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing stabilizer to update.
-            s_new (Stabilizer): The new `Stabilizer` instance containing updated data.
-
-        Returns:
-            Stabilizer: The updated `Stabilizer` instance.
-
-        Raises:
-            ValueError: If no stabilizer exists with the given ID.
-        """
-        s_fetch = self.get_stabilizer_by_id(id)
-        if s_fetch is None:
-            raise ValueError(f"Stabilizer with id '{id}' does not exist.")
-        if s_fetch == s_new:
-            return s_new
-
-        s_new.enc_id = s_fetch.enc_id
-        s_new.is_user = s_fetch.is_user
-
-        self.db.update_ingredient(s_fetch.id, s_new)
-        s_new.id = s_fetch.id
-        self._cache[s_fetch.id] = s_new
-        if s_fetch.name != s_new.name:
-            self._name_cache.pop((s_fetch.name, "Stabilizer"), None)
-        self._name_cache[(s_new.name, "Stabilizer")] = s_new
-        return s_new
-
-    def update_excipient(self, id: int, e_new: Excipient) -> Excipient:
-        """Update an existing `Excipient` record by replacing it.
-
-        Preserves the original `enc_id` and `is_user` fields.
-
-        Args:
-            id (int): The primary key of the existing excipient to update.
-            e_new (Excipient): The new `Excipient` instance containing updated data.
-
-        Returns:
-            Stabilizer: The updated `Excipient` instance.
-
-        Raises:
-            ValueError: If no excipient exists with the given ID.
-        """
-        e_fetch = self.get_excipient_by_id(id)
-        if e_fetch is None:
-            raise ValueError(f"Excipients with id '{id}' does not exist.")
-        if e_fetch == e_new:
-            return e_new
-
-        e_new.enc_id = e_fetch.enc_id
-        e_new.is_user = e_fetch.is_user
-
-        self.db.update_ingredient(e_fetch.id, e_new)
-        e_new.id = e_fetch.id
-        self._cache[e_fetch.id] = e_new
-        if e_fetch.name != e_new.name:
-            self._name_cache.pop((e_fetch.name, "Excipient"), None)
-        self._name_cache[(e_new.name, "Excipient")] = e_new
-        return e_new
-
-    def fuzzy_fetch(
-        self, name: str, max_results: int = 5, score_cutoff: int = 90
-    ) -> list[str]:
-        """
-        Utility to perform fuzzy matching between ingredient names and persistent names
-        stored in the database.  This method operates by fetching all persistent ingredient names
-        and then fuzzily matching them against the parameterized name str.  The best match(es) above the
-        score_cutoff is returned to the caller as a string list containing ingredient name(s).
-
-        Args:
-            name (str): the name of the ingredient to fetch.
-            max_results (int): the number of fuzzily matched Ingredient objects to return.
-            score_cutoff (int): confidence measure for RapidFuzz to determine accuracy.
-
-        Returns:
-            list[str] a list of fuzzily matched ingredient names or a list of None * [max_results]
-            if no matches are found.
-        """
-        all_names = self.get_all_ingredient_names()
-        name_mapping = {n.lower(): n for n in all_names}
-        matches = process.extract(
-            query=name.lower(),
-            choices=list(name_mapping.keys()),
-            scorer=fuzz.WRatio,
-            limit=max_results,
-            score_cutoff=score_cutoff,
-        )
-        return [name_mapping[match_name] for match_name, score, idx in matches]
-
-    def _fetch_by_type(self, type: str, unique: bool = False) -> List[Ingredient]:
-        """Helper method to retrieve all ingredients of a given subclass type.
-
-        Args:
-            type (str): The subclass name (e.g., "Protein", "Buffer").
-            unique (bool): If True, filters out duplicates by name (keeping the first occurrence).
-
-        Returns:
-            List[Ingredient]: A list of ingredients matching the specified type.
-        """
-        ingredients = [
-            ing
-            for ing in self.db.get_ingredients_by_type(type)
-            if not self._user_mode or ing.is_user
-        ]
-        for ing in ingredients:
-            if ing.id not in self._cache:
-                self._cache[ing.id] = ing
-        if unique:
-            seen = set()
-            result = []
-            for ing in ingredients:
-                if ing.name not in seen:
-                    result.append(ing)
-                    seen.add(ing.name)
-            return result
-        return ingredients
-
-    def _fetch_by_name(self, name: str, type: str) -> Optional[Ingredient]:
-        """Helper method to retrieve a single ingredient by name and subclass type.
-        This method performs an exact match on the ingredient name to ensure distinct
-        ingredients (e.g., 'Vuda' vs 'Vudalimab') are treated separately.
-
-        Args:
-            name (str): The ingredient name to match.
-            type (str): The subclass name (e.g., "Protein", "Buffer").
-
-        Returns:
-            Optional[Ingredient]: The matching ingredient instance if found, otherwise None.
-        """
-        key = (name, type)
-        if key in self._name_cache:
-            ing = self._name_cache[key]
-            if not self._user_mode or ing.is_user:
-                return ing
-        ing = self.db.get_ingredient_by_name_type(name, type)
-        if ing is None:
-            return None
-        if self._user_mode and not ing.is_user:
-            return None
-        self._name_cache[key] = ing  # warm on first DB hit
-        self._cache[ing.id] = ing
-        return ing
-
-    def _get_next_enc_id(self, *, is_user: bool, ing_type: str) -> int:
-        """Compute the next `enc_id` for a new ingredient of a given subclass.
-
-        Args:
-            is_user (bool): Whether the new ingredient is user-created (`True`) or developer-created (`False`).
-            ing_type (str): The subclass name (e.g., "Protein", "Buffer").
-
-        Returns:
-            int: The next available `enc_id` for this subclass and user/dev category.
-
-        Raises:
-            RuntimeError: If no developer `enc_id` slots remain (for developer-created ingredients).
-        """
-        # same_type = self._fetch_by_type(type=ing_type)
-        # if is_user:
-        #     # User-created enc_id must start at USER_START_ID
-        #     used = [ing.enc_id for ing in same_type if ing.enc_id >= self.USER_START_ID]
-        #     if not used:
-        #         return self.USER_START_ID
-        #     else:
-        #         return max(used) + 1
-        # else:
-        #     # Developer-created enc_id must be in range [1..DEV_MAX_ID]
-        #     used = [
-        #         ing.enc_id for ing in same_type if 1 <= ing.enc_id <= self.DEV_MAX_ID
-        #     ]
-        #     if not used:
-        #         return 1
-        #     next_id = max(used) + 1
-        #     if next_id > self.DEV_MAX_ID:
-        #         raise RuntimeError(
-        #             f"No developer enc_id available for type '{ing_type}' (1..{self.DEV_MAX_ID} exhausted)."
-        #         )
-        #     return next_id
-        if is_user:
-            max_id = self.db.get_max_enc_id(ing_type, self.USER_START_ID, 2**63 - 1)
-            return (max_id + 1) if max_id is not None else self.USER_START_ID
-        else:
-            max_id = self.db.get_max_enc_id(ing_type, 1, self.DEV_MAX_ID)
-            if max_id is None:
-                return 1
-            next_id = max_id + 1
-            if next_id > self.DEV_MAX_ID:
-                raise RuntimeError(
-                    f"No developer enc_id available for type '{ing_type}'."
+        # Clear any existing subclass rows for this ingredient
+        c.execute("DELETE FROM protein WHERE ingredient_id = ?", (id,))
+        c.execute("DELETE FROM buffer WHERE ingredient_id = ?", (id,))
+        c.execute("DELETE FROM stabilizer WHERE ingredient_id = ?", (id,))
+        c.execute("DELETE FROM surfactant WHERE ingredient_id = ?", (id,))
+        c.execute("DELETE FROM salt WHERE ingredient_id = ?", (id,))
+        c.execute("DELETE FROM excipient WHERE ingredient_id = ?", (id,))
+        # Re-insert appropriate subclass row
+        if isinstance(ing, Protein):
+            class_val = (
+                ing.class_type.value
+                if isinstance(ing.class_type, ProteinClass)
+                else (
+                    (ing.class_type or ProteinClass.NONE).value
+                    if isinstance(ing.class_type, ProteinClass) is False
+                    and ing.class_type is not None
+                    else ProteinClass.NONE.value
                 )
-            return next_id
+            )
+
+            c.execute(
+                """
+                INSERT INTO protein
+                    (ingredient_id, class_type, molecular_weight, pI_mean, pI_range)
+                VALUES (?, ?, ?, ?, ?)
+            """,
+                (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
+            )
+        elif isinstance(ing, Buffer):
+            c.execute("INSERT INTO buffer VALUES (?, ?)", (id,))
+        elif isinstance(ing, Stabilizer):
+            c.execute("INSERT INTO stabilizer VALUES (?)", (id,))
+        elif isinstance(ing, Surfactant):
+            c.execute("INSERT INTO surfactant VALUES (?)", (id,))
+        elif isinstance(ing, Salt):
+            c.execute("INSERT INTO salt VALUES (?)", (id,))
+        elif isinstance(ing, Excipient):
+            c.execute("INSERT INTO excipient VALUES (?)", (id,))
+
+        self._commit()
+        if self.use_encryption:
+            self.backup()
+        return True
+
+    def delete_ingredient(self, id: int) -> bool:
+        """Delete an ingredient and all related subclass data from the database.
+
+        Args:
+            id (int): The primary key of the ingredient to delete.
+
+        Returns:
+            bool: True if a row was deleted (ingredient existed), False otherwise.
+        """
+        c = self.conn.cursor()
+        c.execute("DELETE FROM ingredient WHERE id = ?", (id,))
+        self._commit()
+        return c.rowcount > 0
+
+    def delete_all_ingredients(self) -> None:
+        """Remove all ingredients and their subclass-specific data from the database."""
+        c = self.conn.cursor()
+        c.execute("DELETE FROM ingredient")
+        self._commit()
+
+    def add_formulations_batch(self, forms: List[Formulation]) -> None:
+        """Batch insert all formulations, components, and viscosity profiles in 3 SQL calls."""
+        if not forms:
+            return
+        c = self.conn.cursor()
+        for f in forms:
+            c.execute(
+                "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
+                (f.name, f.signature, f.temperature, int(f.icl), f.last_model),
+            )
+            f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
+        comp_rows = [
+            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units, comp.pH)
+            for f in forms
+            for comp_type, comp in f._components.items()
+            if comp is not None
+        ]
+        c.executemany(
+            "INSERT INTO formulation_component "
+            "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            comp_rows,
+        )
+        vp_rows = [
+            (
+                f.id,
+                json.dumps(f.viscosity_profile.shear_rates),
+                json.dumps(f.viscosity_profile.viscosities),
+                f.viscosity_profile.units,
+                int(f.viscosity_profile.is_measured),
+            )
+            for f in forms
+            if f.viscosity_profile
+        ]
+        if vp_rows:
+            c.executemany(
+                "INSERT INTO viscosity_profile "
+                "(formulation_id, shear_rates, viscosities, units, is_measured) "
+                "VALUES (?, ?, ?, ?, ?)",
+                vp_rows,
+            )
+
+        self._commit()
+        if self.use_encryption and not self._defer_backup:
+            self.backup()
+
+    def add_formulation(self, form: Formulation) -> int:
+        """Insert a new formulation, its components, and viscosity profile into the database.
+
+        Args:
+            form (Formulation): A `Formulation` instance with its `_components` dictionary
+                populated (Protein, Buffer, Stabilizer, Surfactant, Salt, Excipient as `Component`),
+                and `viscosity_profile` optionally set.
+
+        Returns:
+            int: The database-assigned primary key (`id`) of the newly inserted formulation.
+        """
+        c = self.conn.cursor()
+        c.execute(
+            "INSERT INTO formulation (name, signature, temperature, icl, last_model) VALUES (?, ?, ?, ?, ?)",
+            (
+                form.name,
+                form.signature,
+                form.temperature,
+                int(form.icl),
+                form.last_model,
+            ),
+        )
+        fid = c.lastrowid
+
+        # Insert each non-None component; ensure ingredient is also persisted
+        for comp_type, comp in form._components.items():
+            if comp is None:
+                continue
+            iid = (
+                comp.ingredient.id
+                if comp.ingredient.id is not None
+                else self.add_ingredient(comp.ingredient)
+            )
+            c.execute(
+                "INSERT INTO formulation_component "
+                "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH),
+            )
+        # Insert viscosity profile if present
+        if form.viscosity_profile:
+            vp = form.viscosity_profile
+            c.execute(
+                "INSERT INTO viscosity_profile "
+                "(formulation_id, shear_rates, viscosities, units, is_measured) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (
+                    fid,
+                    json.dumps(vp.shear_rates),
+                    json.dumps(vp.viscosities),
+                    vp.units,
+                    int(vp.is_measured),
+                ),
+            )
+
+        self._commit()
+        if self.use_encryption and not self._defer_backup:
+            self.backup()
+        form.id = fid
+        return fid
+
+    def get_formulation(self, id: int) -> Optional[Formulation]:
+        """Retrieve a formulation by ID, reconstructing its components and viscosity profile.
+
+        Args:
+            id (int): The primary key of the formulation to fetch.
+
+        Returns:
+            Optional[Formulation]: A `Formulation` instance with populated components,
+                temperature, and viscosity profile, or `None` if not found.
+        """
+        c = self.conn.cursor()
+
+        try:
+            c.execute(
+                "SELECT name, signature, temperature, icl, last_model FROM formulation WHERE id = ?",
+                (id,),
+            )
+            row = c.fetchone()
+        except sqlite3.OperationalError:
+            c.execute(
+                "SELECT name, signature, temperature FROM formulation WHERE id = ?",
+                (id,),
+            )
+            row = c.fetchone()
+            if row:
+                row = row + (1, None)
+
+        if not row:
+            return None
+
+        name, signature, temp, icl, last_model = row
+
+        form = Formulation(id=id, name=name, signature=signature)
+        form.set_temperature(temp)
+        form.icl = bool(icl) if icl is not None else True
+        form.last_model = last_model
+
+        c.execute(
+            "SELECT component_type, ingredient_id, concentration, units, pH "
+            "FROM formulation_component WHERE formulation_id = ?",
+            (id,),
+        )
+        rows = c.fetchall()
+
+        for r in rows:
+            comp_type, iid, conc, units, ph = r
+            ingredient = self.get_ingredient(iid)
+            if ingredient:
+                if comp_type in form._components:
+                    form._components[comp_type] = Component(ingredient, conc, units, pH=ph)
+
+        c.execute(
+            "SELECT shear_rates, viscosities, units, is_measured "
+            "FROM viscosity_profile WHERE formulation_id = ?",
+            (id,),
+        )
+        row = c.fetchone()
+        if row:
+            srs, vs, units, meas = row
+            vp = ViscosityProfile(json.loads(srs), json.loads(vs), units)
+            vp.is_measured = bool(meas)
+            form.set_viscosity_profile(vp)
+
+        return form
+
+    def get_all_formulations(self) -> List[Formulation]:
+        """Retrieve all formulations in the database.
+
+        Returns:
+            List[Formulation]: A list of `Formulation` instances, each reconstructed via `get_formulation`.
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM formulation")
+        rows = c.fetchall()
+
+        formulations: List[Formulation] = []
+        for (fid,) in rows:
+            form = self.get_formulation(fid)
+            if form is not None:
+                formulations.append(form)
+
+        return formulations
+
+    def update_formulation_metadata(
+        self, f_id: int, icl: bool = None, last_model: str = None
+    ) -> bool:
+        """Updates lightweight metadata for a formulation without affecting components.
+
+        This method performs an in-place update of the 'icl' flag and the
+        'last_model' identifier. Unlike a full record replacement, this approach
+        preserves the primary key (ID) and any existing foreign key links to
+        formulation components. The update is conditional; only non-None
+        arguments will trigger a database change.
+
+        Args:
+            f_id: The unique primary key ID of the formulation to update.
+            icl: An optional boolean flag indicating In-Concentration Loading status.
+                Converted to 1 (True) or 0 (False) for SQL storage.
+            last_model: An optional string identifier for the last predictive
+                model run against this formulation.
+
+        Returns:
+            bool: True if at least one row was successfully modified and committed;
+                False if the ID was not found or an error occurred.
+
+        Side Effects:
+            - Calls `_commit()` if changes were made.
+            - Triggers `backup()` if `self.use_encryption` is True to ensure
+              the encrypted disk state is synchronized.
+        """
+        try:
+            c = self.conn.cursor()
+
+            if icl is not None:
+                c.execute(
+                    "UPDATE formulation SET icl = ? WHERE id = ?",
+                    (1 if icl else 0, f_id),
+                )
+
+            if last_model is not None:
+                c.execute(
+                    "UPDATE formulation SET last_model = ? WHERE id = ?",
+                    (last_model, f_id),
+                )
+
+            if c.rowcount > 0:
+                self._commit()
+                if self.use_encryption:
+                    self.backup()
+                return True
+            return False
+        except Exception as e:
+            Log.e(TAG, f"Error updating metadata: {e}")
+            return False
+
+    def get_formulation_by_signature(self, signature: str) -> Optional[Formulation]:
+        """Retrieve a formulation by its SHA256 signature.
+
+        Args:
+            signature (str): The unique SHA256 signature string.
+
+        Returns:
+            Optional[Formulation]: The matching Formulation object, or None if not found.
+        """
+        c = self.conn.cursor()
+        c.execute("SELECT id FROM formulation WHERE signature = ?", (signature,))
+        row = c.fetchone()
+
+        if row:
+            return self.get_formulation(row[0])
+        return None
+
+    def delete_formulation_by_signature(self, signature: str) -> bool:
+        """Delete a formulation identified by its signature.
+
+        Args:
+            signature (str): The unique SHA256 signature string.
+
+        Returns:
+            bool: True if a formulation was deleted, False if no match was found.
+        """
+        c = self.conn.cursor()
+        c.execute("DELETE FROM formulation WHERE signature = ?", (signature,))
+
+        if c.rowcount > 0:
+            self._commit()
+            if self.use_encryption:
+                self.backup()
+            return True
+        return False
+
+    def update_formulation_name_by_signature(self, signature: str, new_name: str) -> bool:
+        """Update the name of a formulation identified by its signature.
+
+        Args:
+            signature (str): The unique SHA256 signature of the formulation to update.
+            new_name (str): The new name to assign.
+
+        Returns:
+            bool: True if the update was successful, False if the signature was not found.
+        """
+        c = self.conn.cursor()
+        c.execute("UPDATE formulation SET name = ? WHERE signature = ?", (new_name, signature))
+
+        if c.rowcount > 0:
+            self._commit()
+            if self.use_encryption:
+                self.backup()
+            return True
+        return False
+
+    def delete_formulation(self, id: int) -> bool:
+        """Delete a formulation and all linked components and viscosity profile.
+
+        Args:
+            id (int): The primary key of the formulation to delete.
+
+        Returns:
+            bool: True if a row was deleted, False if no such formulation existed.
+        """
+        c = self.conn.cursor()
+        c.execute("DELETE FROM formulation WHERE id = ?", (id,))
+        self._commit()
+        if self.use_encryption:
+            self.backup()
+        return c.rowcount > 0
+
+    def delete_all_formulations(self) -> None:
+        """Remove all formulations, their components, and viscosity profiles from the database."""
+        c = self.conn.cursor()
+        c.execute("DELETE FROM formulation")
+        self._commit()
+        if self.use_encryption:
+            self.backup()
+
+    def reset(self) -> None:
+        """Reset the database by deleting the file (if exists) and recreating tables.
+
+        This closes any existing connection, removes the physical file, reopens a new
+        SQLite connection at the same path, and reinitializes the schema.
+        """
+        try:
+            self.conn.close()
+        except Exception:
+            pass
+
+        if self.db_path.exists():
+            self.db_path.unlink()
+        self.conn = sqlite3.connect(str(self.db_path))
+        self.conn.execute("PRAGMA foreign_keys = ON")
+        self._create_tables()
+
+    def set_encryption_key(self, key: Union[str, None]) -> None:
+        """Set or clear the encryption key for future database saves.
+
+        Args:
+            key (Union[str, None]): New encryption key. If None, disables encryption.
+        """
+        self.encryption_key = key
+
+    def _load_metadata(self) -> None:
+        """Reads the JSON metadata embedded in the database file.
+
+        Any metadata found will be parsed and stored to `self.metadata`.
+        """
+        try:
+            self._enc_metadata = b"\x45{}\n"  # default: nop seed with empty dict
+            self.metadata = {}
+            with open(self.db_path, "rb") as f:
+                self._enc_metadata = f.readline()
+                enc_metadata = self._enc_metadata.decode(
+                    self.metadata.get("app_encoding", "utf-8")
+                ).rsplit("\n", 1)[
+                    0
+                ]  # remove at most 1 trailing '\n'
+                seed = ord(enc_metadata[0])
+                shuffled = enc_metadata[1:]
+                enc_metadata = self._shuffle_text(shuffled, seed)
+                shift_by = -len(enc_metadata)
+                str_metadata = self._caesar_cipher(enc_metadata, shift_by)
+                self.metadata = json.loads(str_metadata)
+        except FileNotFoundError:
+            Log.e(TAG, "Database file does not exist. Creating empty metadata.")
+        except Exception:
+            Log.e(TAG, "No readable metadata found in database file.")
+
+    def _shuffle_text(self, text: str, seed: Union[int, None] = None) -> str:
+        """Shuffles the characters of a given `text` string in a pseudo-random order.
+
+        Args:
+            text (str): The string to be shuffled (or unshuffled, perhaps).
+            seed (Union[int, None]): The seed for `random` to use (for repeatability).
+
+        Returns:
+            str: The character shuffled string.
+        """
+        if seed != None:
+            random.seed(seed)
+        indices = list(range(len(text)))
+        random.shuffle(indices)
+        original = [""] * len(text)
+        for i, orig_index in enumerate(indices):
+            original[orig_index] = text[i]
+        return "".join(original)
+
+    def _commit(self) -> None:
+        """Commits the current transaction and synchronizes the disk state.
+
+        This method performs a standard SQL commit on the active connection. If
+        encryption is enabled, it goes a step further by performing an immediate
+        persistence operation to the filesystem. To maintain data integrity during
+        the encrypted write, it safely rotates the file handle—closing the current
+        read handle, executing the save, and re-establishing the read handle.
+
+        Side Effects:
+            - Finalizes the current SQL transaction via `self.conn.commit()`.
+            - If `self.use_encryption` is True:
+                - Closes and re-opens `self.file_handle`.
+                - Overwrites the file at `self.db_path` via `_save_cdb`.
+                - Resets `self.init_changes` to match the connection's
+                  total change count to prevent redundant backups.
+        """
+        if not self._defer_commit:
+            self.conn.commit()
+        if self.use_encryption and not self._defer_backup:
+            if self.file_handle is not None:
+                self.file_handle.close()
+            self._save_cdb(str(self.db_path), self.encryption_key)
+            self.file_handle = open(self.db_path, "rb")
+            self.init_changes = self.conn.total_changes
+
+    def flush(self) -> None:
+        """Force a commit and optional backup — call at end of bulk operations."""
+        self.conn.commit()
+        if self.use_encryption:
+            if self.file_handle is not None:
+                self.file_handle.close()
+            self._save_cdb(str(self.db_path), self.encryption_key)
+            self.file_handle = open(self.db_path, "rb")
+            self.init_changes = self.conn.total_changes
+
+    def _caesar_cipher(self, text: str, shift: int = 0) -> str:
+        """Apply a Caesar cipher shift to a text string, rotating alphanumeric characters.
+
+        Args:
+            text (str): The plaintext string to encode.
+            shift (int, optional): Shift amount. If 0, defaults to `len(text)`. Defaults to 0.
+
+        Returns:
+            str: The Caesar-ciphered string.
+        """
+        result = []
+        if shift == 0:
+            shift = len(text)
+        for char in text:
+            if char.isdigit():
+                base = ord("0")
+                result.append(chr((ord(char) - base + shift) % 10 + base))
+            elif char.isupper():
+                base = ord("A")
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+            elif char.islower():
+                base = ord("a")
+                result.append(chr((ord(char) - base + shift) % 26 + base))
+            elif ord(char) in range(32, 48):
+                base = 32
+                result.append(chr((ord(char) - base + shift) % len(range(32, 48)) + base))
+            elif ord(char) in range(58, 65):
+                base = 58
+                result.append(chr((ord(char) - base + shift) % len(range(58, 65)) + base))
+            elif ord(char) in range(91, 97):
+                base = 91
+                result.append(chr((ord(char) - base + shift) % len(range(91, 97)) + base))
+            elif ord(char) in range(123, 127):
+                base = 123
+                result.append(chr((ord(char) - base + shift) % len(range(123, 127)) + base))
+        return "".join(result)
+
+    def _xor_cipher(self, data: bytes, key: str) -> bytes:
+        """Apply an XOR cipher to a byte sequence using a repeating key.
+
+        Args:
+            data (bytes): Bytes to encrypt or decrypt.
+            key (str): String key used for XOR; repeated as needed.
+
+        Returns:
+            bytes: Resulting encrypted or decrypted bytes.
+        """
+        key_bytes = key.encode(self.metadata.get("app_encoding", "utf-8"))
+        data_arr = np.frombuffer(data, dtype=np.uint8)
+        # Tile key to match data length, then XOR in one vectorized op
+        repeats = len(data) // len(key_bytes) + 1
+        key_arr = np.frombuffer(key_bytes * repeats, dtype=np.uint8)[: len(data)]
+        return (data_arr ^ key_arr).tobytes()
+
+    def _open_cdb(self, filepath: str, password: str) -> sqlite3.Connection:
+        """Open an AES+Caesar+XOR encrypted database file into an in-memory SQLite connection.
+
+        Reads the encrypted file from disk, applies Caesar+XOR decryption using `password`,
+        and executes the SQL script into a new in-memory database.
+
+        Args:
+            filepath (str): Path to the encrypted database file.
+            password (str): Encryption key used to decrypt.
+
+        Returns:
+            sqlite3.Connection: An in-memory connection populated with decrypted schema and data.
+
+        Raises:
+            IOError: If the file cannot be read.
+        """
+        con = sqlite3.connect(":memory:")
+        if os.path.isfile(filepath):
+            self.file_handle = open(filepath, "rb")
+            self._enc_metadata = self.file_handle.readline()
+            secure_bytes = self.file_handle.read()
+            if password:
+                # Decrypt the file content
+                decrypted_text = self._xor_cipher(secure_bytes, self._caesar_cipher(password))
+            else:
+                decrypted_text = secure_bytes
+            decrypted_text = decrypted_text.decode(self.metadata.get("app_encoding", "utf-8"))
+            con.executescript(decrypted_text)
+            con.commit()
+        return con
+
+    def _save_cdb(self, filepath: str, password: str):
+        """Encrypt and save the in-memory SQLite database to disk.
+
+        Dumps the in-memory database to SQL text, applies Caesar+XOR encryption using `password`,
+        and writes the result to `filepath`.
+
+        Args:
+            filepath (str): Path to write the encrypted database.
+            password (str): Encryption key used to encrypt.
+        """
+        encoding = self.metadata.get("app_encoding", "utf-8")
+        dump_bytes = b"".join((line + "\n").encode(encoding) for line in self.conn.iterdump())
+        if password:
+            encrypted = self._xor_cipher(dump_bytes, self._caesar_cipher(password))
+        else:
+            encrypted = dump_bytes
+        with open(filepath, "wb") as f:
+            f.write(self._enc_metadata)  # must end with "\n"
+            f.write(encrypted)
+
+    def close(self) -> None:
+        """Close the database connection, saving to disk if changes occurred.
+
+        If `use_encryption` is True, writes the encrypted dump back to `db_path`.
+        Otherwise, defaults to the inline commits already performed. Ensures any
+        open file_handle is closed to release locks.
+        """
+        if self.file_handle is not None:
+            self.file_handle.close()
+        if self.is_open:
+            if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+                if self.use_encryption:
+                    self._save_cdb(self.db_path, self.encryption_key)
+                else:
+                    pass
+            self.conn.close()
+            self.is_open = False
+
+    def create_temp_decrypt(self) -> Optional[Path]:
+        """Create a temporary decrypted copy of the current database.
+
+        This method generates a standard SQLite database file in the system's
+        temporary directory that contains all the same data as the current
+        database, but without encryption. This is useful for operations that
+        require direct SQLite access or third-party tools.
+
+        The temporary file is tracked internally and should be removed using
+        `cleanup_temp_decrypt()` when no longer needed.
+
+        Returns:
+            Optional[Path]: Path to the temporary decrypted database file, or
+            None if the operation failed.
+
+        Notes:
+            - The temporary file will have a '.db' extension.
+            - The temporary file contains sensitive data in plaintext.
+            - The file descriptor is closed immediately after creation.
+        """
+        try:
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".db", prefix="app_temp_")
+            temp_path = Path(temp_path)
+            os.close(temp_fd)
+            try:
+                os.chmod(temp_path, 0o600)
+            except OSError:
+                # Best-effort; continue on platforms where chmod is a no-op
+                pass
+            temp_conn = sqlite3.connect(str(temp_path))
+            sql_script = "\n".join(self.conn.iterdump())
+            temp_conn.executescript(sql_script)
+            temp_conn.commit()
+            temp_conn.close()
+            if not hasattr(self, "_temp_db_paths"):
+                self._temp_db_paths = []
+            self._temp_db_paths.append(temp_path)
+
+            return temp_path
+
+        except Exception as e:
+            Log.e(f"Failed to create temporary decrypted database: {e}")
+            # Best-effort cleanup of partially created file
+            try:
+                if "temp_path" in locals() and Path(temp_path).exists():
+                    Path(temp_path).unlink()
+            except OSError as oe:
+                Log.e(f"Failed to remove temp file {temp_path}: {oe}")
+            return None
+
+    def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
+        """Remove one or all temporary decrypted database files.
+
+        This method deletes temporary decrypted database files created by
+        `create_temp_decrypt()`. You can specify a particular file to remove,
+        or omit the argument to clean up all temporary files associated with
+        this instance.
+
+        Args:
+            temp_path (Optional[Path]): Path to a specific temporary database
+                to remove. If None, all temporary databases created by this
+                instance will be removed.
+
+        Returns:
+            bool: True if the cleanup operation completed successfully for all
+            targeted files, False if any deletion failed.
+
+        Notes:
+            - Attempting to delete a non-existent file will be ignored.
+            - All files tracked internally in `_temp_db_paths` are candidates
+            for removal when `temp_path` is None.
+        """
+        try:
+            if not hasattr(self, "_temp_db_paths"):
+                return True
+
+            if temp_path is not None:
+                if temp_path.exists():
+                    temp_path.unlink()
+                if temp_path in self._temp_db_paths:
+                    self._temp_db_paths.remove(temp_path)
+            else:
+                for path in self._temp_db_paths[:]:
+                    try:
+                        if path.exists():
+                            path.unlink()
+                        self._temp_db_paths.remove(path)
+                    except Exception as e:
+                        Log.e(f"Failed to remove temp file {path}: {e}")
+
+            return True
+
+        except Exception as e:
+            Log.e(f"Failed to cleanup temporary database: {e}")
+            return False
+
+    def __del__(self):
+        """Destructor to ensure temporary decrypted files are cleaned up.
+
+        When the object is destroyed, this method automatically calls
+        `cleanup_temp_decrypt()` to remove any temporary decrypted database
+        files created during the instance's lifetime. This helps prevent
+        sensitive data from persisting on disk.
+        """
+        if hasattr(self, "_temp_db_paths"):
+            self.cleanup_temp_decrypt()
+
+    def backup(self) -> None:
+        """Persists the in-memory database state to the physical disk.
+
+        This method synchronizes the current connection state with the filesystem.
+        Unlike the `close()` method, `backup()` ensures the database connection
+        remains active and open for subsequent operations. It evaluates whether
+        changes have occurred since the last initialization or if the database
+        file is missing before triggering a save.
+
+        The method automatically handles two storage modes:
+            1. Encrypted: Saves the state using a custom CDB implementation
+               with the provided encryption key.
+            2. Standard: Performs a standard SQL commit to the disk.
+
+        Side Effects:
+            - Closes and re-opens `self.file_handle` to ensure the disk state
+              is current.
+            - Updates `self.init_changes` to the current total change count
+              upon a successful save.
+
+        Notes:
+            This is particularly useful for long-running processes where
+            periodic data safety is required without interrupting the
+            active session.
+        """
+        if self.file_handle is not None:
+            self.file_handle.close()
+        if self.conn.total_changes > self.init_changes or not os.path.isfile(self.db_path):
+            if self.use_encryption:
+                self._save_cdb(self.db_path, self.encryption_key)
+            else:
+                self._commit()
+            self.init_changes = self.conn.total_changes
+        self.file_handle = open(self.db_path, "rb")
+
+    def begin_bulk(self) -> None:
+        """Apply performance PRAGMAs to speed up bulk insert operations.
+
+        Switches the journal mode to in-memory and relaxes synchronization
+        constraints so that large batches of inserts complete faster. Call
+        `end_bulk()` when the batch is finished to restore safe write settings.
+        """
+        self.conn.execute("PRAGMA journal_mode = MEMORY")
+        self.conn.execute("PRAGMA synchronous = OFF")
+        self.conn.execute("PRAGMA temp_store = MEMORY")
+        self.conn.execute("PRAGMA cache_size = -64000")
+
+    def end_bulk(self) -> None:
+        """Restore safe write settings after bulk imports."""
+        self.conn.commit()
+        self.conn.execute("PRAGMA journal_mode = DELETE")
+        self.conn.execute("PRAGMA synchronous = FULL")
