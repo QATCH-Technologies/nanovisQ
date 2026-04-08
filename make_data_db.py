@@ -63,9 +63,7 @@ def get_project_paths() -> Tuple[Path, Path]:
             csv_path = base_path / SOURCE_CSV
             return db_path.resolve(), csv_path.resolve()
 
-    raise FileNotFoundError(
-        "Could not locate QATCH/VisQAI/assets relative to make_data_db.py"
-    )
+    raise FileNotFoundError("Could not locate QATCH/VisQAI/assets relative to make_data_db.py")
 
 
 def shuffle_text(text: str, seed: Union[int, None] = None) -> Tuple[str, int]:
@@ -180,9 +178,7 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def verify_database_integrity(
-    db_path: Path, original_df: pd.DataFrame, expected_key: str
-):
+def verify_database_integrity(db_path: Path, original_df: pd.DataFrame, expected_key: str):
     """Performs rigorous integrity checks on the generated database.
 
     Verifies metadata keys, viscosity profile validity, ingredient uniqueness,
@@ -216,9 +212,7 @@ def verify_database_integrity(
 
             viscs = f.viscosity_profile.viscosities
             if any(v <= 0 for v in viscs):
-                logger.warning(
-                    f"Formulation {f.id} has non-positive viscosities: {viscs}"
-                )
+                logger.warning(f"Formulation {f.id} has non-positive viscosities: {viscs}")
 
         logger.info("Viscosity verification passed.")
 
@@ -240,9 +234,7 @@ def verify_database_integrity(
 
         if duplicates:
             raise ValueError(f"Duplicate ingredients found: {duplicates}")
-        logger.info(
-            f"Ingredient verification passed ({len(ingredients)} unique ingredients)."
-        )
+        logger.info(f"Ingredient verification passed ({len(ingredients)} unique ingredients).")
 
         # Verify DataFrame Equality
         db_df = form_ctrl.get_all_as_dataframe(encoded=False)
@@ -298,12 +290,8 @@ def verify_database_integrity(
             df_src = df_src_dedup
 
         if len(df_src) != len(df_db):
-            logger.error(
-                f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}"
-            )
-            raise ValueError(
-                f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}"
-            )
+            logger.error(f"Row count mismatch: Source (Unique) {len(df_src)} vs DB {len(df_db)}")
+            raise ValueError(f"Row count mismatch: Source {len(df_src)} vs DB {len(df_db)}")
 
         try:
             # Sort by stable columns to ensure alignment
@@ -348,6 +336,7 @@ def main():
         raise FileNotFoundError(f"CSV file not found at: {csv_path}")
 
     app_key = uuid.uuid4().hex
+    build_version = int(time.time())
     metadata = {
         "app_date": Constants.app_date,
         "app_encoding": Constants.app_encoding,
@@ -356,6 +345,7 @@ def main():
         "app_publisher": "QATCH",
         "app_title": f"QATCH VisQ.AI Encrypted Database",
         "app_version": Constants.app_version,
+        "db_version": build_version,
     }
 
     if db_path.exists():
