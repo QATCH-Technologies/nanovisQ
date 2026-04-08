@@ -10,7 +10,7 @@ import sys
 import threading
 from collections import deque
 from time import localtime, mktime, strftime, strptime, time
-from typing import List
+from typing import List, Optional
 from xml.dom import minidom
 
 import numpy as np
@@ -42,6 +42,7 @@ from QATCH.core.worker import Worker
 
 # NOTE: Live fill forecasting disabled by PR-172 (load + UX). Re-enable behind a feature flag if needed.
 # from QATCH.QModel.src.models.live.q_forecast_predictor import QForecastDataProcessor, QForecastPredictor
+from QATCH.QModel.src.models.v6_yolo.v6_yolo_live import DropEpochSignal
 from QATCH.processors.Analyze import AnalyzeProcess
 from QATCH.processors.Device import serial  # real device hardware
 from QATCH.processors.InterpTemps import (
@@ -446,7 +447,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         )
         self.q_version_v4.setCheckable(True)
         self.q_version_v6 = self.menubar[5].addAction(
-            "QModel YOLO11 v{} ({})".format(QModel6_version, QModel6_release),
+            "QModel YOLO26 v{} ({})".format(QModel6_version, QModel6_release),
             lambda: self.parent.AnalyzeProc.set_new_prediction_model(
                 Constants.list_predict_models[2]
             ),
@@ -579,7 +580,7 @@ class ControlsWindow(QtWidgets.QMainWindow):
         name = self.username.text()[6:]
         allow, admin = UserProfiles().manage(name, self.userrole)
 
-        if admin == None and not UserProfiles.session_info()[0]:
+        if admin is None and not UserProfiles.session_info()[0]:
             if name != "[NONE]":
                 Log.i(f"Goodbye, {name}! You have been signed out.")
             self.username.setText("User: [NONE]")
@@ -620,14 +621,14 @@ class ControlsWindow(QtWidgets.QMainWindow):
         if not self.chk2.isChecked():
             Log.d("Hiding Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(False)
                 self.parent._plt0_arr[i] = p
         else:
             Log.d("Showing Amplitude plot(s)")
             for i, p in enumerate(self.parent._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setVisible(True)
                 self.parent._plt0_arr[i] = p
@@ -983,9 +984,11 @@ class Rename_Output_Files(QtCore.QObject):
 
                         if _dev_pid != 0:  # append Port ID 1-4 for 4x1, ID A1-D6 for 4x6
                             # Convert PID to multiplex designation (i.e. int(1) -> int(162) for "A2")
-                            if self.has_active_multi_port():  # 4x6 system
+                            if self.parent.has_active_multi_port():  # 4x6 system
                                 # mask in port, e.g. "A" -> "A1"
-                                _dev_pid = ((_dev_pid + 9) << 4) | self.get_active_multi_port()
+                                _dev_pid = (
+                                    (_dev_pid + 9) << 4
+                                ) | self.parent.get_active_multi_port()
                             # else: 4x1 system, nothing to do
                     except:
                         Log.e(TAG, f"Unable to lookup device info for: {dev_name}")
@@ -1186,7 +1189,7 @@ class Rename_Output_Files(QtCore.QObject):
                     self.indicate_finalizing()
                     self.bThread.append(QtCore.QThread())
                     user_name = (
-                        None if self.parent == None else self.parent.ControlsWin.username.text()[6:]
+                        None if self.parent is None else self.parent.ControlsWin.username.text()[6:]
                     )
                     # TODO: more secure to pass user_hash (filename)
                     self.bWorker.append(
@@ -1237,18 +1240,6 @@ class Rename_Output_Files(QtCore.QObject):
         # For 4x1 system: expect pid 1-4, return "1" thru "4"
         # For 4x6 system: expect pid 0xA1-0xD6, return "A1" thru "D6"
         return hex(pid)[2:].upper()
-
-    def has_active_multi_port(self):
-        i = self.parent.ControlsWin.ui1.cBox_Port.currentText()
-        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
-        if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
-            return os.path.exists("plate-config.json")
-        return False
-
-    def get_active_multi_port(self):
-        # returns 1-6, depending on active 4x6 port on MUX of active device
-        return self.parent.active_multi_ch
-        # NOTE: setting 'active_multi_ch' is not implemented, only defined as 1 (always)
 
 
 # ------------------------------------------------------------------------------
@@ -1385,6 +1376,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reference variables
         self._text4 = [None, None, None, None]
         self._drop_applied = [False, False, False, False]
+        self._drop_epoch_sent = False
         self._run_finished = [False, False, False, False]
         self._baselinedata = [
             [[0, 0], [0, 0]],
@@ -1489,15 +1481,17 @@ class MainWindow(QtWidgets.QMainWindow):
         for _ in range(4):
             self.dry_detect.append(
                 DryingDetection(
-                    window_size=2000,
-                    sigma_stable_diss=0.25,
-                    sigma_stable_freq=0.25,
-                    flat_slope_eps=0.000015,
+                    window_size=Constants.DRYING_WINDOW_SIZE,
+                    sigma_stable_diss=Constants.DRYING_SIGMA_STABLE_DISSIPATION,
+                    sigma_stable_freq=Constants.DRYING_SIGMA_STABLE_FREQUENCY,
+                    flat_slope_eps=Constants.DRYING_FLAT_SLOPE_EPS,
                 )
             )
 
         # Default number of channels; facilitates IPC between Analyze and RunInfo windows.
         self.num_channels = -1
+        # Messaging attribute for early stop messages.
+        self._fill_display_msg: Optional[str] = None
 
         # self.MainWin.showMaximized()
         self.ReadyToShow = True
@@ -1505,7 +1499,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def analyze_data(self, data_device=None, data_folder=None, data_file=None):
         action_role = UserRoles.ANALYZE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        if check_result == None:  # user check required, but no user signed in
+        if check_result is None:  # user check required, but no user signed in
             Log.w(
                 f"Not signed in: User with role {action_role.name} is required to perform this action."
             )
@@ -1523,7 +1517,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.data_device = data_device
         self.data_folder = data_folder
         self.data_run = data_file
-        if data_device == None:
+        if data_device is None:
             for _, dirs, _ in os.walk(os.path.join(Constants.log_prefer_path)):
                 self.data_devices = dirs  # show all available devices in logged data
                 break
@@ -1537,7 +1531,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data devices available for selection.")
             return
-        if data_folder == None:
+        if data_folder is None:
             self.data_folders = FileStorage.DEV_get_logged_data_folders(data_device)
             if len(self.data_folders) > 0:
                 self.aThread = QtCore.QThread()
@@ -1549,7 +1543,7 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 Log.w("No data folders available for selection.")
             return
-        if data_file == None:
+        if data_file is None:
             self.data_files = FileStorage.DEV_get_logged_data_files(data_device, data_folder)
             if "capture.zip" in self.data_files:
                 zn = os.path.join(
@@ -1794,6 +1788,17 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return ports_dict, active_ports
 
+    def has_active_multi_port(self):
+        i = self.ControlsWin.ui1.cBox_Port.currentText()
+        i = 0 if i.find(":") == -1 else int(i.split(":")[0], base=16)
+        if i != i % 9:  # 4x6 system detected, PID A-D, not 1-4
+            return os.path.exists("plate-config.json")
+        return False
+
+    def get_active_multi_port(self):
+        # returns 1-6, depending on active 4x6 port on MUX of active device
+        return self.active_multi_ch  # defaults to 1 in non-flux systems
+
     ###########################################################################
     # Starts the acquisition of the selected serial port
     ###########################################################################
@@ -1815,7 +1820,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Validate if a userprofile can perform the capture action.
         action_role = UserRoles.CAPTURE
         check_result = UserProfiles().check(self.ControlsWin.userrole, action_role)
-        # if check_result == None:  # user check required, but no user signed in
+        # if check_result is None:  # user check required, but no user signed in
         #     Log.w(
         #         f"Not signed in: User with role {action_role.name} is required to perform this action.")
         #     Log.i("Please sign in to continue.")
@@ -1828,7 +1833,7 @@ class MainWindow(QtWidgets.QMainWindow):
         #     return  # deny action
 
         # User check required, but no user signed in.
-        if check_result == None:
+        if check_result is None:
             Log.w(
                 tag=TAG,
                 msg=f"Not signed in: User with role {action_role.name} is required to perform this action.",
@@ -1923,7 +1928,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # str "CMD_DEV_INFO", the selected port is set to the empty string effectively dissallowing
         # those actions.
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -2103,6 +2108,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Duplicate frequencies
             self._text4 = [None, None, None, None]
             self._drop_applied = [False, False, False, False]
+            self._drop_epoch_sent = False
             self._run_finished = [False, False, False, False]
             self._baselinedata = [
                 [[0, 0], [0, 0]],
@@ -2445,9 +2451,9 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # ----------------------------------------------------------------------
         # defines the graph title
-        title1 = "Real-Time Plot: Amplitude"
-        title2 = "Real-Time Plot: Resonance Frequency / Dissipation"
-        title3 = "Real-Time Plot: Temperature"
+        title1 = "Plot: Amplitude"
+        title2 = "Plot: Resonance Frequency / Dissipation"
+        title3 = "Plot: Temperature"
         # --------------------------------------------------------------------------------------------------------------
         # Configures elements of the PyQtGraph plots: amplitude
         self.PlotsWin.ui2.plt.setAntialiasing(True)
@@ -2470,7 +2476,12 @@ class MainWindow(QtWidgets.QMainWindow):
                 col=x,
                 row=y,
                 colspan=span,
-                title=title1 + f" {i + 1}",
+                title=title1
+                + (
+                    f" {i + 1}"
+                    if not self.has_active_multi_port()
+                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+                ),
                 **{"font-size": "10pt"},
             )
             p.showGrid(x=True, y=True)
@@ -2506,7 +2517,12 @@ class MainWindow(QtWidgets.QMainWindow):
             p = self.PlotsWin.ui2.pltB.addPlot(
                 col=x,
                 row=y,
-                title=title2 + f" {i + 1}",
+                title=title2
+                + (
+                    f" {i + 1}"
+                    if not self.has_active_multi_port()
+                    else f" {chr(0x40 + (i + 1))}{self.get_active_multi_port()}"
+                ),
                 **{"font-size": "12pt"},
                 axisItems={"bottom": self._xaxis[i], "left": self._yaxis[i]},
             )
@@ -2689,9 +2705,15 @@ class MainWindow(QtWidgets.QMainWindow):
             path_to_mydocs_data = os.path.join(os.getcwd(), Constants.app_publisher)
             if Architecture.get_os() == OSType.windows:
                 # NOTE: Calling 'os.system' causes a console window to blip and disappear when launched with 'pythonw.exe':
-                subprocess.call(f"cd {local_app_data_path} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_logged_data} & attrib -r -a -s -h /s /d", shell=True)
-                subprocess.call(f"cd {path_to_mydocs_data} & attrib -r -a -s -h /s /d", shell=True)
+                _attrib_cmd = ["attrib", "-r", "-a", "-s", "-h", "/s", "/d"]
+                for _attrib_path in (local_app_data_path, path_to_logged_data, path_to_mydocs_data):
+                    if not os.path.isdir(_attrib_path):
+                        Log.w(f"Skipping attrib on missing directory: {_attrib_path}")
+                        continue
+                    try:
+                        subprocess.run(_attrib_cmd, check=True, cwd=_attrib_path)
+                    except subprocess.CalledProcessError as e:
+                        Log.w(f"attrib failed for '{_attrib_path}': {e}")
             else:
                 os.chmod(local_app_data_path, stat.S_IRWXU | stat.S_IRWXG | stat.S_IRWXO)
                 for root, dirs, files in os.walk(local_app_data_path):
@@ -2900,7 +2922,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Open or close the port accordingly
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -2975,7 +2997,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         # Set active port to update speeds in real-time
         self._selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if self._selected_port == None:
+        if self._selected_port is None:
             self._selected_port = ""  # Dissallow None
         if self._selected_port == "CMD_DEV_INFO":
             self._selected_port = ""  # Dissallow Action
@@ -3399,7 +3421,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 if not self.worker._forecaster_out.empty():
                     try:
                         # Get raw model prediction (-1=Empty, 0=Init, 1=Ch1, 2=Ch2, 3=Ch3)
-                        pred_int, _ = self.worker._forecaster_out.get()
+                        pred_int, _, display_msg = self.worker._forecaster_out.get()
+                        # Latch the message - once set, keep it visible until the run ends
+                        # or a newer message supersedes it.
+                        if display_msg is not None:
+                            self._fill_display_msg = display_msg
                         # This logic handles drop application code.
                         is_drop_applied = all(self._drop_applied)
                         # Refactored messages out of constants.  Can move them back if we like the messages.
@@ -3407,22 +3433,28 @@ class MainWindow(QtWidgets.QMainWindow):
                         status_msg = "Unknown"
                         if pred_int == -1:
                             if not is_drop_applied:
-                                status_msg = "Waiting for drop"
+                                status_msg = "Add sample"
                                 ui_step = 0
                             else:
-                                status_msg = "Drop applied, waiting for init data"
+                                status_msg = "Sample detected"
                                 ui_step = 1
+                                if not self._drop_epoch_sent:
+                                    drop_epoch = float(self.worker.get_t1_buffer(0)[0])
+                                    self.worker._forecaster_in.put(
+                                        DropEpochSignal(drop_epoch)
+                                    )
+                                    self._drop_epoch_sent = True
                         elif pred_int == 0:
-                            status_msg = "Init points detected"
+                            status_msg = "Filling started"
                             ui_step = 2
                         elif pred_int == 1:
-                            status_msg = "1st ch detected"
+                            status_msg = "Filling"
                             ui_step = 3
                         elif pred_int == 2:
-                            status_msg = "2nd ch detected"
+                            status_msg = "Almost full"
                             ui_step = 4
                         elif pred_int == 3:
-                            status_msg = "Fill complete"
+                            status_msg = "Complete, stop"
                             ui_step = 5
 
                         if hasattr(self.ControlsWin.ui1, "run_controls"):
@@ -3554,7 +3586,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                             if not all(self._drop_applied):
                                 for i, p in enumerate(self._plt2_arr):
-                                    if p == None:
+                                    if p is None:
                                         self._drop_applied[i] = True
                                         self._run_finished[i] = True
                                         continue
@@ -3822,7 +3854,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ############################################################################################################################
         if self._reference_flag:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -3851,7 +3883,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -3865,7 +3897,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # updates for multiple plot y-axes
             updateViews1()
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews1)
                 p.setLimits(yMax=None, yMin=None, minYRange=None, maxYRange=None)
@@ -3886,7 +3918,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Resonance frequency and dissipation multiple Plot
             def updateViews2():
                 for i, p in enumerate(self._plt3_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     _p2 = self._plt2_arr[i]
                     _p2.clear()
@@ -3902,7 +3934,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews2()
 
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 # p.vb.sigResized.connect(updateViews2)
                 self._vector_1 = (
@@ -3928,7 +3960,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 self._plt2_arr[i] = p
 
             for i, p in enumerate(self._plt3_arr):
-                if p == None:
+                if p is None:
                     continue
                 self._vector_2 = (
                     np.array(self.worker.get_d2_buffer(i)) - self._reference_value_dissipation[i]
@@ -3975,7 +4007,7 @@ class MainWindow(QtWidgets.QMainWindow):
         ###########################################################################################################################
         else:
             for i, p in enumerate(self._plt2_arr):
-                if p == None:
+                if p is None:
                     continue
                 p.setLabel(
                     "left",
@@ -4006,7 +4038,7 @@ class MainWindow(QtWidgets.QMainWindow):
             # Amplitude and phase multiple Plot
             def updateViews1():
                 for i, p in enumerate(self._plt0_arr):
-                    if p == None:
+                    if p is None:
                         continue
                     p.clear()
                     self._plt0_arr[i] = p
@@ -4021,7 +4053,7 @@ class MainWindow(QtWidgets.QMainWindow):
             updateViews1()
             self._amps = {}  # empty dict for showing combined amplitudes
             for i, p in enumerate(self._plt0_arr):
-                if p == None:
+                if p is None:
                     continue
                 _plt2 = self._plt2_arr[i]
                 _plt3 = self._plt3_arr[i]
@@ -4064,7 +4096,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # Add apply drop message to those still pending drop
                     try:
-                        if self._text4[i] == None:
+                        if self._text4[i] is None:
                             # 'size' and 'bold' retained when calling 'setText()'
                             self._text4[i] = pg.LabelItem(size="11pt", bold=True)
                             self._text4[i].setParentItem(_plt2.graphicsItem())
@@ -4084,7 +4116,6 @@ class MainWindow(QtWidgets.QMainWindow):
                                 relative_time=relative_time,
                             )
                             if not dry_status:
-
                                 # Set and signal all receivers that new time is available (if unset)
                                 with self._sensorDriedTimeValue.get_lock():
                                     # For multiplex, take the most recent (latest) dry time
@@ -4104,6 +4135,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                         np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
                                     ],
                                 ]
+                            elif self._fill_display_msg:
+                                # Fill classifier has flagged an actionable state
+                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
                             else:
                                 self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
                         else:
@@ -4341,7 +4375,7 @@ class MainWindow(QtWidgets.QMainWindow):
         flux_controller_exists = False
 
         selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -4677,7 +4711,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._reference_value_dissipation.clear()
         self._vector_reference_dissipation.clear()
         for i, p in enumerate(self._plt2_arr):
-            if p == None:
+            if p is None:
                 continue
             # _plt2 = self._plt2_arr[i]
             # _plt3 = self._plt3_arr[i]
@@ -4814,7 +4848,7 @@ class MainWindow(QtWidgets.QMainWindow):
         if self.tecWorker._tec_state == "OFF" or self.tecWorker._tec_locked:
             # check version and write device info (if needed)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
@@ -4836,13 +4870,13 @@ class MainWindow(QtWidgets.QMainWindow):
 
             # Restore single selected port (even when multiplex mode)
             selected_port = self.ControlsWin.ui1.cBox_Port.currentData()
-            if selected_port == None:
+            if selected_port is None:
                 selected_port = ""  # Dissallow None
             if selected_port == "CMD_DEV_INFO":
                 selected_port = ""  # Dissallow Action
 
             if len(self._selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 return
 
@@ -5431,7 +5465,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     if is_target_build:
                         most_recent = build
                         break  # found, stop searching
-            if most_recent == None:
+            if most_recent is None:
                 Log.d(f"requires EXE: {require_EXE}")
                 Log.d(f"release ONLY: {release_builds_only}")
                 Log.d(f"found builds: {builds}")
@@ -6050,7 +6084,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
                     # monitor the script output for application launch
                     line = ""
-                    while proc.poll() == None:  # still running
+                    while proc.poll() is None:  # still running
                         line += proc.stdout.read(1)
                         if "Application will launch" in line:
                             Log.i("FINISHED:", "Launching application...")
@@ -6556,7 +6590,7 @@ class TECTask(QtCore.QThread):
     def _tec_update(self, dac=""):
         # Open, write, read and close the port accordingly
         selected_port = self.port
-        if selected_port == None:
+        if selected_port is None:
             selected_port = ""  # Dissallow None
         if selected_port == "CMD_DEV_INFO":
             selected_port = ""  # Dissallow Action
@@ -6565,7 +6599,7 @@ class TECTask(QtCore.QThread):
             self._tec_initialized = True
 
             if len(selected_port) == 0:
-                Log.e(f"ERROR: No active device is currently available for TEC status updates.")
+                Log.e("No active device is currently available for TEC status updates.")
                 Log.e('Please connect a device, hit "Reset", and try "Temp Control" again.')
                 self._tec_stop_thread = True  # queue thread for 'quit' on next update
                 self._tec_update_now = False  # invalidate flag to update TEC again
@@ -6883,14 +6917,14 @@ class TECTask(QtCore.QThread):
         :return: True if the port is connected to the host :rtype: bool.
         """
         # dm = Discovery()
-        # if self._serial.net_port == None:
+        # if self._serial.net_port is None:
         #     net_exists = False
         # else:
         #     net_exists = dm.ping(self._serial.net_port)
         for p in self.get_ports():
             if p == port:
                 return True
-        # if port == None:
+        # if port is None:
         #     if len(dm.doDiscover()) > 0:
         #         return net_exists
         return False
@@ -6983,51 +7017,53 @@ class DryingDetection:
                 dried:  True if drying has just been detected (only once).
                 status: A newline-separated string of one or more status messages.
         """
-        status = ""
         if self._dried:
-            status += "Dried<br>"
-            return True, status
+            return True, "Dried"
+
         f_arr = np.asarray(resonance_frequency)[::-1]
         d_arr = np.asarray(dissipation)[::-1]
         t_arr = np.asarray(relative_time)[::-1]
+
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
-            status += "Error: input shapes do not match; skipping this batch.<br>"
-            return False, status
+            return False, "Error: input shapes do not match; skipping this batch."
 
         batch_size = f_arr.size
         self._sample_count += batch_size
         self.freq_w.extend(f_arr)
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
+
         if len(self.freq_w) < self.win_n:
-            status += f"Calibrating...<br>"
-            return False, status
+            return False, "Calibrating..."
+
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
+
         nf = self._normalize(arr_f)
         nd = self._normalize(arr_d)
+
         sigma_f = float(np.nanstd(nf))
         sigma_d = float(np.nanstd(nd))
         slope_f = self._compute_slope(nf)
         slope_d = self._compute_slope(nd)
-        if (
-            sigma_f < self.sigma_stable_freq
-            and sigma_d < self.sigma_stable_diss
-            and abs(slope_f) < self.flat_eps
-            and abs(slope_d) < self.flat_eps
-        ):
-            self._dried = True
-            self._dry_time = float(self.time_w[-1])
-            status += "Dried<br>"
-            Log.w(f"Dry time was {self._dry_time}")
-            return True, status
-        status += "Drying in progress:<br>"
-        if sigma_f >= self.sigma_stable_freq or abs(slope_f) >= self.flat_eps:
-            status += " - Resonance frequency unstable<br>"
-        if sigma_d >= self.sigma_stable_diss or abs(slope_d) >= self.flat_eps:
-            status += " - Dissipation unstable<br>"
-        status += " " * 33
-        return False, status
+
+        # Detect if sensor is not dry (any instability condition)
+        sensor_not_dry = (
+            sigma_f >= self.sigma_stable_freq
+            or abs(slope_f) >= self.flat_eps
+            or sigma_d >= self.sigma_stable_diss
+            or abs(slope_d) >= self.flat_eps
+        )
+
+        if sensor_not_dry:
+            return False, "Sensor not dry, stop"
+
+        # If we reach here, all stability conditions are met
+        self._dried = True
+        self._dry_time = float(self.time_w[-1])
+        Log.w(f"Dry time was {self._dry_time}")
+
+        return True, "Dried"
 
     def _normalize(self, arr: np.ndarray) -> np.ndarray:
         """Min-max normalize an array to the [0, 1] range.
