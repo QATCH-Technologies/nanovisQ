@@ -258,12 +258,17 @@ class Database:
                 ingredient_id INTEGER NOT NULL,
                 concentration REAL NOT NULL,
                 units TEXT NOT NULL,
+                pH REAL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """
         )
+        # Migration: add pH column to formulation_component for existing databases
+        existing_cols = {row[1] for row in c.execute("PRAGMA table_info(formulation_component)")}
+        if "pH" not in existing_cols:
+            c.execute("ALTER TABLE formulation_component ADD COLUMN pH REAL")
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (

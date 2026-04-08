@@ -756,6 +756,7 @@ class QueryRunInfo(QtWidgets.QWidget):
             QtGui.QDoubleValidator.StandardNotation
         )
         self.t20.setValidator(self.validBufferPH)
+        self.t20.textChanged.connect(self.detect_change)
         self.q20.addWidget(self.t20)
         self.h20 = QtWidgets.QLabel()
         self.h20.setText("<u>?</u>")
@@ -1939,8 +1940,11 @@ class QueryRunInfo(QtWidgets.QWidget):
         elif text.casefold() == "none" or len(text) == 0:
             self.t14.setText("0")  # clear Buffer Concentration
             self.t14.setEnabled(False)
+            self.t20.clear()  # clear Buffer pH
+            self.t20.setEnabled(False)
         else:
             self.t14.setEnabled(True)
+            self.t20.setEnabled(True)
             pass  # do nothing if any other value was selected
 
     def new_surfactant_type(self, text: str):
@@ -3235,7 +3239,9 @@ class QueryRunInfo(QtWidgets.QWidget):
 
             param20 = run.createElement("param")
             param20.setAttribute("name", "buffer_ph")
-            param20.setAttribute("value", self.t20.text())
+            buffer_type_text = self.c13.currentText()
+            buffer_ph_value = self.t20.text() if buffer_type_text and buffer_type_text.casefold() not in ("none", "") else ""
+            param20.setAttribute("value", buffer_ph_value)
             param20.setAttribute("units", "")
             params.appendChild(param20)
 

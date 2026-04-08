@@ -446,7 +446,7 @@ class FormulationController:
                     buffer=buffer,
                     concentration=row.Buffer_conc,
                     units="mM",
-                    pH=float(row.Buffer_pH) if pd.notna(row.Buffer_pH) else None,
+                    pH=float(row.Buffer_pH) if pd.notna(row.Buffer_pH) and str(row.Buffer_pH).strip() != "" else None,
                 )
                 form.set_protein(
                     protein=protein,
