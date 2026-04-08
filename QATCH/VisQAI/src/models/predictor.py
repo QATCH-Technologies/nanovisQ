@@ -309,7 +309,7 @@ class Predictor:
     def evaluate(
         self,
         eval_data: pd.DataFrame,
-        targets: list[str],
+        targets: list[str] | None = None,
         n_samples: int | None = None,
         fine_tune: bool = False,
         history_df: pd.DataFrame | None = None,

@@ -380,7 +380,13 @@ class SecurePackageLoader:
 
         self.loaded_modules = {}
         for filename in load_order:
-            module_path = self.root / filename
+            module_path = (self.root / filename).resolve()
+            try:
+                module_path.relative_to(self.root.resolve())
+            except ValueError:
+                raise SecurityError(
+                    f"Module path '{filename}' escapes the package root — load rejected."
+                )
             if not module_path.exists():
                 raise FileNotFoundError(f"Declared module '{filename}' not found in package.")
 
@@ -429,16 +435,31 @@ class SecurePackageLoader:
                 )
             return getattr(mod, ep_class)
 
-        # Auto-detect: look for a class whose name contains "Predictor"
-        for attr_name in dir(mod):
-            obj = getattr(mod, attr_name)
-            if isinstance(obj, type) and "Predictor" in attr_name:
-                Log.i(TAG, f"Auto-detected entry-point class: {attr_name}")
-                return obj
+        # Auto-detect: look for a class whose name contains "Predictor" that is
+        # defined in this module (not merely imported into it).
+        candidates = [
+            (attr_name, getattr(mod, attr_name))
+            for attr_name in dir(mod)
+            if isinstance(getattr(mod, attr_name), type)
+            and "Predictor" in attr_name
+            and getattr(mod, attr_name).__module__ == mod.__name__
+        ]
 
+        if len(candidates) == 1:
+            attr_name, obj = candidates[0]
+            Log.i(TAG, f"Auto-detected entry-point class: {attr_name}")
+            return obj
+
+        if len(candidates) == 0:
+            raise ValueError(
+                f"Could not auto-detect an entry-point class in {ep_module}. "
+                f"Declare 'class' in manifest modules.entry_point."
+            )
+
+        names = [name for name, _ in candidates]
         raise ValueError(
-            f"Could not auto-detect an entry-point class in {ep_module}. "
-            f"Declare 'class' in manifest modules.entry_point."
+            f"Ambiguous entry-point: multiple 'Predictor' classes found in "
+            f"{ep_module}: {names}. Declare 'class' in manifest modules.entry_point."
         )
 
     def load_inference_module(self, module_filename: str | None = None):
