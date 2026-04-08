@@ -1477,10 +1477,10 @@ class MainWindow(QtWidgets.QMainWindow):
         for _ in range(4):
             self.dry_detect.append(
                 DryingDetection(
-                    window_size=2000,
-                    sigma_stable_diss=0.25,
-                    sigma_stable_freq=0.25,
-                    flat_slope_eps=0.000015,
+                    window_size=Constants.DRYING_WINDOW_SIZE,
+                    sigma_stable_diss=Constants.DRYING_SIGMA_STABLE_DISSIPATION,
+                    sigma_stable_freq=Constants.DRYING_SIGMA_STABLE_FREQUENCY,
+                    flat_slope_eps=Constants.DRYING_FLAT_SLOPE_EPS,
                 )
             )
 
