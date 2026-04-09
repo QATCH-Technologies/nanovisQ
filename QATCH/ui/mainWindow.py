@@ -3440,9 +3440,7 @@ class MainWindow(QtWidgets.QMainWindow):
                                 ui_step = 1
                                 if not self._drop_epoch_sent:
                                     drop_epoch = float(self.worker.get_t1_buffer(0)[0])
-                                    self.worker._forecaster_in.put(
-                                        DropEpochSignal(drop_epoch)
-                                    )
+                                    self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
                                     self._drop_epoch_sent = True
                         elif pred_int == 0:
                             status_msg = "Filling started"
@@ -7033,7 +7031,7 @@ class DryingDetection:
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
 
-        if len(self.freq_w) < self.win_n:
+        if np.max(t_arr) < 3.0:
             return False, "Calibrating..."
 
         arr_f = np.array(self.freq_w, dtype=float)

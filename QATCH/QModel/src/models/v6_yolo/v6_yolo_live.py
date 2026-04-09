@@ -95,8 +95,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     #   threshold_seconds = float -> message fires only if the run's Relative_time at
     #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 minutes
-        2: (240.0, "Data Ready, You Can Stop"),  # >= 4 minutes
+        0: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at Initial Fill, no ch1 yet
+        1: (240.0, "Data Ready, You Can Stop"),  # >= 4 min at ch1, no ch2 yet
         3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
     }
 
@@ -352,7 +352,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
         if threshold_s is None:
-            # Unconditional messages are already handled in _on_channel_confirmed.
             return
 
         if self._channel_warning_fired.get(channel, False):
@@ -360,35 +359,22 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
         confirm_time = self._channel_confirm_times.get(channel)
         if confirm_time is None:
-            # Channel not yet confirmed - nothing to evaluate.
             return
 
-        current_time: float = max(self._last_max_time, 0.0)
+        if self._fill_epoch is None:
+            return  # drop epoch not yet established; cannot evaluate fill duration
 
-        # Compute elapsed time since the fill epoch was established.
-        if self._fill_epoch is not None:
-            elapsed_s: float = current_time - self._fill_epoch
-            epoch_note = f"{elapsed_s:.1f} s since fill epoch"
-        else:
-            # Edge case: classifier jumped straight past channel 0 (e.g. model
-            # started mid-fill). Fall back to absolute run time so the logic
-            # still functions, but flag it clearly in the log.
-            elapsed_s = current_time
-            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
-            Log.w(
-                self.TAG,
-                f"Channel {channel} threshold check but no Initial Fill epoch recorded. "
-                "Duration will be evaluated against absolute run time.",
-            )
+        current_time: float = max(self._last_max_time, 0.0)
+        elapsed_s: float = current_time - self._fill_epoch
 
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
             elapsed_min = elapsed_s / 60.0
             Log.w(
                 self.TAG,
-                f"Extended fill detected: channel {channel} at {epoch_note} "
-                f"(threshold {threshold_min:.0f} min, elapsed {elapsed_min:.2f} min). "
-                f"Displaying: '{message}'",
+                f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
+                f"since fill epoch (threshold {threshold_min:.0f} min, "
+                f"elapsed {elapsed_min:.2f} min). Displaying: '{message}'",
             )
             self._pending_display_message = message
             self._channel_warning_fired[channel] = True
