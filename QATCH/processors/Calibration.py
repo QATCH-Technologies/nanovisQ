@@ -460,27 +460,32 @@ class CalibrationProcess(multiprocessing.Process):
 
                 if all_ports_open:
 
-                    # For primary only, send LID CLOSE if in auto mode
+                    ### BEGIN AUTO-LOCK BLOCK ###
                     if self._lid_auto:
-                        self._serial[0].write(b"LID CLOSE\n")
-
-                        reply = ""
-                        while len(reply) <= 1:
-                            reply = self._serial[0].read_until(
-                            ).decode().strip()
-                        Log.d("Lid close reply:", reply)
+                        # For primary only, send LID CLOSE if in auto mode
+                        lid_cmd = "LID CLOSE"
                     else:
-                        self._serial[0].write(b"LID STATE\n")
+                        # Otherwise, query the current LID STATE in manual
+                        lid_cmd = "LID STATE"
+                    self._serial[0].write(str(lid_cmd + "\n").encode())
 
-                        reply = ""
-                        while len(reply) <= 1:
-                            reply = self._serial[0].read_until(
-                            ).decode().strip()
-                        Log.d("Lid state reply:", reply)
+                    lid_reply = ""
+                    start = time()
+                    waitFor = 3  # timeout delay (seconds)
+                    while len(lid_reply) <= 1 and time() - start < waitFor:
+                        lid_reply = self._serial[0].read_until(
+                        ).decode().strip()
+                    if time() - start >= waitFor:
+                        Log.w(
+                            TAG, f"WARNING: Timeout waiting for {lid_cmd} reply")
+                    else:
+                        Log.d(TAG, f"Lid command: {lid_cmd}")
+                        Log.d(TAG, f"Lid reply: {lid_reply}")
 
-                        if "CLOSED" not in reply:
+                        if "CLOSED" not in lid_reply:
                             raise PermissionError(
                                 "Cannot proceed! Lid state is not closed.")
+                    ### END AUTO-LOCK BLOCK ###
 
                 if not all_ports_open:
                     # port already open
