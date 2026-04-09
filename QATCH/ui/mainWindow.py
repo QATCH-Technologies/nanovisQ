@@ -6967,6 +6967,10 @@ class DryingDetection:
         self._detection_index = None
         self._last_message: str = ""
         self._init_exec: bool = True
+        self._global_freq_min = np.inf
+        self._global_freq_max = -np.inf
+        self._global_diss_min = np.inf
+        self._global_diss_max = -np.inf
         self.reset()
 
     def reset(self) -> None:
@@ -6985,6 +6989,10 @@ class DryingDetection:
         self._init_exec = True
         self._sample_count = 0
         self._dry_time = 0.0
+        self._global_freq_min = np.inf
+        self._global_freq_max = -np.inf
+        self._global_diss_min = np.inf
+        self._global_diss_max = -np.inf
 
     @property
     def is_dry(self) -> bool:
@@ -7031,7 +7039,10 @@ class DryingDetection:
         f_arr = np.asarray(resonance_frequency)[::-1]
         d_arr = np.asarray(dissipation)[::-1]
         t_arr = np.asarray(relative_time)[::-1]
-
+        self._global_freq_min = min(self._global_freq_min, np.nanmin(f_arr))
+        self._global_freq_max = max(self._global_freq_max, np.nanmax(f_arr))
+        self._global_diss_min = min(self._global_diss_min, np.nanmin(d_arr))
+        self._global_diss_max = max(self._global_diss_max, np.nanmax(d_arr))
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
             return False, self._last_message
 
@@ -7049,8 +7060,8 @@ class DryingDetection:
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
 
-        nf = self._normalize(arr_f)
-        nd = self._normalize(arr_d)
+        nf = self._normalize_global(arr_f, self._global_freq_min, self._global_freq_max)
+        nd = self._normalize_global(arr_d, self._global_diss_min, self._global_diss_max)
 
         sigma_f = float(np.nanstd(nf))
         sigma_d = float(np.nanstd(nd))
@@ -7083,6 +7094,11 @@ class DryingDetection:
         Log.i(f"Dry time was {self._dry_time}")
         self._last_message = "Dried"
         return True, self._last_message
+
+    def _normalize_global(self, arr: np.ndarray, mn: float, mx: float) -> np.ndarray:
+        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
+            return np.zeros_like(arr)
+        return (arr - mn) / (mx - mn)
 
     def _normalize(self, arr: np.ndarray) -> np.ndarray:
         """Min-max normalize an array to the [0, 1] range.
