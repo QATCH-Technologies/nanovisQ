@@ -2055,6 +2055,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
         for det in self.dry_detect:
             det.reset()
+        self._last_dry_msg = "Preparing sensor..."
+        self._last_dry_status = False
+        self._fill_display_msg = None
         # Instantiates process
         self.worker.config(
             QCS_on=self._QCS_installed,
@@ -3621,14 +3624,23 @@ class MainWindow(QtWidgets.QMainWindow):
                                                 ) - np.amin(vector2[:-idx])
                                         else:
                                             labelbar = "Capturing data... Apply drop when ready..."
-                                            # Apply drop if frequency is within noise threshold of baseline and dissipation has increased by at least 10x the noise threshold from baseline.
-                                            # NOTE: RF is probably inverted at this point hence the sign change.
-                                            if (
+                                            # Directional gate: a drop should NOT drive RF upward beyond the positive noise band.
+                                            # We allow negative excursions (expected) but reject large positive spikes.
+                                            delta_f = (
                                                 vector1[0] - self._baseline_freq_avg
-                                                < 10 * self._baseline_freq_noise
-                                                and vector2[0] - self._baseline_diss_avg
-                                                > 10 * self._baseline_diss_noise
-                                            ):
+                                            )  # RF change (Hz)
+                                            delta_d = (
+                                                vector2[0] - self._baseline_diss_avg
+                                            )  # Dissipation change
+
+                                            freq_ok = delta_f <= (
+                                                10.0 * self._baseline_freq_noise
+                                            )  # one-sided, directional
+                                            diss_ok = delta_d >= (
+                                                10.0 * self._baseline_diss_noise
+                                            )  # must increase
+
+                                            if freq_ok and diss_ok:
                                                 self._drop_applied[i] = True
                                     except Exception as e:
                                         Log.e(
@@ -4127,8 +4139,9 @@ class MainWindow(QtWidgets.QMainWindow):
                                 dissipation=dissipation_vector,
                                 relative_time=relative_time,
                             )
-                            self._last_dry_msg = dry_msg
-                            self._last_dry_status = dry_status
+                            if i == 0:
+                                self._last_dry_msg = dry_msg
+                                self._last_dry_status = dry_status
                             if not dry_status:
                                 # Set and signal all receivers that new time is available (if unset)
                                 with self._sensorDriedTimeValue.get_lock():
