@@ -95,8 +95,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     #   threshold_seconds = float -> message fires only if the run's Relative_time at
     #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        0: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at Initial Fill, no ch1 yet
-        1: (240.0, "Data Ready, You Can Stop"),  # >= 4 min at ch1, no ch2 yet
+        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
         3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
     }
 

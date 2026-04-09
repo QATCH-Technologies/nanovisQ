@@ -7056,7 +7056,6 @@ class DryingDetection:
         sigma_d = float(np.nanstd(nd))
         slope_f = self._compute_slope(nf)
         slope_d = self._compute_slope(nd)
-
         # Detect if sensor is not dry (any instability condition)
         sensor_not_dry = (
             sigma_f >= self.sigma_stable_freq
@@ -7064,18 +7063,24 @@ class DryingDetection:
             or sigma_d >= self.sigma_stable_diss
             or abs(slope_d) >= self.flat_eps
         )
+        debug_msg = (
+            f"Sensor not dry | "
+            f"Freq: [sigma={sigma_f:.4e} (lim: {self.sigma_stable_freq:.1e}), slope={slope_f:.4e} (lim: {self.flat_eps:.1e})] | "
+            f"Diss: [sigma={sigma_d:.4e} (lim: {self.sigma_stable_diss:.1e}), slope={slope_d:.4e} (lim: {self.flat_eps:.1e})]"
+        )
+        Log.w("[DryDetection]", debug_msg)
 
         if sensor_not_dry and not self._init_exec:
             self._last_message = "Sensor not dry, stop"
             return False, self._last_message
-        else:
+        elif sensor_not_dry and self._init_exec:
             self._init_exec = False
             return False, self._last_message
 
         # If we reach here, all stability conditions are met
         self._dried = True
         self._dry_time = float(self.time_w[-1])
-        Log.w(f"Dry time was {self._dry_time}")
+        Log.i(f"Dry time was {self._dry_time}")
         self._last_message = "Dried"
         return True, self._last_message
 
