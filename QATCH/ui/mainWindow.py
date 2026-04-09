@@ -1478,7 +1478,8 @@ class MainWindow(QtWidgets.QMainWindow):
         #         start_booster_path=start_booster_path, end_booster_path=end_booster_path, scaler_path=scaler_path)
         self.forecast_start_time = -1.0
         self.forecast_end_time = -1.0
-
+        self._last_dry_msg: str = "Preparing sensor..."
+        self._last_dry_status: bool = False
         self.dry_detect = []
         for _ in range(4):
             self.dry_detect.append(
@@ -3424,45 +3425,52 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.worker._forecaster_in.put(snapshot)
                 if not self.worker._forecaster_out.empty():
                     try:
-                        # Get raw model prediction (-1=Empty, 0=Init, 1=Ch1, 2=Ch2, 3=Ch3)
                         pred_int, _, display_msg = self.worker._forecaster_out.get()
-                        # Latch the message - once set, keep it visible until the run ends
-                        # or a newer message supersedes it.
                         if display_msg is not None:
                             self._fill_display_msg = display_msg
-                        # This logic handles drop application code.
+
                         is_drop_applied = all(self._drop_applied)
-                        # Refactored messages out of constants.  Can move them back if we like the messages.
-                        ui_step = 0
-                        status_msg = "Unknown"
-                        if pred_int == -1:
-                            if not is_drop_applied:
-                                status_msg = "Add sample"
+
+                        # Gate all fill-classifier messages behind drop application.
+                        # Before the drop is confirmed, mirror the dry/drop status instead.
+                        if not is_drop_applied:
+                            if not self._last_dry_status:
+                                status_msg = self._last_dry_msg
                                 ui_step = 0
                             else:
+                                status_msg = "Add sample"
+                                ui_step = 0
+                            if hasattr(self.ControlsWin.ui1, "run_controls"):
+                                self.ControlsWin.ui1.run_controls.update_progress(
+                                    ui_step, 5, status_msg
+                                )
+                        else:
+                            ui_step = 0
+                            status_msg = "Unknown"
+                            if pred_int == -1:
                                 status_msg = "Sample detected"
                                 ui_step = 1
                                 if not self._drop_epoch_sent:
                                     drop_epoch = float(self.worker.get_t1_buffer(0)[0])
                                     self.worker._forecaster_in.put(DropEpochSignal(drop_epoch))
                                     self._drop_epoch_sent = True
-                        elif pred_int == 0:
-                            status_msg = "Filling started"
-                            ui_step = 2
-                        elif pred_int == 1:
-                            status_msg = "Filling"
-                            ui_step = 3
-                        elif pred_int == 2:
-                            status_msg = "Almost full"
-                            ui_step = 4
-                        elif pred_int == 3:
-                            status_msg = "Complete, stop"
-                            ui_step = 5
+                            elif pred_int == 0:
+                                status_msg = "Filling started"
+                                ui_step = 2
+                            elif pred_int == 1:
+                                status_msg = "Filling"
+                                ui_step = 3
+                            elif pred_int == 2:
+                                status_msg = "Almost full"
+                                ui_step = 4
+                            elif pred_int == 3:
+                                status_msg = "Complete, stop"
+                                ui_step = 5
 
-                        if hasattr(self.ControlsWin.ui1, "run_controls"):
-                            self.ControlsWin.ui1.run_controls.update_progress(
-                                ui_step, 5, status_msg
-                            )
+                            if hasattr(self.ControlsWin.ui1, "run_controls"):
+                                self.ControlsWin.ui1.run_controls.update_progress(
+                                    ui_step, 5, status_msg
+                                )
                     except Exception as e:
                         Log.e(TAG, f"Error retrieving fill status: {e}")
 
@@ -4119,6 +4127,8 @@ class MainWindow(QtWidgets.QMainWindow):
                                 dissipation=dissipation_vector,
                                 relative_time=relative_time,
                             )
+                            self._last_dry_msg = dry_msg
+                            self._last_dry_status = dry_status
                             if not dry_status:
                                 # Set and signal all receivers that new time is available (if unset)
                                 with self._sensorDriedTimeValue.get_lock():
@@ -4158,11 +4168,13 @@ class MainWindow(QtWidgets.QMainWindow):
                             # self._last_y_range[i] != current_y_range:
                             if any(np.subtract(current_deltas, last_y_deltas) > baseline_deltas):
                                 self._last_y_range[i] = current_y_range
-                                # time of last delta
                                 self._last_y_delta[i] = time_running
-                                # hide message once drop is applied
-                                self._text4[i].setText(" ")
                                 self._run_finished[i] = False
+                                # Only blank the label if no fill warning is currently showing.
+                                # If _fill_display_msg is latched, blanking here causes a one-frame
+                                # flicker since the fill message is re-applied on the very next tick.
+                                if not self._fill_display_msg:
+                                    self._text4[i].setText(" ")
                             elif (
                                 time_running - self._last_y_delta[i] > 10.0
                                 and not self._run_finished[i]
@@ -6972,6 +6984,7 @@ class DryingDetection:
         self._detection_index = None
         self._last_message: str = ""
         self._init_exec: bool = True
+        self._start_time = 0.0
         self.reset()
 
     def reset(self) -> None:
@@ -7051,6 +7064,8 @@ class DryingDetection:
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
 
+        current_time = float(t_arr.max())
+
         if np.max(t_arr) < 10.0 and self._sample_count < self.win_n:
             self._last_message = "Calibrating..."
             return False, self._last_message
@@ -7061,30 +7076,29 @@ class DryingDetection:
         snr_d = self._compute_snr(arr_d)
         slope_f = self._compute_slope(arr_f)
         slope_d = self._compute_slope(arr_d)
-        # Detect if sensor is not dry (any instability condition)
+
         sensor_not_dry = (
             snr_f >= self.snr_stable_freq
             or abs(slope_f) >= self.flat_eps_freq
             or snr_d >= self.snr_stable_diss
             or abs(slope_d) >= self.flat_eps_diss
         )
-        debug_msg = (
-            f"Sensor not dry | "
-            f"Freq: [snr={snr_f:.4e} (lim: {self.snr_stable_freq:.1e}), slope={slope_f:.4e} (lim: {self.flat_eps_freq:.1e})] | "
-            f"Diss: [snr={snr_d:.4e} (lim: {self.snr_stable_diss:.1e}), slope={slope_d:.4e} (lim: {self.flat_eps_diss:.1e})]"
-        )
-        Log.w("[DryDetection]", debug_msg)
 
-        if sensor_not_dry and not self._init_exec:
-            self._last_message = "Sensor not dry, stop"
-            return False, self._last_message
-        elif sensor_not_dry and self._init_exec:
-            self._init_exec = False
-            return False, self._last_message
+        if sensor_not_dry:
+            elapsed = current_time - self._start_time
+            if elapsed >= 45.0:
+                self._last_message = "Sensor not dry, please restart"
+                return False, self._last_message
+            elif not self._init_exec:
+                self._last_message = "Sensor not ready, please wait.."
+                return False, self._last_message
+            else:
+                self._init_exec = False
+                return False, self._last_message
 
         # If we reach here, all stability conditions are met
         self._dried = True
-        self._dry_time = float(self.time_w[-1])
+        self._dry_time = current_time
         Log.i(f"Dry time was {self._dry_time}")
         self._last_message = "Dried"
         return True, self._last_message
@@ -7109,13 +7123,7 @@ class DryingDetection:
         return float(m)
 
     def _compute_snr(self, arr: np.ndarray) -> float:
-        """Compute the signal-to-noise ratio of the array.
-
-        SNR is defined as the mean divided by the standard deviation of the array.
-
-        Args:
-            arr (np.ndarray): 1D array of values for SNR computation.
-        """
+        """Currently just comutes standard deviation"""
         # sigma = np.power(float(np.nanstd(arr)), 2)
         # if sigma == 0:
         #     return np.inf
