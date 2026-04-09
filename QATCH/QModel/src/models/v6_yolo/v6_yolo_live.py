@@ -486,9 +486,7 @@ class QModelV6YOLO_LiveProcess(multiprocessing.Process):
         v6_base_path = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "SavedModels", "qmodel_v6_yolo"
         )
-        type_cls_asset = os.path.join(
-            v6_base_path, "classifiers", "fill_classifier", "weights", "best.pt"
-        )
+        type_cls_asset = os.path.join(v6_base_path, "classifiers", "fill_classifier", "type_cls.pt")
         self.model_path = type_cls_asset
         self.buffer_window_size = buffer_window_size
 

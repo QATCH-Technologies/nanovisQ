@@ -376,5 +376,7 @@ class QModelV6YOLO_DataProcessor:
                 thickness=1,
                 lineType=cv2.LINE_AA,
             )
+        cv2.imshow("Debug - Detection Image", img)
+        cv2.waitKey(1)
 
         return img
