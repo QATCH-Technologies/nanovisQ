@@ -2049,7 +2049,8 @@ class MainWindow(QtWidgets.QMainWindow):
         # Reset dry and drop times to zero
         self._sensorDriedTimes = [0.0, 0.0, 0.0, 0.0]
         self._dropAppliedTimes = [0.0, 0.0, 0.0, 0.0]
-
+        for det in self.dry_detect:
+            det.reset()
         # Instantiates process
         self.worker.config(
             QCS_on=self._QCS_installed,
@@ -7023,15 +7024,16 @@ class DryingDetection:
         t_arr = np.asarray(relative_time)[::-1]
 
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
-            return False, "Error: input shapes do not match; skipping this batch."
+            return False, ""
 
-        batch_size = f_arr.size
-        self._sample_count += batch_size
+        t_arr_uniq = np.unique(t_arr)
+        batch_size = t_arr_uniq.size
+        self._sample_count = batch_size
         self.freq_w.extend(f_arr)
         self.diss_w.extend(d_arr)
         self.time_w.extend(t_arr)
 
-        if np.max(t_arr) < 3.0:
+        if np.max(t_arr) < 10.0 and self._sample_count < self.win_n:
             return False, "Calibrating..."
 
         arr_f = np.array(self.freq_w, dtype=float)
