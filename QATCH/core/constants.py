@@ -45,28 +45,29 @@ class Constants:
     - Higher: Increases reliability and noise filtering, but delays detection.
     - Lower: Faster detection, but higher risk of false positives from noise.
     """
-    DRYING_WINDOW_SIZE = 2000
+    DRYING_WINDOW_SIZE = 100
     """
     The maximum allowed standard deviation (noise floor) for the normalized
     dissipation signal. Range is [0, 1] due to normalization.
     - Higher: More "lenient"; triggers even if the signal is jittery.
     - Lower: More "strict"; requires the signal to be extremely quiet.
     """
-    DRYING_SIGMA_STABLE_DISSIPATION = 0.25
+    DRYING_SNR_STABLE_DISSIPATION = 0.25
     """
     The maximum allowed standard deviation (noise floor) for the normalized
     frequency signal. Range is [0, 1] due to normalization.
     - Higher: Ignores small vibrations or electronic noise in frequency.
     - Lower: Requires frequency to be perfectly stable.
     """
-    DRYING_SIGMA_STABLE_FREQUENCY = 0.25
+    DRYING_SNR_STABLE_FREQUENCY = 0.25
     """
     The maximum allowed absolute slope (drift) of the normalized windows.
     This ensures the signal has reached a true plateau.
     - Higher: Triggers "dry" earlier, even if the signal is still slightly trending.
     - Lower: Requires a near-perfectly flat line; ensures drying is 100% complete.
     """
-    DRYING_FLAT_SLOPE_EPS = 0.000015
+    DRYING_FLAT_SLOPE_EPS_FREQUENCY = 0.000015
+    DRYING_FLAT_SLOPE_EPS_DISSIPATION = 0.000015
 
     ##########################
     # APPLICATION parameters #

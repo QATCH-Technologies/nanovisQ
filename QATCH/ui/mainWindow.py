@@ -1484,9 +1484,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.dry_detect.append(
                 DryingDetection(
                     window_size=Constants.DRYING_WINDOW_SIZE,
-                    sigma_stable_diss=Constants.DRYING_SIGMA_STABLE_DISSIPATION,
-                    sigma_stable_freq=Constants.DRYING_SIGMA_STABLE_FREQUENCY,
-                    flat_slope_eps=Constants.DRYING_FLAT_SLOPE_EPS,
+                    snr_stable_diss=Constants.DRYING_SNR_STABLE_DISSIPATION,
+                    snr_stable_freq=Constants.DRYING_SNR_STABLE_FREQUENCY,
+                    flat_slope_eps_freq=Constants.DRYING_FLAT_SLOPE_EPS_FREQUENCY,
+                    flat_slope_eps_diss=Constants.DRYING_FLAT_SLOPE_EPS_DISSIPATION,
                 )
             )
 
@@ -4138,12 +4139,14 @@ class MainWindow(QtWidgets.QMainWindow):
                                         np.amax(self.worker.get_d2_buffer(i)[:numPoints]),
                                     ],
                                 ]
-                            elif self._fill_display_msg:
-                                # Fill classifier has flagged an actionable state
-                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
                             else:
                                 self._text4[i].setText("Apply drop now!", color=(0, 200, 0))
                         else:
+                            # Drop has been applied — show any latched fill-classifier message on the plot.
+                            # This is the only place _fill_display_msg can realistically arrive since
+                            # extended-fill events occur well after drop application.
+                            if self._fill_display_msg and self._text4[i] is not None:
+                                self._text4[i].setText(self._fill_display_msg, color=(200, 100, 0))
                             time_running = _plt2.getViewBox().viewRange()[0][1]
                             current_y_range = [
                                 _plt2.getViewBox().viewRange()[1],
@@ -6953,24 +6956,22 @@ class DryingDetection:
     def __init__(
         self,
         window_size: int,
-        sigma_stable_freq: float,
-        sigma_stable_diss: float,
-        flat_slope_eps: float,
+        snr_stable_freq: float,
+        snr_stable_diss: float,
+        flat_slope_eps_diss: float,
+        flat_slope_eps_freq: float,
     ) -> None:
         self.win_n = int(window_size)
         self.freq_w = deque(maxlen=self.win_n)
         self.diss_w = deque(maxlen=self.win_n)
         self.time_w = deque(maxlen=self.win_n)
-        self.sigma_stable_freq = float(sigma_stable_freq)
-        self.sigma_stable_diss = float(sigma_stable_diss)
-        self.flat_eps = float(flat_slope_eps)
+        self.snr_stable_freq = float(snr_stable_freq)
+        self.snr_stable_diss = float(snr_stable_diss)
+        self.flat_eps_diss = float(flat_slope_eps_diss)
+        self.flat_eps_freq = float(flat_slope_eps_freq)
         self._detection_index = None
         self._last_message: str = ""
         self._init_exec: bool = True
-        self._global_freq_min = np.inf
-        self._global_freq_max = -np.inf
-        self._global_diss_min = np.inf
-        self._global_diss_max = -np.inf
         self.reset()
 
     def reset(self) -> None:
@@ -6989,10 +6990,6 @@ class DryingDetection:
         self._init_exec = True
         self._sample_count = 0
         self._dry_time = 0.0
-        self._global_freq_min = np.inf
-        self._global_freq_max = -np.inf
-        self._global_diss_min = np.inf
-        self._global_diss_max = -np.inf
 
     @property
     def is_dry(self) -> bool:
@@ -7039,11 +7036,12 @@ class DryingDetection:
         f_arr = np.asarray(resonance_frequency)[::-1]
         d_arr = np.asarray(dissipation)[::-1]
         t_arr = np.asarray(relative_time)[::-1]
-        self._global_freq_min = min(self._global_freq_min, np.nanmin(f_arr))
-        self._global_freq_max = max(self._global_freq_max, np.nanmax(f_arr))
-        self._global_diss_min = min(self._global_diss_min, np.nanmin(d_arr))
-        self._global_diss_max = max(self._global_diss_max, np.nanmax(d_arr))
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
+            return False, self._last_message
+
+        valid = t_arr > 0.0
+        f_arr, d_arr, t_arr = f_arr[valid], d_arr[valid], t_arr[valid]
+        if f_arr.size == 0:
             return False, self._last_message
 
         t_arr_uniq = np.unique(t_arr)
@@ -7059,25 +7057,21 @@ class DryingDetection:
 
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
-
-        nf = self._normalize_global(arr_f, self._global_freq_min, self._global_freq_max)
-        nd = self._normalize_global(arr_d, self._global_diss_min, self._global_diss_max)
-
-        sigma_f = float(np.nanstd(nf))
-        sigma_d = float(np.nanstd(nd))
-        slope_f = self._compute_slope(nf)
-        slope_d = self._compute_slope(nd)
+        snr_f = self._compute_snr(arr_f)
+        snr_d = self._compute_snr(arr_d)
+        slope_f = self._compute_slope(arr_f)
+        slope_d = self._compute_slope(arr_d)
         # Detect if sensor is not dry (any instability condition)
         sensor_not_dry = (
-            sigma_f >= self.sigma_stable_freq
-            or abs(slope_f) >= self.flat_eps
-            or sigma_d >= self.sigma_stable_diss
-            or abs(slope_d) >= self.flat_eps
+            snr_f >= self.snr_stable_freq
+            or abs(slope_f) >= self.flat_eps_freq
+            or snr_d >= self.snr_stable_diss
+            or abs(slope_d) >= self.flat_eps_diss
         )
         debug_msg = (
             f"Sensor not dry | "
-            f"Freq: [sigma={sigma_f:.4e} (lim: {self.sigma_stable_freq:.1e}), slope={slope_f:.4e} (lim: {self.flat_eps:.1e})] | "
-            f"Diss: [sigma={sigma_d:.4e} (lim: {self.sigma_stable_diss:.1e}), slope={slope_d:.4e} (lim: {self.flat_eps:.1e})]"
+            f"Freq: [snr={snr_f:.4e} (lim: {self.snr_stable_freq:.1e}), slope={slope_f:.4e} (lim: {self.flat_eps_freq:.1e})] | "
+            f"Diss: [snr={snr_d:.4e} (lim: {self.snr_stable_diss:.1e}), slope={slope_d:.4e} (lim: {self.flat_eps_diss:.1e})]"
         )
         Log.w("[DryDetection]", debug_msg)
 
@@ -7094,29 +7088,6 @@ class DryingDetection:
         Log.i(f"Dry time was {self._dry_time}")
         self._last_message = "Dried"
         return True, self._last_message
-
-    def _normalize_global(self, arr: np.ndarray, mn: float, mx: float) -> np.ndarray:
-        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
-            return np.zeros_like(arr)
-        return (arr - mn) / (mx - mn)
-
-    def _normalize(self, arr: np.ndarray) -> np.ndarray:
-        """Min-max normalize an array to the [0, 1] range.
-
-        If the input array has no finite range (all values are equal or non-finite),
-        returns an array of zeros with the same shape.
-
-        Args:
-            arr (np.ndarray): Input array of values to normalize.
-
-        Returns:
-            np.ndarray: Normalized array with values scaled to [0, 1], or zeros
-            array if normalization is not possible.
-        """
-        mn, mx = np.nanmin(arr), np.nanmax(arr)
-        if not np.isfinite(mn) or not np.isfinite(mx) or mx <= mn:
-            return np.zeros_like(arr)
-        return (arr - mn) / (mx - mn)
 
     def _compute_slope(self, arr: np.ndarray) -> float:
         """Compute the slope of a linear fit to the array.
@@ -7136,3 +7107,18 @@ class DryingDetection:
         x = np.arange(arr.size)
         m, _ = np.polyfit(x, arr, 1)
         return float(m)
+
+    def _compute_snr(self, arr: np.ndarray) -> float:
+        """Compute the signal-to-noise ratio of the array.
+
+        SNR is defined as the mean divided by the standard deviation of the array.
+
+        Args:
+            arr (np.ndarray): 1D array of values for SNR computation.
+        """
+        # sigma = np.power(float(np.nanstd(arr)), 2)
+        # if sigma == 0:
+        #     return np.inf
+        # return np.power(float(np.nanmean(arr)), 2) / sigma
+        sigma = float(np.nanstd(arr))
+        return sigma
