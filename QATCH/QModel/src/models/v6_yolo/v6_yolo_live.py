@@ -95,8 +95,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     #   threshold_seconds = float -> message fires only if the run's Relative_time at
     #                               confirmation equals or exceeds the threshold.
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
-        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 minutes
-        2: (240.0, "Data Ready, You Can Stop"),  # >= 4 minutes
+        0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
+        1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
         3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
     }
 
@@ -134,7 +134,13 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Tracks which channels have already had their timed duration warning fired so
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
-
+        # Tracks which channels have exceeded their duration threshold but are waiting
+        # for the *next* channel to be confirmed before the display message is emitted.
+        self._extended_fill_latched: Dict[int, bool] = {}
+        self._cal_csv_written: bool = False
+        self._cal_csv_path: str = os.path.join(
+            Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
+        )
         Log.i(self.TAG, "Initialized LiveFillClassifier.")
 
     def set_drop_applied_timestamp(self, relative_time: float) -> None:
@@ -332,6 +338,21 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             self._pending_display_message = message
             self._channel_warning_fired[channel] = True
 
+        # Check whether the *previous* channel's extended-fill latch was armed.
+        # If so, now that this channel has finally been confirmed, emit the message.
+        prev_channel = channel - 1
+        if self._extended_fill_latched.get(prev_channel, False):
+            _, prev_message = self.DURATION_THRESHOLDS.get(prev_channel, (None, None))
+            if prev_message is not None:
+                Log.i(
+                    self.TAG,
+                    f"Extended fill latch for channel {prev_channel} released on "
+                    f"channel {channel} confirmation - displaying: '{prev_message}'",
+                )
+                self._pending_display_message = prev_message
+                # Consume the latch so it cannot fire again.
+                self._extended_fill_latched[prev_channel] = False
+
     def _evaluate_duration_threshold(self, channel: int) -> None:
         """Evaluates timed fill-duration thresholds for the currently stable channel.
 
@@ -352,7 +373,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
         if threshold_s is None:
-            # Unconditional messages are already handled in _on_channel_confirmed.
             return
 
         if self._channel_warning_fired.get(channel, False):
@@ -360,37 +380,27 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
 
         confirm_time = self._channel_confirm_times.get(channel)
         if confirm_time is None:
-            # Channel not yet confirmed - nothing to evaluate.
             return
 
-        current_time: float = max(self._last_max_time, 0.0)
+        if self._fill_epoch is None:
+            return  # drop epoch not yet established; cannot evaluate fill duration
 
-        # Compute elapsed time since the fill epoch was established.
-        if self._fill_epoch is not None:
-            elapsed_s: float = current_time - self._fill_epoch
-            epoch_note = f"{elapsed_s:.1f} s since fill epoch"
-        else:
-            # Edge case: classifier jumped straight past channel 0 (e.g. model
-            # started mid-fill). Fall back to absolute run time so the logic
-            # still functions, but flag it clearly in the log.
-            elapsed_s = current_time
-            epoch_note = f"{elapsed_s:.1f} s (no Initial Fill epoch - using absolute time)"
-            Log.w(
-                self.TAG,
-                f"Channel {channel} threshold check but no Initial Fill epoch recorded. "
-                "Duration will be evaluated against absolute run time.",
-            )
+        current_time: float = max(self._last_max_time, 0.0)
+        elapsed_s: float = current_time - self._fill_epoch
 
         if elapsed_s >= threshold_s:
             threshold_min = threshold_s / 60.0
             elapsed_min = elapsed_s / 60.0
             Log.w(
                 self.TAG,
-                f"Extended fill detected: channel {channel} at {epoch_note} "
-                f"(threshold {threshold_min:.0f} min, elapsed {elapsed_min:.2f} min). "
-                f"Displaying: '{message}'",
+                f"Extended fill detected: channel {channel} at {elapsed_s:.1f} s "
+                f"since fill epoch (threshold {threshold_min:.0f} min, "
+                f"elapsed {elapsed_min:.2f} min). Latching display message until "
+                f"next channel is confirmed: '{message}'",
             )
-            self._pending_display_message = message
+            # Do NOT emit the display message here. Instead arm the latch so that
+            # _on_channel_confirmed will emit it once the next channel is detected.
+            self._extended_fill_latched[channel] = True
             self._channel_warning_fired[channel] = True
 
     def get_and_clear_display_message(self) -> Optional[str]:
