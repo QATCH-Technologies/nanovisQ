@@ -26,6 +26,8 @@ from pyqtgraph import AxisItem
 from serial import serialutil
 from pathlib import Path
 
+from sympy import true
+
 from QATCH.VisQAI.src.db.db_synchronizer import DatabaseSynchronizer
 from QATCH.common.architecture import Architecture, OSType
 from QATCH.common.deviceFingerprint import DeviceFingerprint
@@ -3610,10 +3612,12 @@ class MainWindow(QtWidgets.QMainWindow):
                                                 ) - np.amin(vector2[:-idx])
                                         else:
                                             labelbar = "Capturing data... Apply drop when ready..."
+                                            # Apply drop if frequency is within noise threshold of baseline and dissipation has increased by at least 10x the noise threshold from baseline.
+                                            # NOTE: RF is probably inverted at this point hence the sign change.
                                             if (
-                                                abs(vector1[0] - self._baseline_freq_avg)
-                                                > 10 * self._baseline_freq_noise
-                                                and abs(vector2[0] - self._baseline_diss_avg)
+                                                vector1[0] - self._baseline_freq_avg
+                                                < 10 * self._baseline_freq_noise
+                                                and vector2[0] - self._baseline_diss_avg
                                                 > 10 * self._baseline_diss_noise
                                             ):
                                                 self._drop_applied[i] = True
@@ -6961,6 +6965,8 @@ class DryingDetection:
         self.sigma_stable_diss = float(sigma_stable_diss)
         self.flat_eps = float(flat_slope_eps)
         self._detection_index = None
+        self._last_message: str = ""
+        self._init_exec: bool = True
         self.reset()
 
     def reset(self) -> None:
@@ -6974,7 +6980,9 @@ class DryingDetection:
         self.freq_w.clear()
         self.diss_w.clear()
         self.time_w.clear()
+        self._last_message = ""
         self._dried = False
+        self._init_exec = True
         self._sample_count = 0
         self._dry_time = 0.0
 
@@ -7017,14 +7025,15 @@ class DryingDetection:
                 status: A newline-separated string of one or more status messages.
         """
         if self._dried:
-            return True, "Dried"
+            self._last_message = "Dried"
+            return True, self._last_message
 
         f_arr = np.asarray(resonance_frequency)[::-1]
         d_arr = np.asarray(dissipation)[::-1]
         t_arr = np.asarray(relative_time)[::-1]
 
         if f_arr.shape != d_arr.shape or f_arr.shape != t_arr.shape:
-            return False, ""
+            return False, self._last_message
 
         t_arr_uniq = np.unique(t_arr)
         batch_size = t_arr_uniq.size
@@ -7034,7 +7043,8 @@ class DryingDetection:
         self.time_w.extend(t_arr)
 
         if np.max(t_arr) < 10.0 and self._sample_count < self.win_n:
-            return False, "Calibrating..."
+            self._last_message = "Calibrating..."
+            return False, self._last_message
 
         arr_f = np.array(self.freq_w, dtype=float)
         arr_d = np.array(self.diss_w, dtype=float)
@@ -7055,15 +7065,19 @@ class DryingDetection:
             or abs(slope_d) >= self.flat_eps
         )
 
-        if sensor_not_dry:
-            return False, "Sensor not dry, stop"
+        if sensor_not_dry and not self._init_exec:
+            self._last_message = "Sensor not dry, stop"
+            return False, self._last_message
+        else:
+            self._init_exec = False
+            return False, self._last_message
 
         # If we reach here, all stability conditions are met
         self._dried = True
         self._dry_time = float(self.time_w[-1])
         Log.w(f"Dry time was {self._dry_time}")
-
-        return True, "Dried"
+        self._last_message = "Dried"
+        return True, self._last_message
 
     def _normalize(self, arr: np.ndarray) -> np.ndarray:
         """Min-max normalize an array to the [0, 1] range.
