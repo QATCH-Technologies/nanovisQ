@@ -97,7 +97,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
     DURATION_THRESHOLDS: Dict[int, Tuple[Optional[float], str]] = {
         0: (60.0, "Data Ready, You Can Stop"),  # >= 1 min at Initial Fill, no ch1 yet
         1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
-        3: (None, "Complete, Press Stop"),  # always on 3-channel confirmation
+        3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):

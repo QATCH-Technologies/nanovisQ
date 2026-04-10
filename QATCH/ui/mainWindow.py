@@ -3469,6 +3469,7 @@ class MainWindow(QtWidgets.QMainWindow):
                             elif pred_int == 3:
                                 status_msg = "Complete, stop"
                                 ui_step = 5
+                                self._fill_display_msg = "Data Ready, Stop"
 
                             if hasattr(self.ControlsWin.ui1, "run_controls"):
                                 self.ControlsWin.ui1.run_controls.update_progress(
