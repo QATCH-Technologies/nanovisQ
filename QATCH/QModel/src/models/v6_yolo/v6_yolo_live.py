@@ -324,7 +324,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     f"{self._fill_epoch:.1f} s.",
                 )
 
-        # Check whether the *previous* channel's extended-fill latch was armed.
+        # Check whether the previous channel's extended-fill latch was armed.
         # If so, now that this channel has finally been confirmed, emit the message.
         # This must run before any early return so that channels not in
         # DURATION_THRESHOLDS (e.g. channel 2) still release the latch for
@@ -348,7 +348,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         threshold_s, message = self.DURATION_THRESHOLDS[channel]
 
         if threshold_s is None:
-            # Unconditional - emit immediately on confirmation (e.g. 3-channel complete).
+            # emit immediately on confirmation (e.g. 3-channel complete).
             Log.i(
                 self.TAG,
                 f"Channel {channel} fill complete - displaying: '{message}'",
