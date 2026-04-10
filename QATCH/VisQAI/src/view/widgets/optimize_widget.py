@@ -167,24 +167,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self._init_ui()
 
     def _init_ui(self):
-        """Build and wire all child widgets in a top-to-bottom ``QVBoxLayout``.
-
-        Constructs four main regions in order:
-
-        1. **Header** - title label and close button.
-        2. **Configuration group** - model selector combo + import button and
-           max-iterations spin box.
-        3. **Viscosity Targets group** - column-header row, scrollable target
-           list, and ``"+ Add Target"`` button.
-        4. **Constraints group** - scrollable constraint list (initially empty).
-        5. **Footer** - ``"+ Add Constraint"`` button (left) and ``"Optimize"``
-           button (right).
-
-        All interactive widgets are connected to their respective slots.
-        ``_validate()`` is called at the end so the "Optimize" button starts in
-        the correct enabled/disabled state, and ``add_target_row()`` seeds one
-        initial row.
-        """
+        """Build and wire all child widgets in a top-to-bottom ``QVBoxLayout``."""
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 20)
         layout.setSpacing(15)
@@ -215,15 +198,13 @@ class OptimizeWidget(QtWidgets.QFrame):
         header.addWidget(btn_close)
         layout.addLayout(header)
 
-        #  Configuration
+        # Configuration
         grp_cfg = QtWidgets.QGroupBox("Configuration")
         cfg_form = QtWidgets.QFormLayout(grp_cfg)
         cfg_form.setSpacing(12)
 
-        # Model selector row
         model_row = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setStyleSheet("background-color: #ffffff; height: 26px;")
         self.model_combo.setToolTip("Select a prediction model (.visq)")
         self._populate_model_list()
 
@@ -247,7 +228,6 @@ class OptimizeWidget(QtWidgets.QFrame):
         model_row.addWidget(self.btn_select_model)
         cfg_form.addRow("Model:", model_row)
 
-        # Max iterations
         self.spin_maxiter = QtWidgets.QSpinBox()
         self.spin_maxiter.setRange(1, 1000)
         self.spin_maxiter.setValue(10)
@@ -268,7 +248,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         hdr_row.setContentsMargins(0, 0, 0, 0)
         for text, width in [("Shear Rate", 148), ("Target Viscosity (cP)", 0)]:
             lbl = QtWidgets.QLabel(text)
-            lbl.setStyleSheet("color: #6b7280; font-size: 10px; font-weight: 600;")
+            lbl.setProperty("class", "row-label")
             if width:
                 lbl.setFixedWidth(width)
             hdr_row.addWidget(lbl)
@@ -282,7 +262,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.targets_scroll.setHorizontalScrollBarPolicy(
             QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
-        self.targets_scroll.setFixedHeight(30)  # grows as rows are added
+        self.targets_scroll.setFixedHeight(30)
 
         self.targets_container = QtWidgets.QWidget()
         self.targets_layout = QtWidgets.QVBoxLayout(self.targets_container)
@@ -292,19 +272,12 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.lbl_no_targets = QtWidgets.QLabel(
             "No targets added.  Add at least one viscosity target."
         )
-        self.lbl_no_targets.setStyleSheet("color: #6b7280; font-style: italic;")
+        self.lbl_no_targets.setObjectName("lblNone")
         self.targets_layout.addWidget(self.lbl_no_targets)
         self.targets_layout.addStretch()
 
         self.targets_scroll.setWidget(self.targets_container)
         tgt_vbox.addWidget(self.targets_scroll)
-
-        self.btn_add_target = QtWidgets.QPushButton("+ Add Target")
-        self.btn_add_target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        self.btn_add_target.setFixedHeight(28)
-        self.btn_add_target.setFixedWidth(120)
-        self.btn_add_target.clicked.connect(self.add_target_row)
-        tgt_vbox.addWidget(self.btn_add_target, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(grp_tgt)
 
         # Constraints
@@ -322,7 +295,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.constraints_layout.setSpacing(8)
 
         self.lbl_none = QtWidgets.QLabel("No constraints added.")
-        self.lbl_none.setStyleSheet("color: #6b7280; font-style: italic;")
+        self.lbl_none.setObjectName("lblNone")
         self.constraints_layout.addWidget(self.lbl_none)
         self.constraints_layout.addStretch()
 
@@ -330,9 +303,15 @@ class OptimizeWidget(QtWidgets.QFrame):
         con_vbox.addWidget(self.scroll_area)
         layout.addWidget(grp_con)
 
-        # Footer
+        # Footer — Add Target | Add Constraint ——stretch—— Optimize
         layout.addSpacing(5)
         footer = QtWidgets.QHBoxLayout()
+        footer.setSpacing(8)
+
+        self.btn_add_target = QtWidgets.QPushButton("+ Add Target")
+        self.btn_add_target.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
+        self.btn_add_target.setFixedHeight(34)
+        self.btn_add_target.clicked.connect(self.add_target_row)
 
         self.btn_add_constraint = QtWidgets.QPushButton("+ Add Constraint")
         self.btn_add_constraint.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
@@ -346,6 +325,7 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.btn_optimize.setFixedWidth(140)
         self.btn_optimize.clicked.connect(self.emit_optimize)
 
+        footer.addWidget(self.btn_add_target)
         footer.addWidget(self.btn_add_constraint)
         footer.addStretch()
         footer.addWidget(self.btn_optimize)
@@ -419,53 +399,11 @@ class OptimizeWidget(QtWidgets.QFrame):
                 )
 
     def add_target_row(self):
-        """Append a new shear-rate / target-viscosity row to the target list.
-
-        Does nothing if ``MAX_TARGETS`` rows already exist.  Each row contains:
-
-        * A ``QComboBox`` for shear-rate selection (default: 10 000 s⁻¹).
-        * An arrow label (``->``).
-        * A ``QDoubleSpinBox`` for the target viscosity in cP.
-        * A delete ``QToolButton`` wired to ``_remove_target_row``.
-
-        The new row is inserted before the trailing stretch in
-        ``targets_layout``.  ``btn_add_target`` is disabled once the maximum
-        is reached, and ``_update_target_scroll_height`` / ``_validate`` are
-        called to keep the UI consistent.
-        """
+        """Append a new shear-rate / target-viscosity row to the target list."""
         if len(self.target_rows) >= MAX_TARGETS:
             return
 
         self.lbl_no_targets.hide()
-
-        combo_style = (
-            "background-color: #ffffff; height: 26px; "
-            "border: 1px solid #d1d5db; border-radius: 4px;"
-        )
-
-        row_w = QtWidgets.QWidget()
-        row_l = QtWidgets.QHBoxLayout(row_w)
-        row_l.setContentsMargins(0, 0, 0, 0)
-        row_l.setSpacing(8)
-
-        cb_shear = QtWidgets.QComboBox()
-        cb_shear.setStyleSheet(combo_style)
-        cb_shear.setFixedWidth(148)
-        cb_shear.addItems(SHEAR_RATE_LABELS)
-        cb_shear.setCurrentIndex(2)
-
-        lbl_arrow = QtWidgets.QLabel("->")
-        lbl_arrow.setStyleSheet("color: #9ca3af;")
-
-        spin_visc = QtWidgets.QDoubleSpinBox()
-        spin_visc.setStyleSheet(combo_style)
-        spin_visc.setRange(0.01, 100_000.0)
-        spin_visc.setDecimals(2)
-        spin_visc.setValue(1.0)
-        spin_visc.setSuffix(" cP")
-        spin_visc.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        spin_visc.setFixedWidth(120)
-        spin_visc.setToolTip("Target viscosity at the selected shear rate")
 
         _icon_del = os.path.join(
             Architecture.get_path(),
@@ -476,10 +414,33 @@ class OptimizeWidget(QtWidgets.QFrame):
             "icons",
             "delete-2-svgrepo-com.svg",
         )
+
+        row_w = QtWidgets.QWidget()
+        row_l = QtWidgets.QHBoxLayout(row_w)
+        row_l.setContentsMargins(0, 0, 0, 0)
+        row_l.setSpacing(8)
+
+        cb_shear = QtWidgets.QComboBox()
+        cb_shear.setFixedWidth(148)
+        cb_shear.addItems(SHEAR_RATE_LABELS)
+        cb_shear.setCurrentIndex(2)
+
+        lbl_arrow = QtWidgets.QLabel("->")
+        lbl_arrow.setObjectName("lblArrow")
+
+        spin_visc = QtWidgets.QDoubleSpinBox()
+        spin_visc.setRange(0.01, 100_000.0)
+        spin_visc.setDecimals(2)
+        spin_visc.setValue(1.0)
+        spin_visc.setSuffix(" cP")
+        spin_visc.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        spin_visc.setFixedWidth(120)
+        spin_visc.setToolTip("Target viscosity at the selected shear rate")
+
         btn_del = QtWidgets.QToolButton()
+        btn_del.setObjectName("btnConstraintDelete")
         btn_del.setIcon(QtGui.QIcon(_icon_del))
         btn_del.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn_del.setStyleSheet("border: none;")
 
         row_l.addWidget(cb_shear)
         row_l.addWidget(lbl_arrow)
@@ -537,32 +498,9 @@ class OptimizeWidget(QtWidgets.QFrame):
         self.resized.emit()
 
     def add_constraint_row(self):
-        """Append a new ingredient-constraint row to the constraint list.
-
-        Each row is composed of:
-
-        * **Ingredient** ``QComboBox`` - one of Protein, Buffer, Surfactant,
-          Stabilizer, Salt, or Excipient.
-        * **Attribute** ``QComboBox`` - populated by ``_on_ingredient_changed``
-          once an ingredient is chosen (Type, Concentration, optionally Class).
-        * **Condition** ``QComboBox`` - populated by ``_on_attribute_changed``
-          (comparison operators for numeric attributes; ``"is"`` / ``"is not"``
-          for categorical attributes).
-        * **Value** ``QStackedWidget`` - index 0 holds a
-          ``_CompactCheckableComboBox`` for categorical values; index 1 holds a
-          ``QDoubleSpinBox`` for numeric values.
-        * A delete ``QToolButton`` wired to ``_remove_constraint_row``.
-
-        All combo changes are connected to their respective slot helpers and to
-        ``_validate``.  ``_update_scroll_height`` and ``_validate`` are called
-        at the end.
-        """
+        """Append a new ingredient-constraint row to the constraint list."""
         self.lbl_none.hide()
 
-        combo_style = (
-            "background-color: #ffffff; height: 26px; "
-            "border: 1px solid #d1d5db; border-radius: 4px;"
-        )
         _icon_del = os.path.join(
             Architecture.get_path(),
             "QATCH",
@@ -583,23 +521,18 @@ class OptimizeWidget(QtWidgets.QFrame):
         cb_ingredient.addItems(
             ["Protein", "Buffer", "Surfactant", "Stabilizer", "Salt", "Excipient"]
         )
-        cb_ingredient.setStyleSheet(combo_style)
 
         cb_attribute = QtWidgets.QComboBox()
         cb_attribute.addItem("Attribute...")
         cb_attribute.model().item(0).setEnabled(False)
-        cb_attribute.setStyleSheet(combo_style)
 
         cb_condition = QtWidgets.QComboBox()
         cb_condition.addItem("Condition...")
         cb_condition.model().item(0).setEnabled(False)
-        cb_condition.setStyleSheet(combo_style)
 
         val_stack = QtWidgets.QStackedWidget()
         cb_value = _CompactCheckableComboBox()
-        cb_value.setStyleSheet(combo_style)
         spin_value = QtWidgets.QDoubleSpinBox()
-        spin_value.setStyleSheet(combo_style)
         spin_value.setRange(0.0, 10_000.0)
         spin_value.setDecimals(3)
         spin_value.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
@@ -607,9 +540,9 @@ class OptimizeWidget(QtWidgets.QFrame):
         val_stack.addWidget(spin_value)
 
         btn_del = QtWidgets.QToolButton()
+        btn_del.setObjectName("btnConstraintDelete")
         btn_del.setIcon(QtGui.QIcon(_icon_del))
         btn_del.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn_del.setStyleSheet("border: none;")
 
         row_l.addWidget(cb_ingredient)
         row_l.addWidget(cb_attribute)

@@ -175,7 +175,6 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         # Model Selector
         model_layout = QtWidgets.QHBoxLayout()
         self.model_combo = QtWidgets.QComboBox()
-        self.model_combo.setStyleSheet("background-color: #ffffff; height: 26px;")
         self.model_combo.setToolTip("Select a prediction model from assets")
         self._populate_model_list()
 
@@ -212,9 +211,10 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.spin_samples.setFixedHeight(26)
 
         settings_layout.addRow("Number of Samples:", self.spin_samples)
+
         layout.addWidget(grp_settings)
 
-        #  Group with Scroll Area
+        # Constraints Group with Scroll Area
         self.grp_constraints = QtWidgets.QGroupBox("Constraints")
         grp_constraints_layout = QtWidgets.QVBoxLayout(self.grp_constraints)
         grp_constraints_layout.setContentsMargins(15, 15, 15, 15)
@@ -230,7 +230,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self.constraints_layout.setSpacing(8)
 
         self.lbl_none = QtWidgets.QLabel("No constraints added.")
-        self.lbl_none.setStyleSheet("color: #6b7280; font-style: italic;")
+        self.lbl_none.setObjectName("lblNone")
         self.constraints_layout.addWidget(self.lbl_none)
         self.constraints_layout.addStretch()
 
@@ -391,8 +391,6 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         row_layout = QtWidgets.QHBoxLayout(row_widget)
         row_layout.setContentsMargins(0, 0, 0, 0)
 
-        combo_style = "background-color: #ffffff; height: 26px; border: 1px solid #d1d5db; border-radius: 4px;"
-
         # Ingredient
         cb_ingredient = QtWidgets.QComboBox()
         cb_ingredient.addItem("Ingredient...")
@@ -400,28 +398,23 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         cb_ingredient.addItems(
             ["Protein", "Buffer", "Surfactant", "Stabilizer", "Salt", "Excipient"]
         )
-        cb_ingredient.setStyleSheet(combo_style)
 
-        # Attribute (Type, Concentration, [Class])
+        # Attribute (Type, Concentration, [Class, pH])
         cb_attribute = QtWidgets.QComboBox()
         cb_attribute.addItem("Attribute...")
         cb_attribute.model().item(0).setEnabled(False)
-        cb_attribute.setStyleSheet(combo_style)
 
         # Condition (is, is not, >, >=, =, <=, <, !=)
         cb_condition = QtWidgets.QComboBox()
         cb_condition.addItem("Condition...")
         cb_condition.model().item(0).setEnabled(False)
-        cb_condition.setStyleSheet(combo_style)
 
         # Value Stack
         val_stack = QtWidgets.QStackedWidget()
 
         cb_value = CompactCheckableComboBox()
-        cb_value.setStyleSheet(combo_style)
 
         spin_value = QtWidgets.QDoubleSpinBox()
-        spin_value.setStyleSheet(combo_style)
         spin_value.setRange(0.0, 10000.0)
         spin_value.setDecimals(3)
         spin_value.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
@@ -430,6 +423,7 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         val_stack.addWidget(spin_value)
 
         btn_delete = QtWidgets.QToolButton()
+        btn_delete.setObjectName("btnConstraintDelete")
         btn_delete.setIcon(
             QtGui.QIcon(
                 os.path.join(
@@ -444,7 +438,6 @@ class GenerateSampleWidget(QtWidgets.QFrame):
             )
         )
         btn_delete.setCursor(QtCore.Qt.CursorShape.PointingHandCursor)
-        btn_delete.setStyleSheet("border: none;")
 
         row_layout.addWidget(cb_ingredient)
         row_layout.addWidget(cb_attribute)
@@ -479,8 +472,15 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         self._validate_rows()
 
     def _on_ingredient_changed(self, row_data):
+        """Updates the attribute combobox based on the selected ingredient type and resets downstream widgets.
+
+        Args:
+            row_data (dict): The dictionary of widgets for the specific row.
+        """
         ing_type = row_data["ingredient"].currentText()
         cb_attribute = row_data["attribute"]
+        cb_condition = row_data["condition"]
+        val_cb = row_data["value_cb"]
 
         cb_attribute.blockSignals(True)
         cb_attribute.clear()
@@ -490,15 +490,23 @@ class GenerateSampleWidget(QtWidgets.QFrame):
         if row_data["ingredient"].currentIndex() > 0:
             attrs = ["Type", "Concentration"]
             if ing_type == "Protein":
-                attrs.append("Class")
+                attrs = ["Type", "Class", "Concentration"]
             elif ing_type == "Buffer":
-                attrs.append("pH")
+                attrs = ["Type", "Concentration", "pH"]
             cb_attribute.addItems(attrs)
 
         cb_attribute.setCurrentIndex(0)
         cb_attribute.blockSignals(False)
 
-        self._on_attribute_changed(row_data)
+        cb_condition.blockSignals(True)
+        cb_condition.clear()
+        cb_condition.addItem("Condition...")
+        cb_condition.model().item(0).setEnabled(False)
+        cb_condition.setCurrentIndex(0)
+        cb_condition.blockSignals(False)
+
+        val_cb.clear()
+        self._validate_rows()
 
     def _on_attribute_changed(self, row_data):
         """Toggles the condition and value widgets based on numeric vs categorical choice.
