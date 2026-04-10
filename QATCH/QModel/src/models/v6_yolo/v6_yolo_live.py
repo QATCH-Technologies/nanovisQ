@@ -324,6 +324,24 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     f"{self._fill_epoch:.1f} s.",
                 )
 
+        # Check whether the *previous* channel's extended-fill latch was armed.
+        # If so, now that this channel has finally been confirmed, emit the message.
+        # This must run before any early return so that channels not in
+        # DURATION_THRESHOLDS (e.g. channel 2) still release the latch for
+        # channel 1 when they are confirmed.
+        prev_channel = channel - 1
+        if self._extended_fill_latched.get(prev_channel, False):
+            _, prev_message = self.DURATION_THRESHOLDS.get(prev_channel, (None, None))
+            if prev_message is not None:
+                Log.i(
+                    self.TAG,
+                    f"Extended fill latch for channel {prev_channel} released on "
+                    f"channel {channel} confirmation - displaying: '{prev_message}'",
+                )
+                self._pending_display_message = prev_message
+                # Consume the latch so it cannot fire again.
+                self._extended_fill_latched[prev_channel] = False
+
         if channel not in self.DURATION_THRESHOLDS:
             return
 
@@ -337,21 +355,6 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
             )
             self._pending_display_message = message
             self._channel_warning_fired[channel] = True
-
-        # Check whether the *previous* channel's extended-fill latch was armed.
-        # If so, now that this channel has finally been confirmed, emit the message.
-        prev_channel = channel - 1
-        if self._extended_fill_latched.get(prev_channel, False):
-            _, prev_message = self.DURATION_THRESHOLDS.get(prev_channel, (None, None))
-            if prev_message is not None:
-                Log.i(
-                    self.TAG,
-                    f"Extended fill latch for channel {prev_channel} released on "
-                    f"channel {channel} confirmation - displaying: '{prev_message}'",
-                )
-                self._pending_display_message = prev_message
-                # Consume the latch so it cannot fire again.
-                self._extended_fill_latched[prev_channel] = False
 
     def _evaluate_duration_threshold(self, channel: int) -> None:
         """Evaluates timed fill-duration thresholds for the currently stable channel.
