@@ -10,10 +10,10 @@ for the main application.
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-04-07
+    2026-04-10
 
 Version:
-    2.1.1
+    2.1.3
 """
 
 import logging
@@ -99,6 +99,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         1: (120.0, "Data Ready, You Can Stop"),  # >= 2 min at ch1, no ch2 yet
         3: (None, "Data Ready, Stop"),  # always on 3-channel confirmation
     }
+    INITIAL_FILL_TIMEOUT_S: float = 180.0
 
     def __init__(self, model_path: str, buffer_window_size: Optional[int] = None):
         """Initializes the live fill classifier with a model and buffer settings.
@@ -137,6 +138,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # Tracks which channels have exceeded their duration threshold but are waiting
         # for the *next* channel to be confirmed before the display message is emitted.
         self._extended_fill_latched: Dict[int, bool] = {}
+        self._no_fill_timeout_fired: bool = False
         self._cal_csv_written: bool = False
         self._cal_csv_path: str = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
@@ -172,6 +174,38 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                 f"Fill epoch already set ({self._fill_epoch:.1f} s) - ignoring "
                 f"drop-applied timestamp {relative_time:.1f} s.",
             )
+
+    def _check_initial_fill_timeout(self) -> None:
+        """Fires a 'Data Ready, Stop' signal if 3 minutes elapse after Initial Fill
+         is confirmed without 1 Channel being detected.
+
+        Requires all three conditions to be true simultaneously:
+        - Current prediction is 0 (Initial Fill confirmed, not yet ch1).
+        - Channel 0 confirmation time is recorded.
+        - Elapsed time since channel 0 confirmation >= INITIAL_FILL_TIMEOUT_S.
+
+        Fires at most once per run, guarded by ``_initial_fill_timeout_fired``.
+        """
+        if self._initial_fill_timeout_fired:
+            return
+        if self.current_prediction < 1:
+            return
+
+        ch0_time = self._channel_confirm_times.get(0)
+        if ch0_time is None:
+            return
+
+        elapsed_s: float = max(self._last_max_time, 0.0) - ch0_time
+        if elapsed_s >= self.INITIAL_FILL_TIMEOUT_S:
+            Log.w(
+                self.TAG,
+                f"Initial Fill (ch0) confirmed at {ch0_time:.1f} s but no 1-Channel "
+                f"state detected after {elapsed_s:.1f} s "
+                f"(threshold {self.INITIAL_FILL_TIMEOUT_S / 60:.0f} min). "
+                f"Emitting 'Data Ready, Stop'.",
+            )
+            self._pending_display_message = "Data Ready, Stop"
+            self._initial_fill_timeout_fired = True
 
     def add_chunk(self, df_chunk: pd.DataFrame) -> None:
         """Ingests a new chunk of data into the rolling buffer.
@@ -277,6 +311,7 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
                     # Re-evaluate timed thresholds every cycle so warnings fire even
                     # when the channel has been stable since first confirmation.
                     self._evaluate_duration_threshold(self.current_prediction)
+                self._check_initial_fill_timeout()
             else:
                 Log.w(self.TAG, "Preprocessing returned empty/None DataFrame.")
 
