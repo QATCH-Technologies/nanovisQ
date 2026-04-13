@@ -384,7 +384,6 @@ QWidget#dragPlaceholder {
     border: 1px dashed #4EC4EB;
     border-radius: 6px;
 }
-
 PredictionFilterWidget {
     background-color: #ffffff;
     border-bottom-left-radius: 8px;
@@ -393,28 +392,45 @@ PredictionFilterWidget {
     border-top: none;
 }
 
-/* Filter Widget Labels */
-PredictionFilterWidget QLabel {
-    font-weight: 600;
-    color: #6b7280;
-    font-size: 11px;
+PredictionFilterWidget QDoubleSpinBox:focus {
+    border: 1px solid #17C4F3;
 }
 
-/* Filter Widget GroupBoxes */
-PredictionFilterWidget QGroupBox {
-    font-weight: bold;
-    border: 1px solid #d1d5db;
-    border-radius: 4px;
-    margin-top: 6px;
-    padding-top: 10px;
+PredictionFilterWidget QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 22px;
+    border-left: 1px solid #d1d5db;
+    border-bottom: 1px solid #d1d5db;
+    border-top-right-radius: 3px;
+    background-color: #f3f4f6;
 }
 
-PredictionFilterWidget QGroupBox::title {
-    subcontrol-origin: margin;
-    left: 10px;
-    padding: 0 3px;
-    color: #2596be;
-    font-weight: 600;
+PredictionFilterWidget QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 22px;
+    border-left: 1px solid #d1d5db;
+    border-bottom-right-radius: 3px;
+    background-color: #f3f4f6;
+}
+
+PredictionFilterWidget QDoubleSpinBox::up-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("{{ICON_UP}}");
+}
+
+PredictionFilterWidget QDoubleSpinBox::down-arrow {
+    width: 10px;
+    height: 10px;
+    image: url("{{ICON_DOWN}}");
+}
+
+PredictionFilterWidget QDoubleSpinBox::up-button:hover,
+PredictionFilterWidget QDoubleSpinBox::down-button:hover {
+    background-color: #e6f7fd;
+    border-color: #4EC4EB;
 }
 
 /* Filter Model Input */
@@ -992,4 +1008,80 @@ QWidget#modelDetailsWin QPushButton[class="primary"]:hover {
 QWidget#modelDetailsWin QPushButton[class="primary"]:pressed {
     background-color: #13B5F0;
     border-color: #13B5F0;
+}
+/* Unified GroupBox — GenerateSampleWidget, OptimizeWidget, PredictionFilterWidget */
+GenerateSampleWidget QGroupBox,
+OptimizeWidget QGroupBox,
+PredictionFilterWidget QGroupBox {
+    font-weight: 600;
+    color: #2596be;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    margin-top: 10px;
+    padding-top: 14px;
+    padding-bottom: 10px;
+    padding-left: 10px;
+    padding-right: 10px;
+    background-color: #f9fafb;
+}
+
+GenerateSampleWidget QGroupBox::title,
+OptimizeWidget QGroupBox::title,
+PredictionFilterWidget QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 5px;
+    background-color: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 4px;
+}
+/* Constraint / Target row inputs */
+GenerateSampleWidget QComboBox,
+GenerateSampleWidget QDoubleSpinBox,
+OptimizeWidget QComboBox,
+OptimizeWidget QDoubleSpinBox {
+    background-color: #ffffff;
+    height: 26px;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    color: #24292f;
+}
+
+GenerateSampleWidget QComboBox:focus,
+GenerateSampleWidget QDoubleSpinBox:focus,
+OptimizeWidget QComboBox:focus,
+OptimizeWidget QDoubleSpinBox:focus {
+    border: 1px solid #17C4F3;
+}
+GenerateSampleWidget QLabel#lblNone,
+OptimizeWidget QLabel#lblNone {
+    color: #6b7280;
+    font-style: italic;
+    font-weight: normal;
+}
+OptimizeWidget QLabel#lblArrow {
+    color: #9ca3af;
+    font-weight: normal;
+}
+OptimizeWidget QLabel[class="row-label"] {
+    color: #6b7280;
+    font-size: 10px;
+    font-weight: 600;
+}
+
+GenerateSampleWidget QToolButton#btnConstraintDelete,
+OptimizeWidget QToolButton#btnConstraintDelete {
+    border: none;
+    background: transparent;
+    border-radius: 4px;
+}
+
+GenerateSampleWidget QToolButton#btnConstraintDelete:hover,
+OptimizeWidget QToolButton#btnConstraintDelete:hover {
+    background-color: #ffebee;
+}
+
+GenerateSampleWidget QToolButton#btnConstraintDelete:pressed,
+OptimizeWidget QToolButton#btnConstraintDelete:pressed {
+    background-color: #ffcdd2;
 }

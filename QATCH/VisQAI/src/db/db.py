@@ -196,7 +196,6 @@ class Database:
             rf"""
             CREATE TABLE IF NOT EXISTS buffer (
                 ingredient_id INTEGER PRIMARY KEY,
-                pH REAL,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
             )
         """
@@ -254,6 +253,7 @@ class Database:
                 ingredient_id INTEGER NOT NULL,
                 concentration REAL NOT NULL,
                 units TEXT NOT NULL,
+                pH REAL,
                 PRIMARY KEY (formulation_id, component_type),
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE,
                 FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
@@ -263,11 +263,12 @@ class Database:
         c.execute(
             rf"""
             CREATE TABLE IF NOT EXISTS viscosity_profile (
-                formulation_id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                formulation_id INTEGER NOT NULL UNIQUE,
                 shear_rates TEXT NOT NULL,
                 viscosities TEXT NOT NULL,
                 units TEXT NOT NULL,
-                is_measured INTEGER NOT NULL,
+                is_measured INTEGER NOT NULL DEFAULT 0,
                 FOREIGN KEY (formulation_id) REFERENCES formulation(id) ON DELETE CASCADE
             )
         """
@@ -326,7 +327,7 @@ class Database:
                 (db_id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?, ?)", (db_id, ing.pH))
+            c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (db_id,))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (db_id,))
         elif isinstance(ing, Surfactant):
@@ -384,10 +385,7 @@ class Database:
                 id=id,
             )
         elif typ == "Buffer":
-            c.execute("SELECT pH FROM buffer WHERE ingredient_id = ?", (id,))
-            (pH,) = c.fetchone()
-            ing = Buffer(enc_id, name, pH)
-
+            ing = Buffer(enc_id=enc_id, name=name, id=id)
         elif typ == "Stabilizer":
             ing = Stabilizer(enc_id, name)
 
@@ -528,7 +526,7 @@ class Database:
                 (id, class_val, ing.molecular_weight, ing.pI_mean, ing.pI_range),
             )
         elif isinstance(ing, Buffer):
-            c.execute("INSERT INTO buffer VALUES (?, ?)", (id, ing.pH))
+            c.execute("INSERT INTO buffer (ingredient_id) VALUES (?)", (id,))
         elif isinstance(ing, Stabilizer):
             c.execute("INSERT INTO stabilizer VALUES (?)", (id,))
         elif isinstance(ing, Surfactant):
@@ -575,15 +573,15 @@ class Database:
             )
             f.id = c.lastrowid  # type: ignore[assignment]  # lastrowid is non-None after a successful INSERT
         comp_rows = [
-            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units)
+            (f.id, comp_type, comp.ingredient.id, comp.concentration, comp.units, comp.pH)
             for f in forms
             for comp_type, comp in f._components.items()
             if comp is not None
         ]
         c.executemany(
             "INSERT INTO formulation_component "
-            "(formulation_id, component_type, ingredient_id, concentration, units) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             comp_rows,
         )
         vp_rows = [
@@ -644,9 +642,9 @@ class Database:
             )
             c.execute(
                 "INSERT INTO formulation_component "
-                "(formulation_id, component_type, ingredient_id, concentration, units) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (fid, comp_type, iid, comp.concentration, comp.units),
+                "(formulation_id, component_type, ingredient_id, concentration, units, pH) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (fid, comp_type, iid, comp.concentration, comp.units, comp.pH),
             )
 
         # Insert viscosity profile if present
@@ -709,18 +707,16 @@ class Database:
         form.last_model = last_model
 
         c.execute(
-            "SELECT component_type, ingredient_id, concentration, units "
+            "SELECT component_type, ingredient_id, concentration, units, pH "
             "FROM formulation_component WHERE formulation_id = ?",
             (id,),
         )
         rows = c.fetchall()
-
         for r in rows:
-            comp_type, iid, conc, units = r
+            comp_type, iid, conc, units, ph = r
             ingredient = self.get_ingredient(iid)
-            if ingredient:
-                if comp_type in form._components:
-                    form._components[comp_type] = Component(ingredient, conc, units)
+            if ingredient and comp_type in form._components:
+                form._components[comp_type] = Component(ingredient, conc, units, pH=ph)
 
         c.execute(
             "SELECT shear_rates, viscosities, units, is_measured "
