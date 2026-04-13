@@ -478,6 +478,9 @@ class CalibrationProcess(multiprocessing.Process):
                     if time() - start >= waitFor:
                         Log.w(
                             TAG, f"WARNING: Timeout waiting for {lid_cmd} reply")
+                        # Timeout is treated as a no-op: if there is no reply,
+                        # assume the firmware does not support this command and
+                        # proceed without enforcing lid state.
                     else:
                         Log.d(TAG, f"Lid command: {lid_cmd}")
                         Log.d(TAG, f"Lid reply: {lid_reply}")
