@@ -7748,6 +7748,166 @@ class AnalyzerWorker(QtCore.QObject):
                     f"{in_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
                 )  # plus-or-minus = \u00b1
 
+            # Annotate average viscosity and standard deviation on plot and in output CSV
+            if len(log_velocity_46) == len(distances):  # not checked
+                Log.w(
+                    "WARNING: Initial fill values are not considered to be reliably accurate for this run."
+                )
+                Log.w(
+                    "Initial fill values are marked as 'light red' in the tabular data for reference only."
+                )
+
+                in_shear_rate = np.array(in_shear_rate, dtype=str)
+                in_viscosity = np.array(in_viscosity, dtype=str)
+                # str_viscosity = np.array(str_viscosity, dtype=str) # NOTE: Numpy doesn't handle unicode chars in array strings
+                in_temp = np.array(in_temp, dtype=str)
+
+                pts_to_modify = range(len(distances), len(in_shear_rate))
+                for i in range(len(in_shear_rate)):
+                    is_error_cell = i in pts_to_modify
+                    if in_shear_rate[i] in [str(5e6), str(15e6)]:
+                        is_error_cell = False
+
+                    if is_error_cell:
+                        # Log.i(f"Converting {in_shear_rate[i]}")
+                        # Log.i(f"into *{in_shear_rate[i]:2.2f}*")
+                        in_shear_rate[i] = f"*{float(in_shear_rate[i]):2.2f}*"
+                        in_viscosity[i] = f"*{float(in_viscosity[i]):2.2f}*"
+                        str_viscosity[i] = f"*{str_viscosity[i]}*"
+                        in_temp[i] = f"*{float(in_temp[i]):2.2f}*"
+                    else:
+                        in_shear_rate[i] = f"{float(in_shear_rate[i]):2.2f}"
+                        in_viscosity[i] = f"{float(in_viscosity[i]):2.2f}"
+                        # str_viscosity[i] = f"{str_viscosity[i]}"
+                        in_temp[i] = f"{float(in_temp[i]):2.2f}"
+
+                in_shear_rate = in_shear_rate.tolist()
+                in_viscosity = in_viscosity.tolist()
+                # str_viscosity = str_viscosity.tolist()
+                in_temp = in_temp.tolist()
+
+            # add data to table view of results
+            data = {
+                "Shear Rate (s⁻¹)": in_shear_rate,
+                "Raw Viscosity (cP)": in_viscosity,
+                "Avg Viscosity (cP)": str_viscosity,
+                "Temperature (C)": in_temp,
+            }
+            rows = len(in_shear_rate)
+            cols = len(data)
+            # On multiplex systems, all `in_temp` will be NaN
+            real_temps = [x for x in in_temp if ~np.isnan(x)]
+            if len(real_temps) == 0:
+                Log.w("Hiding \"Temperature (C)\" column, as all temperature values are 'nan'.")
+                data.pop("Temperature (C)")
+                cols -= 1
+            # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
+            
+            self.update(status_label)
+
+            try:
+                if type(in_shear_rate) is not list:
+                    in_shear_rate = in_shear_rate.tolist()
+                if type(in_viscosity) is not list:
+                    in_viscosity = in_viscosity.tolist()
+                if type(lin_viscosity) is not list:
+                    lin_viscosity = lin_viscosity.tolist()
+                if type(err_viscosity) is not list:
+                    err_viscosity = err_viscosity.tolist()
+                if type(in_temp) is not list:
+                    in_temp = in_temp.tolist()
+                    
+                if abs(n - 1.0) > Constants.shear_interp_threshold:
+                    # Highly non-Newtonian: use interpolated value at 1000 s⁻¹
+                    # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
+                    # excluding the 60% and 80% points from the initial fill region (if present)
+                    shear_interp = 1000
+                    in_shear_san_60_80: list = in_shear_rate.tolist()
+                    in_visco_san_60_80: list = in_viscosity.tolist()
+                    if "percent_pts" in locals():
+                        # Remove 60% and 80% points from data for interpolation
+                        for shear, visco in percent_pts.values():
+                            if shear in in_shear_san_60_80:
+                                in_shear_san_60_80.remove(shear)
+                            if visco in in_visco_san_60_80:
+                                in_visco_san_60_80.remove(visco)
+                    interp_func = interpolate.interp1d(
+                        in_shear_san_60_80, in_visco_san_60_80, fill_value="extrapolate"
+                    )
+                    visc_interp = float(interp_func(shear_interp))
+                    i_l, i_r = next(
+                        (i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp
+                    )
+                    if i_l == -1 or i_r == len(in_shear_san_60_80):
+                        # indicate 10% error when extrapolating beyond left or right of the shear array
+                        visc_error = visc_interp / 10
+                    else:
+                        # indicate half of absolute difference for left/right points when interpolating
+                        visc_error = np.abs(in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]) / 2
+
+                    summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹".format(
+                        visc_interp, visc_error, shear_interp
+                    )
+                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
+                        visc_interp, visc_error, shear_interp
+                    )
+
+                    in_shear_rate.insert(0, shear_interp)
+                    in_viscosity.insert(0, visc_interp)
+                    lin_viscosity.insert(0, visc_interp)
+                    err_viscosity.insert(0, visc_error)
+                    in_temp.insert(0, avg_temp)
+
+                else:
+                    # Nearly Newtonian: use current average method
+                    # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
+                    values_to_average = len(distances)
+                    # high_shear_counts = np.count_nonzero(
+                    #     [high_shear_5x, high_shear_15x])
+                    idx_start = 0
+                    # keep within current arrays (handles extra high-shear rows appended at end)
+                    idx_end = min(
+                        len(in_viscosity) - 1, len(in_shear_rate) - 1, max(2, values_to_average - 1)
+                    )
+                    visc_avg = np.average(in_viscosity[idx_start : idx_end + 1])
+                    visc_std = np.std(in_viscosity[idx_start : idx_end + 1])
+                    shear_min = in_shear_rate[idx_start]
+                    shear_max = in_shear_rate[idx_end]
+
+                    summary_text = "Average viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates in range {:2.0f} - {:2.0f} s⁻¹.".format(
+                        visc_avg, visc_std, shear_min, shear_max
+                    )
+                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
+                        visc_avg, visc_std, shear_min, shear_max
+                    )
+
+                    in_shear_rate.insert(0, f"{shear_min:2.2f}-{shear_max:2.2f}")
+                    in_viscosity.insert(0, visc_avg)
+                    lin_viscosity.insert(0, visc_avg)
+                    err_viscosity.insert(0, visc_std)
+                    in_temp.insert(0, avg_temp)
+
+                # Add centered label to plot data
+                fig4.text(
+                    0.53,
+                    0.82,
+                    plot_text,
+                    horizontalalignment="center",
+                    verticalalignment="center",
+                    color="blue",
+                    fontsize=10,
+                )
+
+                # Convert `in_shear_rate` to formatted strings
+                for i in range(len(in_shear_rate)):
+                    if type(in_shear_rate[i]) is not str:
+                        in_shear_rate[i] = f"{in_shear_rate[i]:2.2f}"
+
+            except Exception as e:
+                Log.e("Failed to calculate average viscosity summary.", str(e))
+
+            self.update(status_label)
+
             try:
                 # export data to csv
                 export_path = data_path
@@ -7759,14 +7919,14 @@ class AnalyzerWorker(QtCore.QObject):
                     export_path,
                     np.column_stack(
                         [
-                            in_shear_rate,
-                            in_viscosity,
-                            lin_viscosity,
-                            err_viscosity,
-                            in_temp,
+                            np.asarray(in_shear_rate, dtype=object),    # Force to object
+                            np.asarray(in_viscosity, dtype=object),     # Force to object
+                            np.asarray(lin_viscosity, dtype=object),    # Force to object
+                            np.asarray(err_viscosity, dtype=object),    # Force to object
+                            np.asarray(in_temp, dtype=object),          # Force to object
                         ]
                     ),
-                    fmt="%.2f",
+                    fmt=['%s', '%.2f', '%.2f', '%.2f', '%.2f'],  # First column as string, rest as floats
                     delimiter=",",
                     header="shear_rate,viscosity_raw,viscosity_avg,percent_error,temperature",
                 )
@@ -8061,142 +8221,29 @@ class AnalyzerWorker(QtCore.QObject):
             self.parent.results_split.setEnabled(True)
             # self.parent.widget_h4.setStyleSheet("background-color: #ffffff; color: #515151")
 
-            if len(log_velocity_46) == len(distances):  # not checked
-                Log.w(
-                    "WARNING: Initial fill values are not considered to be reliably accurate for this run."
-                )
-                Log.w(
-                    "Initial fill values are marked as 'light red' in the tabular data for reference only."
-                )
-
-                in_shear_rate = np.array(in_shear_rate, dtype=str)
-                in_viscosity = np.array(in_viscosity, dtype=str)
-                # str_viscosity = np.array(str_viscosity, dtype=str) # NOTE: Numpy doesn't handle unicode chars in array strings
-                in_temp = np.array(in_temp, dtype=str)
-
-                pts_to_modify = range(len(distances), len(in_shear_rate))
-                for i in range(len(in_shear_rate)):
-                    is_error_cell = i in pts_to_modify
-                    if in_shear_rate[i] in [str(5e6), str(15e6)]:
-                        is_error_cell = False
-
-                    if is_error_cell:
-                        # Log.i(f"Converting {in_shear_rate[i]}")
-                        # Log.i(f"into *{in_shear_rate[i]:2.2f}*")
-                        in_shear_rate[i] = f"*{float(in_shear_rate[i]):2.2f}*"
-                        in_viscosity[i] = f"*{float(in_viscosity[i]):2.2f}*"
-                        str_viscosity[i] = f"*{str_viscosity[i]}*"
-                        in_temp[i] = f"*{float(in_temp[i]):2.2f}*"
-                    else:
-                        in_shear_rate[i] = f"{float(in_shear_rate[i]):2.2f}"
-                        in_viscosity[i] = f"{float(in_viscosity[i]):2.2f}"
-                        # str_viscosity[i] = f"{str_viscosity[i]}"
-                        in_temp[i] = f"{float(in_temp[i]):2.2f}"
-
-                in_shear_rate = in_shear_rate.tolist()
-                in_viscosity = in_viscosity.tolist()
-                # str_viscosity = str_viscosity.tolist()
-                in_temp = in_temp.tolist()
-
-            # add data to table view of results
-            data = {
-                "Shear Rate (s⁻¹)": in_shear_rate,
-                "Raw Viscosity (cP)": in_viscosity,
-                "Avg Viscosity (cP)": str_viscosity,
-                "Temperature (C)": in_temp,
-            }
-            rows = len(in_shear_rate)
-            cols = len(data)
-            # On multiplex systems, all `in_temp` will be NaN
-            real_temps = [x for x in in_temp if ~np.isnan(x)]
-            if len(real_temps) == 0:
-                Log.w("Hiding \"Temperature (C)\" column, as all temperature values are 'nan'.")
-                data.pop("Temperature (C)")
-                cols -= 1
-            # data, rows, cols = [{"col1": ["Hello", "This"], "col2": ["World", "Is"], "col3": ["Foo", "A"], "col4": ["Bar", "Test"]}, 2, 4]
-            table_layout = QtWidgets.QVBoxLayout()
-            tableWidgetWithFooter = QtWidgets.QWidget()
-            tableWidgetWithFooter.setLayout(table_layout)
-            tableWidget = TableView(data, rows, cols)
-            # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")
-            # tableWidget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
-            table_layout.addWidget(tableWidget)
             try:
-                if abs(n - 1.0) > Constants.shear_interp_threshold:
-                    # Highly non-Newtonian: use interpolated value at 1000 s⁻¹
-                    # Interpolate across the entire dataset from POI1 (start-of-fill) to POI6 (ch3)
-                    # excluding the 60% and 80% points from the initial fill region (if present)
-                    shear_interp = 1000
-                    in_shear_san_60_80: list = in_shear_rate.tolist()
-                    in_visco_san_60_80: list = in_viscosity.tolist()
-                    if "percent_pts" in locals():
-                        # Remove 60% and 80% points from data for interpolation
-                        for shear, visco in percent_pts.values():
-                            if shear in in_shear_san_60_80:
-                                in_shear_san_60_80.remove(shear)
-                            if visco in in_visco_san_60_80:
-                                in_visco_san_60_80.remove(visco)
-                    interp_func = interpolate.interp1d(
-                        in_shear_san_60_80, in_visco_san_60_80, fill_value="extrapolate"
-                    )
-                    visc_interp = float(interp_func(shear_interp))
-                    i_l, i_r = next(
-                        (i - 1, i) for i, s in enumerate(in_shear_san_60_80) if s > shear_interp
-                    )
-                    if i_l == -1 or i_r == len(in_shear_san_60_80):
-                        # indicate 10% error when extrapolating beyond left or right of the shear array
-                        visc_error = visc_interp / 10
-                    else:
-                        # indicate half of absolute difference for left/right points when interpolating
-                        visc_error = np.abs(in_visco_san_60_80[i_l] - in_visco_san_60_80[i_r]) / 2
-                    summary_text = "Interpolated viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rate {:2.0f} s⁻¹".format(
-                        visc_interp, visc_error, shear_interp
-                    )
-                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP @ {:2.0f} s⁻¹".format(
-                        visc_interp, visc_error, shear_interp
-                    )
-                else:
-                    # Nearly Newtonian: use current average method
-                    # Calculate the average viscosity and standard deviation from POI2 (end-of-fill) to POI6 (ch3)
-                    values_to_average = len(distances)
-                    # high_shear_counts = np.count_nonzero(
-                    #     [high_shear_5x, high_shear_15x])
-                    idx_start = 0
-                    # keep within current arrays (handles extra high-shear rows appended at end)
-                    idx_end = min(
-                        len(in_viscosity) - 1, len(in_shear_rate) - 1, max(2, values_to_average - 1)
-                    )
-                    visc_avg = np.average(in_viscosity[idx_start : idx_end + 1])
-                    visc_std = np.std(in_viscosity[idx_start : idx_end + 1])
-                    shear_min = in_shear_rate[idx_start]
-                    shear_max = in_shear_rate[idx_end]
-                    summary_text = "Average viscosity is {:2.2f} \u00b1 {:2.2f} cP for shear rates in range {:2.0f} - {:2.0f} s⁻¹.".format(
-                        visc_avg, visc_std, shear_min, shear_max
-                    )
-                    plot_text = "{:2.2f} \u00b1 {:2.2f} cP\n({:2.0f} - {:2.0f}) s⁻¹".format(
-                        visc_avg, visc_std, shear_min, shear_max
-                    )
+                # NOTE: Creation of `data`, `rows`, `cols`, `summary_text` and `plot_text` moved to section
+                #       "Annotate average viscosity and standard deviation on plot and in output CSV" above
+
                 # Add summary text to bottom of table data
+                table_layout = QtWidgets.QVBoxLayout()
+                tableWidgetWithFooter = QtWidgets.QWidget()
+                tableWidgetWithFooter.setLayout(table_layout)
+                tableWidget = TableView(data, rows, cols)
+                # tableWidget.setStyleSheet("QScrollBar:vertical { width: 15px; }")
+                # tableWidget.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+                table_layout.addWidget(tableWidget)
                 tableLabel = QtWidgets.QLabel(summary_text)
                 tableLabel.setStyleSheet(
                     "font-family: Roboto, Arial, Calibri, sans-serif; font-size: 12pt; font-weight: bold;"
                 )
                 tableLabel.setWordWrap(True)
                 table_layout.addWidget(tableLabel)
-                # Add centered label to plot data
-                fig4.text(
-                    0.53,
-                    0.82,
-                    plot_text,
-                    horizontalalignment="center",
-                    verticalalignment="center",
-                    color="blue",
-                    fontsize=10,
-                )
+                self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
+                self.parent.results_split.setSizes(self.parent.get_results_split_auto_sizes())
+
             except Exception as e:
                 Log.e("Failed to show average viscosity summary.", str(e))
-            self.parent.results_split.replaceWidget(0, tableWidgetWithFooter)
-            self.parent.results_split.setSizes(self.parent.get_results_split_auto_sizes())
 
             # add figure to plot view of results
             plt.tight_layout()
