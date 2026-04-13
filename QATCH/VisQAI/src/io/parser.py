@@ -463,6 +463,9 @@ class Parser:
         except (ValueError, TypeError):
             ph = None
 
+        if ph is not None and not (0 <= ph <= 14):
+            ph = None
+
         found = {
             "name": name is not None,
             "conc": conc is not None,
