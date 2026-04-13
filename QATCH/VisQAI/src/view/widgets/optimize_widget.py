@@ -654,11 +654,11 @@ class OptimizeWidget(QtWidgets.QFrame):
             elif attr_type == "pH":
                 cb_condition.addItems([">", ">=", "=", "!=", "<=", "<"])
                 val_stack.setCurrentIndex(1)
-                row_data["value_spin"].setRange(0.0, 14.0)
+                row_data["value_spin"].setRange(4.0, 8.0)
             elif attr_type in [
                 "Type",
                 "Class",
-            ]:  # keep whichever style (list vs tuple) each file uses
+            ]:
                 cb_condition.addItems(["is", "is not"])
                 val_stack.setCurrentIndex(0)
         cb_condition.setCurrentIndex(0)

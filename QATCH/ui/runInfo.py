@@ -487,6 +487,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         self.username = user_name
         self.post_run = self.recall_xml != self.xml_path
         self.unsaved_changes = self.post_run  # force save on post-run
+        self._loading = False
         self.batch_found = False
         self.batch_warned = False
         self.run_count = 0
@@ -1394,6 +1395,7 @@ class QueryRunInfo(QtWidgets.QWidget):
         auto_ca = 0
         auto_dn = 0
         auto_nc = 0
+        self._loading = True
         try:
             if secure_open.file_exists(self.recall_xml):
                 xml_text = ""
@@ -1654,6 +1656,9 @@ class QueryRunInfo(QtWidgets.QWidget):
             for line in a_list:
                 Log.e(line)
 
+        finally:
+            self._loading = False
+
         self.show_hide_gui(None)  # enable/disable elements
 
         # specify auto/manual inputs when recalled data
@@ -1833,6 +1838,8 @@ class QueryRunInfo(QtWidgets.QWidget):
             Log.d("User did not authenticate for role to switch users.")
 
     def detect_change(self):
+        if self._loading:
+            return
         self.unsaved_changes = True
 
     def sign_edit(self):
@@ -2446,10 +2453,10 @@ class QueryRunInfo(QtWidgets.QWidget):
                 # self.t0.clear()
                 pass
 
-            self.t0.setEnabled(is_bioformulation == False)  # solvent
+            self.t0.setEnabled(not bool(is_bioformulation))  # solvent
             # surfactant (hidden)
-            self.t3.setEnabled(is_bioformulation == True)
-            self.t4.setEnabled(is_bioformulation == True)  # protein (hidden)
+            self.t3.setEnabled(bool(is_bioformulation))
+            self.t4.setEnabled(bool(is_bioformulation))  # protein (hidden)
 
             if is_bioformulation:
                 # add stretch item to take up space when Solvent is hidden
@@ -2461,20 +2468,20 @@ class QueryRunInfo(QtWidgets.QWidget):
                     item.widget().deleteLater()
 
             self.groupSolvent.setVisible(
-                is_bioformulation == False)  # solvent group
+                not bool(is_bioformulation))  # solvent group
             self.groupProtein.setVisible(
-                is_bioformulation == True)  # protein group
+                bool(is_bioformulation))  # protein group
             self.groupBuffer.setVisible(
-                is_bioformulation == True)  # buffer group
+                bool(is_bioformulation))  # buffer group
             self.groupSurfactant.setVisible(
-                is_bioformulation == True
+                bool(is_bioformulation)
             )  # surfactant group
             self.groupStabilizer.setVisible(
-                is_bioformulation == True
+                bool(is_bioformulation)
             )  # stabilizer group
-            self.groupSalt.setVisible(is_bioformulation == True)  # salt group
+            self.groupSalt.setVisible(bool(is_bioformulation))  # salt group
             self.groupExcipient.setVisible(
-                is_bioformulation == True)  # Excipient Group
+                bool(is_bioformulation))  # Excipient Group
             self.collapsibleBox.setVisible(
                 is_bioformulation == True
             )  # advanced information
@@ -2824,7 +2831,7 @@ class QueryRunInfo(QtWidgets.QWidget):
                     msg = 'Input Error: Buffer pH must be in range 0-14 when Buffer Type is not "none".'
                     Log.e(msg)
                     error_details += msg + "\n"
-                    input_warning = True
+                    input_error = True
             if self.t6.text() == "0" and self.t6.isEnabled() and self.t6.isVisible():
                 msg = 'Input Error: Surfactant Concentration should be non-zero when Surfactant Type is not "none".'
                 Log.e(msg)

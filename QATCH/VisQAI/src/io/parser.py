@@ -458,7 +458,10 @@ class Parser:
         if units is None:
             units = "mM"
 
-        ph = self.get_param("buffer_ph", float, required=False)
+        try:
+            ph = self.get_param("buffer_ph", float, required=False)
+        except (ValueError, TypeError):
+            ph = None
 
         found = {
             "name": name is not None,

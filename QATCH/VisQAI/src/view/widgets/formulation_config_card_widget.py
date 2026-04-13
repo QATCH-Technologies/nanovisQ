@@ -897,7 +897,6 @@ class FormulationConfigCard(QtWidgets.QFrame):
         combo.setProperty("class", "sleek")
         items = self.ingredients_master.get(ing_type, [])
 
-        # Users must remove the row to deselect/remove an ingredient.
         for item in items:
             combo.addItem(item.name, item)
 
@@ -921,7 +920,6 @@ class FormulationConfigCard(QtWidgets.QFrame):
         )
 
         def update_configure_button():
-            # If any item is selected, we are in Edit mode.
             if combo.currentIndex() >= 0:
                 btn_configure.setToolTip(f"Edit {combo.currentText()}")
                 btn_configure.setProperty("mode", "edit")
@@ -939,7 +937,6 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     )
                 )
             else:
-                # Only if list is empty or nothing selected
                 btn_configure.setToolTip(f"Add new {ing_type}")
                 btn_configure.setProperty("mode", "add")
                 btn_configure.setIcon(
@@ -970,12 +967,32 @@ class FormulationConfigCard(QtWidgets.QFrame):
         suffix_str = f" {self.INGREDIENT_UNITS.get(ing_type, '')}"
         spin.setSuffix(suffix_str)
         fm = spin.fontMetrics()
-        text_width = fm.horizontalAdvance(f"999.9{suffix_str}")
-        spin.setMinimumWidth(text_width + 40)
-        spin.setMaximumWidth(text_width + 60)
+        widest_suffix = max(
+            (f" {u}" for u in self.INGREDIENT_UNITS.values()),
+            key=lambda s: fm.horizontalAdvance(f"999.9{s}"),
+        )
+        conc_width = fm.horizontalAdvance(f"999.9{widest_suffix}") + 50
+        spin.setFixedWidth(conc_width)
 
         combo.currentTextChanged.connect(self.trigger_update)
         spin.valueChanged.connect(self.trigger_update)
+
+        # pH spinbox — Buffer rows only, replaces the delete button slot
+        if ing_type == "Buffer":
+            spin_ph = QtWidgets.QDoubleSpinBox()
+            spin_ph.setProperty("class", "sleek")
+            spin_ph.setRange(-1.0, 14.0)
+            spin_ph.setValue(-1.0)
+            spin_ph.setSpecialValueText("---")
+            spin_ph.setDecimals(2)
+            spin_ph.setSuffix(" pH")
+            spin_ph.setToolTip("Per-formulation buffer pH")
+            fm_ph = spin_ph.fontMetrics()
+            ph_width = fm_ph.horizontalAdvance("14.00 pH")
+            spin_ph.setMinimumWidth(ph_width + 40)
+            spin_ph.setMaximumWidth(ph_width + 60)
+            spin_ph.valueChanged.connect(self.trigger_update)
+            self._buffer_ph_spin = spin_ph
 
         btn_rem = QtWidgets.QPushButton()
         btn_rem.setIcon(
@@ -998,30 +1015,19 @@ class FormulationConfigCard(QtWidgets.QFrame):
 
         if not deletable:
             btn_rem.setEnabled(False)
-            btn_rem.setToolTip("This component is mandatory")
+            btn_rem.setVisible(False)  # Buffer: hide entirely, don't just disable
 
         btn_rem.clicked.connect(lambda: self.remove_ingredient_row(ing_type, row_widget))
 
+        # Layout: Label | Combo | Conc | [pH] | Edit | [Delete]
         row_layout.addWidget(lbl)
         row_layout.addWidget(combo, stretch=1)
         row_layout.addWidget(spin)
-        row_layout.addWidget(btn_configure)
         if ing_type == "Buffer":
-            spin_ph = QtWidgets.QDoubleSpinBox()
-            spin_ph.setProperty("class", "sleek")
-            spin_ph.setRange(0.0, 14.0)
-            spin_ph.setDecimals(2)
-            spin_ph.setSuffix(" pH")
-            spin_ph.setToolTip("Per-formulation buffer pH (0 = unset)")
-            fm_ph = spin_ph.fontMetrics()
-            ph_width = fm_ph.horizontalAdvance("14.00 pH")
-            spin_ph.setMinimumWidth(ph_width + 40)
-            spin_ph.setMaximumWidth(ph_width + 60)
-            spin_ph.valueChanged.connect(self.trigger_update)
-            row_layout.addWidget(spin_ph)
-            self._buffer_ph_spin = spin_ph
-
-        row_layout.addWidget(btn_rem)
+            row_layout.addWidget(self._buffer_ph_spin)
+        row_layout.addWidget(btn_configure)
+        if ing_type != "Buffer":
+            row_layout.addWidget(btn_rem)
 
         self.ing_container_layout.addWidget(row_widget)
         self.active_ingredients[ing_type] = (combo, spin, btn_configure, btn_rem)
@@ -1269,7 +1275,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     if ing_type == "Buffer" and self._buffer_ph_spin is not None:
                         ph_val = self._buffer_ph_spin.value()
                         setters[ing_type](
-                            ingredient, concentration, units, pH=ph_val if ph_val > 0.0 else None
+                            ingredient, concentration, units, pH=ph_val if ph_val >= 0.0 else None
                         )
                     else:
                         setters[ing_type](ingredient, concentration, units)
@@ -1342,7 +1348,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     if (
                         ing_type == "Buffer"
                         and self._buffer_ph_spin is not None
-                        and self._buffer_ph_spin.value() == 0.0
+                        and self._buffer_ph_spin.value() < 0.0
                     ):
                         is_ready = False
                         msg = "Set Buffer pH"
@@ -1520,7 +1526,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     spin.setValue(float(details.get("concentration", 0.0)))
                     if ing_type == "Buffer" and self._buffer_ph_spin is not None:
                         ph = details.get("pH") or details.get("ph")
-                        self._buffer_ph_spin.setValue(float(ph) if ph is not None else 0.0)
+                        self._buffer_ph_spin.setValue(float(ph) if ph is not None else -1.0)
 
                     spin.setValue(float(details.get("concentration", 0.0)))
                     comp_name = details.get("component") or details.get("name")
@@ -1616,7 +1622,7 @@ class FormulationConfigCard(QtWidgets.QFrame):
                     combo.setCurrentIndex(0)
                 spin.setValue(0.0)
                 if self._buffer_ph_spin is not None:
-                    self._buffer_ph_spin.setValue(0.0)
+                    self._buffer_ph_spin.setValue(-1.0)
             else:
                 combo, _, _, _ = self.active_ingredients[ing_type]
                 row_widget = combo.parentWidget()
