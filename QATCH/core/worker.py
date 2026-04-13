@@ -70,6 +70,7 @@ class Worker:
         export_enabled=False,
         freq_hopping=False,
         reconstruct=False,
+        lid_auto=False,
     ):
         """
         :param port: Port to open on start :type port: str.
@@ -139,6 +140,7 @@ class Worker:
         self._timestart = 0
         self._freq_hopping = freq_hopping
         self._reconstruct = reconstruct
+        self._lid_auto = lid_auto
 
     ###########################################################################
     # Starts all processes, based on configuration given in constructor.
@@ -180,7 +182,7 @@ class Worker:
             )
 
         port_and_peak_check = self._acquisition_process.open(
-            port=self._port, speed=self._speed, pid=self._pid
+            port=self._port, speed=self._speed, pid=self._pid, lid_auto=self._lid_auto
         )
         if port_and_peak_check == 1:
             if self._source == OperationType.measurement:
