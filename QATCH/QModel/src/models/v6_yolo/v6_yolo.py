@@ -19,10 +19,10 @@ Dependencies:
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-01-09
+    2026-04-09
 
 Version:
-    6.1.0 
+    6.1.2
 """
 
 import datetime
@@ -31,7 +31,7 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2  # New project requirement as of 2026-01-12
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -309,9 +309,7 @@ class QModelV6YOLO_Detector:
         img_base = QModelV6YOLO_DataProcessor.generate_channel_det(
             df, img_w=QModelV6Config.IMG_WIDTH, img_h=QModelV6Config.IMG_HEIGHT
         )
-        results = self.model(
-            img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD
-        )
+        results = self.model(img_base, verbose=False, conf=QModelV6Config.CONF_THRESHOLD)
         col_time = "Relative_time"
         if col_time not in df.columns:
             col_time = "time" if "time" in df.columns else df.columns[0]
@@ -443,8 +441,7 @@ class QModelV6YOLO:
             {"indices": [-1], "confidences": [-1]}.
         """
         return {
-            poi_name: {"indices": [-1], "confidences": [-1]}
-            for poi_name in self.POI_MAP.values()
+            poi_name: {"indices": [-1], "confidences": [-1]} for poi_name in self.POI_MAP.values()
         }
 
     def _format_output(
@@ -573,11 +570,7 @@ class QModelV6YOLO:
         final_save_path = f"{base_name}_{timestamp}{ext}"
 
         time = df["Relative_time"].values
-        signal = (
-            df["Dissipation"].values
-            if "Dissipation" in df.columns
-            else df.iloc[:, 1].values
-        )
+        signal = df["Dissipation"].values if "Dissipation" in df.columns else df.iloc[:, 1].values
 
         plt.figure(figsize=(12, 6))
         plt.plot(time, signal, color="gray", alpha=0.6, label="Raw Signal")
@@ -682,9 +675,7 @@ class QModelV6YOLO:
             final_results = {}
             current_df = master_df.copy()
             col_time = (
-                "Relative_time"
-                if "Relative_time" in current_df.columns
-                else current_df.columns[0]
+                "Relative_time" if "Relative_time" in current_df.columns else current_df.columns[0]
             )
             cut_history = []
 
@@ -753,9 +744,7 @@ class QModelV6YOLO:
                         progress_signal.emit(90, "Applying Fine Adjustment...")
                     anchor_time = final_results[5]["time"]
                     fine_slice = master_df[master_df[col_time] >= anchor_time]
-                    res_fine = det_fine.predict_single(
-                        fine_slice, target_class_map={0: 6}
-                    )
+                    res_fine = det_fine.predict_single(fine_slice, target_class_map={0: 6})
 
                     if 6 in res_fine:
                         process_detection(res_fine, 6)

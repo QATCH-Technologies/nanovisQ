@@ -28,7 +28,7 @@ import sqlite3
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Union
-
+import time
 import numpy as np
 
 try:
@@ -273,22 +273,8 @@ class Database:
             )
         """
         )
-        # Migration: add pH column to formulation_component for existing databases
-        # buf_cols = {row[1] for row in c.execute("PRAGMA table_info(buffer)")}
-        # if "pH" in buf_cols:
-        #     c.execute("ALTER TABLE buffer RENAME TO _buffer_old")
-        #     c.execute(
-        #         """
-        #         CREATE TABLE buffer (
-        #             ingredient_id INTEGER PRIMARY KEY,
-        #             FOREIGN KEY (ingredient_id) REFERENCES ingredient(id) ON DELETE CASCADE
-        #         )
-        #     """
-        #     )
-        # c.execute("INSERT INTO buffer (ingredient_id) SELECT ingredient_id FROM _buffer_old")
-        # c.execute("DROP TABLE _buffer_old")
-        # c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
-        # c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_type ON ingredient(type)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_ingredient_name_type ON ingredient(name, type)")
         self._commit()
 
     def add_ingredient(self, ing: Ingredient) -> int:
@@ -1175,6 +1161,21 @@ class Database:
                 Log.e(f"Failed to remove temp file {temp_path}: {oe}")
             return None
 
+    def update_metadata_version(self, new_version: int) -> None:
+        """Update the db_version in the encrypted metadata header."""
+        self.metadata["db_version"] = new_version
+        dumpster = json.dumps(self.metadata)
+        ciphered = self._caesar_cipher(dumpster)
+        seed = int(time.time() * 1000) % 255
+        if seed == 10:
+            seed += 1
+        random.seed(seed)
+        indices = list(range(len(ciphered)))
+        random.shuffle(indices)
+        shuffled = "".join(ciphered[i] for i in indices)
+        enc_encoding = self.metadata.get("app_encoding", "utf-8")
+        self._enc_metadata = (chr(seed) + shuffled).encode(enc_encoding) + b"\n"
+
     def cleanup_temp_decrypt(self, temp_path: Optional[Path] = None) -> bool:
         """Remove one or all temporary decrypted database files.
 
@@ -1280,7 +1281,11 @@ class Database:
         self.conn.execute("PRAGMA cache_size = -64000")
 
     def end_bulk(self) -> None:
-        """Restore safe write settings after bulk imports."""
-        self.conn.commit()
+        """Restore safe write settings after bulk imports.
+
+        This method only resets the connection PRAGMAs; it does **not** commit
+        the current transaction.  The caller is responsible for committing (via
+        ``_commit()``) or rolling back after calling this method.
+        """
         self.conn.execute("PRAGMA journal_mode = DELETE")
         self.conn.execute("PRAGMA synchronous = FULL")
