@@ -2620,7 +2620,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 )
                 model_assets = {
                     "fill_classifier": os.path.join(
-                        v6_base_path, "classifiers", "fill_classifier", "weights", "best.pt"
+                        v6_base_path, "classifiers", "fill_classifier", "type_cls.pt"
                     ),
                     "detectors": {
                         "init": os.path.join(v6_base_path, "detectors", "init_detector", "init.pt"),

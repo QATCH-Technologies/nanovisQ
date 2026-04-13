@@ -19,10 +19,10 @@ Dependencies:
 Author:
     Paul MacNichol (paul.macnichol@qatchtech.com)
 Date:
-    2026-01-09
+    2026-04-09
 
 Version:
-    6.1.0
+    6.1.2
 """
 
 import datetime
@@ -31,7 +31,7 @@ import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2  # New project requirement as of 2026-01-12
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
