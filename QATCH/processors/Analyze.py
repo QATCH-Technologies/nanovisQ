@@ -504,7 +504,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         # self.progressBar.setFixedHeight(50)
         self.progressBar.valueChanged.connect(self._update_progress_value)
         self.progressBar.setValue(0)
-
+        self.progressBar.setHidden(True)
         self.tool_Load = QtWidgets.QToolBar()
         self.tool_Load.setIconSize(QtCore.QSize(50, 30))
         self.tool_Load.setStyleSheet("color: #333333;")
@@ -1186,6 +1186,33 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self.v4_predict_progress.connect(self._QModel_v4_progress_update)
         self.v6_predict_progress.connect(self._QModel_v6_progress_update)
 
+    def _create_analyze_progress_dialog(self):
+        """Creates a modal QProgressDialog for the main Analyze task.
+
+        If an instance of the progress dialog already exists, it is closed
+        and discarded before initializing a new one. The new dialog is
+        configured to be modal, remain on top of other windows, disable
+        auto-reset and auto-close behaviors, and use a fixed size.
+        """
+        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
+            self._analyze_progress_dlg.close()
+            self._analyze_progress_dlg = None
+
+        icon_path = os.path.join(Architecture.get_path(), "QATCH", "icons", "analyze.svg")
+
+        self._analyze_progress_dlg = QtWidgets.QProgressDialog(
+            "Analyzing data...", None, 0, 100, self
+        )
+        self._analyze_progress_dlg.setAutoReset(False)
+        self._analyze_progress_dlg.setAutoClose(False)
+        self._analyze_progress_dlg.setWindowIcon(QtGui.QIcon(icon_path))
+        self._analyze_progress_dlg.setWindowTitle("Analyzing...")
+        self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
+        self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+        self._analyze_progress_dlg.setFixedSize(400, 90)
+        self._analyze_progress_dlg.setModal(True)
+        self._analyze_progress_dlg.show()
+
     def _validate_run(self):
         """
         Validate current text against available items. Clear if not matching.
@@ -1760,6 +1787,37 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     self.progressBar.setFormat(f"{status} %p%")
                     break  # stop after finding valid current status label
         self.progressBar.repaint()
+
+    def _update_analyze_popup_progress(self, value, status):
+        """Updates the progress value and status text of the Analyze progress dialog.
+
+        This method sets the current progress of the dialog, capping the value at 99 
+        to prevent the dialog from automatically closing or appearing complete before 
+        the background task finishes. It also updates the descriptive status label and 
+        forces the event loop to process pending events, ensuring the UI remains 
+        responsive.
+
+        Args:
+            value (int): The current progress value, typically representing a percentage.
+            status (str): A descriptive message indicating the current analysis step.
+        """
+        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
+            self._analyze_progress_dlg.setValue(min(value, 99))  # hold at 99 until finished
+            if status and len(status):
+                self._analyze_progress_dlg.setLabelText(status)
+            QtCore.QCoreApplication.processEvents()
+
+    def _close_analyze_progress_dialog(self):
+        """Closes and cleans up the Analyze progress dialog upon task completion.
+
+        If the progress dialog exists, this method forces its progress value to 100 
+        to visually indicate full completion, closes the dialog window, and resets 
+        the instance attribute to None for garbage collection.
+        """
+        if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
+            self._analyze_progress_dlg.setValue(100)
+            self._analyze_progress_dlg.close()
+            self._analyze_progress_dlg = None
 
     def _step_to_next_value(self):
         if True:
@@ -3807,6 +3865,12 @@ class AnalyzeProcess(QtWidgets.QWidget):
                 self.analyze_work.progress.connect(self._update_analyze_progress)
                 self.analyze_work.finished.connect(self._update_progress_value)
                 self.analyze_work.finished.connect(self.enable_buttons)
+
+                # New progress dialog popup instead of run progress bar...
+                self._create_analyze_progress_dialog()
+                self.analyze_work.progress.connect(self._update_analyze_popup_progress)
+                self.analyze_work.finished.connect(self._close_analyze_progress_dialog)
+
                 self.analyzer_task.start()
         self.setDotStepMarkers(step_num)
 
