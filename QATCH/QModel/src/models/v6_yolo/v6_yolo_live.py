@@ -136,9 +136,8 @@ class QModelV6YOLO_Live(QModelV6YOLO_FillClassifier):
         # that _evaluate_duration_threshold never double-emits for the same channel.
         self._channel_warning_fired: Dict[int, bool] = {}
         # Tracks which channels have exceeded their duration threshold but are waiting
-        # for the *next* channel to be confirmed before the display message is emitted.
         self._extended_fill_latched: Dict[int, bool] = {}
-        self._no_fill_timeout_fired: bool = False
+        self._initial_fill_timeout_fired: bool = False
         self._cal_csv_written: bool = False
         self._cal_csv_path: str = os.path.join(
             Architecture.get_path(), "QATCH", "QModel", "logs", "fill_calibration_30s.csv"
