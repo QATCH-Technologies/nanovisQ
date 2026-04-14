@@ -345,7 +345,6 @@ def main():
         "app_publisher": "QATCH",
         "app_title": f"QATCH VisQ.AI Encrypted Database",
         "app_version": Constants.app_version,
-        "db_version": build_version,
     }
 
     if db_path.exists():
@@ -357,6 +356,7 @@ def main():
     ing_ctrl._user_mode = False
     form_ctrl = FormulationController(db=database)
     form_ctrl.ingredient_controller._user_mode = False
+
     logger.info("Reading and normalizing CSV...")
     df_normalized = normalize_dataframe(pd.read_csv(csv_path))
 
@@ -364,31 +364,13 @@ def main():
     t_import = time.perf_counter()
     form_ctrl.add_all_from_dataframe(df_normalized, verbose_print=True)
     logger.info(f"Import completed in {time.perf_counter() - t_import:.2f}s.")
+    # Assign the metadata to the database instance
+    database.metadata = metadata
+    database.update_metadata_version(build_version)
 
+    database.flush()
     database.close()
-
-    # Inject Encrypted Metadata Header
-    header_bytes = None
-    temp_db = Database(path=":memory:")
-    try:
-        temp_db.metadata = {"app_encoding": Constants.app_encoding}
-        header_bytes = encrypt_metadata_header(metadata, temp_db)
-    finally:
-        temp_db.close()
-
-    if not header_bytes:
-        logger.warning("Failed to encrypt metadata header")
-        raise EncodingWarning("Failed to encrypt metadata header")
-
-    with open(db_path, "rb") as f:
-        f.readline()  # Skip default header
-        content = f.read()
-
-    with open(db_path, "wb") as f:
-        f.write(header_bytes)
-        f.write(content)
-
-    logger.info(f"Encrypted metadata injected (Seed: {header_bytes[0]}).")
+    logger.info("Database cleanly saved and encrypted natively via db module.")
 
     t_verify = time.perf_counter()
     verify_database_integrity(db_path, df_normalized, app_key)
