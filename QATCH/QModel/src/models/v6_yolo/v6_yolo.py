@@ -214,13 +214,13 @@ class QModelV6YOLO_FillClassifier:
             pred_label = results[0].names[top1_index]
             confidence = probs.top1conf.item()
 
-            Log.d(self.TAG, f"Prediction: '{pred_label}' ({confidence:.1%})")
+            # Log.d(self.TAG, f"Prediction: '{pred_label}' ({confidence:.1%})")
 
-            if confidence < 0.5:
-                Log.w(
-                    self.TAG,
-                    f"Low confidence ({confidence:.2f}) for class: {pred_label}",
-                )
+            # if confidence < 0.5:
+            #     Log.w(
+            #         self.TAG,
+            #         f"Low confidence ({confidence:.2f}) for class: {pred_label}",
+            #     )
 
             return self._map_label_to_channels(pred_label)
 
