@@ -1816,6 +1816,15 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
             self._analyze_progress_dlg.setValue(100)
+            failed = hasattr(self, "analyze_work") and not self.analyze_work.exitCode()
+            if failed:
+                PopUp.warning(
+                    self,
+                    Constants.app_title,
+                    "Analyze task failed.",
+                )
+        else:
+            self._analyze_progress_dlg.setValue(100)
             self._analyze_progress_dlg.close()
             self._analyze_progress_dlg = None
 
