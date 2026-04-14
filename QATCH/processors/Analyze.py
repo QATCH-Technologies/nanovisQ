@@ -2253,7 +2253,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         """
         Adjust the finder-plot zoom level by a multiplicative offset and refresh the current POI context.
 
-        This updates self.zoomLevel within safe bounds, applies special initial-clipping adjustments based on the current step, and emits a position-change-finished signal for the active POI marker so the UI refreshes. Note: the method uses the current step (self.stateStep) to select the marker but intentionally skips the hidden POI3 (index 2) when mapping step → marker.
+        This updates self.zoomLevel within safe bounds, applies special initial-clipping adjustments based on the current step, and emits a position-change-finished signal for the active POI marker so the UI refreshes. Note: the method uses the current step (self.stateStep) to select the marker but intentionally skips the hidden POI3 (index 2) when mapping step -> marker.
 
         Parameters:
             offset (float): Multiplicative zoom factor (e.g., >1 to zoom out, <1 to zoom in).

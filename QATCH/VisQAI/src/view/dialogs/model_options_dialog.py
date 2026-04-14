@@ -2,7 +2,7 @@ from PyQt5 import QtCore, QtWidgets
 
 # ---------------------------------------------------------------------------
 # ICL field definitions
-# Maps human-readable label → dataframe column name used for filtering.
+# Maps human-readable label -> dataframe column name used for filtering.
 # ---------------------------------------------------------------------------
 ICL_FILTER_FIELDS = [
     ("Protein Type", "Protein_type"),
@@ -178,7 +178,7 @@ class ModelOptionsDialog(QtWidgets.QDialog):
         layout.addLayout(logic_row)
 
         # Field checkboxes — 2-column grid
-        self._field_checkboxes = {}  # column_name → QCheckBox
+        self._field_checkboxes = {}  # column_name -> QCheckBox
         stored_filter = current_params.get("icl_filter", _DEFAULT_ICL_FILTER)
         active_fields = stored_filter.get("fields", _DEFAULT_ICL_FILTER["fields"])
 
@@ -258,9 +258,7 @@ class ModelOptionsDialog(QtWidgets.QDialog):
 
     def get_settings(self):
         """Return all current settings as a flat dict suitable for card.ml_params."""
-        checked_fields = [
-            col for col, cb in self._field_checkboxes.items() if cb.isChecked()
-        ]
+        checked_fields = [col for col, cb in self._field_checkboxes.items() if cb.isChecked()]
 
         # Ensure at least one field is always selected so the ICL query is meaningful.
         # If the user unchecked everything fall back to the default field.
