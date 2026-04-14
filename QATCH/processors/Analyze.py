@@ -1209,6 +1209,7 @@ class AnalyzeProcess(QtWidgets.QWidget):
         self._analyze_progress_dlg.setWindowTitle("Analyzing...")
         self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowContextHelpButtonHint, False)
         self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowStaysOnTopHint, True)
+        self._analyze_progress_dlg.setWindowFlag(QtCore.Qt.WindowCloseButtonHint, False)
         self._analyze_progress_dlg.setFixedSize(400, 90)
         self._analyze_progress_dlg.setModal(True)
         self._analyze_progress_dlg.show()
@@ -1815,7 +1816,6 @@ class AnalyzeProcess(QtWidgets.QWidget):
         the instance attribute to None for garbage collection.
         """
         if hasattr(self, "_analyze_progress_dlg") and self._analyze_progress_dlg is not None:
-            self._analyze_progress_dlg.setValue(100)
             failed = hasattr(self, "analyze_work") and not self.analyze_work.exitCode()
             if failed:
                 PopUp.warning(
@@ -1823,8 +1823,8 @@ class AnalyzeProcess(QtWidgets.QWidget):
                     Constants.app_title,
                     "Analyze task failed.",
                 )
-        else:
-            self._analyze_progress_dlg.setValue(100)
+            else:
+                self._analyze_progress_dlg.setValue(100)
             self._analyze_progress_dlg.close()
             self._analyze_progress_dlg = None
 
