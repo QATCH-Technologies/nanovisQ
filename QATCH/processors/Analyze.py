@@ -8238,6 +8238,10 @@ class AnalyzerWorker(QtCore.QObject):
                     f"{in_viscosity[i]:2.2f} \u00b1 {err_viscosity[i]:2.2f}"
                 )  # plus-or-minus = \u00b1
 
+            # On multiplex systems, all `in_temp` will be NaN
+            # NOTE: Move this check to before marking "*...*" error cells
+            real_temps = [x for x in in_temp if ~np.isnan(x)]
+
             # Annotate average viscosity and standard deviation on plot and in output CSV
             if len(log_velocity_46) == len(distances):  # not checked
                 Log.w(
@@ -8285,8 +8289,8 @@ class AnalyzerWorker(QtCore.QObject):
             }
             rows = len(in_shear_rate)
             cols = len(data)
+
             # On multiplex systems, all `in_temp` will be NaN
-            real_temps = [x for x in in_temp if ~np.isnan(x)]
             if len(real_temps) == 0:
                 Log.w(
                     "Hiding \"Temperature (C)\" column, as all temperature values are 'nan'."
