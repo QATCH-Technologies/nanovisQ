@@ -329,7 +329,7 @@ class CalibrationProcess(multiprocessing.Process):
     ###########################################################################
     # Opens a specified serial port
     ###########################################################################
-    def open(self, port, pid,
+    def open(self, port, pid, lid_auto,
              speed=Constants.serial_default_QCS,
              timeout=Constants.serial_timeout_ms,
              writeTimeout=Constants.serial_writetimeout_ms):
@@ -380,6 +380,7 @@ class CalibrationProcess(multiprocessing.Process):
             is_open = False  # no ports available
 
         self._pid = pid
+        self._lid_auto = lid_auto
 
         return is_open
 
@@ -456,6 +457,38 @@ class CalibrationProcess(multiprocessing.Process):
                             self._flag = self._flag2 = 1
                             # return
                     all_ports_open &= self._serial[j].is_open
+
+                if all_ports_open:
+
+                    ### BEGIN AUTO-LOCK BLOCK ###
+                    if self._lid_auto:
+                        # For primary only, send LID CLOSE if in auto mode
+                        lid_cmd = "LID CLOSE"
+                    else:
+                        # Otherwise, query the current LID STATE in manual
+                        lid_cmd = "LID STATE"
+                    self._serial[0].write(str(lid_cmd + "\n").encode())
+
+                    lid_reply = ""
+                    start = time()
+                    waitFor = 3  # timeout delay (seconds)
+                    while len(lid_reply) <= 1 and time() - start < waitFor:
+                        lid_reply = self._serial[0].read_until(
+                        ).decode().strip()
+                    if time() - start >= waitFor:
+                        Log.w(
+                            TAG, f"WARNING: Timeout waiting for {lid_cmd} reply")
+                        # Timeout is treated as a no-op: if there is no reply,
+                        # assume the firmware does not support this command and
+                        # proceed without enforcing lid state.
+                    else:
+                        Log.d(TAG, f"Lid command: {lid_cmd}")
+                        Log.d(TAG, f"Lid reply: {lid_reply}")
+
+                        if "CLOSED" not in lid_reply:
+                            raise PermissionError(
+                                "Cannot proceed! Lid state is not closed.")
+                    ### END AUTO-LOCK BLOCK ###
 
                 if not all_ports_open:
                     # port already open
@@ -1136,6 +1169,8 @@ class CalibrationProcess(multiprocessing.Process):
                 # port not available
                 Log.w(TAG, "WARNING: Cannot connect! Serial port is not available.")
                 Log.w(TAG, "Please, repeat Initialize again!")
+                raise PermissionError(
+                    "Cannot connect! Serial port is not available.")
 
         except:
             limit = None
